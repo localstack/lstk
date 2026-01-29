@@ -1,6 +1,9 @@
 package cmd
 
 import (
+	"fmt"
+	"os"
+
 	"github.com/spf13/cobra"
 )
 
@@ -9,7 +12,10 @@ var rootCmd = &cobra.Command{
 	Short: "LocalStack CLI",
 	Long:  "lstk is the command-line interface for LocalStack.",
 	Run: func(c *cobra.Command, args []string) {
-		runStart()
+		if err := runStart(); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
 	},
 }
 
