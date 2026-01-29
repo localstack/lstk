@@ -14,16 +14,14 @@ var startCmd = &cobra.Command{
 	Short: "Start LocalStack",
 	Long:  "Start the LocalStack emulator.",
 	Run: func(cmd *cobra.Command, args []string) {
-		if err := runStart(); err != nil {
+		if err := runStart(cmd.Context()); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}
 	},
 }
 
-func runStart() error {
-	ctx := context.Background()
-
+func runStart(ctx context.Context) error {
 	rt, err := runtime.NewDockerRuntime()
 	if err != nil {
 		return fmt.Errorf("failed to create runtime: %w", err)
