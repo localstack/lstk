@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/localstack/lstk/internal/config"
 	"github.com/localstack/lstk/internal/runtime"
 	"github.com/spf13/cobra"
 )
@@ -27,13 +28,18 @@ func runStart(ctx context.Context) error {
 		return fmt.Errorf("failed to create runtime: %w", err)
 	}
 
-	// TODO: hardcoded for now, later should be configurable
-	containers := []runtime.ContainerConfig{
-		{
-			Image: "localstack/localstack-pro:latest",
-			Name:  "localstack-aws",
-			Ports: map[string]string{"4566/tcp": "4566"},
-		},
+	cfg, err := config.Get()
+	if err != nil {
+		return fmt.Errorf("failed to get config: %w", err)
+	}
+
+	containers := make([]runtime.ContainerConfig, len(cfg.Containers))
+	for i, c := range cfg.Containers {
+		containers[i] = runtime.ContainerConfig{
+			Image: c.Image,
+			Name:  c.Name,
+			Ports: c.Ports,
+		}
 	}
 
 	for _, config := range containers {
