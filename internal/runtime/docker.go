@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"strconv"
 
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/image"
@@ -64,14 +65,9 @@ func (d *DockerRuntime) PullImage(ctx context.Context, imageName string, progres
 }
 
 func (d *DockerRuntime) Start(ctx context.Context, config ContainerConfig) (string, error) {
-	portBindings := nat.PortMap{}
-	exposedPorts := nat.PortSet{}
-
-	for containerPort, hostPort := range config.Ports {
-		port := nat.Port(containerPort)
-		exposedPorts[port] = struct{}{}
-		portBindings[port] = []nat.PortBinding{{HostPort: hostPort}}
-	}
+	port := nat.Port(config.Port + "/tcp")
+	exposedPorts := nat.PortSet{port: struct{}{}}
+	portBindings := nat.PortMap{port: []nat.PortBinding{{HostPort: config.Port}}}
 
 	resp, err := d.client.ContainerCreate(ctx,
 		&container.Config{
@@ -100,4 +96,28 @@ func (d *DockerRuntime) IsRunning(ctx context.Context, containerID string) (bool
 		return false, err
 	}
 	return inspect.State.Running, nil
+}
+
+func (d *DockerRuntime) Logs(ctx context.Context, containerID string, tail int) (string, error) {
+	options := container.LogsOptions{
+		ShowStdout: true,
+		ShowStderr: true,
+		Tail:       "50",
+	}
+	if tail > 0 {
+		options.Tail = strconv.Itoa(tail)
+	}
+
+	reader, err := d.client.ContainerLogs(ctx, containerID, options)
+	if err != nil {
+		return "", err
+	}
+	defer reader.Close()
+
+	logs, err := io.ReadAll(reader)
+	if err != nil {
+		return "", err
+	}
+
+	return string(logs), nil
 }

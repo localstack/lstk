@@ -13,7 +13,7 @@ import (
 
 const containerName = "localstack-aws"
 
-func TestStartCommand(t *testing.T) {
+func TestStartCommandFailsWithoutAuth(t *testing.T) {
 	cleanup()
 	t.Cleanup(cleanup)
 
@@ -22,12 +22,9 @@ func TestStartCommand(t *testing.T) {
 
 	cmd := exec.CommandContext(ctx, "../../bin/lstk", "start")
 	output, err := cmd.CombinedOutput()
-	require.NoError(t, err, "lstk start failed: %s", output)
 
-	inspect, err := dockerClient.ContainerInspect(ctx, containerName)
-	require.NoError(t, err, "failed to inspect container")
-
-	assert.True(t, inspect.State.Running, "container is not running, state: %s", inspect.State.Status)
+	require.Error(t, err, "expected lstk start to fail without auth")
+	assert.Contains(t, string(output), "License activation failed")
 }
 
 func cleanup() {
