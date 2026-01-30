@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/localstack/lstk/internal/config"
 	"github.com/spf13/cobra"
 )
 
@@ -12,6 +13,9 @@ var rootCmd = &cobra.Command{
 	Use:   "lstk",
 	Short: "LocalStack CLI",
 	Long:  "lstk is the command-line interface for LocalStack.",
+	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+		return config.Init()
+	},
 	Run: func(cmd *cobra.Command, args []string) {
 		if err := runStart(cmd.Context()); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
