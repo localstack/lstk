@@ -10,4 +10,4 @@ clean:
 	rm -rf $(BUILD_DIR)
 
 test-integration: build
-	cd test/integration && go test -v .
+	cd test/integration && go test -count=1 -v .
