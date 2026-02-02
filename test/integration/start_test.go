@@ -44,7 +44,7 @@ func TestStartCommandFailsWithoutToken(t *testing.T) {
 	output, err := cmd.CombinedOutput()
 
 	require.Error(t, err, "expected lstk start to fail without token")
-	assert.Contains(t, string(output), "LOCALSTACK_AUTH_TOKEN is not set")
+	assert.Contains(t, string(output), "auth token not found")
 }
 
 func TestStartCommandFailsWithInvalidToken(t *testing.T) {

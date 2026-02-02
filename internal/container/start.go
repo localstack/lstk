@@ -4,16 +4,16 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"os"
 	"time"
 
+	"github.com/localstack/lstk/internal/auth"
 	"github.com/localstack/lstk/internal/runtime"
 )
 
 func Start(ctx context.Context, rt runtime.Runtime, onProgress func(string)) error {
-	token := os.Getenv("LOCALSTACK_AUTH_TOKEN")
-	if token == "" {
-		return fmt.Errorf("LOCALSTACK_AUTH_TOKEN is not set")
+	token, err := auth.GetToken()
+	if err != nil {
+		return err
 	}
 	env := []string{"LOCALSTACK_AUTH_TOKEN=" + token}
 
