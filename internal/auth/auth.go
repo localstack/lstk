@@ -1,16 +1,25 @@
 package auth
 
 import (
-	"errors"
+	"context"
+	"log"
 	"os"
 )
 
-// GetToken returns the auth token from keyring or environment variable.
-func GetToken() (string, error) {
-	// TODO: try keyring first
+// GetToken tries in order: 1) keychain 2) LOCALSTACK_AUTH_TOKEN env var 3) browser login
+func GetToken(ctx context.Context) (string, error) {
+	// TODO: try keychain first
 
 	if token := os.Getenv("LOCALSTACK_AUTH_TOKEN"); token != "" {
 		return token, nil
 	}
-	return "", errors.New("auth token not found, please set LOCALSTACK_AUTH_TOKEN")
+
+	log.Println("Authentication required. Opening browser...")
+	token, err := Login(ctx)
+	if err != nil {
+		log.Println("Authentication failed.")
+		return "", err
+	}
+	log.Println("Login successful.")
+	return token, nil
 }

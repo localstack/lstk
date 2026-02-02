@@ -5,6 +5,7 @@ go 1.25.6
 require (
 	github.com/docker/docker v28.2.2+incompatible
 	github.com/docker/go-connections v0.5.0
+	github.com/pkg/browser v0.0.0-20240102092130-5ac0b6a4141c
 	github.com/spf13/cobra v1.10.2
 )
 

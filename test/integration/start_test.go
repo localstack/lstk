@@ -2,6 +2,7 @@ package integration_test
 
 import (
 	"context"
+	"net/http"
 	"os"
 	"os/exec"
 	"testing"
@@ -35,16 +36,36 @@ func TestStartCommandSucceedsWithValidToken(t *testing.T) {
 	assert.True(t, inspect.State.Running, "container should be running")
 }
 
-func TestStartCommandFailsWithoutToken(t *testing.T) {
+func TestStartCommandTriggersLoginWithoutToken(t *testing.T) {
+	cleanup()
+	t.Cleanup(cleanup)
+
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, "../../bin/lstk", "start")
 	cmd.Env = []string{} // Clear environment to ensure no token
-	output, err := cmd.CombinedOutput()
 
-	require.Error(t, err, "expected lstk start to fail without token")
-	assert.Contains(t, string(output), "auth token not found")
+	// Capture output asynchronously
+	output := make(chan []byte)
+	go func() {
+		out, _ := cmd.CombinedOutput()
+		output <- out
+	}()
+
+	// Give lstk time to start callback server
+	time.Sleep(500 * time.Millisecond)
+
+	// Simulate browser callback with mock token
+	resp, err := http.Get("http://127.0.0.1:45678/auth/success?token=mock-token")
+	require.NoError(t, err)
+	resp.Body.Close()
+
+	out := <-output
+
+	// Login should succeed, but container will fail with invalid token
+	assert.Contains(t, string(out), "Login successful")
+	assert.Contains(t, string(out), "License activation failed")
 }
 
 func TestStartCommandFailsWithInvalidToken(t *testing.T) {
