@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"log"
 	"strconv"
 
 	"github.com/docker/docker/api/types/container"
@@ -30,7 +31,11 @@ func (d *DockerRuntime) PullImage(ctx context.Context, imageName string, progres
 	if err != nil {
 		return err
 	}
-	defer reader.Close()
+	defer func() {
+		if err := reader.Close(); err != nil {
+			log.Printf("failed to close image pull reader: %v", err)
+		}
+	}()
 
 	if progress != nil {
 		defer close(progress)
@@ -113,7 +118,11 @@ func (d *DockerRuntime) Logs(ctx context.Context, containerID string, tail int) 
 	if err != nil {
 		return "", err
 	}
-	defer reader.Close()
+	defer func() {
+		if err := reader.Close(); err != nil {
+			log.Printf("failed to close logs reader: %v", err)
+		}
+	}()
 
 	logs, err := io.ReadAll(reader)
 	if err != nil {

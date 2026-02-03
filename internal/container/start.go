@@ -3,6 +3,7 @@ package container
 import (
 	"context"
 	"fmt"
+	"log"
 	"net/http"
 	"time"
 
@@ -12,7 +13,7 @@ import (
 )
 
 func Start(ctx context.Context, rt runtime.Runtime, onProgress func(string)) error {
-	token, err := auth.GetToken(ctx)
+	token, err := auth.New().GetToken(ctx)
 	if err != nil {
 		return err
 	}
@@ -100,11 +101,15 @@ func awaitStartup(ctx context.Context, rt runtime.Runtime, containerID, name, he
 
 		resp, err := client.Get(healthURL)
 		if err == nil && resp.StatusCode == http.StatusOK {
-			resp.Body.Close()
+			if err := resp.Body.Close(); err != nil {
+				log.Printf("failed to close response body: %v", err)
+			}
 			return nil
 		}
 		if resp != nil {
-			resp.Body.Close()
+			if err := resp.Body.Close(); err != nil {
+				log.Printf("failed to close response body: %v", err)
+			}
 		}
 
 		select {
