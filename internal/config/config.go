@@ -93,9 +93,10 @@ func Init() error {
 			if err := viper.SafeWriteConfig(); err != nil {
 				return fmt.Errorf("failed to write config file: %w", err)
 			}
-		} else {
-			return fmt.Errorf("failed to read config file: %w", err)
+			return nil
 		}
+
+		return fmt.Errorf("failed to read config file: %w", err)
 	}
 
 	return nil
