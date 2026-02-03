@@ -11,7 +11,7 @@ import (
 )
 
 func Start(ctx context.Context, rt runtime.Runtime, onProgress func(string)) error {
-	token, err := auth.GetToken()
+	token, err := auth.GetToken(ctx)
 	if err != nil {
 		return err
 	}
