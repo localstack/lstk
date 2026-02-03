@@ -8,7 +8,6 @@ import (
 	"github.com/spf13/viper"
 )
 
-// EmulatorType represents a supported emulator type.
 type EmulatorType string
 
 const (
@@ -17,17 +16,14 @@ const (
 	EmulatorAzure     EmulatorType = "azure"
 )
 
-// emulatorImages maps emulator types to their Docker images.
 var emulatorImages = map[EmulatorType]string{
 	EmulatorAWS: "localstack/localstack-pro",
 }
 
-// Config holds the application configuration.
 type Config struct {
 	Containers []ContainerConfig `mapstructure:"containers"`
 }
 
-// ContainerConfig holds the configuration for a single container.
 type ContainerConfig struct {
 	Type       EmulatorType `mapstructure:"type"`
 	Tag        string       `mapstructure:"tag"`
@@ -36,7 +32,6 @@ type ContainerConfig struct {
 	Env        []string     `mapstructure:"env"`
 }
 
-// Image returns the full Docker image reference for this container.
 func (c *ContainerConfig) Image() (string, error) {
 	baseImage, ok := emulatorImages[c.Type]
 	if !ok {
@@ -49,7 +44,7 @@ func (c *ContainerConfig) Image() (string, error) {
 	return fmt.Sprintf("%s:%s", baseImage, tag), nil
 }
 
-// Name returns the generated container name based on type and tag.
+// Name returns the container name: "localstack-{type}" or "localstack-{type}-{tag}" if tag != latest
 func (c *ContainerConfig) Name() string {
 	tag := c.Tag
 	if tag == "" || tag == "latest" {
@@ -58,7 +53,6 @@ func (c *ContainerConfig) Name() string {
 	return fmt.Sprintf("localstack-%s-%s", c.Type, tag)
 }
 
-// configDir returns the lstk configuration directory.
 func configDir() (string, error) {
 	configHome, err := os.UserConfigDir()
 	if err != nil {
@@ -67,19 +61,16 @@ func configDir() (string, error) {
 	return filepath.Join(configHome, "lstk"), nil
 }
 
-// ConfigDir returns the lstk configuration directory path.
 func ConfigDir() (string, error) {
 	return configDir()
 }
 
-// Init initializes Viper with the configuration file and defaults.
 func Init() error {
 	dir, err := configDir()
 	if err != nil {
 		return err
 	}
 
-	// Ensure config directory exists
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return fmt.Errorf("failed to create config directory: %w", err)
 	}
@@ -97,9 +88,12 @@ func Init() error {
 		},
 	})
 
-	// Read config file if it exists
 	if err := viper.ReadInConfig(); err != nil {
-		if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
+		if _, ok := err.(viper.ConfigFileNotFoundError); ok {
+			if err := viper.SafeWriteConfig(); err != nil {
+				return fmt.Errorf("failed to write config file: %w", err)
+			}
+		} else {
 			return fmt.Errorf("failed to read config file: %w", err)
 		}
 	}
@@ -107,7 +101,6 @@ func Init() error {
 	return nil
 }
 
-// Get returns the current configuration.
 func Get() (*Config, error) {
 	var cfg Config
 	if err := viper.Unmarshal(&cfg); err != nil {
@@ -116,7 +109,6 @@ func Get() (*Config, error) {
 	return &cfg, nil
 }
 
-// ConfigFilePath returns the path to the config file.
 func ConfigFilePath() (string, error) {
 	dir, err := configDir()
 	if err != nil {
