@@ -85,7 +85,7 @@ func Init() error {
 	}
 
 	viper.SetConfigName("config")
-	viper.SetConfigType("yaml")
+	viper.SetConfigType("toml")
 	viper.AddConfigPath(dir)
 
 	viper.SetDefault("containers", []map[string]any{
@@ -122,5 +122,5 @@ func ConfigFilePath() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(dir, "config.yaml"), nil
+	return filepath.Join(dir, "config.toml"), nil
 }
