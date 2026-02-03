@@ -10,7 +10,7 @@ clean:
 	rm -rf $(BUILD_DIR)
 
 test:
-	go test ./internal/...
+	go test ./cmd/... ./internal/...
 
 test-integration: build
 	cd test/integration && go test -count=1 -v .
