@@ -3,9 +3,10 @@ package runtime
 import "context"
 
 type ContainerConfig struct {
-	Image string
-	Name  string
-	Ports map[string]string
+	Image      string
+	Name       string
+	Port       string
+	HealthPath string
 }
 
 type PullProgress struct {
@@ -20,4 +21,5 @@ type Runtime interface {
 	PullImage(ctx context.Context, image string, progress chan<- PullProgress) error
 	Start(ctx context.Context, config ContainerConfig) (string, error)
 	IsRunning(ctx context.Context, containerID string) (bool, error)
+	Logs(ctx context.Context, containerID string, tail int) (string, error)
 }
