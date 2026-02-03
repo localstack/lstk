@@ -7,7 +7,7 @@ type ContainerConfig struct {
 	Name       string
 	Port       string
 	HealthPath string
-	Env        []string // e.g., ["KEY=value", "FOO=bar"]
+Env        []string // e.g., ["KEY=value", "FOO=bar"]
 }
 
 type PullProgress struct {

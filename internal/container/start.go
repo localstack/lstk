@@ -30,7 +30,7 @@ func Start(ctx context.Context, rt runtime.Runtime, onProgress func(string)) err
 			Name:       c.Name,
 			Port:       c.Port,
 			HealthPath: c.HealthPath,
-			Env:        env,
+Env:        env,
 		}
 	}
 
