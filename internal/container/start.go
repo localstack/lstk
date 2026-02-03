@@ -28,13 +28,17 @@ func Start(ctx context.Context, rt runtime.Runtime, onProgress func(string)) err
 		if err != nil {
 			return err
 		}
+		healthPath, err := c.HealthPath()
+		if err != nil {
+			return err
+		}
 
 		env := append(c.Env, "LOCALSTACK_AUTH_TOKEN="+token)
 		containers[i] = runtime.ContainerConfig{
 			Image:      image,
 			Name:       c.Name(),
 			Port:       c.Port,
-			HealthPath: c.HealthPath,
+			HealthPath: healthPath,
 			Env:        env,
 		}
 	}

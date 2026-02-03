@@ -54,5 +54,4 @@ func TestConfigFileCreatedOnStartup(t *testing.T) {
 	assert.Contains(t, configStr, `type = 'aws'`)
 	assert.Contains(t, configStr, `tag = 'latest'`)
 	assert.Contains(t, configStr, `port = '4566'`)
-	assert.Contains(t, configStr, `health_path = '/_localstack/health'`)
 }

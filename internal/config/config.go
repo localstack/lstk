@@ -20,16 +20,19 @@ var emulatorImages = map[EmulatorType]string{
 	EmulatorAWS: "localstack/localstack-pro",
 }
 
+var emulatorHealthPaths = map[EmulatorType]string{
+	EmulatorAWS: "/_localstack/health",
+}
+
 type Config struct {
 	Containers []ContainerConfig `mapstructure:"containers"`
 }
 
 type ContainerConfig struct {
-	Type       EmulatorType `mapstructure:"type"`
-	Tag        string       `mapstructure:"tag"`
-	Port       string       `mapstructure:"port"`
-	HealthPath string       `mapstructure:"health_path"`
-	Env        []string     `mapstructure:"env"`
+	Type EmulatorType `mapstructure:"type"`
+	Tag  string       `mapstructure:"tag"`
+	Port string       `mapstructure:"port"`
+	Env  []string     `mapstructure:"env"`
 }
 
 func (c *ContainerConfig) Image() (string, error) {
@@ -51,6 +54,14 @@ func (c *ContainerConfig) Name() string {
 		return fmt.Sprintf("localstack-%s", c.Type)
 	}
 	return fmt.Sprintf("localstack-%s-%s", c.Type, tag)
+}
+
+func (c *ContainerConfig) HealthPath() (string, error) {
+	path, ok := emulatorHealthPaths[c.Type]
+	if !ok {
+		return "", fmt.Errorf("%s emulator not supported yet by lstk", c.Type)
+	}
+	return path, nil
 }
 
 func configDir() (string, error) {
@@ -81,10 +92,9 @@ func Init() error {
 
 	viper.SetDefault("containers", []map[string]any{
 		{
-			"type":        "aws",
-			"tag":         "latest",
-			"port":        "4566",
-			"health_path": "/_localstack/health",
+			"type": "aws",
+			"tag":  "latest",
+			"port": "4566",
 		},
 	})
 
