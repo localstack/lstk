@@ -8,6 +8,20 @@ import (
 	"github.com/spf13/viper"
 )
 
+// EmulatorType represents a supported emulator type.
+type EmulatorType string
+
+const (
+	EmulatorAWS       EmulatorType = "aws"
+	EmulatorSnowflake EmulatorType = "snowflake"
+	EmulatorAzure     EmulatorType = "azure"
+)
+
+// emulatorImages maps emulator types to their Docker images.
+var emulatorImages = map[EmulatorType]string{
+	EmulatorAWS: "localstack/localstack-pro",
+}
+
 // Config holds the application configuration.
 type Config struct {
 	Containers []ContainerConfig `mapstructure:"containers"`
@@ -15,11 +29,33 @@ type Config struct {
 
 // ContainerConfig holds the configuration for a single container.
 type ContainerConfig struct {
-	Image      string   `mapstructure:"image"`
-	Name       string   `mapstructure:"name"`
-	Port       string   `mapstructure:"port"`
-	HealthPath string   `mapstructure:"health_path"`
-	Env        []string `mapstructure:"env"`
+	Type       EmulatorType `mapstructure:"type"`
+	Tag        string       `mapstructure:"tag"`
+	Port       string       `mapstructure:"port"`
+	HealthPath string       `mapstructure:"health_path"`
+	Env        []string     `mapstructure:"env"`
+}
+
+// Image returns the full Docker image reference for this container.
+func (c *ContainerConfig) Image() (string, error) {
+	baseImage, ok := emulatorImages[c.Type]
+	if !ok {
+		return "", fmt.Errorf("%s emulator not supported yet by lstk", c.Type)
+	}
+	tag := c.Tag
+	if tag == "" {
+		tag = "latest"
+	}
+	return fmt.Sprintf("%s:%s", baseImage, tag), nil
+}
+
+// Name returns the generated container name based on type and tag.
+func (c *ContainerConfig) Name() string {
+	tag := c.Tag
+	if tag == "" || tag == "latest" {
+		return fmt.Sprintf("localstack-%s", c.Type)
+	}
+	return fmt.Sprintf("localstack-%s-%s", c.Type, tag)
 }
 
 // configDir returns the lstk configuration directory.
@@ -54,8 +90,8 @@ func Init() error {
 
 	viper.SetDefault("containers", []map[string]any{
 		{
-			"image":       "localstack/localstack-pro:latest",
-			"name":        "localstack-aws",
+			"type":        "aws",
+			"tag":         "latest",
 			"port":        "4566",
 			"health_path": "/_localstack/health",
 		},

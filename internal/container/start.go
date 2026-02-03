@@ -24,13 +24,18 @@ func Start(ctx context.Context, rt runtime.Runtime, onProgress func(string)) err
 
 	containers := make([]runtime.ContainerConfig, len(cfg.Containers))
 	for i, c := range cfg.Containers {
+		image, err := c.Image()
+		if err != nil {
+			return err
+		}
+
 		env := append(c.Env, "LOCALSTACK_AUTH_TOKEN="+token)
 		containers[i] = runtime.ContainerConfig{
-			Image:      c.Image,
-			Name:       c.Name,
+			Image:      image,
+			Name:       c.Name(),
 			Port:       c.Port,
 			HealthPath: c.HealthPath,
-Env:        env,
+			Env:        env,
 		}
 	}
 
