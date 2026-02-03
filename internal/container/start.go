@@ -6,10 +6,17 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/localstack/lstk/internal/auth"
 	"github.com/localstack/lstk/internal/runtime"
 )
 
 func Start(ctx context.Context, rt runtime.Runtime, onProgress func(string)) error {
+	token, err := auth.GetToken()
+	if err != nil {
+		return err
+	}
+	env := []string{"LOCALSTACK_AUTH_TOKEN=" + token}
+
 	// TODO: hardcoded for now, later should be configurable
 	containers := []runtime.ContainerConfig{
 		{
@@ -17,6 +24,7 @@ func Start(ctx context.Context, rt runtime.Runtime, onProgress func(string)) err
 			Name:       "localstack-aws",
 			Port:       "4566",
 			HealthPath: "/_localstack/health",
+			Env:        env,
 		},
 	}
 

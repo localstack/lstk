@@ -73,6 +73,7 @@ func (d *DockerRuntime) Start(ctx context.Context, config ContainerConfig) (stri
 		&container.Config{
 			Image:        config.Image,
 			ExposedPorts: exposedPorts,
+			Env:          config.Env,
 		},
 		&container.HostConfig{
 			PortBindings: portBindings,
