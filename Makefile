@@ -10,10 +10,12 @@ clean:
 	rm -rf $(BUILD_DIR)
 
 test:
-	go test ./cmd/... ./internal/...
+	@JUNIT=""; [ -n "$$CREATE_JUNIT_REPORT" ] && JUNIT="--junitfile test-results.xml"; \
+	go run gotest.tools/gotestsum@latest --format testdox $$JUNIT -- ./cmd/... ./internal/...
 
 test-integration: build
-	cd test/integration && go test -count=1 -v .
+	@JUNIT=""; [ -n "$$CREATE_JUNIT_REPORT" ] && JUNIT="--junitfile ../../test-integration-results.xml"; \
+	cd test/integration && go run gotest.tools/gotestsum@latest --format testdox $$JUNIT -- -count=1 ./...
 
 mock-generate:
 	go generate ./...
