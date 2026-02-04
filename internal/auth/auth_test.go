@@ -25,8 +25,8 @@ func TestGetToken_ReturnsTokenWhenKeyringStoreFails(t *testing.T) {
 	mockLogin := NewMockLoginProvider(ctrl)
 
 	auth := &Auth{
-		keyring: mockKeyring,
-		login:   mockLogin,
+		keyring:      mockKeyring,
+		browserLogin: mockLogin,
 	}
 
 	// Keyring returns empty (no stored token)

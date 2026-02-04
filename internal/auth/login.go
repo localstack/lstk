@@ -20,18 +20,6 @@ type LoginProvider interface {
 type browserLogin struct{}
 
 func (browserLogin) Login(ctx context.Context) (string, error) {
-	return login(ctx)
-}
-
-func getWebAppURL() string {
-	// allows overriding the URL for testing
-	if url := os.Getenv("LOCALSTACK_WEB_APP_URL"); url != "" {
-		return url
-	}
-	return "https://app.localstack.cloud"
-}
-
-func login(ctx context.Context) (string, error) {
 	listener, err := net.Listen("tcp", "127.0.0.1:45678")
 	if err != nil {
 		return "", fmt.Errorf("failed to start callback server: %w", err)
@@ -81,4 +69,12 @@ func login(ctx context.Context) (string, error) {
 	case <-ctx.Done():
 		return "", ctx.Err()
 	}
+}
+
+func getWebAppURL() string {
+	// allows overriding the URL for testing
+	if url := os.Getenv("LOCALSTACK_WEB_APP_URL"); url != "" {
+		return url
+	}
+	return "https://app.localstack.cloud"
 }

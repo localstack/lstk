@@ -7,14 +7,14 @@ import (
 )
 
 type Auth struct {
-	keyring Keyring
-	login   LoginProvider
+	keyring      Keyring
+	browserLogin LoginProvider
 }
 
 func New() *Auth {
 	return &Auth{
-		keyring: systemKeyring{},
-		login:   browserLogin{},
+		keyring:      systemKeyring{},
+		browserLogin: browserLogin{},
 	}
 }
 
@@ -29,7 +29,7 @@ func (a *Auth) GetToken(ctx context.Context) (string, error) {
 	}
 
 	log.Println("Authentication required. Opening browser...")
-	token, err := a.login.Login(ctx)
+	token, err := a.browserLogin.Login(ctx)
 	if err != nil {
 		log.Println("Authentication failed.")
 		return "", err
