@@ -40,6 +40,12 @@ Environment variables:
 # Code Style
 
 - Don't add comments for self-explanatory code. Only comment when the "why" isn't obvious from the code itself.
+- Do not remove comments added by someone else than yourself.
+- Errors returned by functions should always be checked unless in test files.
+
+# Testing
+
+- Prefer integration tests to cover most cases. Use unit tests when integration tests are not practical.
 
 # Maintaining This File
 
