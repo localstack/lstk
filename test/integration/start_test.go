@@ -22,6 +22,7 @@ const (
 const containerName = "localstack-aws"
 
 func TestStartCommandSucceedsWithValidToken(t *testing.T) {
+	requireDocker(t)
 	authToken := os.Getenv("LOCALSTACK_AUTH_TOKEN")
 	require.NotEmpty(t, authToken, "LOCALSTACK_AUTH_TOKEN must be set to run this test")
 
@@ -43,6 +44,7 @@ func TestStartCommandSucceedsWithValidToken(t *testing.T) {
 }
 
 func TestStartCommandTriggersLoginWithoutToken(t *testing.T) {
+	requireDocker(t)
 	cleanup()
 	t.Cleanup(cleanup)
 
@@ -80,6 +82,7 @@ func TestStartCommandTriggersLoginWithoutToken(t *testing.T) {
 }
 
 func TestStartCommandSucceedsWithKeyringToken(t *testing.T) {
+	requireDocker(t)
 	cleanup()
 	t.Cleanup(cleanup)
 
@@ -105,6 +108,7 @@ func TestStartCommandSucceedsWithKeyringToken(t *testing.T) {
 }
 
 func TestStartCommandFailsWithInvalidToken(t *testing.T) {
+	requireDocker(t)
 	cleanup()
 	t.Cleanup(cleanup)
 
