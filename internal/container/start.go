@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/localstack/lstk/internal/auth"
+	"github.com/localstack/lstk/internal/config"
 	"github.com/localstack/lstk/internal/runtime"
 )
 
@@ -15,17 +16,31 @@ func Start(ctx context.Context, rt runtime.Runtime, onProgress func(string)) err
 	if err != nil {
 		return err
 	}
-	env := []string{"LOCALSTACK_AUTH_TOKEN=" + token}
 
-	// TODO: hardcoded for now, later should be configurable
-	containers := []runtime.ContainerConfig{
-		{
-			Image:      "localstack/localstack-pro:latest",
-			Name:       "localstack-aws",
-			Port:       "4566",
-			HealthPath: "/_localstack/health",
+	cfg, err := config.Get()
+	if err != nil {
+		return fmt.Errorf("failed to get config: %w", err)
+	}
+
+	containers := make([]runtime.ContainerConfig, len(cfg.Containers))
+	for i, c := range cfg.Containers {
+		image, err := c.Image()
+		if err != nil {
+			return err
+		}
+		healthPath, err := c.HealthPath()
+		if err != nil {
+			return err
+		}
+
+		env := append(c.Env, "LOCALSTACK_AUTH_TOKEN="+token)
+		containers[i] = runtime.ContainerConfig{
+			Image:      image,
+			Name:       c.Name(),
+			Port:       c.Port,
+			HealthPath: healthPath,
 			Env:        env,
-		},
+		}
 	}
 
 	for _, config := range containers {
