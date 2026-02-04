@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"strings"
 	"testing"
 	"time"
 
@@ -13,6 +14,17 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/zalando/go-keyring"
 )
+
+// envWithoutAuthToken returns os.Environ() with LOCALSTACK_AUTH_TOKEN removed
+func envWithoutAuthToken() []string {
+	var env []string
+	for _, e := range os.Environ() {
+		if !strings.HasPrefix(e, "LOCALSTACK_AUTH_TOKEN=") {
+			env = append(env, e)
+		}
+	}
+	return env
+}
 
 const (
 	keyringService = "localstack"
@@ -52,7 +64,7 @@ func TestStartCommandTriggersLoginWithoutToken(t *testing.T) {
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, "../../bin/lstk", "start")
-	cmd.Env = []string{} // Clear environment to ensure no token
+	cmd.Env = envWithoutAuthToken()
 
 	// Capture output asynchronously
 	output := make(chan []byte)
@@ -97,7 +109,7 @@ func TestStartCommandSucceedsWithKeyringToken(t *testing.T) {
 
 	// Run without LOCALSTACK_AUTH_TOKEN should use keyring
 	cmd := exec.CommandContext(ctx, "../../bin/lstk", "start")
-	cmd.Env = []string{}
+	cmd.Env = envWithoutAuthToken()
 	output, err := cmd.CombinedOutput()
 
 	require.NoError(t, err, "lstk start failed: %s", output)
