@@ -41,6 +41,7 @@ jobs:
         uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
+          cache-dependency-path: go.sum
 
       - name: Run unit tests
         run: make test
@@ -77,6 +78,9 @@ jobs:
         uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
+          cache-dependency-path: |
+            go.sum
+            test/integration/go.sum
 
       - name: Run integration tests
         run: make test-integration
