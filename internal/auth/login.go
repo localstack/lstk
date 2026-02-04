@@ -1,5 +1,7 @@
 package auth
 
+//go:generate mockgen -source=login.go -destination=mock_login_test.go -package=auth
+
 import (
 	"context"
 	"fmt"
@@ -11,20 +13,22 @@ import (
 	"github.com/pkg/browser"
 )
 
-func getWebAppURL() string {
-	// allows overriding the URL for testing
-	if url := os.Getenv("LOCALSTACK_WEB_APP_URL"); url != "" {
-		return url
-	}
-	return "https://app.localstack.cloud"
+type LoginProvider interface {
+	Login(ctx context.Context) (string, error)
 }
 
-func Login(ctx context.Context) (string, error) {
+type browserLogin struct{}
+
+func (browserLogin) Login(ctx context.Context) (string, error) {
 	listener, err := net.Listen("tcp", "127.0.0.1:45678")
 	if err != nil {
 		return "", fmt.Errorf("failed to start callback server: %w", err)
 	}
-	defer listener.Close()
+	defer func() {
+		if err := listener.Close(); err != nil {
+			log.Printf("failed to close listener: %v", err)
+		}
+	}()
 
 	tokenCh := make(chan string, 1)
 	errCh := make(chan error, 1)
@@ -41,8 +45,16 @@ func Login(ctx context.Context) (string, error) {
 		tokenCh <- token
 	})
 	server := &http.Server{Handler: mux}
-	go server.Serve(listener)
-	defer server.Shutdown(ctx)
+	go func() {
+		if err := server.Serve(listener); err != nil && err != http.ErrServerClosed {
+			errCh <- fmt.Errorf("callback server error: %w", err)
+		}
+	}()
+	defer func() {
+		if err := server.Shutdown(ctx); err != nil {
+			log.Printf("failed to shutdown server: %v", err)
+		}
+	}()
 
 	loginURL := fmt.Sprintf("%s/redirect?name=CLI", getWebAppURL())
 	if err := browser.OpenURL(loginURL); err != nil {
@@ -57,4 +69,12 @@ func Login(ctx context.Context) (string, error) {
 	case <-ctx.Done():
 		return "", ctx.Err()
 	}
+}
+
+func getWebAppURL() string {
+	// allows overriding the URL for testing
+	if url := os.Getenv("LOCALSTACK_WEB_APP_URL"); url != "" {
+		return url
+	}
+	return "https://app.localstack.cloud"
 }
