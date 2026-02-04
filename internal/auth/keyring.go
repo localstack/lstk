@@ -12,6 +12,7 @@ const (
 type Keyring interface {
 	Get(service, user string) (string, error)
 	Set(service, user, password string) error
+	Delete(service, user string) error
 }
 
 type systemKeyring struct{}
@@ -22,4 +23,8 @@ func (systemKeyring) Get(service, user string) (string, error) {
 
 func (systemKeyring) Set(service, user, password string) error {
 	return keyring.Set(service, user, password)
+}
+
+func (systemKeyring) Delete(service, user string) error {
+	return keyring.Delete(service, user)
 }

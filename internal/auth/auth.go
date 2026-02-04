@@ -2,8 +2,11 @@ package auth
 
 import (
 	"context"
+	"errors"
 	"log"
 	"os"
+
+	"github.com/zalando/go-keyring"
 )
 
 type Auth struct {
@@ -41,4 +44,13 @@ func (a *Auth) GetToken(ctx context.Context) (string, error) {
 
 	log.Println("Login successful.")
 	return token, nil
+}
+
+// Logout removes the stored auth token from the keyring
+func (a *Auth) Logout() error {
+	err := a.keyring.Delete(keyringService, keyringUser)
+	if errors.Is(err, keyring.ErrNotFound) {
+		return nil
+	}
+	return err
 }
