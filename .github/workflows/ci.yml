@@ -82,15 +82,7 @@ jobs:
             go.sum
             test/integration/go.sum
 
-      - name: Debug - List bin directory after build
-        shell: bash
-        run: |
-          make build
-          echo "Contents of bin directory:"
-          ls -la bin/
-
       - name: Run integration tests
-        shell: bash
         run: make test-integration
         env:
           CREATE_JUNIT_REPORT: "true"
