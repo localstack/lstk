@@ -2,7 +2,9 @@ package integration_test
 
 import (
 	"context"
+	"os"
 	"runtime"
+	"strings"
 	"testing"
 
 	"github.com/docker/docker/client"
@@ -33,4 +35,14 @@ func requireDocker(t *testing.T) {
 	if !dockerAvailable {
 		t.Skip("Docker is not available")
 	}
+}
+
+func envWithoutAuthToken() []string {
+	var env []string
+	for _, e := range os.Environ() {
+		if !strings.HasPrefix(e, "LOCALSTACK_AUTH_TOKEN=") {
+			env = append(env, e)
+		}
+	}
+	return env
 }

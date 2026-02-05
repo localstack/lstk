@@ -3,6 +3,7 @@ package auth
 //go:generate mockgen -source=login.go -destination=mock_login_test.go -package=auth
 
 import (
+	"bufio"
 	"context"
 	"fmt"
 	"log"
@@ -10,6 +11,7 @@ import (
 	"net/http"
 	"os"
 
+	"github.com/localstack/lstk/internal/api"
 	"github.com/pkg/browser"
 )
 
@@ -20,18 +22,15 @@ type LoginProvider interface {
 type browserLogin struct{}
 
 func (browserLogin) Login(ctx context.Context) (string, error) {
+	// Browser flow
 	listener, err := net.Listen("tcp", "127.0.0.1:45678")
 	if err != nil {
 		return "", fmt.Errorf("failed to start callback server: %w", err)
 	}
-	defer func() {
-		if err := listener.Close(); err != nil {
-			log.Printf("failed to close listener: %v", err)
-		}
-	}()
 
 	tokenCh := make(chan string, 1)
 	errCh := make(chan error, 1)
+	enterCh := make(chan struct{}, 1)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/auth/success", func(w http.ResponseWriter, r *http.Request) {
@@ -56,19 +55,73 @@ func (browserLogin) Login(ctx context.Context) (string, error) {
 		}
 	}()
 
-	loginURL := fmt.Sprintf("%s/redirect?name=CLI", getWebAppURL())
-	if err := browser.OpenURL(loginURL); err != nil {
-		log.Printf("Could not open browser. Please visit: %s", loginURL)
+	client := api.NewPlatformClient()
+
+	// Device flow as fallback
+	authReq, err := client.CreateAuthRequest(ctx)
+	if err != nil {
+		return "", fmt.Errorf("failed to create auth request: %w", err)
 	}
 
+	deviceURL := fmt.Sprintf("%s/auth/request/%s", getWebAppURL(), authReq.ID)
+
+	// Try to open browser
+	loginURL := fmt.Sprintf("%s/redirect?name=CLI", getWebAppURL())
+	browserOpened := browser.OpenURL(loginURL) == nil
+
+	// Display device flow instructions
+	if browserOpened {
+		fmt.Printf("Browser didn't open? Open %s to authorize device.\n", deviceURL)
+	} else {
+		fmt.Printf("Open %s to authorize device.\n", deviceURL)
+	}
+	fmt.Printf("Verification code: %s\n", authReq.Code)
+	fmt.Println("Waiting for authentication... (Press ENTER when complete)")
+
+	// Listen for ENTER key in background
+	go func() {
+		reader := bufio.NewReader(os.Stdin)
+		_, _ = reader.ReadString('\n')
+		enterCh <- struct{}{}
+	}()
+
+	// Wait for either browser callback, ENTER key, or context cancellation
 	select {
 	case token := <-tokenCh:
 		return token, nil
 	case err := <-errCh:
 		return "", err
+	case <-enterCh:
+		// User pressed ENTER, try device flow
+		return completeDeviceFlow(ctx, client, authReq)
 	case <-ctx.Done():
 		return "", ctx.Err()
 	}
+}
+
+func completeDeviceFlow(ctx context.Context, client *api.PlatformClient, authReq *api.AuthRequest) (string, error) {
+	log.Println("Checking if auth request is confirmed...")
+	confirmed, err := client.CheckAuthRequestConfirmed(ctx, authReq.ID, authReq.ExchangeToken)
+	if err != nil {
+		return "", fmt.Errorf("failed to check auth request: %w", err)
+	}
+	if !confirmed {
+		return "", fmt.Errorf("auth request not confirmed - please enter the code in the browser first")
+	}
+	log.Println("Auth request confirmed, exchanging for token...")
+
+	bearerToken, err := client.ExchangeAuthRequest(ctx, authReq.ID, authReq.ExchangeToken)
+	if err != nil {
+		return "", fmt.Errorf("failed to exchange auth request: %w", err)
+	}
+
+	log.Println("Fetching license token...")
+	licenseToken, err := client.GetLicenseToken(ctx, bearerToken)
+	if err != nil {
+		return "", fmt.Errorf("failed to get license token: %w", err)
+	}
+
+	return licenseToken, nil
 }
 
 func getWebAppURL() string {
