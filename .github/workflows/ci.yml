@@ -90,6 +90,7 @@ jobs:
           ls -la bin/
 
       - name: Run integration tests
+        shell: bash
         run: make test-integration
         env:
           CREATE_JUNIT_REPORT: "true"
