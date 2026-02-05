@@ -21,16 +21,14 @@ type LoginProvider interface {
 
 type browserLogin struct{}
 
-func (browserLogin) Login(ctx context.Context) (string, error) {
-	// Browser flow
+func startCallbackServer() (*http.Server, chan string, chan error, error) {
 	listener, err := net.Listen("tcp", "127.0.0.1:45678")
 	if err != nil {
-		return "", fmt.Errorf("failed to start callback server: %w", err)
+		return nil, nil, nil, fmt.Errorf("failed to start callback server: %w", err)
 	}
 
 	tokenCh := make(chan string, 1)
 	errCh := make(chan error, 1)
-	enterCh := make(chan struct{}, 1)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/auth/success", func(w http.ResponseWriter, r *http.Request) {
@@ -43,17 +41,29 @@ func (browserLogin) Login(ctx context.Context) (string, error) {
 		w.WriteHeader(http.StatusOK)
 		tokenCh <- token
 	})
+
 	server := &http.Server{Handler: mux}
 	go func() {
 		if err := server.Serve(listener); err != nil && err != http.ErrServerClosed {
 			errCh <- fmt.Errorf("callback server error: %w", err)
 		}
 	}()
+
+	return server, tokenCh, errCh, nil
+}
+
+func (browserLogin) Login(ctx context.Context) (string, error) {
+	server, tokenCh, errCh, err := startCallbackServer()
+	if err != nil {
+		return "", err
+	}
 	defer func() {
 		if err := server.Shutdown(ctx); err != nil {
 			log.Printf("failed to shutdown server: %v", err)
 		}
 	}()
+
+	enterCh := make(chan struct{}, 1)
 
 	client := api.NewPlatformClient()
 
