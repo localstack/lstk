@@ -34,7 +34,7 @@ func TestConfigFileCreatedOnStartup(t *testing.T) {
 
 	configFile := filepath.Join(configDir, "config.toml")
 
-	cmd := exec.Command(binaryPath(), "start")
+	cmd := exec.Command("../../bin/lstk", "start")
 	cmd.Env = env
 	err := cmd.Start()
 	require.NoError(t, err, "failed to start lstk")

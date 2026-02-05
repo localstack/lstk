@@ -2,18 +2,10 @@ package integration_test
 
 import (
 	"context"
-	"runtime"
 	"testing"
 
 	"github.com/docker/docker/client"
 )
-
-func binaryPath() string {
-	if runtime.GOOS == "windows" {
-		return "../../bin/lstk.exe"
-	}
-	return "../../bin/lstk"
-}
 
 var dockerClient *client.Client
 var dockerAvailable bool

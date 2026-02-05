@@ -26,7 +26,7 @@ func TestLogoutCommandRemovesToken(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, binaryPath(), "logout")
+	cmd := exec.CommandContext(ctx, "../../bin/lstk", "logout")
 	output, err := cmd.CombinedOutput()
 
 	require.NoError(t, err, "lstk logout failed: %s", output)
@@ -44,7 +44,7 @@ func TestLogoutCommandSucceedsWhenNoToken(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, binaryPath(), "logout")
+	cmd := exec.CommandContext(ctx, "../../bin/lstk", "logout")
 	output, err := cmd.CombinedOutput()
 
 	// Should succeed even if no token
