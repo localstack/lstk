@@ -1,4 +1,7 @@
 BINARY_NAME=lstk
+ifeq ($(OS),Windows_NT)
+    BINARY_NAME=lstk.exe
+endif
 BUILD_DIR=bin
 
 .PHONY: build clean test test-integration lint mock-generate

@@ -44,7 +44,7 @@ func TestStartCommandSucceedsWithValidToken(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, "../../bin/lstk", "start")
+	cmd := exec.CommandContext(ctx, binaryPath(), "start")
 	cmd.Env = append(os.Environ(), "LOCALSTACK_AUTH_TOKEN="+authToken)
 	output, err := cmd.CombinedOutput()
 
@@ -63,7 +63,7 @@ func TestStartCommandTriggersLoginWithoutToken(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, "../../bin/lstk", "start")
+	cmd := exec.CommandContext(ctx, binaryPath(), "start")
 	cmd.Env = envWithoutAuthToken()
 
 	// Capture output asynchronously
@@ -108,7 +108,7 @@ func TestStartCommandSucceedsWithKeyringToken(t *testing.T) {
 	defer cancel()
 
 	// Run without LOCALSTACK_AUTH_TOKEN should use keyring
-	cmd := exec.CommandContext(ctx, "../../bin/lstk", "start")
+	cmd := exec.CommandContext(ctx, binaryPath(), "start")
 	cmd.Env = envWithoutAuthToken()
 	output, err := cmd.CombinedOutput()
 
@@ -127,7 +127,7 @@ func TestStartCommandFailsWithInvalidToken(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, "../../bin/lstk", "start")
+	cmd := exec.CommandContext(ctx, binaryPath(), "start")
 	cmd.Env = append(os.Environ(), "LOCALSTACK_AUTH_TOKEN=invalid-token")
 	output, err := cmd.CombinedOutput()
 
