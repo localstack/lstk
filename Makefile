@@ -1,10 +1,15 @@
 BINARY_NAME=lstk
+ifeq ($(OS),Windows_NT)
+    BINARY_NAME=lstk.exe
+endif
 BUILD_DIR=bin
 
 .PHONY: build clean test test-integration lint mock-generate
 
-build:
+$(BUILD_DIR)/$(BINARY_NAME):
 	go build -o $(BUILD_DIR)/$(BINARY_NAME) .
+
+build: clean $(BUILD_DIR)/$(BINARY_NAME)
 
 clean:
 	rm -rf $(BUILD_DIR)
@@ -13,7 +18,7 @@ test:
 	@JUNIT=""; [ -n "$$CREATE_JUNIT_REPORT" ] && JUNIT="--junitfile test-results.xml"; \
 	go run gotest.tools/gotestsum@latest --format testdox $$JUNIT -- ./cmd/... ./internal/...
 
-test-integration: build
+test-integration: $(BUILD_DIR)/$(BINARY_NAME)
 	@JUNIT=""; [ -n "$$CREATE_JUNIT_REPORT" ] && JUNIT="--junitfile ../../test-integration-results.xml"; \
 	cd test/integration && go run gotest.tools/gotestsum@latest --format testdox $$JUNIT -- -count=1 ./...
 

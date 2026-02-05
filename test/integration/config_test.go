@@ -34,9 +34,10 @@ func TestConfigFileCreatedOnStartup(t *testing.T) {
 
 	configFile := filepath.Join(configDir, "config.toml")
 
-	cmd := exec.Command("../../bin/lstk", "start")
+	cmd := exec.Command(binaryPath(), "start")
 	cmd.Env = env
-	cmd.Start()
+	err := cmd.Start()
+	require.NoError(t, err, "failed to start lstk")
 	defer cmd.Process.Kill()
 
 	// Poll for config file creation - check every 50ms, timeout after 2s
