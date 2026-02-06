@@ -13,7 +13,12 @@ import (
 )
 
 func Start(ctx context.Context, rt runtime.Runtime, onProgress func(string)) error {
-	token, err := auth.New().GetToken(ctx)
+	a, err := auth.New()
+	if err != nil {
+		return fmt.Errorf("failed to initialize auth: %w", err)
+	}
+
+	token, err := a.GetToken(ctx)
 	if err != nil {
 		return err
 	}

@@ -9,7 +9,6 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/zalando/go-keyring"
 )
 
 func TestBrowserFlowStoresToken(t *testing.T) {
@@ -50,7 +49,7 @@ func TestBrowserFlowStoresToken(t *testing.T) {
 	assert.Contains(t, string(out), "License activation failed")
 
 	// Verify token was stored in keyring
-	storedToken, err := keyring.Get(keyringService, keyringUser)
+	storedToken, err := keyringGet(keyringService, keyringUser)
 	require.NoError(t, err, "token should be stored in keyring")
 	assert.Equal(t, "mock-token", storedToken)
 }
