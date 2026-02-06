@@ -10,6 +10,13 @@ import (
 	"time"
 )
 
+type PlatformAPI interface {
+	CreateAuthRequest(ctx context.Context) (*AuthRequest, error)
+	CheckAuthRequestConfirmed(ctx context.Context, id, exchangeToken string) (bool, error)
+	ExchangeAuthRequest(ctx context.Context, id, exchangeToken string) (string, error)
+	GetLicenseToken(ctx context.Context, bearerToken string) (string, error)
+}
+
 type AuthRequest struct {
 	ID            string `json:"id"`
 	Code          string `json:"code"`

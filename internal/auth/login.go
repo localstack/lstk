@@ -19,7 +19,15 @@ type LoginProvider interface {
 	Login(ctx context.Context) (string, error)
 }
 
-type browserLogin struct{}
+type browserLogin struct {
+	platformClient api.PlatformAPI
+}
+
+func newBrowserLogin() *browserLogin {
+	return &browserLogin{
+		platformClient: api.NewPlatformClient(),
+	}
+}
 
 func startCallbackServer() (*http.Server, chan string, chan error, error) {
 	listener, err := net.Listen("tcp", "127.0.0.1:45678")
@@ -52,7 +60,7 @@ func startCallbackServer() (*http.Server, chan string, chan error, error) {
 	return server, tokenCh, errCh, nil
 }
 
-func (browserLogin) Login(ctx context.Context) (string, error) {
+func (b *browserLogin) Login(ctx context.Context) (string, error) {
 	server, tokenCh, errCh, err := startCallbackServer()
 	if err != nil {
 		return "", err
@@ -65,10 +73,8 @@ func (browserLogin) Login(ctx context.Context) (string, error) {
 
 	enterCh := make(chan struct{}, 1)
 
-	client := api.NewPlatformClient()
-
 	// Device flow as fallback
-	authReq, err := client.CreateAuthRequest(ctx)
+	authReq, err := b.platformClient.CreateAuthRequest(ctx)
 	if err != nil {
 		return "", fmt.Errorf("failed to create auth request: %w", err)
 	}
@@ -103,15 +109,15 @@ func (browserLogin) Login(ctx context.Context) (string, error) {
 		return "", err
 	case <-enterCh:
 		// User pressed ENTER, try device flow
-		return completeDeviceFlow(ctx, client, authReq)
+		return b.completeDeviceFlow(ctx, authReq)
 	case <-ctx.Done():
 		return "", ctx.Err()
 	}
 }
 
-func completeDeviceFlow(ctx context.Context, client *api.PlatformClient, authReq *api.AuthRequest) (string, error) {
+func (b *browserLogin) completeDeviceFlow(ctx context.Context, authReq *api.AuthRequest) (string, error) {
 	log.Println("Checking if auth request is confirmed...")
-	confirmed, err := client.CheckAuthRequestConfirmed(ctx, authReq.ID, authReq.ExchangeToken)
+	confirmed, err := b.platformClient.CheckAuthRequestConfirmed(ctx, authReq.ID, authReq.ExchangeToken)
 	if err != nil {
 		return "", fmt.Errorf("failed to check auth request: %w", err)
 	}
@@ -120,13 +126,13 @@ func completeDeviceFlow(ctx context.Context, client *api.PlatformClient, authReq
 	}
 	log.Println("Auth request confirmed, exchanging for token...")
 
-	bearerToken, err := client.ExchangeAuthRequest(ctx, authReq.ID, authReq.ExchangeToken)
+	bearerToken, err := b.platformClient.ExchangeAuthRequest(ctx, authReq.ID, authReq.ExchangeToken)
 	if err != nil {
 		return "", fmt.Errorf("failed to exchange auth request: %w", err)
 	}
 
 	log.Println("Fetching license token...")
-	licenseToken, err := client.GetLicenseToken(ctx, bearerToken)
+	licenseToken, err := b.platformClient.GetLicenseToken(ctx, bearerToken)
 	if err != nil {
 		return "", fmt.Errorf("failed to get license token: %w", err)
 	}
