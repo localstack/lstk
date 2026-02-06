@@ -15,6 +15,8 @@ import (
 	"github.com/pkg/browser"
 )
 
+const webAppURL = "https://app.localstack.cloud"
+
 type LoginProvider interface {
 	Login(ctx context.Context) (string, error)
 }
@@ -79,10 +81,10 @@ func (b *browserLogin) Login(ctx context.Context) (string, error) {
 		return "", fmt.Errorf("failed to create auth request: %w", err)
 	}
 
-	deviceURL := fmt.Sprintf("%s/auth/request/%s", getWebAppURL(), authReq.ID)
+	deviceURL := fmt.Sprintf("%s/auth/request/%s", webAppURL, authReq.ID)
 
 	// Try to open browser
-	loginURL := fmt.Sprintf("%s/redirect?name=CLI", getWebAppURL())
+	loginURL := fmt.Sprintf("%s/redirect?name=CLI", webAppURL)
 	browserOpened := browser.OpenURL(loginURL) == nil
 
 	// Display device flow instructions
@@ -138,12 +140,4 @@ func (b *browserLogin) completeDeviceFlow(ctx context.Context, authReq *api.Auth
 	}
 
 	return licenseToken, nil
-}
-
-func getWebAppURL() string {
-	// allows overriding the URL for testing
-	if url := os.Getenv("LOCALSTACK_WEB_APP_URL"); url != "" {
-		return url
-	}
-	return "https://app.localstack.cloud"
 }

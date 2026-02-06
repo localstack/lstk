@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"time"
 )
 
@@ -42,8 +43,12 @@ type PlatformClient struct {
 }
 
 func NewPlatformClient() *PlatformClient {
+	baseURL := os.Getenv("LOCALSTACK_PLATFORM_URL")
+	if baseURL == "" {
+		baseURL = "https://api.localstack.cloud"
+	}
 	return &PlatformClient{
-		baseURL:    "https://api.localstack.cloud",
+		baseURL:    baseURL,
 		httpClient: &http.Client{Timeout: 30 * time.Second},
 	}
 }
