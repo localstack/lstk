@@ -10,7 +10,6 @@ import (
 	"github.com/docker/docker/api/types/container"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/zalando/go-keyring"
 )
 
 const (
@@ -50,7 +49,7 @@ func TestStartCommandSucceedsWithKeyringToken(t *testing.T) {
 	// Store token in keyring before running command
 	authToken := os.Getenv("LOCALSTACK_AUTH_TOKEN")
 	require.NotEmpty(t, authToken, "LOCALSTACK_AUTH_TOKEN must be set to run this test")
-	err := keyring.Set(keyringService, keyringUser, authToken)
+	err := keyringSet(keyringService, keyringUser, authToken)
 	require.NoError(t, err, "failed to store token in keyring")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
@@ -88,5 +87,5 @@ func cleanup() {
 	ctx := context.Background()
 	_ = dockerClient.ContainerStop(ctx, containerName, container.StopOptions{})
 	_ = dockerClient.ContainerRemove(ctx, containerName, container.RemoveOptions{Force: true})
-	_ = keyring.Delete(keyringService, keyringUser)
+	_ = keyringDelete(keyringService, keyringUser)
 }
