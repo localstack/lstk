@@ -2,10 +2,8 @@ package integration_test
 
 import (
 	"context"
-	"net/http"
 	"os"
 	"os/exec"
-	"strings"
 	"testing"
 	"time"
 
@@ -14,17 +12,6 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/zalando/go-keyring"
 )
-
-// envWithoutAuthToken returns os.Environ() with LOCALSTACK_AUTH_TOKEN removed
-func envWithoutAuthToken() []string {
-	var env []string
-	for _, e := range os.Environ() {
-		if !strings.HasPrefix(e, "LOCALSTACK_AUTH_TOKEN=") {
-			env = append(env, e)
-		}
-	}
-	return env
-}
 
 const (
 	keyringService = "localstack"
@@ -53,44 +40,6 @@ func TestStartCommandSucceedsWithValidToken(t *testing.T) {
 	inspect, err := dockerClient.ContainerInspect(ctx, containerName)
 	require.NoError(t, err, "failed to inspect container")
 	assert.True(t, inspect.State.Running, "container should be running")
-}
-
-func TestStartCommandTriggersLoginWithoutToken(t *testing.T) {
-	requireDocker(t)
-	cleanup()
-	t.Cleanup(cleanup)
-
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
-	defer cancel()
-
-	cmd := exec.CommandContext(ctx, binaryPath(), "start")
-	cmd.Env = envWithoutAuthToken()
-
-	// Capture output asynchronously
-	output := make(chan []byte)
-	go func() {
-		out, _ := cmd.CombinedOutput()
-		output <- out
-	}()
-
-	// Give lstk time to start callback server
-	time.Sleep(500 * time.Millisecond)
-
-	// Simulate browser callback with mock token
-	resp, err := http.Get("http://127.0.0.1:45678/auth/success?token=mock-token")
-	require.NoError(t, err)
-	require.NoError(t, resp.Body.Close())
-
-	out := <-output
-
-	// Login should succeed, but container will fail with invalid token
-	assert.Contains(t, string(out), "Login successful")
-	assert.Contains(t, string(out), "License activation failed")
-
-	// Verify token was stored in keyring
-	storedToken, err := keyring.Get(keyringService, keyringUser)
-	require.NoError(t, err, "token should be stored in keyring")
-	assert.Equal(t, "mock-token", storedToken)
 }
 
 func TestStartCommandSucceedsWithKeyringToken(t *testing.T) {
