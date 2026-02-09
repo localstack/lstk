@@ -43,7 +43,7 @@ type PlatformClient struct {
 }
 
 func NewPlatformClient() *PlatformClient {
-	baseURL := os.Getenv("LOCALSTACK_PLATFORM_URL")
+	baseURL := os.Getenv("LOCALSTACK_API_ENDPOINT")
 	if baseURL == "" {
 		baseURL = "https://api.localstack.cloud"
 	}

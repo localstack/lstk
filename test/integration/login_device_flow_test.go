@@ -76,7 +76,7 @@ func TestDeviceFlowSuccess(t *testing.T) {
 
 	cmd := exec.CommandContext(ctx, binaryPath(), "start")
 	env := envWithoutAuthToken()
-	env = append(env, "LOCALSTACK_PLATFORM_URL="+mockServer.URL)
+	env = append(env, "LOCALSTACK_API_ENDPOINT="+mockServer.URL)
 	cmd.Env = env
 
 	// Keep stdin open and get the pipe to simulate ENTER

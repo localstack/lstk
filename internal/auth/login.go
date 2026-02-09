@@ -16,6 +16,7 @@ import (
 )
 
 const webAppURL = "https://app.localstack.cloud"
+const loginCallbackURL = "127.0.0.1:45678"
 
 type LoginProvider interface {
 	Login(ctx context.Context) (string, error)
@@ -32,7 +33,7 @@ func newBrowserLogin() *browserLogin {
 }
 
 func startCallbackServer() (*http.Server, chan string, chan error, error) {
-	listener, err := net.Listen("tcp", "127.0.0.1:45678")
+	listener, err := net.Listen("tcp", loginCallbackURL)
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("failed to start callback server: %w", err)
 	}
@@ -81,10 +82,10 @@ func (b *browserLogin) Login(ctx context.Context) (string, error) {
 		return "", fmt.Errorf("failed to create auth request: %w", err)
 	}
 
-	deviceURL := fmt.Sprintf("%s/auth/request/%s", webAppURL, authReq.ID)
+	deviceURL := fmt.Sprintf("%s/auth/request/%s", getWebAppURL(), authReq.ID)
 
 	// Try to open browser
-	loginURL := fmt.Sprintf("%s/redirect?name=CLI", webAppURL)
+	loginURL := fmt.Sprintf("%s/redirect?name=CLI", getWebAppURL())
 	browserOpened := browser.OpenURL(loginURL) == nil
 
 	// Display device flow instructions
@@ -115,6 +116,14 @@ func (b *browserLogin) Login(ctx context.Context) (string, error) {
 	case <-ctx.Done():
 		return "", ctx.Err()
 	}
+}
+
+func getWebAppURL() string {
+	// allows overriding the URL for testing
+	if url := os.Getenv("LOCALSTACK_WEB_APP_URL"); url != "" {
+		return url
+	}
+	return webAppURL
 }
 
 func (b *browserLogin) completeDeviceFlow(ctx context.Context, authReq *api.AuthRequest) (string, error) {
