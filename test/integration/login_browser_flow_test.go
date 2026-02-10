@@ -1,0 +1,56 @@
+package integration_test
+
+import (
+	"context"
+	"net/http"
+	"os/exec"
+	"testing"
+	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"github.com/zalando/go-keyring"
+)
+
+func TestBrowserFlowStoresToken(t *testing.T) {
+	requireDocker(t)
+	cleanup()
+	t.Cleanup(cleanup)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, binaryPath(), "start")
+	cmd.Env = envWithoutAuthToken()
+
+	// Keep stdin open so ENTER listener doesn't trigger immediately
+	stdinPipe, err := cmd.StdinPipe()
+	require.NoError(t, err)
+	defer stdinPipe.Close()
+
+	// Capture output asynchronously
+	output := make(chan []byte)
+	go func() {
+		out, _ := cmd.CombinedOutput()
+		output <- out
+	}()
+
+	// Wait for callback server to be ready
+	time.Sleep(1 * time.Second)
+
+	// Simulate browser callback with mock token
+	resp, err := http.Get("http://127.0.0.1:45678/auth/success?token=mock-token")
+	require.NoError(t, err)
+	require.NoError(t, resp.Body.Close())
+
+	out := <-output
+
+	// Login should succeed, but container will fail with invalid token
+	assert.Contains(t, string(out), "Login successful")
+	assert.Contains(t, string(out), "License activation failed")
+
+	// Verify token was stored in keyring
+	storedToken, err := keyring.Get(keyringService, keyringUser)
+	require.NoError(t, err, "token should be stored in keyring")
+	assert.Equal(t, "mock-token", storedToken)
+}

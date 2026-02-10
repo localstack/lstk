@@ -17,7 +17,7 @@ type Auth struct {
 func New() *Auth {
 	return &Auth{
 		keyring:      systemKeyring{},
-		browserLogin: browserLogin{},
+		browserLogin: newBrowserLogin(),
 	}
 }
 
