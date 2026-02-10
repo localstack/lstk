@@ -29,4 +29,5 @@ lint:
 	@EXPECTED=$$(awk '/^golangci-lint/ {print $$2}' .tool-versions); \
 	INSTALLED=$$(golangci-lint version --short 2>/dev/null | sed 's/^v//'); \
 	[ "$$INSTALLED" = "$$EXPECTED" ] || { echo "golangci-lint $$EXPECTED required (found: $$INSTALLED)"; exit 1; }
-	golangci-lint run
+	golangci-lint run --tests ./...
+	(cd test/integration && golangci-lint run --tests ./...)
