@@ -8,18 +8,17 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/zalando/go-keyring"
 )
 
 func TestLogoutCommandRemovesToken(t *testing.T) {
 	// Clean up any existing token
-	_ = keyring.Delete(keyringService, keyringUser)
+	_ = keyringDelete(keyringService, keyringUser)
 	t.Cleanup(func() {
-		_ = keyring.Delete(keyringService, keyringUser)
+		_ = keyringDelete(keyringService, keyringUser)
 	})
 
 	// Store a token in keyring
-	err := keyring.Set(keyringService, keyringUser, "test-token")
+	err := keyringSet(keyringService, keyringUser, "test-token")
 	require.NoError(t, err, "failed to store token in keyring")
 
 	// Run logout command
@@ -33,13 +32,13 @@ func TestLogoutCommandRemovesToken(t *testing.T) {
 	assert.Contains(t, string(output), "Logged out successfully")
 
 	// Verify token was removed
-	_, err = keyring.Get(keyringService, keyringUser)
+	_, err = keyringGet(keyringService, keyringUser)
 	assert.Error(t, err, "token should be removed from keyring")
 }
 
 func TestLogoutCommandSucceedsWhenNoToken(t *testing.T) {
 	// Ensure no token exists
-	_ = keyring.Delete(keyringService, keyringUser)
+	_ = keyringDelete(keyringService, keyringUser)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()

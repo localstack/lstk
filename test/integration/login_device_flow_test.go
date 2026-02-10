@@ -13,7 +13,6 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/zalando/go-keyring"
 )
 
 // createMockAPIServer creates a mock LocalStack API server for testing
@@ -112,7 +111,7 @@ func TestDeviceFlowSuccess(t *testing.T) {
 		assert.NotContains(t, output, "License activation failed")
 
 		// Verify token was stored in keyring
-		storedToken, err := keyring.Get(keyringService, keyringUser)
+		storedToken, err := keyringGet(keyringService, keyringUser)
 		require.NoError(t, err)
 		assert.Equal(t, licenseToken, storedToken)
 
@@ -167,7 +166,7 @@ func TestDeviceFlowFailure_RequestNotConfirmed(t *testing.T) {
 		assert.Contains(t, output, "auth request not confirmed")
 
 		// Verify no token was stored in keyring
-		_, err := keyring.Get(keyringService, keyringUser)
+		_, err := keyringGet(keyringService, keyringUser)
 		assert.Error(t, err, "no token should be stored when login fails")
 
 		// Verify container was not started

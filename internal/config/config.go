@@ -64,7 +64,7 @@ func (c *ContainerConfig) HealthPath() (string, error) {
 	return path, nil
 }
 
-func configDir() (string, error) {
+func ConfigDir() (string, error) {
 	configHome, err := os.UserConfigDir()
 	if err != nil {
 		return "", fmt.Errorf("failed to get user config directory: %w", err)
@@ -72,12 +72,8 @@ func configDir() (string, error) {
 	return filepath.Join(configHome, "lstk"), nil
 }
 
-func ConfigDir() (string, error) {
-	return configDir()
-}
-
 func Init() error {
-	dir, err := configDir()
+	dir, err := ConfigDir()
 	if err != nil {
 		return err
 	}
@@ -121,7 +117,7 @@ func Get() (*Config, error) {
 }
 
 func ConfigFilePath() (string, error) {
-	dir, err := configDir()
+	dir, err := ConfigDir()
 	if err != nil {
 		return "", err
 	}

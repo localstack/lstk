@@ -6,7 +6,7 @@ import (
 	"log"
 	"os"
 
-	"github.com/zalando/go-keyring"
+	"github.com/99designs/keyring"
 )
 
 type Auth struct {
@@ -14,11 +14,15 @@ type Auth struct {
 	browserLogin LoginProvider
 }
 
-func New() *Auth {
-	return &Auth{
-		keyring:      systemKeyring{},
-		browserLogin: newBrowserLogin(),
+func New() (*Auth, error) {
+	kr, err := newSystemKeyring()
+	if err != nil {
+		return nil, err
 	}
+	return &Auth{
+		keyring:      kr,
+		browserLogin: newBrowserLogin(),
+	}, nil
 }
 
 // GetToken tries in order: 1) keyring 2) LOCALSTACK_AUTH_TOKEN env var 3) browser login
@@ -49,7 +53,7 @@ func (a *Auth) GetToken(ctx context.Context) (string, error) {
 // Logout removes the stored auth token from the keyring
 func (a *Auth) Logout() error {
 	err := a.keyring.Delete(keyringService, keyringUser)
-	if errors.Is(err, keyring.ErrNotFound) {
+	if errors.Is(err, keyring.ErrKeyNotFound) {
 		return nil
 	}
 	return err
