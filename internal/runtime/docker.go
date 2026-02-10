@@ -96,6 +96,17 @@ func (d *DockerRuntime) Start(ctx context.Context, config ContainerConfig) (stri
 	return resp.ID, nil
 }
 
+func (d *DockerRuntime) Stop(ctx context.Context, containerName string) error {
+	if err := d.client.ContainerStop(ctx, containerName, container.StopOptions{}); err != nil {
+		return err
+	}
+	return d.client.ContainerRemove(ctx, containerName, container.RemoveOptions{})
+}
+
+func (d *DockerRuntime) Remove(ctx context.Context, containerName string) error {
+	return d.client.ContainerRemove(ctx, containerName, container.RemoveOptions{})
+}
+
 func (d *DockerRuntime) IsRunning(ctx context.Context, containerID string) (bool, error) {
 	inspect, err := d.client.ContainerInspect(ctx, containerID)
 	if err != nil {

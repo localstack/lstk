@@ -50,6 +50,14 @@ func Start(ctx context.Context, rt runtime.Runtime, onProgress func(string)) err
 	}
 
 	for _, config := range containers {
+		if running, _ := rt.IsRunning(ctx, config.Name); running {
+			onProgress(fmt.Sprintf("LocalStack is already running"))
+			return nil
+		}
+
+		// Remove any existing stopped container with the same name
+		_ = rt.Remove(ctx, config.Name)
+
 		onProgress(fmt.Sprintf("Pulling %s...", config.Image))
 		progress := make(chan runtime.PullProgress)
 		go func() {

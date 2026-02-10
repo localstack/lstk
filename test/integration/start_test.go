@@ -67,6 +67,33 @@ func TestStartCommandSucceedsWithKeyringToken(t *testing.T) {
 	assert.True(t, inspect.State.Running, "container should be running")
 }
 
+func TestStartCommandSucceedsWhenAlreadyRunning(t *testing.T) {
+	requireDocker(t)
+	authToken := os.Getenv("LOCALSTACK_AUTH_TOKEN")
+	require.NotEmpty(t, authToken, "LOCALSTACK_AUTH_TOKEN must be set to run this test")
+
+	cleanup()
+	t.Cleanup(cleanup)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, binaryPath(), "start")
+	cmd.Env = append(os.Environ(), "LOCALSTACK_AUTH_TOKEN="+authToken)
+	output, err := cmd.CombinedOutput()
+	require.NoError(t, err, "first lstk start failed: %s", output)
+
+	cmd2 := exec.CommandContext(ctx, binaryPath(), "start")
+	cmd2.Env = append(os.Environ(), "LOCALSTACK_AUTH_TOKEN="+authToken)
+	output2, err := cmd2.CombinedOutput()
+	require.NoError(t, err, "second lstk start should succeed: %s", output2)
+	assert.Contains(t, string(output2), "already running")
+
+	inspect, err := dockerClient.ContainerInspect(ctx, containerName)
+	require.NoError(t, err, "failed to inspect container")
+	assert.True(t, inspect.State.Running, "container should still be running")
+}
+
 func TestStartCommandFailsWithInvalidToken(t *testing.T) {
 	requireDocker(t)
 	cleanup()

@@ -21,6 +21,8 @@ type PullProgress struct {
 type Runtime interface {
 	PullImage(ctx context.Context, image string, progress chan<- PullProgress) error
 	Start(ctx context.Context, config ContainerConfig) (string, error)
+	Stop(ctx context.Context, containerName string) error
+	Remove(ctx context.Context, containerName string) error
 	IsRunning(ctx context.Context, containerID string) (bool, error)
 	Logs(ctx context.Context, containerID string, tail int) (string, error)
 }
