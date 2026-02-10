@@ -38,7 +38,7 @@ func TestConfigFileCreatedOnStartup(t *testing.T) {
 	cmd.Env = env
 	err := cmd.Start()
 	require.NoError(t, err, "failed to start lstk")
-	defer cmd.Process.Kill()
+	defer func() { _ = cmd.Process.Kill() }()
 
 	// Poll for config file creation - check every 50ms, timeout after 2s
 	require.Eventually(t, func() bool {
