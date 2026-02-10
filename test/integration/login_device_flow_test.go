@@ -25,30 +25,34 @@ func createMockAPIServer(t *testing.T, licenseToken string) *httptest.Server {
 		switch {
 		case r.Method == "POST" && r.URL.Path == "/v1/auth/request":
 			w.WriteHeader(http.StatusCreated)
-			json.NewEncoder(w).Encode(map[string]string{
+			err := json.NewEncoder(w).Encode(map[string]string{
 				"id":             authReqID,
 				"code":           "TEST123",
 				"exchange_token": exchangeToken,
 			})
+			require.NoError(t, err)
 
 		case r.Method == "GET" && r.URL.Path == fmt.Sprintf("/v1/auth/request/%s", authReqID):
 			w.WriteHeader(http.StatusOK)
-			json.NewEncoder(w).Encode(map[string]bool{
+			err := json.NewEncoder(w).Encode(map[string]bool{
 				"confirmed": true,
 			})
+			require.NoError(t, err)
 
 		case r.Method == "POST" && r.URL.Path == fmt.Sprintf("/v1/auth/request/%s/exchange", authReqID):
 			w.WriteHeader(http.StatusOK)
-			json.NewEncoder(w).Encode(map[string]string{
+			err := json.NewEncoder(w).Encode(map[string]string{
 				"id":         authReqID,
 				"auth_token": bearerToken,
 			})
+			require.NoError(t, err)
 
 		case r.Method == "GET" && r.URL.Path == "/v1/license/credentials":
 			w.WriteHeader(http.StatusOK)
-			json.NewEncoder(w).Encode(map[string]string{
+			err := json.NewEncoder(w).Encode(map[string]string{
 				"token": licenseToken,
 			})
+			require.NoError(t, err)
 
 		default:
 			t.Logf("Unhandled request: %s %s", r.Method, r.URL.Path)
@@ -81,7 +85,7 @@ func TestDeviceFlowSuccess(t *testing.T) {
 	// Keep stdin open and get the pipe to simulate ENTER
 	stdinPipe, err := cmd.StdinPipe()
 	require.NoError(t, err)
-	defer stdinPipe.Close()
+	defer func() { _ = stdinPipe.Close() }()
 
 	outputCh := make(chan []byte, 1)
 	go func() {
@@ -140,7 +144,7 @@ func TestDeviceFlowFailure_RequestNotConfirmed(t *testing.T) {
 	// Keep stdin open and get the pipe to simulate ENTER
 	stdinPipe, err := cmd.StdinPipe()
 	require.NoError(t, err)
-	defer stdinPipe.Close()
+	defer func() { _ = stdinPipe.Close() }()
 
 	outputCh := make(chan []byte, 1)
 	go func() {

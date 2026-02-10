@@ -25,7 +25,7 @@ func TestBrowserFlowStoresToken(t *testing.T) {
 	// Keep stdin open so ENTER listener doesn't trigger immediately
 	stdinPipe, err := cmd.StdinPipe()
 	require.NoError(t, err)
-	defer stdinPipe.Close()
+	defer func() { _ = stdinPipe.Close() }()
 
 	// Capture output asynchronously
 	output := make(chan []byte)
