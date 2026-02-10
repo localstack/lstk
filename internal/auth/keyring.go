@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 
 	"github.com/99designs/keyring"
+	"github.com/localstack/lstk/internal/config"
 )
 
 const (
@@ -27,23 +28,23 @@ type systemKeyring struct {
 }
 
 func newSystemKeyring() (*systemKeyring, error) {
-	configDir, err := os.UserConfigDir()
+	configDir, err := config.ConfigDir()
 	if err != nil {
-		return nil, fmt.Errorf("failed to get config directory: %w", err)
+		return nil, err
 	}
 
-	config := keyring.Config{
+	keyringConfig := keyring.Config{
 		ServiceName: keyringService,
-		FileDir:     filepath.Join(configDir, "localstack"),
+		FileDir:     filepath.Join(configDir, "keyring"),
 		FilePasswordFunc: func(prompt string) (string, error) {
 			return "localstack-keyring", nil
 		},
 	}
 
-	ring, err := keyring.Open(config)
+	ring, err := keyring.Open(keyringConfig)
 	if err != nil {
-		config.AllowedBackends = []keyring.BackendType{keyring.FileBackend}
-		ring, err = keyring.Open(config)
+		keyringConfig.AllowedBackends = []keyring.BackendType{keyring.FileBackend}
+		ring, err = keyring.Open(keyringConfig)
 		if err != nil {
 			return nil, fmt.Errorf("failed to open keyring: %w", err)
 		}

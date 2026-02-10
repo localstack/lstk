@@ -2,6 +2,7 @@ package integration_test
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -22,7 +23,17 @@ func binaryPath() string {
 
 var dockerClient *client.Client
 var dockerAvailable bool
-var testKeyring keyring.Keyring
+var ring keyring.Keyring
+
+// configDir returns the lstk config directory.
+// Duplicated from internal/config to avoid importing prod code in tests.
+func configDir() string {
+	configHome, err := os.UserConfigDir()
+	if err != nil {
+		panic(fmt.Sprintf("failed to get user config directory: %v", err))
+	}
+	return filepath.Join(configHome, "lstk")
+}
 
 func TestMain(m *testing.M) {
 	var err error
@@ -32,19 +43,18 @@ func TestMain(m *testing.M) {
 		dockerAvailable = err == nil
 	}
 
-	configDir, _ := os.UserConfigDir()
-	config := keyring.Config{
+	keyringConfig := keyring.Config{
 		ServiceName: "localstack",
-		FileDir:     filepath.Join(configDir, "localstack"),
+		FileDir:     filepath.Join(configDir(), "keyring"),
 		FilePasswordFunc: func(prompt string) (string, error) {
 			return "localstack-keyring", nil
 		},
 	}
 
-	testKeyring, err = keyring.Open(config)
+	ring, err = keyring.Open(keyringConfig)
 	if err != nil {
-		config.AllowedBackends = []keyring.BackendType{keyring.FileBackend}
-		testKeyring, _ = keyring.Open(config)
+		keyringConfig.AllowedBackends = []keyring.BackendType{keyring.FileBackend}
+		ring, _ = keyring.Open(keyringConfig)
 	}
 
 	m.Run()
@@ -69,7 +79,7 @@ func envWithoutAuthToken() []string {
 
 func keyringGet(service, user string) (string, error) {
 	key := fmt.Sprintf("%s/%s", service, user)
-	item, err := testKeyring.Get(key)
+	item, err := ring.Get(key)
 	if err != nil {
 		return "", err
 	}
@@ -78,7 +88,7 @@ func keyringGet(service, user string) (string, error) {
 
 func keyringSet(service, user, password string) error {
 	key := fmt.Sprintf("%s/%s", service, user)
-	return testKeyring.Set(keyring.Item{
+	return ring.Set(keyring.Item{
 		Key:  key,
 		Data: []byte(password),
 	})
@@ -86,8 +96,8 @@ func keyringSet(service, user, password string) error {
 
 func keyringDelete(service, user string) error {
 	key := fmt.Sprintf("%s/%s", service, user)
-	err := testKeyring.Remove(key)
-	if err == keyring.ErrKeyNotFound || os.IsNotExist(err) {
+	err := ring.Remove(key)
+	if errors.Is(err, keyring.ErrKeyNotFound) || os.IsNotExist(err) {
 		return nil
 	}
 	return err
