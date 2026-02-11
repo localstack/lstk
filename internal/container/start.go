@@ -7,7 +7,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/docker/docker/errdefs"
+	"github.com/containerd/errdefs"
 	"github.com/localstack/lstk/internal/auth"
 	"github.com/localstack/lstk/internal/config"
 	"github.com/localstack/lstk/internal/runtime"

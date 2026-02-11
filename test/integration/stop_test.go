@@ -77,6 +77,6 @@ func TestStopCommandIsIdempotent(t *testing.T) {
 	require.Error(t, err, "container should not exist after first stop")
 
 	stopCmd2 := exec.CommandContext(ctx, binaryPath(), "stop")
-	output, err = stopCmd2.CombinedOutput()
+	_, err = stopCmd2.CombinedOutput()
 	assert.Error(t, err, "second lstk stop should fail since container already removed")
 }

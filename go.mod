@@ -4,6 +4,7 @@ go 1.25.6
 
 require (
 	github.com/99designs/keyring v1.2.2
+	github.com/containerd/errdefs v1.0.0
 	github.com/docker/docker v28.2.2+incompatible
 	github.com/docker/go-connections v0.5.0
 	github.com/pkg/browser v0.0.0-20240102092130-5ac0b6a4141c
@@ -17,7 +18,6 @@ require (
 	github.com/99designs/go-keychain v0.0.0-20191008050251-8e49817e8af4 // indirect
 	github.com/Microsoft/go-winio v0.4.14 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
-	github.com/containerd/errdefs v1.0.0 // indirect
 	github.com/containerd/errdefs/pkg v0.3.0 // indirect
 	github.com/containerd/log v0.1.0 // indirect
 	github.com/danieljoos/wincred v1.2.2 // indirect
