@@ -51,11 +51,6 @@ func Start(ctx context.Context, rt runtime.Runtime, onProgress func(string)) err
 	}
 
 	for _, config := range containers {
-		if running, _ := rt.IsRunning(ctx, config.Name); running {
-			onProgress(fmt.Sprintf("LocalStack is already running"))
-			return nil
-		}
-
 		// Remove any existing stopped container with the same name
 		if err := rt.Remove(ctx, config.Name); err != nil && !errdefs.IsNotFound(err) {
 			return fmt.Errorf("failed to remove existing container %s: %w", config.Name, err)
