@@ -2,37 +2,38 @@ package integration_test
 
 import (
 	"context"
-	"os"
 	"os/exec"
 	"testing"
 	"time"
 
+	"github.com/docker/docker/api/types/container"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
+func startTestContainer(t *testing.T, ctx context.Context) {
+	t.Helper()
+	resp, err := dockerClient.ContainerCreate(ctx, &container.Config{
+		Image: "alpine:latest",
+		Cmd:   []string{"sleep", "infinity"},
+	}, nil, nil, nil, containerName)
+	require.NoError(t, err, "failed to create test container")
+	err = dockerClient.ContainerStart(ctx, resp.ID, container.StartOptions{})
+	require.NoError(t, err, "failed to start test container")
+}
+
 func TestStopCommandSucceeds(t *testing.T) {
 	requireDocker(t)
-	authToken := os.Getenv("LOCALSTACK_AUTH_TOKEN")
-	require.NotEmpty(t, authToken, "LOCALSTACK_AUTH_TOKEN must be set to run this test")
-
 	cleanup()
 	t.Cleanup(cleanup)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	startCmd := exec.CommandContext(ctx, binaryPath(), "start")
-	startCmd.Env = append(os.Environ(), "LOCALSTACK_AUTH_TOKEN="+authToken)
-	output, err := startCmd.CombinedOutput()
-	require.NoError(t, err, "lstk start failed: %s", output)
-
-	inspect, err := dockerClient.ContainerInspect(ctx, containerName)
-	require.NoError(t, err, "failed to inspect container after start")
-	require.True(t, inspect.State.Running, "container should be running after start")
+	startTestContainer(t, ctx)
 
 	stopCmd := exec.CommandContext(ctx, binaryPath(), "stop")
-	output, err = stopCmd.CombinedOutput()
+	output, err := stopCmd.CombinedOutput()
 	require.NoError(t, err, "lstk stop failed: %s", output)
 
 	outputStr := string(output)
@@ -60,22 +61,16 @@ func TestStopCommandFailsWhenNotRunning(t *testing.T) {
 
 func TestStopCommandIsIdempotent(t *testing.T) {
 	requireDocker(t)
-	authToken := os.Getenv("LOCALSTACK_AUTH_TOKEN")
-	require.NotEmpty(t, authToken, "LOCALSTACK_AUTH_TOKEN must be set to run this test")
-
 	cleanup()
 	t.Cleanup(cleanup)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	startCmd := exec.CommandContext(ctx, binaryPath(), "start")
-	startCmd.Env = append(os.Environ(), "LOCALSTACK_AUTH_TOKEN="+authToken)
-	output, err := startCmd.CombinedOutput()
-	require.NoError(t, err, "lstk start failed: %s", output)
+	startTestContainer(t, ctx)
 
 	stopCmd := exec.CommandContext(ctx, binaryPath(), "stop")
-	output, err = stopCmd.CombinedOutput()
+	output, err := stopCmd.CombinedOutput()
 	require.NoError(t, err, "first lstk stop failed: %s", output)
 
 	_, err = dockerClient.ContainerInspect(ctx, containerName)
