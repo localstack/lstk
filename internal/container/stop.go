@@ -3,8 +3,8 @@ package container
 import (
 	"context"
 	"fmt"
-	"strings"
 
+	"github.com/docker/docker/errdefs"
 	"github.com/localstack/lstk/internal/config"
 	"github.com/localstack/lstk/internal/runtime"
 )
@@ -33,11 +33,8 @@ type StopError struct {
 }
 
 func (e *StopError) Error() string {
-	msg := e.Err.Error()
-
-	if strings.Contains(msg, "No such container") || strings.Contains(msg, "not found") {
+	if errdefs.IsNotFound(e.Err) {
 		return fmt.Sprintf("%s is not running", e.Name)
 	}
-
-	return fmt.Sprintf("Failed to stop %s\n%s", e.Name, msg)
+	return fmt.Sprintf("Failed to stop %s\n%s", e.Name, e.Err.Error())
 }
