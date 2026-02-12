@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/localstack/lstk/internal/api"
 	"github.com/localstack/lstk/internal/config"
 	"github.com/localstack/lstk/internal/container"
 	"github.com/localstack/lstk/internal/output"
@@ -42,5 +43,5 @@ func Execute(ctx context.Context) error {
 }
 
 func runStart(ctx context.Context, rt runtime.Runtime) error {
-	return container.Start(ctx, rt, output.NewPlainSink(os.Stdout))
+	return container.Start(ctx, rt, output.NewPlainSink(os.Stdout), api.NewPlatformClient())
 }
