@@ -16,6 +16,7 @@ type PlatformAPI interface {
 	CheckAuthRequestConfirmed(ctx context.Context, id, exchangeToken string) (bool, error)
 	ExchangeAuthRequest(ctx context.Context, id, exchangeToken string) (string, error)
 	GetLicenseToken(ctx context.Context, bearerToken string) (string, error)
+	GetLicense(ctx context.Context, req *LicenseRequest) error
 }
 
 type AuthRequest struct {
@@ -35,6 +36,27 @@ type authTokenResponse struct {
 
 type licenseTokenResponse struct {
 	Token string `json:"token"`
+}
+
+type LicenseRequest struct {
+	Product     ProductInfo     `json:"product"`
+	Credentials CredentialsInfo `json:"credentials"`
+	Machine     MachineInfo     `json:"machine"`
+}
+
+type ProductInfo struct {
+	Name    string `json:"name"`
+	Version string `json:"version"`
+}
+
+type CredentialsInfo struct {
+	Token string `json:"token"`
+}
+
+type MachineInfo struct {
+	Hostname        string `json:"hostname,omitempty"`
+	Platform        string `json:"platform,omitempty"`
+	PlatformRelease string `json:"platform_release,omitempty"`
 }
 
 type PlatformClient struct {
@@ -172,4 +194,38 @@ func (c *PlatformClient) GetLicenseToken(ctx context.Context, bearerToken string
 	}
 
 	return tokenResp.Token, nil
+}
+
+func (c *PlatformClient) GetLicense(ctx context.Context, licReq *LicenseRequest) error {
+	body, err := json.Marshal(licReq)
+	if err != nil {
+		return fmt.Errorf("failed to marshal request: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/v1/license/request", bytes.NewReader(body))
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to request license: %w", err)
+	}
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			log.Printf("failed to close response body: %v", err)
+		}
+	}()
+
+	switch resp.StatusCode {
+	case http.StatusOK:
+		return nil
+	case http.StatusBadRequest:
+		return fmt.Errorf("license validation failed: invalid token format, missing license assignment, or missing subscription")
+	case http.StatusForbidden:
+		return fmt.Errorf("license validation failed: invalid, inactive, or expired authentication token or subscription")
+	default:
+		return fmt.Errorf("license request failed with status %d", resp.StatusCode)
+	}
 }

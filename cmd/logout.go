@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 
+	"github.com/localstack/lstk/internal/api"
 	"github.com/localstack/lstk/internal/auth"
 	"github.com/spf13/cobra"
 )
@@ -11,7 +12,8 @@ var logoutCmd = &cobra.Command{
 	Use:   "logout",
 	Short: "Remove stored authentication token",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		a, err := auth.New()
+		platformClient := api.NewPlatformClient()
+		a, err := auth.New(platformClient)
 		if err != nil {
 			return fmt.Errorf("failed to initialize auth: %w", err)
 		}

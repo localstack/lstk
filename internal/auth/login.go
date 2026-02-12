@@ -26,9 +26,9 @@ type browserLogin struct {
 	platformClient api.PlatformAPI
 }
 
-func newBrowserLogin() *browserLogin {
+func newBrowserLogin(platformClient api.PlatformAPI) *browserLogin {
 	return &browserLogin{
-		platformClient: api.NewPlatformClient(),
+		platformClient: platformClient,
 	}
 }
 

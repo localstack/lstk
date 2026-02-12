@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -76,10 +78,17 @@ func requireDocker(t *testing.T) {
 	}
 }
 
-func envWithoutAuthToken() []string {
+func envWithout(keys ...string) []string {
 	var env []string
 	for _, e := range os.Environ() {
-		if !strings.HasPrefix(e, "LOCALSTACK_AUTH_TOKEN=") {
+		excluded := false
+		for _, key := range keys {
+			if strings.HasPrefix(e, key+"=") {
+				excluded = true
+				break
+			}
+		}
+		if !excluded {
 			env = append(env, e)
 		}
 	}
@@ -110,4 +119,18 @@ func keyringDelete(service, user string) error {
 		return nil
 	}
 	return err
+}
+
+func createMockLicenseServer(success bool) *httptest.Server {
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == "POST" && r.URL.Path == "/v1/license/request" {
+			if success {
+				w.WriteHeader(http.StatusOK)
+			} else {
+				w.WriteHeader(http.StatusForbidden)
+			}
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+	}))
 }

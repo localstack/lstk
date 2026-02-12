@@ -7,6 +7,7 @@ import (
 	"os"
 
 	"github.com/99designs/keyring"
+	"github.com/localstack/lstk/internal/api"
 )
 
 type Auth struct {
@@ -14,14 +15,14 @@ type Auth struct {
 	browserLogin LoginProvider
 }
 
-func New() (*Auth, error) {
+func New(platformClient api.PlatformAPI) (*Auth, error) {
 	kr, err := newSystemKeyring()
 	if err != nil {
 		return nil, err
 	}
 	return &Auth{
 		keyring:      kr,
-		browserLogin: newBrowserLogin(),
+		browserLogin: newBrowserLogin(platformClient),
 	}, nil
 }
 
