@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/containerd/errdefs"
 	"github.com/localstack/lstk/internal/config"
 	"github.com/localstack/lstk/internal/runtime"
 )
@@ -19,22 +18,10 @@ func Stop(ctx context.Context, rt runtime.Runtime, onProgress func(string)) erro
 		name := c.Name()
 		onProgress(fmt.Sprintf("Stopping %s...", name))
 		if err := rt.Stop(ctx, name); err != nil {
-			return &StopError{Name: name, Err: err}
+			return fmt.Errorf("failed to stop %s: %w", name, err)
 		}
 		onProgress(fmt.Sprintf("%s stopped", name))
 	}
 
 	return nil
-}
-
-type StopError struct {
-	Name string
-	Err  error
-}
-
-func (e *StopError) Error() string {
-	if errdefs.IsNotFound(e.Err) {
-		return fmt.Sprintf("%s is not running", e.Name)
-	}
-	return fmt.Sprintf("Failed to stop %s\n%s", e.Name, e.Err.Error())
 }
