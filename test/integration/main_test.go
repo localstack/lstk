@@ -51,6 +51,11 @@ func TestMain(m *testing.M) {
 		},
 	}
 
+	// Force file backend if KEYRING env var is set to "file"
+	if os.Getenv("KEYRING") == "file" {
+		keyringConfig.AllowedBackends = []keyring.BackendType{keyring.FileBackend}
+	}
+
 	ring, err = keyring.Open(keyringConfig)
 	if err != nil {
 		keyringConfig.AllowedBackends = []keyring.BackendType{keyring.FileBackend}
