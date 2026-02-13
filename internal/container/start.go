@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/containerd/errdefs"
 	"github.com/localstack/lstk/internal/auth"
 	"github.com/localstack/lstk/internal/config"
 	"github.com/localstack/lstk/internal/runtime"
@@ -50,6 +51,11 @@ func Start(ctx context.Context, rt runtime.Runtime, onProgress func(string)) err
 	}
 
 	for _, config := range containers {
+		// Remove any existing stopped container with the same name
+		if err := rt.Remove(ctx, config.Name); err != nil && !errdefs.IsNotFound(err) {
+			return fmt.Errorf("failed to remove existing container %s: %w", config.Name, err)
+		}
+
 		onProgress(fmt.Sprintf("Pulling %s...", config.Image))
 		progress := make(chan runtime.PullProgress)
 		go func() {
