@@ -12,7 +12,7 @@ import (
 )
 
 func TestBrowserFlowStoresToken(t *testing.T) {
-	requireDocker(t)
+	// requireDocker(t)
 	cleanup()
 	t.Cleanup(cleanup)
 

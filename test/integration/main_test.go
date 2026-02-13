@@ -65,6 +65,10 @@ func requireDocker(t *testing.T) {
 	if !dockerAvailable {
 		t.Skip("Docker is not available")
 	}
+	// Skip Docker tests on Windows (GitHub Actions doesn't support Linux containers)
+	if runtime.GOOS == "windows" && os.Getenv("CI") != "" {
+		t.Skip("Docker tests not supported on Windows CI (nested virtualization not available)")
+	}
 }
 
 func envWithoutAuthToken() []string {
