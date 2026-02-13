@@ -51,6 +51,11 @@ func TestMain(m *testing.M) {
 		},
 	}
 
+	// Force file backend if KEYRING env var is set to "file"
+	if os.Getenv("KEYRING") == "file" {
+		keyringConfig.AllowedBackends = []keyring.BackendType{keyring.FileBackend}
+	}
+
 	ring, err = keyring.Open(keyringConfig)
 	if err != nil {
 		keyringConfig.AllowedBackends = []keyring.BackendType{keyring.FileBackend}
@@ -64,6 +69,10 @@ func requireDocker(t *testing.T) {
 	t.Helper()
 	if !dockerAvailable {
 		t.Skip("Docker is not available")
+	}
+	// Skip Docker tests on Windows (GitHub Actions doesn't support Linux containers)
+	if runtime.GOOS == "windows" && os.Getenv("CI") != "" {
+		t.Skip("Docker tests not supported on Windows CI (nested virtualization not available)")
 	}
 }
 

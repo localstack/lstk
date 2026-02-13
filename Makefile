@@ -20,7 +20,11 @@ test:
 
 test-integration: $(BUILD_DIR)/$(BINARY_NAME)
 	@JUNIT=""; [ -n "$$CREATE_JUNIT_REPORT" ] && JUNIT="--junitfile ../../test-integration-results.xml"; \
-	cd test/integration && go run gotest.tools/gotestsum@latest --format testdox $$JUNIT -- -count=1 ./...
+	if [ "$$(uname)" = "Darwin" ]; then \
+		cd test/integration && KEYRING=file go run gotest.tools/gotestsum@latest --format testdox $$JUNIT -- -count=1 ./...; \
+	else \
+		cd test/integration && go run gotest.tools/gotestsum@latest --format testdox $$JUNIT -- -count=1 ./...; \
+	fi
 
 mock-generate:
 	go generate ./...

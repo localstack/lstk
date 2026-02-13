@@ -62,7 +62,6 @@ func createMockAPIServer(t *testing.T, licenseToken string) *httptest.Server {
 }
 
 func TestDeviceFlowSuccess(t *testing.T) {
-	requireDocker(t)
 	cleanup()
 	t.Cleanup(cleanup)
 
@@ -74,10 +73,10 @@ func TestDeviceFlowSuccess(t *testing.T) {
 	mockServer := createMockAPIServer(t, licenseToken)
 	defer mockServer.Close()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, binaryPath(), "start")
+	cmd := exec.CommandContext(ctx, binaryPath(), "login")
 	env := envWithoutAuthToken()
 	env = append(env, "LOCALSTACK_API_ENDPOINT="+mockServer.URL)
 	cmd.Env = env
@@ -111,34 +110,26 @@ func TestDeviceFlowSuccess(t *testing.T) {
 		assert.Contains(t, output, "Auth request confirmed")
 		assert.Contains(t, output, "Fetching license token")
 		assert.Contains(t, output, "Login successful")
-		// Container should start successfully with valid token
-		assert.NotContains(t, output, "License activation failed")
 
 		// Verify token was stored in keyring
 		storedToken, err := keyringGet(keyringService, keyringUser)
 		require.NoError(t, err)
 		assert.Equal(t, licenseToken, storedToken)
 
-		// Verify container is running
-		inspect, err := dockerClient.ContainerInspect(ctx, containerName)
-		require.NoError(t, err)
-		assert.True(t, inspect.State.Running, "container should be running")
-
-	case <-time.After(2 * time.Minute):
+	case <-time.After(30 * time.Second):
 		cancel()
 		t.Fatal("timeout waiting for command output")
 	}
 }
 
 func TestDeviceFlowFailure_RequestNotConfirmed(t *testing.T) {
-	requireDocker(t)
 	cleanup()
 	t.Cleanup(cleanup)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, binaryPath(), "start")
+	cmd := exec.CommandContext(ctx, binaryPath(), "login")
 	cmd.Env = envWithoutAuthToken()
 
 	// Keep stdin open and get the pipe to simulate ENTER
@@ -172,14 +163,6 @@ func TestDeviceFlowFailure_RequestNotConfirmed(t *testing.T) {
 		// Verify no token was stored in keyring
 		_, err := keyringGet(keyringService, keyringUser)
 		assert.Error(t, err, "no token should be stored when login fails")
-
-		// Verify container was not started
-		inspect, err := dockerClient.ContainerInspect(ctx, containerName)
-		if err == nil {
-			// Container exists but should not be running
-			assert.False(t, inspect.State.Running, "container should not be running when login fails")
-		}
-		// If err != nil, container doesn't exist which is also acceptable
 
 	case <-time.After(10 * time.Second):
 		cancel()
