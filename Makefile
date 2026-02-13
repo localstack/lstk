@@ -18,7 +18,7 @@ test:
 	@JUNIT=""; [ -n "$$CREATE_JUNIT_REPORT" ] && JUNIT="--junitfile test-results.xml"; \
 	go run gotest.tools/gotestsum@latest --format testdox $$JUNIT -- ./cmd/... ./internal/...
 
-test-integration: build
+test-integration: $(BUILD_DIR)/$(BINARY_NAME)
 	@JUNIT=""; [ -n "$$CREATE_JUNIT_REPORT" ] && JUNIT="--junitfile ../../test-integration-results.xml"; \
 	if [ "$$(uname)" = "Darwin" ]; then \
 		cd test/integration && KEYRING=file go run gotest.tools/gotestsum@latest --format testdox $$JUNIT -- -count=1 ./...; \
