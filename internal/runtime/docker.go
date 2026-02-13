@@ -3,6 +3,7 @@ package runtime
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log"
 	"strconv"
@@ -46,6 +47,7 @@ func (d *DockerRuntime) PullImage(ctx context.Context, imageName string, progres
 		var msg struct {
 			Status         string `json:"status"`
 			ID             string `json:"id"`
+			Error          string `json:"error"`
 			ProgressDetail struct {
 				Current int64 `json:"current"`
 				Total   int64 `json:"total"`
@@ -55,6 +57,10 @@ func (d *DockerRuntime) PullImage(ctx context.Context, imageName string, progres
 			break
 		} else if err != nil {
 			return err
+		}
+
+		if msg.Error != "" {
+			return fmt.Errorf("image pull failed: %s", msg.Error)
 		}
 
 		if progress != nil {
