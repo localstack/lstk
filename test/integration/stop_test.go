@@ -2,19 +2,29 @@ package integration_test
 
 import (
 	"context"
+	"io"
 	"os/exec"
 	"testing"
 	"time"
 
 	"github.com/docker/docker/api/types/container"
+	"github.com/docker/docker/api/types/image"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
+const testImage = "alpine:latest"
+
 func startTestContainer(t *testing.T, ctx context.Context) {
 	t.Helper()
+
+	reader, err := dockerClient.ImagePull(ctx, testImage, image.PullOptions{})
+	require.NoError(t, err, "failed to pull test image")
+	_, _ = io.Copy(io.Discard, reader)
+	_ = reader.Close()
+
 	resp, err := dockerClient.ContainerCreate(ctx, &container.Config{
-		Image: "alpine:latest",
+		Image: testImage,
 		Cmd:   []string{"sleep", "infinity"},
 	}, nil, nil, nil, containerName)
 	require.NoError(t, err, "failed to create test container")
