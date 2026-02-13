@@ -3,7 +3,6 @@ package container
 import (
 	"context"
 	"fmt"
-	"log"
 	"net/http"
 	"os"
 	stdruntime "runtime"
@@ -106,14 +105,9 @@ func validateLicense(ctx context.Context, rt runtime.Runtime, sink output.Sink, 
 	if version == "" || version == "latest" {
 		actualVersion, err := rt.GetImageVersion(ctx, containerConfig.Image)
 		if err != nil {
-			log.Printf("Could not resolve version from image %s: %v", containerConfig.Image, err)
-			if version == "" {
-				version = "latest"
-			}
-		} else {
-			log.Printf("Resolved version for %s: %s", containerConfig.Image, actualVersion)
-			version = actualVersion
+			return fmt.Errorf("could not resolve version from image %s: %w", containerConfig.Image, err)
 		}
+		version = actualVersion
 	}
 
 	productName, err := cfgContainer.ProductName()

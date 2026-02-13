@@ -14,6 +14,8 @@ const (
 	EmulatorAWS       EmulatorType = "aws"
 	EmulatorSnowflake EmulatorType = "snowflake"
 	EmulatorAzure     EmulatorType = "azure"
+
+	dockerRegistry = "localstack"
 )
 
 var emulatorImages = map[EmulatorType]string{
@@ -44,7 +46,7 @@ func (c *ContainerConfig) Image() (string, error) {
 	if tag == "" {
 		tag = "latest"
 	}
-	return fmt.Sprintf("localstack/%s:%s", productName, tag), nil
+	return fmt.Sprintf("%s/%s:%s", dockerRegistry, productName, tag), nil
 }
 
 // Name returns the container name: "localstack-{type}" or "localstack-{type}-{tag}" if tag != latest
