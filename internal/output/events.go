@@ -1,17 +1,17 @@
 package output
 
-// Event is a marker interface for all event types.
 type Event interface {
-	event()
+	LogEvent | WarningEvent | ContainerStatusEvent | ProgressEvent
 }
 
 type Sink interface {
-	Emit(event Event)
+	// using any as the type only here; at call sites we'll have type safety from the union interface
+	emit(event any)
 }
 
-type SinkFunc func(event Event)
+type SinkFunc func(event any)
 
-func (f SinkFunc) Emit(event Event) {
+func (f SinkFunc) emit(event any) {
 	if f == nil {
 		return
 	}
@@ -22,21 +22,15 @@ type LogEvent struct {
 	Message string
 }
 
-func (LogEvent) event() {}
-
 type WarningEvent struct {
 	Message string
 }
-
-func (WarningEvent) event() {}
 
 type ContainerStatusEvent struct {
 	Phase     string // e.g., "pulling", "starting", "waiting", "ready"
 	Container string
 	Detail    string // optional extra info (e.g., container ID)
 }
-
-func (ContainerStatusEvent) event() {}
 
 type ProgressEvent struct {
 	Container string
@@ -46,13 +40,12 @@ type ProgressEvent struct {
 	Total     int64
 }
 
-func (ProgressEvent) event() {}
-
-func Emit(sink Sink, event Event) {
+// Emit sends an event to the sink with compile-time type safety via generics.
+func Emit[E Event](sink Sink, event E) {
 	if sink == nil {
 		return
 	}
-	sink.Emit(event)
+	sink.emit(event)
 }
 
 func EmitLog(sink Sink, message string) {

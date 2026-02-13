@@ -24,8 +24,8 @@ func TestGetToken_ReturnsTokenWhenKeyringStoreFails(t *testing.T) {
 	mockKeyring := NewMockKeyring(ctrl)
 	mockLogin := NewMockLoginProvider(ctrl)
 
-	var events []output.Event
-	sink := output.SinkFunc(func(event output.Event) {
+	var events []any
+	sink := output.SinkFunc(func(event any) {
 		events = append(events, event)
 	})
 

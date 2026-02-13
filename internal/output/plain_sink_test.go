@@ -11,7 +11,7 @@ func TestPlainSink_EmitsLogEvent(t *testing.T) {
 	var out bytes.Buffer
 	sink := NewPlainSink(&out)
 
-	sink.Emit(LogEvent{Message: "hello"})
+	Emit(sink, LogEvent{Message: "hello"})
 
 	assert.Equal(t, "hello\n", out.String())
 }
@@ -20,7 +20,7 @@ func TestPlainSink_EmitsWarningEvent(t *testing.T) {
 	var out bytes.Buffer
 	sink := NewPlainSink(&out)
 
-	sink.Emit(WarningEvent{Message: "something went wrong"})
+	Emit(sink, WarningEvent{Message: "something went wrong"})
 
 	assert.Equal(t, "Warning: something went wrong\n", out.String())
 }
@@ -73,7 +73,7 @@ func TestPlainSink_EmitsStatusEvent(t *testing.T) {
 			var out bytes.Buffer
 			sink := NewPlainSink(&out)
 
-			sink.Emit(tt.event)
+			Emit(sink, tt.event)
 
 			assert.Equal(t, tt.expected, out.String())
 		})
@@ -123,10 +123,9 @@ func TestPlainSink_EmitsProgressEvent(t *testing.T) {
 			var out bytes.Buffer
 			sink := NewPlainSink(&out)
 
-			sink.Emit(tt.event)
+			Emit(sink, tt.event)
 
 			assert.Equal(t, tt.expected, out.String())
 		})
 	}
 }
-

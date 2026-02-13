@@ -17,7 +17,7 @@ func NewPlainSink(out io.Writer) *PlainSink {
 	return &PlainSink{out: out}
 }
 
-func (s *PlainSink) Emit(event Event) {
+func (s *PlainSink) emit(event any) {
 	switch e := event.(type) {
 	case LogEvent:
 		_, _ = fmt.Fprintln(s.out, e.Message)
