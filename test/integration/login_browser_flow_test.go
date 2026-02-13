@@ -12,14 +12,13 @@ import (
 )
 
 func TestBrowserFlowStoresToken(t *testing.T) {
-	// requireDocker(t)
 	cleanup()
 	t.Cleanup(cleanup)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, binaryPath(), "start")
+	cmd := exec.CommandContext(ctx, binaryPath(), "login")
 	cmd.Env = envWithoutAuthToken()
 
 	// Keep stdin open so ENTER listener doesn't trigger immediately
@@ -44,9 +43,8 @@ func TestBrowserFlowStoresToken(t *testing.T) {
 
 	out := <-output
 
-	// Login should succeed, but container will fail with invalid token
+	// Login should succeed
 	assert.Contains(t, string(out), "Login successful")
-	assert.Contains(t, string(out), "License activation failed")
 
 	// Verify token was stored in keyring
 	storedToken, err := keyringGet(keyringService, keyringUser)
