@@ -1,0 +1,42 @@
+name: Weekly Go Upgrade
+
+on:
+  schedule:
+    - cron: "0 8 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  upgrade-go:
+    name: Upgrade Go Version
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+
+      - name: Upgrade Go version
+        run: |
+          go get go@latest
+          go mod tidy
+
+      - name: Create pull request
+        uses: peter-evans/create-pull-request@v7
+        with:
+          branch: chore/weekly-go-upgrade
+          commit-message: "chore(go): weekly Go upgrade"
+          title: "chore(go): weekly Go upgrade"
+          body: |
+            Automated weekly Go upgrade.
+
+            - Updates the `go` directive to the latest released Go version.
+            - Runs `go mod tidy` to keep module files consistent.
+          labels: dependencies
+          delete-branch: true
