@@ -1,13 +1,13 @@
 package auth
 
 import (
-	"bytes"
 	"context"
 	"errors"
-	"log"
 	"os"
+	"strings"
 	"testing"
 
+	"github.com/localstack/lstk/internal/output"
 	"github.com/stretchr/testify/assert"
 	"go.uber.org/mock/gomock"
 )
@@ -24,9 +24,15 @@ func TestGetToken_ReturnsTokenWhenKeyringStoreFails(t *testing.T) {
 	mockKeyring := NewMockKeyring(ctrl)
 	mockLogin := NewMockLoginProvider(ctrl)
 
+	var events []any
+	sink := output.SinkFunc(func(event any) {
+		events = append(events, event)
+	})
+
 	auth := &Auth{
 		keyring:      mockKeyring,
 		browserLogin: mockLogin,
+		sink:         sink,
 	}
 
 	// Keyring returns empty (no stored token)
@@ -36,14 +42,17 @@ func TestGetToken_ReturnsTokenWhenKeyringStoreFails(t *testing.T) {
 	// Setting token in keyring fails
 	mockKeyring.EXPECT().Set(keyringService, keyringUser, "test-token").Return(errors.New("keyring unavailable"))
 
-	// Capture log output
-	var logBuf bytes.Buffer
-	log.SetOutput(&logBuf)
-	t.Cleanup(func() { log.SetOutput(os.Stderr) })
-
 	token, err := auth.GetToken(context.Background())
 
 	assert.NoError(t, err)
 	assert.Equal(t, "test-token", token)
-	assert.Contains(t, logBuf.String(), "Warning: could not store token in keyring")
+	assert.Condition(t, func() bool {
+		for _, event := range events {
+			warningEvent, ok := event.(output.WarningEvent)
+			if ok && strings.Contains(warningEvent.Message, "could not store token in keyring") {
+				return true
+			}
+		}
+		return false
+	})
 }

@@ -3,18 +3,18 @@ package container
 import (
 	"context"
 	"fmt"
-	"log"
 	"net/http"
 	"time"
 
 	"github.com/containerd/errdefs"
 	"github.com/localstack/lstk/internal/auth"
 	"github.com/localstack/lstk/internal/config"
+	"github.com/localstack/lstk/internal/output"
 	"github.com/localstack/lstk/internal/runtime"
 )
 
-func Start(ctx context.Context, rt runtime.Runtime, onProgress func(string)) error {
-	a, err := auth.New()
+func Start(ctx context.Context, rt runtime.Runtime, sink output.Sink) error {
+	a, err := auth.New(sink)
 	if err != nil {
 		return fmt.Errorf("failed to initialize auth: %w", err)
 	}
@@ -56,34 +56,30 @@ func Start(ctx context.Context, rt runtime.Runtime, onProgress func(string)) err
 			return fmt.Errorf("failed to remove existing container %s: %w", config.Name, err)
 		}
 
-		onProgress(fmt.Sprintf("Pulling %s...", config.Image))
+		output.EmitStatus(sink, "pulling", config.Image, "")
 		progress := make(chan runtime.PullProgress)
 		go func() {
 			for p := range progress {
-				if p.Total > 0 {
-					onProgress(fmt.Sprintf("  %s: %s %.1f%%", p.LayerID, p.Status, float64(p.Current)/float64(p.Total)*100))
-				} else if p.Status != "" {
-					onProgress(fmt.Sprintf("  %s: %s", p.LayerID, p.Status))
-				}
+				output.EmitProgress(sink, config.Image, p.LayerID, p.Status, p.Current, p.Total)
 			}
 		}()
 		if err := rt.PullImage(ctx, config.Image, progress); err != nil {
 			return fmt.Errorf("failed to pull image %s: %w", config.Image, err)
 		}
 
-		onProgress(fmt.Sprintf("Starting %s...", config.Name))
+		output.EmitStatus(sink, "starting", config.Name, "")
 		containerID, err := rt.Start(ctx, config)
 		if err != nil {
 			return fmt.Errorf("failed to start %s: %w", config.Name, err)
 		}
 
-		onProgress(fmt.Sprintf("Waiting for %s to be ready...", config.Name))
+		output.EmitStatus(sink, "waiting", config.Name, "")
 		healthURL := fmt.Sprintf("http://localhost:%s%s", config.Port, config.HealthPath)
-		if err := awaitStartup(ctx, rt, containerID, config.Name, healthURL); err != nil {
+		if err := awaitStartup(ctx, rt, sink, containerID, config.Name, healthURL); err != nil {
 			return err
 		}
 
-		onProgress(fmt.Sprintf("%s ready (container: %s)", config.Name, containerID[:12]))
+		output.EmitStatus(sink, "ready", config.Name, fmt.Sprintf("containerId: %s", containerID[:12]))
 	}
 
 	return nil
@@ -94,7 +90,7 @@ func Start(ctx context.Context, rt runtime.Runtime, onProgress func(string)) err
 //   - Failure: container stops running (e.g., license activation failed), returns error with container logs
 //
 // TODO: move to Runtime interface if other runtimes (k8s?) need native readiness probes
-func awaitStartup(ctx context.Context, rt runtime.Runtime, containerID, name, healthURL string) error {
+func awaitStartup(ctx context.Context, rt runtime.Runtime, sink output.Sink, containerID, name, healthURL string) error {
 	client := &http.Client{Timeout: 2 * time.Second}
 
 	for {
@@ -113,13 +109,13 @@ func awaitStartup(ctx context.Context, rt runtime.Runtime, containerID, name, he
 		resp, err := client.Get(healthURL)
 		if err == nil && resp.StatusCode == http.StatusOK {
 			if err := resp.Body.Close(); err != nil {
-				log.Printf("failed to close response body: %v", err)
+				output.EmitWarning(sink, fmt.Sprintf("failed to close response body: %v", err))
 			}
 			return nil
 		}
 		if resp != nil {
 			if err := resp.Body.Close(); err != nil {
-				log.Printf("failed to close response body: %v", err)
+				output.EmitWarning(sink, fmt.Sprintf("failed to close response body: %v", err))
 			}
 		}
 

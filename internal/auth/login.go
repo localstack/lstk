@@ -6,12 +6,12 @@ import (
 	"bufio"
 	"context"
 	"fmt"
-	"log"
 	"net"
 	"net/http"
 	"os"
 
 	"github.com/localstack/lstk/internal/api"
+	"github.com/localstack/lstk/internal/output"
 	"github.com/pkg/browser"
 )
 
@@ -24,11 +24,13 @@ type LoginProvider interface {
 
 type browserLogin struct {
 	platformClient api.PlatformAPI
+	sink           output.Sink
 }
 
-func newBrowserLogin() *browserLogin {
+func newBrowserLogin(sink output.Sink) *browserLogin {
 	return &browserLogin{
 		platformClient: api.NewPlatformClient(),
+		sink:           sink,
 	}
 }
 
@@ -70,7 +72,7 @@ func (b *browserLogin) Login(ctx context.Context) (string, error) {
 	}
 	defer func() {
 		if err := server.Shutdown(ctx); err != nil {
-			log.Printf("failed to shutdown server: %v", err)
+			output.EmitWarning(b.sink, fmt.Sprintf("failed to shutdown server: %v", err))
 		}
 	}()
 
@@ -90,12 +92,12 @@ func (b *browserLogin) Login(ctx context.Context) (string, error) {
 
 	// Display device flow instructions
 	if browserOpened {
-		fmt.Printf("Browser didn't open? Open %s to authorize device.\n", deviceURL)
+		output.EmitLog(b.sink, fmt.Sprintf("Browser didn't open? Open %s to authorize device.", deviceURL))
 	} else {
-		fmt.Printf("Open %s to authorize device.\n", deviceURL)
+		output.EmitLog(b.sink, fmt.Sprintf("Open %s to authorize device.", deviceURL))
 	}
-	fmt.Printf("Verification code: %s\n", authReq.Code)
-	fmt.Println("Waiting for authentication... (Press ENTER when complete)")
+	output.EmitLog(b.sink, fmt.Sprintf("Verification code: %s", authReq.Code))
+	output.EmitLog(b.sink, "Waiting for authentication... (Press ENTER when complete)")
 
 	// Listen for ENTER key in background
 	go func() {
@@ -127,7 +129,7 @@ func getWebAppURL() string {
 }
 
 func (b *browserLogin) completeDeviceFlow(ctx context.Context, authReq *api.AuthRequest) (string, error) {
-	log.Println("Checking if auth request is confirmed...")
+	output.EmitLog(b.sink, "Checking if auth request is confirmed...")
 	confirmed, err := b.platformClient.CheckAuthRequestConfirmed(ctx, authReq.ID, authReq.ExchangeToken)
 	if err != nil {
 		return "", fmt.Errorf("failed to check auth request: %w", err)
@@ -135,14 +137,14 @@ func (b *browserLogin) completeDeviceFlow(ctx context.Context, authReq *api.Auth
 	if !confirmed {
 		return "", fmt.Errorf("auth request not confirmed - please enter the code in the browser first")
 	}
-	log.Println("Auth request confirmed, exchanging for token...")
+	output.EmitLog(b.sink, "Auth request confirmed, exchanging for token...")
 
 	bearerToken, err := b.platformClient.ExchangeAuthRequest(ctx, authReq.ID, authReq.ExchangeToken)
 	if err != nil {
 		return "", fmt.Errorf("failed to exchange auth request: %w", err)
 	}
 
-	log.Println("Fetching license token...")
+	output.EmitLog(b.sink, "Fetching license token...")
 	licenseToken, err := b.platformClient.GetLicenseToken(ctx, bearerToken)
 	if err != nil {
 		return "", fmt.Errorf("failed to get license token: %w", err)
