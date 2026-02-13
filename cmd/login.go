@@ -25,7 +25,6 @@ var loginCmd = &cobra.Command{
 			return err
 		}
 
-		output.EmitLog(sink, "Login successful.")
 		return nil
 	},
 }

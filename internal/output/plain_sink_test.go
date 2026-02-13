@@ -2,10 +2,19 @@ package output
 
 import (
 	"bytes"
+	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 )
+
+type failingWriter struct {
+	err error
+}
+
+func (w *failingWriter) Write(p []byte) (n int, err error) {
+	return 0, w.err
+}
 
 func TestPlainSink_EmitsLogEvent(t *testing.T) {
 	var out bytes.Buffer
@@ -128,4 +137,32 @@ func TestPlainSink_EmitsProgressEvent(t *testing.T) {
 			assert.Equal(t, tt.expected, out.String())
 		})
 	}
+}
+
+func TestPlainSink_ErrReturnsNilOnSuccess(t *testing.T) {
+	var out bytes.Buffer
+	sink := NewPlainSink(&out)
+
+	Emit(sink, LogEvent{Message: "hello"})
+
+	assert.NoError(t, sink.Err())
+}
+
+func TestPlainSink_ErrCapturesWriteError(t *testing.T) {
+	writeErr := errors.New("write failed")
+	sink := NewPlainSink(&failingWriter{err: writeErr})
+
+	Emit(sink, LogEvent{Message: "hello"})
+
+	assert.Equal(t, writeErr, sink.Err())
+}
+
+func TestPlainSink_ErrStoresOnlyFirstError(t *testing.T) {
+	firstErr := errors.New("first error")
+	sink := NewPlainSink(&failingWriter{err: firstErr})
+
+	Emit(sink, LogEvent{Message: "first"})
+	Emit(sink, LogEvent{Message: "second"})
+
+	assert.Equal(t, firstErr, sink.Err())
 }
