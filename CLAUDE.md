@@ -25,6 +25,7 @@ Note: Integration tests require `LOCALSTACK_AUTH_TOKEN` environment variable for
   - `container/` - Handling different emulator containers
   - `runtime/` - Abstraction for container runtimes (Docker, Kubernetes, etc.) - currently only Docker implemented
   - `auth/` - Authentication (env var token or browser-based login)
+  - `output/` - Generic event and sink abstractions for CLI/TUI/non-interactive rendering
 
 # Configuration
 
@@ -46,6 +47,13 @@ Environment variables:
 # Testing
 
 - Prefer integration tests to cover most cases. Use unit tests when integration tests are not practical.
+
+# Output Routing
+
+- Emit progress/events through `internal/output` sinks instead of printing directly from command handlers.
+- Use `output.NewPlainSink(...)` for CLI text output.
+- Prefer typed `output.Sink` dependencies over raw callback functions like `func(string)`.
+- Keep reusable output primitives in `internal/output`; command-specific orchestration can live in `cmd/`.
 
 # Maintaining This File
 

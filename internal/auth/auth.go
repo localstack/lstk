@@ -3,25 +3,28 @@ package auth
 import (
 	"context"
 	"errors"
-	"log"
+	"fmt"
 	"os"
 
 	"github.com/99designs/keyring"
+	"github.com/localstack/lstk/internal/output"
 )
 
 type Auth struct {
 	keyring      Keyring
 	browserLogin LoginProvider
+	sink         output.Sink
 }
 
-func New() (*Auth, error) {
+func New(sink output.Sink) (*Auth, error) {
 	kr, err := newSystemKeyring()
 	if err != nil {
 		return nil, err
 	}
 	return &Auth{
 		keyring:      kr,
-		browserLogin: newBrowserLogin(),
+		browserLogin: newBrowserLogin(sink),
+		sink:         sink,
 	}, nil
 }
 
@@ -35,18 +38,18 @@ func (a *Auth) GetToken(ctx context.Context) (string, error) {
 		return token, nil
 	}
 
-	log.Println("Authentication required. Opening browser...")
+	output.EmitLog(a.sink, "Authentication required. Opening browser...")
 	token, err := a.browserLogin.Login(ctx)
 	if err != nil {
-		log.Println("Authentication failed.")
+		output.EmitWarning(a.sink, "Authentication failed.")
 		return "", err
 	}
 
 	if err := a.keyring.Set(keyringService, keyringUser, token); err != nil {
-		log.Printf("Warning: could not store token in keyring: %v", err)
+		output.EmitWarning(a.sink, fmt.Sprintf("could not store token in keyring: %v", err))
 	}
 
-	log.Println("Login successful.")
+	output.EmitLog(a.sink, "Login successful.")
 	return token, nil
 }
 

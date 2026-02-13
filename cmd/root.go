@@ -7,6 +7,7 @@ import (
 
 	"github.com/localstack/lstk/internal/config"
 	"github.com/localstack/lstk/internal/container"
+	"github.com/localstack/lstk/internal/output"
 	"github.com/localstack/lstk/internal/runtime"
 	"github.com/spf13/cobra"
 )
@@ -25,11 +26,7 @@ var rootCmd = &cobra.Command{
 			os.Exit(1)
 		}
 
-		onProgress := func(msg string) {
-			fmt.Println(msg)
-		}
-
-		if err := container.Start(cmd.Context(), rt, onProgress); err != nil {
+		if err := runStart(cmd.Context(), rt); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}
@@ -42,4 +39,8 @@ func init() {
 
 func Execute(ctx context.Context) error {
 	return rootCmd.ExecuteContext(ctx)
+}
+
+func runStart(ctx context.Context, rt runtime.Runtime) error {
+	return container.Start(ctx, rt, output.NewPlainSink(os.Stdout))
 }
