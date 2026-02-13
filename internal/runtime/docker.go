@@ -7,6 +7,7 @@ import (
 	"io"
 	"log"
 	"strconv"
+	"strings"
 
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/image"
@@ -147,4 +148,22 @@ func (d *DockerRuntime) Logs(ctx context.Context, containerID string, tail int) 
 	}
 
 	return string(logs), nil
+}
+
+func (d *DockerRuntime) GetImageVersion(ctx context.Context, imageName string) (string, error) {
+	inspect, err := d.client.ImageInspect(ctx, imageName)
+	if err != nil {
+		return "", fmt.Errorf("failed to inspect image: %w", err)
+	}
+
+	// Get version from LOCALSTACK_BUILD_VERSION environment variable
+	if inspect.Config != nil && inspect.Config.Env != nil {
+		for _, env := range inspect.Config.Env {
+			if strings.HasPrefix(env, "LOCALSTACK_BUILD_VERSION=") {
+				return strings.TrimPrefix(env, "LOCALSTACK_BUILD_VERSION="), nil
+			}
+		}
+	}
+
+	return "", fmt.Errorf("LOCALSTACK_BUILD_VERSION not found in image environment")
 }

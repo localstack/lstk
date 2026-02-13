@@ -5,16 +5,19 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
+	stdruntime "runtime"
 	"time"
 
 	"github.com/containerd/errdefs"
+	"github.com/localstack/lstk/internal/api"
 	"github.com/localstack/lstk/internal/auth"
 	"github.com/localstack/lstk/internal/config"
 	"github.com/localstack/lstk/internal/runtime"
 )
 
-func Start(ctx context.Context, rt runtime.Runtime, onProgress func(string)) error {
-	a, err := auth.New()
+func Start(ctx context.Context, rt runtime.Runtime, platformClient api.PlatformAPI, onProgress func(string)) error {
+	a, err := auth.New(platformClient)
 	if err != nil {
 		return fmt.Errorf("failed to initialize auth: %w", err)
 	}
@@ -50,6 +53,7 @@ func Start(ctx context.Context, rt runtime.Runtime, onProgress func(string)) err
 		}
 	}
 
+	// Pull all images first
 	for _, config := range containers {
 		// Remove any existing stopped container with the same name
 		if err := rt.Remove(ctx, config.Name); err != nil && !errdefs.IsNotFound(err) {
@@ -70,7 +74,18 @@ func Start(ctx context.Context, rt runtime.Runtime, onProgress func(string)) err
 		if err := rt.PullImage(ctx, config.Image, progress); err != nil {
 			return fmt.Errorf("failed to pull image %s: %w", config.Image, err)
 		}
+	}
 
+	// TODO validate license for tag "latest" without resolving the actual image version,
+	// and avoid pulling all images first
+	for i, c := range cfg.Containers {
+		if err := validateLicense(ctx, rt, platformClient, containers[i], &c, token, onProgress); err != nil {
+			return err
+		}
+	}
+
+	// Start containers
+	for _, config := range containers {
 		onProgress(fmt.Sprintf("Starting %s...", config.Name))
 		containerID, err := rt.Start(ctx, config)
 		if err != nil {
@@ -84,6 +99,45 @@ func Start(ctx context.Context, rt runtime.Runtime, onProgress func(string)) err
 		}
 
 		onProgress(fmt.Sprintf("%s ready (container: %s)", config.Name, containerID[:12]))
+	}
+
+	return nil
+}
+
+func validateLicense(ctx context.Context, rt runtime.Runtime, platformClient api.PlatformAPI, containerConfig runtime.ContainerConfig, cfgContainer *config.ContainerConfig, token string, onProgress func(string)) error {
+	version := cfgContainer.Tag
+	if version == "" || version == "latest" {
+		actualVersion, err := rt.GetImageVersion(ctx, containerConfig.Image)
+		if err != nil {
+			return fmt.Errorf("could not resolve version from image %s: %w", containerConfig.Image, err)
+		}
+		version = actualVersion
+	}
+
+	productName, err := cfgContainer.ProductName()
+	if err != nil {
+		return err
+	}
+	onProgress(fmt.Sprintf("Validating license for %s:%s...", productName, version))
+
+	hostname, _ := os.Hostname()
+	licenseReq := &api.LicenseRequest{
+		Product: api.ProductInfo{
+			Name:    productName,
+			Version: version,
+		},
+		Credentials: api.CredentialsInfo{
+			Token: token,
+		},
+		Machine: api.MachineInfo{
+			Hostname:        hostname,
+			Platform:        stdruntime.GOOS,
+			PlatformRelease: stdruntime.GOARCH,
+		},
+	}
+
+	if err := platformClient.GetLicense(ctx, licenseReq); err != nil {
+		return fmt.Errorf("license validation failed for %s:%s: %w", productName, version, err)
 	}
 
 	return nil

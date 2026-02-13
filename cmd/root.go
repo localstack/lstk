@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/localstack/lstk/internal/api"
 	"github.com/localstack/lstk/internal/config"
 	"github.com/localstack/lstk/internal/container"
 	"github.com/localstack/lstk/internal/runtime"
@@ -25,11 +26,13 @@ var rootCmd = &cobra.Command{
 			os.Exit(1)
 		}
 
+		platformClient := api.NewPlatformClient()
+
 		onProgress := func(msg string) {
 			fmt.Println(msg)
 		}
 
-		if err := container.Start(cmd.Context(), rt, onProgress); err != nil {
+		if err := container.Start(cmd.Context(), rt, platformClient, onProgress); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}

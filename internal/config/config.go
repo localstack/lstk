@@ -14,10 +14,12 @@ const (
 	EmulatorAWS       EmulatorType = "aws"
 	EmulatorSnowflake EmulatorType = "snowflake"
 	EmulatorAzure     EmulatorType = "azure"
+
+	dockerRegistry = "localstack"
 )
 
 var emulatorImages = map[EmulatorType]string{
-	EmulatorAWS: "localstack/localstack-pro",
+	EmulatorAWS: "localstack-pro",
 }
 
 var emulatorHealthPaths = map[EmulatorType]string{
@@ -36,15 +38,15 @@ type ContainerConfig struct {
 }
 
 func (c *ContainerConfig) Image() (string, error) {
-	baseImage, ok := emulatorImages[c.Type]
-	if !ok {
-		return "", fmt.Errorf("%s emulator not supported yet by lstk", c.Type)
+	productName, err := c.ProductName()
+	if err != nil {
+		return "", err
 	}
 	tag := c.Tag
 	if tag == "" {
 		tag = "latest"
 	}
-	return fmt.Sprintf("%s:%s", baseImage, tag), nil
+	return fmt.Sprintf("%s/%s:%s", dockerRegistry, productName, tag), nil
 }
 
 // Name returns the container name: "localstack-{type}" or "localstack-{type}-{tag}" if tag != latest
@@ -62,6 +64,14 @@ func (c *ContainerConfig) HealthPath() (string, error) {
 		return "", fmt.Errorf("%s emulator not supported yet by lstk", c.Type)
 	}
 	return path, nil
+}
+
+func (c *ContainerConfig) ProductName() (string, error) {
+	productName, ok := emulatorImages[c.Type]
+	if !ok {
+		return "", fmt.Errorf("%s emulator not supported yet by lstk", c.Type)
+	}
+	return productName, nil
 }
 
 func ConfigDir() (string, error) {
