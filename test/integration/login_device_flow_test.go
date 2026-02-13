@@ -121,7 +121,10 @@ func TestDeviceFlowSuccess(t *testing.T) {
 
 		// Verify container is running
 		inspect, err := dockerClient.ContainerInspect(ctx, containerName)
-		require.NoError(t, err)
+		if err != nil {
+			t.Logf("Command output:\n%s", output)
+		}
+		require.NoError(t, err, "failed to inspect container")
 		assert.True(t, inspect.State.Running, "container should be running")
 
 	case <-time.After(2 * time.Minute):
