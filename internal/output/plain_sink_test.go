@@ -3,6 +3,7 @@ package output
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -165,4 +166,41 @@ func TestPlainSink_ErrStoresOnlyFirstError(t *testing.T) {
 	Emit(sink, LogEvent{Message: "second"})
 
 	assert.Equal(t, firstErr, sink.Err())
+}
+
+func TestPlainSink_UsesFormatterParity(t *testing.T) {
+	t.Parallel()
+
+	events := []any{
+		LogEvent{Message: "hello"},
+		WarningEvent{Message: "careful"},
+		ContainerStatusEvent{Phase: "starting", Container: "localstack"},
+		ProgressEvent{LayerID: "abc", Status: "Downloading", Current: 1, Total: 2},
+	}
+
+	for _, event := range events {
+		var out bytes.Buffer
+		sink := NewPlainSink(&out)
+
+		switch e := event.(type) {
+		case LogEvent:
+			Emit(sink, e)
+		case WarningEvent:
+			Emit(sink, e)
+		case ContainerStatusEvent:
+			Emit(sink, e)
+		case ProgressEvent:
+			Emit(sink, e)
+		default:
+			t.Fatalf("unsupported event type in test: %T", event)
+		}
+
+		line, ok := FormatEventLine(event)
+		if !ok {
+			t.Fatalf("expected formatter output for %T", event)
+		}
+		if got, want := out.String(), fmt.Sprintf("%s\n", line); got != want {
+			t.Fatalf("output mismatch for %T: got=%q want=%q", event, got, want)
+		}
+	}
 }

@@ -26,6 +26,7 @@ Note: Integration tests require `LOCALSTACK_AUTH_TOKEN` environment variable for
   - `runtime/` - Abstraction for container runtimes (Docker, Kubernetes, etc.) - currently only Docker implemented
   - `auth/` - Authentication (env var token or browser-based login)
   - `output/` - Generic event and sink abstractions for CLI/TUI/non-interactive rendering
+  - `ui/` - Bubble Tea views for interactive output
 
 # Configuration
 
@@ -54,6 +55,7 @@ Environment variables:
 - Use `output.NewPlainSink(...)` for CLI text output.
 - Prefer typed `output.Sink` dependencies over raw callback functions like `func(string)`.
 - Keep reusable output primitives in `internal/output`; command-specific orchestration can live in `cmd/`.
+- Keep TUI sinks in `internal/output` (sealed sink API) and forward events via `Program.Send()`.
 
 # Maintaining This File
 
