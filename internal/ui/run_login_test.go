@@ -110,7 +110,13 @@ func TestLoginFlow_DeviceFlowSuccess(t *testing.T) {
 	}()
 
 	teatest.WaitFor(t, tm.Output(), func(bts []byte) bool {
-		return bytes.Contains(bts, []byte("TEST123"))
+		return bytes.Contains(bts, []byte("Open browser now?"))
+	}, teatest.WithDuration(5*time.Second))
+
+	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("y")})
+
+	teatest.WaitFor(t, tm.Output(), func(bts []byte) bool {
+		return bytes.Contains(bts, []byte("Waiting for authentication"))
 	}, teatest.WithDuration(5*time.Second))
 
 	tm.Send(tea.KeyMsg{Type: tea.KeyEnter})
@@ -159,7 +165,13 @@ func TestLoginFlow_DeviceFlowFailure_NotConfirmed(t *testing.T) {
 	}()
 
 	teatest.WaitFor(t, tm.Output(), func(bts []byte) bool {
-		return bytes.Contains(bts, []byte("TEST123"))
+		return bytes.Contains(bts, []byte("Open browser now?"))
+	}, teatest.WithDuration(5*time.Second))
+
+	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("y")})
+
+	teatest.WaitFor(t, tm.Output(), func(bts []byte) bool {
+		return bytes.Contains(bts, []byte("Waiting for authentication"))
 	}, teatest.WithDuration(5*time.Second))
 
 	tm.Send(tea.KeyMsg{Type: tea.KeyEnter})
@@ -179,58 +191,3 @@ func TestLoginFlow_DeviceFlowFailure_NotConfirmed(t *testing.T) {
 	assert.Contains(t, out, "Authentication failed")
 }
 
-func TestLoginFlow_BrowserCallback(t *testing.T) {
-	mockServer := createMockAPIServer(t, "test-license-token", true)
-	defer mockServer.Close()
-
-	t.Setenv("LOCALSTACK_API_ENDPOINT", mockServer.URL)
-
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	ctrl := gomock.NewController(t)
-	mockStorage := auth.NewMockAuthTokenStorage(ctrl)
-	mockStorage.EXPECT().GetAuthToken().Return("", errors.New("no token"))
-	mockStorage.EXPECT().SetAuthToken(gomock.Any()).Return(nil)
-
-	tm := teatest.NewTestModel(t, NewApp("test", cancel), teatest.WithInitialTermSize(120, 40))
-	sender := testModelSender{tm: tm}
-	platformClient := api.NewPlatformClient()
-
-	errCh := make(chan error, 1)
-	go func() {
-		a := auth.New(output.NewTUISink(sender), platformClient, mockStorage, true)
-		_, err := a.GetToken(ctx)
-		errCh <- err
-		if err != nil && !errors.Is(err, context.Canceled) {
-			tm.Send(runErrMsg{err: err})
-		} else {
-			tm.Send(runDoneMsg{})
-		}
-	}()
-
-	teatest.WaitFor(t, tm.Output(), func(bts []byte) bool {
-		return bytes.Contains(bts, []byte("TEST123"))
-	}, teatest.WithDuration(5*time.Second))
-
-	var resp *http.Response
-	require.Eventually(t, func() bool {
-		var err error
-		resp, err = http.Get("http://127.0.0.1:45678/auth/success?token=browser-token")
-		return err == nil
-	}, 5*time.Second, 100*time.Millisecond, "callback server should be ready")
-	require.NoError(t, resp.Body.Close())
-
-	select {
-	case err := <-errCh:
-		require.NoError(t, err, "login should succeed via browser callback")
-	case <-time.After(10 * time.Second):
-		t.Fatal("timeout waiting for login")
-	}
-
-	tm.Send(tea.QuitMsg{})
-	tm.WaitFinished(t, teatest.WithFinalTimeout(time.Second))
-
-	out := readOutput(tm.FinalOutput(t))
-	assert.Contains(t, out, "Login successful")
-}

@@ -62,15 +62,27 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return a, tea.Quit
 		}
-		if msg.Type == tea.KeyEnter && a.pendingInput != nil {
-			selectedKey := ""
-			if len(a.pendingInput.Options) > 0 {
-				selectedKey = a.pendingInput.Options[0].Key
+		if a.pendingInput != nil {
+			if msg.Type == tea.KeyEnter {
+				// ENTER selects the first option (default)
+				selectedKey := ""
+				if len(a.pendingInput.Options) > 0 {
+					selectedKey = a.pendingInput.Options[0].Key
+				}
+				responseCmd := sendInputResponseCmd(a.pendingInput.ResponseCh, output.InputResponse{SelectedKey: selectedKey})
+				a.pendingInput = nil
+				a.inputPrompt = a.inputPrompt.Hide()
+				return a, responseCmd
 			}
-			responseCmd := sendInputResponseCmd(a.pendingInput.ResponseCh, output.InputResponse{SelectedKey: selectedKey})
-			a.pendingInput = nil
-			a.inputPrompt = a.inputPrompt.Hide()
-			return a, responseCmd
+			// A single character key press selects the matching option
+			for _, opt := range a.pendingInput.Options {
+				if msg.String() == opt.Key {
+					responseCmd := sendInputResponseCmd(a.pendingInput.ResponseCh, output.InputResponse{SelectedKey: opt.Key})
+					a.pendingInput = nil
+					a.inputPrompt = a.inputPrompt.Hide()
+					return a, responseCmd
+				}
+			}
 		}
 	case output.UserInputRequestEvent:
 		a.pendingInput = &msg
