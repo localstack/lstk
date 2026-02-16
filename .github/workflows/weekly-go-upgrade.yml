@@ -20,7 +20,8 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v6
         with:
-          go-version-file: go.mod
+          go-version: stable
+          check-latest: true
 
       - name: Upgrade Go version
         run: |
@@ -31,6 +32,8 @@ jobs:
         uses: peter-evans/create-pull-request@v7
         with:
           branch: chore/weekly-go-upgrade
+          author: "LocalStack Bot <localstack-bot@users.noreply.github.com>"
+          committer: "LocalStack Bot <localstack-bot@users.noreply.github.com>"
           commit-message: "chore(go): weekly Go upgrade"
           title: "chore(go): weekly Go upgrade"
           body: |
@@ -39,4 +42,4 @@ jobs:
             - Updates the `go` directive to the latest released Go version.
             - Runs `go mod tidy` to keep module files consistent.
           labels: dependencies
-          delete-branch: true
+          token: ${{ secrets.PRO_ACCESS_TOKEN }}
