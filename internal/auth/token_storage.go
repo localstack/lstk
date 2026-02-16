@@ -1,6 +1,6 @@
 package auth
 
-//go:generate mockgen -source=keyring.go -destination=mock_keyring_test.go -package=auth
+//go:generate mockgen -source=token_storage.go -destination=mock_token_storage_test.go -package=auth
 
 import (
 	"errors"
@@ -20,17 +20,17 @@ const (
 	keyringAuthTokenLabel = "lstk auth token"
 )
 
-type Keyring interface {
-	Get(key string) (string, error)
-	Set(key, password string) error
-	Delete(key string) error
+type AuthTokenStorage interface {
+	GetAuthToken() (string, error)
+	SetAuthToken(token string) error
+	DeleteAuthToken() error
 }
 
-type systemKeyring struct {
+type authTokenStorage struct {
 	ring keyring.Keyring
 }
 
-func newSystemKeyring() (*systemKeyring, error) {
+func newAuthTokenStorage() (*authTokenStorage, error) {
 	configDir, err := config.ConfigDir()
 	if err != nil {
 		return nil, err
@@ -58,11 +58,11 @@ func newSystemKeyring() (*systemKeyring, error) {
 		}
 	}
 
-	return &systemKeyring{ring: ring}, nil
+	return &authTokenStorage{ring: ring}, nil
 }
 
-func (k *systemKeyring) Get(key string) (string, error) {
-	item, err := k.ring.Get(key)
+func (s *authTokenStorage) GetAuthToken() (string, error) {
+	item, err := s.ring.Get(keyringAuthTokenKey)
 	if err != nil {
 		if errors.Is(err, keyring.ErrKeyNotFound) {
 			return "", fmt.Errorf("credential not found")
@@ -72,16 +72,16 @@ func (k *systemKeyring) Get(key string) (string, error) {
 	return string(item.Data), nil
 }
 
-func (k *systemKeyring) Set(key, password string) error {
-	return k.ring.Set(keyring.Item{
-		Key:   key,
-		Data:  []byte(password),
+func (s *authTokenStorage) SetAuthToken(token string) error {
+	return s.ring.Set(keyring.Item{
+		Key:   keyringAuthTokenKey,
+		Data:  []byte(token),
 		Label: keyringAuthTokenLabel,
 	})
 }
 
-func (k *systemKeyring) Delete(key string) error {
-	err := k.ring.Remove(key)
+func (s *authTokenStorage) DeleteAuthToken() error {
+	err := s.ring.Remove(keyringAuthTokenKey)
 	if errors.Is(err, keyring.ErrKeyNotFound) || os.IsNotExist(err) {
 		return nil
 	}

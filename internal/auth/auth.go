@@ -12,18 +12,18 @@ import (
 )
 
 type Auth struct {
-	keyring      Keyring
+	tokenStorage AuthTokenStorage
 	browserLogin LoginProvider
 	sink         output.Sink
 }
 
 func New(sink output.Sink, platformClient api.PlatformAPI) (*Auth, error) {
-	kr, err := newSystemKeyring()
+	storage, err := newAuthTokenStorage()
 	if err != nil {
 		return nil, err
 	}
 	return &Auth{
-		keyring:      kr,
+		tokenStorage: storage,
 		browserLogin: newBrowserLogin(sink, platformClient),
 		sink:         sink,
 	}, nil
@@ -31,7 +31,7 @@ func New(sink output.Sink, platformClient api.PlatformAPI) (*Auth, error) {
 
 // GetToken tries in order: 1) keyring 2) LOCALSTACK_AUTH_TOKEN env var 3) browser login
 func (a *Auth) GetToken(ctx context.Context) (string, error) {
-	if token, err := a.keyring.Get(keyringAuthTokenKey); err == nil && token != "" {
+	if token, err := a.tokenStorage.GetAuthToken(); err == nil && token != "" {
 		return token, nil
 	}
 
@@ -46,7 +46,7 @@ func (a *Auth) GetToken(ctx context.Context) (string, error) {
 		return "", err
 	}
 
-	if err := a.keyring.Set(keyringAuthTokenKey, token); err != nil {
+	if err := a.tokenStorage.SetAuthToken(token); err != nil {
 		output.EmitWarning(a.sink, fmt.Sprintf("could not store token in keyring: %v", err))
 	}
 
@@ -56,7 +56,7 @@ func (a *Auth) GetToken(ctx context.Context) (string, error) {
 
 // Logout removes the stored auth token from the keyring
 func (a *Auth) Logout() error {
-	err := a.keyring.Delete(keyringAuthTokenKey)
+	err := a.tokenStorage.DeleteAuthToken()
 	if errors.Is(err, keyring.ErrKeyNotFound) {
 		return nil
 	}
