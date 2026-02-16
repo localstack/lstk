@@ -28,12 +28,18 @@ func Run(parentCtx context.Context, rt runtime.Runtime, version string, platform
 	ctx, cancel := context.WithCancel(parentCtx)
 	defer cancel()
 
-	app := NewApp(version, cancel)
+	enterCh := make(chan struct{}, 1)
+	app := NewApp(version, cancel, func() {
+		select {
+		case enterCh <- struct{}{}:
+		default:
+		}
+	})
 	p := tea.NewProgram(app)
 	runErrCh := make(chan error, 1)
 
 	go func() {
-		err := container.Start(ctx, rt, output.NewTUISink(programSender{p: p}), platformClient)
+		err := container.Start(ctx, rt, output.NewTUISink(programSender{p: p}), platformClient, enterCh)
 		runErrCh <- err
 		if err != nil {
 			if errors.Is(err, context.Canceled) {

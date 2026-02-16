@@ -24,7 +24,19 @@ func New(sink output.Sink, platformClient api.PlatformAPI) (*Auth, error) {
 	}
 	return &Auth{
 		tokenStorage: storage,
-		browserLogin: newBrowserLogin(sink, platformClient),
+		browserLogin: newBrowserLogin(sink, platformClient, nil),
+		sink:         sink,
+	}, nil
+}
+
+func NewWithEnterSignal(sink output.Sink, platformClient api.PlatformAPI, enterSignal <-chan struct{}) (*Auth, error) {
+	storage, err := newAuthTokenStorage()
+	if err != nil {
+		return nil, err
+	}
+	return &Auth{
+		tokenStorage: storage,
+		browserLogin: newBrowserLogin(sink, platformClient, enterSignal),
 		sink:         sink,
 	}, nil
 }

@@ -19,17 +19,19 @@ type runErrMsg struct {
 }
 
 type App struct {
-	header components.Header
-	lines  []string
-	cancel func()
-	err    error
+	header  components.Header
+	lines   []string
+	cancel  func()
+	onEnter func()
+	err     error
 }
 
-func NewApp(version string, cancel func()) App {
+func NewApp(version string, cancel func(), onEnter func()) App {
 	return App{
-		header: components.NewHeader(version),
-		lines:  make([]string, 0, maxLines),
-		cancel: cancel,
+		header:  components.NewHeader(version),
+		lines:   make([]string, 0, maxLines),
+		cancel:  cancel,
+		onEnter: onEnter,
 	}
 }
 
@@ -46,6 +48,11 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			a.err = context.Canceled
 			return a, tea.Quit
+		}
+		if msg.Type == tea.KeyEnter {
+			if a.onEnter != nil {
+				a.onEnter()
+			}
 		}
 	case runDoneMsg:
 		return a, tea.Quit

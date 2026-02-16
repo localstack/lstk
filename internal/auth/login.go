@@ -25,12 +25,14 @@ type LoginProvider interface {
 type browserLogin struct {
 	platformClient api.PlatformAPI
 	sink           output.Sink
+	enterSignal    <-chan struct{}
 }
 
-func newBrowserLogin(sink output.Sink, platformClient api.PlatformAPI) *browserLogin {
+func newBrowserLogin(sink output.Sink, platformClient api.PlatformAPI, enterSignal <-chan struct{}) *browserLogin {
 	return &browserLogin{
 		platformClient: platformClient,
 		sink:           sink,
+		enterSignal:    enterSignal,
 	}
 }
 
@@ -76,7 +78,12 @@ func (b *browserLogin) Login(ctx context.Context) (string, error) {
 		}
 	}()
 
-	enterCh := make(chan struct{}, 1)
+	enterCh := b.enterSignal
+	if enterCh == nil {
+		enterCh = stdinEnterSignal()
+	} else {
+		drainEnterSignal(enterCh)
+	}
 
 	// Device flow as fallback
 	authReq, err := b.platformClient.CreateAuthRequest(ctx)
@@ -99,13 +106,6 @@ func (b *browserLogin) Login(ctx context.Context) (string, error) {
 	output.EmitLog(b.sink, fmt.Sprintf("Verification code: %s", authReq.Code))
 	output.EmitLog(b.sink, "Waiting for authentication... (Press ENTER when complete)")
 
-	// Listen for ENTER key in background
-	go func() {
-		reader := bufio.NewReader(os.Stdin)
-		_, _ = reader.ReadString('\n')
-		enterCh <- struct{}{}
-	}()
-
 	// Wait for either browser callback, ENTER key, or context cancellation
 	select {
 	case token := <-tokenCh:
@@ -117,6 +117,26 @@ func (b *browserLogin) Login(ctx context.Context) (string, error) {
 		return b.completeDeviceFlow(ctx, authReq)
 	case <-ctx.Done():
 		return "", ctx.Err()
+	}
+}
+
+func stdinEnterSignal() <-chan struct{} {
+	ch := make(chan struct{}, 1)
+	go func() {
+		reader := bufio.NewReader(os.Stdin)
+		_, _ = reader.ReadString('\n')
+		ch <- struct{}{}
+	}()
+	return ch
+}
+
+func drainEnterSignal(ch <-chan struct{}) {
+	for {
+		select {
+		case <-ch:
+		default:
+			return
+		}
 	}
 }
 

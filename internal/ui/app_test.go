@@ -12,7 +12,7 @@ import (
 func TestAppAddsFormattedLinesInOrder(t *testing.T) {
 	t.Parallel()
 
-	app := NewApp("dev", nil)
+	app := NewApp("dev", nil, nil)
 	model, _ := app.Update(output.LogEvent{Message: "first"})
 	app = model.(App)
 	model, _ = app.Update(output.WarningEvent{Message: "second"})
@@ -30,7 +30,7 @@ func TestAppAddsFormattedLinesInOrder(t *testing.T) {
 func TestAppBoundsMessageHistory(t *testing.T) {
 	t.Parallel()
 
-	app := NewApp("dev", nil)
+	app := NewApp("dev", nil, nil)
 	for i := 0; i < maxLines+5; i++ {
 		model, _ := app.Update(output.LogEvent{Message: "line"})
 		app = model.(App)
@@ -44,7 +44,7 @@ func TestAppQuitCancelsContext(t *testing.T) {
 	t.Parallel()
 
 	cancelled := false
-	app := NewApp("dev", func() { cancelled = true })
+	app := NewApp("dev", func() { cancelled = true }, nil)
 	model, cmd := app.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
 	app = model.(App)
 
@@ -56,5 +56,19 @@ func TestAppQuitCancelsContext(t *testing.T) {
 	}
 	if app.Err() != context.Canceled {
 		t.Fatalf("expected context canceled error, got %v", app.Err())
+	}
+}
+
+func TestAppEnterSignals(t *testing.T) {
+	t.Parallel()
+
+	signals := 0
+	app := NewApp("dev", nil, func() { signals++ })
+
+	model, _ := app.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	app = model.(App)
+
+	if signals != 1 {
+		t.Fatalf("expected one enter signal, got %d", signals)
 	}
 }

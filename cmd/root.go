@@ -58,5 +58,5 @@ func runStart(ctx context.Context, rt runtime.Runtime) error {
 	if ui.IsInteractive() {
 		return ui.Run(ctx, rt, version, platformClient)
 	}
-	return container.Start(ctx, rt, output.NewPlainSink(os.Stdout), platformClient)
+	return container.Start(ctx, rt, output.NewPlainSink(os.Stdout), platformClient, nil)
 }
