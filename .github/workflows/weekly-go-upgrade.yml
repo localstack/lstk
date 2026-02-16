@@ -29,7 +29,7 @@ jobs:
           go mod tidy
 
       - name: Create pull request
-        uses: peter-evans/create-pull-request@v7
+        uses: peter-evans/create-pull-request@v8
         with:
           branch: chore/weekly-go-upgrade
           author: "LocalStack Bot <localstack-bot@users.noreply.github.com>"
