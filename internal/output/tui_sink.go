@@ -1,6 +1,6 @@
 package output
 
-// Sender is implemented by bubbletea Program and test doubles.
+// Sender abstracts Bubble Tea's Program.Send to keep TUISink decoupled and testable.
 type Sender interface {
 	Send(msg any)
 }
