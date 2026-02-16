@@ -40,44 +40,44 @@ func (m *MockKeyring) EXPECT() *MockKeyringMockRecorder {
 }
 
 // Delete mocks base method.
-func (m *MockKeyring) Delete(service, user string) error {
+func (m *MockKeyring) Delete(key string) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Delete", service, user)
+	ret := m.ctrl.Call(m, "Delete", key)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // Delete indicates an expected call of Delete.
-func (mr *MockKeyringMockRecorder) Delete(service, user any) *gomock.Call {
+func (mr *MockKeyringMockRecorder) Delete(key any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Delete", reflect.TypeOf((*MockKeyring)(nil).Delete), service, user)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Delete", reflect.TypeOf((*MockKeyring)(nil).Delete), key)
 }
 
 // Get mocks base method.
-func (m *MockKeyring) Get(service, user string) (string, error) {
+func (m *MockKeyring) Get(key string) (string, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Get", service, user)
+	ret := m.ctrl.Call(m, "Get", key)
 	ret0, _ := ret[0].(string)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // Get indicates an expected call of Get.
-func (mr *MockKeyringMockRecorder) Get(service, user any) *gomock.Call {
+func (mr *MockKeyringMockRecorder) Get(key any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Get", reflect.TypeOf((*MockKeyring)(nil).Get), service, user)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Get", reflect.TypeOf((*MockKeyring)(nil).Get), key)
 }
 
 // Set mocks base method.
-func (m *MockKeyring) Set(service, user, password string) error {
+func (m *MockKeyring) Set(key, password string) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Set", service, user, password)
+	ret := m.ctrl.Call(m, "Set", key, password)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // Set indicates an expected call of Set.
-func (mr *MockKeyringMockRecorder) Set(service, user, password any) *gomock.Call {
+func (mr *MockKeyringMockRecorder) Set(key, password any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Set", reflect.TypeOf((*MockKeyring)(nil).Set), service, user, password)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Set", reflect.TypeOf((*MockKeyring)(nil).Set), key, password)
 }

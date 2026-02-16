@@ -16,6 +16,14 @@ import (
 	"github.com/docker/docker/client"
 )
 
+const (
+	keyringService        = "lstk"
+	keyringAuthTokenKey   = "lstk.auth-token"
+	keyringPassword       = "lstk-keyring"
+	keyringFilename       = "keyring"
+	keyringAuthTokenLabel = "lstk auth token"
+)
+
 func binaryPath() string {
 	if runtime.GOOS == "windows" {
 		return "../../bin/lstk.exe"
@@ -46,10 +54,10 @@ func TestMain(m *testing.M) {
 	}
 
 	keyringConfig := keyring.Config{
-		ServiceName: "localstack",
-		FileDir:     filepath.Join(configDir(), "keyring"),
+		ServiceName: keyringService,
+		FileDir:     filepath.Join(configDir(), keyringFilename),
 		FilePasswordFunc: func(prompt string) (string, error) {
-			return "localstack-keyring", nil
+			return keyringPassword, nil
 		},
 	}
 
@@ -95,26 +103,24 @@ func envWithout(keys ...string) []string {
 	return env
 }
 
-func keyringGet(service, user string) (string, error) {
-	key := fmt.Sprintf("%s/%s", service, user)
-	item, err := ring.Get(key)
+func GetAuthTokenFromKeyring() (string, error) {
+	item, err := ring.Get(keyringAuthTokenKey)
 	if err != nil {
 		return "", err
 	}
 	return string(item.Data), nil
 }
 
-func keyringSet(service, user, password string) error {
-	key := fmt.Sprintf("%s/%s", service, user)
+func SetAuthTokenInKeyring(password string) error {
 	return ring.Set(keyring.Item{
-		Key:  key,
-		Data: []byte(password),
+		Key:   keyringAuthTokenKey,
+		Data:  []byte(password),
+		Label: keyringAuthTokenLabel,
 	})
 }
 
-func keyringDelete(service, user string) error {
-	key := fmt.Sprintf("%s/%s", service, user)
-	err := ring.Remove(key)
+func DeleteAuthTokenFromKeyring() error {
+	err := ring.Remove(keyringAuthTokenKey)
 	if errors.Is(err, keyring.ErrKeyNotFound) || os.IsNotExist(err) {
 		return nil
 	}

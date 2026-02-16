@@ -36,11 +36,11 @@ func TestGetToken_ReturnsTokenWhenKeyringStoreFails(t *testing.T) {
 	}
 
 	// Keyring returns empty (no stored token)
-	mockKeyring.EXPECT().Get(keyringService, keyringUser).Return("", errors.New("not found"))
+	mockKeyring.EXPECT().Get(keyringAuthTokenKey).Return("", errors.New("not found"))
 	// Login succeeds
 	mockLogin.EXPECT().Login(gomock.Any()).Return("test-token", nil)
 	// Setting token in keyring fails
-	mockKeyring.EXPECT().Set(keyringService, keyringUser, "test-token").Return(errors.New("keyring unavailable"))
+	mockKeyring.EXPECT().Set(keyringAuthTokenKey, "test-token").Return(errors.New("keyring unavailable"))
 
 	token, err := auth.GetToken(context.Background())
 

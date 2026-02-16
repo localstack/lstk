@@ -12,11 +12,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-const (
-	keyringService = "localstack"
-	keyringUser    = "auth-token"
-)
-
 const containerName = "localstack-aws"
 
 func TestStartCommandSucceedsWithValidToken(t *testing.T) {
@@ -54,7 +49,7 @@ func TestStartCommandSucceedsWithKeyringToken(t *testing.T) {
 	// Store token in keyring before running command
 	authToken := os.Getenv("LOCALSTACK_AUTH_TOKEN")
 	require.NotEmpty(t, authToken, "LOCALSTACK_AUTH_TOKEN must be set to run this test")
-	err := keyringSet(keyringService, keyringUser, authToken)
+	err := SetAuthTokenInKeyring(authToken)
 	require.NoError(t, err, "failed to store token in keyring")
 
 	mockServer := createMockLicenseServer(true)
@@ -104,5 +99,5 @@ func cleanup() {
 	ctx := context.Background()
 	_ = dockerClient.ContainerStop(ctx, containerName, container.StopOptions{})
 	_ = dockerClient.ContainerRemove(ctx, containerName, container.RemoveOptions{Force: true})
-	_ = keyringDelete(keyringService, keyringUser)
+	_ = DeleteAuthTokenFromKeyring()
 }

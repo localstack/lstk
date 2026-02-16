@@ -116,7 +116,7 @@ func TestDeviceFlowSuccess(t *testing.T) {
 		assert.Contains(t, output, "Login successful")
 
 		// Verify token was stored in keyring
-		storedToken, err := keyringGet(keyringService, keyringUser)
+		storedToken, err := GetAuthTokenFromKeyring()
 		require.NoError(t, err)
 		assert.Equal(t, licenseToken, storedToken)
 
@@ -171,7 +171,7 @@ func TestDeviceFlowFailure_RequestNotConfirmed(t *testing.T) {
 		assert.Contains(t, output, "auth request not confirmed")
 
 		// Verify no token was stored in keyring
-		_, err := keyringGet(keyringService, keyringUser)
+		_, err := GetAuthTokenFromKeyring()
 		assert.Error(t, err, "no token should be stored when login fails")
 
 	case <-time.After(10 * time.Second):

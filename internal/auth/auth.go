@@ -31,7 +31,7 @@ func New(sink output.Sink, platformClient api.PlatformAPI) (*Auth, error) {
 
 // GetToken tries in order: 1) keyring 2) LOCALSTACK_AUTH_TOKEN env var 3) browser login
 func (a *Auth) GetToken(ctx context.Context) (string, error) {
-	if token, err := a.keyring.Get(keyringService, keyringUser); err == nil && token != "" {
+	if token, err := a.keyring.Get(keyringAuthTokenKey); err == nil && token != "" {
 		return token, nil
 	}
 
@@ -46,7 +46,7 @@ func (a *Auth) GetToken(ctx context.Context) (string, error) {
 		return "", err
 	}
 
-	if err := a.keyring.Set(keyringService, keyringUser, token); err != nil {
+	if err := a.keyring.Set(keyringAuthTokenKey, token); err != nil {
 		output.EmitWarning(a.sink, fmt.Sprintf("could not store token in keyring: %v", err))
 	}
 
@@ -56,7 +56,7 @@ func (a *Auth) GetToken(ctx context.Context) (string, error) {
 
 // Logout removes the stored auth token from the keyring
 func (a *Auth) Logout() error {
-	err := a.keyring.Delete(keyringService, keyringUser)
+	err := a.keyring.Delete(keyringAuthTokenKey)
 	if errors.Is(err, keyring.ErrKeyNotFound) {
 		return nil
 	}

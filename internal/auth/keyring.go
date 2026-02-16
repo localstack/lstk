@@ -13,14 +13,17 @@ import (
 )
 
 const (
-	keyringService = "localstack"
-	keyringUser    = "auth-token"
+	keyringService        = "lstk"
+	keyringAuthTokenKey   = "lstk.auth-token"
+	keyringPassword       = "lstk-keyring"
+	keyringFilename       = "keyring"
+	keyringAuthTokenLabel = "lstk auth token"
 )
 
 type Keyring interface {
-	Get(service, user string) (string, error)
-	Set(service, user, password string) error
-	Delete(service, user string) error
+	Get(key string) (string, error)
+	Set(key, password string) error
+	Delete(key string) error
 }
 
 type systemKeyring struct {
@@ -35,9 +38,9 @@ func newSystemKeyring() (*systemKeyring, error) {
 
 	keyringConfig := keyring.Config{
 		ServiceName: keyringService,
-		FileDir:     filepath.Join(configDir, "keyring"),
+		FileDir:     filepath.Join(configDir, keyringFilename),
 		FilePasswordFunc: func(prompt string) (string, error) {
-			return "localstack-keyring", nil
+			return keyringPassword, nil
 		},
 	}
 
@@ -58,8 +61,8 @@ func newSystemKeyring() (*systemKeyring, error) {
 	return &systemKeyring{ring: ring}, nil
 }
 
-func (k *systemKeyring) Get(service, user string) (string, error) {
-	item, err := k.ring.Get(k.makeKey(service, user))
+func (k *systemKeyring) Get(key string) (string, error) {
+	item, err := k.ring.Get(key)
 	if err != nil {
 		if errors.Is(err, keyring.ErrKeyNotFound) {
 			return "", fmt.Errorf("credential not found")
@@ -69,21 +72,18 @@ func (k *systemKeyring) Get(service, user string) (string, error) {
 	return string(item.Data), nil
 }
 
-func (k *systemKeyring) Set(service, user, password string) error {
+func (k *systemKeyring) Set(key, password string) error {
 	return k.ring.Set(keyring.Item{
-		Key:  k.makeKey(service, user),
-		Data: []byte(password),
+		Key:   key,
+		Data:  []byte(password),
+		Label: keyringAuthTokenLabel,
 	})
 }
 
-func (k *systemKeyring) Delete(service, user string) error {
-	err := k.ring.Remove(k.makeKey(service, user))
+func (k *systemKeyring) Delete(key string) error {
+	err := k.ring.Remove(key)
 	if errors.Is(err, keyring.ErrKeyNotFound) || os.IsNotExist(err) {
 		return nil
 	}
 	return err
-}
-
-func (k *systemKeyring) makeKey(service, user string) string {
-	return fmt.Sprintf("%s/%s", service, user)
 }
