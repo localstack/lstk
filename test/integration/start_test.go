@@ -27,11 +27,16 @@ func TestStartCommandSucceedsWithValidToken(t *testing.T) {
 	cleanup()
 	t.Cleanup(cleanup)
 
+	mockServer := createMockLicenseServer(true)
+	defer mockServer.Close()
+
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, binaryPath(), "start")
-	cmd.Env = append(os.Environ(), "LOCALSTACK_AUTH_TOKEN="+authToken)
+	cmd.Env = append(os.Environ(),
+		"LOCALSTACK_API_ENDPOINT="+mockServer.URL,
+	)
 	output, err := cmd.CombinedOutput()
 
 	require.NoError(t, err, "lstk start failed: %s", output)
@@ -52,12 +57,18 @@ func TestStartCommandSucceedsWithKeyringToken(t *testing.T) {
 	err := keyringSet(keyringService, keyringUser, authToken)
 	require.NoError(t, err, "failed to store token in keyring")
 
+	mockServer := createMockLicenseServer(true)
+	defer mockServer.Close()
+
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 
 	// Run without LOCALSTACK_AUTH_TOKEN should use keyring
 	cmd := exec.CommandContext(ctx, binaryPath(), "start")
-	cmd.Env = envWithoutAuthToken()
+	cmd.Env = append(
+		envWithout("LOCALSTACK_AUTH_TOKEN"),
+		"LOCALSTACK_API_ENDPOINT="+mockServer.URL,
+	)
 	output, err := cmd.CombinedOutput()
 
 	require.NoError(t, err, "lstk start failed: %s", output)
@@ -72,15 +83,21 @@ func TestStartCommandFailsWithInvalidToken(t *testing.T) {
 	cleanup()
 	t.Cleanup(cleanup)
 
+	mockServer := createMockLicenseServer(false)
+	defer mockServer.Close()
+
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, binaryPath(), "start")
-	cmd.Env = append(os.Environ(), "LOCALSTACK_AUTH_TOKEN=invalid-token")
+	cmd.Env = append(os.Environ(),
+		"LOCALSTACK_AUTH_TOKEN=invalid-token",
+		"LOCALSTACK_API_ENDPOINT="+mockServer.URL,
+	)
 	output, err := cmd.CombinedOutput()
 
 	require.Error(t, err, "expected lstk start to fail with invalid token")
-	assert.Contains(t, string(output), "License activation failed")
+	assert.Contains(t, string(output), "license validation failed")
 }
 
 func cleanup() {

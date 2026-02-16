@@ -16,7 +16,7 @@ import (
 )
 
 // createMockAPIServer creates a mock LocalStack API server for testing
-func createMockAPIServer(t *testing.T, licenseToken string) *httptest.Server {
+func createMockAPIServer(t *testing.T, licenseToken string, confirmed bool) *httptest.Server {
 	authReqID := "test-auth-req-id"
 	exchangeToken := "test-exchange-token"
 	bearerToken := "Bearer test-bearer-token"
@@ -35,7 +35,7 @@ func createMockAPIServer(t *testing.T, licenseToken string) *httptest.Server {
 		case r.Method == "GET" && r.URL.Path == fmt.Sprintf("/v1/auth/request/%s", authReqID):
 			w.WriteHeader(http.StatusOK)
 			err := json.NewEncoder(w).Encode(map[string]bool{
-				"confirmed": true,
+				"confirmed": confirmed,
 			})
 			require.NoError(t, err)
 
@@ -54,6 +54,9 @@ func createMockAPIServer(t *testing.T, licenseToken string) *httptest.Server {
 			})
 			require.NoError(t, err)
 
+		case r.Method == "POST" && r.URL.Path == "/v1/license/request":
+			w.WriteHeader(http.StatusOK)
+
 		default:
 			t.Logf("Unhandled request: %s %s", r.Method, r.URL.Path)
 			w.WriteHeader(http.StatusNotFound)
@@ -70,16 +73,17 @@ func TestDeviceFlowSuccess(t *testing.T) {
 	require.NotEmpty(t, licenseToken, "LOCALSTACK_AUTH_TOKEN must be set to run this test")
 
 	// Create mock API server that returns the real token
-	mockServer := createMockAPIServer(t, licenseToken)
+	mockServer := createMockAPIServer(t, licenseToken, true)
 	defer mockServer.Close()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, binaryPath(), "login")
-	env := envWithoutAuthToken()
-	env = append(env, "LOCALSTACK_API_ENDPOINT="+mockServer.URL)
-	cmd.Env = env
+	cmd.Env = append(
+		envWithout("LOCALSTACK_AUTH_TOKEN"),
+		"LOCALSTACK_API_ENDPOINT="+mockServer.URL,
+	)
 
 	// Keep stdin open and get the pipe to simulate ENTER
 	stdinPipe, err := cmd.StdinPipe()
@@ -126,11 +130,17 @@ func TestDeviceFlowFailure_RequestNotConfirmed(t *testing.T) {
 	cleanup()
 	t.Cleanup(cleanup)
 
+	mockServer := createMockAPIServer(t, "", false)
+	defer mockServer.Close()
+
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, binaryPath(), "login")
-	cmd.Env = envWithoutAuthToken()
+	cmd.Env = append(
+		envWithout("LOCALSTACK_AUTH_TOKEN"),
+		"LOCALSTACK_API_ENDPOINT="+mockServer.URL,
+	)
 
 	// Keep stdin open and get the pipe to simulate ENTER
 	stdinPipe, err := cmd.StdinPipe()

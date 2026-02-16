@@ -2,7 +2,9 @@ package integration_test
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
+	"net/http/httptest"
 	"os/exec"
 	"testing"
 	"time"
@@ -15,11 +17,32 @@ func TestBrowserFlowStoresToken(t *testing.T) {
 	cleanup()
 	t.Cleanup(cleanup)
 
+	// Mock server that handles both auth and license endpoints
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == "POST" && r.URL.Path == "/v1/auth/request":
+			w.WriteHeader(http.StatusCreated)
+			_ = json.NewEncoder(w).Encode(map[string]string{
+				"id":             "test-id",
+				"code":           "TEST123",
+				"exchange_token": "test-exchange",
+			})
+		case r.Method == "POST" && r.URL.Path == "/v1/license/request":
+			w.WriteHeader(http.StatusOK)
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer mockServer.Close()
+
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, binaryPath(), "login")
-	cmd.Env = envWithoutAuthToken()
+	cmd.Env = append(
+		envWithout("LOCALSTACK_AUTH_TOKEN"),
+		"LOCALSTACK_API_ENDPOINT="+mockServer.URL,
+	)
 
 	// Keep stdin open so ENTER listener doesn't trigger immediately
 	stdinPipe, err := cmd.StdinPipe()

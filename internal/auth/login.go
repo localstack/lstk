@@ -27,9 +27,9 @@ type browserLogin struct {
 	sink           output.Sink
 }
 
-func newBrowserLogin(sink output.Sink) *browserLogin {
+func newBrowserLogin(sink output.Sink, platformClient api.PlatformAPI) *browserLogin {
 	return &browserLogin{
-		platformClient: api.NewPlatformClient(),
+		platformClient: platformClient,
 		sink:           sink,
 	}
 }
