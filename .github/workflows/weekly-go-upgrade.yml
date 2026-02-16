@@ -43,4 +43,3 @@ jobs:
             - Runs `go mod tidy` to keep module files consistent.
           labels: dependencies
           token: ${{ secrets.PRO_ACCESS_TOKEN }}
-          reviewers: silv-io,carole-lavillonniere
