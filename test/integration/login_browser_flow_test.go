@@ -70,7 +70,7 @@ func TestBrowserFlowStoresToken(t *testing.T) {
 	assert.Contains(t, string(out), "Login successful")
 
 	// Verify token was stored in keyring
-	storedToken, err := keyringGet(keyringService, keyringUser)
+	storedToken, err := GetAuthTokenFromKeyring()
 	require.NoError(t, err, "token should be stored in keyring")
 	assert.Equal(t, "mock-token", storedToken)
 }

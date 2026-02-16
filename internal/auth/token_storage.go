@@ -1,6 +1,6 @@
 package auth
 
-//go:generate mockgen -source=keyring.go -destination=mock_keyring_test.go -package=auth
+//go:generate mockgen -source=token_storage.go -destination=mock_token_storage_test.go -package=auth
 
 import (
 	"errors"
@@ -13,21 +13,24 @@ import (
 )
 
 const (
-	keyringService = "localstack"
-	keyringUser    = "auth-token"
+	keyringService        = "lstk"
+	keyringAuthTokenKey   = "lstk.auth-token"
+	keyringPassword       = "lstk-keyring"
+	keyringFilename       = "keyring"
+	keyringAuthTokenLabel = "lstk auth token"
 )
 
-type Keyring interface {
-	Get(service, user string) (string, error)
-	Set(service, user, password string) error
-	Delete(service, user string) error
+type AuthTokenStorage interface {
+	GetAuthToken() (string, error)
+	SetAuthToken(token string) error
+	DeleteAuthToken() error
 }
 
-type systemKeyring struct {
+type authTokenStorage struct {
 	ring keyring.Keyring
 }
 
-func newSystemKeyring() (*systemKeyring, error) {
+func newAuthTokenStorage() (*authTokenStorage, error) {
 	configDir, err := config.ConfigDir()
 	if err != nil {
 		return nil, err
@@ -35,9 +38,9 @@ func newSystemKeyring() (*systemKeyring, error) {
 
 	keyringConfig := keyring.Config{
 		ServiceName: keyringService,
-		FileDir:     filepath.Join(configDir, "keyring"),
+		FileDir:     filepath.Join(configDir, keyringFilename),
 		FilePasswordFunc: func(prompt string) (string, error) {
-			return "localstack-keyring", nil
+			return keyringPassword, nil
 		},
 	}
 
@@ -55,11 +58,11 @@ func newSystemKeyring() (*systemKeyring, error) {
 		}
 	}
 
-	return &systemKeyring{ring: ring}, nil
+	return &authTokenStorage{ring: ring}, nil
 }
 
-func (k *systemKeyring) Get(service, user string) (string, error) {
-	item, err := k.ring.Get(k.makeKey(service, user))
+func (s *authTokenStorage) GetAuthToken() (string, error) {
+	item, err := s.ring.Get(keyringAuthTokenKey)
 	if err != nil {
 		if errors.Is(err, keyring.ErrKeyNotFound) {
 			return "", fmt.Errorf("credential not found")
@@ -69,21 +72,18 @@ func (k *systemKeyring) Get(service, user string) (string, error) {
 	return string(item.Data), nil
 }
 
-func (k *systemKeyring) Set(service, user, password string) error {
-	return k.ring.Set(keyring.Item{
-		Key:  k.makeKey(service, user),
-		Data: []byte(password),
+func (s *authTokenStorage) SetAuthToken(token string) error {
+	return s.ring.Set(keyring.Item{
+		Key:   keyringAuthTokenKey,
+		Data:  []byte(token),
+		Label: keyringAuthTokenLabel,
 	})
 }
 
-func (k *systemKeyring) Delete(service, user string) error {
-	err := k.ring.Remove(k.makeKey(service, user))
+func (s *authTokenStorage) DeleteAuthToken() error {
+	err := s.ring.Remove(keyringAuthTokenKey)
 	if errors.Is(err, keyring.ErrKeyNotFound) || os.IsNotExist(err) {
 		return nil
 	}
 	return err
-}
-
-func (k *systemKeyring) makeKey(service, user string) string {
-	return fmt.Sprintf("%s/%s", service, user)
 }

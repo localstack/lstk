@@ -12,13 +12,13 @@ import (
 
 func TestLogoutCommandRemovesToken(t *testing.T) {
 	// Clean up any existing token
-	_ = keyringDelete(keyringService, keyringUser)
+	_ = DeleteAuthTokenFromKeyring()
 	t.Cleanup(func() {
-		_ = keyringDelete(keyringService, keyringUser)
+		_ = DeleteAuthTokenFromKeyring()
 	})
 
 	// Store a token in keyring
-	err := keyringSet(keyringService, keyringUser, "test-token")
+	err := SetAuthTokenInKeyring("test-token")
 	require.NoError(t, err, "failed to store token in keyring")
 
 	// Run logout command
@@ -32,13 +32,13 @@ func TestLogoutCommandRemovesToken(t *testing.T) {
 	assert.Contains(t, string(output), "Logged out successfully")
 
 	// Verify token was removed
-	_, err = keyringGet(keyringService, keyringUser)
+	_, err = GetAuthTokenFromKeyring()
 	assert.Error(t, err, "token should be removed from keyring")
 }
 
 func TestLogoutCommandSucceedsWhenNoToken(t *testing.T) {
 	// Ensure no token exists
-	_ = keyringDelete(keyringService, keyringUser)
+	_ = DeleteAuthTokenFromKeyring()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()

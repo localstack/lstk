@@ -21,7 +21,7 @@ func TestMain(m *testing.M) {
 // we log a warning but still return the token obtained from login.
 func TestGetToken_ReturnsTokenWhenKeyringStoreFails(t *testing.T) {
 	ctrl := gomock.NewController(t)
-	mockKeyring := NewMockKeyring(ctrl)
+	mockStorage := NewMockAuthTokenStorage(ctrl)
 	mockLogin := NewMockLoginProvider(ctrl)
 
 	var events []any
@@ -30,17 +30,17 @@ func TestGetToken_ReturnsTokenWhenKeyringStoreFails(t *testing.T) {
 	})
 
 	auth := &Auth{
-		keyring:      mockKeyring,
+		tokenStorage: mockStorage,
 		browserLogin: mockLogin,
 		sink:         sink,
 	}
 
 	// Keyring returns empty (no stored token)
-	mockKeyring.EXPECT().Get(keyringService, keyringUser).Return("", errors.New("not found"))
+	mockStorage.EXPECT().GetAuthToken().Return("", errors.New("not found"))
 	// Login succeeds
 	mockLogin.EXPECT().Login(gomock.Any()).Return("test-token", nil)
 	// Setting token in keyring fails
-	mockKeyring.EXPECT().Set(keyringService, keyringUser, "test-token").Return(errors.New("keyring unavailable"))
+	mockStorage.EXPECT().SetAuthToken("test-token").Return(errors.New("keyring unavailable"))
 
 	token, err := auth.GetToken(context.Background())
 
