@@ -4,10 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
 
 	"github.com/99designs/keyring"
 	"github.com/localstack/lstk/internal/api"
+	"github.com/localstack/lstk/internal/env"
 	"github.com/localstack/lstk/internal/output"
 )
 
@@ -33,7 +33,7 @@ func (a *Auth) GetToken(ctx context.Context) (string, error) {
 		return token, nil
 	}
 
-	if token := os.Getenv("LOCALSTACK_AUTH_TOKEN"); token != "" {
+	if token := env.Vars.AuthToken; token != "" {
 		return token, nil
 	}
 

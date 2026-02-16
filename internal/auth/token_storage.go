@@ -10,6 +10,7 @@ import (
 
 	"github.com/99designs/keyring"
 	"github.com/localstack/lstk/internal/config"
+	"github.com/localstack/lstk/internal/env"
 )
 
 const (
@@ -45,7 +46,7 @@ func NewTokenStorage() (AuthTokenStorage, error) {
 	}
 
 	// Force file backend if KEYRING env var is set to "file"
-	if os.Getenv("KEYRING") == "file" {
+	if env.Vars.Keyring == "file" {
 		keyringConfig.AllowedBackends = []keyring.BackendType{keyring.FileBackend}
 	}
 

@@ -8,6 +8,7 @@ import (
 	"github.com/localstack/lstk/internal/api"
 	"github.com/localstack/lstk/internal/config"
 	"github.com/localstack/lstk/internal/container"
+	"github.com/localstack/lstk/internal/env"
 	"github.com/localstack/lstk/internal/output"
 	"github.com/localstack/lstk/internal/runtime"
 	"github.com/localstack/lstk/internal/ui"
@@ -27,6 +28,7 @@ var rootCmd = &cobra.Command{
 		if cmd.Name() == "version" {
 			return nil
 		}
+		env.Init()
 		return config.Init()
 	},
 	Run: func(cmd *cobra.Command, args []string) {

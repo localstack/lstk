@@ -107,6 +107,7 @@ func requireDocker(t *testing.T) {
 		t.Skip("Docker is not available")
 	}
 	// Skip Docker tests on Windows (GitHub Actions doesn't support Linux containers)
+	// Note: CI env var is not in config.GetEnv() as it's a standard CI environment variable
 	if runtime.GOOS == "windows" && os.Getenv("CI") != "" {
 		t.Skip("Docker tests not supported on Windows CI (nested virtualization not available)")
 	}
