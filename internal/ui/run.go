@@ -63,8 +63,5 @@ func Run(parentCtx context.Context, rt runtime.Runtime, version string, platform
 }
 
 func IsInteractive() bool {
-	if os.Getenv("LSTK_FORCE_INTERACTIVE") == "1" {
-		return true
-	}
 	return term.IsTerminal(int(os.Stdout.Fd())) && term.IsTerminal(int(os.Stdin.Fd()))
 }

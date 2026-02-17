@@ -103,13 +103,6 @@ func (b *browserLogin) Login(ctx context.Context) (string, error) {
 		ResponseCh: responseCh,
 	})
 
-	// In test mode, auto-respond to the input request
-	if os.Getenv("LSTK_TEST_AUTO_ENTER") == "1" {
-		go func() {
-			responseCh <- output.InputResponse{SelectedKey: "enter"}
-		}()
-	}
-
 	// Wait for either browser callback, user response, or context cancellation
 	select {
 	case token := <-tokenCh:

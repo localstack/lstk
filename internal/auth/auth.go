@@ -12,9 +12,10 @@ import (
 )
 
 type AuthConfig struct {
-	Sink       output.Sink
-	Platform   api.PlatformAPI
-	AllowLogin bool
+	Sink         output.Sink
+	Platform     api.PlatformAPI
+	AllowLogin   bool
+	TokenStorage AuthTokenStorage // optional, for testing
 }
 
 type Auth struct {
@@ -25,9 +26,13 @@ type Auth struct {
 }
 
 func New(cfg AuthConfig) (*Auth, error) {
-	storage, err := newAuthTokenStorage()
-	if err != nil {
-		return nil, err
+	storage := cfg.TokenStorage
+	if storage == nil {
+		var err error
+		storage, err = newAuthTokenStorage()
+		if err != nil {
+			return nil, err
+		}
 	}
 	return &Auth{
 		tokenStorage: storage,
