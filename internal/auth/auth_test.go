@@ -33,6 +33,7 @@ func TestGetToken_ReturnsTokenWhenKeyringStoreFails(t *testing.T) {
 		tokenStorage: mockStorage,
 		browserLogin: mockLogin,
 		sink:         sink,
+		allowLogin:   true,
 	}
 
 	// Keyring returns empty (no stored token)

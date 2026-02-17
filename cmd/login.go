@@ -2,11 +2,9 @@ package cmd
 
 import (
 	"fmt"
-	"os"
 
 	"github.com/localstack/lstk/internal/api"
-	"github.com/localstack/lstk/internal/auth"
-	"github.com/localstack/lstk/internal/output"
+	"github.com/localstack/lstk/internal/ui"
 	"github.com/spf13/cobra"
 )
 
@@ -15,19 +13,11 @@ var loginCmd = &cobra.Command{
 	Short: "Authenticate with LocalStack",
 	Long:  "Authenticate with LocalStack and store credentials in system keyring",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		sink := output.NewPlainSink(os.Stdout)
+		if !ui.IsInteractive() {
+			return fmt.Errorf("login requires an interactive terminal")
+		}
 		platformClient := api.NewPlatformClient()
-		a, err := auth.New(sink, platformClient)
-		if err != nil {
-			return fmt.Errorf("failed to initialize auth: %w", err)
-		}
-
-		_, err = a.GetToken(cmd.Context())
-		if err != nil {
-			return err
-		}
-
-		return nil
+		return ui.RunLogin(cmd.Context(), version, platformClient)
 	},
 }
 

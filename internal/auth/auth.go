@@ -11,37 +11,33 @@ import (
 	"github.com/localstack/lstk/internal/output"
 )
 
+type AuthConfig struct {
+	Sink       output.Sink
+	Platform   api.PlatformAPI
+	AllowLogin bool
+}
+
 type Auth struct {
 	tokenStorage AuthTokenStorage
 	browserLogin LoginProvider
 	sink         output.Sink
+	allowLogin   bool
 }
 
-func New(sink output.Sink, platformClient api.PlatformAPI) (*Auth, error) {
+func New(cfg AuthConfig) (*Auth, error) {
 	storage, err := newAuthTokenStorage()
 	if err != nil {
 		return nil, err
 	}
 	return &Auth{
 		tokenStorage: storage,
-		browserLogin: newBrowserLogin(sink, platformClient, nil),
-		sink:         sink,
+		browserLogin: newBrowserLogin(cfg.Sink, cfg.Platform),
+		sink:         cfg.Sink,
+		allowLogin:   cfg.AllowLogin,
 	}, nil
 }
 
-func NewWithEnterSignal(sink output.Sink, platformClient api.PlatformAPI, enterSignal <-chan struct{}) (*Auth, error) {
-	storage, err := newAuthTokenStorage()
-	if err != nil {
-		return nil, err
-	}
-	return &Auth{
-		tokenStorage: storage,
-		browserLogin: newBrowserLogin(sink, platformClient, enterSignal),
-		sink:         sink,
-	}, nil
-}
-
-// GetToken tries in order: 1) keyring 2) LOCALSTACK_AUTH_TOKEN env var 3) browser login
+// GetToken tries in order: 1) keyring 2) LOCALSTACK_AUTH_TOKEN env var 3) browser login (if allowed)
 func (a *Auth) GetToken(ctx context.Context) (string, error) {
 	if token, err := a.tokenStorage.GetAuthToken(); err == nil && token != "" {
 		return token, nil
@@ -49,6 +45,10 @@ func (a *Auth) GetToken(ctx context.Context) (string, error) {
 
 	if token := os.Getenv("LOCALSTACK_AUTH_TOKEN"); token != "" {
 		return token, nil
+	}
+
+	if !a.allowLogin {
+		return "", fmt.Errorf("authentication required: set LOCALSTACK_AUTH_TOKEN or run in interactive mode")
 	}
 
 	output.EmitLog(a.sink, "Authentication required. Opening browser...")

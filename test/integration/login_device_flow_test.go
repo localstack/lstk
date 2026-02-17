@@ -83,47 +83,27 @@ func TestDeviceFlowSuccess(t *testing.T) {
 	cmd.Env = append(
 		envWithout("LOCALSTACK_AUTH_TOKEN"),
 		"LOCALSTACK_API_ENDPOINT="+mockServer.URL,
+		"LSTK_FORCE_INTERACTIVE=1",
+		"LSTK_TEST_AUTO_ENTER=1",
 	)
 
-	// Keep stdin open and get the pipe to simulate ENTER
-	stdinPipe, err := cmd.StdinPipe()
+	output, err := cmd.CombinedOutput()
+	out := string(output)
+
+	require.NoError(t, err, "login should succeed: %s", out)
+	// Should show device flow instructions
+	assert.Contains(t, out, "Verification code:")
+	assert.Contains(t, out, "TEST123")
+	// Should complete device flow successfully
+	assert.Contains(t, out, "Checking if auth request is confirmed")
+	assert.Contains(t, out, "Auth request confirmed")
+	assert.Contains(t, out, "Fetching license token")
+	assert.Contains(t, out, "Login successful")
+
+	// Verify token was stored in keyring
+	storedToken, err := GetAuthTokenFromKeyring()
 	require.NoError(t, err)
-	defer func() { _ = stdinPipe.Close() }()
-
-	outputCh := make(chan []byte, 1)
-	go func() {
-		out, _ := cmd.CombinedOutput()
-		outputCh <- out
-	}()
-
-	// Wait for device flow instructions
-	time.Sleep(100 * time.Millisecond)
-
-	// Simulate pressing ENTER to trigger device flow
-	_, err = stdinPipe.Write([]byte("\n"))
-	require.NoError(t, err)
-
-	select {
-	case out := <-outputCh:
-		output := string(out)
-		// Should show device flow instructions
-		assert.Contains(t, output, "Verification code:")
-		assert.Contains(t, output, "TEST123")
-		// Should complete device flow successfully
-		assert.Contains(t, output, "Checking if auth request is confirmed")
-		assert.Contains(t, output, "Auth request confirmed")
-		assert.Contains(t, output, "Fetching license token")
-		assert.Contains(t, output, "Login successful")
-
-		// Verify token was stored in keyring
-		storedToken, err := GetAuthTokenFromKeyring()
-		require.NoError(t, err)
-		assert.Equal(t, licenseToken, storedToken)
-
-	case <-time.After(30 * time.Second):
-		cancel()
-		t.Fatal("timeout waiting for command output")
-	}
+	assert.Equal(t, licenseToken, storedToken)
 }
 
 func TestDeviceFlowFailure_RequestNotConfirmed(t *testing.T) {
@@ -140,42 +120,22 @@ func TestDeviceFlowFailure_RequestNotConfirmed(t *testing.T) {
 	cmd.Env = append(
 		envWithout("LOCALSTACK_AUTH_TOKEN"),
 		"LOCALSTACK_API_ENDPOINT="+mockServer.URL,
+		"LSTK_FORCE_INTERACTIVE=1",
+		"LSTK_TEST_AUTO_ENTER=1",
 	)
 
-	// Keep stdin open and get the pipe to simulate ENTER
-	stdinPipe, err := cmd.StdinPipe()
-	require.NoError(t, err)
-	defer func() { _ = stdinPipe.Close() }()
+	output, err := cmd.CombinedOutput()
+	out := string(output)
 
-	outputCh := make(chan []byte, 1)
-	go func() {
-		out, _ := cmd.CombinedOutput()
-		outputCh <- out
-	}()
+	require.Error(t, err, "expected login to fail when request not confirmed")
+	assert.Contains(t, out, "Verification code:")
+	assert.Contains(t, out, "Waiting for authentication")
+	assert.Contains(t, out, "Press ENTER when complete")
+	// Should attempt device flow but fail because request not confirmed
+	assert.Contains(t, out, "Checking if auth request is confirmed")
+	assert.Contains(t, out, "auth request not confirmed")
 
-	// Wait for device flow instructions to be printed
-	time.Sleep(1 * time.Second)
-
-	// Simulate pressing ENTER to trigger device flow
-	_, err = stdinPipe.Write([]byte("\n"))
-	require.NoError(t, err)
-
-	select {
-	case out := <-outputCh:
-		output := string(out)
-		assert.Contains(t, output, "Verification code:")
-		assert.Contains(t, output, "Waiting for authentication")
-		assert.Contains(t, output, "Press ENTER when complete")
-		// Should attempt device flow but fail because request not confirmed
-		assert.Contains(t, output, "Checking if auth request is confirmed")
-		assert.Contains(t, output, "auth request not confirmed")
-
-		// Verify no token was stored in keyring
-		_, err := GetAuthTokenFromKeyring()
-		assert.Error(t, err, "no token should be stored when login fails")
-
-	case <-time.After(10 * time.Second):
-		cancel()
-		t.Fatal("timeout waiting for command output")
-	}
+	// Verify no token was stored in keyring
+	_, err = GetAuthTokenFromKeyring()
+	assert.Error(t, err, "no token should be stored when login fails")
 }

@@ -7,33 +7,31 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/localstack/lstk/internal/api"
-	"github.com/localstack/lstk/internal/container"
+	"github.com/localstack/lstk/internal/auth"
 	"github.com/localstack/lstk/internal/output"
-	"github.com/localstack/lstk/internal/runtime"
-	"golang.org/x/term"
 )
 
-type programSender struct {
-	p *tea.Program
-}
-
-func (s programSender) Send(msg any) {
-	if s.p == nil {
-		return
-	}
-	s.p.Send(msg)
-}
-
-func Run(parentCtx context.Context, rt runtime.Runtime, version string, platformClient api.PlatformAPI) error {
+func RunLogin(parentCtx context.Context, version string, platformClient api.PlatformAPI) error {
 	ctx, cancel := context.WithCancel(parentCtx)
 	defer cancel()
 
 	app := NewApp(version, cancel)
-	p := tea.NewProgram(app)
+	p := tea.NewProgram(app, tea.WithInput(os.Stdin), tea.WithOutput(os.Stdout))
 	runErrCh := make(chan error, 1)
 
 	go func() {
-		err := container.Start(ctx, rt, output.NewTUISink(programSender{p: p}), platformClient, true)
+		a, err := auth.New(auth.AuthConfig{
+			Sink:       output.NewTUISink(programSender{p: p}),
+			Platform:   platformClient,
+			AllowLogin: true,
+		})
+		if err != nil {
+			runErrCh <- err
+			p.Send(runErrMsg{err: err})
+			return
+		}
+
+		_, err = a.GetToken(ctx)
 		runErrCh <- err
 		if err != nil {
 			if errors.Is(err, context.Canceled) {
@@ -60,11 +58,4 @@ func Run(parentCtx context.Context, rt runtime.Runtime, version string, platform
 	}
 
 	return nil
-}
-
-func IsInteractive() bool {
-	if os.Getenv("LSTK_FORCE_INTERACTIVE") == "1" {
-		return true
-	}
-	return term.IsTerminal(int(os.Stdout.Fd())) && term.IsTerminal(int(os.Stdin.Fd()))
 }

@@ -42,6 +42,7 @@ func TestBrowserFlowStoresToken(t *testing.T) {
 	cmd.Env = append(
 		envWithout("LOCALSTACK_AUTH_TOKEN"),
 		"LOCALSTACK_API_ENDPOINT="+mockServer.URL,
+		"LSTK_FORCE_INTERACTIVE=1",
 	)
 
 	// Keep stdin open so ENTER listener doesn't trigger immediately

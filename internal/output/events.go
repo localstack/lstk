@@ -40,6 +40,22 @@ type ProgressEvent struct {
 	Total     int64
 }
 
+type InputOption struct {
+	Key   string
+	Label string
+}
+
+type InputResponse struct {
+	SelectedKey string
+	Cancelled   bool
+}
+
+type UserInputRequestEvent struct {
+	Prompt     string
+	Options    []InputOption
+	ResponseCh chan<- InputResponse
+}
+
 // Emit sends an event to the sink with compile-time type safety via generics.
 func Emit[E Event](sink Sink, event E) {
 	if sink == nil {
@@ -68,4 +84,11 @@ func EmitProgress(sink Sink, container, layerID, status string, current, total i
 		Current:   current,
 		Total:     total,
 	})
+}
+
+func EmitUserInputRequest(sink Sink, event UserInputRequestEvent) {
+	if sink == nil {
+		return
+	}
+	sink.emit(event)
 }

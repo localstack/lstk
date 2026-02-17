@@ -13,6 +13,8 @@ func FormatEventLine(event any) (string, bool) {
 		return formatStatusLine(e), true
 	case ProgressEvent:
 		return formatProgressLine(e)
+	case UserInputRequestEvent:
+		return formatUserInputRequest(e), true
 	default:
 		return "", false
 	}
@@ -48,4 +50,11 @@ func formatProgressLine(e ProgressEvent) (string, bool) {
 		return fmt.Sprintf("  %s: %s", e.LayerID, e.Status), true
 	}
 	return "", false
+}
+
+func formatUserInputRequest(e UserInputRequestEvent) string {
+	if len(e.Options) > 0 {
+		return fmt.Sprintf("%s (%s)", e.Prompt, e.Options[0].Label)
+	}
+	return e.Prompt
 }

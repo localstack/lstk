@@ -16,7 +16,11 @@ var logoutCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		sink := output.NewPlainSink(os.Stdout)
 		platformClient := api.NewPlatformClient()
-		a, err := auth.New(sink, platformClient)
+		a, err := auth.New(auth.AuthConfig{
+			Sink:       sink,
+			Platform:   platformClient,
+			AllowLogin: false,
+		})
 		if err != nil {
 			return fmt.Errorf("failed to initialize auth: %w", err)
 		}

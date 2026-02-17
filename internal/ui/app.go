@@ -19,19 +19,20 @@ type runErrMsg struct {
 }
 
 type App struct {
-	header  components.Header
-	lines   []string
-	cancel  func()
-	onEnter func()
-	err     error
+	header       components.Header
+	inputPrompt  components.InputPrompt
+	lines        []string
+	cancel       func()
+	pendingInput *output.UserInputRequestEvent
+	err          error
 }
 
-func NewApp(version string, cancel func(), onEnter func()) App {
+func NewApp(version string, cancel func()) App {
 	return App{
-		header:  components.NewHeader(version),
-		lines:   make([]string, 0, maxLines),
-		cancel:  cancel,
-		onEnter: onEnter,
+		header:      components.NewHeader(version),
+		inputPrompt: components.NewInputPrompt(),
+		lines:       make([]string, 0, maxLines),
+		cancel:      cancel,
 	}
 }
 
@@ -43,17 +44,29 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		if msg.String() == "ctrl+c" || msg.String() == "q" {
+			if a.pendingInput != nil {
+				a.pendingInput.ResponseCh <- output.InputResponse{Cancelled: true}
+				a.pendingInput = nil
+				a.inputPrompt = a.inputPrompt.Hide()
+			}
 			if a.cancel != nil {
 				a.cancel()
 			}
 			a.err = context.Canceled
 			return a, tea.Quit
 		}
-		if msg.Type == tea.KeyEnter {
-			if a.onEnter != nil {
-				a.onEnter()
+		if msg.Type == tea.KeyEnter && a.pendingInput != nil {
+			selectedKey := ""
+			if len(a.pendingInput.Options) > 0 {
+				selectedKey = a.pendingInput.Options[0].Key
 			}
+			a.pendingInput.ResponseCh <- output.InputResponse{SelectedKey: selectedKey}
+			a.pendingInput = nil
+			a.inputPrompt = a.inputPrompt.Hide()
 		}
+	case output.UserInputRequestEvent:
+		a.pendingInput = &msg
+		a.inputPrompt = a.inputPrompt.Show(msg.Prompt, msg.Options)
 	case runDoneMsg:
 		return a, tea.Quit
 	case runErrMsg:
@@ -83,6 +96,11 @@ func (a App) View() string {
 	for _, line := range a.lines {
 		sb.WriteString("  ")
 		sb.WriteString(styles.Message.Render(line))
+		sb.WriteString("\n")
+	}
+	if promptView := a.inputPrompt.View(); promptView != "" {
+		sb.WriteString("  ")
+		sb.WriteString(promptView)
 		sb.WriteString("\n")
 	}
 	return sb.String()

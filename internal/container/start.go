@@ -16,8 +16,12 @@ import (
 	"github.com/localstack/lstk/internal/runtime"
 )
 
-func Start(ctx context.Context, rt runtime.Runtime, sink output.Sink, platformClient api.PlatformAPI, enterSignal <-chan struct{}) error {
-	a, err := auth.NewWithEnterSignal(sink, platformClient, enterSignal)
+func Start(ctx context.Context, rt runtime.Runtime, sink output.Sink, platformClient api.PlatformAPI, interactive bool) error {
+	a, err := auth.New(auth.AuthConfig{
+		Sink:       sink,
+		Platform:   platformClient,
+		AllowLogin: interactive,
+	})
 	if err != nil {
 		return fmt.Errorf("failed to initialize auth: %w", err)
 	}

@@ -3,7 +3,6 @@ package auth
 //go:generate mockgen -source=login.go -destination=mock_login_test.go -package=auth
 
 import (
-	"bufio"
 	"context"
 	"fmt"
 	"net"
@@ -25,14 +24,12 @@ type LoginProvider interface {
 type browserLogin struct {
 	platformClient api.PlatformAPI
 	sink           output.Sink
-	enterSignal    <-chan struct{}
 }
 
-func newBrowserLogin(sink output.Sink, platformClient api.PlatformAPI, enterSignal <-chan struct{}) *browserLogin {
+func newBrowserLogin(sink output.Sink, platformClient api.PlatformAPI) *browserLogin {
 	return &browserLogin{
 		platformClient: platformClient,
 		sink:           sink,
-		enterSignal:    enterSignal,
 	}
 }
 
@@ -78,13 +75,6 @@ func (b *browserLogin) Login(ctx context.Context) (string, error) {
 		}
 	}()
 
-	enterCh := b.enterSignal
-	if enterCh == nil {
-		enterCh = stdinEnterSignal()
-	} else {
-		drainEnterSignal(enterCh)
-	}
-
 	// Device flow as fallback
 	authReq, err := b.platformClient.CreateAuthRequest(ctx)
 	if err != nil {
@@ -104,39 +94,36 @@ func (b *browserLogin) Login(ctx context.Context) (string, error) {
 		output.EmitLog(b.sink, fmt.Sprintf("Open %s to authorize device.", deviceURL))
 	}
 	output.EmitLog(b.sink, fmt.Sprintf("Verification code: %s", authReq.Code))
-	output.EmitLog(b.sink, "Waiting for authentication... (Press ENTER when complete)")
 
-	// Wait for either browser callback, ENTER key, or context cancellation
+	// Emit user input request event
+	responseCh := make(chan output.InputResponse, 1)
+	output.EmitUserInputRequest(b.sink, output.UserInputRequestEvent{
+		Prompt:     "Waiting for authentication...",
+		Options:    []output.InputOption{{Key: "enter", Label: "Press ENTER when complete"}},
+		ResponseCh: responseCh,
+	})
+
+	// In test mode, auto-respond to the input request
+	if os.Getenv("LSTK_TEST_AUTO_ENTER") == "1" {
+		go func() {
+			responseCh <- output.InputResponse{SelectedKey: "enter"}
+		}()
+	}
+
+	// Wait for either browser callback, user response, or context cancellation
 	select {
 	case token := <-tokenCh:
 		return token, nil
 	case err := <-errCh:
 		return "", err
-	case <-enterCh:
+	case resp := <-responseCh:
+		if resp.Cancelled {
+			return "", context.Canceled
+		}
 		// User pressed ENTER, try device flow
 		return b.completeDeviceFlow(ctx, authReq)
 	case <-ctx.Done():
 		return "", ctx.Err()
-	}
-}
-
-func stdinEnterSignal() <-chan struct{} {
-	ch := make(chan struct{}, 1)
-	go func() {
-		reader := bufio.NewReader(os.Stdin)
-		_, _ = reader.ReadString('\n')
-		ch <- struct{}{}
-	}()
-	return ch
-}
-
-func drainEnterSignal(ch <-chan struct{}) {
-	for {
-		select {
-		case <-ch:
-		default:
-			return
-		}
 	}
 }
 
