@@ -1,0 +1,74 @@
+name: Create Release Tag
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_ref:
+        description: Git ref to tag
+        required: true
+        default: main
+
+permissions:
+  contents: write
+
+env:
+  git_user_name: localstack[bot]
+  git_user_email: localstack-bot@users.noreply.github.com
+
+concurrency:
+  group: create-release-tag
+  cancel-in-progress: false
+
+jobs:
+  create-tag:
+    name: Create next CalVer tag
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.release_ref }}
+          fetch-depth: 0
+
+      - name: Configure Git user
+        env:
+          GIT_USER_NAME: ${{ env.git_user_name }}
+          GIT_USER_EMAIL: ${{ env.git_user_email }}
+        run: |
+          git config user.name "${GIT_USER_NAME}"
+          git config user.email "${GIT_USER_EMAIL}"
+
+      - name: Fetch tags
+        run: git fetch --tags --force
+
+      - name: Compute next CalVer tag
+        id: next_tag
+        run: |
+          set -euo pipefail
+          year="$(date -u +%Y)"
+          month="$(date -u +%-m)"
+          prefix="${year}.${month}."
+
+          latest="$(git tag --list "${prefix}*" --sort=-v:refname | grep -E "^${year}\.${month}\.[0-9]+$" | head -n 1 || true)"
+          if [[ -z "${latest}" ]]; then
+            patch=0
+          else
+            patch="$(( ${latest##*.} + 1 ))"
+          fi
+
+          tag="${year}.${month}.${patch}"
+          if git rev-parse -q --verify "refs/tags/${tag}" >/dev/null; then
+            echo "Tag ${tag} already exists"
+            exit 1
+          fi
+
+          echo "tag=${tag}" >> "${GITHUB_OUTPUT}"
+
+      - name: Create and push tag
+        run: |
+          tag="${{ steps.next_tag.outputs.tag }}"
+          git tag -a "${tag}" -m "Release ${tag}"
+          git push origin "${tag}"
+
+      - name: Print created tag
+        run: echo "Created tag ${{ steps.next_tag.outputs.tag }}"
