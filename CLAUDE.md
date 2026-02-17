@@ -65,6 +65,43 @@ Environment variables:
   - `internal/output/format.go` (line formatting fallback)
   - tests in `internal/output/*_test.go` for formatter/sink behavior parity
 
+## User Input Handling
+
+Domain code must never read from stdin or wait for user input directly. Instead:
+
+1. Emit a `UserInputRequestEvent` via `output.EmitUserInputRequest()` with:
+   - `Prompt`: message to display
+   - `Options`: available choices (e.g., `{Key: "enter", Label: "Press ENTER to continue"}`)
+   - `ResponseCh`: channel to receive the user's response
+
+2. Wait on the `ResponseCh` for an `InputResponse` containing:
+   - `SelectedKey`: which option was selected
+   - `Cancelled`: true if user cancelled (e.g., Ctrl+C)
+
+3. The TUI (`internal/ui/app.go`) handles these events by showing the prompt and sending the response when the user interacts.
+
+4. In non-interactive mode, commands requiring user input should fail early with a helpful error (e.g., "set LOCALSTACK_AUTH_TOKEN or run in interactive mode").
+
+Example flow in auth login:
+```go
+responseCh := make(chan output.InputResponse, 1)
+output.EmitUserInputRequest(sink, output.UserInputRequestEvent{
+    Prompt:     "Waiting for authentication...",
+    Options:    []output.InputOption{{Key: "enter", Label: "Press ENTER when complete"}},
+    ResponseCh: responseCh,
+})
+
+select {
+case resp := <-responseCh:
+    if resp.Cancelled {
+        return "", context.Canceled
+    }
+    // proceed with user's choice
+case <-ctx.Done():
+    return "", ctx.Err()
+}
+```
+
 # UI Development (Bubble Tea TUI)
 
 ## Structure
