@@ -1,7 +1,7 @@
 package output
 
 type Event interface {
-	LogEvent | WarningEvent | ContainerStatusEvent | ProgressEvent
+	LogEvent | WarningEvent | ContainerStatusEvent | ProgressEvent | UserInputRequestEvent
 }
 
 type Sink interface {
@@ -87,8 +87,5 @@ func EmitProgress(sink Sink, container, layerID, status string, current, total i
 }
 
 func EmitUserInputRequest(sink Sink, event UserInputRequestEvent) {
-	if sink == nil {
-		return
-	}
-	sink.emit(event)
+	Emit(sink, event)
 }
