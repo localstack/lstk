@@ -80,8 +80,12 @@ func TestAppEnterRespondsToInputRequest(t *testing.T) {
 	}
 
 	// Now send ENTER key
-	model, _ = app.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	model, cmd := app.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	app = model.(App)
+	if cmd == nil {
+		t.Fatal("expected response command")
+	}
+	cmd()
 
 	// Verify response was sent
 	select {
@@ -89,8 +93,8 @@ func TestAppEnterRespondsToInputRequest(t *testing.T) {
 		if resp.SelectedKey != "enter" {
 			t.Fatalf("expected enter key, got %q", resp.SelectedKey)
 		}
-	default:
-		t.Fatal("expected response on channel")
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for response on channel")
 	}
 
 	// Verify input prompt is hidden
@@ -117,6 +121,10 @@ func TestAppCtrlCCancelsPendingInput(t *testing.T) {
 	// Send Ctrl+C
 	model, cmd := app.Update(tea.KeyMsg{Type: tea.KeyCtrlC})
 	app = model.(App)
+	if cmd == nil {
+		t.Fatal("expected quit command")
+	}
+	cmd()
 
 	// Verify cancellation response was sent
 	select {
@@ -124,12 +132,8 @@ func TestAppCtrlCCancelsPendingInput(t *testing.T) {
 		if !resp.Cancelled {
 			t.Fatal("expected cancelled response")
 		}
-	default:
-		t.Fatal("expected response on channel")
-	}
-
-	if cmd == nil {
-		t.Fatal("expected quit command")
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for response on channel")
 	}
 	if !cancelled {
 		t.Fatal("expected cancel callback")

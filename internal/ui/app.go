@@ -44,8 +44,9 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		if msg.String() == "ctrl+c" || msg.String() == "q" {
+			var responseCmd tea.Cmd
 			if a.pendingInput != nil {
-				a.pendingInput.ResponseCh <- output.InputResponse{Cancelled: true}
+				responseCmd = sendInputResponseCmd(a.pendingInput.ResponseCh, output.InputResponse{Cancelled: true})
 				a.pendingInput = nil
 				a.inputPrompt = a.inputPrompt.Hide()
 			}
@@ -53,6 +54,12 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				a.cancel()
 			}
 			a.err = context.Canceled
+			if responseCmd != nil {
+				return a, func() tea.Msg {
+					responseCmd()
+					return tea.QuitMsg{}
+				}
+			}
 			return a, tea.Quit
 		}
 		if msg.Type == tea.KeyEnter && a.pendingInput != nil {
@@ -60,9 +67,10 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if len(a.pendingInput.Options) > 0 {
 				selectedKey = a.pendingInput.Options[0].Key
 			}
-			a.pendingInput.ResponseCh <- output.InputResponse{SelectedKey: selectedKey}
+			responseCmd := sendInputResponseCmd(a.pendingInput.ResponseCh, output.InputResponse{SelectedKey: selectedKey})
 			a.pendingInput = nil
 			a.inputPrompt = a.inputPrompt.Hide()
+			return a, responseCmd
 		}
 	case output.UserInputRequestEvent:
 		a.pendingInput = &msg
@@ -79,6 +87,19 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 
 	return a, nil
+}
+
+func sendInputResponseCmd(responseCh chan<- output.InputResponse, response output.InputResponse) tea.Cmd {
+	if responseCh == nil {
+		return nil
+	}
+
+	return func() tea.Msg {
+		go func() {
+			responseCh <- response
+		}()
+		return nil
+	}
 }
 
 func appendLine(lines []string, line string) []string {
