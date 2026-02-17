@@ -13,7 +13,7 @@ type Env struct {
 	Keyring     string
 }
 
-var Vars *Env
+var Vars = &Env{}
 
 // Init initializes environment variable configuration
 func Init() {

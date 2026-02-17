@@ -7,7 +7,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/localstack/lstk/internal/env"
 	"github.com/localstack/lstk/internal/output"
 	"github.com/stretchr/testify/assert"
 	"go.uber.org/mock/gomock"
@@ -15,7 +14,6 @@ import (
 
 func TestMain(m *testing.M) {
 	_ = os.Unsetenv("LOCALSTACK_AUTH_TOKEN")
-	env.Init()
 	m.Run()
 }
 

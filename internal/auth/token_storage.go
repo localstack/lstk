@@ -45,7 +45,7 @@ func NewTokenStorage() (AuthTokenStorage, error) {
 		},
 	}
 
-	// Force file backend if KEYRING env var is set to "file"
+	// Force file backend if LOCALSTACK_KEYRING env var is set to "file"
 	if env.Vars.Keyring == "file" {
 		keyringConfig.AllowedBackends = []keyring.BackendType{keyring.FileBackend}
 	}
