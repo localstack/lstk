@@ -55,7 +55,6 @@ func Start(ctx context.Context, rt runtime.Runtime, sink output.Sink, platformCl
 		}
 	}
 
-	// Check state before proceeding: skip already-running containers, reject port conflicts.
 	containers, cfg.Containers, err = selectContainersToStart(ctx, rt, sink, containers, cfg.Containers)
 	if err != nil {
 		return err
@@ -64,50 +63,65 @@ func Start(ctx context.Context, rt runtime.Runtime, sink output.Sink, platformCl
 		return nil
 	}
 
-	// Pull all images first
-	for _, config := range containers {
+	// TODO validate license for tag "latest" without resolving the actual image version,
+	// and avoid pulling all images first
+	if err := pullImages(ctx, rt, sink, containers); err != nil {
+		return err
+	}
+
+	if err := validateLicenses(ctx, rt, sink, platformClient, containers, cfg.Containers, token); err != nil {
+		return err
+	}
+
+	return startContainers(ctx, rt, sink, containers)
+}
+
+func pullImages(ctx context.Context, rt runtime.Runtime, sink output.Sink, containers []runtime.ContainerConfig) error {
+	for _, c := range containers {
 		// Remove any existing stopped container with the same name
-		if err := rt.Remove(ctx, config.Name); err != nil && !errdefs.IsNotFound(err) {
-			return fmt.Errorf("failed to remove existing container %s: %w", config.Name, err)
+		if err := rt.Remove(ctx, c.Name); err != nil && !errdefs.IsNotFound(err) {
+			return fmt.Errorf("failed to remove existing container %s: %w", c.Name, err)
 		}
 
-		output.EmitStatus(sink, "pulling", config.Image, "")
+		output.EmitStatus(sink, "pulling", c.Image, "")
 		progress := make(chan runtime.PullProgress)
 		go func() {
 			for p := range progress {
-				output.EmitProgress(sink, config.Image, p.LayerID, p.Status, p.Current, p.Total)
+				output.EmitProgress(sink, c.Image, p.LayerID, p.Status, p.Current, p.Total)
 			}
 		}()
-		if err := rt.PullImage(ctx, config.Image, progress); err != nil {
-			return fmt.Errorf("failed to pull image %s: %w", config.Image, err)
+		if err := rt.PullImage(ctx, c.Image, progress); err != nil {
+			return fmt.Errorf("failed to pull image %s: %w", c.Image, err)
 		}
 	}
+	return nil
+}
 
-	// TODO validate license for tag "latest" without resolving the actual image version,
-	// and avoid pulling all images first
-	for i, c := range cfg.Containers {
+func validateLicenses(ctx context.Context, rt runtime.Runtime, sink output.Sink, platformClient api.PlatformAPI, containers []runtime.ContainerConfig, cfgContainers []config.ContainerConfig, token string) error {
+	for i, c := range cfgContainers {
 		if err := validateLicense(ctx, rt, sink, platformClient, containers[i], &c, token); err != nil {
 			return err
 		}
 	}
+	return nil
+}
 
-	// Start containers
-	for _, config := range containers {
-		output.EmitStatus(sink, "starting", config.Name, "")
-		containerID, err := rt.Start(ctx, config)
+func startContainers(ctx context.Context, rt runtime.Runtime, sink output.Sink, containers []runtime.ContainerConfig) error {
+	for _, c := range containers {
+		output.EmitStatus(sink, "starting", c.Name, "")
+		containerID, err := rt.Start(ctx, c)
 		if err != nil {
-			return fmt.Errorf("failed to start %s: %w", config.Name, err)
+			return fmt.Errorf("failed to start %s: %w", c.Name, err)
 		}
 
-		output.EmitStatus(sink, "waiting", config.Name, "")
-		healthURL := fmt.Sprintf("http://localhost:%s%s", config.Port, config.HealthPath)
-		if err := awaitStartup(ctx, rt, sink, containerID, config.Name, healthURL); err != nil {
+		output.EmitStatus(sink, "waiting", c.Name, "")
+		healthURL := fmt.Sprintf("http://localhost:%s%s", c.Port, c.HealthPath)
+		if err := awaitStartup(ctx, rt, sink, containerID, c.Name, healthURL); err != nil {
 			return err
 		}
 
-		output.EmitStatus(sink, "ready", config.Name, fmt.Sprintf("containerId: %s", containerID[:12]))
+		output.EmitStatus(sink, "ready", c.Name, fmt.Sprintf("containerId: %s", containerID[:12]))
 	}
-
 	return nil
 }
 
