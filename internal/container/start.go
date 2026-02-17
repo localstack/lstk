@@ -3,6 +3,7 @@ package container
 import (
 	"context"
 	"fmt"
+	"net"
 	"net/http"
 	"os"
 	stdruntime "runtime"
@@ -54,6 +55,15 @@ func Start(ctx context.Context, rt runtime.Runtime, sink output.Sink, platformCl
 		}
 	}
 
+	// Check state before proceeding: skip already-running containers, reject port conflicts.
+	containers, cfg.Containers, err = selectContainersToStart(ctx, rt, sink, containers, cfg.Containers)
+	if err != nil {
+		return err
+	}
+	if len(containers) == 0 {
+		return nil
+	}
+
 	// Pull all images first
 	for _, config := range containers {
 		// Remove any existing stopped container with the same name
@@ -99,6 +109,43 @@ func Start(ctx context.Context, rt runtime.Runtime, sink output.Sink, platformCl
 	}
 
 	return nil
+}
+
+func selectContainersToStart(ctx context.Context, rt runtime.Runtime, sink output.Sink, containers []runtime.ContainerConfig, cfgContainers []config.ContainerConfig) ([]runtime.ContainerConfig, []config.ContainerConfig, error) {
+	var filtered []runtime.ContainerConfig
+	var filteredCfg []config.ContainerConfig
+	for i, c := range containers {
+		running, err := rt.IsRunning(ctx, c.Name)
+		if err != nil && !errdefs.IsNotFound(err) {
+			return nil, nil, fmt.Errorf("failed to check container status: %w", err)
+		}
+		if running {
+			output.EmitLog(sink, fmt.Sprintf("%s is already running", c.Name))
+			continue
+		}
+		if err := checkPortAvailable(c.Port); err != nil {
+			configPath, pathErr := config.ConfigFilePath()
+			if pathErr != nil {
+				return nil, nil, err
+			}
+			return nil, nil, fmt.Errorf("%w\nTo use a different port, edit %s", err, configPath)
+		}
+		filtered = append(filtered, c)
+		filteredCfg = append(filteredCfg, cfgContainers[i])
+	}
+	return filtered, filteredCfg, nil
+}
+
+func checkPortAvailable(port string) error {
+	conn, err := net.DialTimeout("tcp", "localhost:"+port, time.Second)
+	if err != nil {
+		return nil
+	}
+	err = conn.Close()
+	if err != nil {
+		return nil
+	}
+	return fmt.Errorf("port %s already in use", port)
 }
 
 func validateLicense(ctx context.Context, rt runtime.Runtime, sink output.Sink, platformClient api.PlatformAPI, containerConfig runtime.ContainerConfig, cfgContainer *config.ContainerConfig, token string) error {

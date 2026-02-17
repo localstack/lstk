@@ -16,8 +16,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-const licenseContainerName = "localstack-aws"
-
 func TestLicenseValidationSuccess(t *testing.T) {
 	requireDocker(t)
 	authToken := env.Require(t, env.AuthToken)
@@ -74,7 +72,7 @@ func TestLicenseValidationSuccess(t *testing.T) {
 
 	require.NoError(t, err, "lstk start failed: %s", output)
 
-	inspect, err := dockerClient.ContainerInspect(ctx, licenseContainerName)
+	inspect, err := dockerClient.ContainerInspect(ctx, containerName)
 	require.NoError(t, err, "failed to inspect container")
 	assert.True(t, inspect.State.Running, "container should be running")
 }
@@ -99,12 +97,12 @@ func TestLicenseValidationFailure(t *testing.T) {
 	assert.Contains(t, string(output), "invalid, inactive, or expired")
 
 	// Verify container was not started
-	_, err = dockerClient.ContainerInspect(ctx, licenseContainerName)
+	_, err = dockerClient.ContainerInspect(ctx, containerName)
 	assert.Error(t, err, "container should not exist after license failure")
 }
 
 func cleanupLicense() {
 	ctx := context.Background()
-	_ = dockerClient.ContainerStop(ctx, licenseContainerName, container.StopOptions{})
-	_ = dockerClient.ContainerRemove(ctx, licenseContainerName, container.RemoveOptions{Force: true})
+	_ = dockerClient.ContainerStop(ctx, containerName, container.StopOptions{})
+	_ = dockerClient.ContainerRemove(ctx, containerName, container.RemoveOptions{Force: true})
 }
