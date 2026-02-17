@@ -33,8 +33,9 @@ func Run(parentCtx context.Context, rt runtime.Runtime, version string, platform
 	runErrCh := make(chan error, 1)
 
 	go func() {
-		err := container.Start(ctx, rt, output.NewTUISink(programSender{p: p}), platformClient, true)
-		runErrCh <- err
+		var err error
+		defer func() { runErrCh <- err }()
+		err = container.Start(ctx, rt, output.NewTUISink(programSender{p: p}), platformClient, true)
 		if err != nil {
 			if errors.Is(err, context.Canceled) {
 				return
