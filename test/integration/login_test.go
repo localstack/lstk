@@ -8,13 +8,13 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"os/exec"
 	"runtime"
 	"testing"
 	"time"
 
 	"github.com/creack/pty"
+	"github.com/localstack/lstk/test/integration/env"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -77,8 +77,7 @@ func TestDeviceFlowSuccess(t *testing.T) {
 	t.Cleanup(cleanup)
 
 	// Require valid token from environment
-	licenseToken := os.Getenv("LOCALSTACK_AUTH_TOKEN")
-	require.NotEmpty(t, licenseToken, "LOCALSTACK_AUTH_TOKEN must be set to run this test")
+	licenseToken := env.Require(t, env.AuthToken)
 
 	// Create mock API server that returns the real token
 	mockServer := createMockAPIServer(t, licenseToken, true)
@@ -88,10 +87,7 @@ func TestDeviceFlowSuccess(t *testing.T) {
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, binaryPath(), "login")
-	cmd.Env = append(
-		envWithout("LOCALSTACK_AUTH_TOKEN"),
-		"LOCALSTACK_API_ENDPOINT="+mockServer.URL,
-	)
+	cmd.Env = env.Without(env.AuthToken).With(env.APIEndpoint, mockServer.URL)
 
 	ptmx, err := pty.Start(cmd)
 	require.NoError(t, err, "failed to start command in PTY")
@@ -153,10 +149,7 @@ func TestDeviceFlowFailure_RequestNotConfirmed(t *testing.T) {
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, binaryPath(), "login")
-	cmd.Env = append(
-		envWithout("LOCALSTACK_AUTH_TOKEN"),
-		"LOCALSTACK_API_ENDPOINT="+mockServer.URL,
-	)
+	cmd.Env = env.Without(env.AuthToken).With(env.APIEndpoint, mockServer.URL)
 
 	ptmx, err := pty.Start(cmd)
 	require.NoError(t, err, "failed to start command in PTY")

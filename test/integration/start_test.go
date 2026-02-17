@@ -2,12 +2,12 @@ package integration_test
 
 import (
 	"context"
-	"os"
 	"os/exec"
 	"testing"
 	"time"
 
 	"github.com/docker/docker/api/types/container"
+	"github.com/localstack/lstk/test/integration/env"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -16,8 +16,7 @@ const containerName = "localstack-aws"
 
 func TestStartCommandSucceedsWithValidToken(t *testing.T) {
 	requireDocker(t)
-	authToken := os.Getenv("LOCALSTACK_AUTH_TOKEN")
-	require.NotEmpty(t, authToken, "LOCALSTACK_AUTH_TOKEN must be set to run this test")
+	_ = env.Require(t, env.AuthToken)
 
 	cleanup()
 	t.Cleanup(cleanup)
@@ -29,9 +28,7 @@ func TestStartCommandSucceedsWithValidToken(t *testing.T) {
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, binaryPath(), "start")
-	cmd.Env = append(os.Environ(),
-		"LOCALSTACK_API_ENDPOINT="+mockServer.URL,
-	)
+	cmd.Env = env.With(env.APIEndpoint, mockServer.URL)
 	output, err := cmd.CombinedOutput()
 
 	require.NoError(t, err, "lstk start failed: %s", output)
@@ -47,8 +44,7 @@ func TestStartCommandSucceedsWithKeyringToken(t *testing.T) {
 	t.Cleanup(cleanup)
 
 	// Store token in keyring before running command
-	authToken := os.Getenv("LOCALSTACK_AUTH_TOKEN")
-	require.NotEmpty(t, authToken, "LOCALSTACK_AUTH_TOKEN must be set to run this test")
+	authToken := env.Require(t, env.AuthToken)
 	err := SetAuthTokenInKeyring(authToken)
 	require.NoError(t, err, "failed to store token in keyring")
 
@@ -60,10 +56,7 @@ func TestStartCommandSucceedsWithKeyringToken(t *testing.T) {
 
 	// Run without LOCALSTACK_AUTH_TOKEN should use keyring
 	cmd := exec.CommandContext(ctx, binaryPath(), "start")
-	cmd.Env = append(
-		envWithout("LOCALSTACK_AUTH_TOKEN"),
-		"LOCALSTACK_API_ENDPOINT="+mockServer.URL,
-	)
+	cmd.Env = env.Without(env.AuthToken).With(env.APIEndpoint, mockServer.URL)
 	output, err := cmd.CombinedOutput()
 
 	require.NoError(t, err, "lstk start failed: %s", output)
@@ -85,10 +78,7 @@ func TestStartCommandFailsWithInvalidToken(t *testing.T) {
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, binaryPath(), "start")
-	cmd.Env = append(os.Environ(),
-		"LOCALSTACK_AUTH_TOKEN=invalid-token",
-		"LOCALSTACK_API_ENDPOINT="+mockServer.URL,
-	)
+	cmd.Env = env.With(env.AuthToken, "invalid-token").With(env.APIEndpoint, mockServer.URL)
 	output, err := cmd.CombinedOutput()
 
 	require.Error(t, err, "expected lstk start to fail with invalid token")
