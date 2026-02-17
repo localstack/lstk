@@ -4,27 +4,28 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/x/exp/teatest"
 	"github.com/localstack/lstk/internal/output"
 )
 
 func TestAppAddsFormattedLinesInOrder(t *testing.T) {
-	t.Parallel()
+	tm := teatest.NewTestModel(t, NewApp("dev", nil), teatest.WithInitialTermSize(120, 40))
+	tm.Send(output.LogEvent{Message: "first"})
+	tm.Send(output.WarningEvent{Message: "second"})
 
-	app := NewApp("dev", nil)
-	model, _ := app.Update(output.LogEvent{Message: "first"})
-	app = model.(App)
-	model, _ = app.Update(output.WarningEvent{Message: "second"})
-	app = model.(App)
+	teatest.WaitFor(t, tm.Output(), func(bts []byte) bool {
+		view := string(bts)
+		if !strings.Contains(view, "first") || !strings.Contains(view, "Warning: second") {
+			return false
+		}
+		return strings.Index(view, "first") < strings.Index(view, "Warning: second")
+	}, teatest.WithDuration(5*time.Second))
 
-	view := app.View()
-	if !strings.Contains(view, "first") || !strings.Contains(view, "Warning: second") {
-		t.Fatalf("expected both lines in view, got: %q", view)
-	}
-	if strings.Index(view, "first") > strings.Index(view, "Warning: second") {
-		t.Fatalf("messages are out of order: %q", view)
-	}
+	tm.Send(tea.QuitMsg{})
+	tm.WaitFinished(t, teatest.WithFinalTimeout(time.Second))
 }
 
 func TestAppBoundsMessageHistory(t *testing.T) {
