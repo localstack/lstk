@@ -20,16 +20,13 @@ func RunLogin(parentCtx context.Context, version string, platformClient api.Plat
 	runErrCh := make(chan error, 1)
 
 	go func() {
-		a, err := auth.New(auth.AuthConfig{
-			Sink:       output.NewTUISink(programSender{p: p}),
-			Platform:   platformClient,
-			AllowLogin: true,
-		})
+		tokenStorage, err := auth.NewTokenStorage()
 		if err != nil {
 			runErrCh <- err
 			p.Send(runErrMsg{err: err})
 			return
 		}
+		a := auth.New(output.NewTUISink(programSender{p: p}), platformClient, tokenStorage, true)
 
 		_, err = a.GetToken(ctx)
 		runErrCh <- err

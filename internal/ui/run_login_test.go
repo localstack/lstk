@@ -19,6 +19,7 @@ import (
 	"github.com/localstack/lstk/internal/output"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
 )
 
 type testModelSender struct {
@@ -27,27 +28,6 @@ type testModelSender struct {
 
 func (s testModelSender) Send(msg any) {
 	s.tm.Send(msg)
-}
-
-type mockTokenStorage struct {
-	token string
-}
-
-func (m *mockTokenStorage) GetAuthToken() (string, error) {
-	if m.token == "" {
-		return "", errors.New("no token")
-	}
-	return m.token, nil
-}
-
-func (m *mockTokenStorage) SetAuthToken(token string) error {
-	m.token = token
-	return nil
-}
-
-func (m *mockTokenStorage) DeleteAuthToken() error {
-	m.token = ""
-	return nil
 }
 
 func createMockAPIServer(t *testing.T, licenseToken string, confirmed bool) *httptest.Server {
@@ -108,23 +88,19 @@ func TestLoginFlow_DeviceFlowSuccess(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
+	ctrl := gomock.NewController(t)
+	mockStorage := auth.NewMockAuthTokenStorage(ctrl)
+	mockStorage.EXPECT().GetAuthToken().Return("", errors.New("no token"))
+	mockStorage.EXPECT().SetAuthToken(gomock.Any()).Return(nil)
+
 	tm := teatest.NewTestModel(t, NewApp("test", cancel), teatest.WithInitialTermSize(120, 40))
 	sender := testModelSender{tm: tm}
 	platformClient := api.NewPlatformClient()
 
 	errCh := make(chan error, 1)
 	go func() {
-		a, err := auth.New(auth.AuthConfig{
-			Sink:         output.NewTUISink(sender),
-			Platform:     platformClient,
-			AllowLogin:   true,
-			TokenStorage: &mockTokenStorage{},
-		})
-		if err != nil {
-			errCh <- err
-			return
-		}
-		_, err = a.GetToken(ctx)
+		a := auth.New(output.NewTUISink(sender), platformClient, mockStorage, true)
+		_, err := a.GetToken(ctx)
 		errCh <- err
 		if err != nil && !errors.Is(err, context.Canceled) {
 			tm.Send(runErrMsg{err: err})
@@ -162,23 +138,18 @@ func TestLoginFlow_DeviceFlowFailure_NotConfirmed(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
+	ctrl := gomock.NewController(t)
+	mockStorage := auth.NewMockAuthTokenStorage(ctrl)
+	mockStorage.EXPECT().GetAuthToken().Return("", errors.New("no token"))
+
 	tm := teatest.NewTestModel(t, NewApp("test", cancel), teatest.WithInitialTermSize(120, 40))
 	sender := testModelSender{tm: tm}
 	platformClient := api.NewPlatformClient()
 
 	errCh := make(chan error, 1)
 	go func() {
-		a, err := auth.New(auth.AuthConfig{
-			Sink:         output.NewTUISink(sender),
-			Platform:     platformClient,
-			AllowLogin:   true,
-			TokenStorage: &mockTokenStorage{},
-		})
-		if err != nil {
-			errCh <- err
-			return
-		}
-		_, err = a.GetToken(ctx)
+		a := auth.New(output.NewTUISink(sender), platformClient, mockStorage, true)
+		_, err := a.GetToken(ctx)
 		errCh <- err
 		if err != nil && !errors.Is(err, context.Canceled) {
 			tm.Send(runErrMsg{err: err})
@@ -217,23 +188,19 @@ func TestLoginFlow_BrowserCallback(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
+	ctrl := gomock.NewController(t)
+	mockStorage := auth.NewMockAuthTokenStorage(ctrl)
+	mockStorage.EXPECT().GetAuthToken().Return("", errors.New("no token"))
+	mockStorage.EXPECT().SetAuthToken(gomock.Any()).Return(nil)
+
 	tm := teatest.NewTestModel(t, NewApp("test", cancel), teatest.WithInitialTermSize(120, 40))
 	sender := testModelSender{tm: tm}
 	platformClient := api.NewPlatformClient()
 
 	errCh := make(chan error, 1)
 	go func() {
-		a, err := auth.New(auth.AuthConfig{
-			Sink:         output.NewTUISink(sender),
-			Platform:     platformClient,
-			AllowLogin:   true,
-			TokenStorage: &mockTokenStorage{},
-		})
-		if err != nil {
-			errCh <- err
-			return
-		}
-		_, err = a.GetToken(ctx)
+		a := auth.New(output.NewTUISink(sender), platformClient, mockStorage, true)
+		_, err := a.GetToken(ctx)
 		errCh <- err
 		if err != nil && !errors.Is(err, context.Canceled) {
 			tm.Send(runErrMsg{err: err})

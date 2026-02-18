@@ -11,13 +11,6 @@ import (
 	"github.com/localstack/lstk/internal/output"
 )
 
-type AuthConfig struct {
-	Sink         output.Sink
-	Platform     api.PlatformAPI
-	AllowLogin   bool
-	TokenStorage AuthTokenStorage // optional, for testing
-}
-
 type Auth struct {
 	tokenStorage AuthTokenStorage
 	browserLogin LoginProvider
@@ -25,21 +18,13 @@ type Auth struct {
 	allowLogin   bool
 }
 
-func New(cfg AuthConfig) (*Auth, error) {
-	storage := cfg.TokenStorage
-	if storage == nil {
-		var err error
-		storage, err = newAuthTokenStorage()
-		if err != nil {
-			return nil, err
-		}
-	}
+func New(sink output.Sink, platform api.PlatformAPI, storage AuthTokenStorage, allowLogin bool) *Auth {
 	return &Auth{
 		tokenStorage: storage,
-		browserLogin: newBrowserLogin(cfg.Sink, cfg.Platform),
-		sink:         cfg.Sink,
-		allowLogin:   cfg.AllowLogin,
-	}, nil
+		browserLogin: newBrowserLogin(sink, platform),
+		sink:         sink,
+		allowLogin:   allowLogin,
+	}
 }
 
 // GetToken tries in order: 1) keyring 2) LOCALSTACK_AUTH_TOKEN env var 3) browser login (if allowed)

@@ -1,6 +1,6 @@
 package auth
 
-//go:generate mockgen -source=token_storage.go -destination=mock_token_storage_test.go -package=auth
+//go:generate mockgen -source=token_storage.go -destination=mock_token_storage.go -package=auth
 
 import (
 	"errors"
@@ -30,7 +30,7 @@ type authTokenStorage struct {
 	ring keyring.Keyring
 }
 
-func newAuthTokenStorage() (*authTokenStorage, error) {
+func NewTokenStorage() (AuthTokenStorage, error) {
 	configDir, err := config.ConfigDir()
 	if err != nil {
 		return nil, err
