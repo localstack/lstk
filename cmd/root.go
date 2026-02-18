@@ -9,6 +9,7 @@ import (
 	"github.com/localstack/lstk/internal/config"
 	"github.com/localstack/lstk/internal/container"
 	"github.com/localstack/lstk/internal/env"
+	"github.com/localstack/lstk/internal/env"
 	"github.com/localstack/lstk/internal/output"
 	"github.com/localstack/lstk/internal/runtime"
 	"github.com/localstack/lstk/internal/ui"
@@ -20,17 +21,10 @@ var commit = "none"
 var buildDate = "unknown"
 
 var rootCmd = &cobra.Command{
-	Use:   "lstk",
-	Short: "LocalStack CLI",
-	Long:  "lstk is the command-line interface for LocalStack.",
-	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
-		// These commands should be side-effect free and must not create/read user config.
-		if cmd.Name() == "version" || hasConfigPathSequence(args) || hasConfigPathSequence(os.Args[1:]) {
-			return nil
-		}
-		env.Init()
-		return config.Init()
-	},
+	Use:     "lstk",
+	Short:   "LocalStack CLI",
+	Long:    "lstk is the command-line interface for LocalStack.",
+	PreRunE: initConfig,
 	Run: func(cmd *cobra.Command, args []string) {
 		rt, err := runtime.NewDockerRuntime()
 		if err != nil {
@@ -63,11 +57,7 @@ func runStart(ctx context.Context, rt runtime.Runtime) error {
 	return container.Start(ctx, rt, output.NewPlainSink(os.Stdout), platformClient, false)
 }
 
-func hasConfigPathSequence(args []string) bool {
-	for i := 0; i < len(args)-1; i++ {
-		if args[i] == "config" && args[i+1] == "path" {
-			return true
-		}
-	}
-	return false
+func initConfig(_ *cobra.Command, _ []string) error {
+	env.Init()
+	return config.Init()
 }

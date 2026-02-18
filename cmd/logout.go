@@ -11,8 +11,9 @@ import (
 )
 
 var logoutCmd = &cobra.Command{
-	Use:   "logout",
-	Short: "Remove stored authentication token",
+	Use:     "logout",
+	Short:   "Remove stored authentication token",
+	PreRunE: initConfig,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		sink := output.NewPlainSink(os.Stdout)
 		platformClient := api.NewPlatformClient()

@@ -10,9 +10,10 @@ import (
 )
 
 var stopCmd = &cobra.Command{
-	Use:   "stop",
-	Short: "Stop LocalStack",
-	Long:  "Stop the LocalStack emulator.",
+	Use:     "stop",
+	Short:   "Stop LocalStack",
+	Long:    "Stop the LocalStack emulator.",
+	PreRunE: initConfig,
 	Run: func(cmd *cobra.Command, args []string) {
 		rt, err := runtime.NewDockerRuntime()
 		if err != nil {

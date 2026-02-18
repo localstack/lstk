@@ -40,6 +40,7 @@ When no config file exists, lstk creates one at:
 - otherwise `os.UserConfigDir()/lstk/config.toml`
 
 Use `lstk config path` to print the resolved config file path currently in use.
+When adding a new command that depends on configuration, wire config initialization explicitly in that command (`PreRunE: initConfig`). Keep side-effect-free commands (e.g., `version`, `config path`) without config initialization.
 
 Created automatically on first run with defaults. Supports emulator types (aws, snowflake, azure) - currently only aws is implemented.
 
