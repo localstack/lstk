@@ -13,11 +13,19 @@ import (
 	"github.com/spf13/cobra"
 )
 
+var version = "dev"
+var commit = "none"
+var buildDate = "unknown"
+
 var rootCmd = &cobra.Command{
 	Use:   "lstk",
 	Short: "LocalStack CLI",
 	Long:  "lstk is the command-line interface for LocalStack.",
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+		// Version should be side-effect free and must not create/read user config.
+		if cmd.Name() == "version" {
+			return nil
+		}
 		return config.Init()
 	},
 	Run: func(cmd *cobra.Command, args []string) {
@@ -35,6 +43,8 @@ var rootCmd = &cobra.Command{
 }
 
 func init() {
+	rootCmd.Version = version
+	rootCmd.SetVersionTemplate(versionLine() + "\n")
 	rootCmd.AddCommand(startCmd)
 }
 
