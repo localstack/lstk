@@ -24,8 +24,8 @@ var rootCmd = &cobra.Command{
 	Short: "LocalStack CLI",
 	Long:  "lstk is the command-line interface for LocalStack.",
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
-		// Version should be side-effect free and must not create/read user config.
-		if cmd.Name() == "version" {
+		// These commands should be side-effect free and must not create/read user config.
+		if cmd.Name() == "version" || hasConfigPathSequence(args) || hasConfigPathSequence(os.Args[1:]) {
 			return nil
 		}
 		env.Init()
@@ -61,4 +61,13 @@ func runStart(ctx context.Context, rt runtime.Runtime) error {
 		return ui.Run(ctx, rt, version, platformClient)
 	}
 	return container.Start(ctx, rt, output.NewPlainSink(os.Stdout), platformClient, false)
+}
+
+func hasConfigPathSequence(args []string) bool {
+	for i := 0; i < len(args)-1; i++ {
+		if args[i] == "config" && args[i+1] == "path" {
+			return true
+		}
+	}
+	return false
 }
