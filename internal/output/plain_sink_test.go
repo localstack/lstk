@@ -140,6 +140,15 @@ func TestPlainSink_EmitsProgressEvent(t *testing.T) {
 	}
 }
 
+func TestPlainSink_EmitsContainerLogLineEvent(t *testing.T) {
+	var out bytes.Buffer
+	sink := NewPlainSink(&out)
+
+	Emit(sink, ContainerLogLineEvent{Line: "2024-01-01 hello from container"})
+
+	assert.Equal(t, "2024-01-01 hello from container\n", out.String())
+}
+
 func TestPlainSink_ErrReturnsNilOnSuccess(t *testing.T) {
 	var out bytes.Buffer
 	sink := NewPlainSink(&out)
