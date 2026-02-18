@@ -97,7 +97,7 @@ func TestDeviceFlowSuccess(t *testing.T) {
 	require.NoError(t, err, "failed to start command in PTY")
 	defer func() { _ = ptmx.Close() }()
 
-	output := &bytes.Buffer{}
+	output := &syncBuffer{}
 	outputCh := make(chan struct{})
 	go func() {
 		_, _ = io.Copy(output, ptmx)
@@ -158,7 +158,7 @@ func TestDeviceFlowFailure_RequestNotConfirmed(t *testing.T) {
 	require.NoError(t, err, "failed to start command in PTY")
 	defer func() { _ = ptmx.Close() }()
 
-	output := &bytes.Buffer{}
+	output := &syncBuffer{}
 	outputCh := make(chan struct{})
 	go func() {
 		_, _ = io.Copy(output, ptmx)

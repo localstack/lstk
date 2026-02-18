@@ -213,10 +213,12 @@ func TestLoginFlow_BrowserCallback(t *testing.T) {
 		return bytes.Contains(bts, []byte("TEST123"))
 	}, teatest.WithDuration(5*time.Second))
 
-	time.Sleep(100 * time.Millisecond)
-
-	resp, err := http.Get("http://127.0.0.1:45678/auth/success?token=browser-token")
-	require.NoError(t, err)
+	var resp *http.Response
+	require.Eventually(t, func() bool {
+		var err error
+		resp, err = http.Get("http://127.0.0.1:45678/auth/success?token=browser-token")
+		return err == nil
+	}, 5*time.Second, 100*time.Millisecond, "callback server should be ready")
 	require.NoError(t, resp.Body.Close())
 
 	select {

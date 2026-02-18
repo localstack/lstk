@@ -56,7 +56,7 @@ func TestBrowserFlowStoresToken(t *testing.T) {
 	require.NoError(t, err, "failed to start command in PTY")
 	defer func() { _ = ptmx.Close() }()
 
-	output := &bytes.Buffer{}
+	output := &syncBuffer{}
 	outputCh := make(chan struct{})
 	go func() {
 		_, _ = io.Copy(output, ptmx)
@@ -68,12 +68,13 @@ func TestBrowserFlowStoresToken(t *testing.T) {
 		return bytes.Contains(output.Bytes(), []byte("TEST123"))
 	}, 10*time.Second, 100*time.Millisecond, "verification code should appear")
 
-	// Give the callback server time to start
-	time.Sleep(200 * time.Millisecond)
-
 	// Simulate browser callback with mock token
-	resp, err := http.Get("http://127.0.0.1:45678/auth/success?token=mock-token")
-	require.NoError(t, err)
+	var resp *http.Response
+	require.Eventually(t, func() bool {
+		var err error
+		resp, err = http.Get("http://127.0.0.1:45678/auth/success?token=mock-token")
+		return err == nil
+	}, 5*time.Second, 100*time.Millisecond, "callback server should be ready")
 	require.NoError(t, resp.Body.Close())
 
 	// Wait for process to complete
