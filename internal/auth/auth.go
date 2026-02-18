@@ -15,21 +15,19 @@ type Auth struct {
 	tokenStorage AuthTokenStorage
 	browserLogin LoginProvider
 	sink         output.Sink
+	allowLogin   bool
 }
 
-func New(sink output.Sink, platformClient api.PlatformAPI) (*Auth, error) {
-	storage, err := newAuthTokenStorage()
-	if err != nil {
-		return nil, err
-	}
+func New(sink output.Sink, platform api.PlatformAPI, storage AuthTokenStorage, allowLogin bool) *Auth {
 	return &Auth{
 		tokenStorage: storage,
-		browserLogin: newBrowserLogin(sink, platformClient),
+		browserLogin: newBrowserLogin(sink, platform),
 		sink:         sink,
-	}, nil
+		allowLogin:   allowLogin,
+	}
 }
 
-// GetToken tries in order: 1) keyring 2) LOCALSTACK_AUTH_TOKEN env var 3) browser login
+// GetToken tries in order: 1) keyring 2) LOCALSTACK_AUTH_TOKEN env var 3) browser login (if allowed)
 func (a *Auth) GetToken(ctx context.Context) (string, error) {
 	if token, err := a.tokenStorage.GetAuthToken(); err == nil && token != "" {
 		return token, nil
@@ -37,6 +35,10 @@ func (a *Auth) GetToken(ctx context.Context) (string, error) {
 
 	if token := os.Getenv("LOCALSTACK_AUTH_TOKEN"); token != "" {
 		return token, nil
+	}
+
+	if !a.allowLogin {
+		return "", fmt.Errorf("authentication required: set LOCALSTACK_AUTH_TOKEN or run in interactive mode")
 	}
 
 	output.EmitLog(a.sink, "Authentication required. Opening browser...")

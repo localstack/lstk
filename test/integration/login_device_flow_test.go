@@ -1,16 +1,20 @@
 package integration_test
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"os/exec"
+	"runtime"
 	"testing"
 	"time"
 
+	"github.com/creack/pty"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -65,6 +69,10 @@ func createMockAPIServer(t *testing.T, licenseToken string, confirmed bool) *htt
 }
 
 func TestDeviceFlowSuccess(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("PTY not supported on Windows")
+	}
+
 	cleanup()
 	t.Cleanup(cleanup)
 
@@ -85,48 +93,52 @@ func TestDeviceFlowSuccess(t *testing.T) {
 		"LOCALSTACK_API_ENDPOINT="+mockServer.URL,
 	)
 
-	// Keep stdin open and get the pipe to simulate ENTER
-	stdinPipe, err := cmd.StdinPipe()
-	require.NoError(t, err)
-	defer func() { _ = stdinPipe.Close() }()
+	ptmx, err := pty.Start(cmd)
+	require.NoError(t, err, "failed to start command in PTY")
+	defer func() { _ = ptmx.Close() }()
 
-	outputCh := make(chan []byte, 1)
+	output := &syncBuffer{}
+	outputCh := make(chan struct{})
 	go func() {
-		out, _ := cmd.CombinedOutput()
-		outputCh <- out
+		_, _ = io.Copy(output, ptmx)
+		close(outputCh)
 	}()
 
-	// Wait for device flow instructions
-	time.Sleep(100 * time.Millisecond)
+	// Wait for verification code to appear
+	require.Eventually(t, func() bool {
+		return bytes.Contains(output.Bytes(), []byte("TEST123"))
+	}, 10*time.Second, 100*time.Millisecond, "verification code should appear")
 
-	// Simulate pressing ENTER to trigger device flow
-	_, err = stdinPipe.Write([]byte("\n"))
+	// Send Enter to continue with device flow
+	_, err = ptmx.Write([]byte("\r"))
 	require.NoError(t, err)
 
-	select {
-	case out := <-outputCh:
-		output := string(out)
-		// Should show device flow instructions
-		assert.Contains(t, output, "Verification code:")
-		assert.Contains(t, output, "TEST123")
-		// Should complete device flow successfully
-		assert.Contains(t, output, "Checking if auth request is confirmed")
-		assert.Contains(t, output, "Auth request confirmed")
-		assert.Contains(t, output, "Fetching license token")
-		assert.Contains(t, output, "Login successful")
+	// Wait for process to complete
+	err = cmd.Wait()
+	<-outputCh
 
-		// Verify token was stored in keyring
-		storedToken, err := GetAuthTokenFromKeyring()
-		require.NoError(t, err)
-		assert.Equal(t, licenseToken, storedToken)
+	out := output.String()
+	require.NoError(t, err, "login should succeed: %s", out)
+	// Should show device flow instructions
+	assert.Contains(t, out, "Verification code:")
+	assert.Contains(t, out, "TEST123")
+	// Should complete device flow successfully
+	assert.Contains(t, out, "Checking if auth request is confirmed")
+	assert.Contains(t, out, "Auth request confirmed")
+	assert.Contains(t, out, "Fetching license token")
+	assert.Contains(t, out, "Login successful")
 
-	case <-time.After(30 * time.Second):
-		cancel()
-		t.Fatal("timeout waiting for command output")
-	}
+	// Verify token was stored in keyring
+	storedToken, err := GetAuthTokenFromKeyring()
+	require.NoError(t, err)
+	assert.Equal(t, licenseToken, storedToken)
 }
 
 func TestDeviceFlowFailure_RequestNotConfirmed(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("PTY not supported on Windows")
+	}
+
 	cleanup()
 	t.Cleanup(cleanup)
 
@@ -142,40 +154,40 @@ func TestDeviceFlowFailure_RequestNotConfirmed(t *testing.T) {
 		"LOCALSTACK_API_ENDPOINT="+mockServer.URL,
 	)
 
-	// Keep stdin open and get the pipe to simulate ENTER
-	stdinPipe, err := cmd.StdinPipe()
-	require.NoError(t, err)
-	defer func() { _ = stdinPipe.Close() }()
+	ptmx, err := pty.Start(cmd)
+	require.NoError(t, err, "failed to start command in PTY")
+	defer func() { _ = ptmx.Close() }()
 
-	outputCh := make(chan []byte, 1)
+	output := &syncBuffer{}
+	outputCh := make(chan struct{})
 	go func() {
-		out, _ := cmd.CombinedOutput()
-		outputCh <- out
+		_, _ = io.Copy(output, ptmx)
+		close(outputCh)
 	}()
 
-	// Wait for device flow instructions to be printed
-	time.Sleep(1 * time.Second)
+	// Wait for verification code to appear
+	require.Eventually(t, func() bool {
+		return bytes.Contains(output.Bytes(), []byte("TEST123"))
+	}, 10*time.Second, 100*time.Millisecond, "verification code should appear")
 
-	// Simulate pressing ENTER to trigger device flow
-	_, err = stdinPipe.Write([]byte("\n"))
+	// Send Enter to continue with device flow
+	_, err = ptmx.Write([]byte("\r"))
 	require.NoError(t, err)
 
-	select {
-	case out := <-outputCh:
-		output := string(out)
-		assert.Contains(t, output, "Verification code:")
-		assert.Contains(t, output, "Waiting for authentication")
-		assert.Contains(t, output, "Press ENTER when complete")
-		// Should attempt device flow but fail because request not confirmed
-		assert.Contains(t, output, "Checking if auth request is confirmed")
-		assert.Contains(t, output, "auth request not confirmed")
+	// Wait for process to complete
+	err = cmd.Wait()
+	<-outputCh
 
-		// Verify no token was stored in keyring
-		_, err := GetAuthTokenFromKeyring()
-		assert.Error(t, err, "no token should be stored when login fails")
+	out := output.String()
+	require.Error(t, err, "expected login to fail when request not confirmed")
+	assert.Contains(t, out, "Verification code:")
+	assert.Contains(t, out, "Waiting for authentication")
+	assert.Contains(t, out, "Press ENTER when complete")
+	// Should attempt device flow but fail because request not confirmed
+	assert.Contains(t, out, "Checking if auth request is confirmed")
+	assert.Contains(t, out, "auth request not confirmed")
 
-	case <-time.After(10 * time.Second):
-		cancel()
-		t.Fatal("timeout waiting for command output")
-	}
+	// Verify no token was stored in keyring
+	_, err = GetAuthTokenFromKeyring()
+	assert.Error(t, err, "no token should be stored when login fails")
 }

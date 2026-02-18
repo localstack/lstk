@@ -98,6 +98,7 @@ func TestLicenseValidationFailure(t *testing.T) {
 	cmd.Env = append(
 		os.Environ(),
 		"LOCALSTACK_API_ENDPOINT="+mockServer.URL,
+		"LOCALSTACK_AUTH_TOKEN=test-token-for-license-validation",
 	)
 	output, err := cmd.CombinedOutput()
 

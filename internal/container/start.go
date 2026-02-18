@@ -16,11 +16,12 @@ import (
 	"github.com/localstack/lstk/internal/runtime"
 )
 
-func Start(ctx context.Context, rt runtime.Runtime, sink output.Sink, platformClient api.PlatformAPI) error {
-	a, err := auth.New(sink, platformClient)
+func Start(ctx context.Context, rt runtime.Runtime, sink output.Sink, platformClient api.PlatformAPI, interactive bool) error {
+	tokenStorage, err := auth.NewTokenStorage()
 	if err != nil {
-		return fmt.Errorf("failed to initialize auth: %w", err)
+		return fmt.Errorf("failed to initialize token storage: %w", err)
 	}
+	a := auth.New(sink, platformClient, tokenStorage, interactive)
 
 	token, err := a.GetToken(ctx)
 	if err != nil {

@@ -10,6 +10,7 @@ import (
 	"github.com/localstack/lstk/internal/container"
 	"github.com/localstack/lstk/internal/output"
 	"github.com/localstack/lstk/internal/runtime"
+	"github.com/localstack/lstk/internal/ui"
 	"github.com/spf13/cobra"
 )
 
@@ -53,5 +54,9 @@ func Execute(ctx context.Context) error {
 }
 
 func runStart(ctx context.Context, rt runtime.Runtime) error {
-	return container.Start(ctx, rt, output.NewPlainSink(os.Stdout), api.NewPlatformClient())
+	platformClient := api.NewPlatformClient()
+	if ui.IsInteractive() {
+		return ui.Run(ctx, rt, version, platformClient)
+	}
+	return container.Start(ctx, rt, output.NewPlainSink(os.Stdout), platformClient, false)
 }

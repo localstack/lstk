@@ -1,19 +1,27 @@
 package integration_test
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os/exec"
+	"runtime"
 	"testing"
 	"time"
 
+	"github.com/creack/pty"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 func TestBrowserFlowStoresToken(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("PTY not supported on Windows")
+	}
+
 	cleanup()
 	t.Cleanup(cleanup)
 
@@ -44,30 +52,40 @@ func TestBrowserFlowStoresToken(t *testing.T) {
 		"LOCALSTACK_API_ENDPOINT="+mockServer.URL,
 	)
 
-	// Keep stdin open so ENTER listener doesn't trigger immediately
-	stdinPipe, err := cmd.StdinPipe()
-	require.NoError(t, err)
-	defer func() { _ = stdinPipe.Close() }()
+	ptmx, err := pty.Start(cmd)
+	require.NoError(t, err, "failed to start command in PTY")
+	defer func() { _ = ptmx.Close() }()
 
-	// Capture output asynchronously
-	output := make(chan []byte)
+	output := &syncBuffer{}
+	outputCh := make(chan struct{})
 	go func() {
-		out, _ := cmd.CombinedOutput()
-		output <- out
+		_, _ = io.Copy(output, ptmx)
+		close(outputCh)
 	}()
 
-	// Wait for callback server to be ready
-	time.Sleep(1 * time.Second)
+	// Wait for verification code to appear (callback server should be ready)
+	require.Eventually(t, func() bool {
+		return bytes.Contains(output.Bytes(), []byte("TEST123"))
+	}, 10*time.Second, 100*time.Millisecond, "verification code should appear")
 
 	// Simulate browser callback with mock token
-	resp, err := http.Get("http://127.0.0.1:45678/auth/success?token=mock-token")
-	require.NoError(t, err)
+	var resp *http.Response
+	require.Eventually(t, func() bool {
+		var err error
+		resp, err = http.Get("http://127.0.0.1:45678/auth/success?token=mock-token")
+		return err == nil
+	}, 5*time.Second, 100*time.Millisecond, "callback server should be ready")
 	require.NoError(t, resp.Body.Close())
 
-	out := <-output
+	// Wait for process to complete
+	err = cmd.Wait()
+	<-outputCh
+
+	out := output.String()
 
 	// Login should succeed
-	assert.Contains(t, string(out), "Login successful")
+	require.NoError(t, err, "login should succeed via browser callback: %s", out)
+	assert.Contains(t, out, "Login successful")
 
 	// Verify token was stored in keyring
 	storedToken, err := GetAuthTokenFromKeyring()
