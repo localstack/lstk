@@ -22,11 +22,8 @@ var rootCmd = &cobra.Command{
 	Short: "LocalStack CLI",
 	Long:  "lstk is the command-line interface for LocalStack.",
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+		// Version should be side-effect free and must not create/read user config.
 		if cmd.Name() == "version" {
-			return nil
-		}
-
-		if showVersion, err := cmd.Flags().GetBool("version"); err == nil && showVersion {
 			return nil
 		}
 		return config.Init()
