@@ -17,7 +17,7 @@ var Vars = &Env{}
 
 // Init initializes environment variable configuration
 func Init() {
-	viper.SetEnvPrefix("LOCALSTACK")
+	viper.SetEnvPrefix("LSTK")
 	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 	viper.AutomaticEnv()
 

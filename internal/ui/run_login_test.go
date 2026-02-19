@@ -84,8 +84,8 @@ func TestLoginFlow_DeviceFlowSuccess(t *testing.T) {
 	mockServer := createMockAPIServer(t, "test-license-token", true)
 	defer mockServer.Close()
 
-	t.Setenv("LOCALSTACK_API_ENDPOINT", mockServer.URL)
-	t.Setenv("LOCALSTACK_AUTH_TOKEN", "")
+	t.Setenv("LSTK_API_ENDPOINT", mockServer.URL)
+	t.Setenv("LSTK_AUTH_TOKEN", "")
 	env.Init()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -142,8 +142,8 @@ func TestLoginFlow_DeviceFlowFailure_NotConfirmed(t *testing.T) {
 	mockServer := createMockAPIServer(t, "", false)
 	defer mockServer.Close()
 
-	t.Setenv("LOCALSTACK_API_ENDPOINT", mockServer.URL)
-	t.Setenv("LOCALSTACK_AUTH_TOKEN", "")
+	t.Setenv("LSTK_API_ENDPOINT", mockServer.URL)
+	t.Setenv("LSTK_AUTH_TOKEN", "")
 	env.Init()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)

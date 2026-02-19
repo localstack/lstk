@@ -54,7 +54,7 @@ func TestStartCommandSucceedsWithKeyringToken(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 
-	// Run without LOCALSTACK_AUTH_TOKEN should use keyring
+	// Run without LSTK_AUTH_TOKEN should use keyring
 	cmd := exec.CommandContext(ctx, binaryPath(), "start")
 	cmd.Env = env.Without(env.AuthToken).With(env.APIEndpoint, mockServer.URL)
 	output, err := cmd.CombinedOutput()
