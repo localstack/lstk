@@ -9,9 +9,11 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/containerd/errdefs"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/image"
 	"github.com/docker/docker/client"
+	"github.com/docker/docker/pkg/stdcopy"
 	"github.com/docker/go-connections/nat"
 )
 
@@ -148,6 +150,35 @@ func (d *DockerRuntime) Logs(ctx context.Context, containerID string, tail int) 
 	}
 
 	return string(logs), nil
+}
+
+func (d *DockerRuntime) StreamLogs(ctx context.Context, containerID string, out io.Writer) error {
+	reader, err := d.client.ContainerLogs(ctx, containerID, container.LogsOptions{
+		ShowStdout: true,
+		ShowStderr: true,
+		Follow:     true,
+		Tail:       "all",
+	})
+	if err != nil {
+		if errdefs.IsNotFound(err) {
+			return fmt.Errorf("emulator is not running. Start LocalStack with `lstk`")
+		}
+		return fmt.Errorf("failed to stream logs for %s: %w", containerID, err)
+	}
+	defer func() {
+		if err := reader.Close(); err != nil {
+			log.Printf("failed to close logs reader: %v", err)
+		}
+	}()
+
+	// Docker combines stdout and stderr into one stream, prefixing each chunk with
+	// an 8-byte header that identifies which stream it belongs to. StdCopy reads
+	// those headers and routes each chunk to the correct writer.
+	_, err = stdcopy.StdCopy(out, out, reader)
+	if err != nil && ctx.Err() == nil {
+		return fmt.Errorf("error reading logs: %w", err)
+	}
+	return nil
 }
 
 func (d *DockerRuntime) GetImageVersion(ctx context.Context, imageName string) (string, error) {

@@ -18,6 +18,8 @@ func FormatEventLine(event any) (string, bool) {
 		return formatProgressLine(e)
 	case UserInputRequestEvent:
 		return formatUserInputRequest(e), true
+	case ContainerLogLineEvent:
+		return e.Line, true
 	default:
 		return "", false
 	}

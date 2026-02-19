@@ -1,7 +1,7 @@
 package output
 
 type Event interface {
-	LogEvent | WarningEvent | ContainerStatusEvent | ProgressEvent | UserInputRequestEvent
+	LogEvent | WarningEvent | ContainerStatusEvent | ProgressEvent | UserInputRequestEvent | ContainerLogLineEvent
 }
 
 type Sink interface {
@@ -56,6 +56,10 @@ type UserInputRequestEvent struct {
 	ResponseCh chan<- InputResponse
 }
 
+type ContainerLogLineEvent struct {
+	Line string
+}
+
 // Emit sends an event to the sink with compile-time type safety via generics.
 func Emit[E Event](sink Sink, event E) {
 	if sink == nil {
@@ -88,4 +92,8 @@ func EmitProgress(sink Sink, container, layerID, status string, current, total i
 
 func EmitUserInputRequest(sink Sink, event UserInputRequestEvent) {
 	Emit(sink, event)
+}
+
+func EmitContainerLogLine(sink Sink, line string) {
+	Emit(sink, ContainerLogLineEvent{Line: line})
 }
