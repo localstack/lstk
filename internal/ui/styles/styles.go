@@ -27,4 +27,16 @@ var (
 
 	Message = lipgloss.NewStyle().
 		Foreground(lipgloss.Color("245"))
+
+	Secondary = lipgloss.NewStyle().
+		Foreground(lipgloss.Color("241"))
+
+	Success = lipgloss.NewStyle().
+		Foreground(lipgloss.Color("10"))
+
+	Note = lipgloss.NewStyle().
+		Foreground(lipgloss.Color("11"))
+
+	Warning = lipgloss.NewStyle().
+		Foreground(lipgloss.Color("11"))
 )

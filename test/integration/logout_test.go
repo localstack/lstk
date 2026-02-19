@@ -29,6 +29,7 @@ func TestLogoutCommandRemovesToken(t *testing.T) {
 	output, err := cmd.CombinedOutput()
 
 	require.NoError(t, err, "lstk logout failed: %s", output)
+	assert.Contains(t, string(output), "Logging out...")
 	assert.Contains(t, string(output), "Logged out successfully")
 
 	// Verify token was removed
@@ -48,4 +49,6 @@ func TestLogoutCommandSucceedsWhenNoToken(t *testing.T) {
 
 	// Should succeed even if no token
 	require.NoError(t, err, "lstk logout should succeed even with no token: %s", output)
+	assert.Contains(t, string(output), "Logging out...")
+	assert.Contains(t, string(output), "Not currently logged in")
 }

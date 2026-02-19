@@ -18,10 +18,24 @@ type runErrMsg struct {
 	err error
 }
 
+type lineStyle int
+
+const (
+	lineStyleDefault lineStyle = iota
+	lineStyleSuccess
+	lineStyleNote
+	lineStyleWarning
+)
+
+type styledLine struct {
+	text  string
+	style lineStyle
+}
+
 type App struct {
 	header       components.Header
 	inputPrompt  components.InputPrompt
-	lines        []string
+	lines        []styledLine
 	cancel       func()
 	pendingInput *output.UserInputRequestEvent
 	err          error
@@ -31,7 +45,7 @@ func NewApp(version string, cancel func()) App {
 	return App{
 		header:      components.NewHeader(version),
 		inputPrompt: components.NewInputPrompt(),
-		lines:       make([]string, 0, maxLines),
+		lines:       make([]styledLine, 0, maxLines),
 		cancel:      cancel,
 	}
 }
@@ -94,7 +108,16 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, tea.Quit
 	default:
 		if line, ok := output.FormatEventLine(msg); ok {
-			a.lines = appendLine(a.lines, line)
+			style := lineStyleDefault
+			switch msg.(type) {
+			case output.SuccessEvent:
+				style = lineStyleSuccess
+			case output.NoteEvent:
+				style = lineStyleNote
+			case output.WarningEvent:
+				style = lineStyleWarning
+			}
+			a.lines = appendLine(a.lines, styledLine{text: line, style: style})
 		}
 	}
 
@@ -114,7 +137,7 @@ func sendInputResponseCmd(responseCh chan<- output.InputResponse, response outpu
 	}
 }
 
-func appendLine(lines []string, line string) []string {
+func appendLine(lines []styledLine, line styledLine) []styledLine {
 	lines = append(lines, line)
 	if len(lines) > maxLines {
 		lines = lines[len(lines)-maxLines:]
@@ -128,7 +151,7 @@ func (a App) View() string {
 	sb.WriteString("\n")
 	for _, line := range a.lines {
 		sb.WriteString("  ")
-		sb.WriteString(styles.Message.Render(line))
+		sb.WriteString(renderStyledLine(line))
 		sb.WriteString("\n")
 	}
 	if promptView := a.inputPrompt.View(); promptView != "" {
@@ -137,6 +160,23 @@ func (a App) View() string {
 		sb.WriteString("\n")
 	}
 	return sb.String()
+}
+
+func renderStyledLine(line styledLine) string {
+	prefix := styles.Secondary.Render("> ")
+	switch line.style {
+	case lineStyleSuccess:
+		msg := strings.TrimPrefix(line.text, "Success: ")
+		return prefix + styles.Success.Render("Success:") + " " + styles.Message.Render(msg)
+	case lineStyleNote:
+		msg := strings.TrimPrefix(line.text, "Note: ")
+		return prefix + styles.Note.Render("Note:") + " " + styles.Message.Render(msg)
+	case lineStyleWarning:
+		msg := strings.TrimPrefix(line.text, "Warning: ")
+		return prefix + styles.Warning.Render("Warning:") + " " + styles.Message.Render(msg)
+	default:
+		return styles.Message.Render(line.text)
+	}
 }
 
 func (a App) Err() error {

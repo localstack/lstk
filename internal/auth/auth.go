@@ -56,11 +56,20 @@ func (a *Auth) GetToken(ctx context.Context) (string, error) {
 	return token, nil
 }
 
-// Logout removes the stored auth token from the keyring
-func (a *Auth) Logout() error {
+// LogoutResult represents the outcome of a logout operation
+type LogoutResult struct {
+	TokenDeleted bool
+}
+
+// Logout removes the stored auth token from the keyring.
+// Returns LogoutResult indicating whether a token was actually deleted.
+func (a *Auth) Logout() (LogoutResult, error) {
 	err := a.tokenStorage.DeleteAuthToken()
 	if errors.Is(err, keyring.ErrKeyNotFound) {
-		return nil
+		return LogoutResult{TokenDeleted: false}, nil
 	}
-	return err
+	if err != nil {
+		return LogoutResult{}, err
+	}
+	return LogoutResult{TokenDeleted: true}, nil
 }

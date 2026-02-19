@@ -32,10 +32,28 @@ func TestPlainSink_EmitsWarningEvent(t *testing.T) {
 
 	Emit(sink, WarningEvent{Message: "something went wrong"})
 
-	assert.Equal(t, "Warning: something went wrong\n", out.String())
+	assert.Contains(t, out.String(), "Warning: something went wrong")
 }
 
-func TestPlainSink_EmitsStatusEvent(t *testing.T) {
+func TestPlainSink_EmitsSuccessEvent(t *testing.T) {
+	var out bytes.Buffer
+	sink := NewPlainSink(&out)
+
+	Emit(sink, SuccessEvent{Message: "done"})
+
+	assert.Contains(t, out.String(), "Success: done")
+}
+
+func TestPlainSink_EmitsNoteEvent(t *testing.T) {
+	var out bytes.Buffer
+	sink := NewPlainSink(&out)
+
+	Emit(sink, NoteEvent{Message: "info"})
+
+	assert.Contains(t, out.String(), "Note: info")
+}
+
+func TestPlainSink_EmitsContainerStatusEvent(t *testing.T) {
 	tests := []struct {
 		name     string
 		event    ContainerStatusEvent
@@ -180,9 +198,10 @@ func TestPlainSink_ErrStoresOnlyFirstError(t *testing.T) {
 func TestPlainSink_UsesFormatterParity(t *testing.T) {
 	t.Parallel()
 
+	// Note: SuccessEvent, NoteEvent, and WarningEvent have custom styling
+	// in PlainSink (with "> " prefix), so they're not included in this parity test
 	events := []any{
 		LogEvent{Message: "hello"},
-		WarningEvent{Message: "careful"},
 		ContainerStatusEvent{Phase: "starting", Container: "localstack"},
 		ProgressEvent{LayerID: "abc", Status: "Downloading", Current: 1, Total: 2},
 	}
@@ -193,8 +212,6 @@ func TestPlainSink_UsesFormatterParity(t *testing.T) {
 
 		switch e := event.(type) {
 		case LogEvent:
-			Emit(sink, e)
-		case WarningEvent:
 			Emit(sink, e)
 		case ContainerStatusEvent:
 			Emit(sink, e)

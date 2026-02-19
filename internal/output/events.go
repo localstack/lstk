@@ -1,7 +1,7 @@
 package output
 
 type Event interface {
-	LogEvent | WarningEvent | ContainerStatusEvent | ProgressEvent | UserInputRequestEvent | ContainerLogLineEvent
+	LogEvent | WarningEvent | SuccessEvent | NoteEvent | ContainerStatusEvent | ProgressEvent | UserInputRequestEvent | ContainerLogLineEvent
 }
 
 type Sink interface {
@@ -23,6 +23,14 @@ type LogEvent struct {
 }
 
 type WarningEvent struct {
+	Message string
+}
+
+type SuccessEvent struct {
+	Message string
+}
+
+type NoteEvent struct {
 	Message string
 }
 
@@ -74,6 +82,14 @@ func EmitLog(sink Sink, message string) {
 
 func EmitWarning(sink Sink, message string) {
 	Emit(sink, WarningEvent{Message: message})
+}
+
+func EmitSuccess(sink Sink, message string) {
+	Emit(sink, SuccessEvent{Message: message})
+}
+
+func EmitNote(sink Sink, message string) {
+	Emit(sink, NoteEvent{Message: message})
 }
 
 func EmitStatus(sink Sink, phase, container, detail string) {

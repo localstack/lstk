@@ -83,8 +83,8 @@ func (s *authTokenStorage) SetAuthToken(token string) error {
 
 func (s *authTokenStorage) DeleteAuthToken() error {
 	err := s.ring.Remove(keyringAuthTokenKey)
-	if errors.Is(err, keyring.ErrKeyNotFound) || os.IsNotExist(err) {
-		return nil
+	if os.IsNotExist(err) {
+		return keyring.ErrKeyNotFound
 	}
 	return err
 }
