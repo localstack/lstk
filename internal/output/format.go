@@ -1,6 +1,9 @@
 package output
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
 // FormatEventLine converts an output event into a single display line.
 func FormatEventLine(event any) (string, bool) {
@@ -53,8 +56,16 @@ func formatProgressLine(e ProgressEvent) (string, bool) {
 }
 
 func formatUserInputRequest(e UserInputRequestEvent) string {
-	if len(e.Options) > 0 {
+	switch len(e.Options) {
+	case 0:
+		return e.Prompt
+	case 1:
 		return fmt.Sprintf("%s (%s)", e.Prompt, e.Options[0].Label)
+	default:
+		labels := make([]string, len(e.Options))
+		for i, opt := range e.Options {
+			labels[i] = opt.Label
+		}
+		return fmt.Sprintf("%s [%s]", e.Prompt, strings.Join(labels, "/"))
 	}
-	return e.Prompt
 }

@@ -1,6 +1,8 @@
 package components
 
 import (
+	"strings"
+
 	"github.com/localstack/lstk/internal/output"
 	"github.com/localstack/lstk/internal/ui/styles"
 )
@@ -36,8 +38,15 @@ func (p InputPrompt) View() string {
 		return ""
 	}
 	text := p.prompt
-	if len(p.options) > 0 {
+	switch len(p.options) {
+	case 1:
 		text += " (" + p.options[0].Label + ")"
+	default:
+		labels := make([]string, len(p.options))
+		for i, opt := range p.options {
+			labels[i] = opt.Label
+		}
+		text += " [" + strings.Join(labels, "/") + "]"
 	}
 	return styles.Message.Render(text)
 }

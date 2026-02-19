@@ -13,7 +13,7 @@ import (
 
 type Auth struct {
 	tokenStorage AuthTokenStorage
-	browserLogin LoginProvider
+	login        LoginProvider
 	sink         output.Sink
 	allowLogin   bool
 }
@@ -21,13 +21,13 @@ type Auth struct {
 func New(sink output.Sink, platform api.PlatformAPI, storage AuthTokenStorage, allowLogin bool) *Auth {
 	return &Auth{
 		tokenStorage: storage,
-		browserLogin: newBrowserLogin(sink, platform),
+		login:        newLoginProvider(sink, platform),
 		sink:         sink,
 		allowLogin:   allowLogin,
 	}
 }
 
-// GetToken tries in order: 1) keyring 2) LOCALSTACK_AUTH_TOKEN env var 3) browser login (if allowed)
+// GetToken tries in order: 1) keyring 2) LOCALSTACK_AUTH_TOKEN env var 3) device flow login
 func (a *Auth) GetToken(ctx context.Context) (string, error) {
 	if token, err := a.tokenStorage.GetAuthToken(); err == nil && token != "" {
 		return token, nil
@@ -41,8 +41,8 @@ func (a *Auth) GetToken(ctx context.Context) (string, error) {
 		return "", fmt.Errorf("authentication required: set LOCALSTACK_AUTH_TOKEN or run in interactive mode")
 	}
 
-	output.EmitLog(a.sink, "Authentication required. Opening browser...")
-	token, err := a.browserLogin.Login(ctx)
+	output.EmitLog(a.sink, "No existing credentials found. Please log in:")
+	token, err := a.login.Login(ctx)
 	if err != nil {
 		output.EmitWarning(a.sink, "Authentication failed.")
 		return "", err

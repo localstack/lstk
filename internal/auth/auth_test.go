@@ -31,7 +31,7 @@ func TestGetToken_ReturnsTokenWhenKeyringStoreFails(t *testing.T) {
 
 	auth := &Auth{
 		tokenStorage: mockStorage,
-		browserLogin: mockLogin,
+		login:        mockLogin,
 		sink:         sink,
 		allowLogin:   true,
 	}
