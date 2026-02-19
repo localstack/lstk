@@ -198,12 +198,13 @@ func TestPlainSink_ErrStoresOnlyFirstError(t *testing.T) {
 func TestPlainSink_UsesFormatterParity(t *testing.T) {
 	t.Parallel()
 
-	// Note: SuccessEvent, NoteEvent, and WarningEvent have custom styling
-	// in PlainSink (with "> " prefix), so they're not included in this parity test
 	events := []any{
 		LogEvent{Message: "hello"},
 		ContainerStatusEvent{Phase: "starting", Container: "localstack"},
 		ProgressEvent{LayerID: "abc", Status: "Downloading", Current: 1, Total: 2},
+		SuccessEvent{Message: "done"},
+		NoteEvent{Message: "info"},
+		WarningEvent{Message: "something went wrong"},
 	}
 
 	for _, event := range events {
@@ -217,6 +218,12 @@ func TestPlainSink_UsesFormatterParity(t *testing.T) {
 			Emit(sink, e)
 		case ProgressEvent:
 			Emit(sink, e)
+		case SuccessEvent:
+			Emit(sink, e)
+		case NoteEvent:
+			Emit(sink, e)
+		case WarningEvent:
+			Emit(sink, e)
 		default:
 			t.Fatalf("unsupported event type in test: %T", event)
 		}
@@ -225,8 +232,21 @@ func TestPlainSink_UsesFormatterParity(t *testing.T) {
 		if !ok {
 			t.Fatalf("expected formatter output for %T", event)
 		}
-		if got, want := out.String(), fmt.Sprintf("%s\n", line); got != want {
-			t.Fatalf("output mismatch for %T: got=%q want=%q", event, got, want)
+
+		got := out.String()
+		if !assert.Contains(t, got, line) {
+			t.Fatalf("output for %T should contain formatted line: got=%q want to contain=%q", event, got, line)
+		}
+
+		switch event.(type) {
+		case SuccessEvent, NoteEvent, WarningEvent:
+			if !assert.Contains(t, got, "> ") {
+				t.Fatalf("output for %T should contain prefix: got=%q", event, got)
+			}
+		default:
+			if got != fmt.Sprintf("%s\n", line) {
+				t.Fatalf("output mismatch for %T: got=%q want=%q", event, got, fmt.Sprintf("%s\n", line))
+			}
 		}
 	}
 }
