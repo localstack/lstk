@@ -3,7 +3,6 @@ package container
 import (
 	"context"
 	"fmt"
-	"net"
 	"net/http"
 	"os"
 	stdruntime "runtime"
@@ -14,6 +13,7 @@ import (
 	"github.com/localstack/lstk/internal/auth"
 	"github.com/localstack/lstk/internal/config"
 	"github.com/localstack/lstk/internal/output"
+	"github.com/localstack/lstk/internal/ports"
 	"github.com/localstack/lstk/internal/runtime"
 )
 
@@ -142,7 +142,7 @@ func selectContainersToStart(ctx context.Context, rt runtime.Runtime, sink outpu
 			output.EmitLog(sink, fmt.Sprintf("%s is already running", c.Name))
 			continue
 		}
-		if err := checkPortAvailable(c.Port); err != nil {
+		if err := ports.CheckAvailable(c.Port); err != nil {
 			configPath, pathErr := config.ConfigFilePath()
 			if pathErr != nil {
 				return nil, err
@@ -152,18 +152,6 @@ func selectContainersToStart(ctx context.Context, rt runtime.Runtime, sink outpu
 		filtered = append(filtered, c)
 	}
 	return filtered, nil
-}
-
-func checkPortAvailable(port string) error {
-	conn, err := net.DialTimeout("tcp", "localhost:"+port, time.Second)
-	if err != nil {
-		return nil
-	}
-	err = conn.Close()
-	if err != nil {
-		return nil
-	}
-	return fmt.Errorf("port %s already in use", port)
 }
 
 func validateLicense(ctx context.Context, rt runtime.Runtime, sink output.Sink, platformClient api.PlatformAPI, containerConfig runtime.ContainerConfig, token string) error {
