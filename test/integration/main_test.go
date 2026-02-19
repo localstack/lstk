@@ -10,12 +10,12 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
-	"strings"
 	"sync"
 	"testing"
 
 	"github.com/99designs/keyring"
 	"github.com/docker/docker/client"
+	"github.com/localstack/lstk/test/integration/env"
 )
 
 // syncBuffer is a thread-safe buffer for concurrent read/write access.
@@ -87,8 +87,8 @@ func TestMain(m *testing.M) {
 		},
 	}
 
-	// Force file backend if KEYRING env var is set to "file"
-	if os.Getenv("KEYRING") == "file" {
+	// Force file backend if LSTK_KEYRING env var is set to "file"
+	if env.Get(env.Keyring) == "file" {
 		keyringConfig.AllowedBackends = []keyring.BackendType{keyring.FileBackend}
 	}
 
@@ -107,26 +107,10 @@ func requireDocker(t *testing.T) {
 		t.Skip("Docker is not available")
 	}
 	// Skip Docker tests on Windows (GitHub Actions doesn't support Linux containers)
-	if runtime.GOOS == "windows" && os.Getenv("CI") != "" {
+	// Note: CI env var is not in config.GetEnv() as it's a standard CI environment variable
+	if runtime.GOOS == "windows" && env.Get(env.CI) != "" {
 		t.Skip("Docker tests not supported on Windows CI (nested virtualization not available)")
 	}
-}
-
-func envWithout(keys ...string) []string {
-	var env []string
-	for _, e := range os.Environ() {
-		excluded := false
-		for _, key := range keys {
-			if strings.HasPrefix(e, key+"=") {
-				excluded = true
-				break
-			}
-		}
-		if !excluded {
-			env = append(env, e)
-		}
-	}
-	return env
 }
 
 func GetAuthTokenFromKeyring() (string, error) {

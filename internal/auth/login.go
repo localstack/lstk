@@ -5,14 +5,12 @@ package auth
 import (
 	"context"
 	"fmt"
-	"os"
 
 	"github.com/localstack/lstk/internal/api"
+	"github.com/localstack/lstk/internal/env"
 	"github.com/localstack/lstk/internal/output"
 	"github.com/pkg/browser"
 )
-
-const webAppURL = "https://app.localstack.cloud"
 
 type LoginProvider interface {
 	Login(ctx context.Context) (string, error)
@@ -82,11 +80,7 @@ func (l *loginProvider) Login(ctx context.Context) (string, error) {
 }
 
 func getWebAppURL() string {
-	// allows overriding the URL for testing
-	if url := os.Getenv("LOCALSTACK_WEB_APP_URL"); url != "" {
-		return url
-	}
-	return webAppURL
+	return env.Vars.WebAppURL
 }
 
 func (l *loginProvider) completeAuth(ctx context.Context, authReq *api.AuthRequest) (string, error) {

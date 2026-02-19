@@ -4,10 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
 
 	"github.com/99designs/keyring"
 	"github.com/localstack/lstk/internal/api"
+	"github.com/localstack/lstk/internal/env"
 	"github.com/localstack/lstk/internal/output"
 )
 
@@ -27,18 +27,18 @@ func New(sink output.Sink, platform api.PlatformAPI, storage AuthTokenStorage, a
 	}
 }
 
-// GetToken tries in order: 1) keyring 2) LOCALSTACK_AUTH_TOKEN env var 3) device flow login
+// GetToken tries in order: 1) keyring 2) LSTK_AUTH_TOKEN env var 3) device flow login
 func (a *Auth) GetToken(ctx context.Context) (string, error) {
 	if token, err := a.tokenStorage.GetAuthToken(); err == nil && token != "" {
 		return token, nil
 	}
 
-	if token := os.Getenv("LOCALSTACK_AUTH_TOKEN"); token != "" {
+	if token := env.Vars.AuthToken; token != "" {
 		return token, nil
 	}
 
 	if !a.allowLogin {
-		return "", fmt.Errorf("authentication required: set LOCALSTACK_AUTH_TOKEN or run in interactive mode")
+		return "", fmt.Errorf("authentication required: set LSTK_AUTH_TOKEN or run in interactive mode")
 	}
 
 	output.EmitLog(a.sink, "No existing credentials found. Please log in:")

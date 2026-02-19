@@ -7,8 +7,9 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"os"
 	"time"
+
+	"github.com/localstack/lstk/internal/env"
 )
 
 type PlatformAPI interface {
@@ -65,12 +66,8 @@ type PlatformClient struct {
 }
 
 func NewPlatformClient() *PlatformClient {
-	baseURL := os.Getenv("LOCALSTACK_API_ENDPOINT")
-	if baseURL == "" {
-		baseURL = "https://api.localstack.cloud"
-	}
 	return &PlatformClient{
-		baseURL:    baseURL,
+		baseURL:    env.Vars.APIEndpoint,
 		httpClient: &http.Client{Timeout: 30 * time.Second},
 	}
 }

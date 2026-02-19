@@ -6,12 +6,12 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"os/exec"
 	"testing"
 	"time"
 
 	"github.com/docker/docker/api/types/container"
+	"github.com/localstack/lstk/test/integration/env"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -20,8 +20,7 @@ const licenseContainerName = "localstack-aws"
 
 func TestLicenseValidationSuccess(t *testing.T) {
 	requireDocker(t)
-	authToken := os.Getenv("LOCALSTACK_AUTH_TOKEN")
-	require.NotEmpty(t, authToken, "LOCALSTACK_AUTH_TOKEN must be set to run this test")
+	authToken := env.Require(t, env.AuthToken)
 
 	cleanupLicense()
 	t.Cleanup(cleanupLicense)
@@ -63,10 +62,7 @@ func TestLicenseValidationSuccess(t *testing.T) {
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, binaryPath(), "start")
-	cmd.Env = append(
-		os.Environ(),
-		"LOCALSTACK_API_ENDPOINT="+mockServer.URL,
-	)
+	cmd.Env = env.With(env.APIEndpoint, mockServer.URL)
 	output, err := cmd.CombinedOutput()
 
 	// Check for validation errors from handler
@@ -95,11 +91,7 @@ func TestLicenseValidationFailure(t *testing.T) {
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, binaryPath(), "start")
-	cmd.Env = append(
-		os.Environ(),
-		"LOCALSTACK_API_ENDPOINT="+mockServer.URL,
-		"LOCALSTACK_AUTH_TOKEN=test-token-for-license-validation",
-	)
+	cmd.Env = env.With(env.APIEndpoint, mockServer.URL).With(env.AuthToken, "test-token-for-license-validation")
 	output, err := cmd.CombinedOutput()
 
 	require.Error(t, err, "expected lstk start to fail with forbidden license")

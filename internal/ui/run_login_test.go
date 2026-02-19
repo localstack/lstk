@@ -16,6 +16,7 @@ import (
 	"github.com/charmbracelet/x/exp/teatest"
 	"github.com/localstack/lstk/internal/api"
 	"github.com/localstack/lstk/internal/auth"
+	"github.com/localstack/lstk/internal/env"
 	"github.com/localstack/lstk/internal/output"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -83,7 +84,9 @@ func TestLoginFlow_DeviceFlowSuccess(t *testing.T) {
 	mockServer := createMockAPIServer(t, "test-license-token", true)
 	defer mockServer.Close()
 
-	t.Setenv("LOCALSTACK_API_ENDPOINT", mockServer.URL)
+	t.Setenv("LSTK_API_ENDPOINT", mockServer.URL)
+	t.Setenv("LSTK_AUTH_TOKEN", "")
+	env.Init()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -139,7 +142,9 @@ func TestLoginFlow_DeviceFlowFailure_NotConfirmed(t *testing.T) {
 	mockServer := createMockAPIServer(t, "", false)
 	defer mockServer.Close()
 
-	t.Setenv("LOCALSTACK_API_ENDPOINT", mockServer.URL)
+	t.Setenv("LSTK_API_ENDPOINT", mockServer.URL)
+	t.Setenv("LSTK_AUTH_TOKEN", "")
+	env.Init()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
