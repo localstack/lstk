@@ -44,18 +44,24 @@ func Start(ctx context.Context, rt runtime.Runtime, sink output.Sink, platformCl
 		if err != nil {
 			return err
 		}
+		productName, err := c.ProductName()
+		if err != nil {
+			return err
+		}
 
 		env := append(c.Env, "LOCALSTACK_AUTH_TOKEN="+token)
 		containers[i] = runtime.ContainerConfig{
-			Image:      image,
-			Name:       c.Name(),
-			Port:       c.Port,
-			HealthPath: healthPath,
-			Env:        env,
+			Image:       image,
+			Name:        c.Name(),
+			Port:        c.Port,
+			HealthPath:  healthPath,
+			Env:         env,
+			Tag:         c.Tag,
+			ProductName: productName,
 		}
 	}
 
-	containers, cfg.Containers, err = selectContainersToStart(ctx, rt, sink, containers, cfg.Containers)
+	containers, err = selectContainersToStart(ctx, rt, sink, containers)
 	if err != nil {
 		return err
 	}
@@ -69,7 +75,7 @@ func Start(ctx context.Context, rt runtime.Runtime, sink output.Sink, platformCl
 		return err
 	}
 
-	if err := validateLicenses(ctx, rt, sink, platformClient, containers, cfg.Containers, token); err != nil {
+	if err := validateLicenses(ctx, rt, sink, platformClient, containers, token); err != nil {
 		return err
 	}
 
@@ -97,9 +103,9 @@ func pullImages(ctx context.Context, rt runtime.Runtime, sink output.Sink, conta
 	return nil
 }
 
-func validateLicenses(ctx context.Context, rt runtime.Runtime, sink output.Sink, platformClient api.PlatformAPI, containers []runtime.ContainerConfig, cfgContainers []config.ContainerConfig, token string) error {
-	for i, c := range cfgContainers {
-		if err := validateLicense(ctx, rt, sink, platformClient, containers[i], &c, token); err != nil {
+func validateLicenses(ctx context.Context, rt runtime.Runtime, sink output.Sink, platformClient api.PlatformAPI, containers []runtime.ContainerConfig, token string) error {
+	for _, c := range containers {
+		if err := validateLicense(ctx, rt, sink, platformClient, c, token); err != nil {
 			return err
 		}
 	}
@@ -125,13 +131,12 @@ func startContainers(ctx context.Context, rt runtime.Runtime, sink output.Sink, 
 	return nil
 }
 
-func selectContainersToStart(ctx context.Context, rt runtime.Runtime, sink output.Sink, containers []runtime.ContainerConfig, cfgContainers []config.ContainerConfig) ([]runtime.ContainerConfig, []config.ContainerConfig, error) {
+func selectContainersToStart(ctx context.Context, rt runtime.Runtime, sink output.Sink, containers []runtime.ContainerConfig) ([]runtime.ContainerConfig, error) {
 	var filtered []runtime.ContainerConfig
-	var filteredCfg []config.ContainerConfig
-	for i, c := range containers {
+	for _, c := range containers {
 		running, err := rt.IsRunning(ctx, c.Name)
 		if err != nil && !errdefs.IsNotFound(err) {
-			return nil, nil, fmt.Errorf("failed to check container status: %w", err)
+			return nil, fmt.Errorf("failed to check container status: %w", err)
 		}
 		if running {
 			output.EmitLog(sink, fmt.Sprintf("%s is already running", c.Name))
@@ -140,14 +145,13 @@ func selectContainersToStart(ctx context.Context, rt runtime.Runtime, sink outpu
 		if err := checkPortAvailable(c.Port); err != nil {
 			configPath, pathErr := config.ConfigFilePath()
 			if pathErr != nil {
-				return nil, nil, err
+				return nil, err
 			}
-			return nil, nil, fmt.Errorf("%w\nTo use a different port, edit %s", err, configPath)
+			return nil, fmt.Errorf("%w\nTo use a different port, edit %s", err, configPath)
 		}
 		filtered = append(filtered, c)
-		filteredCfg = append(filteredCfg, cfgContainers[i])
 	}
-	return filtered, filteredCfg, nil
+	return filtered, nil
 }
 
 func checkPortAvailable(port string) error {
@@ -162,8 +166,8 @@ func checkPortAvailable(port string) error {
 	return fmt.Errorf("port %s already in use", port)
 }
 
-func validateLicense(ctx context.Context, rt runtime.Runtime, sink output.Sink, platformClient api.PlatformAPI, containerConfig runtime.ContainerConfig, cfgContainer *config.ContainerConfig, token string) error {
-	version := cfgContainer.Tag
+func validateLicense(ctx context.Context, rt runtime.Runtime, sink output.Sink, platformClient api.PlatformAPI, containerConfig runtime.ContainerConfig, token string) error {
+	version := containerConfig.Tag
 	if version == "" || version == "latest" {
 		actualVersion, err := rt.GetImageVersion(ctx, containerConfig.Image)
 		if err != nil {
@@ -172,16 +176,12 @@ func validateLicense(ctx context.Context, rt runtime.Runtime, sink output.Sink, 
 		version = actualVersion
 	}
 
-	productName, err := cfgContainer.ProductName()
-	if err != nil {
-		return err
-	}
 	output.EmitStatus(sink, "validating license", containerConfig.Name, version)
 
 	hostname, _ := os.Hostname()
 	licenseReq := &api.LicenseRequest{
 		Product: api.ProductInfo{
-			Name:    productName,
+			Name:    containerConfig.ProductName,
 			Version: version,
 		},
 		Credentials: api.CredentialsInfo{
@@ -195,7 +195,7 @@ func validateLicense(ctx context.Context, rt runtime.Runtime, sink output.Sink, 
 	}
 
 	if err := platformClient.GetLicense(ctx, licenseReq); err != nil {
-		return fmt.Errorf("license validation failed for %s:%s: %w", productName, version, err)
+		return fmt.Errorf("license validation failed for %s:%s: %w", containerConfig.ProductName, version, err)
 	}
 
 	return nil
