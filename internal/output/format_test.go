@@ -24,6 +24,18 @@ func TestFormatEventLine(t *testing.T) {
 			wantOK: true,
 		},
 		{
+			name:   "success event",
+			event:  SuccessEvent{Message: "done"},
+			want:   "Success: done",
+			wantOK: true,
+		},
+		{
+			name:   "note event",
+			event:  NoteEvent{Message: "info"},
+			want:   "Note: info",
+			wantOK: true,
+		},
+		{
 			name:   "status pulling",
 			event:  ContainerStatusEvent{Phase: "pulling", Container: "localstack/localstack:latest"},
 			want:   "Pulling localstack/localstack:latest...",

@@ -1,12 +1,13 @@
 package cmd
 
 import (
-	"fmt"
+	"errors"
 	"os"
 
 	"github.com/localstack/lstk/internal/api"
 	"github.com/localstack/lstk/internal/auth"
 	"github.com/localstack/lstk/internal/output"
+	"github.com/localstack/lstk/internal/ui"
 	"github.com/spf13/cobra"
 )
 
@@ -15,18 +16,26 @@ var logoutCmd = &cobra.Command{
 	Short:   "Remove stored authentication token",
 	PreRunE: initConfig,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		sink := output.NewPlainSink(os.Stdout)
 		platformClient := api.NewPlatformClient()
 		tokenStorage, err := auth.NewTokenStorage()
 		if err != nil {
-			return fmt.Errorf("failed to initialize token storage: %w", err)
+			return err
 		}
+
+		if ui.IsInteractive() {
+			a := auth.New(nil, platformClient, tokenStorage, false)
+			return ui.RunLogout(cmd.Context(), version, a)
+		}
+
+		// Non-interactive mode: auth emits events through the sink
+		sink := output.NewPlainSink(os.Stdout)
 		a := auth.New(sink, platformClient, tokenStorage, false)
-		if err := a.Logout(); err != nil {
-			return fmt.Errorf("failed to logout: %w", err)
+
+		err = a.Logout()
+		if errors.Is(err, auth.ErrNotLoggedIn) {
+			return nil
 		}
-		fmt.Println("Logged out successfully.")
-		return nil
+		return err
 	},
 }
 

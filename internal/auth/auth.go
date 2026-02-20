@@ -56,11 +56,23 @@ func (a *Auth) GetToken(ctx context.Context) (string, error) {
 	return token, nil
 }
 
-// Logout removes the stored auth token from the keyring
+var ErrNotLoggedIn = errors.New("not currently logged in")
+
+// Logout removes the stored auth token from the keyring.
+// Returns ErrNotLoggedIn if no token was stored.
+// Emits success/note events through the sink if one is configured.
 func (a *Auth) Logout() error {
+	output.EmitLog(a.sink, "Logging out...")
+
 	err := a.tokenStorage.DeleteAuthToken()
 	if errors.Is(err, keyring.ErrKeyNotFound) {
-		return nil
+		output.EmitNote(a.sink, "Not currently logged in.")
+		return ErrNotLoggedIn
 	}
-	return err
+	if err != nil {
+		return err
+	}
+
+	output.EmitSuccess(a.sink, "Logged out successfully.")
+	return nil
 }

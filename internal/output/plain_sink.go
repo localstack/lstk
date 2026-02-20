@@ -34,6 +34,12 @@ func (s *PlainSink) emit(event any) {
 	if !ok {
 		return
 	}
+
+	switch event.(type) {
+	case SuccessEvent, NoteEvent, WarningEvent:
+		line = "> " + line
+	}
+
 	_, err := fmt.Fprintln(s.out, line)
 	s.setErr(err)
 }

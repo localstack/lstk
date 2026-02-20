@@ -12,6 +12,10 @@ func FormatEventLine(event any) (string, bool) {
 		return e.Message, true
 	case WarningEvent:
 		return fmt.Sprintf("Warning: %s", e.Message), true
+	case SuccessEvent:
+		return fmt.Sprintf("Success: %s", e.Message), true
+	case NoteEvent:
+		return fmt.Sprintf("Note: %s", e.Message), true
 	case ContainerStatusEvent:
 		return formatStatusLine(e), true
 	case ProgressEvent:
