@@ -58,6 +58,9 @@ func Start(ctx context.Context, rt runtime.Runtime, sink output.Sink, platformCl
 	for _, config := range containers {
 		// Remove any existing stopped container with the same name
 		if err := rt.Remove(ctx, config.Name); err != nil && !errdefs.IsNotFound(err) {
+			if conflictErr := formatContainerNameConflict(config.Name, err); conflictErr != err {
+				return conflictErr
+			}
 			return fmt.Errorf("failed to remove existing container %s: %w", config.Name, err)
 		}
 
@@ -86,6 +89,9 @@ func Start(ctx context.Context, rt runtime.Runtime, sink output.Sink, platformCl
 		output.EmitStatus(sink, "starting", config.Name, "")
 		containerID, err := rt.Start(ctx, config)
 		if err != nil {
+			if conflictErr := formatContainerNameConflict(config.Name, err); conflictErr != err {
+				return conflictErr
+			}
 			return fmt.Errorf("failed to start %s: %w", config.Name, err)
 		}
 

@@ -5,7 +5,6 @@ import (
 	"os"
 
 	"github.com/localstack/lstk/internal/container"
-	"github.com/localstack/lstk/internal/runtime"
 	"github.com/spf13/cobra"
 )
 
@@ -15,7 +14,7 @@ var stopCmd = &cobra.Command{
 	Long:    "Stop the LocalStack emulator.",
 	PreRunE: initConfig,
 	Run: func(cmd *cobra.Command, args []string) {
-		rt, err := runtime.NewDockerRuntime()
+		rt, err := newRuntime(cmd.Context())
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
