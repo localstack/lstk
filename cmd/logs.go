@@ -13,6 +13,7 @@ var logsCmd = &cobra.Command{
 	Use:     "logs",
 	Short:   "Stream container logs",
 	Long:    "Stream logs from the LocalStack container in real-time. Press Ctrl+C to stop.",
+	PreRunE: initConfig,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		rt, err := runtime.NewDockerRuntime()
 		if err != nil {
