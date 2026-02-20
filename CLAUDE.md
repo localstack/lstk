@@ -30,9 +30,17 @@ Note: Integration tests require `LOCALSTACK_AUTH_TOKEN` environment variable for
 
 # Configuration
 
-Uses Viper with TOML format. Config file location:
-- Linux: `~/.config/lstk/config.toml`
-- macOS: `~/Library/Application Support/lstk/config.toml`
+Uses Viper with TOML format. Config lookup order:
+1. `./lstk.toml` (project-local)
+2. `$HOME/.config/lstk/config.toml`
+3. `os.UserConfigDir()/lstk/config.toml`
+
+When no config file exists, lstk creates one at:
+- `$HOME/.config/lstk/config.toml` if `$HOME/.config` exists
+- otherwise `os.UserConfigDir()/lstk/config.toml`
+
+Use `lstk config path` to print the resolved config file path currently in use.
+When adding a new command that depends on configuration, wire config initialization explicitly in that command (`PreRunE: initConfig`). Keep side-effect-free commands (e.g., `version`, `config path`) without config initialization.
 
 Created automatically on first run with defaults. Supports emulator types (aws, snowflake, azure) - currently only aws is implemented.
 

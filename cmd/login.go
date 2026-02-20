@@ -9,9 +9,10 @@ import (
 )
 
 var loginCmd = &cobra.Command{
-	Use:   "login",
-	Short: "Authenticate with LocalStack",
-	Long:  "Authenticate with LocalStack and store credentials in system keyring",
+	Use:     "login",
+	Short:   "Authenticate with LocalStack",
+	Long:    "Authenticate with LocalStack and store credentials in system keyring",
+	PreRunE: initConfig,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if !ui.IsInteractive() {
 			return fmt.Errorf("login requires an interactive terminal")

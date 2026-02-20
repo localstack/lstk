@@ -20,17 +20,10 @@ var commit = "none"
 var buildDate = "unknown"
 
 var rootCmd = &cobra.Command{
-	Use:   "lstk",
-	Short: "LocalStack CLI",
-	Long:  "lstk is the command-line interface for LocalStack.",
-	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
-		// Version should be side-effect free and must not create/read user config.
-		if cmd.Name() == "version" {
-			return nil
-		}
-		env.Init()
-		return config.Init()
-	},
+	Use:     "lstk",
+	Short:   "LocalStack CLI",
+	Long:    "lstk is the command-line interface for LocalStack.",
+	PreRunE: initConfig,
 	Run: func(cmd *cobra.Command, args []string) {
 		rt, err := runtime.NewDockerRuntime()
 		if err != nil {
@@ -61,4 +54,9 @@ func runStart(ctx context.Context, rt runtime.Runtime) error {
 		return ui.Run(ctx, rt, version, platformClient)
 	}
 	return container.Start(ctx, rt, output.NewPlainSink(os.Stdout), platformClient, false)
+}
+
+func initConfig(_ *cobra.Command, _ []string) error {
+	env.Init()
+	return config.Init()
 }

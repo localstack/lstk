@@ -64,6 +64,15 @@ var ring keyring.Keyring
 // configDir returns the lstk config directory.
 // Duplicated from internal/config to avoid importing prod code in tests.
 func configDir() string {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		panic(fmt.Sprintf("failed to get user home directory: %v", err))
+	}
+	homeConfigDir := filepath.Join(homeDir, ".config")
+	if info, err := os.Stat(homeConfigDir); err == nil && info.IsDir() {
+		return filepath.Join(homeConfigDir, "lstk")
+	}
+
 	configHome, err := os.UserConfigDir()
 	if err != nil {
 		panic(fmt.Sprintf("failed to get user config directory: %v", err))
