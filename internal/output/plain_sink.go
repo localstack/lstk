@@ -4,11 +4,7 @@ import (
 	"fmt"
 	"io"
 	"os"
-
-	"github.com/charmbracelet/lipgloss"
 )
-
-var secondaryStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
 
 type PlainSink struct {
 	out io.Writer
@@ -41,7 +37,7 @@ func (s *PlainSink) emit(event any) {
 
 	switch event.(type) {
 	case SuccessEvent, NoteEvent, WarningEvent:
-		line = secondaryStyle.Render("> ") + line
+		line = "> " + line
 	}
 
 	_, err := fmt.Fprintln(s.out, line)
