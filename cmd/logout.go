@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"errors"
 	"os"
 
 	"github.com/localstack/lstk/internal/api"
@@ -21,28 +22,20 @@ var logoutCmd = &cobra.Command{
 			return err
 		}
 
-		sink := output.NewPlainSink(os.Stdout)
-		a := auth.New(sink, platformClient, tokenStorage, false)
-
 		if ui.IsInteractive() {
+			a := auth.New(nil, platformClient, tokenStorage, false)
 			return ui.RunLogout(cmd.Context(), version, a)
 		}
 
-		// Non-interactive mode
-		output.EmitLog(sink, "Logging out...")
+		// Non-interactive mode: auth emits events through the sink
+		sink := output.NewPlainSink(os.Stdout)
+		a := auth.New(sink, platformClient, tokenStorage, false)
 
-		result, err := a.Logout()
-		if err != nil {
-			return err
+		err = a.Logout()
+		if errors.Is(err, auth.ErrNotLoggedIn) {
+			return nil
 		}
-
-		if result.TokenDeleted {
-			output.EmitSuccess(sink, "Logged out successfully.")
-		} else {
-			output.EmitNote(sink, "Not currently logged in.")
-		}
-
-		return nil
+		return err
 	},
 }
 

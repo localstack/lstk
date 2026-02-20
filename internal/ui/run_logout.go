@@ -2,6 +2,7 @@ package ui
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -12,30 +13,34 @@ import (
 
 const minSpinnerDuration = 400 * time.Millisecond
 
-type logoutDoneMsg struct {
-	result auth.LogoutResult
-}
+type logoutSuccessMsg struct{}
+
+type logoutNotLoggedInMsg struct{}
 
 type logoutErrMsg struct {
 	err error
 }
 
+type logoutState int
+
+const (
+	logoutStateLoading logoutState = iota
+	logoutStateSuccess
+	logoutStateNotLoggedIn
+)
+
 type LogoutApp struct {
 	header  components.Header
 	spinner components.Spinner
-	result  *logoutResultDisplay
+	state   logoutState
 	err     error
-}
-
-type logoutResultDisplay struct {
-	success bool
-	message string
 }
 
 func NewLogoutApp(version string) LogoutApp {
 	return LogoutApp{
 		header:  components.NewHeader(version),
 		spinner: components.NewSpinner().Show("Logging out"),
+		state:   logoutStateLoading,
 	}
 }
 
@@ -50,13 +55,14 @@ func (a LogoutApp) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return a, tea.Quit
 		}
 
-	case logoutDoneMsg:
+	case logoutSuccessMsg:
 		a.spinner = a.spinner.Hide()
-		if msg.result.TokenDeleted {
-			a.result = &logoutResultDisplay{success: true, message: "Logged out successfully."}
-		} else {
-			a.result = &logoutResultDisplay{success: false, message: "Not currently logged in."}
-		}
+		a.state = logoutStateSuccess
+		return a, tea.Quit
+
+	case logoutNotLoggedInMsg:
+		a.spinner = a.spinner.Hide()
+		a.state = logoutStateNotLoggedIn
 		return a, tea.Quit
 
 	case logoutErrMsg:
@@ -82,19 +88,24 @@ func (a LogoutApp) View() string {
 		s += a.spinner.View() + "\n"
 	}
 
-	if a.result != nil {
-		s += renderLogoutResult(a.result) + "\n"
+	switch a.state {
+	case logoutStateSuccess:
+		s += renderLogoutSuccess() + "\n"
+	case logoutStateNotLoggedIn:
+		s += renderLogoutNotLoggedIn() + "\n"
 	}
 
 	return s
 }
 
-func renderLogoutResult(r *logoutResultDisplay) string {
+func renderLogoutSuccess() string {
 	prefix := styles.Secondary.Render("> ")
-	if r.success {
-		return prefix + styles.Success.Render("Success:") + " " + styles.Message.Render(r.message)
-	}
-	return prefix + styles.Note.Render("Note:") + " " + styles.Message.Render(r.message)
+	return prefix + styles.Success.Render("Success:") + " " + styles.Message.Render("Logged out successfully.")
+}
+
+func renderLogoutNotLoggedIn() string {
+	prefix := styles.Secondary.Render("> ")
+	return prefix + styles.Note.Render("Note:") + " " + styles.Message.Render("Not currently logged in.")
 }
 
 func (a LogoutApp) Err() error {
@@ -107,7 +118,7 @@ func RunLogout(ctx context.Context, version string, a *auth.Auth) error {
 
 	go func() {
 		start := time.Now()
-		result, err := a.Logout()
+		err := a.Logout()
 
 		// Ensure spinner is visible for minimum duration
 		elapsed := time.Since(start)
@@ -115,11 +126,15 @@ func RunLogout(ctx context.Context, version string, a *auth.Auth) error {
 			time.Sleep(minSpinnerDuration - elapsed)
 		}
 
+		if errors.Is(err, auth.ErrNotLoggedIn) {
+			p.Send(logoutNotLoggedInMsg{})
+			return
+		}
 		if err != nil {
 			p.Send(logoutErrMsg{err: err})
 			return
 		}
-		p.Send(logoutDoneMsg{result: result})
+		p.Send(logoutSuccessMsg{})
 	}()
 
 	model, err := p.Run()
