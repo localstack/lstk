@@ -2,6 +2,7 @@ package integration_test
 
 import (
 	"bytes"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -9,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/localstack/lstk/test/integration/env"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -20,8 +22,8 @@ func TestConfigFileCreatedOnStartup(t *testing.T) {
 		xdgOverride := filepath.Join(tmpHome, "xdg-config-home")
 		require.NoError(t, os.MkdirAll(filepath.Join(tmpHome, ".config"), 0755))
 
-		env := testEnvWithHome(tmpHome, xdgOverride)
-		stdout, stderr, err := runLstk(t, workDir, env, "logout")
+		e := testEnvWithHome(tmpHome, xdgOverride)
+		stdout, stderr, err := runLstk(t, workDir, e, "logout")
 		require.NoError(t, err, stderr)
 
 		expectedConfigFile := filepath.Join(tmpHome, ".config", "lstk", "config.toml")
@@ -35,8 +37,8 @@ func TestConfigFileCreatedOnStartup(t *testing.T) {
 		workDir := t.TempDir()
 		xdgOverride := filepath.Join(tmpHome, "xdg-config-home")
 
-		env := testEnvWithHome(tmpHome, xdgOverride)
-		stdout, stderr, err := runLstk(t, workDir, env, "logout")
+		e := testEnvWithHome(tmpHome, xdgOverride)
+		stdout, stderr, err := runLstk(t, workDir, e, "logout")
 		require.NoError(t, err, stderr)
 
 		expectedConfigFile := filepath.Join(expectedOSConfigDir(tmpHome, xdgOverride), "config.toml")
@@ -56,8 +58,8 @@ func TestLocalConfigTakesPrecedence(t *testing.T) {
 	writeConfigFile(t, filepath.Join(tmpHome, ".config", "lstk", "config.toml"))
 	writeConfigFile(t, filepath.Join(expectedOSConfigDir(tmpHome, xdgOverride), "config.toml"))
 
-	env := testEnvWithHome(tmpHome, xdgOverride)
-	stdout, stderr, err := runLstk(t, workDir, env, "config", "path")
+	e := testEnvWithHome(tmpHome, xdgOverride)
+	stdout, stderr, err := runLstk(t, workDir, e, "config", "path")
 	require.NoError(t, err, stderr)
 
 	expectedLocalPath, err := filepath.Abs(localConfigFile)
@@ -75,8 +77,8 @@ func TestXDGConfigTakesPrecedence(t *testing.T) {
 	writeConfigFile(t, xdgConfigFile)
 	writeConfigFile(t, osConfigFile)
 
-	env := testEnvWithHome(tmpHome, xdgOverride)
-	stdout, stderr, err := runLstk(t, workDir, env, "config", "path")
+	e := testEnvWithHome(tmpHome, xdgOverride)
+	stdout, stderr, err := runLstk(t, workDir, e, "config", "path")
 	require.NoError(t, err, stderr)
 
 	assertSamePath(t, xdgConfigFile, stdout)
@@ -88,8 +90,8 @@ func TestConfigPathCommand(t *testing.T) {
 	xdgConfigFile := filepath.Join(tmpHome, ".config", "lstk", "config.toml")
 	writeConfigFile(t, xdgConfigFile)
 
-	env := testEnvWithHome(tmpHome, filepath.Join(tmpHome, "xdg-config-home"))
-	stdout, stderr, err := runLstk(t, workDir, env, "config", "path")
+	e := testEnvWithHome(tmpHome, filepath.Join(tmpHome, "xdg-config-home"))
+	stdout, stderr, err := runLstk(t, workDir, e, "config", "path")
 	require.NoError(t, err, stderr)
 
 	assertSamePath(t, xdgConfigFile, stdout)
@@ -101,8 +103,8 @@ func TestConfigPathCommandDoesNotCreateConfig(t *testing.T) {
 	xdgOverride := filepath.Join(tmpHome, "xdg-config-home")
 	expectedConfigFile := filepath.Join(expectedOSConfigDir(tmpHome, xdgOverride), "config.toml")
 
-	env := testEnvWithHome(tmpHome, xdgOverride)
-	stdout, stderr, err := runLstk(t, workDir, env, "config", "path")
+	e := testEnvWithHome(tmpHome, xdgOverride)
+	stdout, stderr, err := runLstk(t, workDir, e, "config", "path")
 	require.NoError(t, err, stderr)
 
 	assertSamePath(t, expectedConfigFile, stdout)
@@ -129,17 +131,17 @@ func runLstk(t *testing.T, dir string, env []string, args ...string) (string, st
 }
 
 func testEnvWithHome(tmpHome, xdgConfigHome string) []string {
-	env := envWithout("HOME", "XDG_CONFIG_HOME", "APPDATA", "USERPROFILE", "HOMEDRIVE", "HOMEPATH")
+	e := env.Without("HOME", "XDG_CONFIG_HOME", "APPDATA", "USERPROFILE", "HOMEDRIVE", "HOMEPATH")
 	switch runtime.GOOS {
 	case "darwin", "linux":
-		env = append(env, "HOME="+tmpHome, "XDG_CONFIG_HOME="+xdgConfigHome, "KEYRING=file")
+		e = append(e, "HOME="+tmpHome, "XDG_CONFIG_HOME="+xdgConfigHome, fmt.Sprintf("%s=file", env.Keyring))
 	case "windows":
 		appData := filepath.Join(tmpHome, "AppData", "Roaming")
-		env = append(env, "HOME="+tmpHome, "USERPROFILE="+tmpHome, "APPDATA="+appData, "KEYRING=file")
+		e = append(e, "HOME="+tmpHome, "USERPROFILE="+tmpHome, "APPDATA="+appData, fmt.Sprintf("%s=file", env.Keyring))
 	default:
 		panic("unsupported OS: " + runtime.GOOS)
 	}
-	return env
+	return e
 }
 
 func expectedOSConfigDir(tmpHome, xdgConfigHome string) string {
