@@ -2,6 +2,8 @@ package integration_test
 
 import (
 	"context"
+	"net"
+	"os"
 	"os/exec"
 	"testing"
 	"time"
@@ -11,8 +13,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
-
-const containerName = "localstack-aws"
 
 func TestStartCommandSucceedsWithValidToken(t *testing.T) {
 	requireDocker(t)
@@ -83,6 +83,44 @@ func TestStartCommandFailsWithInvalidToken(t *testing.T) {
 
 	require.Error(t, err, "expected lstk start to fail with invalid token")
 	assert.Contains(t, string(output), "license validation failed")
+}
+
+func TestStartCommandDoesNothingWhenAlreadyRunning(t *testing.T) {
+	requireDocker(t)
+	cleanup()
+	t.Cleanup(cleanup)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	startTestContainer(t, ctx)
+
+	cmd := exec.CommandContext(ctx, binaryPath(), "start")
+	cmd.Env = append(os.Environ(), "LOCALSTACK_AUTH_TOKEN=fake-token")
+	output, err := cmd.CombinedOutput()
+
+	require.NoError(t, err, "lstk start should succeed when container is already running: %s", output)
+	assert.Contains(t, string(output), "already running")
+}
+
+func TestStartCommandFailsWhenPortInUse(t *testing.T) {
+	requireDocker(t)
+	cleanup()
+	t.Cleanup(cleanup)
+
+	ln, err := net.Listen("tcp", ":4566")
+	require.NoError(t, err, "failed to bind port 4566 for test")
+	defer func() { _ = ln.Close() }()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, binaryPath(), "start")
+	cmd.Env = append(os.Environ(), "LOCALSTACK_AUTH_TOKEN=fake-token")
+	output, err := cmd.CombinedOutput()
+
+	require.Error(t, err, "expected lstk start to fail when port is in use")
+	assert.Contains(t, string(output), "port 4566 already in use")
 }
 
 func cleanup() {
