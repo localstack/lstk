@@ -214,12 +214,12 @@ func ConfigDir() (string, error) {
 	return filepath.Dir(configPath), nil
 }
 
-func ResolvedConfigPath() string {
+func resolvedConfigPath() string {
 	return viper.ConfigFileUsed()
 }
 
 func ConfigFilePath() (string, error) {
-	if resolved := ResolvedConfigPath(); resolved != "" {
+	if resolved := resolvedConfigPath(); resolved != "" {
 		// If Init already ran, use Viper's selected file directly.
 		absResolved, err := filepath.Abs(resolved)
 		if err != nil {
