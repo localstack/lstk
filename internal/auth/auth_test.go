@@ -13,7 +13,7 @@ import (
 )
 
 func TestMain(m *testing.M) {
-	_ = os.Unsetenv("LSTK_AUTH_TOKEN")
+	_ = os.Unsetenv("LOCALSTACK_AUTH_TOKEN")
 	m.Run()
 }
 

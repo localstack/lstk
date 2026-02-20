@@ -9,7 +9,7 @@ import (
 type Key string
 
 const (
-	AuthToken   Key = "LSTK_AUTH_TOKEN"
+	AuthToken   Key = "LOCALSTACK_AUTH_TOKEN"
 	APIEndpoint Key = "LSTK_API_ENDPOINT"
 	Keyring     Key = "LSTK_KEYRING"
 	CI          Key = "CI"

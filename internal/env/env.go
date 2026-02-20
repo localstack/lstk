@@ -1,6 +1,7 @@
 package env
 
 import (
+	"os"
 	"strings"
 
 	"github.com/spf13/viper"
@@ -24,8 +25,10 @@ func Init() {
 	viper.SetDefault("api_endpoint", "https://api.localstack.cloud")
 	viper.SetDefault("web_app_url", "https://app.localstack.cloud")
 
+	// LOCALSTACK_AUTH_TOKEN is not prefixed with LSTK_
+	// in order to be shared seamlessly with other LocalStack tools
 	Vars = &Env{
-		AuthToken:   viper.GetString("auth_token"),
+		AuthToken:   os.Getenv("LOCALSTACK_AUTH_TOKEN"),
 		APIEndpoint: viper.GetString("api_endpoint"),
 		WebAppURL:   viper.GetString("web_app_url"),
 		Keyring:     viper.GetString("keyring"),
