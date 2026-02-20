@@ -1,6 +1,21 @@
 # lstk
 Localstack's new CLI (v2).
 
+## Configuration
+
+`lstk` uses Viper with a TOML format. 
+
+For finding the correct config, we have this lookup order:
+1. `./lstk.toml` (project-local)
+2. `$HOME/.config/lstk/config.toml`
+3. `os.UserConfigDir()/lstk/config.toml`
+
+When no config file exists, `lstk` creates one at:
+- `$HOME/.config/lstk/config.toml` if `$HOME/.config` exists
+- otherwise `os.UserConfigDir()/lstk/config.toml`
+
+Use `lstk config path` to print the resolved config file path currently in use.
+
 ## Versioning
 `lstk` uses calendar versioning in a SemVer-compatible format:
 
