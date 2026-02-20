@@ -47,7 +47,7 @@ const (
 	keyringAuthTokenKey   = "lstk.auth-token"
 	keyringPassword       = "lstk-keyring"
 	keyringFilename       = "keyring"
-	keyringAuthTokenLabel = "lstk auth token"
+	keyringAuthTokenLabel = "LocalStack Auth Token"
 )
 
 func binaryPath() string {
