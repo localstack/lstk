@@ -102,7 +102,7 @@ jobs:
         run: make test-integration
         env:
           CREATE_JUNIT_REPORT: "true"
-          LSTK_AUTH_TOKEN: ${{ secrets.LOCALSTACK_AUTH_TOKEN }}
+          LOCALSTACK_AUTH_TOKEN: ${{ secrets.LOCALSTACK_AUTH_TOKEN }}
 
       - name: Upload test results
         uses: actions/upload-artifact@v6
