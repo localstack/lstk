@@ -14,7 +14,7 @@ var configCmd = &cobra.Command{
 
 var configPathCmd = &cobra.Command{
 	Use:   "path",
-	Short: "Show the resolved configuration file path",
+	Short: "Print the configuration file path",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		configPath, err := config.ConfigFilePath()
 		if err != nil {
