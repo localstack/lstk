@@ -30,6 +30,14 @@ func NewDockerRuntime() (*DockerRuntime, error) {
 	return &DockerRuntime{client: cli}, nil
 }
 
+func (d *DockerRuntime) CheckConnection(ctx context.Context) error {
+	_, err := d.client.Ping(ctx)
+	if err != nil {
+		return formatDockerConnectionError(d.client.DaemonHost(), err)
+	}
+	return nil
+}
+
 func (d *DockerRuntime) PullImage(ctx context.Context, imageName string, progress chan<- PullProgress) error {
 	reader, err := d.client.ImagePull(ctx, imageName, image.PullOptions{})
 	if err != nil {

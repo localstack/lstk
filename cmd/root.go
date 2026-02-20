@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"context"
-	"fmt"
 	"os"
 
 	"github.com/localstack/lstk/internal/api"
@@ -25,15 +24,13 @@ var rootCmd = &cobra.Command{
 	Long:    "lstk is the command-line interface for LocalStack.",
 	PreRunE: initConfig,
 	Run: func(cmd *cobra.Command, args []string) {
-		rt, err := runtime.NewDockerRuntime()
+		rt, err := newRuntime(cmd.Context())
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(1)
+			exitWithStartError(err)
 		}
 
 		if err := runStart(cmd.Context(), rt); err != nil {
-			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(1)
+			exitWithStartError(err)
 		}
 	},
 }

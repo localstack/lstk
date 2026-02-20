@@ -5,7 +5,6 @@ import (
 
 	"github.com/localstack/lstk/internal/container"
 	"github.com/localstack/lstk/internal/output"
-	"github.com/localstack/lstk/internal/runtime"
 	"github.com/spf13/cobra"
 )
 
@@ -15,7 +14,7 @@ var logsCmd = &cobra.Command{
 	Long:    "Stream logs from the LocalStack container in real-time. Press Ctrl+C to stop.",
 	PreRunE: initConfig,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		rt, err := runtime.NewDockerRuntime()
+		rt, err := newRuntime(cmd.Context())
 		if err != nil {
 			return err
 		}
