@@ -13,6 +13,22 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestLogsExitsByDefault(t *testing.T) {
+	requireDocker(t)
+	cleanup()
+	t.Cleanup(cleanup)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	startTestContainer(t, ctx)
+
+	cmd := exec.CommandContext(ctx, binaryPath(), "logs")
+	_, err := cmd.CombinedOutput()
+
+	require.NoError(t, err, "lstk logs should exit cleanly when container is running")
+}
+
 func TestLogsCommandFailsWhenNotRunning(t *testing.T) {
 	requireDocker(t)
 	cleanup()
@@ -21,14 +37,14 @@ func TestLogsCommandFailsWhenNotRunning(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, binaryPath(), "logs")
+	cmd := exec.CommandContext(ctx, binaryPath(), "logs", "--follow")
 	out, err := cmd.CombinedOutput()
 
-	require.Error(t, err, "expected lstk logs to fail when container not running")
+	require.Error(t, err, "expected lstk logs --follow to fail when container not running")
 	assert.Contains(t, string(out), "emulator is not running")
 }
 
-func TestLogsCommandStreamsOutput(t *testing.T) {
+func TestLogsFollowStreamsOutput(t *testing.T) {
 	requireDocker(t)
 	cleanup()
 	t.Cleanup(cleanup)
@@ -40,12 +56,12 @@ func TestLogsCommandStreamsOutput(t *testing.T) {
 
 	const marker = "lstk-logs-test-marker"
 
-	logsCmd := exec.CommandContext(ctx, binaryPath(), "logs")
+	logsCmd := exec.CommandContext(ctx, binaryPath(), "logs", "--follow")
 	stdout, err := logsCmd.StdoutPipe()
 	require.NoError(t, err, "failed to get stdout pipe")
 
 	err = logsCmd.Start()
-	require.NoError(t, err, "failed to start lstk logs")
+	require.NoError(t, err, "failed to start lstk logs --follow")
 	t.Cleanup(func() { _ = logsCmd.Process.Kill() })
 
 	// Give lstk logs a moment to connect before generating output
@@ -74,6 +90,6 @@ func TestLogsCommandStreamsOutput(t *testing.T) {
 	select {
 	case <-found:
 	case <-ctx.Done():
-		t.Fatal("marker did not appear in lstk logs output within timeout")
+		t.Fatal("marker did not appear in lstk logs --follow output within timeout")
 	}
 }

@@ -152,11 +152,11 @@ func (d *DockerRuntime) Logs(ctx context.Context, containerID string, tail int) 
 	return string(logs), nil
 }
 
-func (d *DockerRuntime) StreamLogs(ctx context.Context, containerID string, out io.Writer) error {
+func (d *DockerRuntime) StreamLogs(ctx context.Context, containerID string, out io.Writer, follow bool) error {
 	reader, err := d.client.ContainerLogs(ctx, containerID, container.LogsOptions{
 		ShowStdout: true,
 		ShowStderr: true,
-		Follow:     true,
+		Follow:     follow,
 		Tail:       "all",
 	})
 	if err != nil {
