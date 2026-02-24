@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 
+	"github.com/localstack/lstk/internal/version"
 	"github.com/spf13/cobra"
 )
 
@@ -21,5 +22,5 @@ func init() {
 }
 
 func versionLine() string {
-	return fmt.Sprintf("lstk %s (%s, %s)", version, commit, buildDate)
+	return fmt.Sprintf("lstk %s (%s, %s)", version.Version(), version.Commit(), version.BuildDate())
 }
