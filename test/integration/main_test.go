@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -14,8 +15,11 @@ import (
 	"testing"
 
 	"github.com/99designs/keyring"
+	"github.com/docker/docker/api/types/container"
+	"github.com/docker/docker/api/types/image"
 	"github.com/docker/docker/client"
 	"github.com/localstack/lstk/test/integration/env"
+	"github.com/stretchr/testify/require"
 )
 
 // syncBuffer is a thread-safe buffer for concurrent read/write access.
@@ -144,6 +148,28 @@ func DeleteAuthTokenFromKeyring() error {
 		return nil
 	}
 	return err
+}
+
+const (
+	containerName = "localstack-aws"
+	testImage     = "alpine:latest"
+)
+
+func startTestContainer(t *testing.T, ctx context.Context) {
+	t.Helper()
+
+	reader, err := dockerClient.ImagePull(ctx, testImage, image.PullOptions{})
+	require.NoError(t, err, "failed to pull test image")
+	_, _ = io.Copy(io.Discard, reader)
+	_ = reader.Close()
+
+	resp, err := dockerClient.ContainerCreate(ctx, &container.Config{
+		Image: testImage,
+		Cmd:   []string{"sleep", "infinity"},
+	}, nil, nil, nil, containerName)
+	require.NoError(t, err, "failed to create test container")
+	err = dockerClient.ContainerStart(ctx, resp.ID, container.StartOptions{})
+	require.NoError(t, err, "failed to start test container")
 }
 
 func createMockLicenseServer(success bool) *httptest.Server {

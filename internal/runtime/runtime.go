@@ -6,11 +6,13 @@ import (
 )
 
 type ContainerConfig struct {
-	Image      string
-	Name       string
-	Port       string
-	HealthPath string
-	Env        []string // e.g., ["KEY=value", "FOO=bar"]
+	Image       string
+	Name        string
+	Port        string
+	HealthPath  string
+	Env         []string // e.g., ["KEY=value", "FOO=bar"]
+	Tag         string
+	ProductName string
 }
 
 type PullProgress struct {
