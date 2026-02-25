@@ -5,6 +5,7 @@ import (
 
 	"github.com/localstack/lstk/internal/api"
 	"github.com/localstack/lstk/internal/ui"
+	"github.com/localstack/lstk/internal/version"
 	"github.com/spf13/cobra"
 )
 
@@ -18,7 +19,7 @@ var loginCmd = &cobra.Command{
 			return fmt.Errorf("login requires an interactive terminal")
 		}
 		platformClient := api.NewPlatformClient()
-		return ui.RunLogin(cmd.Context(), version, platformClient)
+		return ui.RunLogin(cmd.Context(), version.Version(), platformClient)
 	},
 }
 

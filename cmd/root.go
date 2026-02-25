@@ -12,12 +12,9 @@ import (
 	"github.com/localstack/lstk/internal/output"
 	"github.com/localstack/lstk/internal/runtime"
 	"github.com/localstack/lstk/internal/ui"
+	"github.com/localstack/lstk/internal/version"
 	"github.com/spf13/cobra"
 )
-
-var version = "dev"
-var commit = "none"
-var buildDate = "unknown"
 
 var rootCmd = &cobra.Command{
 	Use:     "lstk",
@@ -39,7 +36,7 @@ var rootCmd = &cobra.Command{
 }
 
 func init() {
-	rootCmd.Version = version
+	rootCmd.Version = version.Version()
 	rootCmd.SetVersionTemplate(versionLine() + "\n")
 	rootCmd.AddCommand(startCmd)
 }
@@ -51,7 +48,7 @@ func Execute(ctx context.Context) error {
 func runStart(ctx context.Context, rt runtime.Runtime) error {
 	platformClient := api.NewPlatformClient()
 	if ui.IsInteractive() {
-		return ui.Run(ctx, rt, version, platformClient)
+		return ui.Run(ctx, rt, version.Version(), platformClient)
 	}
 	return container.Start(ctx, rt, output.NewPlainSink(os.Stdout), platformClient, false)
 }

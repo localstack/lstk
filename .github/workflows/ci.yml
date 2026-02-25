@@ -5,7 +5,7 @@ on:
     branches:
       - main
     tags:
-      - "*.*.*"
+      - "v*.*.*"
   pull_request:
   workflow_dispatch:
 
@@ -142,10 +142,10 @@ jobs:
           go-version-file: go.mod
           cache-dependency-path: go.sum
 
-      - name: Validate CalVer tag
+      - name: Validate version tag
         run: |
-          if [[ ! "${GITHUB_REF_NAME}" =~ ^[0-9]{4}\.[1-9][0-9]*\.[0-9]+$ ]]; then
-            echo "Tag '${GITHUB_REF_NAME}' does not match CalVer format YYYY.M.patch"
+          if [[ ! "${GITHUB_REF_NAME}" =~ ^v0\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Tag '${GITHUB_REF_NAME}' does not match version format v0.minor.patch"
             exit 1
           fi
 

@@ -18,7 +18,7 @@ builds:
     flags:
       - -trimpath
     ldflags:
-      - -s -w -X github.com/localstack/lstk/cmd.version={{ .Version }} -X github.com/localstack/lstk/cmd.commit={{ .Commit }} -X github.com/localstack/lstk/cmd.buildDate={{ .Date }}
+      - -s -w -X github.com/localstack/lstk/internal/version.version={{ .Version }} -X github.com/localstack/lstk/internal/version.commit={{ .Commit }} -X github.com/localstack/lstk/internal/version.buildDate={{ .Date }}
 
 archives:
   - id: lstk

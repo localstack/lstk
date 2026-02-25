@@ -7,6 +7,13 @@ on:
         description: Git ref to tag
         required: true
         default: main
+      bump:
+        description: Version bump type
+        required: true
+        type: choice
+        options:
+          - patch
+          - minor
 
 permissions:
   contents: write
@@ -29,6 +36,7 @@ jobs:
         with:
           ref: ${{ inputs.release_ref }}
           fetch-depth: 0
+          token: ${{ secrets.PRO_ACCESS_TOKEN }}
 
       - name: Configure Git user
         env:
@@ -41,22 +49,30 @@ jobs:
       - name: Fetch tags
         run: git fetch --tags --force
 
-      - name: Compute next CalVer tag
+      - name: Compute next version tag
         id: next_tag
+        env:
+          BUMP: ${{ inputs.bump }}
         run: |
           set -euo pipefail
-          year="$(date -u +%Y)"
-          month="$(date -u +%-m)"
-          prefix="${year}.${month}."
 
-          latest="$(git tag --list "${prefix}*" --sort=-v:refname | grep -E "^${year}\.${month}\.[0-9]+$" | head -n 1 || true)"
+          latest="$(git tag --list "v0.*.*" --sort=-v:refname | grep -E "^v0\.[0-9]+\.[0-9]+$" | head -n 1 || true)"
           if [[ -z "${latest}" ]]; then
+            minor=1
             patch=0
           else
-            patch="$(( ${latest##*.} + 1 ))"
+            current_minor="$(echo "${latest}" | cut -d. -f2)"
+            current_patch="$(echo "${latest}" | cut -d. -f3)"
+            if [[ "${BUMP}" == "minor" ]]; then
+              minor="$(( current_minor + 1 ))"
+              patch=0
+            else
+              minor="${current_minor}"
+              patch="$(( current_patch + 1 ))"
+            fi
           fi
 
-          tag="${year}.${month}.${patch}"
+          tag="v0.${minor}.${patch}"
           if git rev-parse -q --verify "refs/tags/${tag}" >/dev/null; then
             echo "Tag ${tag} already exists"
             exit 1
