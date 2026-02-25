@@ -10,6 +10,11 @@ func FormatEventLine(event any) (string, bool) {
 	switch e := event.(type) {
 	case MessageEvent:
 		return formatMessageEvent(e), true
+	case SpinnerEvent:
+		if e.Active {
+			return e.Text + "...", true
+		}
+		return "", false
 	case ContainerStatusEvent:
 		return formatStatusLine(e), true
 	case ProgressEvent:

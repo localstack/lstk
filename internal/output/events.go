@@ -29,8 +29,13 @@ type MessageEvent struct {
 	Text     string
 }
 
+type SpinnerEvent struct {
+	Active bool
+	Text   string
+}
+
 type Event interface {
-	MessageEvent | ContainerStatusEvent | ProgressEvent | UserInputRequestEvent | ContainerLogLineEvent
+	MessageEvent | SpinnerEvent | ContainerStatusEvent | ProgressEvent | UserInputRequestEvent | ContainerLogLineEvent
 }
 
 type Sink interface {
@@ -131,4 +136,12 @@ func EmitUserInputRequest(sink Sink, event UserInputRequestEvent) {
 
 func EmitContainerLogLine(sink Sink, line string) {
 	Emit(sink, ContainerLogLineEvent{Line: line})
+}
+
+func EmitSpinnerStart(sink Sink, text string) {
+	Emit(sink, SpinnerEvent{Active: true, Text: text})
+}
+
+func EmitSpinnerStop(sink Sink) {
+	Emit(sink, SpinnerEvent{Active: false})
 }
