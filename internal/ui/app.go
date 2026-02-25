@@ -4,10 +4,10 @@ import (
 	"context"
 	"strings"
 
+	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/localstack/lstk/internal/output"
 	"github.com/localstack/lstk/internal/ui/components"
-	"github.com/localstack/lstk/internal/ui/styles"
 )
 
 const maxLines = 200
@@ -21,6 +21,8 @@ type runErrMsg struct {
 type App struct {
 	header       components.Header
 	inputPrompt  components.InputPrompt
+	spinner      components.Spinner
+	errorDisplay components.ErrorDisplay
 	lines        []string
 	cancel       func()
 	pendingInput *output.UserInputRequestEvent
@@ -29,15 +31,17 @@ type App struct {
 
 func NewApp(version string, cancel func()) App {
 	return App{
-		header:      components.NewHeader(version),
-		inputPrompt: components.NewInputPrompt(),
-		lines:       make([]string, 0, maxLines),
-		cancel:      cancel,
+		header:       components.NewHeader(version),
+		inputPrompt:  components.NewInputPrompt(),
+		spinner:      components.NewSpinner(),
+		errorDisplay: components.NewErrorDisplay(),
+		lines:        make([]string, 0, maxLines),
+		cancel:       cancel,
 	}
 }
 
 func (a App) Init() tea.Cmd {
-	return nil
+	return a.spinner.Tick()
 }
 
 func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -87,6 +91,25 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case output.UserInputRequestEvent:
 		a.pendingInput = &msg
 		a.inputPrompt = a.inputPrompt.Show(msg.Prompt, msg.Options)
+	case spinner.TickMsg:
+		var cmd tea.Cmd
+		a.spinner, cmd = a.spinner.Update(msg)
+		return a, cmd
+	case output.SpinnerEvent:
+		if msg.Active {
+			a.spinner = a.spinner.Start(msg.Text)
+			return a, a.spinner.Tick()
+		}
+		a.spinner = a.spinner.Stop()
+		return a, nil
+	case output.ErrorEvent:
+		a.errorDisplay = a.errorDisplay.Show(msg)
+		a.spinner = a.spinner.Stop()
+		return a, nil
+	case output.MessageEvent:
+		line := components.RenderMessage(msg)
+		a.lines = appendLine(a.lines, line)
+		return a, nil
 	case runDoneMsg:
 		return a, tea.Quit
 	case runErrMsg:
@@ -126,16 +149,30 @@ func (a App) View() string {
 	var sb strings.Builder
 	sb.WriteString(a.header.View())
 	sb.WriteString("\n")
-	for _, line := range a.lines {
+
+	if spinnerView := a.spinner.View(); spinnerView != "" {
 		sb.WriteString("  ")
-		sb.WriteString(styles.Message.Render(line))
+		sb.WriteString(spinnerView)
 		sb.WriteString("\n")
 	}
+
+	for _, line := range a.lines {
+		sb.WriteString("  ")
+		sb.WriteString(line)
+		sb.WriteString("\n")
+	}
+
 	if promptView := a.inputPrompt.View(); promptView != "" {
 		sb.WriteString("  ")
 		sb.WriteString(promptView)
 		sb.WriteString("\n")
 	}
+
+	if errorView := a.errorDisplay.View(); errorView != "" {
+		sb.WriteString("\n")
+		sb.WriteString(errorView)
+	}
+
 	return sb.String()
 }
 
