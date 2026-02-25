@@ -1,7 +1,36 @@
+// Event Usage Guide:
+//
+// MessageEvent (use via EmitInfo, EmitSuccess, EmitNote, EmitWarning):
+//   - SeverityInfo: Transient status ("Connecting...", "Validating...")
+//   - SeveritySuccess: Positive outcome ("Login successful")
+//   - SeverityNote: Informational outcome ("Not currently logged in")
+//   - SeverityWarning: Cautionary message ("Token expires soon")
+//
+// SpinnerEvent (use via EmitSpinnerStart, EmitSpinnerStop):
+//   - Show loading indicator during async operations
+//   - Always pair Start with Stop
+//
+// ErrorEvent (use via EmitError):
+//   - Structured errors with title, summary, detail, and recovery actions
+//   - Use for errors that need more than a single line
 package output
 
+type MessageSeverity int
+
+const (
+	SeverityInfo MessageSeverity = iota
+	SeveritySuccess
+	SeverityNote
+	SeverityWarning
+)
+
+type MessageEvent struct {
+	Severity MessageSeverity
+	Text     string
+}
+
 type Event interface {
-	LogEvent | WarningEvent | ContainerStatusEvent | ProgressEvent | UserInputRequestEvent | ContainerLogLineEvent
+	MessageEvent | ContainerStatusEvent | ProgressEvent | UserInputRequestEvent | ContainerLogLineEvent
 }
 
 type Sink interface {
@@ -16,14 +45,6 @@ func (f SinkFunc) emit(event any) {
 		return
 	}
 	f(event)
-}
-
-type LogEvent struct {
-	Message string
-}
-
-type WarningEvent struct {
-	Message string
 }
 
 type ContainerStatusEvent struct {
@@ -68,12 +89,26 @@ func Emit[E Event](sink Sink, event E) {
 	sink.emit(event)
 }
 
-func EmitLog(sink Sink, message string) {
-	Emit(sink, LogEvent{Message: message})
+func EmitInfo(sink Sink, text string) {
+	Emit(sink, MessageEvent{Severity: SeverityInfo, Text: text})
 }
 
+func EmitSuccess(sink Sink, text string) {
+	Emit(sink, MessageEvent{Severity: SeveritySuccess, Text: text})
+}
+
+func EmitNote(sink Sink, text string) {
+	Emit(sink, MessageEvent{Severity: SeverityNote, Text: text})
+}
+
+// Deprecated: Use EmitInfo instead
+func EmitLog(sink Sink, message string) {
+	Emit(sink, MessageEvent{Severity: SeverityInfo, Text: message})
+}
+
+// Deprecated: Use EmitWarning with MessageEvent instead
 func EmitWarning(sink Sink, message string) {
-	Emit(sink, WarningEvent{Message: message})
+	Emit(sink, MessageEvent{Severity: SeverityWarning, Text: message})
 }
 
 func EmitStatus(sink Sink, phase, container, detail string) {

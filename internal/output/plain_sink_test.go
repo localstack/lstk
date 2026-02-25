@@ -17,22 +17,22 @@ func (w *failingWriter) Write(p []byte) (n int, err error) {
 	return 0, w.err
 }
 
-func TestPlainSink_EmitsLogEvent(t *testing.T) {
+func TestPlainSink_EmitsMessageEventInfo(t *testing.T) {
 	var out bytes.Buffer
 	sink := NewPlainSink(&out)
 
-	Emit(sink, LogEvent{Message: "hello"})
+	Emit(sink, MessageEvent{Severity: SeverityInfo, Text: "hello"})
 
 	assert.Equal(t, "hello\n", out.String())
 }
 
-func TestPlainSink_EmitsWarningEvent(t *testing.T) {
+func TestPlainSink_EmitsMessageEventWarning(t *testing.T) {
 	var out bytes.Buffer
 	sink := NewPlainSink(&out)
 
-	Emit(sink, WarningEvent{Message: "something went wrong"})
+	Emit(sink, MessageEvent{Severity: SeverityWarning, Text: "something went wrong"})
 
-	assert.Equal(t, "Warning: something went wrong\n", out.String())
+	assert.Equal(t, "> Warning: something went wrong\n", out.String())
 }
 
 func TestPlainSink_EmitsStatusEvent(t *testing.T) {
@@ -153,7 +153,7 @@ func TestPlainSink_ErrReturnsNilOnSuccess(t *testing.T) {
 	var out bytes.Buffer
 	sink := NewPlainSink(&out)
 
-	Emit(sink, LogEvent{Message: "hello"})
+	Emit(sink, MessageEvent{Severity: SeverityInfo, Text: "hello"})
 
 	assert.NoError(t, sink.Err())
 }
@@ -162,7 +162,7 @@ func TestPlainSink_ErrCapturesWriteError(t *testing.T) {
 	writeErr := errors.New("write failed")
 	sink := NewPlainSink(&failingWriter{err: writeErr})
 
-	Emit(sink, LogEvent{Message: "hello"})
+	Emit(sink, MessageEvent{Severity: SeverityInfo, Text: "hello"})
 
 	assert.Equal(t, writeErr, sink.Err())
 }
@@ -171,8 +171,8 @@ func TestPlainSink_ErrStoresOnlyFirstError(t *testing.T) {
 	firstErr := errors.New("first error")
 	sink := NewPlainSink(&failingWriter{err: firstErr})
 
-	Emit(sink, LogEvent{Message: "first"})
-	Emit(sink, LogEvent{Message: "second"})
+	Emit(sink, MessageEvent{Severity: SeverityInfo, Text: "first"})
+	Emit(sink, MessageEvent{Severity: SeverityInfo, Text: "second"})
 
 	assert.Equal(t, firstErr, sink.Err())
 }
@@ -181,8 +181,8 @@ func TestPlainSink_UsesFormatterParity(t *testing.T) {
 	t.Parallel()
 
 	events := []any{
-		LogEvent{Message: "hello"},
-		WarningEvent{Message: "careful"},
+		MessageEvent{Severity: SeverityInfo, Text: "hello"},
+		MessageEvent{Severity: SeverityWarning, Text: "careful"},
 		ContainerStatusEvent{Phase: "starting", Container: "localstack"},
 		ProgressEvent{LayerID: "abc", Status: "Downloading", Current: 1, Total: 2},
 	}
@@ -192,9 +192,7 @@ func TestPlainSink_UsesFormatterParity(t *testing.T) {
 		sink := NewPlainSink(&out)
 
 		switch e := event.(type) {
-		case LogEvent:
-			Emit(sink, e)
-		case WarningEvent:
+		case MessageEvent:
 			Emit(sink, e)
 		case ContainerStatusEvent:
 			Emit(sink, e)

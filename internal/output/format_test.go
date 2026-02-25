@@ -12,15 +12,27 @@ func TestFormatEventLine(t *testing.T) {
 		wantOK bool
 	}{
 		{
-			name:   "log event",
-			event:  LogEvent{Message: "hello"},
+			name:   "message event info",
+			event:  MessageEvent{Severity: SeverityInfo, Text: "hello"},
 			want:   "hello",
 			wantOK: true,
 		},
 		{
-			name:   "warning event",
-			event:  WarningEvent{Message: "careful"},
-			want:   "Warning: careful",
+			name:   "message event success",
+			event:  MessageEvent{Severity: SeveritySuccess, Text: "done"},
+			want:   "> Success: done",
+			wantOK: true,
+		},
+		{
+			name:   "message event note",
+			event:  MessageEvent{Severity: SeverityNote, Text: "fyi"},
+			want:   "> Note: fyi",
+			wantOK: true,
+		},
+		{
+			name:   "message event warning",
+			event:  MessageEvent{Severity: SeverityWarning, Text: "careful"},
+			want:   "> Warning: careful",
 			wantOK: true,
 		},
 		{

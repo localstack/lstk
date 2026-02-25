@@ -8,10 +8,8 @@ import (
 // FormatEventLine converts an output event into a single display line.
 func FormatEventLine(event any) (string, bool) {
 	switch e := event.(type) {
-	case LogEvent:
-		return e.Message, true
-	case WarningEvent:
-		return fmt.Sprintf("Warning: %s", e.Message), true
+	case MessageEvent:
+		return formatMessageEvent(e), true
 	case ContainerStatusEvent:
 		return formatStatusLine(e), true
 	case ProgressEvent:
@@ -69,5 +67,18 @@ func formatUserInputRequest(e UserInputRequestEvent) string {
 			labels[i] = opt.Label
 		}
 		return fmt.Sprintf("%s [%s]", e.Prompt, strings.Join(labels, "/"))
+	}
+}
+
+func formatMessageEvent(e MessageEvent) string {
+	switch e.Severity {
+	case SeveritySuccess:
+		return "> Success: " + e.Text
+	case SeverityNote:
+		return "> Note: " + e.Text
+	case SeverityWarning:
+		return "> Warning: " + e.Text
+	default:
+		return e.Text
 	}
 }

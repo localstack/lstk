@@ -13,15 +13,15 @@ import (
 
 func TestAppAddsFormattedLinesInOrder(t *testing.T) {
 	tm := teatest.NewTestModel(t, NewApp("dev", nil), teatest.WithInitialTermSize(120, 40))
-	tm.Send(output.LogEvent{Message: "first"})
-	tm.Send(output.WarningEvent{Message: "second"})
+	tm.Send(output.MessageEvent{Severity: output.SeverityInfo, Text: "first"})
+	tm.Send(output.MessageEvent{Severity: output.SeverityWarning, Text: "second"})
 
 	teatest.WaitFor(t, tm.Output(), func(bts []byte) bool {
 		view := string(bts)
-		if !strings.Contains(view, "first") || !strings.Contains(view, "Warning: second") {
+		if !strings.Contains(view, "first") || !strings.Contains(view, "> Warning: second") {
 			return false
 		}
-		return strings.Index(view, "first") < strings.Index(view, "Warning: second")
+		return strings.Index(view, "first") < strings.Index(view, "> Warning: second")
 	}, teatest.WithDuration(5*time.Second))
 
 	tm.Send(tea.QuitMsg{})
@@ -33,7 +33,7 @@ func TestAppBoundsMessageHistory(t *testing.T) {
 
 	app := NewApp("dev", nil)
 	for i := 0; i < maxLines+5; i++ {
-		model, _ := app.Update(output.LogEvent{Message: "line"})
+		model, _ := app.Update(output.MessageEvent{Severity: output.SeverityInfo, Text: "line"})
 		app = model.(App)
 	}
 	if len(app.lines) != maxLines {

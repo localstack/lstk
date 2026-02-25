@@ -49,8 +49,8 @@ func TestGetToken_ReturnsTokenWhenKeyringStoreFails(t *testing.T) {
 	assert.Equal(t, "test-token", token)
 	assert.Condition(t, func() bool {
 		for _, event := range events {
-			warningEvent, ok := event.(output.WarningEvent)
-			if ok && strings.Contains(warningEvent.Message, "could not store token in keyring") {
+			msgEvent, ok := event.(output.MessageEvent)
+			if ok && msgEvent.Severity == output.SeverityWarning && strings.Contains(msgEvent.Text, "could not store token in keyring") {
 				return true
 			}
 		}
