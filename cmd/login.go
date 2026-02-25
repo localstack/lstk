@@ -11,8 +11,8 @@ import (
 
 var loginCmd = &cobra.Command{
 	Use:     "login",
-	Short:   "Authenticate with LocalStack",
-	Long:    "Authenticate with LocalStack and store credentials in system keyring",
+	Short:   "Manage login",
+	Long:    "Manage login and store credentials in system keyring",
 	PreRunE: initConfig,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if !ui.IsInteractive() {

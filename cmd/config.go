@@ -9,7 +9,7 @@ import (
 
 var configCmd = &cobra.Command{
 	Use:   "config",
-	Short: "Manage lstk configuration",
+	Short: "Manage configuration",
 }
 
 var configPathCmd = &cobra.Command{
