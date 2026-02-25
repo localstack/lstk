@@ -142,3 +142,69 @@ func TestAppCtrlCCancelsPendingInput(t *testing.T) {
 		t.Fatalf("expected context canceled error, got %v", app.Err())
 	}
 }
+
+func TestAppSpinnerStartStop(t *testing.T) {
+	t.Parallel()
+
+	app := NewApp("dev", nil)
+
+	if app.spinner.Visible() {
+		t.Fatal("expected spinner to be hidden initially")
+	}
+
+	model, cmd := app.Update(output.SpinnerEvent{Active: true, Text: "Loading"})
+	app = model.(App)
+
+	if !app.spinner.Visible() {
+		t.Fatal("expected spinner to be visible after SpinnerEvent start")
+	}
+	if cmd == nil {
+		t.Fatal("expected tick command after spinner start")
+	}
+
+	model, _ = app.Update(output.SpinnerEvent{Active: false})
+	app = model.(App)
+
+	if app.spinner.Visible() {
+		t.Fatal("expected spinner to be hidden after SpinnerEvent stop")
+	}
+}
+
+func TestAppMessageEventRendering(t *testing.T) {
+	t.Parallel()
+
+	app := NewApp("dev", nil)
+
+	model, _ := app.Update(output.MessageEvent{Severity: output.SeveritySuccess, Text: "Done"})
+	app = model.(App)
+
+	if len(app.lines) != 1 {
+		t.Fatalf("expected 1 line, got %d", len(app.lines))
+	}
+	if !strings.Contains(app.lines[0], "Success:") || !strings.Contains(app.lines[0], "Done") {
+		t.Fatalf("expected rendered success message, got: %q", app.lines[0])
+	}
+}
+
+func TestAppErrorEventStopsSpinner(t *testing.T) {
+	t.Parallel()
+
+	app := NewApp("dev", nil)
+
+	model, _ := app.Update(output.SpinnerEvent{Active: true, Text: "Loading"})
+	app = model.(App)
+
+	if !app.spinner.Visible() {
+		t.Fatal("expected spinner to be visible")
+	}
+
+	model, _ = app.Update(output.ErrorEvent{Title: "Something went wrong"})
+	app = model.(App)
+
+	if app.spinner.Visible() {
+		t.Fatal("expected spinner to be stopped after ErrorEvent")
+	}
+	if !app.errorDisplay.Visible() {
+		t.Fatal("expected error display to be visible after ErrorEvent")
+	}
+}
