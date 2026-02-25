@@ -66,6 +66,48 @@ func TestFormatEventLine(t *testing.T) {
 			wantOK: false,
 		},
 		{
+			name:   "spinner event active",
+			event:  SpinnerEvent{Active: true, Text: "Loading"},
+			want:   "Loading...",
+			wantOK: true,
+		},
+		{
+			name:   "spinner event stop",
+			event:  SpinnerEvent{Active: false},
+			want:   "",
+			wantOK: false,
+		},
+		{
+			name:   "error event title only",
+			event:  ErrorEvent{Title: "Connection failed"},
+			want:   "Error: Connection failed",
+			wantOK: true,
+		},
+		{
+			name:   "error event with summary",
+			event:  ErrorEvent{Title: "Auth failed", Summary: "Invalid token"},
+			want:   "Error: Auth failed\n  Invalid token",
+			wantOK: true,
+		},
+		{
+			name:   "error event with detail",
+			event:  ErrorEvent{Title: "Auth failed", Summary: "Invalid token", Detail: "Token expired at 2024-01-01"},
+			want:   "Error: Auth failed\n  Invalid token\n  Token expired at 2024-01-01",
+			wantOK: true,
+		},
+		{
+			name: "error event with actions",
+			event: ErrorEvent{
+				Title:   "Docker not running",
+				Summary: "Cannot connect to Docker daemon",
+				Actions: []ErrorAction{
+					{Label: "Start Docker:", Value: "open -a Docker"},
+				},
+			},
+			want:   "Error: Docker not running\n  Cannot connect to Docker daemon\n  → Start Docker: open -a Docker",
+			wantOK: true,
+		},
+		{
 			name:   "unsupported event",
 			event:  struct{}{},
 			want:   "",
