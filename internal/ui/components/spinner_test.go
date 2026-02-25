@@ -48,7 +48,7 @@ func TestSpinner_Update(t *testing.T) {
 	s := NewSpinner()
 	s = s.Start("Loading")
 
-	s, cmd := s.Update(spinner.TickMsg{})
+	_, cmd := s.Update(spinner.TickMsg{})
 	if cmd == nil {
 		t.Fatal("expected non-nil command from spinner update")
 	}

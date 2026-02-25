@@ -123,7 +123,6 @@ func EmitLog(sink Sink, message string) {
 	Emit(sink, MessageEvent{Severity: SeverityInfo, Text: message})
 }
 
-// Deprecated: Use EmitWarning with MessageEvent instead
 func EmitWarning(sink Sink, message string) {
 	Emit(sink, MessageEvent{Severity: SeverityWarning, Text: message})
 }

@@ -35,8 +35,8 @@ func (l *loginProvider) Login(ctx context.Context) (string, error) {
 	}
 
 	authURL := fmt.Sprintf("%s/auth/request/%s", getWebAppURL(), authReq.ID)
-	output.EmitLog(l.sink, fmt.Sprintf("Visit: %s", authURL))
-	output.EmitLog(l.sink, fmt.Sprintf("Verification code: %s", authReq.Code))
+	output.EmitInfo(l.sink, fmt.Sprintf("Visit: %s", authURL))
+	output.EmitInfo(l.sink, fmt.Sprintf("Verification code: %s", authReq.Code))
 
 	// Ask whether to open the browser; ENTER or Y accepts (default yes), N skips
 	browserCh := make(chan output.InputResponse, 1)
@@ -53,7 +53,7 @@ func (l *loginProvider) Login(ctx context.Context) (string, error) {
 		}
 		if resp.SelectedKey != "n" {
 			if err := browser.OpenURL(authURL); err != nil {
-				output.EmitLog(l.sink, fmt.Sprintf("Warning: Failed to open browser: %v", err))
+				output.EmitWarning(l.sink, fmt.Sprintf("Failed to open browser: %v", err))
 			}
 		}
 	case <-ctx.Done():
@@ -84,7 +84,7 @@ func getWebAppURL() string {
 }
 
 func (l *loginProvider) completeAuth(ctx context.Context, authReq *api.AuthRequest) (string, error) {
-	output.EmitLog(l.sink, "Checking if auth request is confirmed...")
+	output.EmitInfo(l.sink, "Checking if auth request is confirmed...")
 	confirmed, err := l.platformClient.CheckAuthRequestConfirmed(ctx, authReq.ID, authReq.ExchangeToken)
 	if err != nil {
 		return "", fmt.Errorf("failed to check auth request: %w", err)
@@ -92,14 +92,14 @@ func (l *loginProvider) completeAuth(ctx context.Context, authReq *api.AuthReque
 	if !confirmed {
 		return "", fmt.Errorf("auth request not confirmed - please complete the authentication in your browser")
 	}
-	output.EmitLog(l.sink, "Auth request confirmed, exchanging for token...")
+	output.EmitInfo(l.sink, "Auth request confirmed, exchanging for token...")
 
 	bearerToken, err := l.platformClient.ExchangeAuthRequest(ctx, authReq.ID, authReq.ExchangeToken)
 	if err != nil {
 		return "", fmt.Errorf("failed to exchange auth request: %w", err)
 	}
 
-	output.EmitLog(l.sink, "Fetching license token...")
+	output.EmitInfo(l.sink, "Fetching license token...")
 	licenseToken, err := l.platformClient.GetLicenseToken(ctx, bearerToken)
 	if err != nil {
 		return "", fmt.Errorf("failed to get license token: %w", err)
