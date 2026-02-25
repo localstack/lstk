@@ -149,6 +149,40 @@ func TestPlainSink_EmitsContainerLogLineEvent(t *testing.T) {
 	assert.Equal(t, "2024-01-01 hello from container\n", out.String())
 }
 
+func TestPlainSink_EmitsSpinnerEvent(t *testing.T) {
+	t.Run("active spinner", func(t *testing.T) {
+		var out bytes.Buffer
+		sink := NewPlainSink(&out)
+
+		Emit(sink, SpinnerEvent{Active: true, Text: "Loading"})
+
+		assert.Equal(t, "Loading...\n", out.String())
+	})
+
+	t.Run("stop spinner is silent", func(t *testing.T) {
+		var out bytes.Buffer
+		sink := NewPlainSink(&out)
+
+		Emit(sink, SpinnerEvent{Active: false})
+
+		assert.Equal(t, "", out.String())
+	})
+}
+
+func TestPlainSink_EmitsErrorEvent(t *testing.T) {
+	var out bytes.Buffer
+	sink := NewPlainSink(&out)
+
+	Emit(sink, ErrorEvent{
+		Title:   "Connection failed",
+		Summary: "Cannot connect to Docker",
+		Actions: []ErrorAction{{Label: "Start Docker:", Value: "open -a Docker"}},
+	})
+
+	expected := "Error: Connection failed\n  Cannot connect to Docker\n  → Start Docker: open -a Docker\n"
+	assert.Equal(t, expected, out.String())
+}
+
 func TestPlainSink_ErrReturnsNilOnSuccess(t *testing.T) {
 	var out bytes.Buffer
 	sink := NewPlainSink(&out)
@@ -183,6 +217,10 @@ func TestPlainSink_UsesFormatterParity(t *testing.T) {
 	events := []any{
 		MessageEvent{Severity: SeverityInfo, Text: "hello"},
 		MessageEvent{Severity: SeverityWarning, Text: "careful"},
+		MessageEvent{Severity: SeveritySuccess, Text: "done"},
+		MessageEvent{Severity: SeverityNote, Text: "fyi"},
+		SpinnerEvent{Active: true, Text: "Loading"},
+		ErrorEvent{Title: "Failed", Summary: "Something broke"},
 		ContainerStatusEvent{Phase: "starting", Container: "localstack"},
 		ProgressEvent{LayerID: "abc", Status: "Downloading", Current: 1, Total: 2},
 	}
@@ -193,6 +231,10 @@ func TestPlainSink_UsesFormatterParity(t *testing.T) {
 
 		switch e := event.(type) {
 		case MessageEvent:
+			Emit(sink, e)
+		case SpinnerEvent:
+			Emit(sink, e)
+		case ErrorEvent:
 			Emit(sink, e)
 		case ContainerStatusEvent:
 			Emit(sink, e)
