@@ -15,6 +15,8 @@ func FormatEventLine(event any) (string, bool) {
 			return e.Text + "...", true
 		}
 		return "", false
+	case ErrorEvent:
+		return formatErrorEvent(e), true
 	case ContainerStatusEvent:
 		return formatStatusLine(e), true
 	case ProgressEvent:
@@ -86,4 +88,25 @@ func formatMessageEvent(e MessageEvent) string {
 	default:
 		return e.Text
 	}
+}
+
+func formatErrorEvent(e ErrorEvent) string {
+	var sb strings.Builder
+	sb.WriteString("Error: ")
+	sb.WriteString(e.Title)
+	if e.Summary != "" {
+		sb.WriteString("\n  ")
+		sb.WriteString(e.Summary)
+	}
+	if e.Detail != "" {
+		sb.WriteString("\n  ")
+		sb.WriteString(e.Detail)
+	}
+	for _, action := range e.Actions {
+		sb.WriteString("\n  → ")
+		sb.WriteString(action.Label)
+		sb.WriteString(" ")
+		sb.WriteString(action.Value)
+	}
+	return sb.String()
 }

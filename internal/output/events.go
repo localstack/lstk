@@ -34,8 +34,20 @@ type SpinnerEvent struct {
 	Text   string
 }
 
+type ErrorAction struct {
+	Label string
+	Value string
+}
+
+type ErrorEvent struct {
+	Title   string
+	Summary string
+	Detail  string
+	Actions []ErrorAction
+}
+
 type Event interface {
-	MessageEvent | SpinnerEvent | ContainerStatusEvent | ProgressEvent | UserInputRequestEvent | ContainerLogLineEvent
+	MessageEvent | SpinnerEvent | ErrorEvent | ContainerStatusEvent | ProgressEvent | UserInputRequestEvent | ContainerLogLineEvent
 }
 
 type Sink interface {
@@ -144,4 +156,8 @@ func EmitSpinnerStart(sink Sink, text string) {
 
 func EmitSpinnerStop(sink Sink) {
 	Emit(sink, SpinnerEvent{Active: false})
+}
+
+func EmitError(sink Sink, event ErrorEvent) {
+	Emit(sink, event)
 }
