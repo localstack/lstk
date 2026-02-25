@@ -32,7 +32,7 @@ func createMockAPIServer(t *testing.T, licenseToken string, confirmed bool) *htt
 			var payload map[string]string
 			err := json.NewDecoder(r.Body).Decode(&payload)
 			require.NoError(t, err, "failed to decode auth request payload")
-			assert.Equal(t, "cli-v2", payload["actor"], "actor should be cli-v2")
+			assert.Equal(t, "lstk", payload["actor"], "actor should be lstk")
 			assert.NotEmpty(t, payload["version"], "version should not be empty")
 
 			w.WriteHeader(http.StatusCreated)

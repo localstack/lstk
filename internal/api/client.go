@@ -13,6 +13,8 @@ import (
 	"github.com/localstack/lstk/internal/version"
 )
 
+const actor = "lstk"
+
 type PlatformAPI interface {
 	CreateAuthRequest(ctx context.Context) (*AuthRequest, error)
 	CheckAuthRequestConfirmed(ctx context.Context, id, exchangeToken string) (bool, error)
@@ -75,7 +77,7 @@ func NewPlatformClient() *PlatformClient {
 
 func (c *PlatformClient) CreateAuthRequest(ctx context.Context) (*AuthRequest, error) {
 	payload := map[string]string{
-		"actor":   "cli-v2",
+		"actor":   actor,
 		"version": version.Version(),
 	}
 	body, err := json.Marshal(payload)
