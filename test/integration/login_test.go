@@ -28,8 +28,15 @@ func createMockAPIServer(t *testing.T, licenseToken string, confirmed bool) *htt
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case r.Method == "POST" && r.URL.Path == "/v1/auth/request":
+			// Validate request payload
+			var payload map[string]string
+			err := json.NewDecoder(r.Body).Decode(&payload)
+			require.NoError(t, err, "failed to decode auth request payload")
+			assert.Equal(t, "cli-v2", payload["actor"], "actor should be cli-v2")
+			assert.NotEmpty(t, payload["version"], "version should not be empty")
+
 			w.WriteHeader(http.StatusCreated)
-			err := json.NewEncoder(w).Encode(map[string]string{
+			err = json.NewEncoder(w).Encode(map[string]string{
 				"id":             authReqID,
 				"code":           "TEST123",
 				"exchange_token": exchangeToken,

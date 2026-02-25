@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/localstack/lstk/internal/env"
+	"github.com/localstack/lstk/internal/version"
 )
 
 type PlatformAPI interface {
@@ -73,10 +74,20 @@ func NewPlatformClient() *PlatformClient {
 }
 
 func (c *PlatformClient) CreateAuthRequest(ctx context.Context) (*AuthRequest, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/v1/auth/request", nil)
+	payload := map[string]string{
+		"actor":   "cli-v2",
+		"version": version.Version(),
+	}
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal request: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/v1/auth/request", bytes.NewReader(body))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
+	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
