@@ -52,6 +52,7 @@ Environment variables:
 - Don't add comments for self-explanatory code. Only comment when the "why" isn't obvious from the code itself.
 - Do not remove comments added by someone else than yourself.
 - Errors returned by functions should always be checked unless in test files.
+- Terminology: in user-facing CLI/help/docs, prefer `emulator` over `container`/`runtime`; use `container`/`runtime` only for internal implementation details.
 
 # Testing
 
