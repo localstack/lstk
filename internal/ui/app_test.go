@@ -271,3 +271,47 @@ func TestAppClipboardResultMsgFailureClearsFlash(t *testing.T) {
 		t.Fatal("expected no reset timer command on failure")
 	}
 }
+
+func TestAppPendingInputOptionCOverridesClipboardShortcut(t *testing.T) {
+	t.Parallel()
+
+	app := NewApp("dev", nil)
+	responseCh := make(chan output.InputResponse, 1)
+
+	// Ensure a copy target exists so global 'c' shortcut could fire.
+	model, _ := app.Update(output.HighlightLogEvent{Message: "https://example.com"})
+	app = model.(App)
+
+	model, _ = app.Update(output.UserInputRequestEvent{
+		Prompt: "Choose option",
+		Options: []output.InputOption{
+			{Key: "c", Label: "Continue"},
+			{Key: "x", Label: "Cancel"},
+		},
+		ResponseCh: responseCh,
+	})
+	app = model.(App)
+
+	model, cmd := app.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'c'}})
+	app = model.(App)
+	if cmd == nil {
+		t.Fatal("expected pending-input response command")
+	}
+	msg := cmd()
+	if msg != nil {
+		t.Fatalf("expected pending-input command to return nil tea.Msg, got %#v", msg)
+	}
+
+	select {
+	case resp := <-responseCh:
+		if resp.SelectedKey != "c" {
+			t.Fatalf("expected c key, got %q", resp.SelectedKey)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for response on channel")
+	}
+
+	if app.inputPrompt.Visible() {
+		t.Fatal("expected input prompt to be hidden after response")
+	}
+}

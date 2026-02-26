@@ -80,11 +80,6 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return a, tea.Quit
 		}
-		if msg.String() == "c" {
-			if url := a.findURL(); url != "" {
-				return a, clipboardCmd(url)
-			}
-		}
 		if a.pendingInput != nil {
 			if msg.Type == tea.KeyEnter {
 				for _, opt := range a.pendingInput.Options {
@@ -107,6 +102,11 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					a.inputPrompt = a.inputPrompt.Hide()
 					return a, responseCmd
 				}
+			}
+		}
+		if msg.String() == "c" {
+			if url := a.findURL(); url != "" {
+				return a, clipboardCmd(url)
 			}
 		}
 	case tea.WindowSizeMsg:

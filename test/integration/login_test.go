@@ -107,17 +107,10 @@ func TestDeviceFlowSuccess(t *testing.T) {
 		close(outputCh)
 	}()
 
-	// Wait for browser prompt, then press Y to open browser
+	// Wait for the auth completion prompt, then press ENTER.
 	require.Eventually(t, func() bool {
-		return bytes.Contains(output.Bytes(), []byte("Open browser?"))
-	}, 10*time.Second, 100*time.Millisecond, "browser prompt should appear")
-	_, err = ptmx.Write([]byte("y"))
-	require.NoError(t, err)
-
-	// Wait for ENTER prompt, then press ENTER to confirm auth is complete
-	require.Eventually(t, func() bool {
-		return bytes.Contains(output.Bytes(), []byte("Waiting for authentication"))
-	}, 10*time.Second, 100*time.Millisecond, "waiting prompt should appear")
+		return bytes.Contains(output.Bytes(), []byte("Press ENTER when complete"))
+	}, 10*time.Second, 100*time.Millisecond, "auth completion prompt should appear")
 	_, err = ptmx.Write([]byte("\r"))
 	require.NoError(t, err)
 
@@ -127,9 +120,11 @@ func TestDeviceFlowSuccess(t *testing.T) {
 
 	out := output.String()
 	require.NoError(t, err, "login should succeed: %s", out)
-	assert.Contains(t, out, "Verification code:")
+	assert.Contains(t, out, "Open this link in your browser and sign in")
+	assert.Contains(t, out, "/auth/request/test-auth-req-id")
+	assert.Contains(t, out, "Enter this one-time verification code after you log in")
 	assert.Contains(t, out, "TEST123")
-	assert.Contains(t, out, "Open browser?")
+	assert.Contains(t, out, "Press ENTER when complete")
 	assert.Contains(t, out, "Checking if auth request is confirmed")
 	assert.Contains(t, out, "Auth request confirmed")
 	assert.Contains(t, out, "Fetching license token")
@@ -169,17 +164,10 @@ func TestDeviceFlowFailure_RequestNotConfirmed(t *testing.T) {
 		close(outputCh)
 	}()
 
-	// Wait for browser prompt, then press Y to open browser
+	// Wait for the auth completion prompt, then press ENTER.
 	require.Eventually(t, func() bool {
-		return bytes.Contains(output.Bytes(), []byte("Open browser?"))
-	}, 10*time.Second, 100*time.Millisecond, "browser prompt should appear")
-	_, err = ptmx.Write([]byte("y"))
-	require.NoError(t, err)
-
-	// Wait for ENTER prompt, then press ENTER to confirm auth is complete
-	require.Eventually(t, func() bool {
-		return bytes.Contains(output.Bytes(), []byte("Waiting for authentication"))
-	}, 10*time.Second, 100*time.Millisecond, "waiting prompt should appear")
+		return bytes.Contains(output.Bytes(), []byte("Press ENTER when complete"))
+	}, 10*time.Second, 100*time.Millisecond, "auth completion prompt should appear")
 	_, err = ptmx.Write([]byte("\r"))
 	require.NoError(t, err)
 
@@ -189,9 +177,11 @@ func TestDeviceFlowFailure_RequestNotConfirmed(t *testing.T) {
 
 	out := output.String()
 	require.Error(t, err, "expected login to fail when request not confirmed")
-	assert.Contains(t, out, "Verification code:")
-	assert.Contains(t, out, "Open browser?")
-	assert.Contains(t, out, "Waiting for authentication")
+	assert.Contains(t, out, "Open this link in your browser and sign in")
+	assert.Contains(t, out, "/auth/request/test-auth-req-id")
+	assert.Contains(t, out, "Enter this one-time verification code after you log in")
+	assert.Contains(t, out, "TEST123")
+	assert.Contains(t, out, "Press ENTER when complete")
 	assert.Contains(t, out, "Checking if auth request is confirmed")
 	assert.Contains(t, out, "auth request not confirmed")
 
