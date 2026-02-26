@@ -5,6 +5,9 @@ import (
 	"context"
 	"strings"
 	"testing"
+
+	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 )
 
 func executeWithArgs(t *testing.T, args ...string) (string, error) {
@@ -12,6 +15,7 @@ func executeWithArgs(t *testing.T, args ...string) (string, error) {
 
 	origOut := rootCmd.OutOrStdout()
 	origErr := rootCmd.ErrOrStderr()
+	resetCommandState(rootCmd)
 
 	buf := new(bytes.Buffer)
 	rootCmd.SetOut(buf)
@@ -24,8 +28,25 @@ func executeWithArgs(t *testing.T, args ...string) (string, error) {
 	rootCmd.SetArgs(nil)
 	rootCmd.SetOut(origOut)
 	rootCmd.SetErr(origErr)
+	resetCommandState(rootCmd)
 
 	return out, err
+}
+
+func resetCommandState(cmd *cobra.Command) {
+	resetFlagSet(cmd.Flags())
+	resetFlagSet(cmd.PersistentFlags())
+
+	for _, sub := range cmd.Commands() {
+		resetCommandState(sub)
+	}
+}
+
+func resetFlagSet(flags *pflag.FlagSet) {
+	flags.VisitAll(func(flag *pflag.Flag) {
+		_ = flag.Value.Set(flag.DefValue)
+		flag.Changed = false
+	})
 }
 
 func TestRootHelpOutputTemplate(t *testing.T) {
