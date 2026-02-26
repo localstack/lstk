@@ -213,3 +213,61 @@ func TestAppEnterDoesNothingWithoutExplicitEnterOption(t *testing.T) {
 		t.Fatal("expected input prompt to remain visible")
 	}
 }
+
+func TestHardWrapHandlesUTF8Runes(t *testing.T) {
+	t.Parallel()
+
+	got := hardWrap("A🙂BC", 2)
+	want := "A🙂\nBC"
+	if got != want {
+		t.Fatalf("expected %q, got %q", want, got)
+	}
+}
+
+func TestAppCopyURLDispatchesClipboardCmd(t *testing.T) {
+	t.Parallel()
+
+	app := NewApp("dev", nil)
+	model, _ := app.Update(output.LogEvent{Message: "Open browser"})
+	app = model.(App)
+	model, _ = app.Update(output.HighlightLogEvent{Message: "https://example.com"})
+	app = model.(App)
+
+	model, cmd := app.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'c'}})
+	app = model.(App)
+	if cmd == nil {
+		t.Fatal("expected clipboard command")
+	}
+	if app.copiedFlash {
+		t.Fatal("expected copiedFlash to remain false until clipboard result")
+	}
+}
+
+func TestAppClipboardResultMsgSetsFlashAndSchedulesReset(t *testing.T) {
+	t.Parallel()
+
+	app := NewApp("dev", nil)
+	model, cmd := app.Update(clipboardResultMsg{ok: true})
+	app = model.(App)
+	if !app.copiedFlash {
+		t.Fatal("expected copiedFlash to be true")
+	}
+	if cmd == nil {
+		t.Fatal("expected reset timer command")
+	}
+}
+
+func TestAppClipboardResultMsgFailureClearsFlash(t *testing.T) {
+	t.Parallel()
+
+	app := NewApp("dev", nil)
+	app.copiedFlash = true
+	model, cmd := app.Update(clipboardResultMsg{ok: false})
+	app = model.(App)
+	if app.copiedFlash {
+		t.Fatal("expected copiedFlash to be false")
+	}
+	if cmd != nil {
+		t.Fatal("expected no reset timer command on failure")
+	}
+}

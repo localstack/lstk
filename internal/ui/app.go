@@ -24,6 +24,10 @@ type runErrMsg struct {
 
 type copiedResetMsg struct{}
 
+type clipboardResultMsg struct {
+	ok bool
+}
+
 type styledLine struct {
 	text      string
 	highlight bool
@@ -78,11 +82,7 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if msg.String() == "c" {
 			if url := a.findURL(); url != "" {
-				copyToClipboard(url)
-				a.copiedFlash = true
-				return a, tea.Tick(time.Second, func(time.Time) tea.Msg {
-					return copiedResetMsg{}
-				})
+				return a, clipboardCmd(url)
 			}
 		}
 		if a.pendingInput != nil {
@@ -116,6 +116,13 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.inputPrompt = a.inputPrompt.Show(msg.Prompt, msg.Options)
 	case copiedResetMsg:
 		a.copiedFlash = false
+	case clipboardResultMsg:
+		a.copiedFlash = msg.ok
+		if msg.ok {
+			return a, tea.Tick(time.Second, func(time.Time) tea.Msg {
+				return copiedResetMsg{}
+			})
+		}
 	case runDoneMsg:
 		return a, tea.Quit
 	case runErrMsg:
@@ -187,25 +194,27 @@ func formatResolvedInput(req output.UserInputRequestEvent, selectedKey string) s
 const lineIndent = 2
 
 func hardWrap(s string, maxWidth int) string {
-	if maxWidth <= 0 || len(s) <= maxWidth {
+	rs := []rune(s)
+	if maxWidth <= 0 || len(rs) <= maxWidth {
 		return s
 	}
 	var sb strings.Builder
-	for i := 0; i < len(s); i += maxWidth {
+	for i := 0; i < len(rs); i += maxWidth {
 		if i > 0 {
 			sb.WriteByte('\n')
 		}
 		end := i + maxWidth
-		if end > len(s) {
-			end = len(s)
+		if end > len(rs) {
+			end = len(rs)
 		}
-		sb.WriteString(s[i:end])
+		sb.WriteString(string(rs[i:end]))
 	}
 	return sb.String()
 }
 
 func (a App) findURL() string {
-	for _, line := range a.lines {
+	for i := len(a.lines) - 1; i >= 0; i-- {
+		line := a.lines[i]
 		if line.highlight && isURL(line.text) {
 			return line.text
 		}
@@ -213,18 +222,29 @@ func (a App) findURL() string {
 	return ""
 }
 
-func copyToClipboard(text string) {
+func clipboardCmd(text string) tea.Cmd {
+	return func() tea.Msg {
+		return clipboardResultMsg{ok: copyToClipboard(text) == nil}
+	}
+}
+
+func copyToClipboard(text string) error {
 	var cmd *exec.Cmd
 	switch runtime.GOOS {
 	case "darwin":
 		cmd = exec.Command("pbcopy")
 	case "linux":
 		cmd = exec.Command("xclip", "-selection", "clipboard")
+	case "windows":
+		cmd = exec.Command("cmd", "/c", "clip")
 	default:
-		return
+		return fmt.Errorf("clipboard copy not supported on %s", runtime.GOOS)
 	}
 	cmd.Stdin = strings.NewReader(text)
-	_ = cmd.Run()
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("copy to clipboard failed: %w", err)
+	}
+	return nil
 }
 
 func nextIsURL(lines []styledLine, i int) bool {
