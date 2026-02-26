@@ -11,7 +11,7 @@ import (
 	"github.com/localstack/lstk/internal/runtime"
 )
 
-func Logs(ctx context.Context, rt runtime.Runtime, sink output.Sink) error {
+func Logs(ctx context.Context, rt runtime.Runtime, sink output.Sink, follow bool) error {
 	cfg, err := config.Get()
 	if err != nil {
 		return fmt.Errorf("failed to get config: %w", err)
@@ -26,7 +26,7 @@ func Logs(ctx context.Context, rt runtime.Runtime, sink output.Sink) error {
 	pr, pw := io.Pipe()
 	errCh := make(chan error, 1)
 	go func() {
-		err := rt.StreamLogs(ctx, c.Name(), pw)
+		err := rt.StreamLogs(ctx, c.Name(), pw, follow)
 		pw.CloseWithError(err)
 		errCh <- err
 	}()
