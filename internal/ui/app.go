@@ -2,7 +2,11 @@ package ui
 
 import (
 	"context"
+	"fmt"
+	"os/exec"
+	"runtime"
 	"strings"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/localstack/lstk/internal/output"
@@ -18,12 +22,22 @@ type runErrMsg struct {
 	err error
 }
 
+type copiedResetMsg struct{}
+
+type styledLine struct {
+	text      string
+	highlight bool
+	secondary bool
+}
+
 type App struct {
 	header       components.Header
 	inputPrompt  components.InputPrompt
-	lines        []string
+	lines        []styledLine
+	width        int
 	cancel       func()
 	pendingInput *output.UserInputRequestEvent
+	copiedFlash  bool
 	err          error
 }
 
@@ -31,7 +45,7 @@ func NewApp(version string, cancel func()) App {
 	return App{
 		header:      components.NewHeader(version),
 		inputPrompt: components.NewInputPrompt(),
-		lines:       make([]string, 0, maxLines),
+		lines:       make([]styledLine, 0, maxLines),
 		cancel:      cancel,
 	}
 }
@@ -62,21 +76,32 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return a, tea.Quit
 		}
+		if msg.String() == "c" {
+			if url := a.findURL(); url != "" {
+				copyToClipboard(url)
+				a.copiedFlash = true
+				return a, tea.Tick(time.Second, func(time.Time) tea.Msg {
+					return copiedResetMsg{}
+				})
+			}
+		}
 		if a.pendingInput != nil {
 			if msg.Type == tea.KeyEnter {
-				// ENTER selects the first option (default)
-				selectedKey := ""
-				if len(a.pendingInput.Options) > 0 {
-					selectedKey = a.pendingInput.Options[0].Key
+				for _, opt := range a.pendingInput.Options {
+					if opt.Key == "enter" {
+						a.lines = appendLine(a.lines, styledLine{text: formatResolvedInput(*a.pendingInput, "enter")})
+						responseCmd := sendInputResponseCmd(a.pendingInput.ResponseCh, output.InputResponse{SelectedKey: "enter"})
+						a.pendingInput = nil
+						a.inputPrompt = a.inputPrompt.Hide()
+						return a, responseCmd
+					}
 				}
-				responseCmd := sendInputResponseCmd(a.pendingInput.ResponseCh, output.InputResponse{SelectedKey: selectedKey})
-				a.pendingInput = nil
-				a.inputPrompt = a.inputPrompt.Hide()
-				return a, responseCmd
+				return a, nil
 			}
 			// A single character key press selects the matching option
 			for _, opt := range a.pendingInput.Options {
 				if msg.String() == opt.Key {
+					a.lines = appendLine(a.lines, styledLine{text: formatResolvedInput(*a.pendingInput, opt.Key)})
 					responseCmd := sendInputResponseCmd(a.pendingInput.ResponseCh, output.InputResponse{SelectedKey: opt.Key})
 					a.pendingInput = nil
 					a.inputPrompt = a.inputPrompt.Hide()
@@ -84,17 +109,25 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 		}
+	case tea.WindowSizeMsg:
+		a.width = msg.Width
 	case output.UserInputRequestEvent:
 		a.pendingInput = &msg
 		a.inputPrompt = a.inputPrompt.Show(msg.Prompt, msg.Options)
+	case copiedResetMsg:
+		a.copiedFlash = false
 	case runDoneMsg:
 		return a, tea.Quit
 	case runErrMsg:
 		a.err = msg.err
 		return a, tea.Quit
+	case output.SecondaryLogEvent:
+		a.lines = appendLine(a.lines, styledLine{text: msg.Message, secondary: true})
+	case output.HighlightLogEvent:
+		a.lines = appendLine(a.lines, styledLine{text: msg.Message, highlight: true})
 	default:
 		if line, ok := output.FormatEventLine(msg); ok {
-			a.lines = appendLine(a.lines, line)
+			a.lines = appendLine(a.lines, styledLine{text: line})
 		}
 	}
 
@@ -114,7 +147,7 @@ func sendInputResponseCmd(responseCh chan<- output.InputResponse, response outpu
 	}
 }
 
-func appendLine(lines []string, line string) []string {
+func appendLine(lines []styledLine, line styledLine) []styledLine {
 	lines = append(lines, line)
 	if len(lines) > maxLines {
 		lines = lines[len(lines)-maxLines:]
@@ -122,13 +155,127 @@ func appendLine(lines []string, line string) []string {
 	return lines
 }
 
+func formatResolvedInput(req output.UserInputRequestEvent, selectedKey string) string {
+	firstLine := strings.Split(req.Prompt, "\n")[0]
+	labels := make([]string, 0, len(req.Options))
+	selected := selectedKey
+
+	for _, opt := range req.Options {
+		if opt.Label != "" {
+			labels = append(labels, opt.Label)
+		}
+		if opt.Key == selectedKey && opt.Label != "" {
+			selected = opt.Label
+		}
+	}
+
+	switch len(labels) {
+	case 1:
+		firstLine = fmt.Sprintf("%s (%s)", firstLine, labels[0])
+	default:
+		if len(labels) > 1 {
+			firstLine = fmt.Sprintf("%s [%s]", firstLine, strings.Join(labels, "/"))
+		}
+	}
+
+	if selected == "" || len(labels) == 0 || (len(labels) == 1 && selected == labels[0]) {
+		return firstLine
+	}
+	return fmt.Sprintf("%s %s", firstLine, selected)
+}
+
+const lineIndent = 2
+
+func hardWrap(s string, maxWidth int) string {
+	if maxWidth <= 0 || len(s) <= maxWidth {
+		return s
+	}
+	var sb strings.Builder
+	for i := 0; i < len(s); i += maxWidth {
+		if i > 0 {
+			sb.WriteByte('\n')
+		}
+		end := i + maxWidth
+		if end > len(s) {
+			end = len(s)
+		}
+		sb.WriteString(s[i:end])
+	}
+	return sb.String()
+}
+
+func (a App) findURL() string {
+	for _, line := range a.lines {
+		if line.highlight && isURL(line.text) {
+			return line.text
+		}
+	}
+	return ""
+}
+
+func copyToClipboard(text string) {
+	var cmd *exec.Cmd
+	switch runtime.GOOS {
+	case "darwin":
+		cmd = exec.Command("pbcopy")
+	case "linux":
+		cmd = exec.Command("xclip", "-selection", "clipboard")
+	default:
+		return
+	}
+	cmd.Stdin = strings.NewReader(text)
+	_ = cmd.Run()
+}
+
+func nextIsURL(lines []styledLine, i int) bool {
+	if i+1 < len(lines) {
+		next := lines[i+1]
+		return next.highlight && isURL(next.text)
+	}
+	return false
+}
+
+func isURL(s string) bool {
+	return strings.HasPrefix(s, "http://") || strings.HasPrefix(s, "https://")
+}
+
+func hyperlink(url, displayText string) string {
+	return fmt.Sprintf("\x1b]8;;%s\x1b\\%s\x1b]8;;\x1b\\", url, displayText)
+}
+
 func (a App) View() string {
 	var sb strings.Builder
 	sb.WriteString(a.header.View())
 	sb.WriteString("\n")
-	for _, line := range a.lines {
+	contentWidth := a.width - lineIndent
+	for i, line := range a.lines {
 		sb.WriteString("  ")
-		sb.WriteString(styles.Message.Render(line))
+		if line.highlight {
+			if isURL(line.text) {
+				wrapped := strings.Split(hardWrap(line.text, contentWidth), "\n")
+				var styledParts []string
+				for _, part := range wrapped {
+					styledParts = append(styledParts, styles.Link.Render(part))
+				}
+				sb.WriteString(hyperlink(line.text, strings.Join(styledParts, "\n  ")))
+			} else {
+				sb.WriteString(styles.Highlight.Render(hardWrap(line.text, contentWidth)))
+			}
+		} else if line.secondary {
+			text := hardWrap(line.text, contentWidth)
+			sb.WriteString(styles.SecondaryMessage.Render(text))
+		} else {
+			text := hardWrap(line.text, contentWidth)
+			sb.WriteString(styles.Message.Render(text))
+			if nextIsURL(a.lines, i) {
+				sb.WriteString(" ")
+				if a.copiedFlash {
+					sb.WriteString(styles.SecondaryMessage.Render("(copied!)"))
+				} else {
+					sb.WriteString(styles.SecondaryMessage.Render("(c to copy)"))
+				}
+			}
+		}
 		sb.WriteString("\n")
 	}
 	if promptView := a.inputPrompt.View(); promptView != "" {

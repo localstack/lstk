@@ -142,3 +142,74 @@ func TestAppCtrlCCancelsPendingInput(t *testing.T) {
 		t.Fatalf("expected context canceled error, got %v", app.Err())
 	}
 }
+
+func TestAppEnterPrefersExplicitEnterOption(t *testing.T) {
+	t.Parallel()
+
+	app := NewApp("dev", nil)
+	responseCh := make(chan output.InputResponse, 1)
+
+	model, _ := app.Update(output.UserInputRequestEvent{
+		Prompt: "Open browser now?",
+		Options: []output.InputOption{
+			{Key: "y", Label: "Y"},
+			{Key: "n", Label: "n"},
+			{Key: "enter", Label: "Press ENTER when complete"},
+		},
+		ResponseCh: responseCh,
+	})
+	app = model.(App)
+
+	model, cmd := app.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	app = model.(App)
+	if cmd == nil {
+		t.Fatal("expected response command")
+	}
+	cmd()
+
+	select {
+	case resp := <-responseCh:
+		if resp.SelectedKey != "enter" {
+			t.Fatalf("expected enter key, got %q", resp.SelectedKey)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for response on channel")
+	}
+
+	if app.inputPrompt.Visible() {
+		t.Fatal("expected input prompt to be hidden after response")
+	}
+}
+
+func TestAppEnterDoesNothingWithoutExplicitEnterOption(t *testing.T) {
+	t.Parallel()
+
+	app := NewApp("dev", nil)
+	responseCh := make(chan output.InputResponse, 1)
+
+	model, _ := app.Update(output.UserInputRequestEvent{
+		Prompt: "Open browser now?",
+		Options: []output.InputOption{
+			{Key: "y", Label: "Y"},
+			{Key: "n", Label: "n"},
+		},
+		ResponseCh: responseCh,
+	})
+	app = model.(App)
+
+	model, cmd := app.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	app = model.(App)
+	if cmd != nil {
+		t.Fatal("expected no response command when enter is not an explicit option")
+	}
+
+	select {
+	case resp := <-responseCh:
+		t.Fatalf("expected no response, got %+v", resp)
+	case <-time.After(200 * time.Millisecond):
+	}
+
+	if !app.inputPrompt.Visible() {
+		t.Fatal("expected input prompt to remain visible")
+	}
+}

@@ -10,6 +10,10 @@ func FormatEventLine(event any) (string, bool) {
 	switch e := event.(type) {
 	case LogEvent:
 		return e.Message, true
+	case HighlightLogEvent:
+		return e.Message, true
+	case SecondaryLogEvent:
+		return e.Message, true
 	case WarningEvent:
 		return fmt.Sprintf("Warning: %s", e.Message), true
 	case ContainerStatusEvent:
@@ -58,16 +62,30 @@ func formatProgressLine(e ProgressEvent) (string, bool) {
 }
 
 func formatUserInputRequest(e UserInputRequestEvent) string {
-	switch len(e.Options) {
-	case 0:
-		return e.Prompt
-	case 1:
-		return fmt.Sprintf("%s (%s)", e.Prompt, e.Options[0].Label)
-	default:
-		labels := make([]string, len(e.Options))
-		for i, opt := range e.Options {
-			labels[i] = opt.Label
+	lines := strings.Split(e.Prompt, "\n")
+	firstLine := lines[0]
+	rest := lines[1:]
+	labels := make([]string, 0, len(e.Options))
+	for _, opt := range e.Options {
+		if opt.Label != "" {
+			labels = append(labels, opt.Label)
 		}
-		return fmt.Sprintf("%s [%s]", e.Prompt, strings.Join(labels, "/"))
 	}
+
+	switch len(labels) {
+	case 0:
+		if len(rest) == 0 {
+			return firstLine
+		}
+		return strings.Join(append([]string{firstLine}, rest...), "\n")
+	case 1:
+		firstLine = fmt.Sprintf("%s (%s)", firstLine, labels[0])
+	default:
+		firstLine = fmt.Sprintf("%s [%s]", firstLine, strings.Join(labels, "/"))
+	}
+
+	if len(rest) == 0 {
+		return firstLine
+	}
+	return strings.Join(append([]string{firstLine}, rest...), "\n")
 }
