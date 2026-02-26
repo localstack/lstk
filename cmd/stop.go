@@ -11,8 +11,8 @@ import (
 
 var stopCmd = &cobra.Command{
 	Use:     "stop",
-	Short:   "Stop container",
-	Long:    "Stop container and services",
+	Short:   "Stop emulator",
+	Long:    "Stop emulator and services",
 	PreRunE: initConfig,
 	Run: func(cmd *cobra.Command, args []string) {
 		rt, err := runtime.NewDockerRuntime()

@@ -10,8 +10,8 @@ import (
 
 var startCmd = &cobra.Command{
 	Use:     "start",
-	Short:   "Start container",
-	Long:    "Start container and services.",
+	Short:   "Start emulator",
+	Long:    "Start emulator and services.",
 	PreRunE: initConfig,
 	Run: func(cmd *cobra.Command, args []string) {
 		rt, err := runtime.NewDockerRuntime()
