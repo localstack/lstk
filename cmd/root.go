@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"strings"
 
 	"github.com/localstack/lstk/internal/api"
 	"github.com/localstack/lstk/internal/config"
@@ -40,32 +39,10 @@ func init() {
 	rootCmd.Version = version.Version()
 	rootCmd.SetVersionTemplate(versionLine() + "\n")
 
-	rootCmd.InitDefaultHelpFlag()
-	rootCmd.Flags().Lookup("help").Usage = "Show help"
+	configureHelp(rootCmd)
 
 	rootCmd.InitDefaultVersionFlag()
 	rootCmd.Flags().Lookup("version").Usage = "Show version"
-
-	usageTemplate := rootCmd.UsageTemplate()
-	usageTemplate = strings.Replace(usageTemplate, "Available Commands:", "Commands:", 1)
-	usageTemplate = strings.Replace(usageTemplate, "Flags:", "Options:", 1)
-	usageTemplate = strings.Replace(
-		usageTemplate,
-		`Usage:{{if .Runnable}}
-  {{.UseLine}}{{end}}{{if .HasAvailableSubCommands}}
-  {{.CommandPath}} [command]{{end}}`,
-		`Usage: {{if not .HasParent}}lstk [options] [command]{{else}}{{.UseLine}}{{end}}{{if not .HasParent}}
-
-LSTK - LocalStack command-line interface{{end}}`,
-		1,
-	)
-	usageTemplate = strings.ReplaceAll(usageTemplate, `Use "{{.CommandPath}} [command] --help" for more information about a command.`, "")
-	usageTemplate = strings.TrimRight(usageTemplate, "\n")
-	rootCmd.SetUsageTemplate(usageTemplate)
-
-	rootCmd.SetHelpTemplate(`{{if not .HasParent}}{{if or .Runnable .HasSubCommands}}{{.UsageString}}{{end}}{{else}}{{with (or .Long .Short)}}{{. | trimTrailingWhitespaces}}
-
-{{end}}{{if or .Runnable .HasSubCommands}}{{.UsageString}}{{end}}{{end}}`)
 	rootCmd.AddCommand(startCmd)
 }
 
