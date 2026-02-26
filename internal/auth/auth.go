@@ -41,7 +41,7 @@ func (a *Auth) GetToken(ctx context.Context) (string, error) {
 		return "", fmt.Errorf("authentication required: set LOCALSTACK_AUTH_TOKEN or run in interactive mode")
 	}
 
-	output.EmitSecondaryLog(a.sink, "> Welcome to LSTK, LocalStack's command-line interface")
+	output.EmitSecondaryLog(a.sink, "> Welcome to LSTK, a command-line interface for LocalStack")
 	output.EmitLog(a.sink, "")
 	token, err := a.login.Login(ctx)
 	if err != nil {
