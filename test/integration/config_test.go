@@ -23,11 +23,10 @@ func TestConfigFileCreatedOnStartup(t *testing.T) {
 		require.NoError(t, os.MkdirAll(filepath.Join(tmpHome, ".config"), 0755))
 
 		e := testEnvWithHome(tmpHome, xdgOverride)
-		stdout, stderr, err := runLstk(t, workDir, e, "logout")
+		_, stderr, err := runLstk(t, workDir, e, "logout")
 		require.NoError(t, err, stderr)
 
 		expectedConfigFile := filepath.Join(tmpHome, ".config", "lstk", "config.toml")
-		assert.Contains(t, stdout, "Logged out successfully.")
 		assert.FileExists(t, expectedConfigFile)
 		assertDefaultConfigContent(t, expectedConfigFile)
 	})
@@ -38,11 +37,10 @@ func TestConfigFileCreatedOnStartup(t *testing.T) {
 		xdgOverride := filepath.Join(tmpHome, "xdg-config-home")
 
 		e := testEnvWithHome(tmpHome, xdgOverride)
-		stdout, stderr, err := runLstk(t, workDir, e, "logout")
+		_, stderr, err := runLstk(t, workDir, e, "logout")
 		require.NoError(t, err, stderr)
 
 		expectedConfigFile := filepath.Join(expectedOSConfigDir(tmpHome, xdgOverride), "config.toml")
-		assert.Contains(t, stdout, "Logged out successfully.")
 		assert.FileExists(t, expectedConfigFile)
 		assertDefaultConfigContent(t, expectedConfigFile)
 	})

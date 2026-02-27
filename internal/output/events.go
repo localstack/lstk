@@ -15,6 +15,8 @@
 //   - Use for errors that need more than a single line
 package output
 
+import "time"
+
 type MessageSeverity int
 
 const (
@@ -30,8 +32,9 @@ type MessageEvent struct {
 }
 
 type SpinnerEvent struct {
-	Active bool
-	Text   string
+	Active      bool
+	Text        string
+	MinDuration time.Duration // Minimum time spinner should display (0 = use default)
 }
 
 type ErrorAction struct {
@@ -149,8 +152,16 @@ func EmitContainerLogLine(sink Sink, line string) {
 	Emit(sink, ContainerLogLineEvent{Line: line})
 }
 
+const DefaultSpinnerMinDuration = 400 * time.Millisecond
+
+// EmitSpinnerStart starts spinner with default min duration (400ms)
 func EmitSpinnerStart(sink Sink, text string) {
-	Emit(sink, SpinnerEvent{Active: true, Text: text})
+	Emit(sink, SpinnerEvent{Active: true, Text: text, MinDuration: DefaultSpinnerMinDuration})
+}
+
+// EmitSpinnerStartWithDuration starts spinner with custom min duration (0 = no minimum)
+func EmitSpinnerStartWithDuration(sink Sink, text string, minDuration time.Duration) {
+	Emit(sink, SpinnerEvent{Active: true, Text: text, MinDuration: minDuration})
 }
 
 func EmitSpinnerStop(sink Sink) {
