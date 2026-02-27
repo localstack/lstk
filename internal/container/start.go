@@ -18,6 +18,26 @@ import (
 )
 
 func Start(ctx context.Context, rt runtime.Runtime, sink output.Sink, platformClient api.PlatformAPI, interactive bool) error {
+	if err := rt.Healthy(ctx); err != nil {
+		actions := []output.ErrorAction{
+			{Label: "Install Docker:", Value: "https://docs.docker.com/get-docker/"},
+		}
+		switch stdruntime.GOOS {
+		case "darwin":
+			actions = append([]output.ErrorAction{{Label: "Start Docker Desktop:", Value: "open -a Docker"}}, actions...)
+		case "linux":
+			actions = append([]output.ErrorAction{{Label: "Start Docker:", Value: "sudo systemctl start docker"}}, actions...)
+		case "windows":
+			actions = append([]output.ErrorAction{{Label: "Start Docker Desktop:", Value: "Start-Process 'Docker Desktop'"}}, actions...)
+		}
+		output.EmitError(sink, output.ErrorEvent{
+			Title:   "Docker is not available",
+			Summary: err.Error(),
+			Actions: actions,
+		})
+		return output.NewSilentError(fmt.Errorf("runtime not healthy: %w", err))
+	}
+
 	tokenStorage, err := auth.NewTokenStorage()
 	if err != nil {
 		return fmt.Errorf("failed to initialize token storage: %w", err)

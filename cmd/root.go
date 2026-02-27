@@ -29,7 +29,9 @@ var rootCmd = &cobra.Command{
 		}
 
 		if err := runStart(cmd.Context(), rt); err != nil {
-			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			if !output.IsSilent(err) {
+				fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			}
 			os.Exit(1)
 		}
 	},
