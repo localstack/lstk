@@ -48,4 +48,5 @@ func TestLogoutCommandSucceedsWhenNoToken(t *testing.T) {
 
 	// Should succeed even if no token
 	require.NoError(t, err, "lstk logout should succeed even with no token: %s", output)
+	assert.Contains(t, string(output), "Not currently logged in")
 }
