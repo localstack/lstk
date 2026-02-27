@@ -21,6 +21,8 @@ const (
 	keyringAuthTokenLabel = "LocalStack Auth Token"
 )
 
+var ErrTokenNotFound = errors.New("credential not found")
+
 type AuthTokenStorage interface {
 	GetAuthToken() (string, error)
 	SetAuthToken(token string) error
@@ -66,7 +68,7 @@ func (s *authTokenStorage) GetAuthToken() (string, error) {
 	item, err := s.ring.Get(keyringAuthTokenKey)
 	if err != nil {
 		if errors.Is(err, keyring.ErrKeyNotFound) {
-			return "", fmt.Errorf("credential not found")
+			return "", ErrTokenNotFound
 		}
 		return "", err
 	}
