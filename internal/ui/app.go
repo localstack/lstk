@@ -3,6 +3,7 @@ package ui
 import (
 	"context"
 	"fmt"
+	"os"
 	"os/exec"
 	"runtime"
 	"strings"
@@ -229,22 +230,41 @@ func clipboardCmd(text string) tea.Cmd {
 }
 
 func copyToClipboard(text string) error {
-	var cmd *exec.Cmd
 	switch runtime.GOOS {
 	case "darwin":
-		cmd = exec.Command("pbcopy")
+		return runClipboardCandidates(text, [][]string{
+			{"pbcopy"},
+		})
 	case "linux":
-		cmd = exec.Command("xclip", "-selection", "clipboard")
+		candidates := [][]string{
+			{"xclip", "-selection", "clipboard"},
+			{"xsel", "--clipboard", "--input"},
+		}
+		if strings.EqualFold(os.Getenv("XDG_SESSION_TYPE"), "wayland") || os.Getenv("WAYLAND_DISPLAY") != "" {
+			candidates = append([][]string{{"wl-copy"}}, candidates...)
+		}
+		return runClipboardCandidates(text, candidates)
 	case "windows":
-		cmd = exec.Command("cmd", "/c", "clip")
+		return runClipboardCandidates(text, [][]string{
+			{"cmd", "/c", "clip"},
+		})
 	default:
 		return fmt.Errorf("clipboard copy not supported on %s", runtime.GOOS)
 	}
-	cmd.Stdin = strings.NewReader(text)
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("copy to clipboard failed: %w", err)
+}
+
+func runClipboardCandidates(text string, candidates [][]string) error {
+	var errs []string
+	for _, candidate := range candidates {
+		cmd := exec.Command(candidate[0], candidate[1:]...)
+		cmd.Stdin = strings.NewReader(text)
+		if err := cmd.Run(); err == nil {
+			return nil
+		} else {
+			errs = append(errs, fmt.Sprintf("%s: %v", strings.Join(candidate, " "), err))
+		}
 	}
-	return nil
+	return fmt.Errorf("copy to clipboard failed: %s", strings.Join(errs, "; "))
 }
 
 func nextIsURL(lines []styledLine, i int) bool {
