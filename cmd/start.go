@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/localstack/lstk/internal/output"
 	"github.com/localstack/lstk/internal/runtime"
 	"github.com/spf13/cobra"
 )
@@ -21,7 +22,9 @@ var startCmd = &cobra.Command{
 		}
 
 		if err := runStart(cmd.Context(), rt); err != nil {
-			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			if !output.IsSilent(err) {
+				fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			}
 			os.Exit(1)
 		}
 	},
