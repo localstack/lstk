@@ -10,8 +10,8 @@ import (
 
 var startCmd = &cobra.Command{
 	Use:     "start",
-	Short:   "Start LocalStack",
-	Long:    "Start the LocalStack emulator.",
+	Short:   "Start emulator",
+	Long:    "Start emulator and services.",
 	PreRunE: initConfig,
 	Run: func(cmd *cobra.Command, args []string) {
 		rt, err := runtime.NewDockerRuntime()

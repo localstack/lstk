@@ -11,8 +11,8 @@ import (
 
 var logsCmd = &cobra.Command{
 	Use:     "logs",
-	Short:   "Show container logs",
-	Long:    "Show logs from the LocalStack container. Use --follow to stream in real-time.",
+	Short:   "Show emulator logs",
+	Long:    "Show logs from the emulator. Use --follow to stream in real-time.",
 	PreRunE: initConfig,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		follow, err := cmd.Flags().GetBool("follow")

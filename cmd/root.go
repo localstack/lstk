@@ -38,6 +38,11 @@ var rootCmd = &cobra.Command{
 func init() {
 	rootCmd.Version = version.Version()
 	rootCmd.SetVersionTemplate(versionLine() + "\n")
+
+	configureHelp(rootCmd)
+
+	rootCmd.InitDefaultVersionFlag()
+	rootCmd.Flags().Lookup("version").Usage = "Show version"
 	rootCmd.AddCommand(startCmd)
 }
 
