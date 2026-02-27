@@ -24,6 +24,7 @@ type PullProgress struct {
 
 // Runtime abstracts container runtime operations (Docker, Podman, Kubernetes, etc.)
 type Runtime interface {
+	Healthy(ctx context.Context) error
 	PullImage(ctx context.Context, image string, progress chan<- PullProgress) error
 	Start(ctx context.Context, config ContainerConfig) (string, error)
 	Stop(ctx context.Context, containerName string) error
