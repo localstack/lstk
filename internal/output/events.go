@@ -1,4 +1,4 @@
-// Event Usage Guide:
+// Package output defines events for the event/sink system
 //
 // MessageEvent (use via EmitInfo, EmitSuccess, EmitNote, EmitWarning):
 //   - SeverityInfo: Transient status ("Connecting...", "Validating...")
@@ -116,11 +116,6 @@ func EmitSuccess(sink Sink, text string) {
 
 func EmitNote(sink Sink, text string) {
 	Emit(sink, MessageEvent{Severity: SeverityNote, Text: text})
-}
-
-// Deprecated: Use EmitInfo instead
-func EmitLog(sink Sink, message string) {
-	Emit(sink, MessageEvent{Severity: SeverityInfo, Text: message})
 }
 
 func EmitWarning(sink Sink, message string) {
