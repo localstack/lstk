@@ -11,6 +11,7 @@ import (
 	"github.com/localstack/lstk/internal/env"
 	"github.com/localstack/lstk/internal/output"
 	"github.com/localstack/lstk/internal/runtime"
+	"github.com/localstack/lstk/internal/telemetry"
 	"github.com/localstack/lstk/internal/ui"
 	"github.com/localstack/lstk/internal/version"
 	"github.com/spf13/cobra"
@@ -65,6 +66,11 @@ func Execute(ctx context.Context) error {
 }
 
 func runStart(ctx context.Context, rt runtime.Runtime, cfg *env.Env) error {
+	tel := telemetry.New(cfg.AnalyticsEndpoint, cfg.DisableEvents)
+	defer tel.Flush()
+	// TODO: replace map with a typed payload struct once event schema is finalised
+	tel.Track("cli_cmd", map[string]any{"cmd": "lstk start", "params": []string{}})
+
 	platformClient := api.NewPlatformClient(cfg.APIEndpoint)
 	if ui.IsInteractive() {
 		return ui.Run(ctx, rt, version.Version(), platformClient, cfg.AuthToken, cfg.ForceFileKeyring, cfg.WebAppURL)

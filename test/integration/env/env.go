@@ -9,10 +9,12 @@ import (
 type Key string
 
 const (
-	AuthToken   Key = "LOCALSTACK_AUTH_TOKEN"
-	APIEndpoint Key = "LSTK_API_ENDPOINT"
-	Keyring     Key = "LSTK_KEYRING"
-	CI          Key = "CI"
+	AuthToken         Key = "LOCALSTACK_AUTH_TOKEN"
+	APIEndpoint       Key = "LSTK_API_ENDPOINT"
+	Keyring           Key = "LSTK_KEYRING"
+	CI                Key = "CI"
+	AnalyticsEndpoint Key = "LSTK_ANALYTICS_ENDPOINT"
+	DisableEvents     Key = "LOCALSTACK_DISABLE_EVENTS"
 )
 
 func Get(key Key) string {

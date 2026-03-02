@@ -16,6 +16,13 @@ When no config file exists, `lstk` creates one at:
 
 Use `lstk config path` to print the resolved config file path currently in use.
 
+## Environment Variables
+
+| Variable | Description |
+|---|---|
+| `LOCALSTACK_AUTH_TOKEN` | Auth token; for CI only |
+| `LOCALSTACK_DISABLE_EVENTS=1` | Disables telemetry event reporting |
+
 ## Versioning
 `lstk` uses calendar versioning in a SemVer-compatible format:
 
