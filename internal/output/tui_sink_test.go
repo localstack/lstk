@@ -19,14 +19,14 @@ func TestTUISinkForwardsEvents(t *testing.T) {
 	sender := &testSender{}
 	sink := NewTUISink(sender)
 
-	Emit(sink, LogEvent{Message: "hello"})
-	Emit(sink, WarningEvent{Message: "careful"})
+	Emit(sink, MessageEvent{Severity: SeverityInfo, Text: "hello"})
+	Emit(sink, MessageEvent{Severity: SeverityWarning, Text: "careful"})
 	Emit(sink, ContainerStatusEvent{Phase: "starting", Container: "localstack"})
 	Emit(sink, ProgressEvent{LayerID: "abc", Status: "Downloading", Current: 1, Total: 2})
 
 	want := []any{
-		LogEvent{Message: "hello"},
-		WarningEvent{Message: "careful"},
+		MessageEvent{Severity: SeverityInfo, Text: "hello"},
+		MessageEvent{Severity: SeverityWarning, Text: "careful"},
 		ContainerStatusEvent{Phase: "starting", Container: "localstack"},
 		ProgressEvent{LayerID: "abc", Status: "Downloading", Current: 1, Total: 2},
 	}
@@ -39,5 +39,5 @@ func TestTUISinkNilSenderNoPanic(t *testing.T) {
 	t.Parallel()
 
 	sink := NewTUISink(nil)
-	Emit(sink, LogEvent{Message: "noop"})
+	Emit(sink, MessageEvent{Severity: SeverityInfo, Text: "noop"})
 }

@@ -139,7 +139,7 @@ func selectContainersToStart(ctx context.Context, rt runtime.Runtime, sink outpu
 			return nil, fmt.Errorf("failed to check container status: %w", err)
 		}
 		if running {
-			output.EmitLog(sink, fmt.Sprintf("%s is already running", c.Name))
+			output.EmitInfo(sink, fmt.Sprintf("%s is already running", c.Name))
 			continue
 		}
 		if err := ports.CheckAvailable(c.Port); err != nil {

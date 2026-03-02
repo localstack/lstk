@@ -12,15 +12,27 @@ func TestFormatEventLine(t *testing.T) {
 		wantOK bool
 	}{
 		{
-			name:   "log event",
-			event:  LogEvent{Message: "hello"},
+			name:   "message event info",
+			event:  MessageEvent{Severity: SeverityInfo, Text: "hello"},
 			want:   "hello",
 			wantOK: true,
 		},
 		{
-			name:   "warning event",
-			event:  WarningEvent{Message: "careful"},
-			want:   "Warning: careful",
+			name:   "message event success",
+			event:  MessageEvent{Severity: SeveritySuccess, Text: "done"},
+			want:   "> Success: done",
+			wantOK: true,
+		},
+		{
+			name:   "message event note",
+			event:  MessageEvent{Severity: SeverityNote, Text: "fyi"},
+			want:   "> Note: fyi",
+			wantOK: true,
+		},
+		{
+			name:   "message event warning",
+			event:  MessageEvent{Severity: SeverityWarning, Text: "careful"},
+			want:   "> Warning: careful",
 			wantOK: true,
 		},
 		{
@@ -52,6 +64,48 @@ func TestFormatEventLine(t *testing.T) {
 			event:  ProgressEvent{LayerID: "abc123"},
 			want:   "",
 			wantOK: false,
+		},
+		{
+			name:   "spinner event active",
+			event:  SpinnerEvent{Active: true, Text: "Loading"},
+			want:   "Loading...",
+			wantOK: true,
+		},
+		{
+			name:   "spinner event stop",
+			event:  SpinnerEvent{Active: false},
+			want:   "",
+			wantOK: false,
+		},
+		{
+			name:   "error event title only",
+			event:  ErrorEvent{Title: "Connection failed"},
+			want:   "Error: Connection failed",
+			wantOK: true,
+		},
+		{
+			name:   "error event with summary",
+			event:  ErrorEvent{Title: "Auth failed", Summary: "Invalid token"},
+			want:   "Error: Auth failed\n  Invalid token",
+			wantOK: true,
+		},
+		{
+			name:   "error event with detail",
+			event:  ErrorEvent{Title: "Auth failed", Summary: "Invalid token", Detail: "Token expired at 2024-01-01"},
+			want:   "Error: Auth failed\n  Invalid token\n  Token expired at 2024-01-01",
+			wantOK: true,
+		},
+		{
+			name: "error event with actions",
+			event: ErrorEvent{
+				Title:   "Docker not running",
+				Summary: "Cannot connect to Docker daemon",
+				Actions: []ErrorAction{
+					{Label: "Start Docker:", Value: "open -a Docker"},
+				},
+			},
+			want:   "Error: Docker not running\n  Cannot connect to Docker daemon\n  → Start Docker: open -a Docker",
+			wantOK: true,
 		},
 		{
 			name:   "unsupported event",
