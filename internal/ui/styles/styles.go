@@ -25,6 +25,15 @@ var (
 	Version = lipgloss.NewStyle().
 		Foreground(lipgloss.Color("241"))
 
-	Message = lipgloss.NewStyle().
-		Foreground(lipgloss.Color("245"))
+	Message = lipgloss.NewStyle()
+
+	SecondaryMessage = lipgloss.NewStyle().
+				Foreground(lipgloss.Color("245"))
+
+	Highlight = lipgloss.NewStyle().
+			Foreground(lipgloss.Color(NimboLightColor))
+
+	Link = lipgloss.NewStyle().
+		Foreground(lipgloss.Color(NimboLightColor)).
+		Underline(true)
 )

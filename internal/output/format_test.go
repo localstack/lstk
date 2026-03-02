@@ -18,6 +18,18 @@ func TestFormatEventLine(t *testing.T) {
 			wantOK: true,
 		},
 		{
+			name:   "highlight log event",
+			event:  HighlightLogEvent{Message: "important"},
+			want:   "important",
+			wantOK: true,
+		},
+		{
+			name:   "secondary log event",
+			event:  SecondaryLogEvent{Message: "tip"},
+			want:   "tip",
+			wantOK: true,
+		},
+		{
 			name:   "warning event",
 			event:  WarningEvent{Message: "careful"},
 			want:   "Warning: careful",

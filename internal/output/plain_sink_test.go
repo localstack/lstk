@@ -182,6 +182,8 @@ func TestPlainSink_UsesFormatterParity(t *testing.T) {
 
 	events := []any{
 		LogEvent{Message: "hello"},
+		HighlightLogEvent{Message: "important"},
+		SecondaryLogEvent{Message: "tip"},
 		WarningEvent{Message: "careful"},
 		ContainerStatusEvent{Phase: "starting", Container: "localstack"},
 		ProgressEvent{LayerID: "abc", Status: "Downloading", Current: 1, Total: 2},
@@ -193,6 +195,10 @@ func TestPlainSink_UsesFormatterParity(t *testing.T) {
 
 		switch e := event.(type) {
 		case LogEvent:
+			Emit(sink, e)
+		case HighlightLogEvent:
+			Emit(sink, e)
+		case SecondaryLogEvent:
 			Emit(sink, e)
 		case WarningEvent:
 			Emit(sink, e)
