@@ -3,6 +3,8 @@ package runtime
 import (
 	"context"
 	"io"
+
+	"github.com/localstack/lstk/internal/output"
 )
 
 type ContainerConfig struct {
@@ -24,6 +26,8 @@ type PullProgress struct {
 
 // Runtime abstracts container runtime operations (Docker, Podman, Kubernetes, etc.)
 type Runtime interface {
+	IsHealthy(ctx context.Context) error
+	EmitUnhealthyError(sink output.Sink, err error)
 	PullImage(ctx context.Context, image string, progress chan<- PullProgress) error
 	Start(ctx context.Context, config ContainerConfig) (string, error)
 	Stop(ctx context.Context, containerName string) error

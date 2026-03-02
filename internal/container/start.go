@@ -18,6 +18,11 @@ import (
 )
 
 func Start(ctx context.Context, rt runtime.Runtime, sink output.Sink, platformClient api.PlatformAPI, interactive bool) error {
+	if err := rt.IsHealthy(ctx); err != nil {
+		rt.EmitUnhealthyError(sink, err)
+		return output.NewSilentError(fmt.Errorf("runtime not healthy: %w", err))
+	}
+
 	tokenStorage, err := auth.NewTokenStorage()
 	if err != nil {
 		return fmt.Errorf("failed to initialize token storage: %w", err)

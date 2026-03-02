@@ -118,8 +118,8 @@ func EmitNote(sink Sink, text string) {
 	Emit(sink, MessageEvent{Severity: SeverityNote, Text: text})
 }
 
-func EmitWarning(sink Sink, message string) {
-	Emit(sink, MessageEvent{Severity: SeverityWarning, Text: message})
+func EmitWarning(sink Sink, text string) {
+	Emit(sink, MessageEvent{Severity: SeverityWarning, Text: text})
 }
 
 func EmitStatus(sink Sink, phase, container, detail string) {
