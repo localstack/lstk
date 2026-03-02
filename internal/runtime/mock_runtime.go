@@ -14,6 +14,7 @@ import (
 	io "io"
 	reflect "reflect"
 
+	output "github.com/localstack/lstk/internal/output"
 	gomock "go.uber.org/mock/gomock"
 )
 
@@ -41,6 +42,18 @@ func (m *MockRuntime) EXPECT() *MockRuntimeMockRecorder {
 	return m.recorder
 }
 
+// EmitUnhealthyError mocks base method.
+func (m *MockRuntime) EmitUnhealthyError(sink output.Sink, err error) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "EmitUnhealthyError", sink, err)
+}
+
+// EmitUnhealthyError indicates an expected call of EmitUnhealthyError.
+func (mr *MockRuntimeMockRecorder) EmitUnhealthyError(sink, err any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "EmitUnhealthyError", reflect.TypeOf((*MockRuntime)(nil).EmitUnhealthyError), sink, err)
+}
+
 // GetImageVersion mocks base method.
 func (m *MockRuntime) GetImageVersion(ctx context.Context, imageName string) (string, error) {
 	m.ctrl.T.Helper()
@@ -56,18 +69,18 @@ func (mr *MockRuntimeMockRecorder) GetImageVersion(ctx, imageName any) *gomock.C
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetImageVersion", reflect.TypeOf((*MockRuntime)(nil).GetImageVersion), ctx, imageName)
 }
 
-// Healthy mocks base method.
-func (m *MockRuntime) Healthy(ctx context.Context) error {
+// IsHealthy mocks base method.
+func (m *MockRuntime) IsHealthy(ctx context.Context) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Healthy", ctx)
+	ret := m.ctrl.Call(m, "IsHealthy", ctx)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
-// Healthy indicates an expected call of Healthy.
-func (mr *MockRuntimeMockRecorder) Healthy(ctx any) *gomock.Call {
+// IsHealthy indicates an expected call of IsHealthy.
+func (mr *MockRuntimeMockRecorder) IsHealthy(ctx any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Healthy", reflect.TypeOf((*MockRuntime)(nil).Healthy), ctx)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "IsHealthy", reflect.TypeOf((*MockRuntime)(nil).IsHealthy), ctx)
 }
 
 // IsRunning mocks base method.

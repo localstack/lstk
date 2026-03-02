@@ -1,9 +1,9 @@
 package container
 
 import (
-	"bytes"
 	"context"
 	"errors"
+	"io"
 	"testing"
 
 	"github.com/localstack/lstk/internal/output"
@@ -16,15 +16,14 @@ import (
 func TestStart_ReturnsEarlyIfRuntimeUnhealthy(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	mockRT := runtime.NewMockRuntime(ctrl)
-	mockRT.EXPECT().Healthy(gomock.Any()).Return(errors.New("cannot connect to Docker daemon"))
+	mockRT.EXPECT().IsHealthy(gomock.Any()).Return(errors.New("cannot connect to Docker daemon"))
+	mockRT.EXPECT().EmitUnhealthyError(gomock.Any(), gomock.Any())
 
-	var buf bytes.Buffer
-	sink := output.NewPlainSink(&buf)
+	sink := output.NewPlainSink(io.Discard)
 
 	err := Start(context.Background(), mockRT, sink, nil, false)
 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "runtime not healthy")
-	assert.Contains(t, buf.String(), "Docker is not available")
 	assert.True(t, output.IsSilent(err), "error should be silent since it was already emitted")
 }

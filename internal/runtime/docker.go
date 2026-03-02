@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	stdruntime "runtime"
 	"strconv"
 	"strings"
 
@@ -15,6 +16,7 @@ import (
 	"github.com/docker/docker/client"
 	"github.com/docker/docker/pkg/stdcopy"
 	"github.com/docker/go-connections/nat"
+	"github.com/localstack/lstk/internal/output"
 )
 
 // DockerRuntime implements Runtime using the Docker API.
@@ -30,12 +32,31 @@ func NewDockerRuntime() (*DockerRuntime, error) {
 	return &DockerRuntime{client: cli}, nil
 }
 
-func (d *DockerRuntime) Healthy(ctx context.Context) error {
+func (d *DockerRuntime) IsHealthy(ctx context.Context) error {
 	_, err := d.client.Ping(ctx)
 	if err != nil {
 		return fmt.Errorf("cannot connect to Docker daemon: %w", err)
 	}
 	return nil
+}
+
+func (d *DockerRuntime) EmitUnhealthyError(sink output.Sink, err error) {
+	actions := []output.ErrorAction{
+		{Label: "Install Docker:", Value: "https://docs.docker.com/get-docker/"},
+	}
+	switch stdruntime.GOOS {
+	case "darwin":
+		actions = append([]output.ErrorAction{{Label: "Start Docker Desktop:", Value: "open -a Docker"}}, actions...)
+	case "linux":
+		actions = append([]output.ErrorAction{{Label: "Start Docker:", Value: "sudo systemctl start docker"}}, actions...)
+	case "windows":
+		actions = append([]output.ErrorAction{{Label: "Start Docker Desktop:", Value: "Start-Process 'Docker Desktop'"}}, actions...)
+	}
+	output.EmitError(sink, output.ErrorEvent{
+		Title:   "Docker is not available",
+		Summary: err.Error(),
+		Actions: actions,
+	})
 }
 
 func (d *DockerRuntime) PullImage(ctx context.Context, imageName string, progress chan<- PullProgress) error {
