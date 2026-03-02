@@ -41,7 +41,7 @@ func (a *Auth) GetToken(ctx context.Context) (string, error) {
 		return "", fmt.Errorf("authentication required: set LOCALSTACK_AUTH_TOKEN or run in interactive mode")
 	}
 
-	output.EmitLog(a.sink, "No existing credentials found. Please log in:")
+	output.EmitInfo(a.sink, "No existing credentials found. Please log in:")
 	token, err := a.login.Login(ctx)
 	if err != nil {
 		output.EmitWarning(a.sink, "Authentication failed.")
@@ -52,7 +52,7 @@ func (a *Auth) GetToken(ctx context.Context) (string, error) {
 		output.EmitWarning(a.sink, fmt.Sprintf("could not store token in keyring: %v", err))
 	}
 
-	output.EmitLog(a.sink, "Login successful.")
+	output.EmitSuccess(a.sink, "Login successful.")
 	return token, nil
 }
 
