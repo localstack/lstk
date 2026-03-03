@@ -19,14 +19,16 @@ type runErrMsg struct {
 }
 
 type App struct {
-	header       components.Header
-	inputPrompt  components.InputPrompt
-	spinner      components.Spinner
-	errorDisplay components.ErrorDisplay
-	lines        []string
-	cancel       func()
-	pendingInput *output.UserInputRequestEvent
-	err          error
+	header         components.Header
+	inputPrompt    components.InputPrompt
+	spinner        components.Spinner
+	errorDisplay   components.ErrorDisplay
+	lines          []string
+	bufferedLines  []string // lines waiting for spinner to finish
+	cancel         func()
+	pendingInput   *output.UserInputRequestEvent
+	err            error
+	quitting       bool
 }
 
 func NewApp(version string, cancel func()) App {
@@ -97,20 +99,42 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, cmd
 	case output.SpinnerEvent:
 		if msg.Active {
-			a.spinner = a.spinner.Start(msg.Text)
+			a.spinner = a.spinner.Start(msg.Text, msg.MinDuration)
 			return a, a.spinner.Tick()
 		}
-		a.spinner = a.spinner.Stop()
+		var cmd tea.Cmd
+		a.spinner, cmd = a.spinner.Stop()
+		if !a.spinner.PendingStop() {
+			a.flushBufferedLines()
+			if a.quitting {
+				return a, tea.Quit
+			}
+		}
+		return a, cmd
+	case components.SpinnerMinDurationElapsedMsg:
+		a.spinner = a.spinner.HandleMinDurationElapsed()
+		a.flushBufferedLines()
+		if a.quitting {
+			return a, tea.Quit
+		}
 		return a, nil
 	case output.ErrorEvent:
 		a.errorDisplay = a.errorDisplay.Show(msg)
-		a.spinner = a.spinner.Stop()
+		a.spinner, _ = a.spinner.Stop()
 		return a, nil
 	case output.MessageEvent:
 		line := components.RenderMessage(msg)
-		a.lines = appendLine(a.lines, line)
+		if a.spinner.PendingStop() {
+			a.bufferedLines = append(a.bufferedLines, line)
+		} else {
+			a.lines = appendLine(a.lines, line)
+		}
 		return a, nil
 	case runDoneMsg:
+		if a.spinner.PendingStop() {
+			a.quitting = true
+			return a, nil
+		}
 		return a, tea.Quit
 	case runErrMsg:
 		a.err = msg.err
@@ -143,6 +167,13 @@ func appendLine(lines []string, line string) []string {
 		lines = lines[len(lines)-maxLines:]
 	}
 	return lines
+}
+
+func (a *App) flushBufferedLines() {
+	for _, line := range a.bufferedLines {
+		a.lines = appendLine(a.lines, line)
+	}
+	a.bufferedLines = nil
 }
 
 func (a App) View() string {

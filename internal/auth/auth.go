@@ -5,11 +5,12 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/99designs/keyring"
 	"github.com/localstack/lstk/internal/api"
 	"github.com/localstack/lstk/internal/env"
 	"github.com/localstack/lstk/internal/output"
 )
+
+var ErrNotLoggedIn = errors.New("not logged in")
 
 type Auth struct {
 	tokenStorage AuthTokenStorage
@@ -58,9 +59,25 @@ func (a *Auth) GetToken(ctx context.Context) (string, error) {
 
 // Logout removes the stored auth token from the keyring
 func (a *Auth) Logout() error {
-	err := a.tokenStorage.DeleteAuthToken()
-	if errors.Is(err, keyring.ErrKeyNotFound) {
-		return nil
+	output.EmitSpinnerStart(a.sink, "Logging out...")
+
+	_, err := a.tokenStorage.GetAuthToken()
+	if errors.Is(err, ErrTokenNotFound) {
+		output.EmitSpinnerStop(a.sink)
+		output.EmitNote(a.sink, "Not currently logged in")
+		return ErrNotLoggedIn
 	}
-	return err
+	if err != nil {
+		output.EmitSpinnerStop(a.sink)
+		return fmt.Errorf("failed to read auth token: %w", err)
+	}
+
+	if err := a.tokenStorage.DeleteAuthToken(); err != nil {
+		output.EmitSpinnerStop(a.sink)
+		return fmt.Errorf("failed to delete auth token: %w", err)
+	}
+
+	output.EmitSpinnerStop(a.sink)
+	output.EmitSuccess(a.sink, "Logged out successfully")
+	return nil
 }
