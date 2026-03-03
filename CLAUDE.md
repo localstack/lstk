@@ -6,7 +6,10 @@ lstk is LocalStack's new CLI (v2) - a Go-based command-line interface for starti
 
 ```bash
 make build              # Compiles to bin/lstk
+make test               # Run unit tests (cmd/ and internal/) via gotestsum
 make test-integration   # Run integration tests (builds first, requires Docker)
+make lint               # Run golangci-lint
+make mock-generate      # Run go generate to regenerate mocks
 make clean              # Remove build artifacts
 ```
 
@@ -25,6 +28,7 @@ Note: Integration tests require `LOCALSTACK_AUTH_TOKEN` environment variable for
   - `container/` - Handling different emulator containers
   - `runtime/` - Abstraction for container runtimes (Docker, Kubernetes, etc.) - currently only Docker implemented
   - `auth/` - Authentication (env var token or browser-based login)
+  - `config/` - Viper-based TOML config loading and path resolution
   - `output/` - Generic event and sink abstractions for CLI/TUI/non-interactive rendering
   - `ui/` - Bubble Tea views for interactive output
 
@@ -61,7 +65,7 @@ Environment variables:
 
 # Output Routing and Events
 
-- Emit typed events through `internal/output` (`EmitLog`, `EmitStatus`, `EmitProgress`, etc.) instead of printing from domain/command handlers.
+- Emit typed events through `internal/output` (`EmitInfo`, `EmitSuccess`, `EmitNote`, `EmitWarning`, `EmitStatus`, `EmitProgress`, etc.) instead of printing from domain/command handlers.
 - Keep `output.Sink` sealed (unexported `emit`); sink implementations belong in `internal/output`.
 - Reuse `FormatEventLine(event any)` for all line-oriented rendering so plain and TUI output stay consistent.
 - Select output mode at the command boundary in `cmd/`: interactive TTY runs Bubble Tea, non-interactive mode uses `output.NewPlainSink(...)`.
@@ -71,8 +75,8 @@ Environment variables:
 - Do not pass UI callbacks like `onProgress func(...)` through domain layers; prefer typed output events.
 - Event payloads should be domain facts (phase/status/progress), not pre-rendered UI strings.
 - When adding a new event type, update all of:
-  - `internal/output/events.go` (event type + union + emit helper)
-  - `internal/output/format.go` (line formatting fallback)
+  - `internal/output/events.go` (event type + `Event` union constraint + emit helper)
+  - `internal/output/plain_format.go` (line formatting fallback)
   - tests in `internal/output/*_test.go` for formatter/sink behavior parity
 
 ## User Input Handling
