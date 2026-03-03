@@ -22,15 +22,15 @@ func Stop(ctx context.Context, rt runtime.Runtime, sink output.Sink) error {
 			return fmt.Errorf("checking %s running: %w", name, err)
 		}
 		if !running {
-			return fmt.Errorf("%s is not running", name)
+			return fmt.Errorf("LocalStack is not running")
 		}
-		output.EmitSpinnerStart(sink, fmt.Sprintf("Stopping %s", name))
+		output.EmitSpinnerStart(sink, "Stopping LocalStack...")
 		if err := rt.Stop(ctx, name); err != nil {
 			output.EmitSpinnerStop(sink)
-			return fmt.Errorf("failed to stop %s: %w", name, err)
+			return fmt.Errorf("failed to stop LocalStack: %w", err)
 		}
 		output.EmitSpinnerStop(sink)
-		output.EmitSuccess(sink, fmt.Sprintf("%s stopped", name))
+		output.EmitSuccess(sink, "LocalStack stopped")
 	}
 
 	return nil

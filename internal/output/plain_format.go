@@ -35,21 +35,21 @@ func FormatEventLine(event any) (string, bool) {
 func formatStatusLine(e ContainerStatusEvent) (string, bool) {
 	switch e.Phase {
 	case "pulling":
-		return "", false
+		return "Preparing LocalStack...", true
 	case "starting":
-		return fmt.Sprintf("Starting %s...", e.Container), true
+		return "Starting LocalStack...", true
 	case "waiting":
-		return fmt.Sprintf("Waiting for %s to be ready...", e.Container), true
+		return "Waiting for LocalStack to be ready...", true
 	case "ready":
 		if e.Detail != "" {
-			return fmt.Sprintf("%s ready (%s)", e.Container, e.Detail), true
+			return fmt.Sprintf("LocalStack ready (%s)", e.Detail), true
 		}
-		return fmt.Sprintf("%s ready", e.Container), true
+		return "LocalStack ready", true
 	default:
 		if e.Detail != "" {
-			return fmt.Sprintf("%s: %s (%s)", e.Container, e.Phase, e.Detail), true
+			return fmt.Sprintf("LocalStack: %s (%s)", e.Phase, e.Detail), true
 		}
-		return fmt.Sprintf("%s: %s", e.Container, e.Phase), true
+		return fmt.Sprintf("LocalStack: %s", e.Phase), true
 	}
 }
 

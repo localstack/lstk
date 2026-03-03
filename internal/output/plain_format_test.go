@@ -48,15 +48,15 @@ func TestFormatEventLine(t *testing.T) {
 			wantOK: true,
 		},
 		{
-			name:   "status pulling suppressed",
+			name:   "status pulling",
 			event:  ContainerStatusEvent{Phase: "pulling", Container: "localstack/localstack:latest"},
-			want:   "",
-			wantOK: false,
+			want:   "Preparing LocalStack...",
+			wantOK: true,
 		},
 		{
 			name:   "status ready with detail",
-			event:  ContainerStatusEvent{Phase: "ready", Container: "localstack", Detail: "abc123"},
-			want:   "localstack ready (abc123)",
+			event:  ContainerStatusEvent{Phase: "ready", Container: "localstack-aws", Detail: "abc123"},
+			want:   "LocalStack ready (abc123)",
 			wantOK: true,
 		},
 		{
