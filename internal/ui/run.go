@@ -30,6 +30,7 @@ func Run(parentCtx context.Context, rt runtime.Runtime, version string, platform
 	ctx, cancel := context.WithCancel(parentCtx)
 	defer cancel()
 
+	// FIXME: This assumes a single emulator; revisit for proper multi-emulator support
 	emulatorName := "LocalStack Emulator"
 	endpoint := "localhost.localstack.cloud"
 	if cfg, err := config.Get(); err == nil && len(cfg.Containers) > 0 {
