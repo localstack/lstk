@@ -26,6 +26,7 @@ type styledLine struct {
 	text      string
 	highlight bool
 	secondary bool
+	noIndent  bool
 }
 
 type App struct {
@@ -164,7 +165,8 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.spinner, _ = a.spinner.Stop()
 		return a, nil
 	case output.MessageEvent:
-		line := styledLine{text: components.RenderMessage(msg)}
+		noIndent := msg.Severity == output.SeveritySuccess || msg.Severity == output.SeverityNote || msg.Severity == output.SeverityWarning
+		line := styledLine{text: components.RenderMessage(msg), noIndent: noIndent}
 		if a.spinner.PendingStop() {
 			a.bufferedLines = append(a.bufferedLines, line)
 		} else {
@@ -322,6 +324,9 @@ func (a App) View() string {
 			sb.WriteString(indent)
 			text := wrap.HardWrap(line.text, contentWidth)
 			sb.WriteString(styles.SecondaryMessage.Render(text))
+		} else if line.noIndent {
+			text := wrap.HardWrap(line.text, a.width)
+			sb.WriteString(text)
 		} else {
 			sb.WriteString(indent)
 			text := wrap.HardWrap(line.text, contentWidth)
