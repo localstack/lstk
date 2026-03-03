@@ -24,15 +24,17 @@ func TestTrack_SendsCorrectPayloadAndHeaders(t *testing.T) {
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, err := io.ReadAll(r.Body)
-		require.NoError(t, err)
+		assert.NoError(t, err)
 
 		var req struct {
 			Events []map[string]any `json:"events"`
 		}
-		require.NoError(t, json.Unmarshal(body, &req))
-		require.Len(t, req.Events, 1)
+		assert.NoError(t, json.Unmarshal(body, &req))
+		assert.Len(t, req.Events, 1)
 
-		ch <- captured{event: req.Events[0], header: r.Header.Clone()}
+		if len(req.Events) == 1 {
+			ch <- captured{event: req.Events[0], header: r.Header.Clone()}
+		}
 		w.WriteHeader(http.StatusOK)
 	}))
 	defer srv.Close()
@@ -41,7 +43,12 @@ func TestTrack_SendsCorrectPayloadAndHeaders(t *testing.T) {
 	c.Track("cli_cmd", map[string]any{"cmd": "lstk start", "params": []string{}})
 	c.Flush()
 
-	got := <-ch
+	var got captured
+	select {
+	case got = <-ch:
+	default:
+		t.Fatal("no telemetry event received")
+	}
 
 	assert.Equal(t, "cli_cmd", got.event["name"])
 
