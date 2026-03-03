@@ -62,14 +62,17 @@ func (a *Auth) Logout() error {
 	output.EmitSpinnerStart(a.sink, "Logging out...")
 
 	_, err := a.tokenStorage.GetAuthToken()
-	if errors.Is(err, ErrTokenNotFound) {
-		output.EmitSpinnerStop(a.sink)
-		output.EmitNote(a.sink, "Not currently logged in")
-		return ErrNotLoggedIn
-	}
 	if err != nil {
 		output.EmitSpinnerStop(a.sink)
-		return fmt.Errorf("failed to read auth token: %w", err)
+		if env.Vars.AuthToken != "" {
+			output.EmitNote(a.sink, "Authenticated via LOCALSTACK_AUTH_TOKEN environment variable; unset it to log out")
+			return nil
+		}
+		if !errors.Is(err, ErrTokenNotFound) {
+			return fmt.Errorf("failed to read auth token: %w", err)
+		}
+		output.EmitNote(a.sink, "Not currently logged in")
+		return ErrNotLoggedIn
 	}
 
 	if err := a.tokenStorage.DeleteAuthToken(); err != nil {
