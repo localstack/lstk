@@ -34,7 +34,9 @@ func Run(parentCtx context.Context, rt runtime.Runtime, version string, platform
 	endpoint := "localhost.localstack.cloud"
 	if cfg, err := config.Get(); err == nil && len(cfg.Containers) > 0 {
 		emulatorName = cfg.Containers[0].DisplayName()
-		endpoint = fmt.Sprintf("localhost.localstack.cloud:%s", cfg.Containers[0].Port)
+		if cfg.Containers[0].Port != "" {
+			endpoint = fmt.Sprintf("localhost.localstack.cloud:%s", cfg.Containers[0].Port)
+		}
 	}
 
 	app := NewApp(version, emulatorName, endpoint, cancel)
