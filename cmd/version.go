@@ -7,18 +7,16 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var versionCmd = &cobra.Command{
-	Use:   "version",
-	Short: "Show version",
-	Long:  "Print version information for the lstk binary.",
-	RunE: func(cmd *cobra.Command, args []string) error {
-		_, err := fmt.Fprintln(cmd.OutOrStdout(), versionLine())
-		return err
-	},
-}
-
-func init() {
-	rootCmd.AddCommand(versionCmd)
+func newVersionCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "version",
+		Short: "Show version",
+		Long:  "Print version information for the lstk binary.",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			_, err := fmt.Fprintln(cmd.OutOrStdout(), versionLine())
+			return err
+		},
+	}
 }
 
 func versionLine() string {

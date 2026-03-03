@@ -9,20 +9,18 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var loginCmd = &cobra.Command{
-	Use:     "login",
-	Short:   "Manage login",
-	Long:    "Manage login and store credentials in system keyring",
-	PreRunE: initConfig,
-	RunE: func(cmd *cobra.Command, args []string) error {
-		if !ui.IsInteractive() {
-			return fmt.Errorf("login requires an interactive terminal")
-		}
-		platformClient := api.NewPlatformClient()
-		return ui.RunLogin(cmd.Context(), version.Version(), platformClient)
-	},
-}
-
-func init() {
-	rootCmd.AddCommand(loginCmd)
+func newLoginCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:     "login",
+		Short:   "Manage login",
+		Long:    "Manage login and store credentials in system keyring",
+		PreRunE: initConfig,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if !ui.IsInteractive() {
+				return fmt.Errorf("login requires an interactive terminal")
+			}
+			platformClient := api.NewPlatformClient()
+			return ui.RunLogin(cmd.Context(), version.Version(), platformClient)
+		},
+	}
 }

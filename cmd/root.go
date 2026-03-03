@@ -16,40 +16,51 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var rootCmd = &cobra.Command{
-	Use:     "lstk",
-	Short:   "LocalStack CLI",
-	Long:    "lstk is the command-line interface for LocalStack.",
-	PreRunE: initConfig,
-	Run: func(cmd *cobra.Command, args []string) {
-		rt, err := runtime.NewDockerRuntime()
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(1)
-		}
-
-		if err := runStart(cmd.Context(), rt); err != nil {
-			if !output.IsSilent(err) {
+func NewRootCmd() *cobra.Command {
+	root := &cobra.Command{
+		Use:     "lstk",
+		Short:   "LocalStack CLI",
+		Long:    "lstk is the command-line interface for LocalStack.",
+		PreRunE: initConfig,
+		Run: func(cmd *cobra.Command, args []string) {
+			rt, err := runtime.NewDockerRuntime()
+			if err != nil {
 				fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+				os.Exit(1)
 			}
-			os.Exit(1)
-		}
-	},
-}
 
-func init() {
-	rootCmd.Version = version.Version()
-	rootCmd.SetVersionTemplate(versionLine() + "\n")
+			if err := runStart(cmd.Context(), rt); err != nil {
+				if !output.IsSilent(err) {
+					fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+				}
+				os.Exit(1)
+			}
+		},
+	}
 
-	configureHelp(rootCmd)
+	root.Version = version.Version()
+	root.SetVersionTemplate(versionLine() + "\n")
 
-	rootCmd.InitDefaultVersionFlag()
-	rootCmd.Flags().Lookup("version").Usage = "Show version"
-	rootCmd.AddCommand(startCmd)
+	configureHelp(root)
+
+	root.InitDefaultVersionFlag()
+	root.Flags().Lookup("version").Usage = "Show version"
+
+	root.AddCommand(
+		newStartCmd(),
+		newStopCmd(),
+		newLoginCmd(),
+		newLogoutCmd(),
+		newLogsCmd(),
+		newConfigCmd(),
+		newVersionCmd(),
+	)
+
+	return root
 }
 
 func Execute(ctx context.Context) error {
-	return rootCmd.ExecuteContext(ctx)
+	return NewRootCmd().ExecuteContext(ctx)
 }
 
 func runStart(ctx context.Context, rt runtime.Runtime) error {
