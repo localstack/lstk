@@ -15,7 +15,7 @@ func RunLogin(parentCtx context.Context, version string, platformClient api.Plat
 	ctx, cancel := context.WithCancel(parentCtx)
 	defer cancel()
 
-	app := NewApp(version, cancel)
+	app := NewApp(version, "", "", cancel)
 	p := tea.NewProgram(app, tea.WithInput(os.Stdin), tea.WithOutput(os.Stdout))
 	runErrCh := make(chan error, 1)
 

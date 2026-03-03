@@ -96,7 +96,7 @@ func TestLoginFlow_DeviceFlowSuccess(t *testing.T) {
 	mockStorage.EXPECT().GetAuthToken().Return("", errors.New("no token"))
 	mockStorage.EXPECT().SetAuthToken(gomock.Any()).Return(nil)
 
-	tm := teatest.NewTestModel(t, NewApp("test", cancel), teatest.WithInitialTermSize(120, 40))
+	tm := teatest.NewTestModel(t, NewApp("test", "", "", cancel), teatest.WithInitialTermSize(120, 40))
 	sender := testModelSender{tm: tm}
 	platformClient := api.NewPlatformClient()
 
@@ -153,7 +153,7 @@ func TestLoginFlow_DeviceFlowFailure_NotConfirmed(t *testing.T) {
 	mockStorage := auth.NewMockAuthTokenStorage(ctrl)
 	mockStorage.EXPECT().GetAuthToken().Return("", errors.New("no token"))
 
-	tm := teatest.NewTestModel(t, NewApp("test", cancel), teatest.WithInitialTermSize(120, 40))
+	tm := teatest.NewTestModel(t, NewApp("test", "", "", cancel), teatest.WithInitialTermSize(120, 40))
 	sender := testModelSender{tm: tm}
 	platformClient := api.NewPlatformClient()
 

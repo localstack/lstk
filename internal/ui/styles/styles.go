@@ -18,13 +18,6 @@ var (
 	NimboLight = lipgloss.NewStyle().
 			Foreground(lipgloss.Color(NimboLightColor))
 
-	Title = lipgloss.NewStyle().
-		Bold(true).
-		Foreground(lipgloss.Color("69"))
-
-	Version = lipgloss.NewStyle().
-		Foreground(lipgloss.Color("241"))
-
 	Message = lipgloss.NewStyle().
 		Foreground(lipgloss.Color("245"))
 

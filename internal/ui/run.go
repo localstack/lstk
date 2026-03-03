@@ -3,10 +3,12 @@ package ui
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/localstack/lstk/internal/api"
+	"github.com/localstack/lstk/internal/config"
 	"github.com/localstack/lstk/internal/container"
 	"github.com/localstack/lstk/internal/output"
 	"github.com/localstack/lstk/internal/runtime"
@@ -28,7 +30,17 @@ func Run(parentCtx context.Context, rt runtime.Runtime, version string, platform
 	ctx, cancel := context.WithCancel(parentCtx)
 	defer cancel()
 
-	app := NewApp(version, cancel)
+	// FIXME: This assumes a single emulator; revisit for proper multi-emulator support
+	emulatorName := "LocalStack Emulator"
+	endpoint := "localhost.localstack.cloud"
+	if cfg, err := config.Get(); err == nil && len(cfg.Containers) > 0 {
+		emulatorName = cfg.Containers[0].DisplayName()
+		if cfg.Containers[0].Port != "" {
+			endpoint = fmt.Sprintf("localhost.localstack.cloud:%s", cfg.Containers[0].Port)
+		}
+	}
+
+	app := NewApp(version, emulatorName, endpoint, cancel)
 	p := tea.NewProgram(app)
 	runErrCh := make(chan error, 1)
 

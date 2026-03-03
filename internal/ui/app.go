@@ -31,9 +31,9 @@ type App struct {
 	quitting       bool
 }
 
-func NewApp(version string, cancel func()) App {
+func NewApp(version, emulatorName, endpoint string, cancel func()) App {
 	return App{
-		header:       components.NewHeader(version),
+		header:       components.NewHeader(version, emulatorName, endpoint),
 		inputPrompt:  components.NewInputPrompt(),
 		spinner:      components.NewSpinner(),
 		errorDisplay: components.NewErrorDisplay(),
