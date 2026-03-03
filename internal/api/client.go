@@ -9,7 +9,6 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/localstack/lstk/internal/env"
 	"github.com/localstack/lstk/internal/version"
 )
 
@@ -68,9 +67,9 @@ type PlatformClient struct {
 	httpClient *http.Client
 }
 
-func NewPlatformClient() *PlatformClient {
+func NewPlatformClient(apiEndpoint string) *PlatformClient {
 	return &PlatformClient{
-		baseURL:    env.Vars.APIEndpoint,
+		baseURL:    apiEndpoint,
 		httpClient: &http.Client{Timeout: 30 * time.Second},
 	}
 }

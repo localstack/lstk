@@ -7,7 +7,6 @@ import (
 	"fmt"
 
 	"github.com/localstack/lstk/internal/api"
-	"github.com/localstack/lstk/internal/env"
 	"github.com/localstack/lstk/internal/output"
 	"github.com/pkg/browser"
 )
@@ -19,12 +18,14 @@ type LoginProvider interface {
 type loginProvider struct {
 	platformClient api.PlatformAPI
 	sink           output.Sink
+	webAppURL      string
 }
 
-func newLoginProvider(sink output.Sink, platformClient api.PlatformAPI) *loginProvider {
+func newLoginProvider(sink output.Sink, platformClient api.PlatformAPI, webAppURL string) *loginProvider {
 	return &loginProvider{
 		platformClient: platformClient,
 		sink:           sink,
+		webAppURL:      webAppURL,
 	}
 }
 
@@ -34,7 +35,7 @@ func (l *loginProvider) Login(ctx context.Context) (string, error) {
 		return "", fmt.Errorf("failed to create auth request: %w", err)
 	}
 
-	authURL := fmt.Sprintf("%s/auth/request/%s", getWebAppURL(), authReq.ID)
+	authURL := fmt.Sprintf("%s/auth/request/%s", l.webAppURL, authReq.ID)
 	output.EmitInfo(l.sink, fmt.Sprintf("Visit: %s", authURL))
 	output.EmitInfo(l.sink, fmt.Sprintf("Verification code: %s", authReq.Code))
 
@@ -79,9 +80,6 @@ func (l *loginProvider) Login(ctx context.Context) (string, error) {
 	}
 }
 
-func getWebAppURL() string {
-	return env.Vars.WebAppURL
-}
 
 func (l *loginProvider) completeAuth(ctx context.Context, authReq *api.AuthRequest) (string, error) {
 	output.EmitInfo(l.sink, "Checking if auth request is confirmed...")

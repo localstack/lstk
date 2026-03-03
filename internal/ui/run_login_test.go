@@ -16,7 +16,6 @@ import (
 	"github.com/charmbracelet/x/exp/teatest"
 	"github.com/localstack/lstk/internal/api"
 	"github.com/localstack/lstk/internal/auth"
-	"github.com/localstack/lstk/internal/env"
 	"github.com/localstack/lstk/internal/output"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -84,10 +83,6 @@ func TestLoginFlow_DeviceFlowSuccess(t *testing.T) {
 	mockServer := createMockAPIServer(t, "test-license-token", true)
 	defer mockServer.Close()
 
-	t.Setenv("LSTK_API_ENDPOINT", mockServer.URL)
-	t.Setenv("LOCALSTACK_AUTH_TOKEN", "")
-	env.Init()
-
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
@@ -98,11 +93,11 @@ func TestLoginFlow_DeviceFlowSuccess(t *testing.T) {
 
 	tm := teatest.NewTestModel(t, NewApp("test", cancel), teatest.WithInitialTermSize(120, 40))
 	sender := testModelSender{tm: tm}
-	platformClient := api.NewPlatformClient()
+	platformClient := api.NewPlatformClient(mockServer.URL)
 
 	errCh := make(chan error, 1)
 	go func() {
-		a := auth.New(output.NewTUISink(sender), platformClient, mockStorage, true)
+		a := auth.New(output.NewTUISink(sender), platformClient, mockStorage, "", mockServer.URL, true)
 		_, err := a.GetToken(ctx)
 		errCh <- err
 		if err != nil && !errors.Is(err, context.Canceled) {
@@ -142,10 +137,6 @@ func TestLoginFlow_DeviceFlowFailure_NotConfirmed(t *testing.T) {
 	mockServer := createMockAPIServer(t, "", false)
 	defer mockServer.Close()
 
-	t.Setenv("LSTK_API_ENDPOINT", mockServer.URL)
-	t.Setenv("LOCALSTACK_AUTH_TOKEN", "")
-	env.Init()
-
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
@@ -155,11 +146,11 @@ func TestLoginFlow_DeviceFlowFailure_NotConfirmed(t *testing.T) {
 
 	tm := teatest.NewTestModel(t, NewApp("test", cancel), teatest.WithInitialTermSize(120, 40))
 	sender := testModelSender{tm: tm}
-	platformClient := api.NewPlatformClient()
+	platformClient := api.NewPlatformClient(mockServer.URL)
 
 	errCh := make(chan error, 1)
 	go func() {
-		a := auth.New(output.NewTUISink(sender), platformClient, mockStorage, true)
+		a := auth.New(output.NewTUISink(sender), platformClient, mockStorage, "", mockServer.URL, true)
 		_, err := a.GetToken(ctx)
 		errCh <- err
 		if err != nil && !errors.Is(err, context.Canceled) {

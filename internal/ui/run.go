@@ -24,7 +24,7 @@ func (s programSender) Send(msg any) {
 	s.p.Send(msg)
 }
 
-func Run(parentCtx context.Context, rt runtime.Runtime, version string, platformClient api.PlatformAPI) error {
+func Run(parentCtx context.Context, rt runtime.Runtime, version string, platformClient api.PlatformAPI, authToken string, forceFileBackend bool, webAppURL string) error {
 	ctx, cancel := context.WithCancel(parentCtx)
 	defer cancel()
 
@@ -35,7 +35,7 @@ func Run(parentCtx context.Context, rt runtime.Runtime, version string, platform
 	go func() {
 		var err error
 		defer func() { runErrCh <- err }()
-		err = container.Start(ctx, rt, output.NewTUISink(programSender{p: p}), platformClient, true)
+		err = container.Start(ctx, rt, output.NewTUISink(programSender{p: p}), platformClient, authToken, forceFileBackend, webAppURL, true)
 		if err != nil {
 			if errors.Is(err, context.Canceled) {
 				return

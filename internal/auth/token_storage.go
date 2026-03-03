@@ -10,7 +10,6 @@ import (
 
 	"github.com/99designs/keyring"
 	"github.com/localstack/lstk/internal/config"
-	"github.com/localstack/lstk/internal/env"
 )
 
 const (
@@ -33,7 +32,7 @@ type authTokenStorage struct {
 	ring keyring.Keyring
 }
 
-func NewTokenStorage() (AuthTokenStorage, error) {
+func NewTokenStorage(forceFileBackend bool) (AuthTokenStorage, error) {
 	configDir, err := config.ConfigDir()
 	if err != nil {
 		return nil, err
@@ -47,8 +46,7 @@ func NewTokenStorage() (AuthTokenStorage, error) {
 		},
 	}
 
-	// Force file backend if LSTK_KEYRING env var is set to "file"
-	if env.Vars.Keyring == "file" {
+	if forceFileBackend {
 		keyringConfig.AllowedBackends = []keyring.BackendType{keyring.FileBackend}
 	}
 

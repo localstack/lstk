@@ -5,12 +5,14 @@ import (
 	"context"
 	"strings"
 	"testing"
+
+	"github.com/localstack/lstk/internal/env"
 )
 
 func executeWithArgs(t *testing.T, args ...string) (string, error) {
 	t.Helper()
 	buf := new(bytes.Buffer)
-	cmd := NewRootCmd()
+	cmd := NewRootCmd(&env.Env{})
 	cmd.SetOut(buf)
 	cmd.SetErr(buf)
 	cmd.SetArgs(args)

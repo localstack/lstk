@@ -16,7 +16,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func NewRootCmd() *cobra.Command {
+func NewRootCmd(cfg *env.Env) *cobra.Command {
 	root := &cobra.Command{
 		Use:     "lstk",
 		Short:   "LocalStack CLI",
@@ -29,7 +29,7 @@ func NewRootCmd() *cobra.Command {
 				os.Exit(1)
 			}
 
-			if err := runStart(cmd.Context(), rt); err != nil {
+			if err := runStart(cmd.Context(), rt, cfg); err != nil {
 				if !output.IsSilent(err) {
 					fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 				}
@@ -47,10 +47,10 @@ func NewRootCmd() *cobra.Command {
 	root.Flags().Lookup("version").Usage = "Show version"
 
 	root.AddCommand(
-		newStartCmd(),
+		newStartCmd(cfg),
 		newStopCmd(),
-		newLoginCmd(),
-		newLogoutCmd(),
+		newLoginCmd(cfg),
+		newLogoutCmd(cfg),
 		newLogsCmd(),
 		newConfigCmd(),
 		newVersionCmd(),
@@ -60,18 +60,18 @@ func NewRootCmd() *cobra.Command {
 }
 
 func Execute(ctx context.Context) error {
-	return NewRootCmd().ExecuteContext(ctx)
+	cfg := env.Init()
+	return NewRootCmd(cfg).ExecuteContext(ctx)
 }
 
-func runStart(ctx context.Context, rt runtime.Runtime) error {
-	platformClient := api.NewPlatformClient()
+func runStart(ctx context.Context, rt runtime.Runtime, cfg *env.Env) error {
+	platformClient := api.NewPlatformClient(cfg.APIEndpoint)
 	if ui.IsInteractive() {
-		return ui.Run(ctx, rt, version.Version(), platformClient)
+		return ui.Run(ctx, rt, version.Version(), platformClient, cfg.AuthToken, cfg.ForceFileKeyring, cfg.WebAppURL)
 	}
-	return container.Start(ctx, rt, output.NewPlainSink(os.Stdout), platformClient, false)
+	return container.Start(ctx, rt, output.NewPlainSink(os.Stdout), platformClient, cfg.AuthToken, cfg.ForceFileKeyring, cfg.WebAppURL, false)
 }
 
 func initConfig(_ *cobra.Command, _ []string) error {
-	env.Init()
 	return config.Init()
 }

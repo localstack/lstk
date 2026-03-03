@@ -4,12 +4,13 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/localstack/lstk/internal/env"
 	"github.com/localstack/lstk/internal/output"
 	"github.com/localstack/lstk/internal/runtime"
 	"github.com/spf13/cobra"
 )
 
-func newStartCmd() *cobra.Command {
+func newStartCmd(cfg *env.Env) *cobra.Command {
 	return &cobra.Command{
 		Use:     "start",
 		Short:   "Start emulator",
@@ -22,7 +23,7 @@ func newStartCmd() *cobra.Command {
 				os.Exit(1)
 			}
 
-			if err := runStart(cmd.Context(), rt); err != nil {
+			if err := runStart(cmd.Context(), rt, cfg); err != nil {
 				if !output.IsSilent(err) {
 					fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 				}
