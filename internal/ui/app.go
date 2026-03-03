@@ -328,8 +328,7 @@ func (a App) View() string {
 		sb.WriteString("\n")
 	}
 
-	if errorView := a.errorDisplay.View(); errorView != "" {
-		sb.WriteString("\n")
+	if errorView := a.errorDisplay.View(contentWidth); errorView != "" {
 		sb.WriteString(errorView)
 	}
 
