@@ -63,6 +63,11 @@ func (s Spinner) HandleMinDurationElapsed() Spinner {
 	return s
 }
 
+func (s Spinner) SetText(text string) Spinner {
+	s.text = text
+	return s
+}
+
 func (s Spinner) Visible() bool {
 	return s.visible
 }
@@ -80,7 +85,7 @@ func (s Spinner) View() string {
 	if !s.visible {
 		return ""
 	}
-	return s.model.View() + " " + styles.Secondary.Render(s.text)
+	return s.model.View() + styles.Secondary.Render(s.text)
 }
 
 func (s Spinner) Tick() tea.Cmd {

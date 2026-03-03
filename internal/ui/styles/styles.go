@@ -18,8 +18,24 @@ var (
 	NimboLight = lipgloss.NewStyle().
 			Foreground(lipgloss.Color(NimboLightColor))
 
-	Message = lipgloss.NewStyle().
-		Foreground(lipgloss.Color("245"))
+	Title = lipgloss.NewStyle().
+		Bold(true).
+		Foreground(lipgloss.Color("69"))
+
+	Version = lipgloss.NewStyle().
+		Foreground(lipgloss.Color("241"))
+
+	Message = lipgloss.NewStyle()
+
+	SecondaryMessage = lipgloss.NewStyle().
+				Foreground(lipgloss.Color("245"))
+
+	Highlight = lipgloss.NewStyle().
+			Foreground(lipgloss.Color(NimboLightColor))
+
+	Link = lipgloss.NewStyle().
+		Foreground(lipgloss.Color(NimboLightColor)).
+		Underline(true)
 
 	// Message severity styles
 	Success = lipgloss.NewStyle().

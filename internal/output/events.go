@@ -49,8 +49,14 @@ type ErrorEvent struct {
 	Actions []ErrorAction
 }
 
+type AuthEvent struct {
+	Preamble string
+	Code     string
+	URL      string
+}
+
 type Event interface {
-	MessageEvent | SpinnerEvent | ErrorEvent | ContainerStatusEvent | ProgressEvent | UserInputRequestEvent | ContainerLogLineEvent
+	MessageEvent | AuthEvent | SpinnerEvent | ErrorEvent | ContainerStatusEvent | ProgressEvent | UserInputRequestEvent | ContainerLogLineEvent
 }
 
 type Sink interface {
@@ -140,6 +146,10 @@ func EmitProgress(sink Sink, container, layerID, status string, current, total i
 }
 
 func EmitUserInputRequest(sink Sink, event UserInputRequestEvent) {
+	Emit(sink, event)
+}
+
+func EmitAuth(sink Sink, event AuthEvent) {
 	Emit(sink, event)
 }
 
