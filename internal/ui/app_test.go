@@ -65,7 +65,6 @@ func TestAppEnterRespondsToInputRequest(t *testing.T) {
 
 	app := NewApp("dev", "", "", nil)
 
-	// First, send a user input request
 	responseCh := make(chan output.InputResponse, 1)
 	model, _ := app.Update(output.UserInputRequestEvent{
 		Prompt:     "Press enter",
@@ -74,12 +73,10 @@ func TestAppEnterRespondsToInputRequest(t *testing.T) {
 	})
 	app = model.(App)
 
-	// Verify input prompt is visible
 	if !app.inputPrompt.Visible() {
 		t.Fatal("expected input prompt to be visible")
 	}
 
-	// Now send ENTER key
 	model, cmd := app.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	app = model.(App)
 	if cmd == nil {
@@ -87,7 +84,6 @@ func TestAppEnterRespondsToInputRequest(t *testing.T) {
 	}
 	cmd()
 
-	// Verify response was sent
 	select {
 	case resp := <-responseCh:
 		if resp.SelectedKey != "enter" {
@@ -97,7 +93,6 @@ func TestAppEnterRespondsToInputRequest(t *testing.T) {
 		t.Fatal("timed out waiting for response on channel")
 	}
 
-	// Verify input prompt is hidden
 	if app.inputPrompt.Visible() {
 		t.Fatal("expected input prompt to be hidden after response")
 	}
@@ -109,7 +104,6 @@ func TestAppCtrlCCancelsPendingInput(t *testing.T) {
 	cancelled := false
 	app := NewApp("dev", "", "", func() { cancelled = true })
 
-	// Send a user input request
 	responseCh := make(chan output.InputResponse, 1)
 	model, _ := app.Update(output.UserInputRequestEvent{
 		Prompt:     "Press enter",
@@ -118,7 +112,6 @@ func TestAppCtrlCCancelsPendingInput(t *testing.T) {
 	})
 	app = model.(App)
 
-	// Send Ctrl+C
 	model, cmd := app.Update(tea.KeyMsg{Type: tea.KeyCtrlC})
 	app = model.(App)
 	if cmd == nil {
@@ -126,7 +119,6 @@ func TestAppCtrlCCancelsPendingInput(t *testing.T) {
 	}
 	cmd()
 
-	// Verify cancellation response was sent
 	select {
 	case resp := <-responseCh:
 		if !resp.Cancelled {
@@ -181,8 +173,8 @@ func TestAppMessageEventRendering(t *testing.T) {
 	if len(app.lines) != 1 {
 		t.Fatalf("expected 1 line, got %d", len(app.lines))
 	}
-	if !strings.Contains(app.lines[0], "Success:") || !strings.Contains(app.lines[0], "Done") {
-		t.Fatalf("expected rendered success message, got: %q", app.lines[0])
+	if !strings.Contains(app.lines[0].text, "Success:") || !strings.Contains(app.lines[0].text, "Done") {
+		t.Fatalf("expected rendered success message, got: %q", app.lines[0].text)
 	}
 }
 
@@ -206,5 +198,164 @@ func TestAppErrorEventStopsSpinner(t *testing.T) {
 	}
 	if !app.errorDisplay.Visible() {
 		t.Fatal("expected error display to be visible after ErrorEvent")
+	}
+}
+
+func TestAppEnterPrefersExplicitEnterOption(t *testing.T) {
+	t.Parallel()
+
+	app := NewApp("dev", "", "", nil)
+	responseCh := make(chan output.InputResponse, 1)
+
+	model, _ := app.Update(output.UserInputRequestEvent{
+		Prompt: "Open browser now?",
+		Options: []output.InputOption{
+			{Key: "y", Label: "Y"},
+			{Key: "n", Label: "n"},
+			{Key: "enter", Label: "Press ENTER when complete"},
+		},
+		ResponseCh: responseCh,
+	})
+	app = model.(App)
+
+	model, cmd := app.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	app = model.(App)
+	if cmd == nil {
+		t.Fatal("expected response command")
+	}
+	cmd()
+
+	select {
+	case resp := <-responseCh:
+		if resp.SelectedKey != "enter" {
+			t.Fatalf("expected enter key, got %q", resp.SelectedKey)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for response on channel")
+	}
+
+	if app.inputPrompt.Visible() {
+		t.Fatal("expected input prompt to be hidden after response")
+	}
+}
+
+func TestAppEnterDoesNothingWithoutExplicitEnterOption(t *testing.T) {
+	t.Parallel()
+
+	app := NewApp("dev", "", "", nil)
+	responseCh := make(chan output.InputResponse, 1)
+
+	model, _ := app.Update(output.UserInputRequestEvent{
+		Prompt: "Open browser now?",
+		Options: []output.InputOption{
+			{Key: "y", Label: "Y"},
+			{Key: "n", Label: "n"},
+		},
+		ResponseCh: responseCh,
+	})
+	app = model.(App)
+
+	model, cmd := app.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	app = model.(App)
+	if cmd != nil {
+		t.Fatal("expected no response command when enter is not an explicit option")
+	}
+
+	select {
+	case resp := <-responseCh:
+		t.Fatalf("expected no response, got %+v", resp)
+	case <-time.After(200 * time.Millisecond):
+	}
+
+	if !app.inputPrompt.Visible() {
+		t.Fatal("expected input prompt to remain visible")
+	}
+}
+
+func TestHardWrapHandlesUTF8Runes(t *testing.T) {
+	t.Parallel()
+
+	got := hardWrap("A🙂BC", 2)
+	want := "A🙂\nBC"
+	if got != want {
+		t.Fatalf("expected %q, got %q", want, got)
+	}
+}
+
+func TestAppAnyKeyOptionResolvesOnAnyKeypress(t *testing.T) {
+	t.Parallel()
+
+	app := NewApp("dev", "", "", nil)
+	responseCh := make(chan output.InputResponse, 1)
+
+	model, _ := app.Update(output.UserInputRequestEvent{
+		Prompt:     "Waiting for authorization...",
+		Options:    []output.InputOption{{Key: "any", Label: "Press any key when complete"}},
+		ResponseCh: responseCh,
+	})
+	app = model.(App)
+
+	// Any key (e.g., spacebar) should resolve
+	model, cmd := app.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{' '}})
+	app = model.(App)
+	if cmd == nil {
+		t.Fatal("expected response command")
+	}
+	cmd()
+
+	select {
+	case resp := <-responseCh:
+		if resp.SelectedKey != "any" {
+			t.Fatalf("expected any key, got %q", resp.SelectedKey)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for response on channel")
+	}
+
+	if app.inputPrompt.Visible() {
+		t.Fatal("expected input prompt to be hidden after response")
+	}
+}
+
+func TestAppPendingInputOptionCOverridesClipboardShortcut(t *testing.T) {
+	t.Parallel()
+
+	app := NewApp("dev", "", "", nil)
+	responseCh := make(chan output.InputResponse, 1)
+
+	model, _ := app.Update(output.AuthEvent{URL: "https://example.com"})
+	app = model.(App)
+
+	model, _ = app.Update(output.UserInputRequestEvent{
+		Prompt: "Choose option",
+		Options: []output.InputOption{
+			{Key: "c", Label: "Continue"},
+			{Key: "x", Label: "Cancel"},
+		},
+		ResponseCh: responseCh,
+	})
+	app = model.(App)
+
+	model, cmd := app.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'c'}})
+	app = model.(App)
+	if cmd == nil {
+		t.Fatal("expected pending-input response command")
+	}
+	msg := cmd()
+	if msg != nil {
+		t.Fatalf("expected pending-input command to return nil tea.Msg, got %#v", msg)
+	}
+
+	select {
+	case resp := <-responseCh:
+		if resp.SelectedKey != "c" {
+			t.Fatalf("expected c key, got %q", resp.SelectedKey)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for response on channel")
+	}
+
+	if app.inputPrompt.Visible() {
+		t.Fatal("expected input prompt to be hidden after response")
 	}
 }

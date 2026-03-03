@@ -219,6 +219,7 @@ func TestPlainSink_UsesFormatterParity(t *testing.T) {
 		MessageEvent{Severity: SeverityWarning, Text: "careful"},
 		MessageEvent{Severity: SeveritySuccess, Text: "done"},
 		MessageEvent{Severity: SeverityNote, Text: "fyi"},
+		AuthEvent{Code: "ABC123", URL: "https://example.com"},
 		SpinnerEvent{Active: true, Text: "Loading"},
 		ErrorEvent{Title: "Failed", Summary: "Something broke"},
 		ContainerStatusEvent{Phase: "starting", Container: "localstack"},
@@ -231,6 +232,8 @@ func TestPlainSink_UsesFormatterParity(t *testing.T) {
 
 		switch e := event.(type) {
 		case MessageEvent:
+			Emit(sink, e)
+		case AuthEvent:
 			Emit(sink, e)
 		case SpinnerEvent:
 			Emit(sink, e)

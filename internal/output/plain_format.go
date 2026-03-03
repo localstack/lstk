@@ -10,6 +10,8 @@ func FormatEventLine(event any) (string, bool) {
 	switch e := event.(type) {
 	case MessageEvent:
 		return formatMessageEvent(e), true
+	case AuthEvent:
+		return formatAuthEvent(e), true
 	case SpinnerEvent:
 		if e.Active {
 			return e.Text + "...", true
@@ -63,18 +65,55 @@ func formatProgressLine(e ProgressEvent) (string, bool) {
 }
 
 func formatUserInputRequest(e UserInputRequestEvent) string {
-	switch len(e.Options) {
-	case 0:
-		return e.Prompt
-	case 1:
-		return fmt.Sprintf("%s (%s)", e.Prompt, e.Options[0].Label)
-	default:
-		labels := make([]string, len(e.Options))
-		for i, opt := range e.Options {
-			labels[i] = opt.Label
+	return FormatPrompt(e.Prompt, e.Options)
+}
+
+// FormatPrompt formats a prompt string with its options into a display line.
+func FormatPrompt(prompt string, options []InputOption) string {
+	lines := strings.Split(prompt, "\n")
+	firstLine := lines[0]
+	rest := lines[1:]
+	labels := make([]string, 0, len(options))
+	for _, opt := range options {
+		if opt.Label != "" {
+			labels = append(labels, opt.Label)
 		}
-		return fmt.Sprintf("%s [%s]", e.Prompt, strings.Join(labels, "/"))
 	}
+
+	switch len(labels) {
+	case 0:
+		if len(rest) == 0 {
+			return firstLine
+		}
+		return strings.Join(append([]string{firstLine}, rest...), "\n")
+	case 1:
+		firstLine = fmt.Sprintf("%s (%s)", firstLine, labels[0])
+	default:
+		firstLine = fmt.Sprintf("%s [%s]", firstLine, strings.Join(labels, "/"))
+	}
+
+	if len(rest) == 0 {
+		return firstLine
+	}
+	return strings.Join(append([]string{firstLine}, rest...), "\n")
+}
+
+func formatAuthEvent(e AuthEvent) string {
+	var sb strings.Builder
+	if e.Preamble != "" {
+		sb.WriteString(e.Preamble)
+		sb.WriteString("\n")
+	}
+	if e.Code != "" {
+		sb.WriteString("Your one-time code: ")
+		sb.WriteString(e.Code)
+		sb.WriteString("\n")
+	}
+	if e.URL != "" {
+		sb.WriteString("Opening browser to login...\n")
+		sb.WriteString(e.URL)
+	}
+	return strings.TrimRight(sb.String(), "\n")
 }
 
 func formatMessageEvent(e MessageEvent) string {

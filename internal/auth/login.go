@@ -35,46 +35,32 @@ func (l *loginProvider) Login(ctx context.Context) (string, error) {
 	}
 
 	authURL := fmt.Sprintf("%s/auth/request/%s", getWebAppURL(), authReq.ID)
-	output.EmitInfo(l.sink, fmt.Sprintf("Visit: %s", authURL))
-	output.EmitInfo(l.sink, fmt.Sprintf("Verification code: %s", authReq.Code))
 
-	// Ask whether to open the browser; ENTER or Y accepts (default yes), N skips
-	browserCh := make(chan output.InputResponse, 1)
+	output.EmitAuth(l.sink, output.AuthEvent{
+		Preamble: "Welcome to lstk, a command-line interface for LocalStack",
+		Code:     authReq.Code,
+		URL:      authURL,
+	})
+	_ = browser.OpenURL(authURL)
+
+	output.EmitSpinnerStart(l.sink, "Waiting for authorization...")
+
+	responseCh := make(chan output.InputResponse, 1)
 	output.EmitUserInputRequest(l.sink, output.UserInputRequestEvent{
-		Prompt:     "Open browser now?",
-		Options:    []output.InputOption{{Key: "y", Label: "Y"}, {Key: "n", Label: "n"}},
-		ResponseCh: browserCh,
+		Prompt:     "Waiting for authorization...",
+		Options:    []output.InputOption{{Key: "any", Label: "Press any key when complete"}},
+		ResponseCh: responseCh,
 	})
 
 	select {
-	case resp := <-browserCh:
-		if resp.Cancelled {
-			return "", context.Canceled
-		}
-		if resp.SelectedKey != "n" {
-			if err := browser.OpenURL(authURL); err != nil {
-				output.EmitWarning(l.sink, fmt.Sprintf("Failed to open browser: %v", err))
-			}
-		}
-	case <-ctx.Done():
-		return "", ctx.Err()
-	}
-
-	// Wait for the user to complete authentication in the browser
-	enterCh := make(chan output.InputResponse, 1)
-	output.EmitUserInputRequest(l.sink, output.UserInputRequestEvent{
-		Prompt:     "Waiting for authentication",
-		Options:    []output.InputOption{{Key: "enter", Label: "Press ENTER when complete"}},
-		ResponseCh: enterCh,
-	})
-
-	select {
-	case resp := <-enterCh:
+	case resp := <-responseCh:
+		output.EmitSpinnerStop(l.sink)
 		if resp.Cancelled {
 			return "", context.Canceled
 		}
 		return l.completeAuth(ctx, authReq)
 	case <-ctx.Done():
+		output.EmitSpinnerStop(l.sink)
 		return "", ctx.Err()
 	}
 }
