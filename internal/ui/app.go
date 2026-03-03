@@ -38,10 +38,17 @@ type App struct {
 	pendingInput  *output.UserInputRequestEvent
 	err           error
 	quitting      bool
+	hideHeader    bool
 }
 
-func NewApp(version, emulatorName, endpoint string, cancel func()) App {
-	return App{
+type AppOption func(*App)
+
+var WithoutHeader AppOption = func(a *App) {
+	a.hideHeader = true
+}
+
+func NewApp(version, emulatorName, endpoint string, cancel func(), opts ...AppOption) App {
+	app := App{
 		header:       components.NewHeader(version, emulatorName, endpoint),
 		inputPrompt:  components.NewInputPrompt(),
 		spinner:      components.NewSpinner(),
@@ -49,6 +56,10 @@ func NewApp(version, emulatorName, endpoint string, cancel func()) App {
 		lines:        make([]styledLine, 0, maxLines),
 		cancel:       cancel,
 	}
+	for _, opt := range opts {
+		opt(&app)
+	}
+	return app
 }
 
 func (a App) Init() tea.Cmd {
@@ -269,8 +280,10 @@ func hyperlink(url, displayText string) string {
 
 func (a App) View() string {
 	var sb strings.Builder
-	sb.WriteString(a.header.View())
-	sb.WriteString("\n")
+	if !a.hideHeader {
+		sb.WriteString(a.header.View())
+		sb.WriteString("\n")
+	}
 
 	indent := strings.Repeat(" ", lineIndent)
 	contentWidth := a.width - lineIndent
