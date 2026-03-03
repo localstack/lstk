@@ -16,14 +16,14 @@ clean:
 
 test:
 	@JUNIT=""; [ -n "$$CREATE_JUNIT_REPORT" ] && JUNIT="--junitfile test-results.xml"; \
-	go run gotest.tools/gotestsum@latest --format testdox $$JUNIT -- ./cmd/... ./internal/...
+	go run gotest.tools/gotestsum@latest --format testname $$JUNIT -- ./cmd/... ./internal/...
 
 test-integration: $(BUILD_DIR)/$(BINARY_NAME)
 	@JUNIT=""; [ -n "$$CREATE_JUNIT_REPORT" ] && JUNIT="--junitfile ../../test-integration-results.xml"; \
 	if [ "$$(uname)" = "Darwin" ]; then \
-		cd test/integration && LSTK_KEYRING=file go run gotest.tools/gotestsum@latest --format testdox $$JUNIT -- -count=1 ./...; \
+		cd test/integration && LSTK_KEYRING=file go run gotest.tools/gotestsum@latest --format testname $$JUNIT -- -count=1 ./...; \
 	else \
-		cd test/integration && go run gotest.tools/gotestsum@latest --format testdox $$JUNIT -- -count=1 ./...; \
+		cd test/integration && go run gotest.tools/gotestsum@latest --format testname $$JUNIT -- -count=1 ./...; \
 	fi
 
 mock-generate:
