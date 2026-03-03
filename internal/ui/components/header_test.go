@@ -13,6 +13,6 @@ func TestHeaderView(t *testing.T) {
 	lipgloss.SetColorProfile(termenv.TrueColor)
 	t.Cleanup(func() { lipgloss.SetColorProfile(original) })
 
-	view := NewHeader("v1.0.0").View()
+	view := NewHeader("v1.0.0", "LocalStack AWS Emulator", "localhost.localstack.cloud:4566").View()
 	golden.Assert(t, view, "header.golden")
 }

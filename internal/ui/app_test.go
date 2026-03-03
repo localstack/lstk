@@ -12,7 +12,7 @@ import (
 )
 
 func TestAppAddsFormattedLinesInOrder(t *testing.T) {
-	tm := teatest.NewTestModel(t, NewApp("dev", nil), teatest.WithInitialTermSize(120, 40))
+	tm := teatest.NewTestModel(t, NewApp("dev", "", "", nil), teatest.WithInitialTermSize(120, 40))
 	tm.Send(output.MessageEvent{Severity: output.SeverityInfo, Text: "first"})
 	tm.Send(output.MessageEvent{Severity: output.SeverityWarning, Text: "second"})
 
@@ -31,7 +31,7 @@ func TestAppAddsFormattedLinesInOrder(t *testing.T) {
 func TestAppBoundsMessageHistory(t *testing.T) {
 	t.Parallel()
 
-	app := NewApp("dev", nil)
+	app := NewApp("dev", "", "", nil)
 	for i := 0; i < maxLines+5; i++ {
 		model, _ := app.Update(output.MessageEvent{Severity: output.SeverityInfo, Text: "line"})
 		app = model.(App)
@@ -45,7 +45,7 @@ func TestAppQuitCancelsContext(t *testing.T) {
 	t.Parallel()
 
 	cancelled := false
-	app := NewApp("dev", func() { cancelled = true })
+	app := NewApp("dev", "", "", func() { cancelled = true })
 	model, cmd := app.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
 	app = model.(App)
 
@@ -63,7 +63,7 @@ func TestAppQuitCancelsContext(t *testing.T) {
 func TestAppEnterRespondsToInputRequest(t *testing.T) {
 	t.Parallel()
 
-	app := NewApp("dev", nil)
+	app := NewApp("dev", "", "", nil)
 
 	// First, send a user input request
 	responseCh := make(chan output.InputResponse, 1)
@@ -107,7 +107,7 @@ func TestAppCtrlCCancelsPendingInput(t *testing.T) {
 	t.Parallel()
 
 	cancelled := false
-	app := NewApp("dev", func() { cancelled = true })
+	app := NewApp("dev", "", "", func() { cancelled = true })
 
 	// Send a user input request
 	responseCh := make(chan output.InputResponse, 1)
@@ -146,7 +146,7 @@ func TestAppCtrlCCancelsPendingInput(t *testing.T) {
 func TestAppSpinnerStartStop(t *testing.T) {
 	t.Parallel()
 
-	app := NewApp("dev", nil)
+	app := NewApp("dev", "", "", nil)
 
 	if app.spinner.Visible() {
 		t.Fatal("expected spinner to be hidden initially")
@@ -173,7 +173,7 @@ func TestAppSpinnerStartStop(t *testing.T) {
 func TestAppMessageEventRendering(t *testing.T) {
 	t.Parallel()
 
-	app := NewApp("dev", nil)
+	app := NewApp("dev", "", "", nil)
 
 	model, _ := app.Update(output.MessageEvent{Severity: output.SeveritySuccess, Text: "Done"})
 	app = model.(App)
@@ -189,7 +189,7 @@ func TestAppMessageEventRendering(t *testing.T) {
 func TestAppErrorEventStopsSpinner(t *testing.T) {
 	t.Parallel()
 
-	app := NewApp("dev", nil)
+	app := NewApp("dev", "", "", nil)
 
 	model, _ := app.Update(output.SpinnerEvent{Active: true, Text: "Loading"})
 	app = model.(App)

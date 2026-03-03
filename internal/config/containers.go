@@ -14,6 +14,12 @@ const (
 	userConfigFileName  = "config.toml"
 )
 
+var emulatorDisplayNames = map[EmulatorType]string{
+	EmulatorAWS:       "AWS",
+	EmulatorSnowflake: "Snowflake",
+	EmulatorAzure:     "Azure",
+}
+
 var emulatorImages = map[EmulatorType]string{
 	EmulatorAWS: "localstack-pro",
 }
@@ -56,6 +62,14 @@ func (c *ContainerConfig) HealthPath() (string, error) {
 		return "", fmt.Errorf("%s emulator not supported yet by lstk", c.Type)
 	}
 	return path, nil
+}
+
+func (c *ContainerConfig) DisplayName() string {
+	name, ok := emulatorDisplayNames[c.Type]
+	if !ok {
+		return fmt.Sprintf("LocalStack %s Emulator", c.Type)
+	}
+	return fmt.Sprintf("LocalStack %s Emulator", name)
 }
 
 func (c *ContainerConfig) ProductName() (string, error) {
