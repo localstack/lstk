@@ -94,16 +94,12 @@ func pullImages(ctx context.Context, rt runtime.Runtime, sink output.Sink, conta
 			return fmt.Errorf("failed to remove existing container %s: %w", c.Name, err)
 		}
 
-		output.EmitStatus(sink, "pulling", c.Image, "")
-		progress := make(chan runtime.PullProgress)
-		go func() {
-			for p := range progress {
-				output.EmitProgress(sink, c.Image, p.LayerID, p.Status, p.Current, p.Total)
-			}
-		}()
-		if err := rt.PullImage(ctx, c.Image, progress); err != nil {
+		output.EmitSpinnerStart(sink, fmt.Sprintf("Pulling %s", c.Image))
+		if err := rt.PullImage(ctx, c.Image, nil); err != nil {
+			output.EmitSpinnerStop(sink)
 			return fmt.Errorf("failed to pull image %s: %w", c.Image, err)
 		}
+		output.EmitSpinnerStop(sink)
 	}
 	return nil
 }
@@ -119,19 +115,21 @@ func validateLicenses(ctx context.Context, rt runtime.Runtime, sink output.Sink,
 
 func startContainers(ctx context.Context, rt runtime.Runtime, sink output.Sink, containers []runtime.ContainerConfig) error {
 	for _, c := range containers {
-		output.EmitStatus(sink, "starting", c.Name, "")
+		output.EmitSpinnerStart(sink, "Starting LocalStack")
 		containerID, err := rt.Start(ctx, c)
 		if err != nil {
+			output.EmitSpinnerStop(sink)
 			return fmt.Errorf("failed to start %s: %w", c.Name, err)
 		}
 
-		output.EmitStatus(sink, "waiting", c.Name, "")
 		healthURL := fmt.Sprintf("http://localhost:%s%s", c.Port, c.HealthPath)
 		if err := awaitStartup(ctx, rt, sink, containerID, c.Name, healthURL); err != nil {
+			output.EmitSpinnerStop(sink)
 			return err
 		}
 
-		output.EmitStatus(sink, "ready", c.Name, fmt.Sprintf("containerId: %s", containerID[:12]))
+		output.EmitSpinnerStop(sink)
+		output.EmitStatus(sink, "ready", c.Name, "")
 	}
 	return nil
 }
@@ -169,7 +167,7 @@ func validateLicense(ctx context.Context, rt runtime.Runtime, sink output.Sink, 
 		version = actualVersion
 	}
 
-	output.EmitStatus(sink, "validating license", containerConfig.Name, version)
+	output.EmitSpinnerStart(sink, "Validating license")
 
 	hostname, _ := os.Hostname()
 	licenseReq := &api.LicenseRequest{
@@ -188,8 +186,12 @@ func validateLicense(ctx context.Context, rt runtime.Runtime, sink output.Sink, 
 	}
 
 	if err := platformClient.GetLicense(ctx, licenseReq); err != nil {
+		output.EmitSpinnerStop(sink)
 		return fmt.Errorf("license validation failed for %s:%s: %w", containerConfig.ProductName, version, err)
 	}
+
+	output.EmitSpinnerStop(sink)
+	output.EmitStatus(sink, "valid license", containerConfig.Name, version)
 
 	return nil
 }

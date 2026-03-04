@@ -74,7 +74,7 @@ func (f SinkFunc) emit(event any) {
 }
 
 type ContainerStatusEvent struct {
-	Phase     string // e.g., "pulling", "starting", "waiting", "ready"
+	Phase     string // e.g., "valid license", "ready"
 	Container string
 	Detail    string // optional extra info (e.g., container ID)
 }
