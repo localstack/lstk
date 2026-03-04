@@ -77,13 +77,13 @@ lstk version
 
 ## Authentication
 
-You can authenticate in two ways:
+`lstk` resolves your auth token in this order:
 
-1. **Environment variable** — set `LOCALSTACK_AUTH_TOKEN` before running any command:
-   ```bash
-   export LOCALSTACK_AUTH_TOKEN=<your-token>
-   ```
-2. **Browser login** — run `lstk login` and follow the browser prompt. Credentials are stored in your system keyring.
+1. **System keyring** — a token stored by a previous `lstk login`
+2. **`LOCALSTACK_AUTH_TOKEN` environment variable**
+3. **Browser login** — triggered automatically in interactive mode when neither of the above is present
+
+> **Note:** If a keyring token exists, it takes precedence over `LOCALSTACK_AUTH_TOKEN`. Setting or changing the environment variable will have no effect until the keyring token is removed. Run `lstk logout` to clear the stored keyring token, after which the env var will be used.
 
 ## Configuration
 
