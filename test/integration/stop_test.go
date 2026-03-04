@@ -25,7 +25,7 @@ func TestStopCommandSucceeds(t *testing.T) {
 	require.NoError(t, err, "lstk stop failed: %s", output)
 
 	outputStr := string(output)
-	assert.Contains(t, outputStr, "Stopping", "should show stopping message")
+	assert.Contains(t, outputStr, "stopping", "should show stopping message")
 	assert.Contains(t, outputStr, "stopped", "should show stopped message")
 
 	_, err = dockerClient.ContainerInspect(ctx, containerName)

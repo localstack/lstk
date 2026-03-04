@@ -6,10 +6,11 @@ import (
 
 	"github.com/containerd/errdefs"
 	"github.com/localstack/lstk/internal/config"
+	"github.com/localstack/lstk/internal/output"
 	"github.com/localstack/lstk/internal/runtime"
 )
 
-func Stop(ctx context.Context, rt runtime.Runtime, onProgress func(string)) error {
+func Stop(ctx context.Context, rt runtime.Runtime, sink output.Sink) error {
 	cfg, err := config.Get()
 	if err != nil {
 		return fmt.Errorf("failed to get config: %w", err)
@@ -17,14 +18,14 @@ func Stop(ctx context.Context, rt runtime.Runtime, onProgress func(string)) erro
 
 	for _, c := range cfg.Containers {
 		name := c.Name()
-		onProgress(fmt.Sprintf("Stopping %s...", name))
+		output.EmitStatus(sink, "stopping", name, "")
 		if err := rt.Stop(ctx, name); err != nil {
 			if errdefs.IsNotFound(err) {
 				return fmt.Errorf("%s is not running", name)
 			}
 			return fmt.Errorf("failed to stop %s: %w", name, err)
 		}
-		onProgress(fmt.Sprintf("%s stopped", name))
+		output.EmitStatus(sink, "stopped", name, "")
 	}
 
 	return nil
