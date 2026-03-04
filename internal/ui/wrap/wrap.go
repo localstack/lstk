@@ -1,6 +1,9 @@
 package wrap
 
-import "strings"
+import (
+	"strings"
+	"unicode/utf8"
+)
 
 // HardWrap inserts newlines so that no output line exceeds maxWidth runes.
 // It breaks at exact rune boundaries with no regard for word boundaries.
@@ -26,7 +29,7 @@ func HardWrap(s string, maxWidth int) string {
 // SoftWrap breaks text into lines at word boundaries, falling back to hard
 // breaks for words longer than maxWidth.
 func SoftWrap(text string, maxWidth int) []string {
-	if maxWidth <= 0 || len(text) <= maxWidth {
+	if maxWidth <= 0 || utf8.RuneCountInString(text) <= maxWidth {
 		return []string{text}
 	}
 
@@ -37,13 +40,16 @@ func SoftWrap(text string, maxWidth int) []string {
 
 	var lines []string
 	var current strings.Builder
+	currentRunes := 0
 
 	for _, word := range words {
 		runes := []rune(word)
-		if len(runes) > maxWidth {
-			if current.Len() > 0 {
+		wordRunes := len(runes)
+		if wordRunes > maxWidth {
+			if currentRunes > 0 {
 				lines = append(lines, current.String())
 				current.Reset()
+				currentRunes = 0
 			}
 			for len(runes) > 0 {
 				chunk := runes
@@ -55,24 +61,28 @@ func SoftWrap(text string, maxWidth int) []string {
 					lines = append(lines, string(chunk))
 				} else {
 					current.WriteString(string(chunk))
+					currentRunes = len(chunk)
 				}
 			}
 			continue
 		}
-		if current.Len() == 0 {
+		if currentRunes == 0 {
 			current.WriteString(word)
+			currentRunes = wordRunes
 			continue
 		}
-		if current.Len()+1+len(runes) > maxWidth {
+		if currentRunes+1+wordRunes > maxWidth {
 			lines = append(lines, current.String())
 			current.Reset()
 			current.WriteString(word)
+			currentRunes = wordRunes
 		} else {
 			current.WriteByte(' ')
 			current.WriteString(word)
+			currentRunes += 1 + wordRunes
 		}
 	}
-	if current.Len() > 0 {
+	if currentRunes > 0 {
 		lines = append(lines, current.String())
 	}
 

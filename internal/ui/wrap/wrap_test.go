@@ -86,6 +86,12 @@ func TestSoftWrap(t *testing.T) {
 			expected: []string{"🙂🙂", "🙂🙂", "🙂"},
 		},
 		{
+			name:     "multibyte words wrap by rune count",
+			input:    "café résumé",
+			width:    6,
+			expected: []string{"café", "résumé"},
+		},
+		{
 			name:     "zero width returns input",
 			input:    "abc",
 			width:    0,
