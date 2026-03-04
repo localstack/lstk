@@ -71,7 +71,7 @@ func Execute(ctx context.Context) error {
 
 func runStart(ctx context.Context, rt runtime.Runtime, cfg *env.Env, tel *telemetry.Client) error {
 	// TODO: replace map with a typed payload struct once event schema is finalised
-	tel.Track("cli_cmd", map[string]any{"cmd": "lstk start", "params": []string{}})
+	tel.Emit("cli_cmd", map[string]any{"cmd": "lstk start", "params": []string{}})
 
 	platformClient := api.NewPlatformClient(cfg.APIEndpoint)
 	if ui.IsInteractive() {

@@ -60,7 +60,7 @@ type eventMetadata struct {
 	SessionID  string `json:"session_id"`
 }
 
-func (c *Client) Track(name string, payload map[string]any) {
+func (c *Client) Emit(name string, payload map[string]any) {
 	if !c.enabled {
 		return
 	}
