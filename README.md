@@ -10,7 +10,7 @@ lstk is a command-line interface for LocalStack built in Go with a modern termin
 brew install localstack/tap/lstk
 ```
 
-### npm / npx
+### NPM
 
 Install globally:
 
