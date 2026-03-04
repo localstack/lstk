@@ -272,16 +272,6 @@ func TestAppEnterDoesNothingWithoutExplicitEnterOption(t *testing.T) {
 	}
 }
 
-func TestHardWrapHandlesUTF8Runes(t *testing.T) {
-	t.Parallel()
-
-	got := hardWrap("A🙂BC", 2)
-	want := "A🙂\nBC"
-	if got != want {
-		t.Fatalf("expected %q, got %q", want, got)
-	}
-}
-
 func TestAppAnyKeyOptionResolvesOnAnyKeypress(t *testing.T) {
 	t.Parallel()
 

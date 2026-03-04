@@ -5,6 +5,7 @@ import (
 
 	"github.com/localstack/lstk/internal/output"
 	"github.com/localstack/lstk/internal/ui/styles"
+	"github.com/localstack/lstk/internal/ui/wrap"
 )
 
 type ErrorDisplay struct {
@@ -39,7 +40,7 @@ func (e ErrorDisplay) View(maxWidth int) string {
 	if e.event.Summary != "" {
 		prefix := "> "
 		summaryWidth := maxWidth - len(prefix)
-		lines := softWrap(e.event.Summary, summaryWidth)
+		lines := wrap.SoftWrap(e.event.Summary, summaryWidth)
 		for i, line := range lines {
 			if i == 0 {
 				sb.WriteString(styles.Secondary.Render(prefix))
@@ -73,38 +74,3 @@ func (e ErrorDisplay) View(maxWidth int) string {
 	return sb.String()
 }
 
-// softWrap breaks text into lines at word boundaries, falling back to hard
-// breaks for words longer than maxWidth.
-func softWrap(text string, maxWidth int) []string {
-	if maxWidth <= 0 || len(text) <= maxWidth {
-		return []string{text}
-	}
-
-	words := strings.Fields(text)
-	if len(words) == 0 {
-		return []string{text}
-	}
-
-	var lines []string
-	var current strings.Builder
-
-	for _, word := range words {
-		if current.Len() == 0 {
-			current.WriteString(word)
-			continue
-		}
-		if current.Len()+1+len(word) > maxWidth {
-			lines = append(lines, current.String())
-			current.Reset()
-			current.WriteString(word)
-		} else {
-			current.WriteByte(' ')
-			current.WriteString(word)
-		}
-	}
-	if current.Len() > 0 {
-		lines = append(lines, current.String())
-	}
-
-	return lines
-}

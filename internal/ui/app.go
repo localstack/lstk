@@ -10,6 +10,7 @@ import (
 	"github.com/localstack/lstk/internal/output"
 	"github.com/localstack/lstk/internal/ui/components"
 	"github.com/localstack/lstk/internal/ui/styles"
+	"github.com/localstack/lstk/internal/ui/wrap"
 )
 
 const maxLines = 200
@@ -251,24 +252,6 @@ func formatResolvedInput(req output.UserInputRequestEvent, selectedKey string) s
 
 const lineIndent = 2
 
-func hardWrap(s string, maxWidth int) string {
-	rs := []rune(s)
-	if maxWidth <= 0 || len(rs) <= maxWidth {
-		return s
-	}
-	var sb strings.Builder
-	for i := 0; i < len(rs); i += maxWidth {
-		if i > 0 {
-			sb.WriteByte('\n')
-		}
-		end := i + maxWidth
-		if end > len(rs) {
-			end = len(rs)
-		}
-		sb.WriteString(string(rs[i:end]))
-	}
-	return sb.String()
-}
 
 func isURL(s string) bool {
 	return strings.HasPrefix(s, "http://") || strings.HasPrefix(s, "https://")
@@ -290,7 +273,7 @@ func (a App) View() string {
 	for _, line := range a.lines {
 		if line.highlight {
 			if isURL(line.text) {
-				wrapped := strings.Split(hardWrap(line.text, contentWidth), "\n")
+				wrapped := strings.Split(wrap.HardWrap(line.text, contentWidth), "\n")
 				var styledParts []string
 				for _, part := range wrapped {
 					styledParts = append(styledParts, styles.Link.Render(part))
@@ -299,22 +282,22 @@ func (a App) View() string {
 				sb.WriteString(hyperlink(line.text, strings.Join(styledParts, "\n"+indent)))
 			} else {
 				sb.WriteString(indent)
-				sb.WriteString(styles.Highlight.Render(hardWrap(line.text, contentWidth)))
+				sb.WriteString(styles.Highlight.Render(wrap.HardWrap(line.text, contentWidth)))
 			}
 			sb.WriteString("\n\n")
 			continue
 		} else if line.secondary {
 			if strings.HasPrefix(line.text, ">") {
-				sb.WriteString(styles.SecondaryMessage.Render(hardWrap(line.text, contentWidth)))
+				sb.WriteString(styles.SecondaryMessage.Render(wrap.HardWrap(line.text, contentWidth)))
 				sb.WriteString("\n\n")
 				continue
 			}
 			sb.WriteString(indent)
-			text := hardWrap(line.text, contentWidth)
+			text := wrap.HardWrap(line.text, contentWidth)
 			sb.WriteString(styles.SecondaryMessage.Render(text))
 		} else {
 			sb.WriteString(indent)
-			text := hardWrap(line.text, contentWidth)
+			text := wrap.HardWrap(line.text, contentWidth)
 			sb.WriteString(text)
 		}
 		sb.WriteString("\n")
