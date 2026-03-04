@@ -1,6 +1,7 @@
 package telemetry
 
 import (
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -40,7 +41,7 @@ func TestTrack_SendsCorrectPayloadAndHeaders(t *testing.T) {
 	defer srv.Close()
 
 	c := New(srv.URL, false)
-	c.Emit("cli_cmd", map[string]any{"cmd": "lstk start", "params": []string{}})
+	c.Emit(context.Background(), "cli_cmd", map[string]any{"cmd": "lstk start", "params": []string{}})
 	c.Flush()
 
 	var got captured

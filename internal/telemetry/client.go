@@ -2,6 +2,7 @@ package telemetry
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -60,7 +61,7 @@ type eventMetadata struct {
 	SessionID  string `json:"session_id"`
 }
 
-func (c *Client) Emit(name string, payload map[string]any) {
+func (c *Client) Emit(ctx context.Context, name string, payload map[string]any) {
 	if !c.enabled {
 		return
 	}
@@ -95,7 +96,7 @@ func (c *Client) Emit(name string, payload map[string]any) {
 			return
 		}
 
-		req, err := http.NewRequest(http.MethodPost, c.endpoint, bytes.NewReader(data))
+		req, err := http.NewRequestWithContext(context.WithoutCancel(ctx), http.MethodPost, c.endpoint, bytes.NewReader(data))
 		if err != nil {
 			return
 		}
