@@ -2,6 +2,15 @@
 
 lstk is a command-line interface for LocalStack built in Go with a modern terminal Ul, and native CLI experience for starting and managing LocalStack deployments. 👾
 
+## Features
+
+- **Start / stop** LocalStack emulators with a single command
+- **Interactive TUI** — a Bubble Tea-powered terminal UI when run in an interactive shell
+- **Plain output** for CI/CD and scripting (auto-detected in non-interactive environments)
+- **Log streaming** — tail emulator logs in real-time with `--follow`
+- **Browser-based login** — authenticate via browser and store credentials securely in the system keyring
+- **Shell completions** — bash, zsh, and fish completions included
+
 ## Installation
 
 ### Homebrew (macOS / Linux)
@@ -12,17 +21,9 @@ brew install localstack/tap/lstk
 
 ### NPM
 
-Install globally:
-
 ```bash
 npm install -g @localstack/lstk
 lstk start
-```
-
-Or run without installing:
-
-```bash
-npx @localstack/lstk start
 ```
 
 ### Manual (binary download)
@@ -36,22 +37,14 @@ Download the latest release for your platform from the [GitHub Releases](https:/
 ## Requirements
 
 - [Docker](https://docs.docker.com/get-docker/) must be running
-- A [LocalStack Auth Token](https://app.localstack.cloud) (for Pro features) — or set `LOCALSTACK_AUTH_TOKEN` in your environment
+- A [LocalStack Account](https://app.localstack.cloud) 
 
-## Features
-
-- **Start / stop** LocalStack emulators with a single command
-- **Interactive TUI** — a Bubble Tea-powered terminal UI when run in an interactive shell
-- **Plain output** for CI/CD and scripting (auto-detected in non-interactive environments)
-- **Log streaming** — tail emulator logs in real-time with `--follow`
-- **Browser-based login** — authenticate via browser and store credentials securely in the system keyring
-- **Shell completions** — bash, zsh, and fish completions included
 
 ## Usage
 
 ```bash
 # Start the LocalStack emulator (interactive TUI in a terminal)
-lstk start
+lstk
 
 # Start non-interactively (e.g. in CI)
 LOCALSTACK_AUTH_TOKEN=<token> lstk start
@@ -104,21 +97,7 @@ lstk config path
 
 `lstk` uses [ZeroVer](https://0ver.org/) (`0.MINOR.PATCH`). The project is in active development and has not reached a stable 1.0 release.
 
-## Releasing with GoReleaser
 
-Release automation uses two workflows:
+## Reporting bugs
+Feedback is welcome! Use the repository issue tracker for bug reports or feature requests.
 
-1. `Create Release Tag` (`.github/workflows/create-release-tag.yml`)
-2. `LSTK CI` (`.github/workflows/ci.yml`)
-
-How it works:
-
-1. Manually run `Create Release Tag` from GitHub Actions (default ref: `main`), choosing a `patch` or `minor` bump.
-2. The workflow computes and pushes the next version tag (e.g. `v0.2.4`).
-3. Pushing the tag triggers `LSTK CI`, which runs the `release` job and publishes the GitHub release with GoReleaser.
-
-To validate release packaging locally without publishing:
-
-```bash
-goreleaser release --snapshot --clean
-```
