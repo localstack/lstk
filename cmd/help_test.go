@@ -6,47 +6,18 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/spf13/cobra"
-	"github.com/spf13/pflag"
+	"github.com/localstack/lstk/internal/env"
 )
 
 func executeWithArgs(t *testing.T, args ...string) (string, error) {
 	t.Helper()
-
-	origOut := rootCmd.OutOrStdout()
-	origErr := rootCmd.ErrOrStderr()
-	resetCommandState(rootCmd)
-
 	buf := new(bytes.Buffer)
-	rootCmd.SetOut(buf)
-	rootCmd.SetErr(buf)
-	rootCmd.SetArgs(args)
-
-	err := rootCmd.ExecuteContext(context.Background())
-	out := buf.String()
-
-	rootCmd.SetArgs(nil)
-	rootCmd.SetOut(origOut)
-	rootCmd.SetErr(origErr)
-	resetCommandState(rootCmd)
-
-	return out, err
-}
-
-func resetCommandState(cmd *cobra.Command) {
-	resetFlagSet(cmd.Flags())
-	resetFlagSet(cmd.PersistentFlags())
-
-	for _, sub := range cmd.Commands() {
-		resetCommandState(sub)
-	}
-}
-
-func resetFlagSet(flags *pflag.FlagSet) {
-	flags.VisitAll(func(flag *pflag.Flag) {
-		_ = flag.Value.Set(flag.DefValue)
-		flag.Changed = false
-	})
+	cmd := NewRootCmd(&env.Env{})
+	cmd.SetOut(buf)
+	cmd.SetErr(buf)
+	cmd.SetArgs(args)
+	err := cmd.ExecuteContext(context.Background())
+	return buf.String(), err
 }
 
 func TestRootHelpOutputTemplate(t *testing.T) {

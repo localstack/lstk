@@ -7,25 +7,26 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var configCmd = &cobra.Command{
-	Use:   "config",
-	Short: "Manage configuration",
+func newConfigCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "config",
+		Short: "Manage configuration",
+	}
+	cmd.AddCommand(newConfigPathCmd())
+	return cmd
 }
 
-var configPathCmd = &cobra.Command{
-	Use:   "path",
-	Short: "Print the configuration file path",
-	RunE: func(cmd *cobra.Command, args []string) error {
-		configPath, err := config.ConfigFilePath()
-		if err != nil {
+func newConfigPathCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "path",
+		Short: "Print the configuration file path",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			configPath, err := config.ConfigFilePath()
+			if err != nil {
+				return err
+			}
+			_, err = fmt.Fprintln(cmd.OutOrStdout(), configPath)
 			return err
-		}
-		_, err = fmt.Fprintln(cmd.OutOrStdout(), configPath)
-		return err
-	},
-}
-
-func init() {
-	configCmd.AddCommand(configPathCmd)
-	rootCmd.AddCommand(configCmd)
+		},
+	}
 }

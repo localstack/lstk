@@ -11,7 +11,7 @@ import (
 	"github.com/localstack/lstk/internal/output"
 )
 
-func RunLogin(parentCtx context.Context, version string, platformClient api.PlatformAPI) error {
+func RunLogin(parentCtx context.Context, version string, platformClient api.PlatformAPI, authToken string, forceFileKeyring bool, webAppURL string) error {
 	ctx, cancel := context.WithCancel(parentCtx)
 	defer cancel()
 
@@ -20,13 +20,13 @@ func RunLogin(parentCtx context.Context, version string, platformClient api.Plat
 	runErrCh := make(chan error, 1)
 
 	go func() {
-		tokenStorage, err := auth.NewTokenStorage()
+		tokenStorage, err := auth.NewTokenStorage(forceFileKeyring)
 		if err != nil {
 			runErrCh <- err
 			p.Send(runErrMsg{err: err})
 			return
 		}
-		a := auth.New(output.NewTUISink(programSender{p: p}), platformClient, tokenStorage, true)
+		a := auth.New(output.NewTUISink(programSender{p: p}), platformClient, tokenStorage, authToken, webAppURL, true)
 
 		_, err = a.GetToken(ctx)
 		runErrCh <- err

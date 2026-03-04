@@ -6,7 +6,6 @@ import (
 	"fmt"
 
 	"github.com/localstack/lstk/internal/api"
-	"github.com/localstack/lstk/internal/env"
 	"github.com/localstack/lstk/internal/output"
 )
 
@@ -16,14 +15,16 @@ type Auth struct {
 	tokenStorage AuthTokenStorage
 	login        LoginProvider
 	sink         output.Sink
+	authToken    string
 	allowLogin   bool
 }
 
-func New(sink output.Sink, platform api.PlatformAPI, storage AuthTokenStorage, allowLogin bool) *Auth {
+func New(sink output.Sink, platform api.PlatformAPI, storage AuthTokenStorage, authToken, webAppURL string, allowLogin bool) *Auth {
 	return &Auth{
 		tokenStorage: storage,
-		login:        newLoginProvider(sink, platform),
+		login:        newLoginProvider(sink, platform, webAppURL),
 		sink:         sink,
+		authToken:    authToken,
 		allowLogin:   allowLogin,
 	}
 }
@@ -34,7 +35,7 @@ func (a *Auth) GetToken(ctx context.Context) (string, error) {
 		return token, nil
 	}
 
-	if token := env.Vars.AuthToken; token != "" {
+	if token := a.authToken; token != "" {
 		return token, nil
 	}
 
@@ -66,7 +67,7 @@ func (a *Auth) Logout() error {
 	_, err := a.tokenStorage.GetAuthToken()
 	if err != nil {
 		output.EmitSpinnerStop(a.sink)
-		if env.Vars.AuthToken != "" {
+		if a.authToken != "" {
 			output.EmitNote(a.sink, "Authenticated via LOCALSTACK_AUTH_TOKEN environment variable; unset it to log out")
 			return nil
 		}
