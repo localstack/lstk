@@ -83,8 +83,7 @@ func TestStartCommandSendsTelemetryEvent(t *testing.T) {
 		assert.NotEmpty(t, payload["version"])
 		assert.Equal(t, runtime.GOOS, payload["os"])
 		assert.Equal(t, runtime.GOARCH, payload["arch"])
-		_, err = uuid.Parse(payload["machine_id"].(string))
-		assert.NoError(t, err, "machine_id should be a valid UUID")
+		assert.NotEmpty(t, payload["machine_id"], "machine_id should be present")
 		assert.Equal(t, os.Getenv("CI") != "", payload["is_ci"])
 	case <-time.After(3 * time.Second):
 		t.Fatal("timed out waiting for telemetry event")

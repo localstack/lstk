@@ -1,23 +1,67 @@
 package telemetry
 
 import (
+	"context"
+	"crypto/md5"
+	"encoding/hex"
 	"os"
 	"path/filepath"
 	"strings"
 
+	dockerclient "github.com/docker/docker/client"
 	"github.com/google/uuid"
 	"github.com/localstack/lstk/internal/config"
 )
 
-const machineIDFileName = "machine_id"
+const (
+	machineIDFileName = "machine_id"
+	salt              = "ls"
+)
 
-// LoadOrCreateMachineID reads the persisted machine ID from disk, generating
-// and writing a new one if none exists. Returns an empty string on any error
-// so that telemetry can continue without a machine ID rather than failing.
+// LoadOrCreateMachineID attempts to derive a stable, anonymized machine ID by
+// trying in order: Docker daemon ID, /etc/machine-id, then a persisted random UUID.
+// Prefixes (dkr_, sys_, gen_) indicate origin, matching the Python implementation
+// in localstack-core so IDs can be correlated across tools.
 func LoadOrCreateMachineID() string {
-	path, err := machineIDPath()
+	if id := dockerDaemonID(); id != "" {
+		return "dkr_" + anonymize(id)
+	}
+	if id := systemMachineID(); id != "" {
+		return "sys_" + anonymize(id)
+	}
+	return "gen_" + persistedRandomID()
+}
+
+func anonymize(physicalID string) string {
+	h := md5.Sum([]byte(salt + physicalID))
+	return hex.EncodeToString(h[:])[:12]
+}
+
+func dockerDaemonID() string {
+	c, err := dockerclient.NewClientWithOpts(dockerclient.FromEnv, dockerclient.WithAPIVersionNegotiation())
 	if err != nil {
 		return ""
+	}
+	defer func() { _ = c.Close() }()
+	info, err := c.Info(context.Background())
+	if err != nil {
+		return ""
+	}
+	return info.ID
+}
+
+func systemMachineID() string {
+	data, err := os.ReadFile("/etc/machine-id")
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(data))
+}
+
+func persistedRandomID() string {
+	path, err := machineIDPath()
+	if err != nil {
+		return uuid.NewString()[:12]
 	}
 
 	data, err := os.ReadFile(path)
@@ -27,16 +71,14 @@ func LoadOrCreateMachineID() string {
 			return id
 		}
 	} else if !os.IsNotExist(err) {
-		return ""
+		return uuid.NewString()[:12]
 	}
 
-	id := uuid.NewString()
+	id := uuid.NewString()[:12]
 	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
-		return ""
+		return id
 	}
-	if err := os.WriteFile(path, []byte(id), 0600); err != nil {
-		return ""
-	}
+	_ = os.WriteFile(path, []byte(id), 0600)
 	return id
 }
 
