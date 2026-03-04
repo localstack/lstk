@@ -243,7 +243,7 @@ func formatResolvedInput(req output.UserInputRequestEvent, selectedKey string) s
 		}
 	}
 
-	if selected == "" || !hasLabels {
+	if selected == "" || !hasLabels || selectedKey == "any" {
 		return firstLine
 	}
 	return fmt.Sprintf("%s %s", firstLine, selected)
