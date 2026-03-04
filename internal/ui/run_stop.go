@@ -15,7 +15,7 @@ func RunStop(parentCtx context.Context, rt runtime.Runtime) error {
 	ctx, cancel := context.WithCancel(parentCtx)
 	defer cancel()
 
-	app := NewApp("", "", "", cancel)
+	app := NewApp("", "", "", cancel, withoutHeader())
 	p := tea.NewProgram(app, tea.WithInput(os.Stdin), tea.WithOutput(os.Stdout))
 	runErrCh := make(chan error, 1)
 
