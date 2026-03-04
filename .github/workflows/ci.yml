@@ -158,3 +158,17 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           HOMEBREW_TAP_TOKEN: ${{ secrets.PRO_ACCESS_TOKEN }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Publish to NPM
+        uses: evg4b/goreleaser-npm-publisher-action@v1
+        with:
+          token: ${{ secrets.NPM_AUTH_TOKEN }}
+          license: Apache-2.0
+          description: "LocalStack CLI v2 - Start and manage LocalStack emulators"
+          keywords: localstack, cli, aws, emulator, docker
