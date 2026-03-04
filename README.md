@@ -1,6 +1,6 @@
 # lstk
 
-lstk is a command-line interface for LocalStack built in Go with a modern terminal UI, and native CLI experience for starting and managing LocalStack deployments. 👾
+lstk is a command-line interface for LocalStack built in Go with a modern terminal UI, and native CLI experience for managing and interacting LocalStack deployments. 👾
 
 ## Features
 
