@@ -43,8 +43,8 @@ type App struct {
 
 type AppOption func(*App)
 
-var WithoutHeader AppOption = func(a *App) {
-	a.hideHeader = true
+func withoutHeader() AppOption {
+	return func(a *App) { a.hideHeader = true }
 }
 
 func NewApp(version, emulatorName, endpoint string, cancel func(), opts ...AppOption) App {

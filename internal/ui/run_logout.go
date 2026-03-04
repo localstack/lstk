@@ -15,7 +15,7 @@ func RunLogout(parentCtx context.Context, platformClient api.PlatformAPI, authTo
 	_, cancel := context.WithCancel(parentCtx)
 	defer cancel()
 
-	app := NewApp("", "", "", cancel, WithoutHeader)
+	app := NewApp("", "", "", cancel, withoutHeader())
 
 	p := tea.NewProgram(app, tea.WithInput(os.Stdin), tea.WithOutput(os.Stdout))
 	runErrCh := make(chan error, 1)
