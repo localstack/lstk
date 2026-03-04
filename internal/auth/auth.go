@@ -43,9 +43,11 @@ func (a *Auth) GetToken(ctx context.Context) (string, error) {
 		return "", fmt.Errorf("authentication required: set LOCALSTACK_AUTH_TOKEN or run in interactive mode")
 	}
 
-	output.EmitInfo(a.sink, "No existing credentials found. Please log in:")
 	token, err := a.login.Login(ctx)
 	if err != nil {
+		if errors.Is(err, context.Canceled) {
+			return "", err
+		}
 		output.EmitWarning(a.sink, "Authentication failed.")
 		return "", err
 	}

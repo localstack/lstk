@@ -36,6 +36,18 @@ func TestFormatEventLine(t *testing.T) {
 			wantOK: true,
 		},
 		{
+			name:   "instructions event full",
+			event:  AuthEvent{Preamble: "Welcome", Code: "ABC123", URL: "https://example.com"},
+			want:   "Welcome\nYour one-time code: ABC123\nOpening browser to login...\nhttps://example.com",
+			wantOK: true,
+		},
+		{
+			name:   "instructions event code only",
+			event:  AuthEvent{Code: "XYZ"},
+			want:   "Your one-time code: XYZ",
+			wantOK: true,
+		},
+		{
 			name:   "status pulling",
 			event:  ContainerStatusEvent{Phase: "pulling", Container: "localstack/localstack:latest"},
 			want:   "Pulling localstack/localstack:latest...",

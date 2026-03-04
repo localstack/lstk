@@ -28,11 +28,13 @@ func nimboLine3() string {
 }
 
 type Header struct {
-	version string
+	version      string
+	emulatorName string
+	endpoint     string
 }
 
-func NewHeader(version string) Header {
-	return Header{version: version}
+func NewHeader(version, emulatorName, endpoint string) Header {
+	return Header{version: version, emulatorName: emulatorName, endpoint: endpoint}
 }
 
 func (h Header) View() string {
@@ -45,12 +47,17 @@ func (h Header) View() string {
 	))
 
 	text := lipgloss.JoinVertical(lipgloss.Left,
-		styles.Title.Render("LocalStack (lstk)"),
-		styles.Version.Render(h.version),
-		"",
+		"lstk " + styles.Secondary.Render("("+h.version+")"),
+		styles.Secondary.Render(h.emulatorName),
+		styles.Secondary.Render(h.endpoint),
 	)
 
 	spacer := strings.Repeat(" ", headerPadding)
 
-	return "\n" + lipgloss.JoinHorizontal(lipgloss.Top, nimbo, spacer, text) + "\n"
+	joined := lipgloss.JoinHorizontal(lipgloss.Top, nimbo, spacer, text)
+	lines := strings.Split(joined, "\n")
+	for i, line := range lines {
+		lines[i] = strings.TrimRight(line, " ")
+	}
+	return "\n" + strings.Join(lines, "\n") + "\n"
 }
