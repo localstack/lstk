@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"os"
 	"runtime"
-	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -20,30 +19,36 @@ func userAgent() string {
 }
 
 type Client struct {
-	enabled    bool
-	sessionID  string
-	machineID  string
+	enabled   bool
+	sessionID string
+	machineID string
+
 	httpClient *http.Client
 	endpoint   string
-	wg         sync.WaitGroup
+
+	events chan eventBody
+	done   chan struct{}
 }
 
 func New(endpoint string, disabled bool) *Client {
 	if disabled {
 		return &Client{enabled: false}
 	}
-	return &Client{
+	c := &Client{
 		enabled:   true,
 		sessionID: uuid.NewString(),
 		machineID: LoadOrCreateMachineID(),
 		// http.Client has no default timeout (zero means none). Without one, a
-		// slow or unreachable endpoint would block the goroutine until process
-		// exit — which matters for long-running commands like `lstk logs --follow`.
+		// slow or unreachable endpoint would block the worker goroutine.
 		httpClient: &http.Client{
 			Timeout: 3 * time.Second,
 		},
 		endpoint: endpoint,
+		events:   make(chan eventBody, 64),
+		done:     make(chan struct{}),
 	}
+	go c.worker()
+	return c
 }
 
 type requestBody struct {
@@ -51,9 +56,10 @@ type requestBody struct {
 }
 
 type eventBody struct {
-	Name     string        `json:"name"`
-	Metadata eventMetadata `json:"metadata"`
-	Payload  any           `json:"payload"`
+	ctx      context.Context // not serialized; carries context to the worker
+	Name     string          `json:"name"`
+	Metadata eventMetadata   `json:"metadata"`
+	Payload  any             `json:"payload"`
 }
 
 type eventMetadata struct {
@@ -79,6 +85,7 @@ func (c *Client) Emit(ctx context.Context, name string, payload map[string]any) 
 	}
 
 	body := eventBody{
+		ctx:  context.WithoutCancel(ctx),
 		Name: name,
 		Metadata: eventMetadata{
 			ClientTime: time.Now().UTC().Format("2006-01-02 15:04:05.000000"),
@@ -87,35 +94,46 @@ func (c *Client) Emit(ctx context.Context, name string, payload map[string]any) 
 		Payload: enriched,
 	}
 
-	c.wg.Add(1)
-	go func() {
-		defer c.wg.Done()
-
-		data, err := json.Marshal(requestBody{Events: []eventBody{body}})
-		if err != nil {
-			return
-		}
-
-		req, err := http.NewRequestWithContext(context.WithoutCancel(ctx), http.MethodPost, c.endpoint, bytes.NewReader(data))
-		if err != nil {
-			return
-		}
-		req.Header.Set("Content-Type", "application/json")
-		req.Header.Set("User-Agent", userAgent())
-
-		resp, err := c.httpClient.Do(req)
-		if err != nil {
-			return
-		}
-		_ = resp.Body.Close()
-	}()
+	select {
+	case c.events <- body:
+	default:
+	}
 }
 
-// Flush blocks until all in-flight Track goroutines have completed. Call it
-// before process exit to avoid dropping telemetry events. It returns quickly
-// when no events are pending, and is bounded by the HTTP client's timeout in
-// the worst case.
-func (c *Client) Flush() {
-	c.wg.Wait()
+func (c *Client) worker() {
+	defer close(c.done)
+	for body := range c.events {
+		c.send(body)
+	}
 }
 
+func (c *Client) send(body eventBody) {
+	data, err := json.Marshal(requestBody{Events: []eventBody{body}})
+	if err != nil {
+		return
+	}
+
+	req, err := http.NewRequestWithContext(body.ctx, http.MethodPost, c.endpoint, bytes.NewReader(data))
+	if err != nil {
+		return
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("User-Agent", userAgent())
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return
+	}
+	_ = resp.Body.Close()
+}
+
+// Close stops accepting new events, drains the event buffer, and blocks until
+// all pending HTTP requests have completed. Call it before process exit to
+// avoid dropping telemetry events.
+func (c *Client) Close() {
+	if !c.enabled {
+		return
+	}
+	close(c.events)
+	<-c.done
+}

@@ -42,7 +42,7 @@ func TestTrack_SendsCorrectPayloadAndHeaders(t *testing.T) {
 
 	c := New(srv.URL, false)
 	c.Emit(context.Background(), "cli_cmd", map[string]any{"cmd": "lstk start", "params": []string{}})
-	c.Flush()
+	c.Close()
 
 	var got captured
 	select {
