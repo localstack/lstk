@@ -1,6 +1,6 @@
 # lstk
 
-**lstk** is LocalStack's CLI v2 — a fast, interactive command-line interface for starting and managing LocalStack emulators via Docker.
+lstk is a command-line interface for LocalStack built in Go with a modern terminal Ul, and native CLI experience for starting and managing LocalStack deployments. 👾
 
 ## Installation
 
