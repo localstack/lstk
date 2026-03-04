@@ -5,7 +5,9 @@ import (
 	"os"
 
 	"github.com/localstack/lstk/internal/container"
+	"github.com/localstack/lstk/internal/output"
 	"github.com/localstack/lstk/internal/runtime"
+	"github.com/localstack/lstk/internal/ui"
 	"github.com/spf13/cobra"
 )
 
@@ -22,14 +24,19 @@ func newStopCmd() *cobra.Command {
 				os.Exit(1)
 			}
 
-			onProgress := func(msg string) {
-				fmt.Println(msg)
+			if ui.IsInteractive() {
+				if err := ui.RunStop(cmd.Context(), rt); err != nil {
+					fmt.Fprintln(os.Stderr, err)
+					os.Exit(1)
+				}
+				return
 			}
 
-			if err := container.Stop(cmd.Context(), rt, onProgress); err != nil {
+			if err := container.Stop(cmd.Context(), rt, output.NewPlainSink(os.Stdout)); err != nil {
 				fmt.Fprintln(os.Stderr, err)
 				os.Exit(1)
 			}
 		},
 	}
 }
+
