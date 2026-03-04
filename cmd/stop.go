@@ -40,6 +40,3 @@ func newStopCmd() *cobra.Command {
 	}
 }
 
-func init() {
-	rootCmd.AddCommand(newStopCmd())
-}

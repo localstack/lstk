@@ -12,7 +12,7 @@ import (
 )
 
 func RunStop(parentCtx context.Context, rt runtime.Runtime) error {
-	_, cancel := context.WithCancel(parentCtx)
+	ctx, cancel := context.WithCancel(parentCtx)
 	defer cancel()
 
 	app := NewApp("", "", "", cancel)
@@ -20,7 +20,7 @@ func RunStop(parentCtx context.Context, rt runtime.Runtime) error {
 	runErrCh := make(chan error, 1)
 
 	go func() {
-		err := container.Stop(parentCtx, rt, output.NewTUISink(programSender{p: p}))
+		err := container.Stop(ctx, rt, output.NewTUISink(programSender{p: p}))
 		runErrCh <- err
 		if err != nil && !errors.Is(err, context.Canceled) {
 			p.Send(runErrMsg{err: err})

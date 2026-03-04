@@ -18,7 +18,10 @@ func Stop(ctx context.Context, rt runtime.Runtime, sink output.Sink) error {
 	for _, c := range cfg.Containers {
 		name := c.Name()
 		running, err := rt.IsRunning(ctx, name)
-		if err != nil || !running {
+		if err != nil {
+			return fmt.Errorf("checking %s running: %w", name, err)
+		}
+		if !running {
 			return fmt.Errorf("%s is not running", name)
 		}
 		output.EmitSpinnerStart(sink, fmt.Sprintf("Stopping %s", name))
