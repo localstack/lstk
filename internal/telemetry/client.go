@@ -3,6 +3,7 @@ package telemetry
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"os"
 	"runtime"
@@ -13,7 +14,9 @@ import (
 	"github.com/localstack/lstk/internal/version"
 )
 
-const clientHeader = "lstk/v2"
+func userAgent() string {
+	return fmt.Sprintf("localstack lstk/%s (%s; %s)", version.Version(), runtime.GOOS, runtime.GOARCH)
+}
 
 type Client struct {
 	enabled    bool
@@ -97,7 +100,7 @@ func (c *Client) Track(name string, payload map[string]any) {
 			return
 		}
 		req.Header.Set("Content-Type", "application/json")
-		req.Header.Set("X-Client", clientHeader)
+		req.Header.Set("User-Agent", userAgent())
 
 		resp, err := c.httpClient.Do(req)
 		if err != nil {
