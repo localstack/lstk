@@ -181,10 +181,6 @@ func TestLoginFlow_DeviceFlowCancelWithCtrlC(t *testing.T) {
 	mockServer := createMockAPIServer(t, "", false)
 	defer mockServer.Close()
 
-	t.Setenv("LSTK_API_ENDPOINT", mockServer.URL)
-	t.Setenv("LOCALSTACK_AUTH_TOKEN", "")
-	env.Init()
-
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
@@ -194,11 +190,11 @@ func TestLoginFlow_DeviceFlowCancelWithCtrlC(t *testing.T) {
 
 	tm := teatest.NewTestModel(t, NewApp("test", "", "", cancel), teatest.WithInitialTermSize(120, 40))
 	sender := testModelSender{tm: tm}
-	platformClient := api.NewPlatformClient()
+	platformClient := api.NewPlatformClient(mockServer.URL)
 
 	errCh := make(chan error, 1)
 	go func() {
-		a := auth.New(output.NewTUISink(sender), platformClient, mockStorage, true)
+		a := auth.New(output.NewTUISink(sender), platformClient, mockStorage, "", mockServer.URL, true)
 		_, err := a.GetToken(ctx)
 		errCh <- err
 		if err != nil && !errors.Is(err, context.Canceled) {

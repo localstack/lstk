@@ -32,7 +32,7 @@ type authTokenStorage struct {
 	ring keyring.Keyring
 }
 
-func NewTokenStorage(forceFileBackend bool) (AuthTokenStorage, error) {
+func NewTokenStorage(forceFileKeyring bool) (AuthTokenStorage, error) {
 	configDir, err := config.ConfigDir()
 	if err != nil {
 		return nil, err
@@ -46,7 +46,7 @@ func NewTokenStorage(forceFileBackend bool) (AuthTokenStorage, error) {
 		},
 	}
 
-	if forceFileBackend {
+	if forceFileKeyring {
 		keyringConfig.AllowedBackends = []keyring.BackendType{keyring.FileBackend}
 	}
 

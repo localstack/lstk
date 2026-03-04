@@ -11,7 +11,7 @@ import (
 	"github.com/localstack/lstk/internal/output"
 )
 
-func RunLogout(parentCtx context.Context, platformClient api.PlatformAPI, authToken string, forceFileBackend bool) error {
+func RunLogout(parentCtx context.Context, platformClient api.PlatformAPI, authToken string, forceFileKeyring bool) error {
 	_, cancel := context.WithCancel(parentCtx)
 	defer cancel()
 
@@ -20,7 +20,7 @@ func RunLogout(parentCtx context.Context, platformClient api.PlatformAPI, authTo
 	runErrCh := make(chan error, 1)
 
 	go func() {
-		tokenStorage, err := auth.NewTokenStorage(forceFileBackend)
+		tokenStorage, err := auth.NewTokenStorage(forceFileKeyring)
 		if err != nil {
 			runErrCh <- err
 			p.Send(runErrMsg{err: err})
