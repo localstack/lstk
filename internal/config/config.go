@@ -9,7 +9,8 @@ import (
 )
 
 type Config struct {
-	Containers []ContainerConfig `mapstructure:"containers"`
+	Containers []ContainerConfig            `mapstructure:"containers"`
+	Env        map[string]map[string]string `mapstructure:"env"`
 }
 
 func setDefaults() {

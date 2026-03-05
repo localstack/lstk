@@ -54,7 +54,11 @@ func Start(ctx context.Context, rt runtime.Runtime, sink output.Sink, platformCl
 			return err
 		}
 
-		env := append(c.Env, "LOCALSTACK_AUTH_TOKEN="+token)
+		resolvedEnv, err := c.ResolvedEnv(cfg.Env)
+		if err != nil {
+			return err
+		}
+		env := append(resolvedEnv, "LOCALSTACK_AUTH_TOKEN="+token)
 		containers[i] = runtime.ContainerConfig{
 			Image:       image,
 			Name:        c.Name(),
