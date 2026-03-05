@@ -15,7 +15,7 @@ func TestErrorDisplay_ShowView(t *testing.T) {
 		t.Fatal("expected error display to be hidden initially")
 	}
 
-	if e.View() != "" {
+	if e.View(80) != "" {
 		t.Fatal("expected empty view when error display is hidden")
 	}
 
@@ -32,7 +32,7 @@ func TestErrorDisplay_ShowView(t *testing.T) {
 		t.Fatal("expected error display to be visible after Show")
 	}
 
-	view := e.View()
+	view := e.View(80)
 	if !strings.Contains(view, "Connection failed") {
 		t.Fatalf("expected view to contain title, got: %q", view)
 	}
@@ -56,7 +56,7 @@ func TestErrorDisplay_MinimalEvent(t *testing.T) {
 	e := NewErrorDisplay()
 	e = e.Show(output.ErrorEvent{Title: "Something went wrong"})
 
-	view := e.View()
+	view := e.View(80)
 	if !strings.Contains(view, "Something went wrong") {
 		t.Fatalf("expected view to contain title, got: %q", view)
 	}
