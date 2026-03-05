@@ -1,6 +1,46 @@
 # lstk
 
-lstk is a command-line interface for LocalStack built in Go with a modern terminal UI, and native CLI experience for managing and interacting LocalStack deployments. 👾
+**A command-line interface for LocalStack**. Built in Go with a modern terminal UI and native CLI experience for managing and interacting with LocalStack deployments. 👾
+
+
+```bash
+npm install -g @localstack/lstk
+```
+
+See [installation](#installation) below.
+
+> [!IMPORTANT]
+> This project is under active development, currently using [ZeroVer](https://0ver.org/) (`0.MINOR.PATCH`). Expect breaking changes as we march toward a stable 1.0.0 release.
+
+
+## Prerequisites
+
+- [Docker](https://docs.docker.com/get-docker/) — required as a container engine.
+- [LocalStack account](https://app.localstack.cloud) — required for credentials, the CLI will guide you through authentication.
+
+## Installation
+
+### 1. Homebrew (macOS / Linux)
+
+```bash
+brew install localstack/tap/lstk
+```
+
+### 2. NPM
+
+```bash
+npm install -g @localstack/lstk
+```
+
+Pre-built binaries are also available from [GitHub Releases](https://github.com/localstack/lstk/releases). 📦
+
+## Quick Start
+
+```sh
+lstk
+```
+
+Running `lstk` will automatically handle configuration setup and start LocalStack.
 
 ## Features
 
@@ -11,34 +51,32 @@ lstk is a command-line interface for LocalStack built in Go with a modern termin
 - **Browser-based login** — authenticate via browser and store credentials securely in the system keyring
 - **Shell completions** — bash, zsh, and fish completions included
 
-## Installation
+## Authentication
 
-### Homebrew (macOS / Linux)
+The CLI supports multiple auth workflows. `lstk` resolves your auth token in this order:
+
+1. **System keyring** — a token stored by a previous `lstk login`
+2. **`LOCALSTACK_AUTH_TOKEN` environment variable**
+3. **Browser login** — triggered automatically in interactive mode when neither of the above is present
+
+> [!NOTE]
+> If a keyring token exists, it takes precedence over `LOCALSTACK_AUTH_TOKEN`. Setting or changing the environment variable will have no effect until the keyring token is removed. Run `lstk logout` to clear the stored keyring token, after which the env var will be used.
+
+
+## Configuration
+
+`lstk` uses a TOML config file, created automatically on first run.
+
+Config lookup order:
+1. `./lstk.toml` (project-local)
+2. `$HOME/.config/lstk/config.toml`
+3. `os.UserConfigDir()/lstk/config.toml`
+
+To see which config file is currently in use:
 
 ```bash
-brew install localstack/tap/lstk
+lstk config path
 ```
-
-### NPM
-
-```bash
-npm install -g @localstack/lstk
-lstk start
-```
-
-### Manual (binary download)
-
-Download the latest release for your platform from the [GitHub Releases](https://github.com/localstack/lstk/releases) page. Binaries are available for:
-
-- `linux/amd64`, `linux/arm64`
-- `darwin/amd64`, `darwin/arm64` (macOS)
-- `windows/amd64`, `windows/arm64`
-
-## Requirements
-
-- [Docker](https://docs.docker.com/get-docker/) must be running
-- A [LocalStack Account](https://app.localstack.cloud) 
-
 
 ## Usage
 
@@ -68,36 +106,6 @@ lstk config path
 lstk version
 ```
 
-## Authentication
-
-`lstk` resolves your auth token in this order:
-
-1. **System keyring** — a token stored by a previous `lstk login`
-2. **`LOCALSTACK_AUTH_TOKEN` environment variable**
-3. **Browser login** — triggered automatically in interactive mode when neither of the above is present
-
-> **Note:** If a keyring token exists, it takes precedence over `LOCALSTACK_AUTH_TOKEN`. Setting or changing the environment variable will have no effect until the keyring token is removed. Run `lstk logout` to clear the stored keyring token, after which the env var will be used.
-
-## Configuration
-
-`lstk` uses a TOML config file, created automatically on first run.
-
-Config lookup order:
-1. `./lstk.toml` (project-local)
-2. `$HOME/.config/lstk/config.toml`
-3. `os.UserConfigDir()/lstk/config.toml`
-
-To see which config file is currently in use:
-
-```bash
-lstk config path
-```
-
-## Versioning
-
-`lstk` uses [ZeroVer](https://0ver.org/) (`0.MINOR.PATCH`). The project is in active development and has not reached a stable 1.0 release.
-
-
 ## Reporting bugs
-Feedback is welcome! Use the repository issue tracker for bug reports or feature requests.
 
+Feedback is welcome! Use the repository issue tracker for bug reports or feature requests.
