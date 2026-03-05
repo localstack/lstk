@@ -1,78 +1,103 @@
 # lstk
-Localstack's new CLI (v2).
+
+lstk is a command-line interface for LocalStack built in Go with a modern terminal UI, and native CLI experience for managing and interacting LocalStack deployments. 👾
+
+## Features
+
+- **Start / stop** LocalStack emulators with a single command
+- **Interactive TUI** — a Bubble Tea-powered terminal UI when run in an interactive shell
+- **Plain output** for CI/CD and scripting (auto-detected in non-interactive environments)
+- **Log streaming** — tail emulator logs in real-time with `--follow`
+- **Browser-based login** — authenticate via browser and store credentials securely in the system keyring
+- **Shell completions** — bash, zsh, and fish completions included
+
+## Installation
+
+### Homebrew (macOS / Linux)
+
+```bash
+brew install localstack/tap/lstk
+```
+
+### NPM
+
+```bash
+npm install -g @localstack/lstk
+lstk start
+```
+
+### Manual (binary download)
+
+Download the latest release for your platform from the [GitHub Releases](https://github.com/localstack/lstk/releases) page. Binaries are available for:
+
+- `linux/amd64`, `linux/arm64`
+- `darwin/amd64`, `darwin/arm64` (macOS)
+- `windows/amd64`, `windows/arm64`
+
+## Requirements
+
+- [Docker](https://docs.docker.com/get-docker/) must be running
+- A [LocalStack Account](https://app.localstack.cloud) 
+
+
+## Usage
+
+```bash
+# Start the LocalStack emulator (interactive TUI in a terminal)
+lstk
+
+# Start non-interactively (e.g. in CI)
+LOCALSTACK_AUTH_TOKEN=<token> lstk start
+
+# Stop the running emulator
+lstk stop
+
+# Stream emulator logs
+lstk logs --follow
+
+# Log in (opens browser for authentication)
+lstk login
+
+# Log out (removes stored credentials)
+lstk logout
+
+# Show resolved config file path
+lstk config path
+
+# Show version info
+lstk version
+```
+
+## Authentication
+
+`lstk` resolves your auth token in this order:
+
+1. **System keyring** — a token stored by a previous `lstk login`
+2. **`LOCALSTACK_AUTH_TOKEN` environment variable**
+3. **Browser login** — triggered automatically in interactive mode when neither of the above is present
+
+> **Note:** If a keyring token exists, it takes precedence over `LOCALSTACK_AUTH_TOKEN`. Setting or changing the environment variable will have no effect until the keyring token is removed. Run `lstk logout` to clear the stored keyring token, after which the env var will be used.
 
 ## Configuration
 
-`lstk` uses Viper with a TOML format. 
+`lstk` uses a TOML config file, created automatically on first run.
 
-For finding the correct config, we have this lookup order:
+Config lookup order:
 1. `./lstk.toml` (project-local)
 2. `$HOME/.config/lstk/config.toml`
 3. `os.UserConfigDir()/lstk/config.toml`
 
-When no config file exists, `lstk` creates one at:
-- `$HOME/.config/lstk/config.toml` if `$HOME/.config` exists
-- otherwise `os.UserConfigDir()/lstk/config.toml`
-
-Use `lstk config path` to print the resolved config file path currently in use.
-
-## Versioning
-`lstk` uses calendar versioning in a SemVer-compatible format:
-
-- `YYYY.M.patch`
-- Example (current format): `2026.2.0`
-
-Release tags are the source of truth for published versions.
-
-## Version Output
-The CLI exposes version info through:
-
-- `lstk version`
-- `lstk --version`
-
-Output format:
-
-- `lstk <version> (<commit>, <buildDate>)`
-
-At local development time (without ldflags), defaults are:
-
-- `version=dev`
-- `commit=none`
-- `buildDate=unknown`
-
-## Releasing with GoReleaser
-Release automation uses the CI workflow plus one helper workflow:
-
-1. `Create Release Tag` (`.github/workflows/create-release-tag.yml`)
-2. `LSTK CI` (`.github/workflows/ci.yml`)
-
-How it works:
-
-1. Manually run `Create Release Tag` from GitHub Actions (default ref: `main`).
-2. The workflow computes and pushes the next CalVer tag for the current UTC month.
-3. Pushing that tag triggers `LSTK CI`.
-4. In `LSTK CI`, the `release` job runs only for tag refs and publishes the GitHub release with GoReleaser.
-
-## Published Artifacts
-Each release publishes binaries for:
-
-- `linux/amd64`
-- `linux/arm64`
-- `darwin/amd64`
-- `darwin/arm64`
-- `windows/amd64`
-- `windows/arm64`
-
-Archive formats:
-
-- `tar.gz` for Linux and macOS
-- `zip` for Windows
-
-Each release also includes `checksums.txt`.
-
-## Local Dry Run
-To validate release packaging locally without publishing:
+To see which config file is currently in use:
 
 ```bash
-goreleaser release --snapshot --clean
+lstk config path
 ```
+
+## Versioning
+
+`lstk` uses [ZeroVer](https://0ver.org/) (`0.MINOR.PATCH`). The project is in active development and has not reached a stable 1.0 release.
+
+
+## Reporting bugs
+Feedback is welcome! Use the repository issue tracker for bug reports or feature requests.
+
