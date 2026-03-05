@@ -16,6 +16,13 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestClose_IsIdempotent(t *testing.T) {
+	c := New("http://localhost", false)
+	c.Close()
+	// Second call must not panic.
+	c.Close()
+}
+
 func TestTrack_SendsCorrectPayloadAndHeaders(t *testing.T) {
 	type captured struct {
 		event  map[string]any

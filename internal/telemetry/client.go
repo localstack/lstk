@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"runtime"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -26,8 +27,9 @@ type Client struct {
 	httpClient *http.Client
 	endpoint   string
 
-	events chan eventBody
-	done   chan struct{}
+	events    chan eventBody
+	done      chan struct{}
+	closeOnce sync.Once
 }
 
 func New(endpoint string, disabled bool) *Client {
@@ -134,6 +136,8 @@ func (c *Client) Close() {
 	if !c.enabled {
 		return
 	}
-	close(c.events)
-	<-c.done
+	c.closeOnce.Do(func() {
+		close(c.events)
+		<-c.done
+	})
 }
