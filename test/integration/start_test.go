@@ -3,10 +3,7 @@ package integration_test
 import (
 	"context"
 	"net"
-	"os"
-	"os/exec"
 	"testing"
-	"time"
 
 	"github.com/docker/docker/api/types/container"
 	"github.com/localstack/lstk/test/integration/env"
@@ -24,14 +21,9 @@ func TestStartCommandSucceedsWithValidToken(t *testing.T) {
 	mockServer := createMockLicenseServer(true)
 	defer mockServer.Close()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
-	defer cancel()
-
-	cmd := exec.CommandContext(ctx, binaryPath(), "start")
-	cmd.Env = env.With(env.APIEndpoint, mockServer.URL)
-	output, err := cmd.CombinedOutput()
-
-	require.NoError(t, err, "lstk start failed: %s", output)
+	ctx := testContext(t)
+	_, stderr, err := runLstk(t, ctx, "", env.With(env.APIEndpoint, mockServer.URL), "start")
+	require.NoError(t, err, "lstk start failed: %s", stderr)
 
 	inspect, err := dockerClient.ContainerInspect(ctx, containerName)
 	require.NoError(t, err, "failed to inspect container")
@@ -51,15 +43,10 @@ func TestStartCommandSucceedsWithKeyringToken(t *testing.T) {
 	mockServer := createMockLicenseServer(true)
 	defer mockServer.Close()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
-	defer cancel()
-
+	ctx := testContext(t)
 	// Run without LOCALSTACK_AUTH_TOKEN should use keyring
-	cmd := exec.CommandContext(ctx, binaryPath(), "start")
-	cmd.Env = env.Without(env.AuthToken).With(env.APIEndpoint, mockServer.URL)
-	output, err := cmd.CombinedOutput()
-
-	require.NoError(t, err, "lstk start failed: %s", output)
+	_, stderr, err := runLstk(t, ctx, "", env.Without(env.AuthToken).With(env.APIEndpoint, mockServer.URL), "start")
+	require.NoError(t, err, "lstk start failed: %s", stderr)
 
 	inspect, err := dockerClient.ContainerInspect(ctx, containerName)
 	require.NoError(t, err, "failed to inspect container")
@@ -74,15 +61,9 @@ func TestStartCommandFailsWithInvalidToken(t *testing.T) {
 	mockServer := createMockLicenseServer(false)
 	defer mockServer.Close()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
-	defer cancel()
-
-	cmd := exec.CommandContext(ctx, binaryPath(), "start")
-	cmd.Env = env.With(env.AuthToken, "invalid-token").With(env.APIEndpoint, mockServer.URL)
-	output, err := cmd.CombinedOutput()
-
+	_, stderr, err := runLstk(t, testContext(t), "", env.With(env.AuthToken, "invalid-token").With(env.APIEndpoint, mockServer.URL), "start")
 	require.Error(t, err, "expected lstk start to fail with invalid token")
-	assert.Contains(t, string(output), "license validation failed")
+	assert.Contains(t, stderr, "license validation failed")
 }
 
 func TestStartCommandDoesNothingWhenAlreadyRunning(t *testing.T) {
@@ -90,17 +71,12 @@ func TestStartCommandDoesNothingWhenAlreadyRunning(t *testing.T) {
 	cleanup()
 	t.Cleanup(cleanup)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-
+	ctx := testContext(t)
 	startTestContainer(t, ctx)
 
-	cmd := exec.CommandContext(ctx, binaryPath(), "start")
-	cmd.Env = append(os.Environ(), "LOCALSTACK_AUTH_TOKEN=fake-token")
-	output, err := cmd.CombinedOutput()
-
-	require.NoError(t, err, "lstk start should succeed when container is already running: %s", output)
-	assert.Contains(t, string(output), "already running")
+	stdout, stderr, err := runLstk(t, ctx, "", env.With(env.AuthToken, "fake-token"), "start")
+	require.NoError(t, err, "lstk start should succeed when container is already running: %s", stderr)
+	assert.Contains(t, stdout, "already running")
 }
 
 func TestStartCommandFailsWhenPortInUse(t *testing.T) {
@@ -112,15 +88,9 @@ func TestStartCommandFailsWhenPortInUse(t *testing.T) {
 	require.NoError(t, err, "failed to bind port 4566 for test")
 	defer func() { _ = ln.Close() }()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-
-	cmd := exec.CommandContext(ctx, binaryPath(), "start")
-	cmd.Env = append(os.Environ(), "LOCALSTACK_AUTH_TOKEN=fake-token")
-	output, err := cmd.CombinedOutput()
-
+	_, stderr, err := runLstk(t, testContext(t), "", env.With(env.AuthToken, "fake-token"), "start")
 	require.Error(t, err, "expected lstk start to fail when port is in use")
-	assert.Contains(t, string(output), "port 4566 already in use")
+	assert.Contains(t, stderr, "port 4566 already in use")
 }
 
 func cleanup() {

@@ -6,9 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"os/exec"
 	"testing"
-	"time"
 
 	"github.com/docker/docker/api/types/container"
 	"github.com/localstack/lstk/test/integration/env"
@@ -56,12 +54,8 @@ func TestLicenseValidationSuccess(t *testing.T) {
 	}))
 	defer mockServer.Close()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
-	defer cancel()
-
-	cmd := exec.CommandContext(ctx, binaryPath(), "start")
-	cmd.Env = env.With(env.APIEndpoint, mockServer.URL)
-	output, err := cmd.CombinedOutput()
+	ctx := testContext(t)
+	_, stderr, err := runLstk(t, ctx, "", env.With(env.APIEndpoint, mockServer.URL), "start")
 
 	// Check for validation errors from handler
 	select {
@@ -70,7 +64,7 @@ func TestLicenseValidationSuccess(t *testing.T) {
 	default:
 	}
 
-	require.NoError(t, err, "lstk start failed: %s", output)
+	require.NoError(t, err, "lstk start failed: %s", stderr)
 
 	inspect, err := dockerClient.ContainerInspect(ctx, containerName)
 	require.NoError(t, err, "failed to inspect container")
@@ -85,18 +79,12 @@ func TestLicenseValidationFailure(t *testing.T) {
 	mockServer := createMockLicenseServer(false)
 	defer mockServer.Close()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
-	defer cancel()
-
-	cmd := exec.CommandContext(ctx, binaryPath(), "start")
-	cmd.Env = env.With(env.APIEndpoint, mockServer.URL).With(env.AuthToken, "test-token-for-license-validation")
-	output, err := cmd.CombinedOutput()
-
+	ctx := testContext(t)
+	_, stderr, err := runLstk(t, ctx, "", env.With(env.APIEndpoint, mockServer.URL).With(env.AuthToken, "test-token-for-license-validation"), "start")
 	require.Error(t, err, "expected lstk start to fail with forbidden license")
-	assert.Contains(t, string(output), "license validation failed")
-	assert.Contains(t, string(output), "invalid, inactive, or expired")
+	assert.Contains(t, stderr, "license validation failed")
+	assert.Contains(t, stderr, "invalid, inactive, or expired")
 
-	// Verify container was not started
 	_, err = dockerClient.ContainerInspect(ctx, containerName)
 	assert.Error(t, err, "container should not exist after license failure")
 }

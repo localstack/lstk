@@ -35,6 +35,8 @@ func NewRootCmd(cfg *env.Env, tel *telemetry.Client) *cobra.Command {
 	root.Version = version.Version()
 	root.SetVersionTemplate(versionLine() + "\n")
 
+	root.PersistentFlags().String("config", "", "Path to config file")
+
 	configureHelp(root)
 
 	root.InitDefaultVersionFlag()
@@ -82,6 +84,13 @@ func runStart(ctx context.Context, rt runtime.Runtime, cfg *env.Env, tel *teleme
 	return container.Start(ctx, rt, output.NewPlainSink(os.Stdout), platformClient, cfg.AuthToken, cfg.ForceFileKeyring, cfg.WebAppURL, false)
 }
 
-func initConfig(_ *cobra.Command, _ []string) error {
+func initConfig(cmd *cobra.Command, _ []string) error {
+	path, err := cmd.Flags().GetString("config")
+	if err != nil {
+		return err
+	}
+	if path != "" {
+		return config.InitFromPath(path)
+	}
 	return config.Init()
 }

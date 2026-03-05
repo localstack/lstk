@@ -26,12 +26,17 @@ func setDefaults() {
 func loadConfig(path string) error {
 	viper.Reset()
 	setDefaults()
+	viper.SetConfigType("toml")
 	viper.SetConfigFile(path)
 
 	if err := viper.ReadInConfig(); err != nil {
 		return fmt.Errorf("failed to read config file: %w", err)
 	}
 	return nil
+}
+
+func InitFromPath(path string) error {
+	return loadConfig(path)
 }
 
 func Init() error {
