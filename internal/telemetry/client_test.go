@@ -67,7 +67,8 @@ func TestTrack_SendsCorrectPayloadAndHeaders(t *testing.T) {
 	assert.Equal(t, version.Version(), payload["version"])
 	assert.Equal(t, runtime.GOOS, payload["os"])
 	assert.Equal(t, runtime.GOARCH, payload["arch"])
-	assert.Equal(t, os.Getenv("CI") != "", payload["is_ci"])
+	_, isCI := os.LookupEnv("CI")
+	assert.Equal(t, isCI, payload["is_ci"])
 
 	assert.Equal(t, userAgent(), got.header.Get("User-Agent"))
 }

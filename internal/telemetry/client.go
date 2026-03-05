@@ -79,7 +79,7 @@ func (c *Client) Emit(ctx context.Context, name string, payload map[string]any) 
 	enriched["version"] = version.Version()
 	enriched["os"] = runtime.GOOS
 	enriched["arch"] = runtime.GOARCH
-	enriched["is_ci"] = os.Getenv("CI") != ""
+	_, enriched["is_ci"] = os.LookupEnv("CI")
 	if c.machineID != "" {
 		enriched["machine_id"] = c.machineID
 	}
