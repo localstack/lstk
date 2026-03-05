@@ -34,6 +34,8 @@ func NewRootCmd(cfg *env.Env, tel *telemetry.Client) *cobra.Command {
 
 	root.Version = version.Version()
 	root.SetVersionTemplate(versionLine() + "\n")
+	root.SilenceErrors = true
+	root.SilenceUsage = true
 
 	root.PersistentFlags().String("config", "", "Path to config file")
 
