@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"fmt"
 	"os"
 
 	"github.com/localstack/lstk/internal/container"
@@ -17,25 +16,17 @@ func newStopCmd() *cobra.Command {
 		Short:   "Stop emulator",
 		Long:    "Stop emulator and services",
 		PreRunE: initConfig,
-		Run: func(cmd *cobra.Command, args []string) {
+		RunE: func(cmd *cobra.Command, args []string) error {
 			rt, err := runtime.NewDockerRuntime()
 			if err != nil {
-				fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-				os.Exit(1)
+				return err
 			}
 
 			if ui.IsInteractive() {
-				if err := ui.RunStop(cmd.Context(), rt); err != nil {
-					fmt.Fprintln(os.Stderr, err)
-					os.Exit(1)
-				}
-				return
+				return ui.RunStop(cmd.Context(), rt)
 			}
 
-			if err := container.Stop(cmd.Context(), rt, output.NewPlainSink(os.Stdout)); err != nil {
-				fmt.Fprintln(os.Stderr, err)
-				os.Exit(1)
-			}
+			return container.Stop(cmd.Context(), rt, output.NewPlainSink(os.Stdout))
 		},
 	}
 }

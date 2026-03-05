@@ -78,6 +78,13 @@ To see which config file is currently in use:
 lstk config path
 ```
 
+## Environment Variables
+
+| Variable | Description |
+|---|---|
+| `LOCALSTACK_AUTH_TOKEN` | Auth token; for CI only |
+| `LOCALSTACK_DISABLE_EVENTS=1` | Disables telemetry event reporting |
+
 ## Usage
 
 ```bash

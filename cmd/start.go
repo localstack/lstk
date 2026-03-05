@@ -1,34 +1,24 @@
 package cmd
 
 import (
-	"fmt"
-	"os"
-
 	"github.com/localstack/lstk/internal/env"
-	"github.com/localstack/lstk/internal/output"
 	"github.com/localstack/lstk/internal/runtime"
+	"github.com/localstack/lstk/internal/telemetry"
 	"github.com/spf13/cobra"
 )
 
-func newStartCmd(cfg *env.Env) *cobra.Command {
+func newStartCmd(cfg *env.Env, tel *telemetry.Client) *cobra.Command {
 	return &cobra.Command{
 		Use:     "start",
 		Short:   "Start emulator",
 		Long:    "Start emulator and services.",
 		PreRunE: initConfig,
-		Run: func(cmd *cobra.Command, args []string) {
+		RunE: func(cmd *cobra.Command, args []string) error {
 			rt, err := runtime.NewDockerRuntime()
 			if err != nil {
-				fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-				os.Exit(1)
+				return err
 			}
-
-			if err := runStart(cmd.Context(), rt, cfg); err != nil {
-				if !output.IsSilent(err) {
-					fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-				}
-				os.Exit(1)
-			}
+			return runStart(cmd.Context(), rt, cfg, tel)
 		},
 	}
 }

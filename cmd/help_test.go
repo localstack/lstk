@@ -7,12 +7,13 @@ import (
 	"testing"
 
 	"github.com/localstack/lstk/internal/env"
+	"github.com/localstack/lstk/internal/telemetry"
 )
 
 func executeWithArgs(t *testing.T, args ...string) (string, error) {
 	t.Helper()
 	buf := new(bytes.Buffer)
-	cmd := NewRootCmd(&env.Env{})
+	cmd := NewRootCmd(&env.Env{}, telemetry.New("", true))
 	cmd.SetOut(buf)
 	cmd.SetErr(buf)
 	cmd.SetArgs(args)

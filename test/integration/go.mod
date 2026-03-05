@@ -6,6 +6,7 @@ require (
 	github.com/99designs/keyring v1.2.2
 	github.com/creack/pty v1.1.18
 	github.com/docker/docker v28.2.2+incompatible
+	github.com/google/uuid v1.6.0
 	github.com/stretchr/testify v1.11.1
 )
 
