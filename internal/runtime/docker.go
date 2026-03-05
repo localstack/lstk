@@ -148,6 +148,9 @@ func (d *DockerRuntime) Remove(ctx context.Context, containerName string) error 
 func (d *DockerRuntime) IsRunning(ctx context.Context, containerID string) (bool, error) {
 	inspect, err := d.client.ContainerInspect(ctx, containerID)
 	if err != nil {
+		if errdefs.IsNotFound(err) {
+			return false, nil
+		}
 		return false, err
 	}
 	return inspect.State.Running, nil
