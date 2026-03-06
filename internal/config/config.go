@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/localstack/lstk/internal/validate"
 	"github.com/spf13/viper"
 )
 
@@ -74,5 +75,36 @@ func Get() (*Config, error) {
 	if err := viper.Unmarshal(&cfg); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal config: %w", err)
 	}
+	for i, c := range cfg.Containers {
+		if err := c.Validate(); err != nil {
+			return nil, fmt.Errorf("invalid config for container %d: %w", i, err)
+		}
+	}
 	return &cfg, nil
+}
+
+var validEmulatorTypes = map[EmulatorType]bool{
+	EmulatorAWS:       true,
+	EmulatorSnowflake: true,
+	EmulatorAzure:     true,
+}
+
+func (c *ContainerConfig) Validate() error {
+	if !validEmulatorTypes[c.Type] {
+		return fmt.Errorf("unknown emulator type %q", c.Type)
+	}
+	if err := validate.DockerTag(c.Tag); err != nil {
+		return err
+	}
+	if c.Port != "" {
+		if err := validate.Port(c.Port); err != nil {
+			return err
+		}
+	}
+	for _, e := range c.Env {
+		if err := validate.EnvVar(e); err != nil {
+			return err
+		}
+	}
+	return nil
 }

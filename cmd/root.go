@@ -54,7 +54,10 @@ func NewRootCmd(cfg *env.Env, tel *telemetry.Client) *cobra.Command {
 }
 
 func Execute(ctx context.Context) error {
-	cfg := env.Init()
+	cfg, err := env.Init()
+	if err != nil {
+		return err
+	}
 	tel := telemetry.New(cfg.AnalyticsEndpoint, cfg.DisableEvents)
 	defer tel.Close()
 

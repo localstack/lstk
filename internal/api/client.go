@@ -7,8 +7,10 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"net/url"
 	"time"
 
+	"github.com/localstack/lstk/internal/validate"
 	"github.com/localstack/lstk/internal/version"
 )
 
@@ -113,7 +115,10 @@ func (c *PlatformClient) CreateAuthRequest(ctx context.Context) (*AuthRequest, e
 }
 
 func (c *PlatformClient) CheckAuthRequestConfirmed(ctx context.Context, id, exchangeToken string) (bool, error) {
-	url := fmt.Sprintf("%s/v1/auth/request/%s?exchange_token=%s", c.baseURL, id, exchangeToken)
+	if err := validate.URLPathSegment("auth request id", id); err != nil {
+		return false, err
+	}
+	url := fmt.Sprintf("%s/v1/auth/request/%s?exchange_token=%s", c.baseURL, url.PathEscape(id), url.QueryEscape(exchangeToken))
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return false, fmt.Errorf("failed to create request: %w", err)
@@ -142,7 +147,10 @@ func (c *PlatformClient) CheckAuthRequestConfirmed(ctx context.Context, id, exch
 }
 
 func (c *PlatformClient) ExchangeAuthRequest(ctx context.Context, id, exchangeToken string) (string, error) {
-	url := fmt.Sprintf("%s/v1/auth/request/%s/exchange", c.baseURL, id)
+	if err := validate.URLPathSegment("auth request id", id); err != nil {
+		return "", err
+	}
+	url := fmt.Sprintf("%s/v1/auth/request/%s/exchange", c.baseURL, url.PathEscape(id))
 	body, err := json.Marshal(map[string]string{"exchange_token": exchangeToken})
 	if err != nil {
 		return "", fmt.Errorf("failed to marshal request: %w", err)
