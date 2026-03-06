@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/charmbracelet/bubbles/progress"
 	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/localstack/lstk/internal/output"
@@ -31,6 +32,7 @@ type App struct {
 	header        components.Header
 	inputPrompt   components.InputPrompt
 	spinner       components.Spinner
+	pullProgress  components.PullProgress
 	errorDisplay  components.ErrorDisplay
 	lines         []styledLine
 	bufferedLines []styledLine // lines waiting for spinner to finish
@@ -53,6 +55,7 @@ func NewApp(version, emulatorName, endpoint string, cancel func(), opts ...AppOp
 		header:       components.NewHeader(version, emulatorName, endpoint),
 		inputPrompt:  components.NewInputPrompt(),
 		spinner:      components.NewSpinner(),
+		pullProgress: components.NewPullProgress(),
 		errorDisplay: components.NewErrorDisplay(),
 		lines:        make([]styledLine, 0, maxLines),
 		cancel:       cancel,
@@ -181,6 +184,29 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			a.lines = appendLine(a.lines, styledLine{text: msg.URL, secondary: true})
 		}
 		return a, nil
+	case output.ContainerStatusEvent:
+		if msg.Phase == "pulling" {
+			a.pullProgress = a.pullProgress.Show(msg.Container)
+			return a, nil
+		}
+		if a.pullProgress.Visible() {
+			a.pullProgress = a.pullProgress.Hide()
+		}
+		if line, ok := output.FormatEventLine(msg); ok {
+			a.lines = appendLine(a.lines, styledLine{text: line})
+		}
+		return a, nil
+	case output.ProgressEvent:
+		if a.pullProgress.Visible() {
+			var cmd tea.Cmd
+			a.pullProgress, cmd = a.pullProgress.SetProgress(msg)
+			return a, cmd
+		}
+		return a, nil
+	case progress.FrameMsg:
+		var cmd tea.Cmd
+		a.pullProgress, cmd = a.pullProgress.Update(msg)
+		return a, cmd
 	case runDoneMsg:
 		if a.spinner.PendingStop() {
 			a.quitting = true
@@ -306,6 +332,10 @@ func (a App) View() string {
 	if spinnerView := a.spinner.View(); spinnerView != "" {
 		sb.WriteString(spinnerView)
 		sb.WriteString("\n")
+		if pullView := a.pullProgress.View(); pullView != "" {
+			sb.WriteString(pullView)
+			sb.WriteString("\n")
+		}
 	} else if promptView := a.inputPrompt.View(); promptView != "" {
 		sb.WriteString(promptView)
 		sb.WriteString("\n")

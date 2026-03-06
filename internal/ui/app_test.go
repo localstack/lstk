@@ -307,6 +307,90 @@ func TestAppAnyKeyOptionResolvesOnAnyKeypress(t *testing.T) {
 	}
 }
 
+func TestAppPullProgressShowsOnPullingPhase(t *testing.T) {
+	t.Parallel()
+
+	app := NewApp("dev", "", "", nil)
+
+	model, _ := app.Update(output.ContainerStatusEvent{Phase: "pulling", Container: "localstack/localstack-pro:latest"})
+	app = model.(App)
+
+	if !app.pullProgress.Visible() {
+		t.Fatal("expected pull progress to be visible during pulling phase")
+	}
+	if len(app.lines) != 0 {
+		t.Fatalf("expected no lines appended for pulling phase, got %d", len(app.lines))
+	}
+}
+
+func TestAppPullProgressHidesOnNextPhase(t *testing.T) {
+	t.Parallel()
+
+	app := NewApp("dev", "", "", nil)
+
+	model, _ := app.Update(output.ContainerStatusEvent{Phase: "pulling", Container: "localstack/localstack-pro:latest"})
+	app = model.(App)
+
+	model, _ = app.Update(output.ContainerStatusEvent{Phase: "starting", Container: "localstack"})
+	app = model.(App)
+
+	if app.pullProgress.Visible() {
+		t.Fatal("expected pull progress to be hidden after pulling phase ends")
+	}
+	if len(app.lines) != 1 {
+		t.Fatalf("expected 1 line for starting phase, got %d", len(app.lines))
+	}
+}
+
+func TestAppProgressEventUpdatesPullProgress(t *testing.T) {
+	t.Parallel()
+
+	app := NewApp("dev", "", "", nil)
+
+	model, _ := app.Update(output.ContainerStatusEvent{Phase: "pulling", Container: "localstack/localstack-pro:latest"})
+	app = model.(App)
+
+	model, _ = app.Update(output.ProgressEvent{
+		Container: "localstack/localstack-pro:latest",
+		LayerID:   "abc123",
+		Status:    "Downloading",
+		Current:   50,
+		Total:     100,
+	})
+	app = model.(App)
+
+	if len(app.lines) != 0 {
+		t.Fatalf("expected no lines appended for progress event, got %d", len(app.lines))
+	}
+
+	view := app.pullProgress.View()
+	if !strings.Contains(view, "layers") {
+		t.Fatalf("expected pull progress view to show layer count, got: %q", view)
+	}
+}
+
+func TestAppProgressEventIgnoredWhenNotPulling(t *testing.T) {
+	t.Parallel()
+
+	app := NewApp("dev", "", "", nil)
+
+	model, cmd := app.Update(output.ProgressEvent{
+		Container: "localstack/localstack-pro:latest",
+		LayerID:   "abc123",
+		Status:    "Downloading",
+		Current:   50,
+		Total:     100,
+	})
+	app = model.(App)
+
+	if cmd != nil {
+		t.Fatal("expected no command when pull progress is not visible")
+	}
+	if len(app.lines) != 0 {
+		t.Fatalf("expected no lines appended, got %d", len(app.lines))
+	}
+}
+
 func TestAppPendingInputOptionCOverridesClipboardShortcut(t *testing.T) {
 	t.Parallel()
 
