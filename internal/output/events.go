@@ -38,8 +38,8 @@ type SpinnerEvent struct {
 }
 
 type ErrorAction struct {
-	Label string
-	Value string
+	Label string `json:"label"`
+	Value string `json:"value"`
 }
 
 type ErrorEvent struct {

@@ -18,7 +18,7 @@ func newStartCmd(cfg *env.Env, tel *telemetry.Client) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return runStart(cmd.Context(), rt, cfg, tel)
+			return runStart(cmd, rt, cfg, tel)
 		},
 	}
 }

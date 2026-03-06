@@ -17,8 +17,8 @@ func newLoginCmd(cfg *env.Env) *cobra.Command {
 		Long:    "Manage login and store credentials in system keyring",
 		PreRunE: initConfig,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if !ui.IsInteractive() {
-				return fmt.Errorf("login requires an interactive terminal")
+			if !useInteractiveTUI(cmd) {
+				return fmt.Errorf("login requires an interactive terminal; set LOCALSTACK_AUTH_TOKEN for non-interactive use")
 			}
 			platformClient := api.NewPlatformClient(cfg.APIEndpoint)
 			return ui.RunLogin(cmd.Context(), version.Version(), platformClient, cfg.AuthToken, cfg.ForceFileKeyring, cfg.WebAppURL)

@@ -1,10 +1,7 @@
 package cmd
 
 import (
-	"os"
-
 	"github.com/localstack/lstk/internal/container"
-	"github.com/localstack/lstk/internal/output"
 	"github.com/localstack/lstk/internal/runtime"
 	"github.com/localstack/lstk/internal/ui"
 	"github.com/spf13/cobra"
@@ -22,11 +19,11 @@ func newStopCmd() *cobra.Command {
 				return err
 			}
 
-			if ui.IsInteractive() {
+			if useInteractiveTUI(cmd) {
 				return ui.RunStop(cmd.Context(), rt)
 			}
 
-			return container.Stop(cmd.Context(), rt, output.NewPlainSink(os.Stdout))
+			return container.Stop(cmd.Context(), rt, newSink(cmd))
 		},
 	}
 }

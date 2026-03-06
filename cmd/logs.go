@@ -1,10 +1,7 @@
 package cmd
 
 import (
-	"os"
-
 	"github.com/localstack/lstk/internal/container"
-	"github.com/localstack/lstk/internal/output"
 	"github.com/localstack/lstk/internal/runtime"
 	"github.com/spf13/cobra"
 )
@@ -24,7 +21,7 @@ func newLogsCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return container.Logs(cmd.Context(), rt, output.NewPlainSink(os.Stdout), follow)
+			return container.Logs(cmd.Context(), rt, newSink(cmd), follow)
 		},
 	}
 	cmd.Flags().BoolP("follow", "f", false, "Follow log output")

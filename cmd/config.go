@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"encoding/json"
 	"fmt"
 
 	"github.com/localstack/lstk/internal/config"
@@ -24,6 +25,11 @@ func newConfigPathCmd() *cobra.Command {
 			configPath, err := config.ConfigFilePath()
 			if err != nil {
 				return err
+			}
+			if outputJSON(cmd) {
+				return json.NewEncoder(cmd.OutOrStdout()).Encode(map[string]string{
+					"path": configPath,
+				})
 			}
 			_, err = fmt.Fprintln(cmd.OutOrStdout(), configPath)
 			return err

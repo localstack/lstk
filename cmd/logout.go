@@ -3,12 +3,10 @@ package cmd
 import (
 	"errors"
 	"fmt"
-	"os"
 
 	"github.com/localstack/lstk/internal/api"
 	"github.com/localstack/lstk/internal/auth"
 	"github.com/localstack/lstk/internal/env"
-	"github.com/localstack/lstk/internal/output"
 	"github.com/localstack/lstk/internal/ui"
 	"github.com/spf13/cobra"
 )
@@ -20,11 +18,11 @@ func newLogoutCmd(cfg *env.Env) *cobra.Command {
 		PreRunE: initConfig,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			platformClient := api.NewPlatformClient(cfg.APIEndpoint)
-			if ui.IsInteractive() {
+			if useInteractiveTUI(cmd) {
 				return ui.RunLogout(cmd.Context(), platformClient, cfg.AuthToken, cfg.ForceFileKeyring)
 			}
 
-			sink := output.NewPlainSink(os.Stdout)
+			sink := newSink(cmd)
 			tokenStorage, err := auth.NewTokenStorage(cfg.ForceFileKeyring)
 			if err != nil {
 				return fmt.Errorf("failed to initialize token storage: %w", err)
