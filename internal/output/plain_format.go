@@ -20,9 +20,9 @@ func FormatEventLine(event any) (string, bool) {
 	case ErrorEvent:
 		return formatErrorEvent(e), true
 	case ContainerStatusEvent:
-		return formatStatusLine(e), true
+		return formatStatusLine(e)
 	case ProgressEvent:
-		return formatProgressLine(e)
+		return "", false
 	case UserInputRequestEvent:
 		return formatUserInputRequest(e), true
 	case ContainerLogLineEvent:
@@ -32,37 +32,27 @@ func FormatEventLine(event any) (string, bool) {
 	}
 }
 
-func formatStatusLine(e ContainerStatusEvent) string {
+func formatStatusLine(e ContainerStatusEvent) (string, bool) {
 	switch e.Phase {
 	case "pulling":
-		return fmt.Sprintf("Pulling %s...", e.Container)
+		return "", false
 	case "starting":
-		return fmt.Sprintf("Starting %s...", e.Container)
+		return fmt.Sprintf("Starting %s...", e.Container), true
 	case "waiting":
-		return fmt.Sprintf("Waiting for %s to be ready...", e.Container)
+		return fmt.Sprintf("Waiting for %s to be ready...", e.Container), true
 	case "ready":
 		if e.Detail != "" {
-			return fmt.Sprintf("%s ready (%s)", e.Container, e.Detail)
+			return fmt.Sprintf("%s ready (%s)", e.Container, e.Detail), true
 		}
-		return fmt.Sprintf("%s ready", e.Container)
+		return fmt.Sprintf("%s ready", e.Container), true
 	default:
 		if e.Detail != "" {
-			return fmt.Sprintf("%s: %s (%s)", e.Container, e.Phase, e.Detail)
+			return fmt.Sprintf("%s: %s (%s)", e.Container, e.Phase, e.Detail), true
 		}
-		return fmt.Sprintf("%s: %s", e.Container, e.Phase)
+		return fmt.Sprintf("%s: %s", e.Container, e.Phase), true
 	}
 }
 
-func formatProgressLine(e ProgressEvent) (string, bool) {
-	if e.Total > 0 {
-		pct := float64(e.Current) / float64(e.Total) * 100
-		return fmt.Sprintf("  %s: %s %.1f%%", e.LayerID, e.Status, pct), true
-	}
-	if e.Status != "" {
-		return fmt.Sprintf("  %s: %s", e.LayerID, e.Status), true
-	}
-	return "", false
-}
 
 func formatUserInputRequest(e UserInputRequestEvent) string {
 	return FormatPrompt(e.Prompt, e.Options)

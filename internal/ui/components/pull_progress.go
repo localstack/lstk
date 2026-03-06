@@ -10,9 +10,11 @@ import (
 )
 
 type layerState struct {
-	status  string
-	current int64
-	total   int64
+	status   string
+	current  int64
+	total    int64
+	maxTotal int64
+	complete bool
 }
 
 type PullProgress struct {
@@ -56,6 +58,12 @@ func (p PullProgress) SetProgress(e output.ProgressEvent) (PullProgress, tea.Cmd
 	layer.status = e.Status
 	layer.current = e.Current
 	layer.total = e.Total
+	if e.Total > layer.maxTotal {
+		layer.maxTotal = e.Total
+	}
+	if e.Status == "Pull complete" || e.Status == "Already exists" {
+		layer.complete = true
+	}
 
 	pct := p.aggregatePercent()
 	cmd := p.bar.SetPercent(pct)
@@ -65,9 +73,13 @@ func (p PullProgress) SetProgress(e output.ProgressEvent) (PullProgress, tea.Cmd
 func (p PullProgress) aggregatePercent() float64 {
 	var totalBytes, currentBytes int64
 	for _, l := range p.layers {
-		if l.total > 0 {
-			totalBytes += l.total
-			currentBytes += l.current
+		if l.maxTotal > 0 {
+			totalBytes += l.maxTotal
+			if l.complete {
+				currentBytes += l.maxTotal
+			} else {
+				currentBytes += l.current
+			}
 		}
 	}
 	if totalBytes == 0 {
@@ -111,7 +123,7 @@ func (p PullProgress) View() string {
 func (p PullProgress) layerCounts() (total, done int) {
 	total = len(p.layers)
 	for _, l := range p.layers {
-		if l.status == "Pull complete" || l.status == "Already exists" {
+		if l.complete {
 			done++
 		}
 	}

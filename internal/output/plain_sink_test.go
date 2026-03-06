@@ -42,9 +42,9 @@ func TestPlainSink_EmitsStatusEvent(t *testing.T) {
 		expected string
 	}{
 		{
-			name:     "pulling phase",
+			name:     "pulling phase suppressed",
 			event:    ContainerStatusEvent{Phase: "pulling", Container: "localstack/localstack:latest"},
-			expected: "Pulling localstack/localstack:latest...\n",
+			expected: "",
 		},
 		{
 			name:     "starting phase",

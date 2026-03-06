@@ -30,10 +30,6 @@ func (s *PlainSink) setErr(err error) {
 }
 
 func (s *PlainSink) emit(event any) {
-	switch event.(type) {
-	case ProgressEvent:
-		return
-	}
 	line, ok := FormatEventLine(event)
 	if !ok {
 		return
