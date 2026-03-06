@@ -104,7 +104,11 @@ func pullImages(ctx context.Context, rt runtime.Runtime, sink output.Sink, conta
 		}()
 		if err := rt.PullImage(ctx, c.Image, progress); err != nil {
 			output.EmitSpinnerStop(sink)
-			return fmt.Errorf("failed to pull image %s: %w", c.Image, err)
+			output.EmitError(sink, output.ErrorEvent{
+				Title:   fmt.Sprintf("Failed to pull %s", c.Image),
+				Summary: err.Error(),
+			})
+			return output.NewSilentError(fmt.Errorf("failed to pull image %s: %w", c.Image, err))
 		}
 		output.EmitSpinnerStop(sink)
 		output.EmitSuccess(sink, fmt.Sprintf("Pulled %s", c.Image))
