@@ -159,6 +159,28 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           HOMEBREW_TAP_TOKEN: ${{ secrets.PRO_ACCESS_TOKEN }}
 
+      - name: Upload GoReleaser artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: goreleaser-dist
+          path: dist/
+          retention-days: 3
+
+  publish-npm:
+    name: Publish to NPM
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Download GoReleaser artifacts
+        uses: actions/download-artifact@v7
+        with:
+          name: goreleaser-dist
+          path: dist/
+
       - name: Set up Node.js
         uses: actions/setup-node@v6
         with:
@@ -173,3 +195,30 @@ jobs:
           license: Apache-2.0
           description: "LocalStack CLI v2 - Start and manage LocalStack emulators"
           keywords: localstack, cli, aws, emulator, docker
+
+  publish-winget:
+    name: Publish to Windows Package Manager
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: release
+    runs-on: windows-latest
+    steps:
+      - name: Get version from tag
+        id: version
+        shell: bash
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Install wingetcreate
+        shell: pwsh
+        run: |
+          Invoke-WebRequest -Uri "https://aka.ms/wingetcreate/latest" -OutFile wingetcreate.exe
+
+      - name: Update and submit winget manifest
+        shell: pwsh
+        run: |
+          $version = "${{ steps.version.outputs.version }}"
+          $baseUrl = "https://github.com/localstack/lstk/releases/download/v${version}"
+          ./wingetcreate.exe update LocalStack.lstk `
+            --urls "$baseUrl/lstk_${version}_windows_amd64.zip" "$baseUrl/lstk_${version}_windows_arm64.zip" `
+            --version $version `
+            --token "${{ secrets.PRO_ACCESS_TOKEN }}" `
+            --submit
