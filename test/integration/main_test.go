@@ -9,10 +9,13 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/99designs/keyring"
 	"github.com/docker/docker/api/types/container"
@@ -170,6 +173,34 @@ func startTestContainer(t *testing.T, ctx context.Context) {
 	require.NoError(t, err, "failed to create test container")
 	err = dockerClient.ContainerStart(ctx, resp.ID, container.StartOptions{})
 	require.NoError(t, err, "failed to start test container")
+}
+
+func testContext(t *testing.T) context.Context {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	t.Cleanup(cancel)
+	return ctx
+}
+
+func runLstk(t *testing.T, ctx context.Context, dir string, env []string, args ...string) (string, string, error) {
+	t.Helper()
+
+	binPath, err := filepath.Abs(binaryPath())
+	require.NoError(t, err)
+
+	cmd := exec.CommandContext(ctx, binPath, args...)
+	cmd.Dir = dir
+	if env != nil {
+		cmd.Env = env
+	}
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	err = cmd.Run()
+	return strings.TrimSpace(stdout.String()), strings.TrimSpace(stderr.String()), err
 }
 
 func createMockLicenseServer(success bool) *httptest.Server {

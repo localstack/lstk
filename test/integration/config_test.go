@@ -1,13 +1,10 @@
 package integration_test
 
 import (
-	"bytes"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"runtime"
-	"strings"
 	"testing"
 
 	"github.com/localstack/lstk/test/integration/env"
@@ -23,7 +20,7 @@ func TestConfigFileCreatedOnStartup(t *testing.T) {
 		require.NoError(t, os.MkdirAll(filepath.Join(tmpHome, ".config"), 0755))
 
 		e := testEnvWithHome(tmpHome, xdgOverride)
-		_, stderr, err := runLstk(t, workDir, e, "logout")
+		_, stderr, err := runLstk(t, testContext(t), workDir, e, "logout")
 		require.NoError(t, err, stderr)
 
 		expectedConfigFile := filepath.Join(tmpHome, ".config", "lstk", "config.toml")
@@ -37,13 +34,55 @@ func TestConfigFileCreatedOnStartup(t *testing.T) {
 		xdgOverride := filepath.Join(tmpHome, "xdg-config-home")
 
 		e := testEnvWithHome(tmpHome, xdgOverride)
-		_, stderr, err := runLstk(t, workDir, e, "logout")
+		_, stderr, err := runLstk(t, testContext(t), workDir, e, "logout")
 		require.NoError(t, err, stderr)
 
 		expectedConfigFile := filepath.Join(expectedOSConfigDir(tmpHome, xdgOverride), "config.toml")
 		assert.FileExists(t, expectedConfigFile)
 		assertDefaultConfigContent(t, expectedConfigFile)
 	})
+}
+
+func TestConfigFlagEnvVarsPassedToContainer(t *testing.T) {
+	requireDocker(t)
+	_ = env.Require(t, env.AuthToken)
+
+	cleanup()
+	t.Cleanup(cleanup)
+
+	mockServer := createMockLicenseServer(true)
+	defer mockServer.Close()
+
+	configContent := `
+[[containers]]
+type = "aws"
+tag = "latest"
+port = "4566"
+env = ["test"]
+
+[env.test]
+IAM_SOFT_MODE = "1"
+`
+	configFile := filepath.Join(t.TempDir(), "config.toml")
+	require.NoError(t, os.WriteFile(configFile, []byte(configContent), 0644))
+
+	ctx := testContext(t)
+	_, stderr, err := runLstk(t, ctx, "", env.With(env.APIEndpoint, mockServer.URL), "--config", configFile, "start")
+	require.NoError(t, err, "lstk start failed: %s", stderr)
+
+	inspect, err := dockerClient.ContainerInspect(ctx, containerName)
+	require.NoError(t, err, "failed to inspect container")
+	assert.Contains(t, inspect.Config.Env, "IAM_SOFT_MODE=1")
+}
+
+func TestConfigFlagOverridesConfigPath(t *testing.T) {
+	customConfig := filepath.Join(t.TempDir(), "custom.toml")
+	writeConfigFile(t, customConfig)
+
+	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), os.Environ(), "--config", customConfig, "config", "path")
+	require.NoError(t, err, stderr)
+
+	assertSamePath(t, customConfig, stdout)
 }
 
 func TestLocalConfigTakesPrecedence(t *testing.T) {
@@ -57,7 +96,7 @@ func TestLocalConfigTakesPrecedence(t *testing.T) {
 	writeConfigFile(t, filepath.Join(expectedOSConfigDir(tmpHome, xdgOverride), "config.toml"))
 
 	e := testEnvWithHome(tmpHome, xdgOverride)
-	stdout, stderr, err := runLstk(t, workDir, e, "config", "path")
+	stdout, stderr, err := runLstk(t, testContext(t), workDir, e, "config", "path")
 	require.NoError(t, err, stderr)
 
 	expectedLocalPath, err := filepath.Abs(localConfigFile)
@@ -76,7 +115,7 @@ func TestXDGConfigTakesPrecedence(t *testing.T) {
 	writeConfigFile(t, osConfigFile)
 
 	e := testEnvWithHome(tmpHome, xdgOverride)
-	stdout, stderr, err := runLstk(t, workDir, e, "config", "path")
+	stdout, stderr, err := runLstk(t, testContext(t), workDir, e, "config", "path")
 	require.NoError(t, err, stderr)
 
 	assertSamePath(t, xdgConfigFile, stdout)
@@ -89,7 +128,7 @@ func TestConfigPathCommand(t *testing.T) {
 	writeConfigFile(t, xdgConfigFile)
 
 	e := testEnvWithHome(tmpHome, filepath.Join(tmpHome, "xdg-config-home"))
-	stdout, stderr, err := runLstk(t, workDir, e, "config", "path")
+	stdout, stderr, err := runLstk(t, testContext(t), workDir, e, "config", "path")
 	require.NoError(t, err, stderr)
 
 	assertSamePath(t, xdgConfigFile, stdout)
@@ -102,30 +141,11 @@ func TestConfigPathCommandDoesNotCreateConfig(t *testing.T) {
 	expectedConfigFile := filepath.Join(expectedOSConfigDir(tmpHome, xdgOverride), "config.toml")
 
 	e := testEnvWithHome(tmpHome, xdgOverride)
-	stdout, stderr, err := runLstk(t, workDir, e, "config", "path")
+	stdout, stderr, err := runLstk(t, testContext(t), workDir, e, "config", "path")
 	require.NoError(t, err, stderr)
 
 	assertSamePath(t, expectedConfigFile, stdout)
 	assert.NoFileExists(t, expectedConfigFile)
-}
-
-func runLstk(t *testing.T, dir string, env []string, args ...string) (string, string, error) {
-	t.Helper()
-
-	binPath, err := filepath.Abs(binaryPath())
-	require.NoError(t, err)
-
-	cmd := exec.Command(binPath, args...)
-	cmd.Dir = dir
-	cmd.Env = env
-
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-
-	err = cmd.Run()
-	return strings.TrimSpace(stdout.String()), strings.TrimSpace(stderr.String()), err
 }
 
 func testEnvWithHome(tmpHome, xdgConfigHome string) []string {

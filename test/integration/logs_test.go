@@ -2,7 +2,6 @@ package integration_test
 
 import (
 	"bufio"
-	"context"
 	"os/exec"
 	"strings"
 	"testing"
@@ -18,14 +17,10 @@ func TestLogsExitsByDefault(t *testing.T) {
 	cleanup()
 	t.Cleanup(cleanup)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
+	ctx := testContext(t)
 	startTestContainer(t, ctx)
 
-	cmd := exec.CommandContext(ctx, binaryPath(), "logs")
-	_, err := cmd.CombinedOutput()
-
+	_, _, err := runLstk(t, ctx, "", nil, "logs")
 	require.NoError(t, err, "lstk logs should exit cleanly when container is running")
 }
 
@@ -34,14 +29,9 @@ func TestLogsCommandFailsWhenNotRunning(t *testing.T) {
 	cleanup()
 	t.Cleanup(cleanup)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	cmd := exec.CommandContext(ctx, binaryPath(), "logs", "--follow")
-	out, err := cmd.CombinedOutput()
-
+	_, stderr, err := runLstk(t, testContext(t), "", nil, "logs", "--follow")
 	require.Error(t, err, "expected lstk logs --follow to fail when container not running")
-	assert.Contains(t, string(out), "emulator is not running")
+	assert.Contains(t, stderr, "emulator is not running")
 }
 
 func TestLogsFollowStreamsOutput(t *testing.T) {
@@ -49,13 +39,12 @@ func TestLogsFollowStreamsOutput(t *testing.T) {
 	cleanup()
 	t.Cleanup(cleanup)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-
+	ctx := testContext(t)
 	startTestContainer(t, ctx)
 
 	const marker = "lstk-logs-test-marker"
 
+	// Uses StdoutPipe for streaming — cannot use runLstk.
 	logsCmd := exec.CommandContext(ctx, binaryPath(), "logs", "--follow")
 	stdout, err := logsCmd.StdoutPipe()
 	require.NoError(t, err, "failed to get stdout pipe")
