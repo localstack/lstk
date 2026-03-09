@@ -15,7 +15,7 @@ make clean              # Remove build artifacts
 
 Run a single integration test:
 ```bash
-cd test/integration && go test -count=1 -v -run TestStartCommandSucceedsWithValidToken .
+make test-integration RUN=TestStartCommandSucceedsWithValidToken
 ```
 
 Note: Integration tests require `LOCALSTACK_AUTH_TOKEN` environment variable for valid token tests.
