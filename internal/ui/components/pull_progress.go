@@ -115,7 +115,7 @@ func (p PullProgress) View() string {
 	// Fixed-width: "Downloading" is the longest phase (11 chars), counts padded to "XX/XX"
 	label := fmt.Sprintf("%-11s %2d/%-2d layers", phase, done, total)
 	return fmt.Sprintf("  %s  %s",
-		label,
+		styles.Secondary.Render(label),
 		p.bar.View(),
 	)
 }

@@ -85,7 +85,7 @@ func (s Spinner) View() string {
 	if !s.visible {
 		return ""
 	}
-	return s.model.View() + styles.Secondary.Render(s.text)
+	return s.model.View() + s.text
 }
 
 func (s Spinner) Tick() tea.Cmd {
