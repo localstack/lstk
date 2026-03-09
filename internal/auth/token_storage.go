@@ -39,8 +39,9 @@ func NewTokenStorage(forceFileKeyring bool) (AuthTokenStorage, error) {
 	}
 
 	keyringConfig := keyring.Config{
-		ServiceName: keyringService,
-		FileDir:     filepath.Join(configDir, keyringFilename),
+		ServiceName:             keyringService,
+		LibSecretCollectionName: "login", // use the default login keyring on Linux, ignored on other platforms
+		FileDir:                 filepath.Join(configDir, keyringFilename),
 		FilePasswordFunc: func(prompt string) (string, error) {
 			return keyringPassword, nil
 		},
