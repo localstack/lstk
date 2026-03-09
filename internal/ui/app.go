@@ -217,6 +217,7 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.err = msg.err
 		a.spinner, _ = a.spinner.Stop()
 		a.flushBufferedLines()
+		a.errorDisplay = a.errorDisplay.Show(output.ErrorEvent{Title: msg.err.Error()})
 		return a, tea.Quit
 	default:
 		if line, ok := output.FormatEventLine(msg); ok {

@@ -35,7 +35,7 @@ func RunStop(parentCtx context.Context, rt runtime.Runtime) error {
 	}
 
 	if app, ok := model.(App); ok && app.Err() != nil {
-		return app.Err()
+		return output.NewSilentError(app.Err())
 	}
 
 	runErr := <-runErrCh

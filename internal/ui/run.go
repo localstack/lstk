@@ -64,7 +64,7 @@ func Run(parentCtx context.Context, rt runtime.Runtime, version string, platform
 	}
 
 	if app, ok := model.(App); ok && app.Err() != nil {
-		return app.Err()
+		return output.NewSilentError(app.Err())
 	}
 
 	runErr := <-runErrCh
