@@ -38,6 +38,7 @@ func NewRootCmd(cfg *env.Env, tel *telemetry.Client) *cobra.Command {
 	root.SilenceUsage = true
 
 	root.PersistentFlags().String("config", "", "Path to config file")
+	root.PersistentFlags().BoolVar(&cfg.NonInteractive, "non-interactive", false, "Disable interactive mode")
 
 	configureHelp(root)
 
@@ -46,7 +47,7 @@ func NewRootCmd(cfg *env.Env, tel *telemetry.Client) *cobra.Command {
 
 	root.AddCommand(
 		newStartCmd(cfg, tel),
-		newStopCmd(),
+		newStopCmd(cfg),
 		newLoginCmd(cfg),
 		newLogoutCmd(cfg),
 		newLogsCmd(),
@@ -80,7 +81,7 @@ func runStart(ctx context.Context, rt runtime.Runtime, cfg *env.Env, tel *teleme
 	tel.Emit(ctx, "cli_cmd", map[string]any{"cmd": "lstk start", "params": []string{}})
 
 	platformClient := api.NewPlatformClient(cfg.APIEndpoint)
-	if ui.IsInteractive() {
+	if !cfg.NonInteractive && ui.IsInteractive() {
 		return ui.Run(ctx, rt, version.Version(), platformClient, cfg.AuthToken, cfg.ForceFileKeyring, cfg.WebAppURL)
 	}
 	return container.Start(ctx, rt, output.NewPlainSink(os.Stdout), platformClient, cfg.AuthToken, cfg.ForceFileKeyring, cfg.WebAppURL, false)

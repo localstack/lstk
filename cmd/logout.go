@@ -20,7 +20,7 @@ func newLogoutCmd(cfg *env.Env) *cobra.Command {
 		PreRunE: initConfig,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			platformClient := api.NewPlatformClient(cfg.APIEndpoint)
-			if ui.IsInteractive() {
+			if !cfg.NonInteractive && ui.IsInteractive() {
 				return ui.RunLogout(cmd.Context(), platformClient, cfg.AuthToken, cfg.ForceFileKeyring)
 			}
 
