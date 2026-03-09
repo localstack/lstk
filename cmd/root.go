@@ -59,6 +59,8 @@ func Execute(ctx context.Context) error {
 	defer tel.Close()
 
 	root := NewRootCmd(cfg, tel)
+	root.SilenceErrors = true
+	root.SilenceUsage = true
 
 	if err := root.ExecuteContext(ctx); err != nil {
 		if !output.IsSilent(err) {

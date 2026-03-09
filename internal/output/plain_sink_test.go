@@ -42,9 +42,9 @@ func TestPlainSink_EmitsStatusEvent(t *testing.T) {
 		expected string
 	}{
 		{
-			name:     "pulling phase",
+			name:     "pulling phase suppressed",
 			event:    ContainerStatusEvent{Phase: "pulling", Container: "localstack/localstack:latest"},
-			expected: "Pulling localstack/localstack:latest...\n",
+			expected: "",
 		},
 		{
 			name:     "starting phase",
@@ -90,54 +90,19 @@ func TestPlainSink_EmitsStatusEvent(t *testing.T) {
 	}
 }
 
-func TestPlainSink_EmitsProgressEvent(t *testing.T) {
-	tests := []struct {
-		name     string
-		event    ProgressEvent
-		expected string
-	}{
-		{
-			name: "with total (percentage)",
-			event: ProgressEvent{
-				Container: "localstack",
-				LayerID:   "abc123",
-				Status:    "Downloading",
-				Current:   50,
-				Total:     100,
-			},
-			expected: "  abc123: Downloading 50.0%\n",
-		},
-		{
-			name: "without total (status only)",
-			event: ProgressEvent{
-				Container: "localstack",
-				LayerID:   "abc123",
-				Status:    "Pull complete",
-				Current:   0,
-				Total:     0,
-			},
-			expected: "  abc123: Pull complete\n",
-		},
-		{
-			name: "no status and no total",
-			event: ProgressEvent{
-				Container: "localstack",
-				LayerID:   "abc123",
-			},
-			expected: "",
-		},
-	}
+func TestPlainSink_SuppressesProgressEvent(t *testing.T) {
+	var out bytes.Buffer
+	sink := NewPlainSink(&out)
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			var out bytes.Buffer
-			sink := NewPlainSink(&out)
+	Emit(sink, ProgressEvent{
+		Container: "localstack",
+		LayerID:   "abc123",
+		Status:    "Downloading",
+		Current:   50,
+		Total:     100,
+	})
 
-			Emit(sink, tt.event)
-
-			assert.Equal(t, tt.expected, out.String())
-		})
-	}
+	assert.Equal(t, "", out.String())
 }
 
 func TestPlainSink_EmitsContainerLogLineEvent(t *testing.T) {
@@ -223,7 +188,6 @@ func TestPlainSink_UsesFormatterParity(t *testing.T) {
 		SpinnerEvent{Active: true, Text: "Loading"},
 		ErrorEvent{Title: "Failed", Summary: "Something broke"},
 		ContainerStatusEvent{Phase: "starting", Container: "localstack"},
-		ProgressEvent{LayerID: "abc", Status: "Downloading", Current: 1, Total: 2},
 	}
 
 	for _, event := range events {
@@ -240,8 +204,6 @@ func TestPlainSink_UsesFormatterParity(t *testing.T) {
 		case ErrorEvent:
 			Emit(sink, e)
 		case ContainerStatusEvent:
-			Emit(sink, e)
-		case ProgressEvent:
 			Emit(sink, e)
 		default:
 			t.Fatalf("unsupported event type in test: %T", event)
