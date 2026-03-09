@@ -78,7 +78,7 @@ Then push and create the PR:
 
 ```
 git push -u origin HEAD
-gh pr create --title "<title>" --body "<body>" --base <base-branch>
+gh pr create --draft --title "<title>" --body "<body>" --base <base-branch>
 ```
 
 Return the PR URL when done.
