@@ -1,6 +1,9 @@
 package config
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
 type EmulatorType string
 
@@ -32,7 +35,24 @@ type ContainerConfig struct {
 	Type EmulatorType `mapstructure:"type"`
 	Tag  string       `mapstructure:"tag"`
 	Port string       `mapstructure:"port"`
-	Env  []string     `mapstructure:"env"`
+	// Env is a list of named environment references defined in the top-level [env.*] config sections.
+	Env []string `mapstructure:"env"`
+}
+
+// ResolvedEnv resolves the container's named environment references into KEY=value pairs.
+// namedEnvs is the top-level [env.*] map from Config.
+func (c *ContainerConfig) ResolvedEnv(namedEnvs map[string]map[string]string) ([]string, error) {
+	var result []string
+	for _, name := range c.Env {
+		vars, ok := namedEnvs[name]
+		if !ok {
+			return nil, fmt.Errorf("environment %q referenced in container config not found", name)
+		}
+		for k, v := range vars {
+			result = append(result, strings.ToUpper(k)+"="+v)
+		}
+	}
+	return result, nil
 }
 
 func (c *ContainerConfig) Image() (string, error) {
