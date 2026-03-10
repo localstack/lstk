@@ -16,6 +16,8 @@ type Env struct {
 	WebAppURL         string
 	ForceFileKeyring  bool
 	AnalyticsEndpoint string
+
+	NonInteractive    bool
 }
 
 // Init initializes environment variable configuration and returns the result.

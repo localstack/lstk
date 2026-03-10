@@ -138,6 +138,16 @@ case <-ctx.Done():
 - Preserve the Nimbo palette constants (`#3F51C7`, `#5E6AD2`, `#7E88EC`) unless intentionally changing branding.
 - If changing palette constants, update/add tests to guard against accidental drift.
 
+# Claude Skills
+
+Custom skills are available in `.claude/skills/`:
+
+- `/add-command <name>` — Scaffold a new CLI subcommand with proper cmd/ wiring, domain logic, sink handling, and tests
+- `/add-event <EventName>` — Add a new output event type to the event/sink system with format parity
+- `/add-component <name>` — Scaffold a new Bubble Tea TUI component
+- `/review-pr <number>` — Review a PR against architectural patterns
+- `/create-pr` — Create a PR with conventional format and Linear ticket linking
+
 # Maintaining This File
 
 When making significant changes to the codebase (new commands, architectural changes, build process updates, new patterns), update this CLAUDE.md file to reflect them.

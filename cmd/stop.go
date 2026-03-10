@@ -4,13 +4,14 @@ import (
 	"os"
 
 	"github.com/localstack/lstk/internal/container"
+	"github.com/localstack/lstk/internal/env"
 	"github.com/localstack/lstk/internal/output"
 	"github.com/localstack/lstk/internal/runtime"
 	"github.com/localstack/lstk/internal/ui"
 	"github.com/spf13/cobra"
 )
 
-func newStopCmd() *cobra.Command {
+func newStopCmd(cfg *env.Env) *cobra.Command {
 	return &cobra.Command{
 		Use:     "stop",
 		Short:   "Stop emulator",
@@ -22,7 +23,7 @@ func newStopCmd() *cobra.Command {
 				return err
 			}
 
-			if ui.IsInteractive() {
+			if isInteractiveMode(cfg) {
 				return ui.RunStop(cmd.Context(), rt)
 			}
 

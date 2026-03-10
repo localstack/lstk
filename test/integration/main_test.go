@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/99designs/keyring"
+	"github.com/creack/pty"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/image"
 	"github.com/docker/docker/client"
@@ -201,6 +202,38 @@ func runLstk(t *testing.T, ctx context.Context, dir string, env []string, args .
 
 	err = cmd.Run()
 	return strings.TrimSpace(stdout.String()), strings.TrimSpace(stderr.String()), err
+}
+
+// runs the lstk binary inside a PTY so that ui.IsInteractive() returns true,
+// making --non-interactive the actual condition under test
+func runLstkInPTY(t *testing.T, ctx context.Context, environ []string, args ...string) (string, error) {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip("PTY not supported on Windows")
+	}
+
+	binPath, err := filepath.Abs(binaryPath())
+	require.NoError(t, err)
+
+	cmd := exec.CommandContext(ctx, binPath, args...)
+	if environ != nil {
+		cmd.Env = environ
+	}
+
+	ptmx, err := pty.Start(cmd)
+	require.NoError(t, err, "failed to start command in PTY")
+	defer func() { _ = ptmx.Close() }()
+
+	out := &syncBuffer{}
+	outputCh := make(chan struct{})
+	go func() {
+		_, _ = io.Copy(out, ptmx)
+		close(outputCh)
+	}()
+
+	err = cmd.Wait()
+	<-outputCh
+	return strings.TrimSpace(out.String()), err
 }
 
 func createMockLicenseServer(success bool) *httptest.Server {

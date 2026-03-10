@@ -239,7 +239,7 @@ func TestAppEnterPrefersExplicitEnterOption(t *testing.T) {
 	}
 }
 
-func TestAppEnterDoesNothingWithoutExplicitEnterOption(t *testing.T) {
+func TestAppEnterSelectsUppercaseLabelDefault(t *testing.T) {
 	t.Parallel()
 
 	app := NewApp("dev", "", "", nil)
@@ -257,8 +257,78 @@ func TestAppEnterDoesNothingWithoutExplicitEnterOption(t *testing.T) {
 
 	model, cmd := app.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	app = model.(App)
+	if cmd == nil {
+		t.Fatal("expected response command when enter is pressed with uppercase default")
+	}
+	cmd()
+
+	select {
+	case resp := <-responseCh:
+		if resp.SelectedKey != "y" {
+			t.Fatalf("expected y key, got %q", resp.SelectedKey)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for response on channel")
+	}
+
+	if app.inputPrompt.Visible() {
+		t.Fatal("expected input prompt to be hidden after response")
+	}
+}
+
+func TestAppEnterDoesNothingWithoutDefault(t *testing.T) {
+	t.Parallel()
+
+	app := NewApp("dev", "", "", nil)
+	responseCh := make(chan output.InputResponse, 1)
+
+	model, _ := app.Update(output.UserInputRequestEvent{
+		Prompt: "Choose:",
+		Options: []output.InputOption{
+			{Key: "y", Label: "y"},
+			{Key: "n", Label: "n"},
+		},
+		ResponseCh: responseCh,
+	})
+	app = model.(App)
+
+	model, cmd := app.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	app = model.(App)
 	if cmd != nil {
-		t.Fatal("expected no response command when enter is not an explicit option")
+		t.Fatal("expected no response command when no uppercase default option exists")
+	}
+
+	select {
+	case resp := <-responseCh:
+		t.Fatalf("expected no response, got %+v", resp)
+	case <-time.After(200 * time.Millisecond):
+	}
+
+	if !app.inputPrompt.Visible() {
+		t.Fatal("expected input prompt to remain visible")
+	}
+}
+
+func TestAppEnterDoesNothingWithNonLetterLabel(t *testing.T) {
+	t.Parallel()
+
+	app := NewApp("dev", "", "", nil)
+	responseCh := make(chan output.InputResponse, 1)
+
+	model, _ := app.Update(output.UserInputRequestEvent{
+		Prompt: "Choose:",
+		Options: []output.InputOption{
+			{Key: "1", Label: "1"},
+			{Key: "2", Label: "2"},
+		},
+		ResponseCh: responseCh,
+	})
+	app = model.(App)
+
+	model, cmd := app.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	app = model.(App)
+	if cmd != nil {
+		t.Fatal("expected no response command when label contains no letters")
 	}
 
 	select {
@@ -431,5 +501,124 @@ func TestAppPendingInputOptionCOverridesClipboardShortcut(t *testing.T) {
 
 	if app.inputPrompt.Visible() {
 		t.Fatal("expected input prompt to be hidden after response")
+	}
+}
+
+func TestResolveOption(t *testing.T) {
+	enter := tea.KeyMsg{Type: tea.KeyEnter}
+	keyY := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'y'}}
+	keyYUpper := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'Y'}}
+
+	tests := []struct {
+		name           string
+		options        []output.InputOption
+		press          tea.KeyMsg
+		wantOptionKey  string // key of the expected returned option; empty means nil
+	}{
+		// "any" option
+		{
+			name:          "any matches regular keypress",
+			options:       []output.InputOption{{Key: "any", Label: "Press any key"}},
+			press:         keyY,
+			wantOptionKey: "any",
+		},
+		{
+			name:          "any matches Enter and takes priority over explicit enter",
+			options:       []output.InputOption{{Key: "any"}, {Key: "enter"}},
+			press:         enter,
+			wantOptionKey: "any",
+		},
+
+		// explicit "enter" option
+		{
+			name:          "enter matches Enter key",
+			options:       []output.InputOption{{Key: "enter", Label: "Continue"}},
+			press:         enter,
+			wantOptionKey: "enter",
+		},
+		{
+			name:          "enter does not match regular key",
+			options:       []output.InputOption{{Key: "enter", Label: "Continue"}},
+			press:         keyY,
+			wantOptionKey: "",
+		},
+		{
+			name:          "enter takes priority over uppercase label",
+			options:       []output.InputOption{{Key: "y", Label: "Y"}, {Key: "enter", Label: "Continue"}},
+			press:         enter,
+			wantOptionKey: "enter",
+		},
+
+		// uppercase label default
+		{
+			name:          "uppercase label matches Enter key",
+			options:       []output.InputOption{{Key: "y", Label: "Y"}, {Key: "n", Label: "n"}},
+			press:         enter,
+			wantOptionKey: "y",
+		},
+		{
+			name:          "first uppercase label wins",
+			options:       []output.InputOption{{Key: "y", Label: "Y"}, {Key: "a", Label: "ALL"}},
+			press:         enter,
+			wantOptionKey: "y",
+		},
+		{
+			name:          "uppercase label does not act as default for unmatched regular key",
+			options:       []output.InputOption{{Key: "y", Label: "Y"}, {Key: "n", Label: "n"}},
+			press:         tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'x'}},
+			wantOptionKey: "",
+		},
+		{
+			name:          "non-letter label not treated as uppercase default",
+			options:       []output.InputOption{{Key: "1", Label: "1"}, {Key: "2", Label: "2"}},
+			press:         enter,
+			wantOptionKey: "",
+		},
+
+		// case-insensitive key matching
+		{
+			name:          "lowercase key matches lowercase option",
+			options:       []output.InputOption{{Key: "y", Label: "Y"}, {Key: "n", Label: "n"}},
+			press:         keyY,
+			wantOptionKey: "y",
+		},
+		{
+			name:          "uppercase key matches lowercase option",
+			options:       []output.InputOption{{Key: "y", Label: "Y"}, {Key: "n", Label: "n"}},
+			press:         keyYUpper,
+			wantOptionKey: "y",
+		},
+
+		// no match
+		{
+			name:          "no options returns nil",
+			options:       []output.InputOption{},
+			press:         keyY,
+			wantOptionKey: "",
+		},
+		{
+			name:          "no matching option returns nil",
+			options:       []output.InputOption{{Key: "n", Label: "n"}},
+			press:         keyY,
+			wantOptionKey: "",
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			got := resolveOption(tc.options, tc.press)
+			if tc.wantOptionKey == "" {
+				if got != nil {
+					t.Fatalf("expected nil, got option with key %q", got.Key)
+				}
+			} else {
+				if got == nil {
+					t.Fatal("expected non-nil option, got nil")
+				}
+				if got.Key != tc.wantOptionKey {
+					t.Fatalf("got key %q, want %q", got.Key, tc.wantOptionKey)
+				}
+			}
+		})
 	}
 }
