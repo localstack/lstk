@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 	"time"
 
@@ -76,9 +77,10 @@ func TestStartPromptsToCreateAWSProfileWhenMissing(t *testing.T) {
 
 	credsContent, err := os.ReadFile(filepath.Join(tmpHome, ".aws", "credentials"))
 	require.NoError(t, err, "~/.aws/credentials should have been created")
-	assert.Contains(t, string(credsContent), "[localstack]")
-	assert.Contains(t, string(credsContent), "aws_access_key_id")
-	assert.Contains(t, string(credsContent), "= test")
+	normalizedCreds := strings.Join(strings.Fields(string(credsContent)), " ")
+	assert.Contains(t, normalizedCreds, "[localstack]")
+	assert.Contains(t, normalizedCreds, "aws_access_key_id = test")
+	assert.Contains(t, normalizedCreds, "aws_secret_access_key = test")
 
 	_ = cmd.Wait()
 	<-outputCh
@@ -127,12 +129,12 @@ func TestStartSkipsAWSProfilePromptWhenAlreadyConfigured(t *testing.T) {
 		return bytes.Contains(out.Bytes(), []byte(" ready"))
 	}, 2*time.Minute, 200*time.Millisecond, "container should become ready")
 
-	assert.NotContains(t, out.String(), "Set up LocalStack AWS profile",
-		"profile prompt should not appear when profile is already correctly configured")
-
 	_ = cmd.Process.Kill()
 	_ = cmd.Wait()
 	<-outputCh
+
+	assert.NotContains(t, out.String(), "Set up LocalStack AWS profile",
+		"profile prompt should not appear when profile is already correctly configured")
 }
 
 func TestStartNonInteractiveEmitsNoteWhenAWSProfileMissing(t *testing.T) {

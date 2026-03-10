@@ -22,26 +22,16 @@ const (
 	defaultRegion = "us-east-1"
 )
 
-var credentialsKeys = map[string]string{
-	"aws_access_key_id":     "test",
-	"aws_secret_access_key": "test",
+func credentialsDefaults() map[string]string {
+	return map[string]string{
+		"aws_access_key_id":     "test",
+		"aws_secret_access_key": "test",
+	}
 }
 
-// isValidLocalStackEndpoint returns true if the URL points to a known LocalStack host with a port.
-func isValidLocalStackEndpoint(url string) bool {
-	for _, prefix := range []string{
-		"http://" + endpoint.Hostname + ":",
-		"https://" + endpoint.Hostname + ":",
-		"http://127.0.0.1:",
-		"https://127.0.0.1:",
-		"http://localhost:",
-		"https://localhost:",
-	} {
-		if strings.HasPrefix(url, prefix) {
-			return true
-		}
-	}
-	return false
+// isValidLocalStackEndpoint returns true if the stored endpoint_url matches what Setup would write.
+func isValidLocalStackEndpoint(endpointURL, resolvedHost string) bool {
+	return endpointURL == "http://"+resolvedHost || endpointURL == "https://"+resolvedHost
 }
 
 func awsPaths() (configPath, credentialsPath string, err error) {
@@ -74,8 +64,8 @@ func (s profileStatus) filesToModify() []string {
 }
 
 // checkProfileStatus determines which AWS profile files need to be written or updated.
-func checkProfileStatus(configPath, credsPath string) (profileStatus, error) {
-	configNeeded, err := configNeedsWrite(configPath)
+func checkProfileStatus(configPath, credsPath, resolvedHost string) (profileStatus, error) {
+	configNeeded, err := configNeedsWrite(configPath, resolvedHost)
 	if err != nil {
 		return profileStatus{}, err
 	}
@@ -86,7 +76,7 @@ func checkProfileStatus(configPath, credsPath string) (profileStatus, error) {
 	return profileStatus{configNeeded: configNeeded, credsNeeded: credsNeeded}, nil
 }
 
-func configNeedsWrite(path string) (bool, error) {
+func configNeedsWrite(path, resolvedHost string) (bool, error) {
 	f, err := ini.Load(path)
 	if errors.Is(err, os.ErrNotExist) {
 		return true, nil
@@ -99,7 +89,7 @@ func configNeedsWrite(path string) (bool, error) {
 		return true, nil // section doesn't exist
 	}
 	endpointKey, err := section.GetKey("endpoint_url")
-	if err != nil || !isValidLocalStackEndpoint(endpointKey.Value()) {
+	if err != nil || !isValidLocalStackEndpoint(endpointKey.Value(), resolvedHost) {
 		return true, nil
 	}
 	if !section.HasKey("region") {
@@ -120,7 +110,7 @@ func credsNeedWrite(path string) (bool, error) {
 	if err != nil {
 		return true, nil // section doesn't exist
 	}
-	for k, expected := range credentialsKeys {
+	for k, expected := range credentialsDefaults() {
 		key, err := section.GetKey(k)
 		if err != nil || key.Value() != expected {
 			return true, nil
@@ -162,7 +152,7 @@ func writeProfile(host string) error {
 	if err := upsertSection(configPath, configSectionName, configKeys); err != nil {
 		return fmt.Errorf("failed to write %s: %w", configPath, err)
 	}
-	if err := upsertSection(credsPath, credsSectionName, credentialsKeys); err != nil {
+	if err := upsertSection(credsPath, credsSectionName, credentialsDefaults()); err != nil {
 		return fmt.Errorf("failed to write %s: %w", credsPath, err)
 	}
 	return nil
@@ -178,7 +168,7 @@ func writeConfigProfile(configPath, host string) error {
 }
 
 func writeCredsProfile(credsPath string) error {
-	return upsertSection(credsPath, credsSectionName, credentialsKeys)
+	return upsertSection(credsPath, credsSectionName, credentialsDefaults())
 }
 
 // Setup checks for the localstack AWS profile and prompts to create or update it if needed.
@@ -196,7 +186,7 @@ func Setup(ctx context.Context, sink output.Sink, interactive bool, port string,
 		output.EmitNote(sink, `Could not resolve "localhost.localstack.cloud" — your system may have DNS rebind protection enabled. Using 127.0.0.1 as the endpoint.`)
 	}
 
-	status, err := checkProfileStatus(configPath, credsPath)
+	status, err := checkProfileStatus(configPath, credsPath, localStackHost)
 	if err != nil {
 		output.EmitWarning(sink, fmt.Sprintf("could not check AWS profile: %v", err))
 		return nil

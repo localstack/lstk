@@ -13,6 +13,7 @@ func TestNonInteractiveFlagIsRegistered(t *testing.T) {
 	flag := root.PersistentFlags().Lookup("non-interactive")
 	if flag == nil {
 		t.Fatal("expected --non-interactive flag to be registered on root command")
+		return
 	}
 	if flag.DefValue != "false" {
 		t.Fatalf("expected default value to be false, got %q", flag.DefValue)

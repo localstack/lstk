@@ -102,7 +102,7 @@ func TestWriteProfile(t *testing.T) {
 				writeFile(t, filepath.Join(dir, ".aws", "credentials"), "[localstack]\naws_access_key_id = old\naws_secret_access_key = old\n")
 			},
 			check: func(t *testing.T, dir string) {
-				configNeeded, err := configNeedsWrite(filepath.Join(dir, ".aws", "config"))
+				configNeeded, err := configNeedsWrite(filepath.Join(dir, ".aws", "config"), "localhost.localstack.cloud:4566")
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -137,18 +137,21 @@ func TestCheckProfileStatus(t *testing.T) {
 		name          string
 		configContent string
 		credsContent  string
+		resolvedHost  string
 		wantConfig    bool
 		wantCreds     bool
 	}{
 		{
-			name:       "both files missing",
-			wantConfig: true,
-			wantCreds:  true,
+			name:         "both files missing",
+			resolvedHost: "localhost.localstack.cloud:4566",
+			wantConfig:   true,
+			wantCreds:    true,
 		},
 		{
 			name:          "valid profile needs nothing",
 			configContent: "[profile localstack]\nregion = us-east-1\noutput = json\nendpoint_url = http://localhost.localstack.cloud:4566\n",
 			credsContent:  "[localstack]\naws_access_key_id = test\naws_secret_access_key = test\n",
+			resolvedHost:  "localhost.localstack.cloud:4566",
 			wantConfig:    false,
 			wantCreds:     false,
 		},
@@ -156,6 +159,7 @@ func TestCheckProfileStatus(t *testing.T) {
 			name:          "missing endpoint_url",
 			configContent: "[profile localstack]\nregion = us-east-1\n",
 			credsContent:  "[localstack]\naws_access_key_id = test\naws_secret_access_key = test\n",
+			resolvedHost:  "localhost.localstack.cloud:4566",
 			wantConfig:    true,
 			wantCreds:     false,
 		},
@@ -163,6 +167,7 @@ func TestCheckProfileStatus(t *testing.T) {
 			name:          "invalid endpoint_url",
 			configContent: "[profile localstack]\nregion = us-east-1\nendpoint_url = http://some-other-host:4566\n",
 			credsContent:  "[localstack]\naws_access_key_id = test\naws_secret_access_key = test\n",
+			resolvedHost:  "localhost.localstack.cloud:4566",
 			wantConfig:    true,
 			wantCreds:     false,
 		},
@@ -170,6 +175,7 @@ func TestCheckProfileStatus(t *testing.T) {
 			name:          "wrong credentials",
 			configContent: "[profile localstack]\nregion = us-east-1\noutput = json\nendpoint_url = http://127.0.0.1:4566\n",
 			credsContent:  "[localstack]\naws_access_key_id = wrong\naws_secret_access_key = wrong\n",
+			resolvedHost:  "127.0.0.1:4566",
 			wantConfig:    false,
 			wantCreds:     true,
 		},
@@ -185,7 +191,7 @@ func TestCheckProfileStatus(t *testing.T) {
 			if tc.credsContent != "" {
 				writeFile(t, credsPath, tc.credsContent)
 			}
-			status, err := checkProfileStatus(configPath, credsPath)
+			status, err := checkProfileStatus(configPath, credsPath, tc.resolvedHost)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -207,35 +213,9 @@ func TestCheckProfileStatusMalformedFile(t *testing.T) {
 	writeFile(t, configPath, "this is not valid \x00\x01\x02 ini content [[[")
 	writeFile(t, credsPath, "[localstack]\naws_access_key_id = test\naws_secret_access_key = test\n")
 
-	_, err := checkProfileStatus(configPath, credsPath)
+	_, err := checkProfileStatus(configPath, credsPath, "127.0.0.1:4566")
 	if err == nil {
 		t.Error("expected error for malformed config file, got nil")
-	}
-}
-
-func TestIsValidLocalStackEndpoint(t *testing.T) {
-	tests := []struct {
-		name  string
-		url   string
-		valid bool
-	}{
-		{"localstack cloud http", "http://localhost.localstack.cloud:4566", true},
-		{"localstack cloud https", "https://localhost.localstack.cloud:4566", true},
-		{"loopback http", "http://127.0.0.1:4566", true},
-		{"loopback https", "https://127.0.0.1:4566", true},
-		{"localhost http", "http://localhost:4566", true},
-		{"empty string", "", false},
-		{"unknown host", "http://some-other-host:4566", false},
-		{"localstack cloud without port", "http://localhost.localstack.cloud", false},
-		{"unsupported scheme", "ftp://127.0.0.1:4566", false},
-	}
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			got := isValidLocalStackEndpoint(tc.url)
-			if got != tc.valid {
-				t.Errorf("got %v, want %v", got, tc.valid)
-			}
-		})
 	}
 }
 

@@ -46,5 +46,8 @@ func upsertSection(path, sectionName string, keys map[string]string) error {
 		section.Key(k).SetValue(v)
 	}
 
-	return f.SaveTo(path)
+	if err := f.SaveTo(path); err != nil {
+		return err
+	}
+	return os.Chmod(path, 0600)
 }
