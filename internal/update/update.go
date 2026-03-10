@@ -239,66 +239,6 @@ func updateBinary(ctx context.Context, tag string) error {
 	return extractAndReplace(tmpPath, exe, "tar.gz")
 }
 
-func extractAndReplace(archivePath, exePath, format string) error {
-	dir, err := os.MkdirTemp("", "lstk-extract-*")
-	if err != nil {
-		return err
-	}
-	defer func() { _ = os.RemoveAll(dir) }()
-
-	switch format {
-	case "tar.gz":
-		cmd := exec.Command("tar", "xzf", archivePath, "-C", dir)
-		if out, err := cmd.CombinedOutput(); err != nil {
-			return fmt.Errorf("extract failed: %s: %w", string(out), err)
-		}
-	case "zip":
-		cmd := exec.Command("unzip", "-o", archivePath, "-d", dir)
-		if out, err := cmd.CombinedOutput(); err != nil {
-			return fmt.Errorf("extract failed: %s: %w", string(out), err)
-		}
-	}
-
-	binaryName := "lstk"
-	if goruntime.GOOS == "windows" {
-		binaryName = "lstk.exe"
-	}
-
-	newBinary := filepath.Join(dir, binaryName)
-	if _, err := os.Stat(newBinary); err != nil {
-		return fmt.Errorf("binary not found in archive: %w", err)
-	}
-
-	info, err := os.Stat(exePath)
-	if err != nil {
-		return err
-	}
-
-	if err := os.Rename(newBinary, exePath); err != nil {
-		// Cross-device rename: fall back to copy
-		return copyFile(newBinary, exePath, info.Mode())
-	}
-
-	return os.Chmod(exePath, info.Mode())
-}
-
-func copyFile(src, dst string, mode os.FileMode) error {
-	in, err := os.Open(src)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = in.Close() }()
-
-	out, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, mode)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = out.Close() }()
-
-	_, err = io.Copy(out, in)
-	return err
-}
-
 func buildAssetName(ver, goos, goarch string) string {
 	ext := "tar.gz"
 	if goos == "windows" {
