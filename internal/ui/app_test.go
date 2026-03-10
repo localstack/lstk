@@ -309,6 +309,39 @@ func TestAppEnterDoesNothingWithoutDefault(t *testing.T) {
 	}
 }
 
+func TestAppEnterDoesNothingWithNonLetterLabel(t *testing.T) {
+	t.Parallel()
+
+	app := NewApp("dev", "", "", nil)
+	responseCh := make(chan output.InputResponse, 1)
+
+	model, _ := app.Update(output.UserInputRequestEvent{
+		Prompt: "Choose:",
+		Options: []output.InputOption{
+			{Key: "1", Label: "1"},
+			{Key: "2", Label: "2"},
+		},
+		ResponseCh: responseCh,
+	})
+	app = model.(App)
+
+	model, cmd := app.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	app = model.(App)
+	if cmd != nil {
+		t.Fatal("expected no response command when label contains no letters")
+	}
+
+	select {
+	case resp := <-responseCh:
+		t.Fatalf("expected no response, got %+v", resp)
+	case <-time.After(200 * time.Millisecond):
+	}
+
+	if !app.inputPrompt.Visible() {
+		t.Fatal("expected input prompt to remain visible")
+	}
+}
+
 func TestAppAnyKeyOptionResolvesOnAnyKeypress(t *testing.T) {
 	t.Parallel()
 

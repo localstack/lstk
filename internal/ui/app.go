@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"unicode"
 
 	"github.com/charmbracelet/bubbles/progress"
 	"github.com/charmbracelet/bubbles/spinner"
@@ -116,7 +117,7 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				// fall back to the option with an uppercase label (conventional default)
 				for _, opt := range a.pendingInput.Options {
-					if opt.Label != "" && opt.Label == strings.ToUpper(opt.Label) {
+					if opt.Label != "" && hasLetters(opt.Label) && opt.Label == strings.ToUpper(opt.Label) {
 						a.lines = appendLine(a.lines, styledLine{text: formatResolvedInput(*a.pendingInput, opt.Key)})
 						responseCmd := sendInputResponseCmd(a.pendingInput.ResponseCh, output.InputResponse{SelectedKey: opt.Key})
 						a.pendingInput = nil
@@ -290,6 +291,15 @@ func formatResolvedInput(req output.UserInputRequestEvent, selectedKey string) s
 
 const lineIndent = 2
 
+
+func hasLetters(s string) bool {
+	for _, r := range s {
+		if unicode.IsLetter(r) {
+			return true
+		}
+	}
+	return false
+}
 
 func isURL(s string) bool {
 	return strings.HasPrefix(s, "http://") || strings.HasPrefix(s, "https://")
