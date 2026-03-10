@@ -162,6 +162,9 @@ func homebrewLstkBinaryPath(t *testing.T) string {
 }
 
 func TestUpdateHomebrew(t *testing.T) {
+	if os.Getenv("LSTK_TEST_HOMEBREW") != "1" {
+		t.Skip("Skipping: overwrites real Homebrew binary. Set LSTK_TEST_HOMEBREW=1 to opt in.")
+	}
 	requireHomebrew(t)
 	caskBinary := homebrewLstkBinaryPath(t)
 

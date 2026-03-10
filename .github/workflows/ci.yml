@@ -98,11 +98,16 @@ jobs:
             go.sum
             test/integration/go.sum
 
+      - name: Install lstk via Homebrew
+        if: matrix.os == 'macos-latest'
+        run: brew install localstack/tap/lstk
+
       - name: Run integration tests
         run: make test-integration
         env:
           CREATE_JUNIT_REPORT: "true"
           LOCALSTACK_AUTH_TOKEN: ${{ secrets.LOCALSTACK_AUTH_TOKEN }}
+          LSTK_TEST_HOMEBREW: ${{ matrix.os == 'macos-latest' && '1' || '0' }}
 
       - name: Upload test results
         uses: actions/upload-artifact@v7
