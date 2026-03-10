@@ -42,8 +42,11 @@ func TestUpdateNPMLocalInstall(t *testing.T) {
 
 	ctx := testContext(t)
 
-	// Set up a fake local npm project
-	projectDir := t.TempDir()
+	// Set up a fake local npm project.
+	// On Windows, t.TempDir() may return a short 8.3 path (e.g. RUNNER~1)
+	// while the program resolves the long path. EvalSymlinks normalizes both.
+	projectDir, err := filepath.EvalSymlinks(t.TempDir())
+	require.NoError(t, err)
 	require.NoError(t, os.WriteFile(
 		filepath.Join(projectDir, "package.json"),
 		[]byte(`{"name":"test-project","version":"1.0.0","dependencies":{"@localstack/lstk":"*"}}`),
@@ -96,7 +99,11 @@ func TestUpdateBinaryInPlace(t *testing.T) {
 	ctx := testContext(t)
 
 	// Build a fake old version to a temp location
-	tmpBinary := filepath.Join(t.TempDir(), "lstk")
+	binaryName := "lstk"
+	if runtime.GOOS == "windows" {
+		binaryName = "lstk.exe"
+	}
+	tmpBinary := filepath.Join(t.TempDir(), binaryName)
 	repoRoot, err := filepath.Abs("../..")
 	require.NoError(t, err)
 
