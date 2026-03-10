@@ -239,7 +239,7 @@ func TestAppEnterPrefersExplicitEnterOption(t *testing.T) {
 	}
 }
 
-func TestAppEnterDoesNothingWithoutExplicitEnterOption(t *testing.T) {
+func TestAppEnterSelectsUppercaseLabelDefault(t *testing.T) {
 	t.Parallel()
 
 	app := NewApp("dev", "", "", nil)
@@ -257,8 +257,45 @@ func TestAppEnterDoesNothingWithoutExplicitEnterOption(t *testing.T) {
 
 	model, cmd := app.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	app = model.(App)
+	if cmd == nil {
+		t.Fatal("expected response command when enter is pressed with uppercase default")
+	}
+	cmd()
+
+	select {
+	case resp := <-responseCh:
+		if resp.SelectedKey != "y" {
+			t.Fatalf("expected y key, got %q", resp.SelectedKey)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for response on channel")
+	}
+
+	if app.inputPrompt.Visible() {
+		t.Fatal("expected input prompt to be hidden after response")
+	}
+}
+
+func TestAppEnterDoesNothingWithoutDefault(t *testing.T) {
+	t.Parallel()
+
+	app := NewApp("dev", "", "", nil)
+	responseCh := make(chan output.InputResponse, 1)
+
+	model, _ := app.Update(output.UserInputRequestEvent{
+		Prompt: "Choose:",
+		Options: []output.InputOption{
+			{Key: "y", Label: "y"},
+			{Key: "n", Label: "n"},
+		},
+		ResponseCh: responseCh,
+	})
+	app = model.(App)
+
+	model, cmd := app.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	app = model.(App)
 	if cmd != nil {
-		t.Fatal("expected no response command when enter is not an explicit option")
+		t.Fatal("expected no response command when no uppercase default option exists")
 	}
 
 	select {

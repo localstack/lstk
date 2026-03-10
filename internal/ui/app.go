@@ -105,6 +105,7 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			if msg.Type == tea.KeyEnter {
 				for _, opt := range a.pendingInput.Options {
+					// explicit "enter" option takes priority
 					if opt.Key == "enter" {
 						a.lines = appendLine(a.lines, styledLine{text: formatResolvedInput(*a.pendingInput, "enter")})
 						responseCmd := sendInputResponseCmd(a.pendingInput.ResponseCh, output.InputResponse{SelectedKey: "enter"})
@@ -113,10 +114,20 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						return a, responseCmd
 					}
 				}
+				// fall back to the option with an uppercase label (conventional default)
+				for _, opt := range a.pendingInput.Options {
+					if opt.Label != "" && opt.Label == strings.ToUpper(opt.Label) {
+						a.lines = appendLine(a.lines, styledLine{text: formatResolvedInput(*a.pendingInput, opt.Key)})
+						responseCmd := sendInputResponseCmd(a.pendingInput.ResponseCh, output.InputResponse{SelectedKey: opt.Key})
+						a.pendingInput = nil
+						a.inputPrompt = a.inputPrompt.Hide()
+						return a, responseCmd
+					}
+				}
 				return a, nil
 			}
 			for _, opt := range a.pendingInput.Options {
-				if msg.String() == opt.Key {
+				if strings.EqualFold(msg.String(), opt.Key) {
 					a.lines = appendLine(a.lines, styledLine{text: formatResolvedInput(*a.pendingInput, opt.Key)})
 					responseCmd := sendInputResponseCmd(a.pendingInput.ResponseCh, output.InputResponse{SelectedKey: opt.Key})
 					a.pendingInput = nil
