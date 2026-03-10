@@ -94,47 +94,12 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return a, tea.Quit
 		}
 		if a.pendingInput != nil {
-			// "any" option: any keypress resolves the prompt
-			for _, opt := range a.pendingInput.Options {
-				if opt.Key == "any" {
-					a.lines = appendLine(a.lines, styledLine{text: formatResolvedInput(*a.pendingInput, "any")})
-					responseCmd := sendInputResponseCmd(a.pendingInput.ResponseCh, output.InputResponse{SelectedKey: "any"})
-					a.pendingInput = nil
-					a.inputPrompt = a.inputPrompt.Hide()
-					return a, responseCmd
-				}
-			}
-			if msg.Type == tea.KeyEnter {
-				for _, opt := range a.pendingInput.Options {
-					// explicit "enter" option takes priority
-					if opt.Key == "enter" {
-						a.lines = appendLine(a.lines, styledLine{text: formatResolvedInput(*a.pendingInput, "enter")})
-						responseCmd := sendInputResponseCmd(a.pendingInput.ResponseCh, output.InputResponse{SelectedKey: "enter"})
-						a.pendingInput = nil
-						a.inputPrompt = a.inputPrompt.Hide()
-						return a, responseCmd
-					}
-				}
-				// fall back to the option with an uppercase label (conventional default)
-				for _, opt := range a.pendingInput.Options {
-					if opt.Label != "" && hasLetters(opt.Label) && opt.Label == strings.ToUpper(opt.Label) {
-						a.lines = appendLine(a.lines, styledLine{text: formatResolvedInput(*a.pendingInput, opt.Key)})
-						responseCmd := sendInputResponseCmd(a.pendingInput.ResponseCh, output.InputResponse{SelectedKey: opt.Key})
-						a.pendingInput = nil
-						a.inputPrompt = a.inputPrompt.Hide()
-						return a, responseCmd
-					}
-				}
-				return a, nil
-			}
-			for _, opt := range a.pendingInput.Options {
-				if strings.EqualFold(msg.String(), opt.Key) {
-					a.lines = appendLine(a.lines, styledLine{text: formatResolvedInput(*a.pendingInput, opt.Key)})
-					responseCmd := sendInputResponseCmd(a.pendingInput.ResponseCh, output.InputResponse{SelectedKey: opt.Key})
-					a.pendingInput = nil
-					a.inputPrompt = a.inputPrompt.Hide()
-					return a, responseCmd
-				}
+			if opt := resolveOption(a.pendingInput.Options, msg); opt != nil {
+				a.lines = appendLine(a.lines, styledLine{text: formatResolvedInput(*a.pendingInput, opt.Key)})
+				responseCmd := sendInputResponseCmd(a.pendingInput.ResponseCh, output.InputResponse{SelectedKey: opt.Key})
+				a.pendingInput = nil
+				a.inputPrompt = a.inputPrompt.Hide()
+				return a, responseCmd
 			}
 		}
 	case tea.WindowSizeMsg:
@@ -291,6 +256,28 @@ func formatResolvedInput(req output.UserInputRequestEvent, selectedKey string) s
 
 const lineIndent = 2
 
+// resolveOption finds the best matching option for a key event, in priority order:
+//  1. "any" — matches any keypress
+//  2. "enter" — matches the Enter key explicitly
+//  3. uppercase label — matches Enter as the conventional default
+//  4. case-insensitive key match — matches any other key
+func resolveOption(options []output.InputOption, msg tea.KeyMsg) *output.InputOption {
+	var uppercaseDefault *output.InputOption
+	for i, opt := range options {
+		switch {
+		case opt.Key == "any":
+			return &options[i]
+		case msg.Type == tea.KeyEnter && opt.Key == "enter":
+			return &options[i]
+		case msg.Type == tea.KeyEnter && uppercaseDefault == nil &&
+			opt.Label != "" && hasLetters(opt.Label) && opt.Label == strings.ToUpper(opt.Label):
+			uppercaseDefault = &options[i]
+		case msg.Type != tea.KeyEnter && strings.EqualFold(msg.String(), opt.Key):
+			return &options[i]
+		}
+	}
+	return uppercaseDefault
+}
 
 func hasLetters(s string) bool {
 	for _, r := range s {
