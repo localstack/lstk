@@ -1,6 +1,7 @@
 package update
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -123,7 +124,9 @@ func updateHomebrew(ctx context.Context, sink output.Sink) error {
 	w := newLogLineWriter(sink, "brew")
 	cmd.Stdout = w
 	cmd.Stderr = w
-	return cmd.Run()
+	err := cmd.Run()
+	w.Flush()
+	return err
 }
 
 func updateNPM(ctx context.Context, sink output.Sink, projectDir string) error {
@@ -137,13 +140,18 @@ func updateNPM(ctx context.Context, sink output.Sink, projectDir string) error {
 	w := newLogLineWriter(sink, "npm")
 	cmd.Stdout = w
 	cmd.Stderr = w
-	return cmd.Run()
+	err := cmd.Run()
+	w.Flush()
+	return err
 }
 
-// logLineWriter adapts an output.Sink into an io.Writer, emitting each line as a LogLineEvent.
+// logLineWriter adapts an output.Sink into an io.Writer, emitting each
+// complete line as a LogLineEvent. Partial writes are buffered until a
+// newline arrives.
 type logLineWriter struct {
 	sink   output.Sink
 	source string
+	buf    []byte
 }
 
 func newLogLineWriter(sink output.Sink, source string) *logLineWriter {
@@ -151,11 +159,27 @@ func newLogLineWriter(sink output.Sink, source string) *logLineWriter {
 }
 
 func (w *logLineWriter) Write(p []byte) (int, error) {
-	line := strings.TrimRight(string(p), "\n")
-	if line != "" {
-		output.EmitLogLine(w.sink, w.source, line)
+	w.buf = append(w.buf, p...)
+	for {
+		i := bytes.IndexByte(w.buf, '\n')
+		if i < 0 {
+			break
+		}
+		line := string(w.buf[:i])
+		w.buf = w.buf[i+1:]
+		if line != "" {
+			output.EmitLogLine(w.sink, w.source, line)
+		}
 	}
 	return len(p), nil
+}
+
+// Flush emits any remaining buffered content that didn't end with a newline.
+func (w *logLineWriter) Flush() {
+	if len(w.buf) > 0 {
+		output.EmitLogLine(w.sink, w.source, string(w.buf))
+		w.buf = nil
+	}
 }
 
 func updateBinary(ctx context.Context, tag string) error {
