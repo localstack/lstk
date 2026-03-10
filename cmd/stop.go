@@ -23,7 +23,7 @@ func newStopCmd(cfg *env.Env) *cobra.Command {
 				return err
 			}
 
-			if !cfg.NonInteractive && ui.IsInteractive() {
+			if isInteractiveMode(cfg) {
 				return ui.RunStop(cmd.Context(), rt)
 			}
 

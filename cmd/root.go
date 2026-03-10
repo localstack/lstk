@@ -81,10 +81,14 @@ func runStart(ctx context.Context, rt runtime.Runtime, cfg *env.Env, tel *teleme
 	tel.Emit(ctx, "cli_cmd", map[string]any{"cmd": "lstk start", "params": []string{}})
 
 	platformClient := api.NewPlatformClient(cfg.APIEndpoint)
-	if !cfg.NonInteractive && ui.IsInteractive() {
+	if isInteractiveMode(cfg) {
 		return ui.Run(ctx, rt, version.Version(), platformClient, cfg.AuthToken, cfg.ForceFileKeyring, cfg.WebAppURL)
 	}
 	return container.Start(ctx, rt, output.NewPlainSink(os.Stdout), platformClient, cfg.AuthToken, cfg.ForceFileKeyring, cfg.WebAppURL, false)
+}
+
+func isInteractiveMode(cfg *env.Env) bool {
+	return !cfg.NonInteractive && ui.IsInteractive()
 }
 
 func initConfig(cmd *cobra.Command, _ []string) error {
