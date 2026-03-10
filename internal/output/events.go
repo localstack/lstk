@@ -37,6 +37,8 @@ type SpinnerEvent struct {
 	MinDuration time.Duration // Minimum time spinner should display (0 = use default)
 }
 
+const ErrorActionPrefix = "==> "
+
 type ErrorAction struct {
 	Label string
 	Value string

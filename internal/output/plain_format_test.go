@@ -104,7 +104,7 @@ func TestFormatEventLine(t *testing.T) {
 					{Label: "Start Docker:", Value: "open -a Docker"},
 				},
 			},
-			want:   "Error: Docker not running\n  Cannot connect to Docker daemon\n  → Start Docker: open -a Docker",
+			want:   "Error: Docker not running\n  Cannot connect to Docker daemon\n  ==> Start Docker: open -a Docker",
 			wantOK: true,
 		},
 		{
