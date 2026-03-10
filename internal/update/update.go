@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	goruntime "runtime"
 	"strings"
+	"sync"
 
 	"github.com/localstack/lstk/internal/output"
 	"github.com/localstack/lstk/internal/version"
@@ -149,6 +150,7 @@ func updateNPM(ctx context.Context, sink output.Sink, projectDir string) error {
 // complete line as a LogLineEvent. Partial writes are buffered until a
 // newline arrives.
 type logLineWriter struct {
+	mu     sync.Mutex
 	sink   output.Sink
 	source string
 	buf    []byte
@@ -159,6 +161,8 @@ func newLogLineWriter(sink output.Sink, source string) *logLineWriter {
 }
 
 func (w *logLineWriter) Write(p []byte) (int, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
 	w.buf = append(w.buf, p...)
 	for {
 		i := bytes.IndexByte(w.buf, '\n')
@@ -176,6 +180,8 @@ func (w *logLineWriter) Write(p []byte) (int, error) {
 
 // Flush emits any remaining buffered content that didn't end with a newline.
 func (w *logLineWriter) Flush() {
+	w.mu.Lock()
+	defer w.mu.Unlock()
 	if len(w.buf) > 0 {
 		output.EmitLogLine(w.sink, w.source, string(w.buf))
 		w.buf = nil

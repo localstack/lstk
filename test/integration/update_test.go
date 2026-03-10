@@ -198,10 +198,5 @@ func TestUpdateHomebrew(t *testing.T) {
 }
 
 func npmPlatformPackage() string {
-	os := runtime.GOOS
-	arch := runtime.GOARCH
-	if arch == "amd64" {
-		arch = "amd64"
-	}
-	return "lstk_" + os + "_" + arch
+	return "lstk_" + runtime.GOOS + "_" + runtime.GOARCH
 }

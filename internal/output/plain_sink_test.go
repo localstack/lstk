@@ -188,6 +188,7 @@ func TestPlainSink_UsesFormatterParity(t *testing.T) {
 		SpinnerEvent{Active: true, Text: "Loading"},
 		ErrorEvent{Title: "Failed", Summary: "Something broke"},
 		ContainerStatusEvent{Phase: "starting", Container: "localstack"},
+		LogLineEvent{Source: "container", Line: "2024-01-01 hello"},
 	}
 
 	for _, event := range events {
@@ -204,6 +205,8 @@ func TestPlainSink_UsesFormatterParity(t *testing.T) {
 		case ErrorEvent:
 			Emit(sink, e)
 		case ContainerStatusEvent:
+			Emit(sink, e)
+		case LogLineEvent:
 			Emit(sink, e)
 		default:
 			t.Fatalf("unsupported event type in test: %T", event)
