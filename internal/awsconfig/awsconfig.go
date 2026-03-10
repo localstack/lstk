@@ -8,7 +8,6 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"gopkg.in/ini.v1"
 
@@ -220,10 +219,9 @@ func Setup(ctx context.Context, sink output.Sink, interactive bool, resolvedHost
 		return nil
 	}
 
-	files := strings.Join(status.filesToModify(), " and ")
 	responseCh := make(chan output.InputResponse, 1)
 	output.EmitUserInputRequest(sink, output.UserInputRequestEvent{
-		Prompt:     fmt.Sprintf("Set up LocalStack AWS profile in %s?", files),
+		Prompt:     "Configure AWS profile in ~/.aws/?",
 		Options:    []output.InputOption{{Key: "y", Label: "Y"}, {Key: "n", Label: "n"}},
 		ResponseCh: responseCh,
 	})
@@ -245,7 +243,7 @@ func Setup(ctx context.Context, sink output.Sink, interactive bool, resolvedHost
 				return nil
 			}
 		}
-		output.EmitSuccess(sink, fmt.Sprintf("LocalStack AWS profile written to %s", files))
+		output.EmitSuccess(sink, "AWS profile successfully configured")
 		output.EmitNote(sink, fmt.Sprintf("Try: aws s3 mb s3://test --profile %s", profileName))
 	case <-ctx.Done():
 		return ctx.Err()
