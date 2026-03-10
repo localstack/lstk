@@ -277,7 +277,6 @@ func formatResolvedInput(req output.UserInputRequestEvent, selectedKey string) s
 	return fmt.Sprintf("%s %s", firstLine, selected)
 }
 
-const lineIndent = 2
 
 
 func isURL(s string) bool {
@@ -295,36 +294,30 @@ func (a App) View() string {
 		sb.WriteString("\n")
 	}
 
-	indent := strings.Repeat(" ", lineIndent)
-	contentWidth := a.width - lineIndent
 	for _, line := range a.lines {
 		if line.highlight {
 			if isURL(line.text) {
-				wrapped := strings.Split(wrap.HardWrap(line.text, contentWidth), "\n")
+				wrapped := strings.Split(wrap.HardWrap(line.text, a.width), "\n")
 				var styledParts []string
 				for _, part := range wrapped {
 					styledParts = append(styledParts, styles.Link.Render(part))
 				}
-				sb.WriteString(indent)
-				sb.WriteString(hyperlink(line.text, strings.Join(styledParts, "\n"+indent)))
+				sb.WriteString(hyperlink(line.text, strings.Join(styledParts, "\n")))
 			} else {
-				sb.WriteString(indent)
-				sb.WriteString(styles.Highlight.Render(wrap.HardWrap(line.text, contentWidth)))
+				sb.WriteString(styles.Highlight.Render(wrap.HardWrap(line.text, a.width)))
 			}
 			sb.WriteString("\n\n")
 			continue
 		} else if line.secondary {
 			if strings.HasPrefix(line.text, ">") {
-				sb.WriteString(styles.SecondaryMessage.Render(wrap.HardWrap(line.text, contentWidth)))
+				sb.WriteString(styles.SecondaryMessage.Render(wrap.HardWrap(line.text, a.width)))
 				sb.WriteString("\n\n")
 				continue
 			}
-			sb.WriteString(indent)
-			text := wrap.HardWrap(line.text, contentWidth)
+			text := wrap.HardWrap(line.text, a.width)
 			sb.WriteString(styles.SecondaryMessage.Render(text))
 		} else {
-			sb.WriteString(indent)
-			text := wrap.HardWrap(line.text, contentWidth)
+			text := wrap.HardWrap(line.text, a.width)
 			sb.WriteString(text)
 		}
 		sb.WriteString("\n")
@@ -342,7 +335,7 @@ func (a App) View() string {
 		sb.WriteString("\n")
 	}
 
-	if errorView := a.errorDisplay.View(contentWidth); errorView != "" {
+	if errorView := a.errorDisplay.View(a.width); errorView != "" {
 		sb.WriteString(errorView)
 	}
 
