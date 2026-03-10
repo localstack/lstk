@@ -14,6 +14,7 @@ type Env struct {
 	ForceFileKeyring  bool
 	AnalyticsEndpoint string
 	DisableEvents     bool
+	NonInteractive    bool
 }
 
 // Init initializes environment variable configuration and returns the result.
