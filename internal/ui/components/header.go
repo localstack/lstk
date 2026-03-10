@@ -7,7 +7,7 @@ import (
 	"github.com/localstack/lstk/internal/ui/styles"
 )
 
-const headerPadding = 3
+const headerPadding = 2
 
 // nimbo logo lines with relative offsets for the cloud shape
 func nimboLine1() string {
