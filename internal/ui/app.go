@@ -161,6 +161,15 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			a.lines = appendLine(a.lines, styledLine{text: msg.URL, secondary: true})
 		}
 		return a, nil
+	case output.LogLineEvent:
+		prefix := styles.Secondary.Render(msg.Source + " | ")
+		line := styledLine{text: prefix + styles.Message.Render(msg.Line)}
+		if a.spinner.PendingStop() {
+			a.bufferedLines = append(a.bufferedLines, line)
+		} else {
+			a.lines = appendLine(a.lines, line)
+		}
+		return a, nil
 	case output.ContainerStatusEvent:
 		if msg.Phase == "pulling" {
 			a.pullProgress = a.pullProgress.Show(msg.Container)

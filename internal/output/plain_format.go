@@ -25,7 +25,7 @@ func FormatEventLine(event any) (string, bool) {
 		return "", false
 	case UserInputRequestEvent:
 		return formatUserInputRequest(e), true
-	case ContainerLogLineEvent:
+	case LogLineEvent:
 		return e.Line, true
 	default:
 		return "", false

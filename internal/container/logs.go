@@ -33,7 +33,7 @@ func Logs(ctx context.Context, rt runtime.Runtime, sink output.Sink, follow bool
 
 	scanner := bufio.NewScanner(pr)
 	for scanner.Scan() {
-		output.EmitContainerLogLine(sink, scanner.Text())
+		output.EmitLogLine(sink, "container", scanner.Text())
 	}
 	if err := scanner.Err(); err != nil && ctx.Err() == nil {
 		return err
