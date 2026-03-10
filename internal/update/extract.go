@@ -44,6 +44,19 @@ func extractAndReplace(archivePath, exePath, format string) error {
 		return err
 	}
 
+	// On Windows, a running executable cannot be overwritten but can be renamed.
+	// Move it out of the way first so we can place the new binary at the original path.
+	if goruntime.GOOS == "windows" {
+		oldPath := exePath + ".old"
+		// Clean up leftover from a previous update; ignore error if it doesn't exist.
+		if err := os.Remove(oldPath); err != nil && !os.IsNotExist(err) {
+			return fmt.Errorf("cannot remove old binary %s: %w", oldPath, err)
+		}
+		if err := os.Rename(exePath, oldPath); err != nil {
+			return fmt.Errorf("cannot move running binary: %w", err)
+		}
+	}
+
 	if err := os.Rename(newBinary, exePath); err != nil {
 		// Cross-device rename: fall back to copy
 		return copyFile(newBinary, exePath, info.Mode())
