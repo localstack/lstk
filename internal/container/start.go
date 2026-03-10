@@ -39,6 +39,10 @@ func Start(ctx context.Context, rt runtime.Runtime, sink output.Sink, platformCl
 		return fmt.Errorf("failed to get config: %w", err)
 	}
 
+	if hasDuplicateContainerTypes(cfg.Containers) {
+		output.EmitWarning(sink, "Multiple emulators of the same type are defined in your config; this setup is not supported yet")
+	}
+
 	containers := make([]runtime.ContainerConfig, len(cfg.Containers))
 	for i, c := range cfg.Containers {
 		image, err := c.Image()
@@ -246,4 +250,15 @@ func awaitStartup(ctx context.Context, rt runtime.Runtime, sink output.Sink, con
 		case <-time.After(1 * time.Second):
 		}
 	}
+}
+
+func hasDuplicateContainerTypes(containers []config.ContainerConfig) bool {
+	seen := make(map[config.EmulatorType]bool)
+	for _, c := range containers {
+		if seen[c.Type] {
+			return true
+		}
+		seen[c.Type] = true
+	}
+	return false
 }
