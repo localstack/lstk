@@ -1,5 +1,7 @@
 package api
 
+//go:generate mockgen -source=client.go -destination=mock_platform_api.go -package=api
+
 import (
 	"bytes"
 	"context"
@@ -7,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"time"
 
 	"github.com/localstack/lstk/internal/log"
@@ -21,6 +24,7 @@ type PlatformAPI interface {
 	ExchangeAuthRequest(ctx context.Context, id, exchangeToken string) (string, error)
 	GetLicenseToken(ctx context.Context, bearerToken string) (string, error)
 	GetLicense(ctx context.Context, req *LicenseRequest) error
+	GetLatestCatalogVersion(ctx context.Context, emulatorType string) (string, error)
 }
 
 type AuthRequest struct {
@@ -275,4 +279,46 @@ func (c *PlatformClient) GetLicense(ctx context.Context, licReq *LicenseRequest)
 			Detail:  detail,
 		}
 	}
+}
+
+type catalogVersionResponse struct {
+	EmulatorType string `json:"emulator_type"`
+	Version      string `json:"version"`
+}
+
+func (c *PlatformClient) GetLatestCatalogVersion(ctx context.Context, emulatorType string) (string, error) {
+	reqURL := fmt.Sprintf("%s/v1/license/catalog/%s/version", c.baseURL, url.PathEscape(emulatorType))
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
+	if err != nil {
+		return "", fmt.Errorf("failed to create request: %w", err)
+	}
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("failed to get catalog version: %w", err)
+	}
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			c.logger.Info("failed to close response body: %v", err)
+		}
+	}()
+
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("failed to get catalog version: status %d", resp.StatusCode)
+	}
+
+	var versionResp catalogVersionResponse
+	if err := json.NewDecoder(resp.Body).Decode(&versionResp); err != nil {
+		return "", fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	if versionResp.EmulatorType == "" || versionResp.Version == "" {
+		return "", fmt.Errorf("incomplete catalog response: emulator_type=%q version=%q", versionResp.EmulatorType, versionResp.Version)
+	}
+
+	if versionResp.EmulatorType != emulatorType {
+		return "", fmt.Errorf("unexpected emulator_type: got=%q want=%q", versionResp.EmulatorType, emulatorType)
+	}
+
+	return versionResp.Version, nil
 }

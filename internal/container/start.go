@@ -166,14 +166,19 @@ func Start(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts Start
 		return nil
 	}
 
-	// TODO validate license for tag "latest" without resolving the actual image version,
-	// and avoid pulling all images first
+	containers = resolveContainerVersions(ctx, opts.PlatformClient, containers)
+
 	pulled, err := pullImages(ctx, rt, sink, tel, containers)
 	if err != nil {
 		return err
 	}
 
-	if err := validateLicenses(ctx, rt, sink, opts, tel, containers, token); err != nil {
+	containers, err = resolveVersionsFromImages(ctx, rt, containers)
+	if err != nil {
+		return err
+	}
+
+	if err := validateLicenses(ctx, sink, opts, tel, containers, token); err != nil {
 		return err
 	}
 
@@ -258,9 +263,9 @@ func pullImages(ctx context.Context, rt runtime.Runtime, sink output.Sink, tel *
 	return pulled, nil
 }
 
-func validateLicenses(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts StartOptions, tel *telemetry.Client, containers []runtime.ContainerConfig, token string) error {
+func validateLicenses(ctx context.Context, sink output.Sink, opts StartOptions, tel *telemetry.Client, containers []runtime.ContainerConfig, token string) error {
 	for _, c := range containers {
-		if err := validateLicense(ctx, rt, sink, opts, tel, c, token); err != nil {
+		if err := validateLicense(ctx, sink, opts, tel, c, token); err != nil {
 			return err
 		}
 	}
@@ -328,15 +333,55 @@ func emitPortInUseError(sink output.Sink, port string) {
 	})
 }
 
-func validateLicense(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts StartOptions, tel *telemetry.Client, containerConfig runtime.ContainerConfig, token string) error {
-	version := containerConfig.Tag
-	if version == "" || version == "latest" {
-		actualVersion, err := rt.GetImageVersion(ctx, containerConfig.Image)
-		if err != nil {
-			return fmt.Errorf("could not resolve version from image %s: %w", containerConfig.Image, err)
+// resolveContainerVersions replaces "latest" image tags with a specific version
+// resolved from the catalog API, so the subsequent pull targets a pinned version.
+// If the API is unreachable for a given container, its original image reference is preserved.
+func resolveContainerVersions(ctx context.Context, platformClient api.PlatformAPI, containers []runtime.ContainerConfig) []runtime.ContainerConfig {
+	resolved := make([]runtime.ContainerConfig, len(containers))
+	copy(resolved, containers)
+	for i, c := range resolved {
+		if c.Tag != "" && c.Tag != "latest" {
+			continue
 		}
-		version = actualVersion
+
+		apiCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+		v, err := platformClient.GetLatestCatalogVersion(apiCtx, c.EmulatorType)
+		cancel()
+
+		if err != nil || v == "" {
+			continue
+		}
+
+		resolved[i].Tag = v
+		if idx := strings.LastIndex(c.Image, ":"); idx != -1 {
+			resolved[i].Image = c.Image[:idx+1] + v
+		} else {
+			resolved[i].Image = c.Image + ":" + v
+		}
 	}
+	return resolved
+}
+
+// resolveVersionsFromImages inspects pulled images to resolve any remaining "latest" tags
+// that the pre-pull catalog API call could not resolve (e.g. due to network unavailability).
+func resolveVersionsFromImages(ctx context.Context, rt runtime.Runtime, containers []runtime.ContainerConfig) ([]runtime.ContainerConfig, error) {
+	resolved := make([]runtime.ContainerConfig, len(containers))
+	copy(resolved, containers)
+	for i, c := range resolved {
+		if c.Tag != "" && c.Tag != "latest" {
+			continue
+		}
+		v, err := rt.GetImageVersion(ctx, c.Image)
+		if err != nil {
+			return nil, fmt.Errorf("could not resolve version from image %s: %w", c.Image, err)
+		}
+		resolved[i].Tag = v
+	}
+	return resolved, nil
+}
+
+func validateLicense(ctx context.Context, sink output.Sink, opts StartOptions, tel *telemetry.Client, containerConfig runtime.ContainerConfig, token string) error {
+	version := containerConfig.Tag
 
 	output.EmitStatus(sink, "validating license", containerConfig.Name, version)
 
