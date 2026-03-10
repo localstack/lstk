@@ -81,9 +81,9 @@ func runStart(ctx context.Context, rt runtime.Runtime, cfg *env.Env, tel *teleme
 
 	platformClient := api.NewPlatformClient(cfg.APIEndpoint)
 	if ui.IsInteractive() {
-		return ui.Run(ctx, rt, version.Version(), platformClient, cfg.AuthToken, cfg.ForceFileKeyring, cfg.WebAppURL)
+		return ui.Run(ctx, rt, version.Version(), platformClient, cfg.AuthToken, cfg.ForceFileKeyring, cfg.WebAppURL, cfg.LocalStackHost)
 	}
-	return container.Start(ctx, rt, output.NewPlainSink(os.Stdout), platformClient, cfg.AuthToken, cfg.ForceFileKeyring, cfg.WebAppURL, false)
+	return container.Start(ctx, rt, output.NewPlainSink(os.Stdout), platformClient, cfg.AuthToken, cfg.ForceFileKeyring, cfg.WebAppURL, false, cfg.LocalStackHost)
 }
 
 func initConfig(cmd *cobra.Command, _ []string) error {

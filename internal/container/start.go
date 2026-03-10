@@ -6,18 +6,22 @@ import (
 	"net/http"
 	"os"
 	stdruntime "runtime"
+	"slices"
 	"time"
 
 	"github.com/containerd/errdefs"
 	"github.com/localstack/lstk/internal/api"
 	"github.com/localstack/lstk/internal/auth"
+	"github.com/localstack/lstk/internal/awsconfig"
 	"github.com/localstack/lstk/internal/config"
 	"github.com/localstack/lstk/internal/output"
 	"github.com/localstack/lstk/internal/ports"
 	"github.com/localstack/lstk/internal/runtime"
 )
 
-func Start(ctx context.Context, rt runtime.Runtime, sink output.Sink, platformClient api.PlatformAPI, authToken string, forceFileKeyring bool, webAppURL string, interactive bool) error {
+type postStartSetupFunc func(ctx context.Context, sink output.Sink, interactive bool, port string, localStackHost string) error
+
+func Start(ctx context.Context, rt runtime.Runtime, sink output.Sink, platformClient api.PlatformAPI, authToken string, forceFileKeyring bool, webAppURL string, interactive bool, localStackHost string) error {
 	if err := rt.IsHealthy(ctx); err != nil {
 		rt.EmitUnhealthyError(sink, err)
 		return output.NewSilentError(fmt.Errorf("runtime not healthy: %w", err))
@@ -88,7 +92,36 @@ func Start(ctx context.Context, rt runtime.Runtime, sink output.Sink, platformCl
 		return err
 	}
 
-	return startContainers(ctx, rt, sink, containers)
+	if err := startContainers(ctx, rt, sink, containers); err != nil {
+		return err
+	}
+
+	// Maps emulator types to their post-start setup functions.
+	// Add an entry here to run setup for a new emulator type (e.g. Azure, Snowflake).
+	setups := map[config.EmulatorType]postStartSetupFunc{
+		config.EmulatorAWS: awsconfig.Setup,
+	}
+	return runPostStartSetups(ctx, sink, cfg.Containers, interactive, localStackHost, setups)
+}
+
+func runPostStartSetups(ctx context.Context, sink output.Sink, containers []config.ContainerConfig, interactive bool, localStackHost string, setups map[config.EmulatorType]postStartSetupFunc) error {
+	// build ordered list of unique types, keeping the first container config for each
+	firstByType := map[config.EmulatorType]config.ContainerConfig{}
+	var uniqueEmulatorTypes []config.EmulatorType
+	for _, c := range containers {
+		if !slices.Contains(uniqueEmulatorTypes, c.Type) {
+			uniqueEmulatorTypes = append(uniqueEmulatorTypes, c.Type)
+			firstByType[c.Type] = c
+		}
+	}
+	for _, t := range uniqueEmulatorTypes {
+		if setup, ok := setups[t]; ok {
+			if err := setup(ctx, sink, interactive, firstByType[t].Port, localStackHost); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 func pullImages(ctx context.Context, rt runtime.Runtime, sink output.Sink, containers []runtime.ContainerConfig) error {
