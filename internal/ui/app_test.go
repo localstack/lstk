@@ -2,6 +2,7 @@ package ui
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -198,6 +199,46 @@ func TestAppErrorEventStopsSpinner(t *testing.T) {
 	}
 	if !app.errorDisplay.Visible() {
 		t.Fatal("expected error display to be visible after ErrorEvent")
+	}
+}
+
+func TestAppSilentErrorDoesNotOverwriteErrorDisplay(t *testing.T) {
+	t.Parallel()
+
+	app := NewApp("dev", "", "", nil)
+
+	// Simulate EmitUnhealthyError: sink emits a nice ErrorEvent first.
+	model, _ := app.Update(output.ErrorEvent{Title: "Docker is not available"})
+	app = model.(App)
+
+	// Simulate runErrMsg arriving with a SilentError (already displayed).
+	silentErr := output.NewSilentError(fmt.Errorf("runtime not healthy: cannot connect to Docker daemon"))
+	model, _ = app.Update(runErrMsg{err: silentErr})
+	app = model.(App)
+
+	view := app.errorDisplay.View(200)
+	if !strings.Contains(view, "Docker is not available") {
+		t.Fatalf("expected original error to be preserved, got: %q", view)
+	}
+	if strings.Contains(view, "runtime not healthy") {
+		t.Fatalf("expected silent error not to overwrite display, got: %q", view)
+	}
+}
+
+func TestAppNonSilentErrorShowsInErrorDisplay(t *testing.T) {
+	t.Parallel()
+
+	app := NewApp("dev", "", "", nil)
+
+	model, _ := app.Update(runErrMsg{err: fmt.Errorf("something unexpected")})
+	app = model.(App)
+
+	if !app.errorDisplay.Visible() {
+		t.Fatal("expected error display to be visible for non-silent error")
+	}
+	view := app.errorDisplay.View(200)
+	if !strings.Contains(view, "something unexpected") {
+		t.Fatalf("expected error title in display, got: %q", view)
 	}
 }
 
