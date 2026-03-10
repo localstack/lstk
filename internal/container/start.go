@@ -40,7 +40,7 @@ func Start(ctx context.Context, rt runtime.Runtime, sink output.Sink, platformCl
 	}
 
 	if hasDuplicateContainerTypes(cfg.Containers) {
-		output.EmitWarning(sink, "multiple emulators of the same type are defined in your config; this setup is not supported yet")
+		output.EmitWarning(sink, "Multiple emulators of the same type are defined in your config; this setup is not supported yet")
 	}
 
 	containers := make([]runtime.ContainerConfig, len(cfg.Containers))
