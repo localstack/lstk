@@ -3,30 +3,13 @@ package update
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
-	"net/http"
 	"strings"
 	"sync"
 
 	"github.com/localstack/lstk/internal/output"
 	"github.com/localstack/lstk/internal/version"
 )
-
-const (
-	githubRepo       = "localstack/lstk"
-	latestReleaseURL = "https://api.github.com/repos/" + githubRepo + "/releases/latest"
-)
-
-type githubRelease struct {
-	TagName string        `json:"tag_name"`
-	Assets  []githubAsset `json:"assets"`
-}
-
-type githubAsset struct {
-	Name               string `json:"name"`
-	BrowserDownloadURL string `json:"browser_download_url"`
-}
 
 // Check reports whether a newer version is available.
 // Returns the latest version string and true if an update is available.
@@ -88,31 +71,6 @@ func Update(ctx context.Context, sink output.Sink, checkOnly bool) error {
 
 	output.EmitSuccess(sink, fmt.Sprintf("Updated to %s", latest))
 	return nil
-}
-
-func fetchLatestVersion(ctx context.Context) (string, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, latestReleaseURL, nil)
-	if err != nil {
-		return "", err
-	}
-	req.Header.Set("Accept", "application/vnd.github+json")
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return "", err
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("GitHub API returned %s", resp.Status)
-	}
-
-	var release githubRelease
-	if err := json.NewDecoder(resp.Body).Decode(&release); err != nil {
-		return "", err
-	}
-
-	return release.TagName, nil
 }
 
 // logLineWriter adapts an output.Sink into an io.Writer, emitting each

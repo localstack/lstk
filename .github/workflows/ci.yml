@@ -108,6 +108,7 @@ jobs:
           CREATE_JUNIT_REPORT: "true"
           LOCALSTACK_AUTH_TOKEN: ${{ secrets.LOCALSTACK_AUTH_TOKEN }}
           LSTK_TEST_HOMEBREW: ${{ matrix.os == 'macos-latest' && '1' || '0' }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Upload test results
         uses: actions/upload-artifact@v7
