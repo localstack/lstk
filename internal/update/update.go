@@ -5,12 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
-	"os"
-	"os/exec"
-	"path/filepath"
-	goruntime "runtime"
 	"strings"
 	"sync"
 
@@ -120,32 +115,6 @@ func fetchLatestVersion(ctx context.Context) (string, error) {
 	return release.TagName, nil
 }
 
-func updateHomebrew(ctx context.Context, sink output.Sink) error {
-	cmd := exec.CommandContext(ctx, "brew", "upgrade", "localstack/tap/lstk")
-	w := newLogLineWriter(sink, "brew")
-	cmd.Stdout = w
-	cmd.Stderr = w
-	err := cmd.Run()
-	w.Flush()
-	return err
-}
-
-func updateNPM(ctx context.Context, sink output.Sink, projectDir string) error {
-	var cmd *exec.Cmd
-	if projectDir != "" {
-		cmd = exec.CommandContext(ctx, "npm", "install", "@localstack/lstk")
-		cmd.Dir = projectDir
-	} else {
-		cmd = exec.CommandContext(ctx, "npm", "install", "-g", "@localstack/lstk")
-	}
-	w := newLogLineWriter(sink, "npm")
-	cmd.Stdout = w
-	cmd.Stderr = w
-	err := cmd.Run()
-	w.Flush()
-	return err
-}
-
 // logLineWriter adapts an output.Sink into an io.Writer, emitting each
 // complete line as a LogLineEvent. Partial writes are buffered until a
 // newline arrives.
@@ -186,65 +155,6 @@ func (w *logLineWriter) Flush() {
 		output.EmitLogLine(w.sink, w.source, string(w.buf))
 		w.buf = nil
 	}
-}
-
-func updateBinary(ctx context.Context, tag string) error {
-	ver := normalizeVersion(tag)
-	assetName := buildAssetName(ver, goruntime.GOOS, goruntime.GOARCH)
-
-	downloadURL := fmt.Sprintf("https://github.com/%s/releases/download/%s/%s", githubRepo, tag, assetName)
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, downloadURL, nil)
-	if err != nil {
-		return err
-	}
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("download failed: %s", resp.Status)
-	}
-
-	exe, err := os.Executable()
-	if err != nil {
-		return fmt.Errorf("cannot determine executable path: %w", err)
-	}
-	exe, err = filepath.EvalSymlinks(exe)
-	if err != nil {
-		return fmt.Errorf("cannot resolve executable path: %w", err)
-	}
-
-	tmpFile, err := os.CreateTemp(filepath.Dir(exe), "lstk-update-*")
-	if err != nil {
-		return fmt.Errorf("cannot create temp file: %w", err)
-	}
-	tmpPath := tmpFile.Name()
-	defer func() { _ = os.Remove(tmpPath) }()
-
-	if _, err := io.Copy(tmpFile, resp.Body); err != nil {
-		_ = tmpFile.Close()
-		return fmt.Errorf("download write failed: %w", err)
-	}
-	if err := tmpFile.Close(); err != nil {
-		return fmt.Errorf("failed to close temp file: %w", err)
-	}
-
-	if goruntime.GOOS == "windows" {
-		return extractAndReplace(tmpPath, exe, "zip")
-	}
-	return extractAndReplace(tmpPath, exe, "tar.gz")
-}
-
-func buildAssetName(ver, goos, goarch string) string {
-	ext := "tar.gz"
-	if goos == "windows" {
-		ext = "zip"
-	}
-	return fmt.Sprintf("lstk_%s_%s_%s.%s", ver, goos, goarch, ext)
 }
 
 // normalizeVersion strips a leading "v" prefix for comparison.
