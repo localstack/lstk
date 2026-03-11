@@ -18,6 +18,7 @@ type Env struct {
 	AnalyticsEndpoint string
 
 	NonInteractive    bool
+	GitHubToken       string
 }
 
 // Init initializes environment variable configuration and returns the result.
@@ -39,6 +40,7 @@ func Init() *Env {
 		WebAppURL:         viper.GetString("web_app_url"),
 		ForceFileKeyring:  viper.GetString("keyring") == "file",
 		AnalyticsEndpoint: viper.GetString("analytics_endpoint"),
+		GitHubToken:       viper.GetString("github_token"),
 	}
 
 }

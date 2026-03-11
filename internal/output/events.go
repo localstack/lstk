@@ -58,7 +58,7 @@ type AuthEvent struct {
 }
 
 type Event interface {
-	MessageEvent | AuthEvent | SpinnerEvent | ErrorEvent | ContainerStatusEvent | ProgressEvent | UserInputRequestEvent | ContainerLogLineEvent
+	MessageEvent | AuthEvent | SpinnerEvent | ErrorEvent | ContainerStatusEvent | ProgressEvent | UserInputRequestEvent | LogLineEvent
 }
 
 type Sink interface {
@@ -105,8 +105,15 @@ type UserInputRequestEvent struct {
 	ResponseCh chan<- InputResponse
 }
 
-type ContainerLogLineEvent struct {
-	Line string
+const (
+	LogSourceEmulator = "emulator"
+	LogSourceBrew     = "brew"
+	LogSourceNPM      = "npm"
+)
+
+type LogLineEvent struct {
+	Source string // use LogSource* constants
+	Line   string
 }
 
 // Emit sends an event to the sink with compile-time type safety via generics.
@@ -155,8 +162,8 @@ func EmitAuth(sink Sink, event AuthEvent) {
 	Emit(sink, event)
 }
 
-func EmitContainerLogLine(sink Sink, line string) {
-	Emit(sink, ContainerLogLineEvent{Line: line})
+func EmitLogLine(sink Sink, source, line string) {
+	Emit(sink, LogLineEvent{Source: source, Line: line})
 }
 
 const DefaultSpinnerMinDuration = 400 * time.Millisecond

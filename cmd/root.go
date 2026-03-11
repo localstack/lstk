@@ -53,6 +53,7 @@ func NewRootCmd(cfg *env.Env, tel *telemetry.Client) *cobra.Command {
 		newLogsCmd(),
 		newConfigCmd(),
 		newVersionCmd(),
+		newUpdateCmd(cfg),
 	)
 
 	return root
