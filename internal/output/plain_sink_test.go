@@ -184,7 +184,7 @@ func TestPlainSink_UsesFormatterParity(t *testing.T) {
 		MessageEvent{Severity: SeverityWarning, Text: "careful"},
 		MessageEvent{Severity: SeveritySuccess, Text: "done"},
 		MessageEvent{Severity: SeverityNote, Text: "fyi"},
-		AuthEvent{Code: "ABC123", URL: "https://example.com"},
+		AuthEvent{URL: "https://example.com"},
 		SpinnerEvent{Active: true, Text: "Loading"},
 		ErrorEvent{Title: "Failed", Summary: "Something broke"},
 		ContainerStatusEvent{Phase: "starting", Container: "localstack"},

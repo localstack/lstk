@@ -96,14 +96,15 @@ func formatAuthEvent(e AuthEvent) string {
 		sb.WriteString(e.Preamble)
 		sb.WriteString("\n")
 	}
-	if e.Code != "" {
-		sb.WriteString("Your one-time code: ")
-		sb.WriteString(e.Code)
-		sb.WriteString("\n")
-	}
 	if e.URL != "" {
-		sb.WriteString("Opening browser to login...\n")
+		sb.WriteString("Opening browser to login...")
+		sb.WriteString("\n")
+		sb.WriteString("Browser didn't open? Visit ")
 		sb.WriteString(e.URL)
+	}
+	if e.Code != "" {
+		sb.WriteString("\n\nOne-time code: ")
+		sb.WriteString(e.Code)
 	}
 	return strings.TrimRight(sb.String(), "\n")
 }
