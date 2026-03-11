@@ -6,12 +6,13 @@ import (
 
 	"github.com/localstack/lstk/internal/config"
 	"github.com/localstack/lstk/internal/container"
+	"github.com/localstack/lstk/internal/env"
 	"github.com/localstack/lstk/internal/output"
 	"github.com/localstack/lstk/internal/runtime"
 	"github.com/spf13/cobra"
 )
 
-func newLogsCmd() *cobra.Command {
+func newLogsCmd(cfg *env.Env) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "logs",
 		Short:   "Show emulator logs",
@@ -22,7 +23,7 @@ func newLogsCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			rt, err := runtime.NewDockerRuntime()
+			rt, err := runtime.NewDockerRuntime(cfg.DockerHost)
 			if err != nil {
 				return err
 			}

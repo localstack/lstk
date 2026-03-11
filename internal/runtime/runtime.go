@@ -8,6 +8,20 @@ import (
 	"github.com/localstack/lstk/internal/output"
 )
 
+// BindMount represents a host-to-container bind mount.
+type BindMount struct {
+	HostPath      string
+	ContainerPath string
+	ReadOnly      bool
+}
+
+// PortMapping represents a container-to-host port mapping.
+type PortMapping struct {
+	ContainerPort string
+	HostPort      string
+	Protocol      string // "tcp" (default) or "udp"
+}
+
 type ContainerConfig struct {
 	Image         string
 	Name          string
@@ -17,6 +31,8 @@ type ContainerConfig struct {
 	Env           []string // e.g., ["KEY=value", "FOO=bar"]
 	Tag           string
 	ProductName   string
+	Binds         []BindMount
+	ExtraPorts    []PortMapping
 }
 
 type PullProgress struct {
@@ -39,4 +55,5 @@ type Runtime interface {
 	Logs(ctx context.Context, containerID string, tail int) (string, error)
 	StreamLogs(ctx context.Context, containerID string, out io.Writer, follow bool) error
 	GetImageVersion(ctx context.Context, imageName string) (string, error)
+	SocketPath() string
 }

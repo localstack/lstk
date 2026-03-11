@@ -157,6 +157,20 @@ func (mr *MockRuntimeMockRecorder) Remove(ctx, containerName any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Remove", reflect.TypeOf((*MockRuntime)(nil).Remove), ctx, containerName)
 }
 
+// SocketPath mocks base method.
+func (m *MockRuntime) SocketPath() string {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SocketPath")
+	ret0, _ := ret[0].(string)
+	return ret0
+}
+
+// SocketPath indicates an expected call of SocketPath.
+func (mr *MockRuntimeMockRecorder) SocketPath() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SocketPath", reflect.TypeOf((*MockRuntime)(nil).SocketPath))
+}
+
 // Start mocks base method.
 func (m *MockRuntime) Start(ctx context.Context, config ContainerConfig) (string, error) {
 	m.ctrl.T.Helper()

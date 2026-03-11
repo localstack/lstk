@@ -8,6 +8,7 @@ import (
 	"os"
 	stdruntime "runtime"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -82,16 +83,31 @@ func Start(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts Start
 		if err != nil {
 			return err
 		}
-		env := append(resolvedEnv, "LOCALSTACK_AUTH_TOKEN="+token)
+
+		containerName := c.Name()
+		env := append(resolvedEnv,
+			"LOCALSTACK_AUTH_TOKEN="+token,
+			"GATEWAY_LISTEN=:"+c.Port,
+			"MAIN_CONTAINER_NAME="+containerName,
+		)
+
+		var binds []runtime.BindMount
+		if socketPath := rt.SocketPath(); socketPath != "" {
+			binds = append(binds, runtime.BindMount{HostPath: socketPath, ContainerPath: "/var/run/docker.sock"})
+			env = append(env, "DOCKER_HOST=unix:///var/run/docker.sock")
+		}
+
 		containers[i] = runtime.ContainerConfig{
 			Image:         image,
-			Name:          c.Name(),
+			Name:          containerName,
 			Port:          c.Port,
 			ContainerPort: containerPort,
 			HealthPath:    healthPath,
 			Env:           env,
 			Tag:           c.Tag,
 			ProductName:   productName,
+			Binds:         binds,
+			ExtraPorts:    servicePortRange(),
 		}
 	}
 
@@ -340,4 +356,15 @@ func hasDuplicateContainerTypes(containers []config.ContainerConfig) bool {
 		seen[c.Type] = true
 	}
 	return false
+}
+
+func servicePortRange() []runtime.PortMapping {
+	const start = 4510
+	const end = 4559
+	var ports []runtime.PortMapping
+	for p := start; p <= end; p++ {
+		ps := strconv.Itoa(p)
+		ports = append(ports, runtime.PortMapping{ContainerPort: ps, HostPort: ps})
+	}
+	return ports
 }

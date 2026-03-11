@@ -22,7 +22,7 @@ func newStatusCmd(cfg *env.Env) *cobra.Command {
 		Long:    "Show the status of a running emulator and its deployed resources",
 		PreRunE: initConfig,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			rt, err := runtime.NewDockerRuntime()
+			rt, err := runtime.NewDockerRuntime(cfg.DockerHost)
 			if err != nil {
 				return err
 			}
