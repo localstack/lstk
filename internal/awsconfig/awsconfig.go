@@ -76,17 +76,6 @@ func (s profileStatus) anyNeeded() bool {
 	return s.configNeeded || s.credsNeeded
 }
 
-func (s profileStatus) filesToModify() []string {
-	var files []string
-	if s.configNeeded {
-		files = append(files, "~/.aws/config")
-	}
-	if s.credsNeeded {
-		files = append(files, "~/.aws/credentials")
-	}
-	return files
-}
-
 // checkProfileStatus determines which AWS profile files need to be written or updated.
 func checkProfileStatus(configPath, credsPath, resolvedHost string) (profileStatus, error) {
 	configNeeded, err := configNeedsWrite(configPath, resolvedHost)

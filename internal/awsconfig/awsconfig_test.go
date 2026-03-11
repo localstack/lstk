@@ -341,39 +341,3 @@ func TestIsValidLocalStackEndpoint(t *testing.T) {
 	}
 }
 
-func TestFilesToModify(t *testing.T) {
-	tests := []struct {
-		name      string
-		status    profileStatus
-		wantFiles []string
-	}{
-		{
-			name:      "both needed",
-			status:    profileStatus{configNeeded: true, credsNeeded: true},
-			wantFiles: []string{"~/.aws/config", "~/.aws/credentials"},
-		},
-		{
-			name:      "config only",
-			status:    profileStatus{configNeeded: true, credsNeeded: false},
-			wantFiles: []string{"~/.aws/config"},
-		},
-		{
-			name:      "credentials only",
-			status:    profileStatus{configNeeded: false, credsNeeded: true},
-			wantFiles: []string{"~/.aws/credentials"},
-		},
-	}
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			got := tc.status.filesToModify()
-			if len(got) != len(tc.wantFiles) {
-				t.Fatalf("got %v, want %v", got, tc.wantFiles)
-			}
-			for i, want := range tc.wantFiles {
-				if got[i] != want {
-					t.Errorf("files[%d]: got %q, want %q", i, got[i], want)
-				}
-			}
-		})
-	}
-}
