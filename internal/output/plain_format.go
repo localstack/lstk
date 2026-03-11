@@ -58,11 +58,9 @@ func formatUserInputRequest(e UserInputRequestEvent) string {
 	return FormatPrompt(e.Prompt, e.Options)
 }
 
-// FormatPrompt formats a prompt string with its options into a display line.
-func FormatPrompt(prompt string, options []InputOption) string {
-	lines := strings.Split(prompt, "\n")
-	firstLine := lines[0]
-	rest := lines[1:]
+// FormatPromptLabels formats option labels into a suffix string.
+// Returns " (label)" for a single option, " [a/b]" for multiple, or "" for none.
+func FormatPromptLabels(options []InputOption) string {
 	labels := make([]string, 0, len(options))
 	for _, opt := range options {
 		if opt.Label != "" {
@@ -72,15 +70,19 @@ func FormatPrompt(prompt string, options []InputOption) string {
 
 	switch len(labels) {
 	case 0:
-		if len(rest) == 0 {
-			return firstLine
-		}
-		return strings.Join(append([]string{firstLine}, rest...), "\n")
+		return ""
 	case 1:
-		firstLine = fmt.Sprintf("%s (%s)", firstLine, labels[0])
+		return fmt.Sprintf(" (%s)", labels[0])
 	default:
-		firstLine = fmt.Sprintf("%s [%s]", firstLine, strings.Join(labels, "/"))
+		return fmt.Sprintf(" [%s]", strings.Join(labels, "/"))
 	}
+}
+
+// FormatPrompt formats a prompt string with its options into a display line.
+func FormatPrompt(prompt string, options []InputOption) string {
+	lines := strings.Split(prompt, "\n")
+	firstLine := lines[0] + FormatPromptLabels(options)
+	rest := lines[1:]
 
 	if len(rest) == 0 {
 		return firstLine

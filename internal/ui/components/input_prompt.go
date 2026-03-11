@@ -1,6 +1,8 @@
 package components
 
 import (
+	"strings"
+
 	"github.com/localstack/lstk/internal/output"
 	"github.com/localstack/lstk/internal/ui/styles"
 )
@@ -36,5 +38,24 @@ func (p InputPrompt) View() string {
 		return ""
 	}
 
-	return styles.SecondaryMessage.Render(output.FormatPrompt(p.prompt, p.options))
+	lines := strings.Split(p.prompt, "\n")
+	firstLine := lines[0]
+
+	var sb strings.Builder
+
+	// "?" prefix in secondary color
+	sb.WriteString(styles.Secondary.Render("? "))
+
+	sb.WriteString(styles.Message.Render(firstLine))
+
+	if suffix := output.FormatPromptLabels(p.options); suffix != "" {
+		sb.WriteString(styles.Secondary.Render(suffix))
+	}
+
+	if len(lines) > 1 {
+		sb.WriteString("\n")
+		sb.WriteString(styles.SecondaryMessage.Render(strings.Join(lines[1:], "\n")))
+	}
+
+	return sb.String()
 }

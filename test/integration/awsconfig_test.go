@@ -57,7 +57,7 @@ func TestStartPromptsToCreateAWSProfileWhenMissing(t *testing.T) {
 
 	// Wait for the AWS profile prompt.
 	require.Eventually(t, func() bool {
-		return bytes.Contains(out.Bytes(), []byte("Set up LocalStack AWS profile"))
+		return bytes.Contains(out.Bytes(), []byte("Configure AWS profile in"))
 	}, 2*time.Minute, 200*time.Millisecond, "AWS profile prompt should appear")
 
 	// Press Y to confirm.
@@ -66,7 +66,7 @@ func TestStartPromptsToCreateAWSProfileWhenMissing(t *testing.T) {
 
 	// Wait for the success message.
 	require.Eventually(t, func() bool {
-		return bytes.Contains(out.Bytes(), []byte("LocalStack AWS profile written"))
+		return bytes.Contains(out.Bytes(), []byte("AWS profile successfully configured"))
 	}, 10*time.Second, 200*time.Millisecond, "success message should appear")
 
 	// Verify files were written to the isolated home dir, not the real one.
@@ -133,7 +133,7 @@ func TestStartSkipsAWSProfilePromptWhenAlreadyConfigured(t *testing.T) {
 	_ = cmd.Wait()
 	<-outputCh
 
-	assert.NotContains(t, out.String(), "Set up LocalStack AWS profile",
+	assert.NotContains(t, out.String(), "Configure AWS profile in",
 		"profile prompt should not appear when profile is already correctly configured")
 }
 
