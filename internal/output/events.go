@@ -55,8 +55,32 @@ type AuthEvent struct {
 	URL      string
 }
 
+type InstanceInfoEvent struct {
+	EmulatorName  string
+	Version       string
+	Host          string
+	ContainerName string
+	Uptime        time.Duration
+}
+
+type ResourceRow struct {
+	Service  string
+	Resource string
+	Region   string
+	Account  string
+}
+
+type ResourceTableEvent struct {
+	Rows []ResourceRow
+}
+
+type ResourceSummaryEvent struct {
+	ResourceCount int
+	ServiceCount  int
+}
+
 type Event interface {
-	MessageEvent | AuthEvent | SpinnerEvent | ErrorEvent | ContainerStatusEvent | ProgressEvent | UserInputRequestEvent | ContainerLogLineEvent
+	MessageEvent | AuthEvent | SpinnerEvent | ErrorEvent | ContainerStatusEvent | ProgressEvent | UserInputRequestEvent | ContainerLogLineEvent | InstanceInfoEvent | ResourceTableEvent | ResourceSummaryEvent
 }
 
 type Sink interface {

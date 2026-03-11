@@ -1,0 +1,39 @@
+package cmd
+
+import (
+	"fmt"
+	"os"
+
+	"github.com/localstack/lstk/internal/config"
+	"github.com/localstack/lstk/internal/container"
+	"github.com/localstack/lstk/internal/env"
+	"github.com/localstack/lstk/internal/output"
+	"github.com/localstack/lstk/internal/runtime"
+	"github.com/localstack/lstk/internal/ui"
+	"github.com/spf13/cobra"
+)
+
+func newStatusCmd(cfg *env.Env) *cobra.Command {
+	return &cobra.Command{
+		Use:     "status",
+		Short:   "Show emulator status and deployed resources",
+		Long:    "Show the status of a running emulator and its deployed resources",
+		PreRunE: initConfig,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			rt, err := runtime.NewDockerRuntime()
+			if err != nil {
+				return err
+			}
+
+			appCfg, err := config.Get()
+			if err != nil {
+				return fmt.Errorf("failed to get config: %w", err)
+			}
+
+			if isInteractiveMode(cfg) {
+				return ui.RunStatus(cmd.Context(), rt, appCfg.Containers, cfg.LocalStackHost)
+			}
+			return container.Status(cmd.Context(), rt, appCfg.Containers, cfg.LocalStackHost, output.NewPlainSink(os.Stdout))
+		},
+	}
+}

@@ -9,6 +9,7 @@ import (
 	stdruntime "runtime"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/containerd/errdefs"
 	"github.com/docker/docker/api/types/container"
@@ -154,6 +155,18 @@ func (d *DockerRuntime) IsRunning(ctx context.Context, containerID string) (bool
 		return false, err
 	}
 	return inspect.State.Running, nil
+}
+
+func (d *DockerRuntime) ContainerStartedAt(ctx context.Context, containerName string) (time.Time, error) {
+	inspect, err := d.client.ContainerInspect(ctx, containerName)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("failed to inspect container: %w", err)
+	}
+	t, err := time.Parse(time.RFC3339Nano, inspect.State.StartedAt)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("failed to parse container start time: %w", err)
+	}
+	return t, nil
 }
 
 func (d *DockerRuntime) Logs(ctx context.Context, containerID string, tail int) (string, error) {

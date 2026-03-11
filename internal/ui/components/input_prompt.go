@@ -1,6 +1,8 @@
 package components
 
 import (
+	"strings"
+
 	"github.com/localstack/lstk/internal/output"
 	"github.com/localstack/lstk/internal/ui/styles"
 )
@@ -36,5 +38,17 @@ func (p InputPrompt) View() string {
 		return ""
 	}
 
-	return styles.SecondaryMessage.Render(output.FormatPrompt(p.prompt, p.options))
+	lines := strings.Split(p.prompt, "\n")
+
+	var sb strings.Builder
+	sb.WriteString(styles.Secondary.Render("? "))
+	sb.WriteString(styles.Message.Render(lines[0]))
+	sb.WriteString(styles.Secondary.Render(output.FormatPromptLabels(p.options)))
+
+	if len(lines) > 1 {
+		sb.WriteString("\n")
+		sb.WriteString(styles.SecondaryMessage.Render(strings.Join(lines[1:], "\n")))
+	}
+
+	return sb.String()
 }

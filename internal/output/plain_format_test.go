@@ -1,6 +1,10 @@
 package output
 
-import "testing"
+import (
+	"strings"
+	"testing"
+	"time"
+)
 
 func TestFormatEventLine(t *testing.T) {
 	t.Parallel()
@@ -108,6 +112,53 @@ func TestFormatEventLine(t *testing.T) {
 			wantOK: true,
 		},
 		{
+			name: "instance info full",
+			event: InstanceInfoEvent{
+				EmulatorName:  "LocalStack AWS Emulator",
+				Version:       "4.14.1",
+				Host:          "localhost.localstack.cloud:4566",
+				ContainerName: "localstack-aws",
+				Uptime:        4*time.Minute + 23*time.Second,
+			},
+			want:   "✓ LocalStack AWS Emulator is running (localhost.localstack.cloud:4566)\n  UPTIME: 4m 23s · CONTAINER: localstack-aws · VERSION: 4.14.1",
+			wantOK: true,
+		},
+		{
+			name: "instance info minimal",
+			event: InstanceInfoEvent{
+				EmulatorName: "LocalStack AWS Emulator",
+				Host:         "127.0.0.1:4566",
+			},
+			want:   "✓ LocalStack AWS Emulator is running (127.0.0.1:4566)",
+			wantOK: true,
+		},
+		{
+			name: "resource summary",
+			event: ResourceSummaryEvent{
+				ResourceCount: 23,
+				ServiceCount:  12,
+			},
+			want:   "~ 23 resources · 12 services",
+			wantOK: true,
+		},
+		{
+			name: "resource table with entries",
+			event: ResourceTableEvent{
+				Rows: []ResourceRow{
+					{Service: "Lambda", Resource: "handler", Region: "us-east-1", Account: "000000000000"},
+					{Service: "S3", Resource: "my-bucket", Region: "us-east-1", Account: "000000000000"},
+				},
+			},
+			want:   "  SERVICE  RESOURCE   REGION     ACCOUNT\n  Lambda   handler    us-east-1  000000000000\n  S3       my-bucket  us-east-1  000000000000",
+			wantOK: true,
+		},
+		{
+			name:   "resource table empty",
+			event:  ResourceTableEvent{Rows: []ResourceRow{}},
+			want:   "",
+			wantOK: false,
+		},
+		{
 			name:   "unsupported event",
 			event:  struct{}{},
 			want:   "",
@@ -130,3 +181,55 @@ func TestFormatEventLine(t *testing.T) {
 		})
 	}
 }
+
+func TestFormatResourceTableWidth(t *testing.T) {
+	t.Parallel()
+
+	e := ResourceTableEvent{
+		Rows: []ResourceRow{
+			{Service: "CloudFormation", Resource: "8245db0d-5c05-4209-90f0-51ec48446a58", Region: "us-east-1", Account: "000000000000"},
+			{Service: "EC2", Resource: "subnet-816649cee2efc65ac", Region: "eu-central-1", Account: "000000000000"},
+			{Service: "Lambda", Resource: "HelloWorldFunctionJavaScript", Region: "us-east-1", Account: "000000000000"},
+		},
+	}
+
+	t.Run("truncates resource column to fit terminal width", func(t *testing.T) {
+		t.Parallel()
+		got := formatResourceTableWidth(e, 80)
+		for i, line := range strings.Split(got, "\n") {
+			w := displayWidth(line)
+			if w > 80 {
+				t.Errorf("line %d has display width %d (>80): %q", i, w, line)
+			}
+		}
+		if !strings.Contains(got, "8245db0d") {
+			t.Error("expected truncated UUID to still contain prefix")
+		}
+		if !strings.Contains(got, "…") {
+			t.Error("expected truncation marker")
+		}
+	})
+
+	t.Run("no truncation when terminal is wide enough", func(t *testing.T) {
+		t.Parallel()
+		got := formatResourceTableWidth(e, 200)
+		if strings.Contains(got, "…") {
+			t.Error("expected no truncation at width 200")
+		}
+		if !strings.Contains(got, "8245db0d-5c05-4209-90f0-51ec48446a58") {
+			t.Error("expected full UUID")
+		}
+	})
+
+	t.Run("narrow terminal still renders without panic", func(t *testing.T) {
+		t.Parallel()
+		got := formatResourceTableWidth(e, 40)
+		if got == "" {
+			t.Error("expected non-empty output")
+		}
+		if !strings.Contains(got, "…") {
+			t.Error("expected truncation at narrow width")
+		}
+	})
+}
+

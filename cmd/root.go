@@ -48,6 +48,7 @@ func NewRootCmd(cfg *env.Env, tel *telemetry.Client) *cobra.Command {
 	root.AddCommand(
 		newStartCmd(cfg, tel),
 		newStopCmd(cfg),
+		newStatusCmd(cfg),
 		newLoginCmd(cfg),
 		newLogoutCmd(cfg),
 		newLogsCmd(),

@@ -200,7 +200,9 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, tea.Quit
 	default:
 		if line, ok := output.FormatEventLine(msg); ok {
-			a.lines = appendLine(a.lines, styledLine{text: line})
+			for _, part := range strings.Split(line, "\n") {
+				a.lines = appendLine(a.lines, styledLine{text: part})
+			}
 		}
 	}
 
