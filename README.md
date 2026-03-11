@@ -46,9 +46,11 @@ Running `lstk` will automatically handle configuration setup and start LocalStac
 
 - **Start / stop** LocalStack emulators with a single command
 - **Interactive TUI** — a Bubble Tea-powered terminal UI when run in an interactive shell
-- **Plain output** for CI/CD and scripting (auto-detected in non-interactive environments)
+- **Plain output** for CI/CD and scripting (auto-detected in non-interactive environments or forced with `--non-interactive`)
 - **Log streaming** — tail emulator logs in real-time with `--follow`
 - **Browser-based login** — authenticate via browser and store credentials securely in the system keyring
+- **AWS CLI profile** — optionally configure a `localstack` profile in `~/.aws/` after start
+- **Self-update** — check for and install the latest `lstk` release with `lstk update`
 - **Shell completions** — bash, zsh, and fish completions included
 
 ## Authentication
@@ -78,12 +80,27 @@ To see which config file is currently in use:
 lstk config path
 ```
 
+You can also point `lstk` at a specific config file for any command:
+
+```bash
+lstk --config /path/to/lstk.toml start
+```
+
+## Interactive And Non-Interactive Mode
+
+`lstk` uses the TUI in an interactive terminal and plain output elsewhere. Use `--non-interactive` to force plain output even in a TTY:
+
+```bash
+lstk --non-interactive
+```
+
 ## Environment Variables
 
 | Variable | Description |
 |---|---|
-| `LOCALSTACK_AUTH_TOKEN` | Auth token; for CI only |
+| `LOCALSTACK_AUTH_TOKEN` | Auth token used for non-interactive runs or to skip browser login |
 | `LOCALSTACK_DISABLE_EVENTS=1` | Disables telemetry event reporting |
+| `LSTK_GITHUB_TOKEN` | GitHub token used by `lstk update` to avoid API rate limits |
 
 ## Usage
 
@@ -92,7 +109,7 @@ lstk config path
 lstk
 
 # Start non-interactively (e.g. in CI)
-LOCALSTACK_AUTH_TOKEN=<token> lstk start
+LOCALSTACK_AUTH_TOKEN=<token> lstk --non-interactive
 
 # Stop the running emulator
 lstk stop
@@ -105,6 +122,12 @@ lstk login
 
 # Log out (removes stored credentials)
 lstk logout
+
+# Check whether a newer lstk version is available
+lstk update --check
+
+# Update lstk to the latest version
+lstk update
 
 # Show resolved config file path
 lstk config path
