@@ -551,10 +551,10 @@ func TestResolveOption(t *testing.T) {
 	keyYUpper := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'Y'}}
 
 	tests := []struct {
-		name           string
-		options        []output.InputOption
-		press          tea.KeyMsg
-		wantOptionKey  string // key of the expected returned option; empty means nil
+		name          string
+		options       []output.InputOption
+		press         tea.KeyMsg
+		wantOptionKey string // key of the expected returned option; empty means nil
 	}{
 		// "any" option
 		{
@@ -655,6 +655,7 @@ func TestResolveOption(t *testing.T) {
 			} else {
 				if got == nil {
 					t.Fatal("expected non-nil option, got nil")
+					return
 				}
 				if got.Key != tc.wantOptionKey {
 					t.Fatalf("got key %q, want %q", got.Key, tc.wantOptionKey)
