@@ -42,39 +42,39 @@ func TestPlainSink_EmitsStatusEvent(t *testing.T) {
 		expected string
 	}{
 		{
-			name:     "pulling phase suppressed",
+			name:     "pulling phase",
 			event:    ContainerStatusEvent{Phase: "pulling", Container: "localstack/localstack:latest"},
-			expected: "",
+			expected: "Preparing LocalStack...\n",
 		},
 		{
 			name:     "starting phase",
-			event:    ContainerStatusEvent{Phase: "starting", Container: "localstack"},
-			expected: "Starting localstack...\n",
+			event:    ContainerStatusEvent{Phase: "starting", Container: "localstack-aws"},
+			expected: "Starting LocalStack...\n",
 		},
 		{
 			name:     "waiting phase",
-			event:    ContainerStatusEvent{Phase: "waiting", Container: "localstack"},
-			expected: "Waiting for localstack to be ready...\n",
+			event:    ContainerStatusEvent{Phase: "waiting", Container: "localstack-aws"},
+			expected: "Waiting for LocalStack to be ready...\n",
 		},
 		{
 			name:     "ready phase with detail",
-			event:    ContainerStatusEvent{Phase: "ready", Container: "localstack", Detail: "abc123"},
-			expected: "localstack ready (abc123)\n",
+			event:    ContainerStatusEvent{Phase: "ready", Container: "localstack-aws", Detail: "abc123"},
+			expected: "LocalStack ready (abc123)\n",
 		},
 		{
 			name:     "ready phase without detail",
-			event:    ContainerStatusEvent{Phase: "ready", Container: "localstack"},
-			expected: "localstack ready\n",
+			event:    ContainerStatusEvent{Phase: "ready", Container: "localstack-aws"},
+			expected: "LocalStack ready\n",
 		},
 		{
 			name:     "unknown phase with detail",
-			event:    ContainerStatusEvent{Phase: "custom", Container: "localstack", Detail: "info"},
-			expected: "localstack: custom (info)\n",
+			event:    ContainerStatusEvent{Phase: "custom", Container: "localstack-aws", Detail: "info"},
+			expected: "LocalStack: custom (info)\n",
 		},
 		{
 			name:     "unknown phase without detail",
-			event:    ContainerStatusEvent{Phase: "custom", Container: "localstack"},
-			expected: "localstack: custom\n",
+			event:    ContainerStatusEvent{Phase: "custom", Container: "localstack-aws"},
+			expected: "LocalStack: custom\n",
 		},
 	}
 

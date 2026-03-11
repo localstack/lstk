@@ -185,12 +185,12 @@ func startContainers(ctx context.Context, rt runtime.Runtime, sink output.Sink, 
 		output.EmitStatus(sink, "starting", c.Name, "")
 		containerID, err := rt.Start(ctx, c)
 		if err != nil {
-			return fmt.Errorf("failed to start %s: %w", c.Name, err)
+			return fmt.Errorf("failed to start LocalStack: %w", err)
 		}
 
 		output.EmitStatus(sink, "waiting", c.Name, "")
 		healthURL := fmt.Sprintf("http://localhost:%s%s", c.Port, c.HealthPath)
-		if err := awaitStartup(ctx, rt, sink, containerID, c.Name, healthURL); err != nil {
+		if err := awaitStartup(ctx, rt, sink, containerID, "LocalStack", healthURL); err != nil {
 			return err
 		}
 
@@ -207,7 +207,7 @@ func selectContainersToStart(ctx context.Context, rt runtime.Runtime, sink outpu
 			return nil, fmt.Errorf("failed to check container status: %w", err)
 		}
 		if running {
-			output.EmitInfo(sink, fmt.Sprintf("%s is already running", c.Name))
+			output.EmitInfo(sink, "LocalStack is already running")
 			continue
 		}
 		if err := ports.CheckAvailable(c.Port); err != nil {
