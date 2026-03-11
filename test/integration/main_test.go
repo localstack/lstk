@@ -97,8 +97,9 @@ func TestMain(m *testing.M) {
 	}
 
 	keyringConfig := keyring.Config{
-		ServiceName: keyringService,
-		FileDir:     filepath.Join(configDir(), keyringFilename),
+		ServiceName:             keyringService,
+		FileDir:                 filepath.Join(configDir(), keyringFilename),
+		LibSecretCollectionName: "login",
 		FilePasswordFunc: func(prompt string) (string, error) {
 			return keyringPassword, nil
 		},
