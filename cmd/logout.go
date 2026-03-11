@@ -7,8 +7,10 @@ import (
 
 	"github.com/localstack/lstk/internal/api"
 	"github.com/localstack/lstk/internal/auth"
+	"github.com/localstack/lstk/internal/container"
 	"github.com/localstack/lstk/internal/env"
 	"github.com/localstack/lstk/internal/output"
+	"github.com/localstack/lstk/internal/runtime"
 	"github.com/localstack/lstk/internal/ui"
 	"github.com/spf13/cobra"
 )
@@ -21,7 +23,11 @@ func newLogoutCmd(cfg *env.Env) *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			platformClient := api.NewPlatformClient(cfg.APIEndpoint)
 			if isInteractiveMode(cfg) {
-				return ui.RunLogout(cmd.Context(), platformClient, cfg.AuthToken, cfg.ForceFileKeyring)
+				var rt runtime.Runtime
+				if dockerRuntime, err := runtime.NewDockerRuntime(); err == nil {
+					rt = dockerRuntime
+				}
+				return ui.RunLogout(cmd.Context(), rt, platformClient, cfg.AuthToken, cfg.ForceFileKeyring)
 			}
 
 			sink := output.NewPlainSink(os.Stdout)
@@ -35,6 +41,12 @@ func newLogoutCmd(cfg *env.Env) *cobra.Command {
 					return nil
 				}
 				return fmt.Errorf("failed to logout: %w", err)
+			}
+
+			if rt, err := runtime.NewDockerRuntime(); err == nil {
+				if running, err := container.AnyRunning(cmd.Context(), rt); err == nil && running {
+					output.EmitNote(sink, "LocalStack is still running in the background")
+				}
 			}
 			return nil
 		},
