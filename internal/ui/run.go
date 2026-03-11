@@ -6,7 +6,6 @@ import (
 	"os"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/localstack/lstk/internal/api"
 	"github.com/localstack/lstk/internal/config"
 	"github.com/localstack/lstk/internal/container"
 	"github.com/localstack/lstk/internal/endpoint"
@@ -26,7 +25,7 @@ func (s programSender) Send(msg any) {
 	s.p.Send(msg)
 }
 
-func Run(parentCtx context.Context, rt runtime.Runtime, version string, platformClient api.PlatformAPI, authToken string, forceFileKeyring bool, webAppURL string, localStackHost string) error {
+func Run(parentCtx context.Context, rt runtime.Runtime, version string, opts container.StartOptions) error {
 	ctx, cancel := context.WithCancel(parentCtx)
 	defer cancel()
 
@@ -36,7 +35,7 @@ func Run(parentCtx context.Context, rt runtime.Runtime, version string, platform
 	if cfg, err := config.Get(); err == nil && len(cfg.Containers) > 0 {
 		emulatorName = cfg.Containers[0].DisplayName()
 		if cfg.Containers[0].Port != "" {
-			host, _ = endpoint.ResolveHost(cfg.Containers[0].Port, localStackHost)
+			host, _ = endpoint.ResolveHost(cfg.Containers[0].Port, opts.LocalStackHost)
 		}
 	}
 
@@ -47,7 +46,7 @@ func Run(parentCtx context.Context, rt runtime.Runtime, version string, platform
 	go func() {
 		var err error
 		defer func() { runErrCh <- err }()
-		err = container.Start(ctx, rt, output.NewTUISink(programSender{p: p}), platformClient, authToken, forceFileKeyring, webAppURL, true, localStackHost)
+		err = container.Start(ctx, rt, output.NewTUISink(programSender{p: p}), opts, true)
 		if err != nil {
 			if errors.Is(err, context.Canceled) {
 				return

@@ -21,7 +21,7 @@ func TestStart_ReturnsEarlyIfRuntimeUnhealthy(t *testing.T) {
 
 	sink := output.NewPlainSink(io.Discard)
 
-	err := Start(context.Background(), mockRT, sink, nil, "", false, "", false, "")
+	err := Start(context.Background(), mockRT, sink, StartOptions{}, false)
 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "runtime not healthy")

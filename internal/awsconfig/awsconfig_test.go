@@ -179,6 +179,14 @@ func TestCheckProfileStatus(t *testing.T) {
 			wantConfig:    false,
 			wantCreds:     true,
 		},
+		{
+			name:          "127.0.0.1 profile valid when DNS now resolves to localhost.localstack.cloud",
+			configContent: "[profile localstack]\nregion = us-east-1\noutput = json\nendpoint_url = http://127.0.0.1:4566\n",
+			credsContent:  "[localstack]\naws_access_key_id = test\naws_secret_access_key = test\n",
+			resolvedHost:  "localhost.localstack.cloud:4566",
+			wantConfig:    false,
+			wantCreds:     false,
+		},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -216,6 +224,120 @@ func TestCheckProfileStatusMalformedFile(t *testing.T) {
 	_, err := checkProfileStatus(configPath, credsPath, "127.0.0.1:4566")
 	if err == nil {
 		t.Error("expected error for malformed config file, got nil")
+	}
+}
+
+func TestIsValidLocalStackEndpoint(t *testing.T) {
+	tests := []struct {
+		name         string
+		endpointURL  string
+		resolvedHost string
+		want         bool
+	}{
+		{
+			name:         "valid http",
+			endpointURL:  "http://localhost.localstack.cloud:4566",
+			resolvedHost: "localhost.localstack.cloud:4566",
+			want:         true,
+		},
+		{
+			name:         "valid https",
+			endpointURL:  "https://localhost.localstack.cloud:4566",
+			resolvedHost: "localhost.localstack.cloud:4566",
+			want:         true,
+		},
+		{
+			name:         "valid fallback ip",
+			endpointURL:  "http://127.0.0.1:4566",
+			resolvedHost: "127.0.0.1:4566",
+			want:         true,
+		},
+		{
+			name:         "wrong host",
+			endpointURL:  "http://some-other-host:4566",
+			resolvedHost: "localhost.localstack.cloud:4566",
+			want:         false,
+		},
+		{
+			name:         "wrong port",
+			endpointURL:  "http://localhost.localstack.cloud:9999",
+			resolvedHost: "localhost.localstack.cloud:4566",
+			want:         false,
+		},
+		{
+			name:         "missing port",
+			endpointURL:  "http://localhost.localstack.cloud",
+			resolvedHost: "localhost.localstack.cloud:4566",
+			want:         false,
+		},
+		{
+			name:         "trailing slash",
+			endpointURL:  "http://localhost.localstack.cloud:4566/",
+			resolvedHost: "localhost.localstack.cloud:4566",
+			want:         true, // trailing slash is functionally equivalent; host still matches
+		},
+		{
+			name:         "unsupported scheme",
+			endpointURL:  "ftp://localhost.localstack.cloud:4566",
+			resolvedHost: "localhost.localstack.cloud:4566",
+			want:         false,
+		},
+		{
+			name:         "unparseable url",
+			endpointURL:  "://bad-url",
+			resolvedHost: "localhost.localstack.cloud:4566",
+			want:         false,
+		},
+		{
+			name:         "empty string",
+			endpointURL:  "",
+			resolvedHost: "localhost.localstack.cloud:4566",
+			want:         false,
+		},
+		{
+			name:         "127.0.0.1 accepted when resolved host is localhost.localstack.cloud",
+			endpointURL:  "http://127.0.0.1:4566",
+			resolvedHost: "localhost.localstack.cloud:4566",
+			want:         true,
+		},
+		{
+			name:         "localhost.localstack.cloud accepted when resolved host is 127.0.0.1",
+			endpointURL:  "http://localhost.localstack.cloud:4566",
+			resolvedHost: "127.0.0.1:4566",
+			want:         true,
+		},
+		{
+			name:         "127.0.0.1 with wrong port rejected",
+			endpointURL:  "http://127.0.0.1:9999",
+			resolvedHost: "localhost.localstack.cloud:4566",
+			want:         false,
+		},
+		{
+			name:         "localhost accepted when resolved host is localhost.localstack.cloud",
+			endpointURL:  "http://localhost:4566",
+			resolvedHost: "localhost.localstack.cloud:4566",
+			want:         true,
+		},
+		{
+			name:         "localhost accepted when resolved host is 127.0.0.1",
+			endpointURL:  "http://localhost:4566",
+			resolvedHost: "127.0.0.1:4566",
+			want:         true,
+		},
+		{
+			name:         "custom host not interchangeable with 127.0.0.1",
+			endpointURL:  "http://127.0.0.1:4566",
+			resolvedHost: "myhost.internal:4566",
+			want:         false,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := isValidLocalStackEndpoint(tc.endpointURL, tc.resolvedHost)
+			if got != tc.want {
+				t.Errorf("isValidLocalStackEndpoint(%q, %q) = %v, want %v", tc.endpointURL, tc.resolvedHost, got, tc.want)
+			}
+		})
 	}
 }
 

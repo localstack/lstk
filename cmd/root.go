@@ -80,11 +80,17 @@ func runStart(ctx context.Context, rt runtime.Runtime, cfg *env.Env, tel *teleme
 	// TODO: replace map with a typed payload struct once event schema is finalised
 	tel.Emit(ctx, "cli_cmd", map[string]any{"cmd": "lstk start", "params": []string{}})
 
-	platformClient := api.NewPlatformClient(cfg.APIEndpoint)
-	if isInteractiveMode(cfg) {
-		return ui.Run(ctx, rt, version.Version(), platformClient, cfg.AuthToken, cfg.ForceFileKeyring, cfg.WebAppURL, cfg.LocalStackHost)
+	opts := container.StartOptions{
+		PlatformClient:   api.NewPlatformClient(cfg.APIEndpoint),
+		AuthToken:        cfg.AuthToken,
+		ForceFileKeyring: cfg.ForceFileKeyring,
+		WebAppURL:        cfg.WebAppURL,
+		LocalStackHost:   cfg.LocalStackHost,
 	}
-	return container.Start(ctx, rt, output.NewPlainSink(os.Stdout), platformClient, cfg.AuthToken, cfg.ForceFileKeyring, cfg.WebAppURL, false, cfg.LocalStackHost)
+	if isInteractiveMode(cfg) {
+		return ui.Run(ctx, rt, version.Version(), opts)
+	}
+	return container.Start(ctx, rt, output.NewPlainSink(os.Stdout), opts, false)
 }
 
 func isInteractiveMode(cfg *env.Env) bool {

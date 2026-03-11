@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -29,9 +31,32 @@ func credentialsDefaults() map[string]string {
 	}
 }
 
-// isValidLocalStackEndpoint returns true if the stored endpoint_url matches what Setup would write.
+// isValidLocalStackEndpoint returns true if endpoint_url in ~/.aws/config points to
+// the same LocalStack instance as resolvedHost. localhost, 127.0.0.1, and
+// localhost.localstack.cloud are treated as interchangeable since all three
+// resolve to the local machine.
 func isValidLocalStackEndpoint(endpointURL, resolvedHost string) bool {
-	return endpointURL == "http://"+resolvedHost || endpointURL == "https://"+resolvedHost
+	u, err := url.Parse(endpointURL)
+	if err != nil {
+		return false
+	}
+	if u.Scheme != "http" && u.Scheme != "https" {
+		return false
+	}
+	if u.Host == resolvedHost {
+		return true
+	}
+	// If the resolved host is one of the two known local hostnames, accept the
+	// other as equally valid — they both reach the same local service.
+	resolvedHostname, resolvedPort, err := net.SplitHostPort(resolvedHost)
+	if err != nil || !isLocalStackLocalHost(resolvedHostname) {
+		return false
+	}
+	return u.Port() == resolvedPort && isLocalStackLocalHost(u.Hostname())
+}
+
+func isLocalStackLocalHost(host string) bool {
+	return host == "127.0.0.1" || host == "localhost" || host == endpoint.Hostname
 }
 
 func awsPaths() (configPath, credentialsPath string, err error) {
@@ -172,21 +197,16 @@ func writeCredsProfile(credsPath string) error {
 }
 
 // Setup checks for the localstack AWS profile and prompts to create or update it if needed.
+// resolvedHost must be a host:port string (e.g. "localhost.localstack.cloud:4566").
 // In non-interactive mode, emits a note instead of prompting.
-func Setup(ctx context.Context, sink output.Sink, interactive bool, port string, localStackHost string) error {
+func Setup(ctx context.Context, sink output.Sink, interactive bool, resolvedHost string) error {
 	configPath, credsPath, err := awsPaths()
 	if err != nil {
 		output.EmitWarning(sink, fmt.Sprintf("could not determine AWS config paths: %v", err))
 		return nil
 	}
 
-	var dnsOK bool
-	localStackHost, dnsOK = endpoint.ResolveHost(port, localStackHost)
-	if !dnsOK {
-		output.EmitNote(sink, `Could not resolve "localhost.localstack.cloud" — your system may have DNS rebind protection enabled. Using 127.0.0.1 as the endpoint.`)
-	}
-
-	status, err := checkProfileStatus(configPath, credsPath, localStackHost)
+	status, err := checkProfileStatus(configPath, credsPath, resolvedHost)
 	if err != nil {
 		output.EmitWarning(sink, fmt.Sprintf("could not check AWS profile: %v", err))
 		return nil
@@ -214,7 +234,7 @@ func Setup(ctx context.Context, sink output.Sink, interactive bool, port string,
 			return nil
 		}
 		if status.configNeeded {
-			if err := writeConfigProfile(configPath, localStackHost); err != nil {
+			if err := writeConfigProfile(configPath, resolvedHost); err != nil {
 				output.EmitWarning(sink, fmt.Sprintf("could not update ~/.aws/config: %v", err))
 				return nil
 			}
