@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"net/url"
+	"strings"
 
 	"github.com/localstack/lstk/internal/api"
 	"github.com/localstack/lstk/internal/output"
@@ -43,7 +44,9 @@ func (l *loginProvider) Login(ctx context.Context) (string, error) {
 		Code:     authReq.Code,
 		URL:      authURL,
 	})
-	_ = browser.OpenURL(authURL)
+	if err := browser.OpenURL(authURL); err != nil {
+		output.EmitWarning(l.sink, fmt.Sprintf("Failed to open browser automatically. Open this URL manually to continue: %s", authURL))
+	}
 
 	output.EmitSpinnerStart(l.sink, "Waiting for authorization...")
 
@@ -68,7 +71,7 @@ func (l *loginProvider) Login(ctx context.Context) (string, error) {
 }
 
 func buildAuthURL(webAppURL, authRequestID, code string) string {
-	authURL := fmt.Sprintf("%s/auth/request/%s", webAppURL, authRequestID)
+	authURL := fmt.Sprintf("%s/auth/request/%s", strings.TrimRight(webAppURL, "/"), authRequestID)
 	if code == "" {
 		return authURL
 	}

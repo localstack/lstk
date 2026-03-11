@@ -1,6 +1,9 @@
 package auth
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestBuildAuthURL(t *testing.T) {
 	t.Parallel()
@@ -33,6 +36,13 @@ func TestBuildAuthURL(t *testing.T) {
 			code:        "",
 			wantAuthURL: "https://example.com/auth/request/req-id",
 		},
+		{
+			name:        "trims trailing slash from web app URL",
+			webAppURL:   "https://example.com/",
+			requestID:   "req-id",
+			code:        "1234",
+			wantAuthURL: "https://example.com/auth/request/req-id?code=1234",
+		},
 	}
 
 	for _, tt := range tests {
@@ -43,6 +53,9 @@ func TestBuildAuthURL(t *testing.T) {
 			got := buildAuthURL(tt.webAppURL, tt.requestID, tt.code)
 			if got != tt.wantAuthURL {
 				t.Fatalf("expected auth URL %q, got %q", tt.wantAuthURL, got)
+			}
+			if strings.Contains(got, "//auth/request") {
+				t.Fatalf("expected auth URL without double slash before auth/request, got %q", got)
 			}
 		})
 	}
