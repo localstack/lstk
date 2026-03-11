@@ -13,7 +13,7 @@ import (
 
 // Check reports whether a newer version is available.
 // Returns the latest version string and true if an update is available.
-func Check(ctx context.Context, sink output.Sink) (string, bool, error) {
+func Check(ctx context.Context, sink output.Sink, githubToken string) (string, bool, error) {
 	current := version.Version()
 	if current == "dev" {
 		output.EmitNote(sink, "Running a development build, skipping update check")
@@ -21,7 +21,7 @@ func Check(ctx context.Context, sink output.Sink) (string, bool, error) {
 	}
 
 	output.EmitSpinnerStart(sink, "Checking for updates")
-	latest, err := fetchLatestVersion(ctx)
+	latest, err := fetchLatestVersion(ctx, githubToken)
 	output.EmitSpinnerStop(sink)
 	if err != nil {
 		return "", false, fmt.Errorf("failed to check for updates: %w", err)
@@ -37,8 +37,8 @@ func Check(ctx context.Context, sink output.Sink) (string, bool, error) {
 }
 
 // Update checks for updates and applies the update if one is available.
-func Update(ctx context.Context, sink output.Sink, checkOnly bool) error {
-	latest, available, err := Check(ctx, sink)
+func Update(ctx context.Context, sink output.Sink, checkOnly bool, githubToken string) error {
+	latest, available, err := Check(ctx, sink, githubToken)
 	if err != nil {
 		return err
 	}
@@ -62,7 +62,7 @@ func Update(ctx context.Context, sink output.Sink, checkOnly bool) error {
 		err = updateNPM(ctx, sink, projectDir)
 	default:
 		output.EmitSpinnerStart(sink, "Downloading update")
-		err = updateBinary(ctx, latest)
+		err = updateBinary(ctx, latest, githubToken)
 		output.EmitSpinnerStop(sink)
 	}
 	if err != nil {

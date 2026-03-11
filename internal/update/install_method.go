@@ -49,17 +49,17 @@ func DetectInstallMethod() InstallInfo {
 }
 
 func classifyPath(resolved string) InstallMethod {
-	lower := strings.ToLower(resolved)
+	cleaned := filepath.Clean(resolved)
+	segments := strings.Split(cleaned, string(os.PathSeparator))
 
-	// Homebrew cask: symlink resolves into /Caskroom/
-	if strings.Contains(lower, "/caskroom/") {
-		return InstallHomebrew
-	}
-
-	// npm install: the Go binary lives inside a node_modules directory
-	// e.g. <prefix>/lib/node_modules/@localstack/lstk_darwin_arm64/lstk
-	if strings.Contains(lower, "node_modules") {
-		return InstallNPM
+	for _, seg := range segments {
+		lower := strings.ToLower(seg)
+		if lower == "caskroom" {
+			return InstallHomebrew
+		}
+		if lower == "node_modules" {
+			return InstallNPM
+		}
 	}
 
 	return InstallBinary

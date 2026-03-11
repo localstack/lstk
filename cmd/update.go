@@ -20,9 +20,9 @@ func newUpdateCmd(cfg *env.Env) *cobra.Command {
 		PreRunE: initConfig,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if isInteractiveMode(cfg) {
-				return ui.RunUpdate(cmd.Context(), checkOnly)
+				return ui.RunUpdate(cmd.Context(), checkOnly, cfg.GitHubToken)
 			}
-			return update.Update(cmd.Context(), output.NewPlainSink(os.Stdout), checkOnly)
+			return update.Update(cmd.Context(), output.NewPlainSink(os.Stdout), checkOnly, cfg.GitHubToken)
 		},
 	}
 

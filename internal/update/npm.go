@@ -15,7 +15,7 @@ func updateNPM(ctx context.Context, sink output.Sink, projectDir string) error {
 	} else {
 		cmd = exec.CommandContext(ctx, "npm", "install", "-g", "@localstack/lstk")
 	}
-	w := newLogLineWriter(sink, "npm")
+	w := newLogLineWriter(sink, output.LogSourceNPM)
 	cmd.Stdout = w
 	cmd.Stderr = w
 	err := cmd.Run()

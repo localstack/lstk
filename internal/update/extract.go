@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	goruntime "runtime"
+	"strings"
 )
 
 func extractAndReplace(archivePath, exePath, format string) error {
@@ -65,6 +66,18 @@ func extractAndReplace(archivePath, exePath, format string) error {
 	return os.Chmod(exePath, info.Mode())
 }
 
+func safePath(destDir, name string) (string, error) {
+	if filepath.IsAbs(name) {
+		return "", fmt.Errorf("archive contains absolute path: %s", name)
+	}
+	target := filepath.Join(destDir, filepath.Clean(name))
+	rel, err := filepath.Rel(destDir, target)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(os.PathSeparator)) {
+		return "", fmt.Errorf("archive entry escapes destination: %s", name)
+	}
+	return target, nil
+}
+
 func extractTarGz(archivePath, destDir string) error {
 	f, err := os.Open(archivePath)
 	if err != nil {
@@ -88,7 +101,10 @@ func extractTarGz(archivePath, destDir string) error {
 			return err
 		}
 
-		target := filepath.Join(destDir, filepath.Clean(hdr.Name))
+		target, err := safePath(destDir, hdr.Name)
+		if err != nil {
+			return err
+		}
 		switch hdr.Typeflag {
 		case tar.TypeDir:
 			if err := os.MkdirAll(target, 0o755); err != nil {
@@ -120,7 +136,10 @@ func extractZip(archivePath, destDir string) error {
 	defer func() { _ = r.Close() }()
 
 	for _, f := range r.File {
-		target := filepath.Join(destDir, filepath.Clean(f.Name))
+		target, err := safePath(destDir, f.Name)
+		if err != nil {
+			return err
+		}
 		if f.FileInfo().IsDir() {
 			if err := os.MkdirAll(target, 0o755); err != nil {
 				return err

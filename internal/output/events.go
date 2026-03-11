@@ -105,8 +105,14 @@ type UserInputRequestEvent struct {
 	ResponseCh chan<- InputResponse
 }
 
+const (
+	LogSourceEmulator = "emulator"
+	LogSourceBrew     = "brew"
+	LogSourceNPM      = "npm"
+)
+
 type LogLineEvent struct {
-	Source string // e.g., "container", "brew", "npm"
+	Source string // use LogSource* constants
 	Line   string
 }
 

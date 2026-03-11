@@ -26,21 +26,20 @@ type githubAsset struct {
 	BrowserDownloadURL string `json:"browser_download_url"`
 }
 
-func githubRequest(ctx context.Context, url string) (*http.Response, error) {
+func githubRequest(ctx context.Context, url, token string) (*http.Response, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return nil, err
 	}
 	req.Header.Set("Accept", "application/vnd.github+json")
-	// TODO: this is in here temporarily while we need github for binary downloads. that's why it's not using the Env
-	if token := os.Getenv("GITHUB_TOKEN"); token != "" {
+	if token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
 	}
 	return http.DefaultClient.Do(req)
 }
 
-func fetchLatestVersion(ctx context.Context) (string, error) {
-	resp, err := githubRequest(ctx, latestReleaseURL)
+func fetchLatestVersion(ctx context.Context, token string) (string, error) {
+	resp, err := githubRequest(ctx, latestReleaseURL, token)
 	if err != nil {
 		return "", err
 	}
@@ -58,13 +57,13 @@ func fetchLatestVersion(ctx context.Context) (string, error) {
 	return release.TagName, nil
 }
 
-func updateBinary(ctx context.Context, tag string) error {
+func updateBinary(ctx context.Context, tag, token string) error {
 	ver := normalizeVersion(tag)
 	assetName := buildAssetName(ver, goruntime.GOOS, goruntime.GOARCH)
 
 	downloadURL := fmt.Sprintf("https://github.com/%s/releases/download/%s/%s", githubRepo, tag, assetName)
 
-	resp, err := githubRequest(ctx, downloadURL)
+	resp, err := githubRequest(ctx, downloadURL, token)
 	if err != nil {
 		return err
 	}
