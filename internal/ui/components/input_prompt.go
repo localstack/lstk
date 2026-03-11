@@ -47,12 +47,7 @@ func (p InputPrompt) View() string {
 	// "?" prefix in secondary color
 	sb.WriteString(styles.Secondary.Render("? "))
 
-	// Style trailing "?" with secondary color
-	if before, found := strings.CutSuffix(firstLine, "?"); found {
-		sb.WriteString(styles.Message.Render(before + "?"))
-	} else {
-		sb.WriteString(styles.Message.Render(firstLine))
-	}
+	sb.WriteString(styles.Message.Render(firstLine))
 
 	// Style option labels with secondary color
 	labels := make([]string, 0, len(p.options))
