@@ -1,7 +1,6 @@
 package components
 
 import (
-	"fmt"
 	"strings"
 
 	"github.com/localstack/lstk/internal/output"
@@ -49,17 +48,8 @@ func (p InputPrompt) View() string {
 
 	sb.WriteString(styles.Message.Render(firstLine))
 
-	// Style option labels with secondary color
-	labels := make([]string, 0, len(p.options))
-	for _, opt := range p.options {
-		if opt.Label != "" {
-			labels = append(labels, opt.Label)
-		}
-	}
-	if len(labels) == 1 {
-		sb.WriteString(styles.Secondary.Render(fmt.Sprintf(" (%s)", labels[0])))
-	} else if len(labels) > 1 {
-		sb.WriteString(styles.Secondary.Render(fmt.Sprintf(" [%s]", strings.Join(labels, "/"))))
+	if suffix := output.FormatPromptLabels(p.options); suffix != "" {
+		sb.WriteString(styles.Secondary.Render(suffix))
 	}
 
 	if len(lines) > 1 {
