@@ -88,9 +88,11 @@ func TestStartCommandFailsWhenPortInUse(t *testing.T) {
 	require.NoError(t, err, "failed to bind port 4566 for test")
 	defer func() { _ = ln.Close() }()
 
-	_, stderr, err := runLstk(t, testContext(t), "", env.With(env.AuthToken, "fake-token"), "start")
+	stdout, _, err := runLstk(t, testContext(t), "", env.With(env.AuthToken, "fake-token"), "start")
 	require.Error(t, err, "expected lstk start to fail when port is in use")
-	assert.Contains(t, stderr, "port 4566 already in use")
+	assert.Contains(t, stdout, "Port 4566 already in use")
+	assert.Contains(t, stdout, "LocalStack may already be running.")
+	assert.Contains(t, stdout, "lstk stop")
 }
 
 func cleanup() {

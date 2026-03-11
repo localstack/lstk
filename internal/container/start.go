@@ -211,15 +211,27 @@ func selectContainersToStart(ctx context.Context, rt runtime.Runtime, sink outpu
 			continue
 		}
 		if err := ports.CheckAvailable(c.Port); err != nil {
-			configPath, pathErr := config.ConfigFilePath()
-			if pathErr != nil {
-				return nil, err
-			}
-			return nil, fmt.Errorf("%w\nTo use a different port, edit %s", err, configPath)
+			emitPortInUseError(sink, c.Port)
+			return nil, output.NewSilentError(err)
 		}
 		filtered = append(filtered, c)
 	}
 	return filtered, nil
+}
+
+func emitPortInUseError(sink output.Sink, port string) {
+	actions := []output.ErrorAction{
+		{Label: "Stop existing emulator:", Value: "lstk stop"},
+	}
+	configPath, pathErr := config.ConfigFilePath()
+	if pathErr == nil {
+		actions = append(actions, output.ErrorAction{Label: "Use another port in the configuration:", Value: configPath})
+	}
+	output.EmitError(sink, output.ErrorEvent{
+		Title:   fmt.Sprintf("Port %s already in use", port),
+		Summary: "LocalStack may already be running.",
+		Actions: actions,
+	})
 }
 
 func validateLicense(ctx context.Context, rt runtime.Runtime, sink output.Sink, platformClient api.PlatformAPI, containerConfig runtime.ContainerConfig, token string) error {

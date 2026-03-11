@@ -132,7 +132,7 @@ func formatErrorEvent(e ErrorEvent) string {
 		sb.WriteString(e.Detail)
 	}
 	for _, action := range e.Actions {
-		sb.WriteString("\n  → ")
+		sb.WriteString("\n  " + ErrorActionPrefix)
 		sb.WriteString(action.Label)
 		sb.WriteString(" ")
 		sb.WriteString(action.Value)

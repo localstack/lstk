@@ -144,7 +144,7 @@ func TestPlainSink_EmitsErrorEvent(t *testing.T) {
 		Actions: []ErrorAction{{Label: "Start Docker:", Value: "open -a Docker"}},
 	})
 
-	expected := "Error: Connection failed\n  Cannot connect to Docker\n  → Start Docker: open -a Docker\n"
+	expected := "Error: Connection failed\n  Cannot connect to Docker\n  ==> Start Docker: open -a Docker\n"
 	assert.Equal(t, expected, out.String())
 }
 

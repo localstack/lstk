@@ -62,9 +62,9 @@ func (e ErrorDisplay) View(maxWidth int) string {
 		sb.WriteString("\n")
 		for i, action := range e.event.Actions {
 			if i > 0 {
-				sb.WriteString(styles.SecondaryMessage.Render("⇒ " + action.Label + " " + action.Value))
+				sb.WriteString(styles.SecondaryMessage.Render(output.ErrorActionPrefix + action.Label + " " + action.Value))
 			} else {
-				sb.WriteString(styles.ErrorAction.Render("⇒ " + action.Label + " "))
+				sb.WriteString(styles.ErrorAction.Render(output.ErrorActionPrefix + action.Label + " "))
 				sb.WriteString(styles.Message.Bold(true).Render(action.Value))
 			}
 			sb.WriteString("\n")
