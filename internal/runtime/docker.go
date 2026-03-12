@@ -107,8 +107,10 @@ func (d *DockerRuntime) PullImage(ctx context.Context, imageName string, progres
 	return nil
 }
 
+const emulatorContainerPort = nat.Port("4566/tcp")
+
 func (d *DockerRuntime) Start(ctx context.Context, config ContainerConfig) (string, error) {
-	containerPort := nat.Port("4566/tcp")
+	containerPort := emulatorContainerPort
 	exposedPorts := nat.PortSet{containerPort: struct{}{}}
 	portBindings := nat.PortMap{containerPort: []nat.PortBinding{{HostPort: config.Port}}}
 
