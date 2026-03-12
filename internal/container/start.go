@@ -7,7 +7,6 @@ import (
 	"os"
 	stdruntime "runtime"
 	"slices"
-	"strings"
 	"time"
 
 	"github.com/containerd/errdefs"
@@ -75,9 +74,6 @@ func Start(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts Start
 			return err
 		}
 		env := append(resolvedEnv, "LOCALSTACK_AUTH_TOKEN="+token)
-		if needsGatewayListen(c.Port, resolvedEnv) {
-			env = append(env, "GATEWAY_LISTEN=:"+c.Port)
-		}
 		containers[i] = runtime.ContainerConfig{
 			Image:       image,
 			Name:        c.Name(),
@@ -321,12 +317,4 @@ func hasDuplicateContainerTypes(containers []config.ContainerConfig) bool {
 		seen[c.Type] = true
 	}
 	return false
-}
-
-func needsGatewayListen(port string, env []string) bool {
-	// LocalStack only binds to the configured port when GATEWAY_LISTEN is set explicitly;
-	// without it, non-default ports cause the emulator to never become ready.
-	return port != "4566" && !slices.ContainsFunc(env, func(e string) bool {
-		return strings.HasPrefix(e, "GATEWAY_LISTEN=")
-	})
 }

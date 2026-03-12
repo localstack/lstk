@@ -108,9 +108,9 @@ func (d *DockerRuntime) PullImage(ctx context.Context, imageName string, progres
 }
 
 func (d *DockerRuntime) Start(ctx context.Context, config ContainerConfig) (string, error) {
-	port := nat.Port(config.Port + "/tcp")
-	exposedPorts := nat.PortSet{port: struct{}{}}
-	portBindings := nat.PortMap{port: []nat.PortBinding{{HostPort: config.Port}}}
+	containerPort := nat.Port("4566/tcp")
+	exposedPorts := nat.PortSet{containerPort: struct{}{}}
+	portBindings := nat.PortMap{containerPort: []nat.PortBinding{{HostPort: config.Port}}}
 
 	resp, err := d.client.ContainerCreate(ctx,
 		&container.Config{

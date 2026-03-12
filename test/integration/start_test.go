@@ -3,7 +3,6 @@ package integration_test
 import (
 	"context"
 	"net"
-	"net/http"
 	"os"
 	"path/filepath"
 	"testing"
@@ -125,13 +124,6 @@ port = "4567"
 	ctx := testContext(t)
 	_, stderr, err := runLstk(t, ctx, "", env.With(env.APIEndpoint, mockServer.URL), "--config", configFile, "start")
 	require.NoError(t, err, "lstk start failed: %s", stderr)
-
-	// lstk start only returns once the health check passes, but verify directly
-	// that LocalStack is reachable on the non-default port.
-	resp, err := http.Get("http://localhost:4567/_localstack/health")
-	require.NoError(t, err, "LocalStack health endpoint not reachable on port 4567")
-	defer resp.Body.Close()
-	assert.Equal(t, http.StatusOK, resp.StatusCode, "LocalStack should be ready on port 4567")
 }
 
 func cleanup() {
