@@ -8,8 +8,10 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/exp/teatest"
 	"github.com/localstack/lstk/internal/output"
+	"github.com/muesli/termenv"
 )
 
 func TestAppAddsFormattedLinesInOrder(t *testing.T) {
@@ -176,6 +178,31 @@ func TestAppMessageEventRendering(t *testing.T) {
 	}
 	if !strings.Contains(app.lines[0].text, "Success:") || !strings.Contains(app.lines[0].text, "Done") {
 		t.Fatalf("expected rendered success message, got: %q", app.lines[0].text)
+	}
+}
+
+func TestAppMessageEventWrapsOnVisibleWidth(t *testing.T) {
+	t.Parallel()
+
+	original := lipgloss.ColorProfile()
+	lipgloss.SetColorProfile(termenv.TrueColor)
+	t.Cleanup(func() { lipgloss.SetColorProfile(original) })
+
+	app := NewApp("dev", "", "", nil)
+	app.width = 40
+
+	model, _ := app.Update(output.MessageEvent{
+		Severity: output.SeverityNote,
+		Text:     "LocalStack is still running in the background",
+	})
+	app = model.(App)
+
+	view := app.View()
+	if !strings.Contains(view, "background") {
+		t.Fatalf("expected wrapped message to include full word, got: %q", view)
+	}
+	if strings.Contains(view, "backg\nround") {
+		t.Fatalf("expected message to wrap at word boundary, got: %q", view)
 	}
 }
 

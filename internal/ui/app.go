@@ -27,6 +27,7 @@ type styledLine struct {
 	text      string
 	highlight bool
 	secondary bool
+	message   *output.MessageEvent
 }
 
 type App struct {
@@ -141,7 +142,8 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.spinner, _ = a.spinner.Stop()
 		return a, nil
 	case output.MessageEvent:
-		line := styledLine{text: components.RenderMessage(msg)}
+		msgCopy := msg
+		line := styledLine{text: components.RenderMessage(msg), message: &msgCopy}
 		if a.spinner.PendingStop() {
 			a.bufferedLines = append(a.bufferedLines, line)
 		} else {
@@ -314,6 +316,11 @@ func (a App) View() string {
 	}
 
 	for _, line := range a.lines {
+		if line.message != nil {
+			sb.WriteString(components.RenderWrappedMessage(*line.message, a.width))
+			sb.WriteString("\n")
+			continue
+		}
 		if line.highlight {
 			if isURL(line.text) {
 				wrapped := strings.Split(wrap.HardWrap(line.text, a.width), "\n")
