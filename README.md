@@ -86,6 +86,40 @@ You can also point `lstk` at a specific config file for any command:
 lstk --config /path/to/lstk.toml start
 ```
 
+### Default config
+
+```toml
+[[containers]]
+type = "aws"
+tag  = "latest"
+port = "4566"
+```
+
+**Fields:**
+- `type`: emulator type; only `"aws"` is supported for now
+- `tag`: Docker image tag for LocalStack (e.g. `"latest"`, `"4.14.0"`); useful for pinning a version
+- `port`: port LocalStack listens on (default `4566`)
+- `env`: (optional) list of named environment variable groups to inject into the container (see below)
+
+### Passing environment variables to the container
+
+Define reusable named env sets and reference them per container:
+
+```toml
+[[containers]]
+type = "aws"
+tag  = "4.14.0"
+port = "4566"
+env  = ["prod", "debug"]
+
+[env.prod]
+LOCALSTACK_HOST = "localstack.cloud"
+
+[env.debug]
+LS_LOG = "trace"
+DEBUG  = "1"
+```
+
 ## Interactive And Non-Interactive Mode
 
 `lstk` uses the TUI in an interactive terminal and plain output elsewhere. Use `--non-interactive` to force plain output even in a TTY:
