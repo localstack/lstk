@@ -14,7 +14,7 @@ import (
 )
 
 func RunLogout(parentCtx context.Context, rt runtime.Runtime, platformClient api.PlatformAPI, authToken string, forceFileKeyring bool) error {
-	_, cancel := context.WithCancel(parentCtx)
+	ctx, cancel := context.WithCancel(parentCtx)
 	defer cancel()
 
 	app := NewApp("", "", "", cancel, withoutHeader())
@@ -34,7 +34,7 @@ func RunLogout(parentCtx context.Context, rt runtime.Runtime, platformClient api
 		a := auth.New(sink, platformClient, tokenStorage, authToken, "", false)
 		err = a.Logout()
 		if err == nil && rt != nil {
-			if running, runningErr := container.AnyRunning(parentCtx, rt); runningErr == nil && running {
+			if running, runningErr := container.AnyRunning(ctx, rt); runningErr == nil && running {
 				output.EmitNote(sink, "LocalStack is still running in the background")
 			}
 		}
