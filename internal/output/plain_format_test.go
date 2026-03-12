@@ -133,28 +133,20 @@ func TestFormatEventLine(t *testing.T) {
 			wantOK: true,
 		},
 		{
-			name: "resource summary",
-			event: ResourceSummaryEvent{
-				ResourceCount: 23,
-				ServiceCount:  12,
-			},
-			want:   "~ 23 resources · 12 services",
-			wantOK: true,
-		},
-		{
-			name: "resource table with entries",
-			event: ResourceTableEvent{
-				Rows: []ResourceRow{
-					{Service: "Lambda", Resource: "handler", Region: "us-east-1", Account: "000000000000"},
-					{Service: "S3", Resource: "my-bucket", Region: "us-east-1", Account: "000000000000"},
+			name: "table with entries",
+			event: TableEvent{
+				Headers: []string{"SERVICE", "RESOURCE", "REGION", "ACCOUNT"},
+				Rows: [][]string{
+					{"Lambda", "handler", "us-east-1", "000000000000"},
+					{"S3", "my-bucket", "us-east-1", "000000000000"},
 				},
 			},
 			want:   "  SERVICE  RESOURCE   REGION     ACCOUNT\n  Lambda   handler    us-east-1  000000000000\n  S3       my-bucket  us-east-1  000000000000",
 			wantOK: true,
 		},
 		{
-			name:   "resource table empty",
-			event:  ResourceTableEvent{Rows: []ResourceRow{}},
+			name:   "table empty",
+			event:  TableEvent{Headers: []string{"A"}, Rows: [][]string{}},
 			want:   "",
 			wantOK: false,
 		},
@@ -182,20 +174,21 @@ func TestFormatEventLine(t *testing.T) {
 	}
 }
 
-func TestFormatResourceTableWidth(t *testing.T) {
+func TestFormatTableWidth(t *testing.T) {
 	t.Parallel()
 
-	e := ResourceTableEvent{
-		Rows: []ResourceRow{
-			{Service: "CloudFormation", Resource: "8245db0d-5c05-4209-90f0-51ec48446a58", Region: "us-east-1", Account: "000000000000"},
-			{Service: "EC2", Resource: "subnet-816649cee2efc65ac", Region: "eu-central-1", Account: "000000000000"},
-			{Service: "Lambda", Resource: "HelloWorldFunctionJavaScript", Region: "us-east-1", Account: "000000000000"},
+	e := TableEvent{
+		Headers: []string{"SERVICE", "RESOURCE", "REGION", "ACCOUNT"},
+		Rows: [][]string{
+			{"CloudFormation", "8245db0d-5c05-4209-90f0-51ec48446a58", "us-east-1", "000000000000"},
+			{"EC2", "subnet-816649cee2efc65ac", "eu-central-1", "000000000000"},
+			{"Lambda", "HelloWorldFunctionJavaScript", "us-east-1", "000000000000"},
 		},
 	}
 
-	t.Run("truncates resource column to fit terminal width", func(t *testing.T) {
+	t.Run("truncates widest column to fit terminal width", func(t *testing.T) {
 		t.Parallel()
-		got := formatResourceTableWidth(e, 80)
+		got := formatTableWidth(e, 80)
 		for i, line := range strings.Split(got, "\n") {
 			w := displayWidth(line)
 			if w > 80 {
@@ -212,7 +205,7 @@ func TestFormatResourceTableWidth(t *testing.T) {
 
 	t.Run("no truncation when terminal is wide enough", func(t *testing.T) {
 		t.Parallel()
-		got := formatResourceTableWidth(e, 200)
+		got := formatTableWidth(e, 200)
 		if strings.Contains(got, "…") {
 			t.Error("expected no truncation at width 200")
 		}
@@ -223,7 +216,7 @@ func TestFormatResourceTableWidth(t *testing.T) {
 
 	t.Run("narrow terminal still renders without panic", func(t *testing.T) {
 		t.Parallel()
-		got := formatResourceTableWidth(e, 40)
+		got := formatTableWidth(e, 40)
 		if got == "" {
 			t.Error("expected non-empty output")
 		}

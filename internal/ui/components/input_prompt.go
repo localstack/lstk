@@ -40,10 +40,18 @@ func (p InputPrompt) View() string {
 
 	lines := strings.Split(p.prompt, "\n")
 
+	firstLine := lines[0]
+
 	var sb strings.Builder
+
+	// "?" prefix in secondary color
 	sb.WriteString(styles.Secondary.Render("? "))
-	sb.WriteString(styles.Message.Render(lines[0]))
-	sb.WriteString(styles.Secondary.Render(output.FormatPromptLabels(p.options)))
+
+	sb.WriteString(styles.Message.Render(firstLine))
+
+	if suffix := output.FormatPromptLabels(p.options); suffix != "" {
+		sb.WriteString(styles.Secondary.Render(suffix))
+	}
 
 	if len(lines) > 1 {
 		sb.WriteString("\n")

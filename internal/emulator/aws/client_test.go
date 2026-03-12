@@ -23,7 +23,7 @@ func TestFetchVersion(t *testing.T) {
 		}))
 		defer server.Close()
 
-		c := NewClient(nil)
+		c := NewClient(&http.Client{})
 		version, err := c.FetchVersion(context.Background(), server.Listener.Addr().String())
 		require.NoError(t, err)
 		assert.Equal(t, "4.14.1", version)
@@ -36,7 +36,7 @@ func TestFetchVersion(t *testing.T) {
 		}))
 		defer server.Close()
 
-		c := NewClient(nil)
+		c := NewClient(&http.Client{})
 		_, err := c.FetchVersion(context.Background(), server.Listener.Addr().String())
 		require.Error(t, err)
 	})
@@ -54,16 +54,16 @@ func TestFetchResources(t *testing.T) {
 		}))
 		defer server.Close()
 
-		c := NewClient(nil)
+		c := NewClient(&http.Client{})
 		rows, err := c.FetchResources(context.Background(), server.Listener.Addr().String())
 		require.NoError(t, err)
 		require.Len(t, rows, 2)
 		assert.Equal(t, "Lambda", rows[0].Service)
-		assert.Equal(t, "my-function", rows[0].Resource)
+		assert.Equal(t, "my-function", rows[0].Name)
 		assert.Equal(t, "us-east-1", rows[0].Region)
 		assert.Equal(t, "000000000000", rows[0].Account)
 		assert.Equal(t, "S3", rows[1].Service)
-		assert.Equal(t, "my-bucket", rows[1].Resource)
+		assert.Equal(t, "my-bucket", rows[1].Name)
 	})
 
 	t.Run("extracts name from ARN", func(t *testing.T) {
@@ -74,11 +74,11 @@ func TestFetchResources(t *testing.T) {
 		}))
 		defer server.Close()
 
-		c := NewClient(nil)
+		c := NewClient(&http.Client{})
 		rows, err := c.FetchResources(context.Background(), server.Listener.Addr().String())
 		require.NoError(t, err)
 		require.Len(t, rows, 1)
-		assert.Equal(t, "my-topic", rows[0].Resource)
+		assert.Equal(t, "my-topic", rows[0].Name)
 	})
 
 	t.Run("returns empty slice when no resources", func(t *testing.T) {
@@ -88,7 +88,7 @@ func TestFetchResources(t *testing.T) {
 		}))
 		defer server.Close()
 
-		c := NewClient(nil)
+		c := NewClient(&http.Client{})
 		rows, err := c.FetchResources(context.Background(), server.Listener.Addr().String())
 		require.NoError(t, err)
 		assert.Empty(t, rows)
@@ -101,24 +101,9 @@ func TestFetchResources(t *testing.T) {
 		}))
 		defer server.Close()
 
-		c := NewClient(nil)
+		c := NewClient(&http.Client{})
 		_, err := c.FetchResources(context.Background(), server.Listener.Addr().String())
 		require.Error(t, err)
 	})
 }
 
-func TestExtractResourceName(t *testing.T) {
-	t.Parallel()
-	tests := []struct {
-		input string
-		want  string
-	}{
-		{"my-bucket", "my-bucket"},
-		{"arn:aws:sns:us-east-1:000000000000:my-topic", "my-topic"},
-		{"arn:aws:iam::000000000000:role/my-role", "my-role"},
-		{"arn:aws:lambda:us-east-1:000000000000:function:my-func", "my-func"},
-	}
-	for _, tt := range tests {
-		assert.Equal(t, tt.want, extractResourceName(tt.input), "extractResourceName(%q)", tt.input)
-	}
-}

@@ -14,6 +14,8 @@ func RenderMessage(e output.MessageEvent) string {
 		return prefix + styles.Note.Render("Note:") + " " + styles.Message.Render(e.Text)
 	case output.SeverityWarning:
 		return prefix + styles.Warning.Render("Warning:") + " " + styles.Message.Render(e.Text)
+	case output.SeverityInfo:
+		return styles.Highlight.Render(e.Text)
 	default:
 		return styles.Message.Render(e.Text)
 	}

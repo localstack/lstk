@@ -142,7 +142,16 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, nil
 	case output.MessageEvent:
 		line := styledLine{text: components.RenderMessage(msg)}
-		if a.spinner.PendingStop() {
+		if msg.Severity == output.SeverityInfo {
+			blank := styledLine{text: ""}
+			if a.spinner.PendingStop() {
+				a.bufferedLines = append(a.bufferedLines, blank, line, blank)
+			} else {
+				a.lines = appendLine(a.lines, blank)
+				a.lines = appendLine(a.lines, line)
+				a.lines = appendLine(a.lines, blank)
+			}
+		} else if a.spinner.PendingStop() {
 			a.bufferedLines = append(a.bufferedLines, line)
 		} else {
 			a.lines = appendLine(a.lines, line)
@@ -208,10 +217,33 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			a.errorDisplay = a.errorDisplay.Show(output.ErrorEvent{Title: msg.err.Error()})
 		}
 		return a, tea.Quit
+	case output.TableEvent:
+		if line, ok := output.FormatEventLine(msg); ok {
+			parts := strings.Split(line, "\n")
+			var lines []styledLine
+			if len(parts) > 0 {
+				lines = append(lines, styledLine{text: parts[0], secondary: true})
+			}
+			for _, part := range parts[1:] {
+				lines = append(lines, styledLine{text: part})
+			}
+			if a.spinner.PendingStop() {
+				a.bufferedLines = append(a.bufferedLines, lines...)
+			} else {
+				for _, l := range lines {
+					a.lines = appendLine(a.lines, l)
+				}
+			}
+		}
 	default:
 		if line, ok := output.FormatEventLine(msg); ok {
 			for _, part := range strings.Split(line, "\n") {
-				a.lines = appendLine(a.lines, styledLine{text: part})
+				l := styledLine{text: part}
+				if a.spinner.PendingStop() {
+					a.bufferedLines = append(a.bufferedLines, l)
+				} else {
+					a.lines = appendLine(a.lines, l)
+				}
 			}
 		}
 	}

@@ -30,10 +30,8 @@ func FormatEventLine(event any) (string, bool) {
 		return e.Line, true
 	case InstanceInfoEvent:
 		return formatInstanceInfo(e), true
-	case ResourceSummaryEvent:
-		return formatResourceSummary(e), true
-	case ResourceTableEvent:
-		return formatResourceTable(e)
+	case TableEvent:
+		return formatTable(e)
 	default:
 		return "", false
 	}
@@ -60,13 +58,12 @@ func formatStatusLine(e ContainerStatusEvent) (string, bool) {
 	}
 }
 
-
 func formatUserInputRequest(e UserInputRequestEvent) string {
 	return FormatPrompt(e.Prompt, e.Options)
 }
 
-// FormatPromptLabels returns the formatted label suffix for a prompt's options,
-// e.g. " [Y/n]" for multiple options or " (Y)" for a single option.
+// FormatPromptLabels formats option labels into a suffix string.
+// Returns " (label)" for a single option, " [a/b]" for multiple, or "" for none.
 func FormatPromptLabels(options []InputOption) string {
 	labels := make([]string, 0, len(options))
 	for _, opt := range options {
@@ -181,53 +178,66 @@ func formatUptime(d time.Duration) string {
 	return fmt.Sprintf("%ds", s)
 }
 
-func formatResourceSummary(e ResourceSummaryEvent) string {
-	return fmt.Sprintf("~ %d resources · %d services", e.ResourceCount, e.ServiceCount)
-}
-
-func formatResourceTable(e ResourceTableEvent) (string, bool) {
+func formatTable(e TableEvent) (string, bool) {
 	if len(e.Rows) == 0 {
 		return "", false
 	}
-	return formatResourceTableWidth(e, terminalWidth()), true
+	return formatTableWidth(e, terminalWidth()), true
 }
 
-func formatResourceTableWidth(e ResourceTableEvent, totalWidth int) string {
-	headers := [4]string{"SERVICE", "RESOURCE", "REGION", "ACCOUNT"}
+func formatTableWidth(e TableEvent, totalWidth int) string {
+	ncols := len(e.Headers)
+	if ncols == 0 {
+		return ""
+	}
 
-	// Compute natural (uncapped) column widths from data.
-	widths := [4]int{len(headers[0]), len(headers[1]), len(headers[2]), len(headers[3])}
-	for _, r := range e.Rows {
-		cols := [4]string{r.Service, r.Resource, r.Region, r.Account}
-		for i, c := range cols {
-			if len(c) > widths[i] {
-				widths[i] = len(c)
+	widths := make([]int, ncols)
+	for i, h := range e.Headers {
+		widths[i] = len(h)
+	}
+	for _, row := range e.Rows {
+		for i := range min(len(row), ncols) {
+			if len(row[i]) > widths[i] {
+				widths[i] = len(row[i])
 			}
 		}
 	}
 
-	// Fixed overhead: 2 (indent) + 3×2 (gaps between 4 columns) = 8.
-	const overhead = 8
-	// Cap SERVICE, REGION, ACCOUNT to their natural widths (they're short).
-	// Give RESOURCE whatever space remains.
-	fixedWidth := widths[0] + widths[2] + widths[3] + overhead
-	maxResource := totalWidth - fixedWidth
-	if maxResource < 10 {
-		maxResource = 10
-	}
-	if widths[1] > maxResource {
-		widths[1] = maxResource
-	}
+	// Fixed overhead: 2 (indent) + (ncols-1)*2 (gaps between columns).
+	overhead := 2 + (ncols-1)*2
 
-	maxWidths := [4]int{widths[0], widths[1], widths[2], widths[3]}
+	// Find the widest column and let it absorb any overflow.
+	maxCol := 0
+	for i := 1; i < ncols; i++ {
+		if widths[i] > widths[maxCol] {
+			maxCol = i
+		}
+	}
+	fixedWidth := overhead
+	for i, w := range widths {
+		if i != maxCol {
+			fixedWidth += w
+		}
+	}
+	maxFlexible := totalWidth - fixedWidth
+	if maxFlexible < 10 {
+		maxFlexible = 10
+	}
+	if widths[maxCol] > maxFlexible {
+		widths[maxCol] = maxFlexible
+	}
 
 	var sb strings.Builder
-	writeRow := func(cols [4]string) {
+	writeRow := func(cols []string) {
 		sb.WriteString("  ")
-		for i, c := range cols {
-			val := truncate(c, maxWidths[i])
+		for i := range ncols {
+			cell := ""
+			if i < len(cols) {
+				cell = cols[i]
+			}
+			val := truncate(cell, widths[i])
 			sb.WriteString(val)
-			if i < len(cols)-1 {
+			if i < ncols-1 {
 				padding := widths[i] - displayWidth(val) + 2
 				for range padding {
 					sb.WriteByte(' ')
@@ -235,11 +245,10 @@ func formatResourceTableWidth(e ResourceTableEvent, totalWidth int) string {
 			}
 		}
 	}
-	writeRow(headers)
-	for _, r := range e.Rows {
+	writeRow(e.Headers)
+	for _, row := range e.Rows {
 		sb.WriteString("\n")
-		writeRow([4]string{r.Service, r.Resource, r.Region, r.Account})
+		writeRow(row)
 	}
 	return sb.String()
 }
-

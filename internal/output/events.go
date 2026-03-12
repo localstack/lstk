@@ -65,24 +65,13 @@ type InstanceInfoEvent struct {
 	Uptime        time.Duration
 }
 
-type ResourceRow struct {
-	Service  string
-	Resource string
-	Region   string
-	Account  string
-}
-
-type ResourceTableEvent struct {
-	Rows []ResourceRow
-}
-
-type ResourceSummaryEvent struct {
-	ResourceCount int
-	ServiceCount  int
+type TableEvent struct {
+	Headers []string
+	Rows    [][]string
 }
 
 type Event interface {
-	MessageEvent | AuthEvent | SpinnerEvent | ErrorEvent | ContainerStatusEvent | ProgressEvent | UserInputRequestEvent | LogLineEvent | InstanceInfoEvent | ResourceTableEvent | ResourceSummaryEvent
+	MessageEvent | AuthEvent | SpinnerEvent | ErrorEvent | ContainerStatusEvent | ProgressEvent | UserInputRequestEvent | LogLineEvent | InstanceInfoEvent | TableEvent
 }
 
 type Sink interface {

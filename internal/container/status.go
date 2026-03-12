@@ -3,6 +3,7 @@ package container
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"time"
 
 	"github.com/localstack/lstk/internal/config"
@@ -18,13 +19,17 @@ func Status(ctx context.Context, rt runtime.Runtime, containers []config.Contain
 	ctx, cancel := context.WithTimeout(ctx, statusTimeout)
 	defer cancel()
 
+	output.EmitSpinnerStart(sink, "Fetching LocalStack status")
+
 	for _, c := range containers {
 		name := c.Name()
 		running, err := rt.IsRunning(ctx, name)
 		if err != nil {
+			output.EmitSpinnerStop(sink)
 			return fmt.Errorf("checking %s running: %w", name, err)
 		}
 		if !running {
+			output.EmitSpinnerStop(sink)
 			output.EmitError(sink, output.ErrorEvent{
 				Title: fmt.Sprintf("%s is not running", c.DisplayName()),
 				Actions: []output.ErrorAction{
@@ -43,49 +48,52 @@ func Status(ctx context.Context, rt runtime.Runtime, containers []config.Contain
 		}
 
 		var version string
+		var rows []aws.Resource
 		switch c.Type {
 		case config.EmulatorAWS:
-			emulatorClient := aws.NewClient(nil)
+			emulatorClient := aws.NewClient(&http.Client{})
 			if v, err := emulatorClient.FetchVersion(ctx, host); err != nil {
+				output.EmitSpinnerStop(sink)
 				output.EmitWarning(sink, fmt.Sprintf("Could not fetch version: %v", err))
 			} else {
 				version = v
 			}
 
-			output.Emit(sink, output.InstanceInfoEvent{
-				EmulatorName:  c.DisplayName(),
-				Version:       version,
-				Host:          host,
-				ContainerName: name,
-				Uptime:        uptime,
-			})
-
-			rows, err := emulatorClient.FetchResources(ctx, host)
-			if err != nil {
-				return err
+			var fetchErr error
+			rows, fetchErr = emulatorClient.FetchResources(ctx, host)
+			if fetchErr != nil {
+				output.EmitSpinnerStop(sink)
+				return fetchErr
 			}
+		}
 
+		output.EmitSpinnerStop(sink)
+
+		output.Emit(sink, output.InstanceInfoEvent{
+			EmulatorName:  c.DisplayName(),
+			Version:       version,
+			Host:          host,
+			ContainerName: name,
+			Uptime:        uptime,
+		})
+
+		if c.Type == config.EmulatorAWS {
 			if len(rows) == 0 {
 				output.EmitNote(sink, "No resources deployed")
 				continue
 			}
 
+			tableRows := make([][]string, len(rows))
 			services := map[string]struct{}{}
-			for _, r := range rows {
+			for i, r := range rows {
+				tableRows[i] = []string{r.Service, r.Name, r.Region, r.Account}
 				services[r.Service] = struct{}{}
 			}
-			output.Emit(sink, output.ResourceSummaryEvent{
-				ResourceCount: len(rows),
-				ServiceCount:  len(services),
-			})
-			output.Emit(sink, output.ResourceTableEvent{Rows: rows})
-		default:
-			output.Emit(sink, output.InstanceInfoEvent{
-				EmulatorName:  c.DisplayName(),
-				Version:       version,
-				Host:          host,
-				ContainerName: name,
-				Uptime:        uptime,
+
+			output.EmitInfo(sink, fmt.Sprintf("~ %d resources · %d services", len(rows), len(services)))
+			output.Emit(sink, output.TableEvent{
+				Headers: []string{"SERVICE", "RESOURCE", "REGION", "ACCOUNT"},
+				Rows:    tableRows,
 			})
 		}
 	}
