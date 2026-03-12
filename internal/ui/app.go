@@ -152,13 +152,23 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.Preamble != "" {
 			a.lines = appendLine(a.lines, styledLine{text: "> " + msg.Preamble, secondary: true})
 		}
-		if msg.Code != "" {
-			a.lines = appendLine(a.lines, styledLine{text: "Your one-time code:"})
-			a.lines = appendLine(a.lines, styledLine{text: msg.Code, highlight: true})
-		}
 		if msg.URL != "" {
 			a.lines = appendLine(a.lines, styledLine{text: "Opening browser to login..."})
-			a.lines = appendLine(a.lines, styledLine{text: msg.URL, secondary: true})
+			a.lines = appendLine(a.lines, styledLine{text: "Browser didn't open? Visit " + msg.URL, secondary: true})
+		}
+		if msg.Code != "" {
+			a.lines = appendLine(a.lines, styledLine{text: ""})
+			a.lines = appendLine(a.lines, styledLine{text: styles.Secondary.Render("One-time code: ") + styles.NimboMid.Render(msg.Code)})
+			a.lines = appendLine(a.lines, styledLine{text: ""})
+		}
+		return a, nil
+	case output.LogLineEvent:
+		prefix := styles.Secondary.Render(msg.Source + " | ")
+		line := styledLine{text: prefix + styles.Message.Render(msg.Line)}
+		if a.spinner.PendingStop() {
+			a.bufferedLines = append(a.bufferedLines, line)
+		} else {
+			a.lines = appendLine(a.lines, line)
 		}
 		return a, nil
 	case output.ContainerStatusEvent:
@@ -257,7 +267,6 @@ func formatResolvedInput(req output.UserInputRequestEvent, selectedKey string) s
 	}
 	return fmt.Sprintf("%s %s", firstLine, selected)
 }
-
 
 // resolveOption finds the best matching option for a key event, in priority order:
 //  1. "any" — matches any keypress

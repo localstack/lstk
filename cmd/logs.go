@@ -1,8 +1,10 @@
 package cmd
 
 import (
+	"fmt"
 	"os"
 
+	"github.com/localstack/lstk/internal/config"
 	"github.com/localstack/lstk/internal/container"
 	"github.com/localstack/lstk/internal/output"
 	"github.com/localstack/lstk/internal/runtime"
@@ -24,7 +26,11 @@ func newLogsCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return container.Logs(cmd.Context(), rt, output.NewPlainSink(os.Stdout), follow)
+			appConfig, err := config.Get()
+			if err != nil {
+				return fmt.Errorf("failed to get config: %w", err)
+			}
+			return container.Logs(cmd.Context(), rt, output.NewPlainSink(os.Stdout), appConfig.Containers, follow)
 		},
 	}
 	cmd.Flags().BoolP("follow", "f", false, "Follow log output")

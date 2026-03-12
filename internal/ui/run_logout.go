@@ -8,11 +8,14 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/localstack/lstk/internal/api"
 	"github.com/localstack/lstk/internal/auth"
+	"github.com/localstack/lstk/internal/config"
+	"github.com/localstack/lstk/internal/container"
 	"github.com/localstack/lstk/internal/output"
+	"github.com/localstack/lstk/internal/runtime"
 )
 
-func RunLogout(parentCtx context.Context, platformClient api.PlatformAPI, authToken string, forceFileKeyring bool) error {
-	_, cancel := context.WithCancel(parentCtx)
+func RunLogout(parentCtx context.Context, rt runtime.Runtime, platformClient api.PlatformAPI, authToken string, forceFileKeyring bool, containers []config.ContainerConfig) error {
+	ctx, cancel := context.WithCancel(parentCtx)
 	defer cancel()
 
 	app := NewApp("", "", "", cancel, withoutHeader())
@@ -28,8 +31,14 @@ func RunLogout(parentCtx context.Context, platformClient api.PlatformAPI, authTo
 			return
 		}
 
-		a := auth.New(output.NewTUISink(programSender{p: p}), platformClient, tokenStorage, authToken, "", false)
+		sink := output.NewTUISink(programSender{p: p})
+		a := auth.New(sink, platformClient, tokenStorage, authToken, "", false)
 		err = a.Logout()
+		if err == nil && rt != nil {
+			if running, runningErr := container.AnyRunning(ctx, rt, containers); runningErr == nil && running {
+				output.EmitNote(sink, "LocalStack is still running in the background")
+			}
+		}
 
 		runErrCh <- err
 		if err != nil && !errors.Is(err, context.Canceled) && !errors.Is(err, auth.ErrNotLoggedIn) {

@@ -5,6 +5,8 @@ package auth
 import (
 	"context"
 	"fmt"
+	"net/url"
+	"strings"
 
 	"github.com/localstack/lstk/internal/api"
 	"github.com/localstack/lstk/internal/output"
@@ -35,14 +37,16 @@ func (l *loginProvider) Login(ctx context.Context) (string, error) {
 		return "", fmt.Errorf("failed to create auth request: %w", err)
 	}
 
-	authURL := fmt.Sprintf("%s/auth/request/%s", l.webAppURL, authReq.ID)
+	authURL := buildAuthURL(l.webAppURL, authReq.ID, authReq.Code)
 
 	output.EmitAuth(l.sink, output.AuthEvent{
 		Preamble: "Welcome to lstk, a command-line interface for LocalStack",
 		Code:     authReq.Code,
 		URL:      authURL,
 	})
-	_ = browser.OpenURL(authURL)
+	if err := browser.OpenURL(authURL); err != nil {
+		output.EmitWarning(l.sink, fmt.Sprintf("Failed to open browser automatically. Open this URL manually to continue: %s", authURL))
+	}
 
 	output.EmitSpinnerStart(l.sink, "Waiting for authorization...")
 
@@ -66,6 +70,16 @@ func (l *loginProvider) Login(ctx context.Context) (string, error) {
 	}
 }
 
+func buildAuthURL(webAppURL, authRequestID, code string) string {
+	authURL := fmt.Sprintf("%s/auth/request/%s", strings.TrimRight(webAppURL, "/"), authRequestID)
+	if code == "" {
+		return authURL
+	}
+
+	values := url.Values{}
+	values.Set("code", code)
+	return authURL + "?" + values.Encode()
+}
 
 func (l *loginProvider) completeAuth(ctx context.Context, authReq *api.AuthRequest) (string, error) {
 	output.EmitInfo(l.sink, "Checking if auth request is confirmed...")

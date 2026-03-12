@@ -9,28 +9,23 @@ import (
 	"github.com/localstack/lstk/internal/runtime"
 )
 
-func Stop(ctx context.Context, rt runtime.Runtime, sink output.Sink) error {
-	cfg, err := config.Get()
-	if err != nil {
-		return fmt.Errorf("failed to get config: %w", err)
-	}
-
-	for _, c := range cfg.Containers {
+func Stop(ctx context.Context, rt runtime.Runtime, sink output.Sink, containers []config.ContainerConfig) error {
+	for _, c := range containers {
 		name := c.Name()
 		running, err := rt.IsRunning(ctx, name)
 		if err != nil {
 			return fmt.Errorf("checking %s running: %w", name, err)
 		}
 		if !running {
-			return fmt.Errorf("%s is not running", name)
+			return fmt.Errorf("LocalStack is not running")
 		}
-		output.EmitSpinnerStart(sink, fmt.Sprintf("Stopping %s", name))
+		output.EmitSpinnerStart(sink, "Stopping LocalStack...")
 		if err := rt.Stop(ctx, name); err != nil {
 			output.EmitSpinnerStop(sink)
-			return fmt.Errorf("failed to stop %s: %w", name, err)
+			return fmt.Errorf("failed to stop LocalStack: %w", err)
 		}
 		output.EmitSpinnerStop(sink)
-		output.EmitSuccess(sink, fmt.Sprintf("%s stopped", name))
+		output.EmitSuccess(sink, "LocalStack stopped")
 	}
 
 	return nil

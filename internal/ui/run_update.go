@@ -6,13 +6,11 @@ import (
 	"os"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/localstack/lstk/internal/config"
-	"github.com/localstack/lstk/internal/container"
 	"github.com/localstack/lstk/internal/output"
-	"github.com/localstack/lstk/internal/runtime"
+	"github.com/localstack/lstk/internal/update"
 )
 
-func RunStop(parentCtx context.Context, rt runtime.Runtime, containers []config.ContainerConfig) error {
+func RunUpdate(parentCtx context.Context, checkOnly bool, githubToken string) error {
 	ctx, cancel := context.WithCancel(parentCtx)
 	defer cancel()
 
@@ -21,7 +19,7 @@ func RunStop(parentCtx context.Context, rt runtime.Runtime, containers []config.
 	runErrCh := make(chan error, 1)
 
 	go func() {
-		err := container.Stop(ctx, rt, output.NewTUISink(programSender{p: p}), containers)
+		err := update.Update(ctx, output.NewTUISink(programSender{p: p}), checkOnly, githubToken)
 		runErrCh <- err
 		if err != nil && !errors.Is(err, context.Canceled) {
 			p.Send(runErrMsg{err: err})

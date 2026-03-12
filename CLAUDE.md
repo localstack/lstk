@@ -31,6 +31,7 @@ Note: Integration tests require `LOCALSTACK_AUTH_TOKEN` environment variable for
   - `config/` - Viper-based TOML config loading and path resolution
   - `output/` - Generic event and sink abstractions for CLI/TUI/non-interactive rendering
   - `ui/` - Bubble Tea views for interactive output
+  - `update/` - Self-update logic: version check via GitHub API, binary/Homebrew/npm update paths, archive extraction
 
 # Configuration
 

@@ -54,6 +54,7 @@ func NewRootCmd(cfg *env.Env, tel *telemetry.Client) *cobra.Command {
 		newLogsCmd(),
 		newConfigCmd(),
 		newVersionCmd(),
+		newUpdateCmd(cfg),
 	)
 
 	return root
@@ -81,12 +82,19 @@ func runStart(ctx context.Context, rt runtime.Runtime, cfg *env.Env, tel *teleme
 	// TODO: replace map with a typed payload struct once event schema is finalised
 	tel.Emit(ctx, "cli_cmd", map[string]any{"cmd": "lstk start", "params": []string{}})
 
+	appConfig, err := config.Get()
+	if err != nil {
+		return fmt.Errorf("failed to get config: %w", err)
+	}
+
 	opts := container.StartOptions{
 		PlatformClient:   api.NewPlatformClient(cfg.APIEndpoint),
 		AuthToken:        cfg.AuthToken,
 		ForceFileKeyring: cfg.ForceFileKeyring,
 		WebAppURL:        cfg.WebAppURL,
 		LocalStackHost:   cfg.LocalStackHost,
+		Containers:       appConfig.Containers,
+		Env:              appConfig.Env,
 	}
 	if isInteractiveMode(cfg) {
 		return ui.Run(ctx, rt, version.Version(), opts)

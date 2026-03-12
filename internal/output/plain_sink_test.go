@@ -42,39 +42,39 @@ func TestPlainSink_EmitsStatusEvent(t *testing.T) {
 		expected string
 	}{
 		{
-			name:     "pulling phase suppressed",
+			name:     "pulling phase",
 			event:    ContainerStatusEvent{Phase: "pulling", Container: "localstack/localstack:latest"},
-			expected: "",
+			expected: "Preparing LocalStack...\n",
 		},
 		{
 			name:     "starting phase",
-			event:    ContainerStatusEvent{Phase: "starting", Container: "localstack"},
-			expected: "Starting localstack...\n",
+			event:    ContainerStatusEvent{Phase: "starting", Container: "localstack-aws"},
+			expected: "Starting LocalStack...\n",
 		},
 		{
 			name:     "waiting phase",
-			event:    ContainerStatusEvent{Phase: "waiting", Container: "localstack"},
-			expected: "Waiting for localstack to be ready...\n",
+			event:    ContainerStatusEvent{Phase: "waiting", Container: "localstack-aws"},
+			expected: "Waiting for LocalStack to be ready...\n",
 		},
 		{
 			name:     "ready phase with detail",
-			event:    ContainerStatusEvent{Phase: "ready", Container: "localstack", Detail: "abc123"},
-			expected: "localstack ready (abc123)\n",
+			event:    ContainerStatusEvent{Phase: "ready", Container: "localstack-aws", Detail: "abc123"},
+			expected: "LocalStack ready (abc123)\n",
 		},
 		{
 			name:     "ready phase without detail",
-			event:    ContainerStatusEvent{Phase: "ready", Container: "localstack"},
-			expected: "localstack ready\n",
+			event:    ContainerStatusEvent{Phase: "ready", Container: "localstack-aws"},
+			expected: "LocalStack ready\n",
 		},
 		{
 			name:     "unknown phase with detail",
-			event:    ContainerStatusEvent{Phase: "custom", Container: "localstack", Detail: "info"},
-			expected: "localstack: custom (info)\n",
+			event:    ContainerStatusEvent{Phase: "custom", Container: "localstack-aws", Detail: "info"},
+			expected: "LocalStack: custom (info)\n",
 		},
 		{
 			name:     "unknown phase without detail",
-			event:    ContainerStatusEvent{Phase: "custom", Container: "localstack"},
-			expected: "localstack: custom\n",
+			event:    ContainerStatusEvent{Phase: "custom", Container: "localstack-aws"},
+			expected: "LocalStack: custom\n",
 		},
 	}
 
@@ -105,11 +105,11 @@ func TestPlainSink_SuppressesProgressEvent(t *testing.T) {
 	assert.Equal(t, "", out.String())
 }
 
-func TestPlainSink_EmitsContainerLogLineEvent(t *testing.T) {
+func TestPlainSink_EmitsLogLineEvent(t *testing.T) {
 	var out bytes.Buffer
 	sink := NewPlainSink(&out)
 
-	Emit(sink, ContainerLogLineEvent{Line: "2024-01-01 hello from container"})
+	Emit(sink, LogLineEvent{Source: "container", Line: "2024-01-01 hello from container"})
 
 	assert.Equal(t, "2024-01-01 hello from container\n", out.String())
 }
@@ -144,7 +144,7 @@ func TestPlainSink_EmitsErrorEvent(t *testing.T) {
 		Actions: []ErrorAction{{Label: "Start Docker:", Value: "open -a Docker"}},
 	})
 
-	expected := "Error: Connection failed\n  Cannot connect to Docker\n  → Start Docker: open -a Docker\n"
+	expected := "Error: Connection failed\n  Cannot connect to Docker\n  ==> Start Docker: open -a Docker\n"
 	assert.Equal(t, expected, out.String())
 }
 
@@ -184,10 +184,11 @@ func TestPlainSink_UsesFormatterParity(t *testing.T) {
 		MessageEvent{Severity: SeverityWarning, Text: "careful"},
 		MessageEvent{Severity: SeveritySuccess, Text: "done"},
 		MessageEvent{Severity: SeverityNote, Text: "fyi"},
-		AuthEvent{Code: "ABC123", URL: "https://example.com"},
+		AuthEvent{URL: "https://example.com"},
 		SpinnerEvent{Active: true, Text: "Loading"},
 		ErrorEvent{Title: "Failed", Summary: "Something broke"},
 		ContainerStatusEvent{Phase: "starting", Container: "localstack"},
+		LogLineEvent{Source: "container", Line: "2024-01-01 hello"},
 	}
 
 	for _, event := range events {
@@ -204,6 +205,8 @@ func TestPlainSink_UsesFormatterParity(t *testing.T) {
 		case ErrorEvent:
 			Emit(sink, e)
 		case ContainerStatusEvent:
+			Emit(sink, e)
+		case LogLineEvent:
 			Emit(sink, e)
 		default:
 			t.Fatalf("unsupported event type in test: %T", event)

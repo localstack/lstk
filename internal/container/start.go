@@ -29,6 +29,8 @@ type StartOptions struct {
 	ForceFileKeyring bool
 	WebAppURL        string
 	LocalStackHost   string
+	Containers       []config.ContainerConfig
+	Env              map[string]map[string]string
 }
 
 func Start(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts StartOptions, interactive bool) error {
@@ -48,17 +50,12 @@ func Start(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts Start
 		return err
 	}
 
-	cfg, err := config.Get()
-	if err != nil {
-		return fmt.Errorf("failed to get config: %w", err)
-	}
-
-	if hasDuplicateContainerTypes(cfg.Containers) {
+	if hasDuplicateContainerTypes(opts.Containers) {
 		output.EmitWarning(sink, "Multiple emulators of the same type are defined in your config; this setup is not supported yet")
 	}
 
-	containers := make([]runtime.ContainerConfig, len(cfg.Containers))
-	for i, c := range cfg.Containers {
+	containers := make([]runtime.ContainerConfig, len(opts.Containers))
+	for i, c := range opts.Containers {
 		image, err := c.Image()
 		if err != nil {
 			return err
@@ -72,7 +69,7 @@ func Start(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts Start
 			return err
 		}
 
-		resolvedEnv, err := c.ResolvedEnv(cfg.Env)
+		resolvedEnv, err := c.ResolvedEnv(opts.Env)
 		if err != nil {
 			return err
 		}
@@ -115,7 +112,7 @@ func Start(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts Start
 	setups := map[config.EmulatorType]postStartSetupFunc{
 		config.EmulatorAWS: awsconfig.Setup,
 	}
-	return runPostStartSetups(ctx, sink, cfg.Containers, interactive, opts.LocalStackHost, setups)
+	return runPostStartSetups(ctx, sink, opts.Containers, interactive, opts.LocalStackHost, setups)
 }
 
 func runPostStartSetups(ctx context.Context, sink output.Sink, containers []config.ContainerConfig, interactive bool, localStackHost string, setups map[config.EmulatorType]postStartSetupFunc) error {
@@ -185,12 +182,12 @@ func startContainers(ctx context.Context, rt runtime.Runtime, sink output.Sink, 
 		output.EmitStatus(sink, "starting", c.Name, "")
 		containerID, err := rt.Start(ctx, c)
 		if err != nil {
-			return fmt.Errorf("failed to start %s: %w", c.Name, err)
+			return fmt.Errorf("failed to start LocalStack: %w", err)
 		}
 
 		output.EmitStatus(sink, "waiting", c.Name, "")
 		healthURL := fmt.Sprintf("http://localhost:%s%s", c.Port, c.HealthPath)
-		if err := awaitStartup(ctx, rt, sink, containerID, c.Name, healthURL); err != nil {
+		if err := awaitStartup(ctx, rt, sink, containerID, "LocalStack", healthURL); err != nil {
 			return err
 		}
 
@@ -207,19 +204,31 @@ func selectContainersToStart(ctx context.Context, rt runtime.Runtime, sink outpu
 			return nil, fmt.Errorf("failed to check container status: %w", err)
 		}
 		if running {
-			output.EmitInfo(sink, fmt.Sprintf("%s is already running", c.Name))
+			output.EmitInfo(sink, "LocalStack is already running")
 			continue
 		}
 		if err := ports.CheckAvailable(c.Port); err != nil {
-			configPath, pathErr := config.ConfigFilePath()
-			if pathErr != nil {
-				return nil, err
-			}
-			return nil, fmt.Errorf("%w\nTo use a different port, edit %s", err, configPath)
+			emitPortInUseError(sink, c.Port)
+			return nil, output.NewSilentError(err)
 		}
 		filtered = append(filtered, c)
 	}
 	return filtered, nil
+}
+
+func emitPortInUseError(sink output.Sink, port string) {
+	actions := []output.ErrorAction{
+		{Label: "Stop existing emulator:", Value: "lstk stop"},
+	}
+	configPath, pathErr := config.ConfigFilePath()
+	if pathErr == nil {
+		actions = append(actions, output.ErrorAction{Label: "Use another port in the configuration:", Value: configPath})
+	}
+	output.EmitError(sink, output.ErrorEvent{
+		Title:   fmt.Sprintf("Port %s already in use", port),
+		Summary: "LocalStack may already be running.",
+		Actions: actions,
+	})
 }
 
 func validateLicense(ctx context.Context, rt runtime.Runtime, sink output.Sink, platformClient api.PlatformAPI, containerConfig runtime.ContainerConfig, token string) error {

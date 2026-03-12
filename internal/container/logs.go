@@ -11,17 +11,13 @@ import (
 	"github.com/localstack/lstk/internal/runtime"
 )
 
-func Logs(ctx context.Context, rt runtime.Runtime, sink output.Sink, follow bool) error {
-	cfg, err := config.Get()
-	if err != nil {
-		return fmt.Errorf("failed to get config: %w", err)
-	}
-	if len(cfg.Containers) == 0 {
+func Logs(ctx context.Context, rt runtime.Runtime, sink output.Sink, containers []config.ContainerConfig, follow bool) error {
+	if len(containers) == 0 {
 		return fmt.Errorf("no containers configured")
 	}
 
 	// TODO: handle logs per container
-	c := cfg.Containers[0]
+	c := containers[0]
 
 	pr, pw := io.Pipe()
 	errCh := make(chan error, 1)
@@ -33,7 +29,7 @@ func Logs(ctx context.Context, rt runtime.Runtime, sink output.Sink, follow bool
 
 	scanner := bufio.NewScanner(pr)
 	for scanner.Scan() {
-		output.EmitContainerLogLine(sink, scanner.Text())
+		output.EmitLogLine(sink, output.LogSourceEmulator, scanner.Text())
 	}
 	if err := scanner.Err(); err != nil && ctx.Err() == nil {
 		return err

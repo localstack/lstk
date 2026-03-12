@@ -40,3 +40,22 @@ func TestLogoutCommandWithEnvVarToken(t *testing.T) {
 	require.NoError(t, err, "lstk logout should succeed: %s", stderr)
 	assert.Contains(t, stdout, "LOCALSTACK_AUTH_TOKEN")
 }
+
+func TestLogoutCommandNotesWhenEmulatorStillRunning(t *testing.T) {
+	requireDocker(t)
+	cleanup()
+	t.Cleanup(cleanup)
+	t.Cleanup(func() {
+		_ = DeleteAuthTokenFromKeyring()
+	})
+
+	ctx := testContext(t)
+	startTestContainer(t, ctx)
+
+	err := SetAuthTokenInKeyring("test-token")
+	require.NoError(t, err, "failed to store token in keyring")
+
+	stdout, stderr, err := runLstk(t, ctx, "", nil, "logout")
+	require.NoError(t, err, "lstk logout failed: %s", stderr)
+	assert.Contains(t, stdout, "LocalStack is still running in the background")
+}
