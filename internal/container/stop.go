@@ -9,13 +9,8 @@ import (
 	"github.com/localstack/lstk/internal/runtime"
 )
 
-func Stop(ctx context.Context, rt runtime.Runtime, sink output.Sink) error {
-	cfg, err := config.Get()
-	if err != nil {
-		return fmt.Errorf("failed to get config: %w", err)
-	}
-
-	for _, c := range cfg.Containers {
+func Stop(ctx context.Context, rt runtime.Runtime, sink output.Sink, containers []config.ContainerConfig) error {
+	for _, c := range containers {
 		name := c.Name()
 		running, err := rt.IsRunning(ctx, name)
 		if err != nil {

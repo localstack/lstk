@@ -6,7 +6,6 @@ import (
 	"os"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/localstack/lstk/internal/config"
 	"github.com/localstack/lstk/internal/container"
 	"github.com/localstack/lstk/internal/endpoint"
 	"github.com/localstack/lstk/internal/output"
@@ -32,10 +31,10 @@ func Run(parentCtx context.Context, rt runtime.Runtime, version string, opts con
 	// FIXME: This assumes a single emulator; revisit for proper multi-emulator support
 	emulatorName := "LocalStack Emulator"
 	host := endpoint.Hostname
-	if cfg, err := config.Get(); err == nil && len(cfg.Containers) > 0 {
-		emulatorName = cfg.Containers[0].DisplayName()
-		if cfg.Containers[0].Port != "" {
-			host, _ = endpoint.ResolveHost(cfg.Containers[0].Port, opts.LocalStackHost)
+	if len(opts.Containers) > 0 {
+		emulatorName = opts.Containers[0].DisplayName()
+		if opts.Containers[0].Port != "" {
+			host, _ = endpoint.ResolveHost(opts.Containers[0].Port, opts.LocalStackHost)
 		}
 	}
 
