@@ -100,7 +100,6 @@ lstk --non-interactive
 |---|---|
 | `LOCALSTACK_AUTH_TOKEN` | Auth token used for non-interactive runs or to skip browser login |
 | `LOCALSTACK_DISABLE_EVENTS=1` | Disables telemetry event reporting |
-| `LSTK_GITHUB_TOKEN` | GitHub token used by `lstk update` to avoid API rate limits |
 
 ## Usage
 
