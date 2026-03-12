@@ -16,7 +16,6 @@ func TestEmitAuth(t *testing.T) {
 	sink := &captureSink{}
 	EmitAuth(sink, AuthEvent{
 		Preamble: "Welcome",
-		Code:     "ABC123",
 		URL:      "https://example.com",
 	})
 
@@ -26,9 +25,6 @@ func TestEmitAuth(t *testing.T) {
 	event, ok := sink.events[0].(AuthEvent)
 	if !ok {
 		t.Fatalf("expected AuthEvent, got %T", sink.events[0])
-	}
-	if event.Code != "ABC123" {
-		t.Fatalf("expected code %q, got %q", "ABC123", event.Code)
 	}
 	if event.URL != "https://example.com" {
 		t.Fatalf("expected URL %q, got %q", "https://example.com", event.URL)
@@ -41,7 +37,45 @@ func TestEmitAuth(t *testing.T) {
 	if !ok {
 		t.Fatal("expected formatter output")
 	}
-	if line != "Welcome\nYour one-time code: ABC123\nOpening browser to login...\nhttps://example.com" {
+	expected := "Welcome\nOpening browser to login...\nBrowser didn't open? Visit https://example.com"
+	if line != expected {
+		t.Fatalf("unexpected formatted line: %q", line)
+	}
+}
+
+func TestEmitAuthWithCode(t *testing.T) {
+	t.Parallel()
+
+	sink := &captureSink{}
+	EmitAuth(sink, AuthEvent{
+		Preamble: "Welcome",
+		URL:      "https://example.com",
+		Code:     "1234",
+	})
+
+	if len(sink.events) != 1 {
+		t.Fatalf("expected 1 event, got %d", len(sink.events))
+	}
+	event, ok := sink.events[0].(AuthEvent)
+	if !ok {
+		t.Fatalf("expected AuthEvent, got %T", sink.events[0])
+	}
+	if event.Preamble != "Welcome" {
+		t.Fatalf("expected preamble %q, got %q", "Welcome", event.Preamble)
+	}
+	if event.URL != "https://example.com" {
+		t.Fatalf("expected URL %q, got %q", "https://example.com", event.URL)
+	}
+	if event.Code != "1234" {
+		t.Fatalf("expected code %q, got %q", "1234", event.Code)
+	}
+
+	line, ok := FormatEventLine(event)
+	if !ok {
+		t.Fatal("expected formatter output")
+	}
+	expected := "Welcome\nOpening browser to login...\nBrowser didn't open? Visit https://example.com\n\nOne-time code: 1234"
+	if line != expected {
 		t.Fatalf("unexpected formatted line: %q", line)
 	}
 }

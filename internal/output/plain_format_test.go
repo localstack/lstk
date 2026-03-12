@@ -37,14 +37,14 @@ func TestFormatEventLine(t *testing.T) {
 		},
 		{
 			name:   "instructions event full",
-			event:  AuthEvent{Preamble: "Welcome", Code: "ABC123", URL: "https://example.com"},
-			want:   "Welcome\nYour one-time code: ABC123\nOpening browser to login...\nhttps://example.com",
+			event:  AuthEvent{Preamble: "Welcome", Code: "ABCD-1234", URL: "https://example.com"},
+			want:   "Welcome\nOpening browser to login...\nBrowser didn't open? Visit https://example.com\n\nOne-time code: ABCD-1234",
 			wantOK: true,
 		},
 		{
-			name:   "instructions event code only",
-			event:  AuthEvent{Code: "XYZ"},
-			want:   "Your one-time code: XYZ",
+			name:   "instructions event url only",
+			event:  AuthEvent{URL: "https://example.com"},
+			want:   "Opening browser to login...\nBrowser didn't open? Visit https://example.com",
 			wantOK: true,
 		},
 		{
