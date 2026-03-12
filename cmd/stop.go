@@ -1,8 +1,10 @@
 package cmd
 
 import (
+	"fmt"
 	"os"
 
+	"github.com/localstack/lstk/internal/config"
 	"github.com/localstack/lstk/internal/container"
 	"github.com/localstack/lstk/internal/env"
 	"github.com/localstack/lstk/internal/output"
@@ -22,13 +24,16 @@ func newStopCmd(cfg *env.Env) *cobra.Command {
 			if err != nil {
 				return err
 			}
-
-			if isInteractiveMode(cfg) {
-				return ui.RunStop(cmd.Context(), rt)
+			appConfig, err := config.Get()
+			if err != nil {
+				return fmt.Errorf("failed to get config: %w", err)
 			}
 
-			return container.Stop(cmd.Context(), rt, output.NewPlainSink(os.Stdout))
+			if isInteractiveMode(cfg) {
+				return ui.RunStop(cmd.Context(), rt, appConfig.Containers)
+			}
+
+			return container.Stop(cmd.Context(), rt, output.NewPlainSink(os.Stdout), appConfig.Containers)
 		},
 	}
 }
-

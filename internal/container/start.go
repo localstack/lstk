@@ -29,6 +29,8 @@ type StartOptions struct {
 	ForceFileKeyring bool
 	WebAppURL        string
 	LocalStackHost   string
+	Containers       []config.ContainerConfig
+	Env              map[string]map[string]string
 }
 
 func Start(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts StartOptions, interactive bool) error {
@@ -48,17 +50,12 @@ func Start(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts Start
 		return err
 	}
 
-	cfg, err := config.Get()
-	if err != nil {
-		return fmt.Errorf("failed to get config: %w", err)
-	}
-
-	if hasDuplicateContainerTypes(cfg.Containers) {
+	if hasDuplicateContainerTypes(opts.Containers) {
 		output.EmitWarning(sink, "Multiple emulators of the same type are defined in your config; this setup is not supported yet")
 	}
 
-	containers := make([]runtime.ContainerConfig, len(cfg.Containers))
-	for i, c := range cfg.Containers {
+	containers := make([]runtime.ContainerConfig, len(opts.Containers))
+	for i, c := range opts.Containers {
 		image, err := c.Image()
 		if err != nil {
 			return err
@@ -72,7 +69,7 @@ func Start(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts Start
 			return err
 		}
 
-		resolvedEnv, err := c.ResolvedEnv(cfg.Env)
+		resolvedEnv, err := c.ResolvedEnv(opts.Env)
 		if err != nil {
 			return err
 		}
@@ -115,7 +112,7 @@ func Start(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts Start
 	setups := map[config.EmulatorType]postStartSetupFunc{
 		config.EmulatorAWS: awsconfig.Setup,
 	}
-	return runPostStartSetups(ctx, sink, cfg.Containers, interactive, opts.LocalStackHost, setups)
+	return runPostStartSetups(ctx, sink, opts.Containers, interactive, opts.LocalStackHost, setups)
 }
 
 func runPostStartSetups(ctx context.Context, sink output.Sink, containers []config.ContainerConfig, interactive bool, localStackHost string, setups map[config.EmulatorType]postStartSetupFunc) error {
