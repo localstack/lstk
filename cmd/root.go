@@ -35,7 +35,6 @@ func NewRootCmd(cfg *env.Env, tel *telemetry.Client, logger log.Logger) *cobra.C
 	}
 
 	root.Version = version.Version()
-	root.SetVersionTemplate(versionLine() + "\n")
 	root.SilenceErrors = true
 	root.SilenceUsage = true
 
@@ -46,6 +45,7 @@ func NewRootCmd(cfg *env.Env, tel *telemetry.Client, logger log.Logger) *cobra.C
 
 	root.InitDefaultVersionFlag()
 	root.Flags().Lookup("version").Usage = "Show version"
+	root.SetVersionTemplate(versionTemplate())
 
 	root.AddCommand(
 		newStartCmd(cfg, tel, logger),
@@ -55,7 +55,6 @@ func NewRootCmd(cfg *env.Env, tel *telemetry.Client, logger log.Logger) *cobra.C
 		newStatusCmd(cfg),
 		newLogsCmd(),
 		newConfigCmd(),
-		newVersionCmd(),
 		newUpdateCmd(cfg),
 	)
 

@@ -120,7 +120,7 @@ func TestUpdateBinaryInPlace(t *testing.T) {
 	require.NoError(t, err, "go build failed: %s", string(out))
 
 	// Verify it reports the fake version
-	verCmd := exec.CommandContext(ctx, tmpBinary, "version")
+	verCmd := exec.CommandContext(ctx, tmpBinary, "--version")
 	verOut, err := verCmd.CombinedOutput()
 	require.NoError(t, err)
 	assert.Contains(t, string(verOut), "0.0.1")
@@ -136,7 +136,7 @@ func TestUpdateBinaryInPlace(t *testing.T) {
 	assert.Contains(t, updateStr, "Updated to", "should complete the update")
 
 	// Verify the binary was actually replaced
-	verCmd2 := exec.CommandContext(ctx, tmpBinary, "version")
+	verCmd2 := exec.CommandContext(ctx, tmpBinary, "--version")
 	verOut2, err := verCmd2.CombinedOutput()
 	require.NoError(t, err)
 	assert.NotContains(t, string(verOut2), "0.0.1", "binary should no longer be the old version")
@@ -187,7 +187,7 @@ func TestUpdateHomebrew(t *testing.T) {
 	require.NoError(t, err, "go build failed: %s", string(out))
 
 	// Verify it reports the fake version
-	verCmd := exec.CommandContext(ctx, caskBinary, "version")
+	verCmd := exec.CommandContext(ctx, caskBinary, "--version")
 	verOut, err := verCmd.CombinedOutput()
 	require.NoError(t, err)
 	assert.Contains(t, string(verOut), "0.0.1")
