@@ -32,6 +32,7 @@ brew install localstack/tap/lstk
 npm install -g @localstack/lstk
 ```
 
+### 3. Binaries
 Pre-built binaries are also available from [GitHub Releases](https://github.com/localstack/lstk/releases). 📦
 
 ## Quick Start
