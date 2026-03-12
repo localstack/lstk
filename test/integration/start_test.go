@@ -3,6 +3,9 @@ package integration_test
 import (
 	"context"
 	"net"
+	"net/http"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/docker/docker/api/types/container"
@@ -98,6 +101,37 @@ func TestStartCommandFailsWhenPortInUse(t *testing.T) {
 	assert.Contains(t, stdout, "Port 4566 already in use")
 	assert.Contains(t, stdout, "LocalStack may already be running.")
 	assert.Contains(t, stdout, "lstk stop")
+}
+
+func TestStartCommandSucceedsWithNonDefaultPort(t *testing.T) {
+	requireDocker(t)
+	_ = env.Require(t, env.AuthToken)
+
+	cleanup()
+	t.Cleanup(cleanup)
+
+	mockServer := createMockLicenseServer(true)
+	defer mockServer.Close()
+
+	configContent := `
+[[containers]]
+type = "aws"
+tag = "latest"
+port = "4567"
+`
+	configFile := filepath.Join(t.TempDir(), "config.toml")
+	require.NoError(t, os.WriteFile(configFile, []byte(configContent), 0644))
+
+	ctx := testContext(t)
+	_, stderr, err := runLstk(t, ctx, "", env.With(env.APIEndpoint, mockServer.URL), "--config", configFile, "start")
+	require.NoError(t, err, "lstk start failed: %s", stderr)
+
+	// lstk start only returns once the health check passes, but verify directly
+	// that LocalStack is reachable on the non-default port.
+	resp, err := http.Get("http://localhost:4567/_localstack/health")
+	require.NoError(t, err, "LocalStack health endpoint not reachable on port 4567")
+	defer resp.Body.Close()
+	assert.Equal(t, http.StatusOK, resp.StatusCode, "LocalStack should be ready on port 4567")
 }
 
 func cleanup() {
