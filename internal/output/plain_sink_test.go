@@ -61,12 +61,12 @@ func TestPlainSink_EmitsStatusEvent(t *testing.T) {
 		{
 			name:     "ready phase with detail",
 			event:    ContainerStatusEvent{Phase: "ready", Container: "localstack-aws", Detail: "abc123"},
-			expected: "LocalStack ready (abc123)\n",
+			expected: fmt.Sprintf("%s LocalStack ready (abc123)\n", SuccessMarkerText()),
 		},
 		{
 			name:     "ready phase without detail",
 			event:    ContainerStatusEvent{Phase: "ready", Container: "localstack-aws"},
-			expected: "LocalStack ready\n",
+			expected: fmt.Sprintf("%s LocalStack ready\n", SuccessMarkerText()),
 		},
 		{
 			name:     "unknown phase with detail",

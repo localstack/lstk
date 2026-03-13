@@ -24,7 +24,7 @@ func TestFormatEventLine(t *testing.T) {
 		{
 			name:   "message event success",
 			event:  MessageEvent{Severity: SeveritySuccess, Text: "done"},
-			want:   "> Success: done",
+			want:   SuccessMarkerText() + " done",
 			wantOK: true,
 		},
 		{
@@ -60,7 +60,7 @@ func TestFormatEventLine(t *testing.T) {
 		{
 			name:   "status ready with detail",
 			event:  ContainerStatusEvent{Phase: "ready", Container: "localstack-aws", Detail: "abc123"},
-			want:   "LocalStack ready (abc123)",
+			want:   SuccessMarkerText() + " LocalStack ready (abc123)",
 			wantOK: true,
 		},
 		{

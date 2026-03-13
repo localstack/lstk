@@ -49,9 +49,9 @@ func formatStatusLine(e ContainerStatusEvent) (string, bool) {
 		return "Waiting for LocalStack to be ready...", true
 	case "ready":
 		if e.Detail != "" {
-			return fmt.Sprintf("LocalStack ready (%s)", e.Detail), true
+			return fmt.Sprintf("%s LocalStack ready (%s)", SuccessMarkerText(), e.Detail), true
 		}
-		return "LocalStack ready", true
+		return SuccessMarkerText() + " LocalStack ready", true
 	default:
 		if e.Detail != "" {
 			return fmt.Sprintf("LocalStack: %s (%s)", e.Phase, e.Detail), true
@@ -116,7 +116,7 @@ func formatAuthEvent(e AuthEvent) string {
 func formatMessageEvent(e MessageEvent) string {
 	switch e.Severity {
 	case SeveritySuccess:
-		return "> Success: " + e.Text
+		return SuccessMarkerText() + " " + e.Text
 	case SeverityNote:
 		return "> Note: " + e.Text
 	case SeverityWarning:

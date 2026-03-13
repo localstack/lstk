@@ -1,6 +1,9 @@
 package styles
 
-import "github.com/charmbracelet/lipgloss"
+import (
+	"github.com/charmbracelet/lipgloss"
+	"github.com/localstack/lstk/internal/output"
+)
 
 const (
 	NimboDarkColor  = "#3F51C7"
@@ -39,7 +42,7 @@ var (
 
 	// Message severity styles
 	Success = lipgloss.NewStyle().
-		Foreground(lipgloss.Color("42"))
+		Foreground(lipgloss.Color(output.SuccessColorHex))
 
 	Note = lipgloss.NewStyle().
 		Foreground(lipgloss.Color("33"))
