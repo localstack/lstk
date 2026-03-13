@@ -1,6 +1,7 @@
 package container
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"io"
@@ -27,4 +28,31 @@ func TestStart_ReturnsEarlyIfRuntimeUnhealthy(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "runtime not healthy")
 	assert.True(t, output.IsSilent(err), "error should be silent since it was already emitted")
+}
+
+func TestEmitPostStartPointers_WithWebApp(t *testing.T) {
+	var out bytes.Buffer
+	sink := output.NewPlainSink(&out)
+
+	emitPostStartPointers(sink, "localhost.localstack.cloud:4566", "https://app.localstack.cloud/")
+
+	assert.Equal(t, ""+
+		"• Endpoint: localhost.localstack.cloud:4566\n"+
+		"• Web app: https://app.localstack.cloud\n"+
+		"> Tip: View emulator logs: lstk logs --follow\n",
+		out.String(),
+	)
+}
+
+func TestEmitPostStartPointers_WithoutWebApp(t *testing.T) {
+	var out bytes.Buffer
+	sink := output.NewPlainSink(&out)
+
+	emitPostStartPointers(sink, "127.0.0.1:4566", "")
+
+	assert.Equal(t, ""+
+		"• Endpoint: 127.0.0.1:4566\n"+
+		"> Tip: View emulator logs: lstk logs --follow\n",
+		out.String(),
+	)
 }
