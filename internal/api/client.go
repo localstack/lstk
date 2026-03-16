@@ -6,10 +6,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"time"
 
+	"github.com/localstack/lstk/internal/log"
 	"github.com/localstack/lstk/internal/version"
 )
 
@@ -78,12 +78,14 @@ func (e *LicenseError) Error() string {
 type PlatformClient struct {
 	baseURL    string
 	httpClient *http.Client
+	logger     log.Logger
 }
 
-func NewPlatformClient(apiEndpoint string) *PlatformClient {
+func NewPlatformClient(apiEndpoint string, logger log.Logger) *PlatformClient {
 	return &PlatformClient{
 		baseURL:    apiEndpoint,
 		httpClient: &http.Client{Timeout: 30 * time.Second},
+		logger:     logger,
 	}
 }
 

@@ -15,6 +15,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/exp/teatest"
 	"github.com/localstack/lstk/internal/api"
+	"github.com/localstack/lstk/internal/log"
 	"github.com/localstack/lstk/internal/auth"
 	"github.com/localstack/lstk/internal/output"
 	"github.com/stretchr/testify/assert"
@@ -93,7 +94,7 @@ func TestLoginFlow_DeviceFlowSuccess(t *testing.T) {
 
 	tm := teatest.NewTestModel(t, NewApp("test", "", "", cancel), teatest.WithInitialTermSize(120, 40))
 	sender := testModelSender{tm: tm}
-	platformClient := api.NewPlatformClient(mockServer.URL)
+	platformClient := api.NewPlatformClient(mockServer.URL, log.Nop())
 
 	errCh := make(chan error, 1)
 	go func() {
@@ -141,7 +142,7 @@ func TestLoginFlow_DeviceFlowFailure_NotConfirmed(t *testing.T) {
 
 	tm := teatest.NewTestModel(t, NewApp("test", "", "", cancel), teatest.WithInitialTermSize(120, 40))
 	sender := testModelSender{tm: tm}
-	platformClient := api.NewPlatformClient(mockServer.URL)
+	platformClient := api.NewPlatformClient(mockServer.URL, log.Nop())
 
 	errCh := make(chan error, 1)
 	go func() {
@@ -190,7 +191,7 @@ func TestLoginFlow_DeviceFlowCancelWithCtrlC(t *testing.T) {
 
 	tm := teatest.NewTestModel(t, NewApp("test", "", "", cancel), teatest.WithInitialTermSize(120, 40))
 	sender := testModelSender{tm: tm}
-	platformClient := api.NewPlatformClient(mockServer.URL)
+	platformClient := api.NewPlatformClient(mockServer.URL, log.Nop())
 
 	errCh := make(chan error, 1)
 	go func() {

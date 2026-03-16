@@ -52,6 +52,7 @@ func NewRootCmd(cfg *env.Env, tel *telemetry.Client, logger log.Logger) *cobra.C
 		newStopCmd(cfg),
 		newLoginCmd(cfg, logger),
 		newLogoutCmd(cfg, logger),
+		newStatusCmd(cfg, logger),
 		newLogsCmd(),
 		newConfigCmd(),
 		newVersionCmd(),
@@ -95,7 +96,7 @@ func runStart(ctx context.Context, rt runtime.Runtime, cfg *env.Env, tel *teleme
 	}
 
 	opts := container.StartOptions{
-		PlatformClient:   api.NewPlatformClient(cfg.APIEndpoint),
+		PlatformClient:   api.NewPlatformClient(cfg.APIEndpoint, logger),
 		AuthToken:        cfg.AuthToken,
 		ForceFileKeyring: cfg.ForceFileKeyring,
 		WebAppURL:        cfg.WebAppURL,

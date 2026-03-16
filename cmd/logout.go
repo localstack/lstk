@@ -23,7 +23,7 @@ func newLogoutCmd(cfg *env.Env, logger log.Logger) *cobra.Command {
 		Short:   "Remove stored authentication credentials",
 		PreRunE: initConfig,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			platformClient := api.NewPlatformClient(cfg.APIEndpoint)
+			platformClient := api.NewPlatformClient(cfg.APIEndpoint, logger)
 			appConfig, err := config.Get()
 			if err != nil {
 				return fmt.Errorf("failed to get config: %w", err)

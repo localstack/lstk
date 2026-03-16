@@ -21,7 +21,7 @@ func newLoginCmd(cfg *env.Env, logger log.Logger) *cobra.Command {
 			if !isInteractiveMode(cfg) {
 				return fmt.Errorf("login requires an interactive terminal")
 			}
-			platformClient := api.NewPlatformClient(cfg.APIEndpoint)
+			platformClient := api.NewPlatformClient(cfg.APIEndpoint, logger)
 			return ui.RunLogin(cmd.Context(), version.Version(), platformClient, cfg.AuthToken, cfg.ForceFileKeyring, cfg.WebAppURL, logger)
 		},
 	}
