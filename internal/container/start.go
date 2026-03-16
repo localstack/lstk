@@ -2,6 +2,7 @@ package container
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -15,6 +16,7 @@ import (
 	"github.com/localstack/lstk/internal/awsconfig"
 	"github.com/localstack/lstk/internal/config"
 	"github.com/localstack/lstk/internal/endpoint"
+	"github.com/localstack/lstk/internal/log"
 	"github.com/localstack/lstk/internal/output"
 	"github.com/localstack/lstk/internal/ports"
 	"github.com/localstack/lstk/internal/runtime"
@@ -31,6 +33,7 @@ type StartOptions struct {
 	LocalStackHost   string
 	Containers       []config.ContainerConfig
 	Env              map[string]map[string]string
+	Logger           log.Logger
 }
 
 func Start(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts StartOptions, interactive bool) error {
@@ -39,7 +42,7 @@ func Start(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts Start
 		return output.NewSilentError(fmt.Errorf("runtime not healthy: %w", err))
 	}
 
-	tokenStorage, err := auth.NewTokenStorage(opts.ForceFileKeyring)
+	tokenStorage, err := auth.NewTokenStorage(opts.ForceFileKeyring, opts.Logger)
 	if err != nil {
 		return fmt.Errorf("failed to initialize token storage: %w", err)
 	}
@@ -105,7 +108,7 @@ func Start(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts Start
 		return err
 	}
 
-	if err := validateLicenses(ctx, rt, sink, opts.PlatformClient, containers, token); err != nil {
+	if err := validateLicenses(ctx, rt, sink, opts, containers, token); err != nil {
 		return err
 	}
 
@@ -174,9 +177,9 @@ func pullImages(ctx context.Context, rt runtime.Runtime, sink output.Sink, conta
 	return nil
 }
 
-func validateLicenses(ctx context.Context, rt runtime.Runtime, sink output.Sink, platformClient api.PlatformAPI, containers []runtime.ContainerConfig, token string) error {
+func validateLicenses(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts StartOptions, containers []runtime.ContainerConfig, token string) error {
 	for _, c := range containers {
-		if err := validateLicense(ctx, rt, sink, platformClient, c, token); err != nil {
+		if err := validateLicense(ctx, rt, sink, opts, c, token); err != nil {
 			return err
 		}
 	}
@@ -237,7 +240,7 @@ func emitPortInUseError(sink output.Sink, port string) {
 	})
 }
 
-func validateLicense(ctx context.Context, rt runtime.Runtime, sink output.Sink, platformClient api.PlatformAPI, containerConfig runtime.ContainerConfig, token string) error {
+func validateLicense(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts StartOptions, containerConfig runtime.ContainerConfig, token string) error {
 	version := containerConfig.Tag
 	if version == "" || version == "latest" {
 		actualVersion, err := rt.GetImageVersion(ctx, containerConfig.Image)
@@ -265,7 +268,11 @@ func validateLicense(ctx context.Context, rt runtime.Runtime, sink output.Sink, 
 		},
 	}
 
-	if err := platformClient.GetLicense(ctx, licenseReq); err != nil {
+	if err := opts.PlatformClient.GetLicense(ctx, licenseReq); err != nil {
+		var licErr *api.LicenseError
+		if errors.As(err, &licErr) && licErr.Detail != "" {
+			opts.Logger.Error("license server response (HTTP %d): %s", licErr.Status, licErr.Detail)
+		}
 		return fmt.Errorf("license validation failed for %s:%s: %w", containerConfig.ProductName, version, err)
 	}
 

@@ -32,6 +32,14 @@ Note: Integration tests require `LOCALSTACK_AUTH_TOKEN` environment variable for
   - `output/` - Generic event and sink abstractions for CLI/TUI/non-interactive rendering
   - `ui/` - Bubble Tea views for interactive output
   - `update/` - Self-update logic: version check via GitHub API, binary/Homebrew/npm update paths, archive extraction
+  - `log/` - Internal diagnostic logging (not for user-facing output — use `output/` for that)
+
+# Logging
+
+lstk always writes diagnostic logs to `$CONFIG_DIR/lstk.log` (appends across runs, cleared at 1 MB). Two log levels: `Info` and `Error`.
+
+- `log.Logger` is injected as a dependency (via `StartOptions` or constructor params). Use `log.Nop()` in tests.
+- This is separate from `output.Sink` — the logger is for internal diagnostics, the sink is for user-facing output.
 
 # Configuration
 
@@ -57,7 +65,11 @@ Environment variables:
 - Errors returned by functions should always be checked unless in test files.
 - Terminology: in user-facing CLI/help/docs, prefer `emulator` over `container`/`runtime`; use `container`/`runtime` only for internal implementation details.
 - Avoid package-level global variables. Use constructor functions that return fresh instances and inject dependencies explicitly. This keeps packages testable in isolation and prevents shared mutable state between tests.
+<<<<<<< carole/drg-622
+- Never print directly to stdout/stderr (e.g., `fmt.Fprintf(os.Stderr, …)`). For user-facing output, emit events through `output.Sink`. For internal diagnostics, use `log.Logger`. If neither is available (e.g., during logger setup), return errors to the caller and let them decide.
+=======
 - Do not call `config.Get()` from domain/business-logic packages. Instead, extract the values you need at the command boundary (`cmd/`) and pass them as explicit function arguments. This keeps domain functions testable without requiring Viper/config initialization.
+>>>>>>> main
 
 # Testing
 

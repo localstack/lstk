@@ -4,11 +4,13 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"github.com/localstack/lstk/internal/api"
 	"github.com/localstack/lstk/internal/config"
 	"github.com/localstack/lstk/internal/container"
 	"github.com/localstack/lstk/internal/env"
+	"github.com/localstack/lstk/internal/log"
 	"github.com/localstack/lstk/internal/output"
 	"github.com/localstack/lstk/internal/runtime"
 	"github.com/localstack/lstk/internal/telemetry"
@@ -17,7 +19,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func NewRootCmd(cfg *env.Env, tel *telemetry.Client) *cobra.Command {
+func NewRootCmd(cfg *env.Env, tel *telemetry.Client, logger log.Logger) *cobra.Command {
 	root := &cobra.Command{
 		Use:     "lstk",
 		Short:   "LocalStack CLI",
@@ -28,7 +30,7 @@ func NewRootCmd(cfg *env.Env, tel *telemetry.Client) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return runStart(cmd.Context(), rt, cfg, tel)
+			return runStart(cmd.Context(), rt, cfg, tel, logger)
 		},
 	}
 
@@ -46,11 +48,11 @@ func NewRootCmd(cfg *env.Env, tel *telemetry.Client) *cobra.Command {
 	root.Flags().Lookup("version").Usage = "Show version"
 
 	root.AddCommand(
-		newStartCmd(cfg, tel),
+		newStartCmd(cfg, tel, logger),
 		newStopCmd(cfg),
+		newLoginCmd(cfg, logger),
+		newLogoutCmd(cfg, logger),
 		newStatusCmd(cfg),
-		newLoginCmd(cfg),
-		newLogoutCmd(cfg),
 		newLogsCmd(),
 		newConfigCmd(),
 		newVersionCmd(),
@@ -65,7 +67,14 @@ func Execute(ctx context.Context) error {
 	tel := telemetry.New(cfg.AnalyticsEndpoint, cfg.DisableEvents)
 	defer tel.Close()
 
-	root := NewRootCmd(cfg, tel)
+	logger, cleanup, err := newLogger()
+	if err != nil {
+		logger = log.Nop()
+	}
+	defer cleanup()
+	logger.Info("lstk %s starting", version.Version())
+
+	root := NewRootCmd(cfg, tel, logger)
 	root.SilenceErrors = true
 	root.SilenceUsage = true
 
@@ -78,7 +87,7 @@ func Execute(ctx context.Context) error {
 	return nil
 }
 
-func runStart(ctx context.Context, rt runtime.Runtime, cfg *env.Env, tel *telemetry.Client) error {
+func runStart(ctx context.Context, rt runtime.Runtime, cfg *env.Env, tel *telemetry.Client, logger log.Logger) error {
 	// TODO: replace map with a typed payload struct once event schema is finalised
 	tel.Emit(ctx, "cli_cmd", map[string]any{"cmd": "lstk start", "params": []string{}})
 
@@ -88,14 +97,16 @@ func runStart(ctx context.Context, rt runtime.Runtime, cfg *env.Env, tel *teleme
 	}
 
 	opts := container.StartOptions{
-		PlatformClient:   api.NewPlatformClient(cfg.APIEndpoint),
+		PlatformClient:   api.NewPlatformClient(cfg.APIEndpoint, logger),
 		AuthToken:        cfg.AuthToken,
 		ForceFileKeyring: cfg.ForceFileKeyring,
 		WebAppURL:        cfg.WebAppURL,
 		LocalStackHost:   cfg.LocalStackHost,
 		Containers:       appConfig.Containers,
 		Env:              appConfig.Env,
+		Logger:           logger,
 	}
+
 	if isInteractiveMode(cfg) {
 		return ui.Run(ctx, rt, version.Version(), opts)
 	}
@@ -104,6 +115,29 @@ func runStart(ctx context.Context, rt runtime.Runtime, cfg *env.Env, tel *teleme
 
 func isInteractiveMode(cfg *env.Env) bool {
 	return !cfg.NonInteractive && ui.IsInteractive()
+}
+
+const maxLogSize = 1 << 20 // 1 MB
+
+func newLogger() (log.Logger, func(), error) {
+	configDir, err := config.ConfigDir()
+	if err != nil {
+		return nil, func() {}, fmt.Errorf("resolve config directory: %w", err)
+	}
+	if err := os.MkdirAll(configDir, 0755); err != nil {
+		return nil, func() {}, fmt.Errorf("create config directory %s: %w", configDir, err)
+	}
+	path := filepath.Join(configDir, "lstk.log")
+	if info, err := os.Stat(path); err == nil && info.Size() > maxLogSize {
+		if err := os.Truncate(path, 0); err != nil {
+			return nil, func() {}, fmt.Errorf("truncate log file %s: %w", path, err)
+		}
+	}
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600)
+	if err != nil {
+		return nil, func() {}, fmt.Errorf("open log file %s: %w", path, err)
+	}
+	return log.New(f), func() { _ = f.Close() }, nil
 }
 
 func initConfig(cmd *cobra.Command, _ []string) error {

@@ -6,6 +6,7 @@ import (
 	"io"
 	"testing"
 
+	"github.com/localstack/lstk/internal/log"
 	"github.com/localstack/lstk/internal/output"
 	"github.com/localstack/lstk/internal/runtime"
 	"github.com/stretchr/testify/assert"
@@ -21,7 +22,7 @@ func TestStart_ReturnsEarlyIfRuntimeUnhealthy(t *testing.T) {
 
 	sink := output.NewPlainSink(io.Discard)
 
-	err := Start(context.Background(), mockRT, sink, StartOptions{}, false)
+	err := Start(context.Background(), mockRT, sink, StartOptions{Logger: log.Nop()}, false)
 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "runtime not healthy")

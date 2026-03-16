@@ -10,19 +10,20 @@ import (
 	"github.com/localstack/lstk/internal/config"
 	"github.com/localstack/lstk/internal/container"
 	"github.com/localstack/lstk/internal/env"
+	"github.com/localstack/lstk/internal/log"
 	"github.com/localstack/lstk/internal/output"
 	"github.com/localstack/lstk/internal/runtime"
 	"github.com/localstack/lstk/internal/ui"
 	"github.com/spf13/cobra"
 )
 
-func newLogoutCmd(cfg *env.Env) *cobra.Command {
+func newLogoutCmd(cfg *env.Env, logger log.Logger) *cobra.Command {
 	return &cobra.Command{
 		Use:     "logout",
 		Short:   "Remove stored authentication credentials",
 		PreRunE: initConfig,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			platformClient := api.NewPlatformClient(cfg.APIEndpoint)
+			platformClient := api.NewPlatformClient(cfg.APIEndpoint, logger)
 			appConfig, err := config.Get()
 			if err != nil {
 				return fmt.Errorf("failed to get config: %w", err)
@@ -31,12 +32,13 @@ func newLogoutCmd(cfg *env.Env) *cobra.Command {
 			if dockerRuntime, err := runtime.NewDockerRuntime(); err == nil {
 				rt = dockerRuntime
 			}
+
 			if isInteractiveMode(cfg) {
-				return ui.RunLogout(cmd.Context(), rt, platformClient, cfg.AuthToken, cfg.ForceFileKeyring, appConfig.Containers)
+				return ui.RunLogout(cmd.Context(), rt, platformClient, cfg.AuthToken, cfg.ForceFileKeyring, appConfig.Containers, logger)
 			}
 
 			sink := output.NewPlainSink(os.Stdout)
-			tokenStorage, err := auth.NewTokenStorage(cfg.ForceFileKeyring)
+			tokenStorage, err := auth.NewTokenStorage(cfg.ForceFileKeyring, logger)
 			if err != nil {
 				return fmt.Errorf("failed to initialize token storage: %w", err)
 			}

@@ -4,11 +4,12 @@ import (
 	"testing"
 
 	"github.com/localstack/lstk/internal/env"
+	"github.com/localstack/lstk/internal/log"
 	"github.com/localstack/lstk/internal/telemetry"
 )
 
 func TestNonInteractiveFlagIsRegistered(t *testing.T) {
-	root := NewRootCmd(&env.Env{}, telemetry.New("", true))
+	root := NewRootCmd(&env.Env{}, telemetry.New("", true), log.Nop())
 
 	flag := root.PersistentFlags().Lookup("non-interactive")
 	if flag == nil {
@@ -46,7 +47,7 @@ func TestNonInteractiveFlagAppearsInStopHelp(t *testing.T) {
 
 func TestNonInteractiveFlagBindsToCfg(t *testing.T) {
 	cfg := &env.Env{}
-	root := NewRootCmd(cfg, telemetry.New("", true))
+	root := NewRootCmd(cfg, telemetry.New("", true), log.Nop())
 	root.SetArgs([]string{"--non-interactive", "version"})
 	_ = root.Execute()
 
@@ -57,7 +58,7 @@ func TestNonInteractiveFlagBindsToCfg(t *testing.T) {
 
 func TestNonInteractiveFlagDefaultIsOff(t *testing.T) {
 	cfg := &env.Env{}
-	root := NewRootCmd(cfg, telemetry.New("", true))
+	root := NewRootCmd(cfg, telemetry.New("", true), log.Nop())
 	root.SetArgs([]string{"version"})
 	_ = root.Execute()
 

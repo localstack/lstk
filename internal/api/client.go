@@ -5,10 +5,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
+	"io"
 	"net/http"
 	"time"
 
+	"github.com/localstack/lstk/internal/log"
 	"github.com/localstack/lstk/internal/version"
 )
 
@@ -62,15 +63,29 @@ type MachineInfo struct {
 	PlatformRelease string `json:"platform_release,omitempty"`
 }
 
+// LicenseError is returned when license validation fails.
+// Message is user-friendly; Detail contains the raw server response for debugging.
+type LicenseError struct {
+	Status  int
+	Message string
+	Detail  string
+}
+
+func (e *LicenseError) Error() string {
+	return fmt.Sprintf("license validation failed: %s", e.Message)
+}
+
 type PlatformClient struct {
 	baseURL    string
 	httpClient *http.Client
+	logger     log.Logger
 }
 
-func NewPlatformClient(apiEndpoint string) *PlatformClient {
+func NewPlatformClient(apiEndpoint string, logger log.Logger) *PlatformClient {
 	return &PlatformClient{
 		baseURL:    apiEndpoint,
 		httpClient: &http.Client{Timeout: 30 * time.Second},
+		logger:     logger,
 	}
 }
 
@@ -96,7 +111,7 @@ func (c *PlatformClient) CreateAuthRequest(ctx context.Context) (*AuthRequest, e
 	}
 	defer func() {
 		if err := resp.Body.Close(); err != nil {
-			log.Printf("failed to close response body: %v", err)
+			c.logger.Error("failed to close response body: %v", err)
 		}
 	}()
 
@@ -125,7 +140,7 @@ func (c *PlatformClient) CheckAuthRequestConfirmed(ctx context.Context, id, exch
 	}
 	defer func() {
 		if err := resp.Body.Close(); err != nil {
-			log.Printf("failed to close response body: %v", err)
+			c.logger.Error("failed to close response body: %v", err)
 		}
 	}()
 
@@ -160,7 +175,7 @@ func (c *PlatformClient) ExchangeAuthRequest(ctx context.Context, id, exchangeTo
 	}
 	defer func() {
 		if err := resp.Body.Close(); err != nil {
-			log.Printf("failed to close response body: %v", err)
+			c.logger.Error("failed to close response body: %v", err)
 		}
 	}()
 
@@ -189,7 +204,7 @@ func (c *PlatformClient) GetLicenseToken(ctx context.Context, bearerToken string
 	}
 	defer func() {
 		if err := resp.Body.Close(); err != nil {
-			log.Printf("failed to close response body: %v", err)
+			c.logger.Error("failed to close response body: %v", err)
 		}
 	}()
 
@@ -221,20 +236,43 @@ func (c *PlatformClient) GetLicense(ctx context.Context, licReq *LicenseRequest)
 	if err != nil {
 		return fmt.Errorf("failed to request license: %w", err)
 	}
-	defer func() {
-		if err := resp.Body.Close(); err != nil {
-			log.Printf("failed to close response body: %v", err)
-		}
-	}()
 
-	switch resp.StatusCode {
-	case http.StatusOK:
+	statusCode := resp.StatusCode
+	var detail string
+	if statusCode != http.StatusOK {
+		respBody, err := io.ReadAll(io.LimitReader(resp.Body, 1024))
+		if err != nil {
+			detail = fmt.Sprintf("failed to read response body: %v", err)
+		} else {
+			detail = string(bytes.TrimSpace(respBody))
+		}
+	}
+	if err := resp.Body.Close(); err != nil {
+		c.logger.Error("failed to close response body: %v", err)
+	}
+
+	if statusCode == http.StatusOK {
 		return nil
+	}
+
+	switch statusCode {
 	case http.StatusBadRequest:
-		return fmt.Errorf("license validation failed: invalid token format, missing license assignment, or missing subscription")
+		return &LicenseError{
+			Status:  statusCode,
+			Message: "invalid token format, missing license assignment, or missing subscription",
+			Detail:  detail,
+		}
 	case http.StatusForbidden:
-		return fmt.Errorf("license validation failed: invalid, inactive, or expired authentication token or subscription")
+		return &LicenseError{
+			Status:  statusCode,
+			Message: "invalid, inactive, or expired authentication token or subscription",
+			Detail:  detail,
+		}
 	default:
-		return fmt.Errorf("license request failed with status %d", resp.StatusCode)
+		return &LicenseError{
+			Status:  statusCode,
+			Message: fmt.Sprintf("unexpected status %d", statusCode),
+			Detail:  detail,
+		}
 	}
 }

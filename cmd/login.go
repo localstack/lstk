@@ -5,12 +5,13 @@ import (
 
 	"github.com/localstack/lstk/internal/api"
 	"github.com/localstack/lstk/internal/env"
+	"github.com/localstack/lstk/internal/log"
 	"github.com/localstack/lstk/internal/ui"
 	"github.com/localstack/lstk/internal/version"
 	"github.com/spf13/cobra"
 )
 
-func newLoginCmd(cfg *env.Env) *cobra.Command {
+func newLoginCmd(cfg *env.Env, logger log.Logger) *cobra.Command {
 	return &cobra.Command{
 		Use:     "login",
 		Short:   "Manage login",
@@ -20,8 +21,8 @@ func newLoginCmd(cfg *env.Env) *cobra.Command {
 			if !isInteractiveMode(cfg) {
 				return fmt.Errorf("login requires an interactive terminal")
 			}
-			platformClient := api.NewPlatformClient(cfg.APIEndpoint)
-			return ui.RunLogin(cmd.Context(), version.Version(), platformClient, cfg.AuthToken, cfg.ForceFileKeyring, cfg.WebAppURL)
+			platformClient := api.NewPlatformClient(cfg.APIEndpoint, logger)
+			return ui.RunLogin(cmd.Context(), version.Version(), platformClient, cfg.AuthToken, cfg.ForceFileKeyring, cfg.WebAppURL, logger)
 		},
 	}
 }
