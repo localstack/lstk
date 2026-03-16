@@ -72,6 +72,7 @@ func Execute(ctx context.Context) error {
 		logger = log.Nop()
 	}
 	defer cleanup()
+	logger.Info("lstk %s starting", version.Version())
 
 	root := NewRootCmd(cfg, tel, logger)
 	root.SilenceErrors = true
