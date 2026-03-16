@@ -11,6 +11,7 @@ import (
 func TestNonInteractiveFlagBlocksLogin(t *testing.T) {
 	out, err := runLstkInPTY(t, testContext(t), nil, "login", "--non-interactive")
 	require.Error(t, err, "expected login --non-interactive to fail")
+	requireExitCode(t, 1, err)
 	assert.Contains(t, out, "login requires an interactive terminal")
 }
 
@@ -24,6 +25,7 @@ func TestNonInteractiveFlagFailsWithoutToken(t *testing.T) {
 
 	out, err := runLstkInPTY(t, testContext(t), env.Without(env.AuthToken).With(env.APIEndpoint, mockServer.URL), "start", "--non-interactive")
 	require.Error(t, err, "expected start --non-interactive to fail with no auth token")
+	requireExitCode(t, 1, err)
 	assert.Contains(t, out, "authentication required: set LOCALSTACK_AUTH_TOKEN or run in interactive mode")
 }
 
@@ -37,5 +39,6 @@ func TestRootNonInteractiveFlagFailsWithoutToken(t *testing.T) {
 
 	out, err := runLstkInPTY(t, testContext(t), env.Without(env.AuthToken).With(env.APIEndpoint, mockServer.URL), "--non-interactive")
 	require.Error(t, err, "expected lstk --non-interactive to fail with no auth token")
+	requireExitCode(t, 1, err)
 	assert.Contains(t, out, "authentication required: set LOCALSTACK_AUTH_TOKEN or run in interactive mode")
 }

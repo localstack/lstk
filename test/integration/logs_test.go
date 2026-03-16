@@ -22,6 +22,7 @@ func TestLogsExitsByDefault(t *testing.T) {
 
 	_, _, err := runLstk(t, ctx, "", nil, "logs")
 	require.NoError(t, err, "lstk logs should exit cleanly when container is running")
+	requireExitCode(t, 0, err)
 }
 
 func TestLogsCommandFailsWhenNotRunning(t *testing.T) {
@@ -31,6 +32,7 @@ func TestLogsCommandFailsWhenNotRunning(t *testing.T) {
 
 	_, stderr, err := runLstk(t, testContext(t), "", nil, "logs", "--follow")
 	require.Error(t, err, "expected lstk logs --follow to fail when container not running")
+	requireExitCode(t, 1, err)
 	assert.Contains(t, stderr, "emulator is not running")
 }
 

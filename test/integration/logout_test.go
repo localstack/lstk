@@ -19,6 +19,7 @@ func TestLogoutCommandRemovesToken(t *testing.T) {
 
 	stdout, stderr, err := runLstk(t, testContext(t), "", nil, "logout")
 	require.NoError(t, err, "lstk logout failed: %s", stderr)
+	requireExitCode(t, 0, err)
 	assert.Contains(t, stdout, "Logged out successfully")
 
 	_, err = GetAuthTokenFromKeyring()
@@ -30,6 +31,7 @@ func TestLogoutCommandSucceedsWhenNoToken(t *testing.T) {
 
 	stdout, stderr, err := runLstk(t, testContext(t), "", env.Without(env.AuthToken), "logout")
 	require.NoError(t, err, "lstk logout should succeed even with no token: %s", stderr)
+	requireExitCode(t, 0, err)
 	assert.Contains(t, stdout, "Not currently logged in")
 }
 
@@ -38,6 +40,7 @@ func TestLogoutCommandWithEnvVarToken(t *testing.T) {
 
 	stdout, stderr, err := runLstk(t, testContext(t), "", env.Without(env.AuthToken).With(env.AuthToken, "test-env-token"), "logout")
 	require.NoError(t, err, "lstk logout should succeed: %s", stderr)
+	requireExitCode(t, 0, err)
 	assert.Contains(t, stdout, "LOCALSTACK_AUTH_TOKEN")
 }
 
@@ -57,5 +60,6 @@ func TestLogoutCommandNotesWhenEmulatorStillRunning(t *testing.T) {
 
 	stdout, stderr, err := runLstk(t, ctx, "", nil, "logout")
 	require.NoError(t, err, "lstk logout failed: %s", stderr)
+	requireExitCode(t, 0, err)
 	assert.Contains(t, stdout, "LocalStack is still running in the background")
 }

@@ -65,6 +65,7 @@ func TestLicenseValidationSuccess(t *testing.T) {
 	}
 
 	require.NoError(t, err, "lstk start failed: %s", stderr)
+	requireExitCode(t, 0, err)
 
 	inspect, err := dockerClient.ContainerInspect(ctx, containerName)
 	require.NoError(t, err, "failed to inspect container")
@@ -82,6 +83,7 @@ func TestLicenseValidationFailure(t *testing.T) {
 	ctx := testContext(t)
 	_, stderr, err := runLstk(t, ctx, "", env.With(env.APIEndpoint, mockServer.URL).With(env.AuthToken, "test-token-for-license-validation"), "start")
 	require.Error(t, err, "expected lstk start to fail with forbidden license")
+	requireExitCode(t, 1, err)
 	assert.Contains(t, stderr, "license validation failed")
 	assert.Contains(t, stderr, "invalid, inactive, or expired")
 

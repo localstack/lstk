@@ -120,6 +120,7 @@ func TestDeviceFlowSuccess(t *testing.T) {
 
 	out := output.String()
 	require.NoError(t, err, "login should succeed: %s", out)
+	requireExitCode(t, 0, err)
 	assert.Contains(t, out, "Opening browser to login...")
 	assert.Contains(t, out, "Browser didn't open? Visit")
 	assert.Contains(t, out, "/auth/request/test-auth-req-id?code=TEST123")
@@ -176,6 +177,7 @@ func TestDeviceFlowFailure_RequestNotConfirmed(t *testing.T) {
 
 	out := output.String()
 	require.Error(t, err, "expected login to fail when request not confirmed")
+	requireExitCode(t, 1, err)
 	assert.Contains(t, out, "Opening browser to login...")
 	assert.Contains(t, out, "Browser didn't open? Visit")
 	assert.Contains(t, out, "/auth/request/test-auth-req-id?code=TEST123")

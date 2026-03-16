@@ -153,5 +153,6 @@ func TestStartNonInteractiveEmitsNoteWhenAWSProfileMissing(t *testing.T) {
 		"start",
 	)
 	require.NoError(t, err)
+	requireExitCode(t, 0, err)
 	assert.Contains(t, stdout, "No complete LocalStack AWS profile found")
 }
