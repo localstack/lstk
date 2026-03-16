@@ -44,6 +44,7 @@ func NewRootCmd(cfg *env.Env, tel *telemetry.Client, logger log.Logger) *cobra.C
 	configureHelp(root)
 
 	root.InitDefaultVersionFlag()
+	root.Flags().Lookup("version").Shorthand = "v"
 	root.Flags().Lookup("version").Usage = "Show version"
 	root.SetVersionTemplate(versionTemplate())
 
