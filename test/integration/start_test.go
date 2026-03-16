@@ -24,6 +24,7 @@ func TestStartCommandSucceedsWithValidToken(t *testing.T) {
 	ctx := testContext(t)
 	_, stderr, err := runLstk(t, ctx, "", env.With(env.APIEndpoint, mockServer.URL), "start")
 	require.NoError(t, err, "lstk start failed: %s", stderr)
+	requireExitCode(t, 0, err)
 
 	inspect, err := dockerClient.ContainerInspect(ctx, containerName)
 	require.NoError(t, err, "failed to inspect container")
@@ -47,6 +48,7 @@ func TestStartCommandSucceedsWithKeyringToken(t *testing.T) {
 	// Run without LOCALSTACK_AUTH_TOKEN should use keyring
 	_, stderr, err := runLstk(t, ctx, "", env.Without(env.AuthToken).With(env.APIEndpoint, mockServer.URL), "start")
 	require.NoError(t, err, "lstk start failed: %s", stderr)
+	requireExitCode(t, 0, err)
 
 	inspect, err := dockerClient.ContainerInspect(ctx, containerName)
 	require.NoError(t, err, "failed to inspect container")
@@ -63,6 +65,7 @@ func TestStartCommandFailsWithInvalidToken(t *testing.T) {
 
 	_, stderr, err := runLstk(t, testContext(t), "", env.With(env.AuthToken, "invalid-token").With(env.APIEndpoint, mockServer.URL), "start")
 	require.Error(t, err, "expected lstk start to fail with invalid token")
+	requireExitCode(t, 1, err)
 	assert.Contains(t, stderr, "license validation failed")
 }
 
@@ -76,6 +79,7 @@ func TestStartCommandDoesNothingWhenAlreadyRunning(t *testing.T) {
 
 	stdout, stderr, err := runLstk(t, ctx, "", env.With(env.AuthToken, "fake-token"), "start")
 	require.NoError(t, err, "lstk start should succeed when container is already running: %s", stderr)
+	requireExitCode(t, 0, err)
 	assert.Contains(t, stdout, "already running")
 }
 
@@ -90,6 +94,7 @@ func TestStartCommandFailsWhenPortInUse(t *testing.T) {
 
 	stdout, _, err := runLstk(t, testContext(t), "", env.With(env.AuthToken, "fake-token"), "start")
 	require.Error(t, err, "expected lstk start to fail when port is in use")
+	requireExitCode(t, 1, err)
 	assert.Contains(t, stdout, "Port 4566 already in use")
 	assert.Contains(t, stdout, "LocalStack may already be running.")
 	assert.Contains(t, stdout, "lstk stop")

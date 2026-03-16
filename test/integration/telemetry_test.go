@@ -64,6 +64,7 @@ func TestStartCommandSendsTelemetryEvent(t *testing.T) {
 		With(env.AnalyticsEndpoint, analyticsSrv.URL)
 	out, err := cmd.CombinedOutput()
 	require.NoError(t, err, "lstk start failed: %s", out)
+	requireExitCode(t, 0, err)
 
 	// The telemetry goroutine is async; wait up to 3s for the event to arrive.
 	select {
@@ -106,6 +107,7 @@ func TestStartCommandSucceedsWhenAnalyticsEndpointUnreachable(t *testing.T) {
 	out, err := cmd.CombinedOutput()
 
 	require.NoError(t, err, "lstk start should succeed even when analytics endpoint is unreachable: %s", out)
+	requireExitCode(t, 0, err)
 }
 
 func TestStartCommandDoesNotSendTelemetryWhenDisabled(t *testing.T) {
@@ -126,6 +128,7 @@ func TestStartCommandDoesNotSendTelemetryWhenDisabled(t *testing.T) {
 		With(env.DisableEvents, "1")
 	out, err := cmd.CombinedOutput()
 	require.NoError(t, err, "lstk start failed: %s", out)
+	requireExitCode(t, 0, err)
 
 	// Wait long enough that a goroutine would have fired if enabled.
 	select {
