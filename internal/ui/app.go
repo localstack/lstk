@@ -142,18 +142,7 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, nil
 	case output.MessageEvent:
 		line := styledLine{text: components.RenderMessage(msg)}
-		if msg.Severity == output.SeverityInfo {
-			blank := styledLine{text: ""}
-			if a.spinner.PendingStop() {
-				a.bufferedLines = appendLine(a.bufferedLines, blank)
-				a.bufferedLines = appendLine(a.bufferedLines, line)
-				a.bufferedLines = appendLine(a.bufferedLines, blank)
-			} else {
-				a.lines = appendLine(a.lines, blank)
-				a.lines = appendLine(a.lines, line)
-				a.lines = appendLine(a.lines, blank)
-			}
-		} else if a.spinner.PendingStop() {
+		if a.spinner.PendingStop() {
 			a.bufferedLines = appendLine(a.bufferedLines, line)
 		} else {
 			a.lines = appendLine(a.lines, line)
@@ -239,6 +228,24 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 		}
+	case output.ResourceSummaryEvent:
+		text := fmt.Sprintf("~ %d resources · %d services", msg.Resources, msg.Services)
+		style := styles.Message
+		if msg.Resources > 0 && msg.Services > 0 {
+			style = styles.Highlight
+		}
+		line := styledLine{text: style.Render(text)}
+		blank := styledLine{text: ""}
+		if a.spinner.PendingStop() {
+			a.bufferedLines = appendLine(a.bufferedLines, blank)
+			a.bufferedLines = appendLine(a.bufferedLines, line)
+			a.bufferedLines = appendLine(a.bufferedLines, blank)
+		} else {
+			a.lines = appendLine(a.lines, blank)
+			a.lines = appendLine(a.lines, line)
+			a.lines = appendLine(a.lines, blank)
+		}
+		return a, nil
 	default:
 		if line, ok := output.FormatEventLine(msg); ok {
 			for _, part := range strings.Split(line, "\n") {

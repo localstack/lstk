@@ -70,8 +70,13 @@ type TableEvent struct {
 	Rows    [][]string
 }
 
+type ResourceSummaryEvent struct {
+	Resources int
+	Services  int
+}
+
 type Event interface {
-	MessageEvent | AuthEvent | SpinnerEvent | ErrorEvent | ContainerStatusEvent | ProgressEvent | UserInputRequestEvent | LogLineEvent | InstanceInfoEvent | TableEvent
+	MessageEvent | AuthEvent | SpinnerEvent | ErrorEvent | ContainerStatusEvent | ProgressEvent | UserInputRequestEvent | LogLineEvent | InstanceInfoEvent | TableEvent | ResourceSummaryEvent
 }
 
 type Sink interface {
@@ -205,4 +210,8 @@ func EmitInstanceInfo(sink Sink, event InstanceInfoEvent) {
 
 func EmitTable(sink Sink, event TableEvent) {
 	Emit(sink, event)
+}
+
+func EmitResourceSummary(sink Sink, resources, services int) {
+	Emit(sink, ResourceSummaryEvent{Resources: resources, Services: services})
 }

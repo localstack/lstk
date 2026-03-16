@@ -32,6 +32,8 @@ func FormatEventLine(event any) (string, bool) {
 		return formatInstanceInfo(e), true
 	case TableEvent:
 		return formatTable(e)
+	case ResourceSummaryEvent:
+		return formatResourceSummary(e), true
 	default:
 		return "", false
 	}
@@ -176,6 +178,10 @@ func formatUptime(d time.Duration) string {
 		return fmt.Sprintf("%dm %ds", m, s)
 	}
 	return fmt.Sprintf("%ds", s)
+}
+
+func formatResourceSummary(e ResourceSummaryEvent) string {
+	return fmt.Sprintf("~ %d resources · %d services", e.Resources, e.Services)
 }
 
 func formatTable(e TableEvent) (string, bool) {

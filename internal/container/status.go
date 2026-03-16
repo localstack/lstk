@@ -93,7 +93,7 @@ func Status(ctx context.Context, rt runtime.Runtime, containers []config.Contain
 				services[r.Service] = struct{}{}
 			}
 
-			output.EmitInfo(sink, fmt.Sprintf("~ %d resources · %d services", len(rows), len(services)))
+			output.EmitResourceSummary(sink, len(rows), len(services))
 			output.EmitTable(sink, output.TableEvent{
 				Headers: []string{"SERVICE", "RESOURCE", "REGION", "ACCOUNT"},
 				Rows:    tableRows,
