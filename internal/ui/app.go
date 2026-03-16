@@ -182,6 +182,9 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			a.pullProgress = a.pullProgress.Hide()
 		}
 		if line, ok := output.FormatEventLine(msg); ok {
+			if msg.Phase == "ready" {
+				line = strings.Replace(line, output.SuccessMarkerText(), styles.Success.Render(output.SuccessMarkerText()), 1)
+			}
 			a.lines = appendLine(a.lines, styledLine{text: line})
 		}
 		return a, nil
