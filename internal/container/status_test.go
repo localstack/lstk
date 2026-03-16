@@ -22,7 +22,7 @@ func TestStatus_IsRunningError(t *testing.T) {
 	containers := []config.ContainerConfig{{Type: config.EmulatorAWS}}
 	sink := output.NewPlainSink(io.Discard)
 
-	err := Status(context.Background(), mockRT, containers, "", sink)
+	err := Status(context.Background(), mockRT, containers, "", nil, sink)
 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "docker unavailable")
@@ -39,7 +39,7 @@ func TestStatus_MultipleContainers_StopsAtFirstNotRunning(t *testing.T) {
 	}
 	sink := output.NewPlainSink(io.Discard)
 
-	err := Status(context.Background(), mockRT, containers, "", sink)
+	err := Status(context.Background(), mockRT, containers, "", nil, sink)
 
 	require.Error(t, err)
 	assert.True(t, output.IsSilent(err))

@@ -145,14 +145,16 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.Severity == output.SeverityInfo {
 			blank := styledLine{text: ""}
 			if a.spinner.PendingStop() {
-				a.bufferedLines = append(a.bufferedLines, blank, line, blank)
+				a.bufferedLines = appendLine(a.bufferedLines, blank)
+				a.bufferedLines = appendLine(a.bufferedLines, line)
+				a.bufferedLines = appendLine(a.bufferedLines, blank)
 			} else {
 				a.lines = appendLine(a.lines, blank)
 				a.lines = appendLine(a.lines, line)
 				a.lines = appendLine(a.lines, blank)
 			}
 		} else if a.spinner.PendingStop() {
-			a.bufferedLines = append(a.bufferedLines, line)
+			a.bufferedLines = appendLine(a.bufferedLines, line)
 		} else {
 			a.lines = appendLine(a.lines, line)
 		}
@@ -175,7 +177,7 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		prefix := styles.Secondary.Render(msg.Source + " | ")
 		line := styledLine{text: prefix + styles.Message.Render(msg.Line)}
 		if a.spinner.PendingStop() {
-			a.bufferedLines = append(a.bufferedLines, line)
+			a.bufferedLines = appendLine(a.bufferedLines, line)
 		} else {
 			a.lines = appendLine(a.lines, line)
 		}
@@ -228,7 +230,9 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				lines = append(lines, styledLine{text: part})
 			}
 			if a.spinner.PendingStop() {
-				a.bufferedLines = append(a.bufferedLines, lines...)
+				for _, l := range lines {
+					a.bufferedLines = appendLine(a.bufferedLines, l)
+				}
 			} else {
 				for _, l := range lines {
 					a.lines = appendLine(a.lines, l)
@@ -240,7 +244,7 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			for _, part := range strings.Split(line, "\n") {
 				l := styledLine{text: part}
 				if a.spinner.PendingStop() {
-					a.bufferedLines = append(a.bufferedLines, l)
+					a.bufferedLines = appendLine(a.bufferedLines, l)
 				} else {
 					a.lines = appendLine(a.lines, l)
 				}

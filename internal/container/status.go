@@ -3,7 +3,6 @@ package container
 import (
 	"context"
 	"fmt"
-	"net/http"
 	"time"
 
 	"github.com/localstack/lstk/internal/config"
@@ -15,7 +14,12 @@ import (
 
 const statusTimeout = 10 * time.Second
 
-func Status(ctx context.Context, rt runtime.Runtime, containers []config.ContainerConfig, localStackHost string, sink output.Sink) error {
+type EmulatorClient interface {
+	FetchVersion(ctx context.Context, host string) (string, error)
+	FetchResources(ctx context.Context, host string) ([]aws.Resource, error)
+}
+
+func Status(ctx context.Context, rt runtime.Runtime, containers []config.ContainerConfig, localStackHost string, emulatorClient EmulatorClient, sink output.Sink) error {
 	ctx, cancel := context.WithTimeout(ctx, statusTimeout)
 	defer cancel()
 
@@ -51,7 +55,6 @@ func Status(ctx context.Context, rt runtime.Runtime, containers []config.Contain
 		var rows []aws.Resource
 		switch c.Type {
 		case config.EmulatorAWS:
-			emulatorClient := aws.NewClient(&http.Client{})
 			if v, err := emulatorClient.FetchVersion(ctx, host); err != nil {
 				output.EmitSpinnerStop(sink)
 				output.EmitWarning(sink, fmt.Sprintf("Could not fetch version: %v", err))
@@ -69,7 +72,7 @@ func Status(ctx context.Context, rt runtime.Runtime, containers []config.Contain
 
 		output.EmitSpinnerStop(sink)
 
-		output.Emit(sink, output.InstanceInfoEvent{
+		output.EmitInstanceInfo(sink, output.InstanceInfoEvent{
 			EmulatorName:  c.DisplayName(),
 			Version:       version,
 			Host:          host,
@@ -91,7 +94,7 @@ func Status(ctx context.Context, rt runtime.Runtime, containers []config.Contain
 			}
 
 			output.EmitInfo(sink, fmt.Sprintf("~ %d resources · %d services", len(rows), len(services)))
-			output.Emit(sink, output.TableEvent{
+			output.EmitTable(sink, output.TableEvent{
 				Headers: []string{"SERVICE", "RESOURCE", "REGION", "ACCOUNT"},
 				Rows:    tableRows,
 			})

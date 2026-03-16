@@ -203,28 +203,31 @@ func formatTableWidth(e TableEvent, totalWidth int) string {
 		}
 	}
 
-	// Fixed overhead: 2 (indent) + (ncols-1)*2 (gaps between columns).
-	overhead := 2 + (ncols-1)*2
+	// When totalWidth is 0 (stdout is not a TTY), skip truncation entirely.
+	if totalWidth > 0 {
+		// Fixed overhead: 2 (indent) + (ncols-1)*2 (gaps between columns).
+		overhead := 2 + (ncols-1)*2
 
-	// Find the widest column and let it absorb any overflow.
-	maxCol := 0
-	for i := 1; i < ncols; i++ {
-		if widths[i] > widths[maxCol] {
-			maxCol = i
+		// Find the widest column and let it absorb any overflow.
+		maxCol := 0
+		for i := 1; i < ncols; i++ {
+			if widths[i] > widths[maxCol] {
+				maxCol = i
+			}
 		}
-	}
-	fixedWidth := overhead
-	for i, w := range widths {
-		if i != maxCol {
-			fixedWidth += w
+		fixedWidth := overhead
+		for i, w := range widths {
+			if i != maxCol {
+				fixedWidth += w
+			}
 		}
-	}
-	maxFlexible := totalWidth - fixedWidth
-	if maxFlexible < 10 {
-		maxFlexible = 10
-	}
-	if widths[maxCol] > maxFlexible {
-		widths[maxCol] = maxFlexible
+		maxFlexible := totalWidth - fixedWidth
+		if maxFlexible < 10 {
+			maxFlexible = 10
+		}
+		if widths[maxCol] > maxFlexible {
+			widths[maxCol] = maxFlexible
+		}
 	}
 
 	var sb strings.Builder

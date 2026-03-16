@@ -2,10 +2,12 @@ package cmd
 
 import (
 	"fmt"
+	"net/http"
 	"os"
 
 	"github.com/localstack/lstk/internal/config"
 	"github.com/localstack/lstk/internal/container"
+	"github.com/localstack/lstk/internal/emulator/aws"
 	"github.com/localstack/lstk/internal/env"
 	"github.com/localstack/lstk/internal/output"
 	"github.com/localstack/lstk/internal/runtime"
@@ -30,10 +32,12 @@ func newStatusCmd(cfg *env.Env) *cobra.Command {
 				return fmt.Errorf("failed to get config: %w", err)
 			}
 
+			awsClient := aws.NewClient(&http.Client{})
+
 			if isInteractiveMode(cfg) {
-				return ui.RunStatus(cmd.Context(), rt, appCfg.Containers, cfg.LocalStackHost)
+				return ui.RunStatus(cmd.Context(), rt, appCfg.Containers, cfg.LocalStackHost, awsClient)
 			}
-			return container.Status(cmd.Context(), rt, appCfg.Containers, cfg.LocalStackHost, output.NewPlainSink(os.Stdout))
+			return container.Status(cmd.Context(), rt, appCfg.Containers, cfg.LocalStackHost, awsClient, output.NewPlainSink(os.Stdout))
 		},
 	}
 }

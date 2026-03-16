@@ -198,3 +198,11 @@ func EmitSpinnerStop(sink Sink) {
 func EmitError(sink Sink, event ErrorEvent) {
 	Emit(sink, event)
 }
+
+func EmitInstanceInfo(sink Sink, event InstanceInfoEvent) {
+	Emit(sink, event)
+}
+
+func EmitTable(sink Sink, event TableEvent) {
+	Emit(sink, event)
+}

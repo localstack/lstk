@@ -12,7 +12,7 @@ import (
 	"github.com/localstack/lstk/internal/runtime"
 )
 
-func RunStatus(parentCtx context.Context, rt runtime.Runtime, containers []config.ContainerConfig, localStackHost string) error {
+func RunStatus(parentCtx context.Context, rt runtime.Runtime, containers []config.ContainerConfig, localStackHost string, emulatorClient container.EmulatorClient) error {
 	ctx, cancel := context.WithCancel(parentCtx)
 	defer cancel()
 
@@ -21,7 +21,7 @@ func RunStatus(parentCtx context.Context, rt runtime.Runtime, containers []confi
 	runErrCh := make(chan error, 1)
 
 	go func() {
-		err := container.Status(ctx, rt, containers, localStackHost, output.NewTUISink(programSender{p: p}))
+		err := container.Status(ctx, rt, containers, localStackHost, emulatorClient, output.NewTUISink(programSender{p: p}))
 		if err != nil && !errors.Is(err, context.Canceled) {
 			p.Send(runErrMsg{err: err})
 		} else {
