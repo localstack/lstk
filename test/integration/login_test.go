@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"os/exec"
 	"runtime"
 	"testing"
@@ -80,11 +81,14 @@ func TestDeviceFlowSuccess(t *testing.T) {
 		t.Skip("PTY not supported on Windows")
 	}
 
+	// Skip if no auth token available
+	licenseToken := os.Getenv(string(env.AuthToken))
+	if licenseToken == "" {
+		t.Skip("LOCALSTACK_AUTH_TOKEN not set")
+	}
+
 	cleanup()
 	t.Cleanup(cleanup)
-
-	// Require valid token from environment
-	licenseToken := env.Require(t, env.AuthToken)
 
 	// Create mock API server that returns the real token
 	mockServer := createMockAPIServer(t, licenseToken, true)
