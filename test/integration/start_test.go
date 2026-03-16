@@ -3,6 +3,8 @@ package integration_test
 import (
 	"context"
 	"net"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/docker/docker/api/types/container"
@@ -98,6 +100,30 @@ func TestStartCommandFailsWhenPortInUse(t *testing.T) {
 	assert.Contains(t, stdout, "Port 4566 already in use")
 	assert.Contains(t, stdout, "LocalStack may already be running.")
 	assert.Contains(t, stdout, "lstk stop")
+}
+
+func TestStartCommandSucceedsWithNonDefaultPort(t *testing.T) {
+	requireDocker(t)
+	_ = env.Require(t, env.AuthToken)
+
+	cleanup()
+	t.Cleanup(cleanup)
+
+	mockServer := createMockLicenseServer(true)
+	defer mockServer.Close()
+
+	configContent := `
+[[containers]]
+type = "aws"
+tag = "latest"
+port = "4567"
+`
+	configFile := filepath.Join(t.TempDir(), "config.toml")
+	require.NoError(t, os.WriteFile(configFile, []byte(configContent), 0644))
+
+	ctx := testContext(t)
+	_, stderr, err := runLstk(t, ctx, "", env.With(env.APIEndpoint, mockServer.URL), "--config", configFile, "start")
+	require.NoError(t, err, "lstk start failed: %s", stderr)
 }
 
 func cleanup() {
