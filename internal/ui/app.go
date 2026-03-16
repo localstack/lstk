@@ -158,7 +158,7 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if msg.Code != "" {
 			a.lines = appendLine(a.lines, styledLine{text: ""})
-			a.lines = appendLine(a.lines, styledLine{text: styles.Secondary.Render("One-time code: ") + styles.NimboMid.Render(msg.Code)})
+			a.lines = appendLine(a.lines, styledLine{text: styles.SecondaryMessage.Render("One-time code: ") + styles.NimboMid.Render(msg.Code)})
 			a.lines = appendLine(a.lines, styledLine{text: ""})
 		}
 		return a, nil

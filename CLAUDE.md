@@ -35,14 +35,12 @@ Note: Integration tests require `LOCALSTACK_AUTH_TOKEN` environment variable for
 
 # Configuration
 
-Uses Viper with TOML format. Config lookup order:
+Uses Viper with TOML format. lstk uses the first config file found in this order:
 1. `./lstk.toml` (project-local)
 2. `$HOME/.config/lstk/config.toml`
-3. `os.UserConfigDir()/lstk/config.toml`
+3. **macOS**: `$HOME/Library/Application Support/lstk/config.toml` / **Windows**: `%AppData%\lstk\config.toml`
 
-When no config file exists, lstk creates one at:
-- `$HOME/.config/lstk/config.toml` if `$HOME/.config` exists
-- otherwise `os.UserConfigDir()/lstk/config.toml`
+When no config file exists, lstk creates one at `$HOME/.config/lstk/config.toml` if `$HOME/.config/` already exists, otherwise at the OS default (#3). This means #3 is only reached on macOS when `$HOME/.config/` didn't exist at first run.
 
 Use `lstk config path` to print the resolved config file path currently in use.
 When adding a new command that depends on configuration, wire config initialization explicitly in that command (`PreRunE: initConfig`). Keep side-effect-free commands (e.g., `version`, `config path`) without config initialization.

@@ -32,6 +32,7 @@ brew install localstack/tap/lstk
 npm install -g @localstack/lstk
 ```
 
+### 3. Binaries
 Pre-built binaries are also available from [GitHub Releases](https://github.com/localstack/lstk/releases). 📦
 
 ## Quick Start
@@ -69,10 +70,12 @@ The CLI supports multiple auth workflows. `lstk` resolves your auth token in thi
 
 `lstk` uses a TOML config file, created automatically on first run.
 
-Config lookup order:
+`lstk` uses the first config file found in this order:
 1. `./lstk.toml` (project-local)
 2. `$HOME/.config/lstk/config.toml`
-3. `os.UserConfigDir()/lstk/config.toml`
+3. **macOS**: `$HOME/Library/Application Support/lstk/config.toml` / **Windows**: `%AppData%\lstk\config.toml`
+
+On first run, the config is created at `$HOME/.config/lstk/config.toml` if `$HOME/.config/` already exists, otherwise at the OS default (#3). This means #3 is only reached on macOS when `$HOME/.config/` didn't exist at first run.
 
 To see which config file is currently in use:
 
@@ -84,6 +87,40 @@ You can also point `lstk` at a specific config file for any command:
 
 ```bash
 lstk --config /path/to/lstk.toml start
+```
+
+### Default config
+
+```toml
+[[containers]]
+type = "aws"
+tag  = "latest"
+port = "4566"
+```
+
+**Fields:**
+- `type`: emulator type; only `"aws"` is supported for now
+- `tag`: Docker image tag for LocalStack (e.g. `"latest"`, `"4.14.0"`); useful for pinning a version
+- `port`: port LocalStack listens on (default `4566`)
+- `env`: (optional) list of named environment variable groups to inject into the container (see below)
+
+### Passing environment variables to the container
+
+Define reusable named env sets and reference them per container:
+
+```toml
+[[containers]]
+type = "aws"
+tag  = "4.14.0"
+port = "4566"
+env  = ["prod", "debug"]
+
+[env.prod]
+LOCALSTACK_HOST = "localstack.cloud"
+
+[env.debug]
+LS_LOG = "trace"
+DEBUG  = "1"
 ```
 
 ## Interactive And Non-Interactive Mode
