@@ -20,10 +20,11 @@ import "time"
 type MessageSeverity int
 
 const (
-	SeverityInfo MessageSeverity = iota
-	SeveritySuccess
-	SeverityNote
-	SeverityWarning
+	SeverityInfo      MessageSeverity = iota
+	SeveritySuccess                          // positive outcome
+	SeverityNote                             // informational
+	SeverityWarning                          // cautionary
+	SeveritySecondary                        // subdued/decorative text
 )
 
 type MessageEvent struct {
@@ -156,6 +157,10 @@ func EmitNote(sink Sink, text string) {
 
 func EmitWarning(sink Sink, text string) {
 	Emit(sink, MessageEvent{Severity: SeverityWarning, Text: text})
+}
+
+func EmitSecondary(sink Sink, text string) {
+	Emit(sink, MessageEvent{Severity: SeveritySecondary, Text: text})
 }
 
 func EmitStatus(sink Sink, phase, container, detail string) {

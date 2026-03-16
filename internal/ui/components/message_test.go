@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestRenderMessage_MutesDecorativeInfoLines(t *testing.T) {
+func TestRenderMessage_SecondaryUsesSubduedStyle(t *testing.T) {
 	tests := []string{
 		"• Endpoint: localhost.localstack.cloud:4566",
 		"• Web app: https://app.localstack.cloud",
@@ -17,7 +17,7 @@ func TestRenderMessage_MutesDecorativeInfoLines(t *testing.T) {
 
 	for _, text := range tests {
 		assert.Equal(t, styles.SecondaryMessage.Render(text), RenderMessage(output.MessageEvent{
-			Severity: output.SeverityInfo,
+			Severity: output.SeveritySecondary,
 			Text:     text,
 		}))
 	}

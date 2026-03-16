@@ -16,7 +16,7 @@ func RenderWrappedMessage(e output.MessageEvent, width int) string {
 	prefixText, prefix := messagePrefix(e)
 	if prefixText == "" {
 		style := styles.Message
-		if isDecorativeMessage(e.Text) {
+		if e.Severity == output.SeveritySecondary {
 			style = styles.SecondaryMessage
 		}
 		return style.Render(strings.Join(wrap.SoftWrap(e.Text, width), "\n"))
@@ -53,8 +53,4 @@ func messagePrefix(e output.MessageEvent) (string, string) {
 	default:
 		return "", ""
 	}
-}
-
-func isDecorativeMessage(text string) bool {
-	return strings.HasPrefix(text, "• ") || strings.HasPrefix(text, "> Tip:")
 }

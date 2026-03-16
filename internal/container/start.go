@@ -151,11 +151,11 @@ func runPostStartSetups(ctx context.Context, sink output.Sink, containers []conf
 }
 
 func emitPostStartPointers(sink output.Sink, resolvedHost, webAppURL string) {
-	output.EmitInfo(sink, fmt.Sprintf("• Endpoint: %s", resolvedHost))
+	output.EmitSecondary(sink, fmt.Sprintf("• Endpoint: %s", resolvedHost))
 	if webAppURL != "" {
-		output.EmitInfo(sink, fmt.Sprintf("• Web app: %s", strings.TrimRight(webAppURL, "/")))
+		output.EmitSecondary(sink, fmt.Sprintf("• Web app: %s", strings.TrimRight(webAppURL, "/")))
 	}
-	output.EmitInfo(sink, "> Tip: View emulator logs: lstk logs --follow")
+	output.EmitSecondary(sink, "> Tip: View emulator logs: lstk logs --follow")
 }
 
 func pullImages(ctx context.Context, rt runtime.Runtime, sink output.Sink, containers []runtime.ContainerConfig) error {

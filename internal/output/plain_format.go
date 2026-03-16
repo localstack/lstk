@@ -121,6 +121,8 @@ func formatMessageEvent(e MessageEvent) string {
 		return "> Note: " + e.Text
 	case SeverityWarning:
 		return "> Warning: " + e.Text
+	case SeveritySecondary:
+		return e.Text
 	default:
 		return e.Text
 	}
