@@ -10,6 +10,7 @@ import (
 
 	"github.com/99designs/keyring"
 	"github.com/localstack/lstk/internal/config"
+	"github.com/localstack/lstk/internal/log"
 )
 
 const (
@@ -32,7 +33,10 @@ type authTokenStorage struct {
 	ring keyring.Keyring
 }
 
-func NewTokenStorage(forceFileKeyring bool) (AuthTokenStorage, error) {
+func NewTokenStorage(forceFileKeyring bool, logger log.Logger) (AuthTokenStorage, error) {
+	if logger == nil {
+		logger = log.Nop()
+	}
 	configDir, err := config.ConfigDir()
 	if err != nil {
 		return nil, err
@@ -52,12 +56,13 @@ func NewTokenStorage(forceFileKeyring bool) (AuthTokenStorage, error) {
 	}
 
 	ring, err := keyring.Open(keyringConfig)
-	if err != nil {
+	if err != nil && !forceFileKeyring {
+		logger.Info("system keyring unavailable (%v), falling back to file-based storage", err)
 		keyringConfig.AllowedBackends = []keyring.BackendType{keyring.FileBackend}
 		ring, err = keyring.Open(keyringConfig)
-		if err != nil {
-			return nil, fmt.Errorf("failed to open keyring: %w", err)
-		}
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to open keyring: %w", err)
 	}
 
 	return &authTokenStorage{ring: ring}, nil

@@ -8,10 +8,11 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/localstack/lstk/internal/api"
 	"github.com/localstack/lstk/internal/auth"
+	"github.com/localstack/lstk/internal/log"
 	"github.com/localstack/lstk/internal/output"
 )
 
-func RunLogin(parentCtx context.Context, version string, platformClient api.PlatformAPI, authToken string, forceFileKeyring bool, webAppURL string) error {
+func RunLogin(parentCtx context.Context, version string, platformClient api.PlatformAPI, authToken string, forceFileKeyring bool, webAppURL string, logger log.Logger) error {
 	ctx, cancel := context.WithCancel(parentCtx)
 	defer cancel()
 
@@ -20,7 +21,7 @@ func RunLogin(parentCtx context.Context, version string, platformClient api.Plat
 	runErrCh := make(chan error, 1)
 
 	go func() {
-		tokenStorage, err := auth.NewTokenStorage(forceFileKeyring)
+		tokenStorage, err := auth.NewTokenStorage(forceFileKeyring, logger)
 		if err != nil {
 			runErrCh <- err
 			p.Send(runErrMsg{err: err})

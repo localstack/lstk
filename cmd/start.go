@@ -2,12 +2,13 @@ package cmd
 
 import (
 	"github.com/localstack/lstk/internal/env"
+	"github.com/localstack/lstk/internal/log"
 	"github.com/localstack/lstk/internal/runtime"
 	"github.com/localstack/lstk/internal/telemetry"
 	"github.com/spf13/cobra"
 )
 
-func newStartCmd(cfg *env.Env, tel *telemetry.Client) *cobra.Command {
+func newStartCmd(cfg *env.Env, tel *telemetry.Client, logger log.Logger) *cobra.Command {
 	return &cobra.Command{
 		Use:     "start",
 		Short:   "Start emulator",
@@ -18,7 +19,7 @@ func newStartCmd(cfg *env.Env, tel *telemetry.Client) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return runStart(cmd.Context(), rt, cfg, tel)
+			return runStart(cmd.Context(), rt, cfg, tel, logger)
 		},
 	}
 }

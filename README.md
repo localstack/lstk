@@ -131,6 +131,10 @@ DEBUG  = "1"
 lstk --non-interactive
 ```
 
+## Logging
+
+`lstk` writes diagnostic logs to `lstk.log` in the same directory as the config file. The log file appends across runs and is automatically cleared when it exceeds 1 MB. Use `lstk config path` to print the full config file path; the log file lives alongside it in the same directory.
+
 ## Environment Variables
 
 | Variable | Description |

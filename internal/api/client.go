@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"time"
@@ -60,6 +61,18 @@ type MachineInfo struct {
 	Hostname        string `json:"hostname,omitempty"`
 	Platform        string `json:"platform,omitempty"`
 	PlatformRelease string `json:"platform_release,omitempty"`
+}
+
+// LicenseError is returned when license validation fails.
+// Message is user-friendly; Detail contains the raw server response for debugging.
+type LicenseError struct {
+	Status  int
+	Message string
+	Detail  string
+}
+
+func (e *LicenseError) Error() string {
+	return fmt.Sprintf("license validation failed: %s", e.Message)
 }
 
 type PlatformClient struct {
@@ -221,20 +234,43 @@ func (c *PlatformClient) GetLicense(ctx context.Context, licReq *LicenseRequest)
 	if err != nil {
 		return fmt.Errorf("failed to request license: %w", err)
 	}
-	defer func() {
-		if err := resp.Body.Close(); err != nil {
-			log.Printf("failed to close response body: %v", err)
-		}
-	}()
 
-	switch resp.StatusCode {
-	case http.StatusOK:
+	statusCode := resp.StatusCode
+	var detail string
+	if statusCode != http.StatusOK {
+		respBody, err := io.ReadAll(io.LimitReader(resp.Body, 1024))
+		if err != nil {
+			detail = fmt.Sprintf("failed to read response body: %v", err)
+		} else {
+			detail = string(bytes.TrimSpace(respBody))
+		}
+	}
+	if err := resp.Body.Close(); err != nil {
+		log.Printf("failed to close response body: %v", err)
+	}
+
+	if statusCode == http.StatusOK {
 		return nil
+	}
+
+	switch statusCode {
 	case http.StatusBadRequest:
-		return fmt.Errorf("license validation failed: invalid token format, missing license assignment, or missing subscription")
+		return &LicenseError{
+			Status:  statusCode,
+			Message: "invalid token format, missing license assignment, or missing subscription",
+			Detail:  detail,
+		}
 	case http.StatusForbidden:
-		return fmt.Errorf("license validation failed: invalid, inactive, or expired authentication token or subscription")
+		return &LicenseError{
+			Status:  statusCode,
+			Message: "invalid, inactive, or expired authentication token or subscription",
+			Detail:  detail,
+		}
 	default:
-		return fmt.Errorf("license request failed with status %d", resp.StatusCode)
+		return &LicenseError{
+			Status:  statusCode,
+			Message: fmt.Sprintf("unexpected status %d", statusCode),
+			Detail:  detail,
+		}
 	}
 }
