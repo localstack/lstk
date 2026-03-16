@@ -8,14 +8,9 @@ import (
 	"net/http"
 	"sort"
 	"strings"
-)
 
-type Resource struct {
-	Service string
-	Name    string
-	Region  string
-	Account string
-}
+	"github.com/localstack/lstk/internal/emulator"
+)
 
 type Client struct {
 	http *http.Client
@@ -59,7 +54,7 @@ func (c *Client) FetchVersion(ctx context.Context, host string) (string, error) 
 	return h.Version, nil
 }
 
-func (c *Client) FetchResources(ctx context.Context, host string) ([]Resource, error) {
+func (c *Client) FetchResources(ctx context.Context, host string) ([]emulator.Resource, error) {
 	url := fmt.Sprintf("http://%s/_localstack/resources", host)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
@@ -78,7 +73,7 @@ func (c *Client) FetchResources(ctx context.Context, host string) ([]Resource, e
 
 	// Each line of the NDJSON stream is a JSON object mapping an AWS resource type
 	// (e.g. "AWS::S3::Bucket") to a list of resource entries.
-	var rows []Resource
+	var rows []emulator.Resource
 	scanner := bufio.NewScanner(resp.Body)
 	buf := make([]byte, 1024*1024)
 	scanner.Buffer(buf, 1024*1024)
@@ -102,7 +97,7 @@ func (c *Client) FetchResources(ctx context.Context, host string) ([]Resource, e
 			}
 
 			for _, e := range entries {
-				rows = append(rows, Resource{
+				rows = append(rows, emulator.Resource{
 					Service: service,
 					Name:    extractResourceName(e.ID),
 					Region:  e.RegionName,

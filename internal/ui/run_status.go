@@ -8,11 +8,12 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/localstack/lstk/internal/config"
 	"github.com/localstack/lstk/internal/container"
+	"github.com/localstack/lstk/internal/emulator"
 	"github.com/localstack/lstk/internal/output"
 	"github.com/localstack/lstk/internal/runtime"
 )
 
-func RunStatus(parentCtx context.Context, rt runtime.Runtime, containers []config.ContainerConfig, localStackHost string, emulatorClient container.EmulatorClient) error {
+func RunStatus(parentCtx context.Context, rt runtime.Runtime, containers []config.ContainerConfig, localStackHost string, emulatorClient emulator.Client) error {
 	ctx, cancel := context.WithCancel(parentCtx)
 	defer cancel()
 

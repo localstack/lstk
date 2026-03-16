@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/localstack/lstk/internal/config"
-	"github.com/localstack/lstk/internal/emulator/aws"
+	"github.com/localstack/lstk/internal/emulator"
 	"github.com/localstack/lstk/internal/endpoint"
 	"github.com/localstack/lstk/internal/output"
 	"github.com/localstack/lstk/internal/runtime"
@@ -14,12 +14,7 @@ import (
 
 const statusTimeout = 10 * time.Second
 
-type EmulatorClient interface {
-	FetchVersion(ctx context.Context, host string) (string, error)
-	FetchResources(ctx context.Context, host string) ([]aws.Resource, error)
-}
-
-func Status(ctx context.Context, rt runtime.Runtime, containers []config.ContainerConfig, localStackHost string, emulatorClient EmulatorClient, sink output.Sink) error {
+func Status(ctx context.Context, rt runtime.Runtime, containers []config.ContainerConfig, localStackHost string, emulatorClient emulator.Client, sink output.Sink) error {
 	ctx, cancel := context.WithTimeout(ctx, statusTimeout)
 	defer cancel()
 
@@ -52,7 +47,7 @@ func Status(ctx context.Context, rt runtime.Runtime, containers []config.Contain
 		}
 
 		var version string
-		var rows []aws.Resource
+		var rows []emulator.Resource
 		switch c.Type {
 		case config.EmulatorAWS:
 			if v, err := emulatorClient.FetchVersion(ctx, host); err != nil {
@@ -95,7 +90,7 @@ func Status(ctx context.Context, rt runtime.Runtime, containers []config.Contain
 
 			output.EmitResourceSummary(sink, len(rows), len(services))
 			output.EmitTable(sink, output.TableEvent{
-				Headers: []string{"SERVICE", "RESOURCE", "REGION", "ACCOUNT"},
+				Headers: []string{"Service", "Resource", "Region", "Account"},
 				Rows:    tableRows,
 			})
 		}

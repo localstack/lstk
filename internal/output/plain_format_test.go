@@ -135,7 +135,7 @@ func TestFormatEventLine(t *testing.T) {
 		{
 			name: "table with entries",
 			event: TableEvent{
-				Headers: []string{"SERVICE", "RESOURCE", "REGION", "ACCOUNT"},
+				Headers: []string{"Service", "Resource", "Region", "Account"},
 				Rows: [][]string{
 					{"Lambda", "handler", "us-east-1", "000000000000"},
 					{"S3", "my-bucket", "us-east-1", "000000000000"},
@@ -178,7 +178,7 @@ func TestFormatTableWidth(t *testing.T) {
 	t.Parallel()
 
 	e := TableEvent{
-		Headers: []string{"SERVICE", "RESOURCE", "REGION", "ACCOUNT"},
+		Headers: []string{"Service", "Resource", "Region", "Account"},
 		Rows: [][]string{
 			{"CloudFormation", "8245db0d-5c05-4209-90f0-51ec48446a58", "us-east-1", "000000000000"},
 			{"EC2", "subnet-816649cee2efc65ac", "eu-central-1", "000000000000"},

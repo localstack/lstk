@@ -201,7 +201,7 @@ func TestPlainSink_EmitsTableEvent(t *testing.T) {
 		sink := NewPlainSink(&out)
 
 		Emit(sink, TableEvent{
-			Headers: []string{"SERVICE", "RESOURCE", "REGION", "ACCOUNT"},
+			Headers: []string{"Service", "Resource", "Region", "Account"},
 			Rows: [][]string{
 				{"Lambda", "handler", "us-east-1", "000000000000"},
 				{"S3", "my-bucket", "us-east-1", "000000000000"},
@@ -244,7 +244,7 @@ func TestPlainSink_TableWidth(t *testing.T) {
 	t.Parallel()
 
 	tableEvent := TableEvent{
-		Headers: []string{"SERVICE", "RESOURCE", "REGION", "ACCOUNT"},
+		Headers: []string{"Service", "Resource", "Region", "Account"},
 		Rows: [][]string{
 			{"CloudFormation", "8245db0d-5c05-4209-90f0-51ec48446a58", "us-east-1", "000000000000"},
 			{"EC2", "subnet-816649cee2efc65ac", "eu-central-1", "000000000000"},
@@ -338,8 +338,9 @@ func TestPlainSink_UsesFormatterParity(t *testing.T) {
 			EmulatorName: "LocalStack AWS Emulator",
 			Host:         "127.0.0.1:4566",
 		},
+		ResourceSummaryEvent{Resources: 5, Services: 3},
 		TableEvent{
-			Headers: []string{"SERVICE", "RESOURCE", "REGION", "ACCOUNT"},
+			Headers: []string{"Service", "Resource", "Region", "Account"},
 			Rows: [][]string{
 				{"Lambda", "handler", "us-east-1", "000000000000"},
 				{"S3", "my-bucket", "us-east-1", "000000000000"},
@@ -365,6 +366,8 @@ func TestPlainSink_UsesFormatterParity(t *testing.T) {
 		case LogLineEvent:
 			Emit(sink, e)
 		case InstanceInfoEvent:
+			Emit(sink, e)
+		case ResourceSummaryEvent:
 			Emit(sink, e)
 		case TableEvent:
 			Emit(sink, e)

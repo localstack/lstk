@@ -254,7 +254,11 @@ func formatTableWidth(e TableEvent, totalWidth int) string {
 			}
 		}
 	}
-	writeRow(e.Headers)
+	upperHeaders := make([]string, len(e.Headers))
+	for i, h := range e.Headers {
+		upperHeaders[i] = strings.ToUpper(h)
+	}
+	writeRow(upperHeaders)
 	for _, row := range e.Rows {
 		sb.WriteString("\n")
 		writeRow(row)
