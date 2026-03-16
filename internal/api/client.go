@@ -111,7 +111,7 @@ func (c *PlatformClient) CreateAuthRequest(ctx context.Context) (*AuthRequest, e
 	}
 	defer func() {
 		if err := resp.Body.Close(); err != nil {
-			log.Printf("failed to close response body: %v", err)
+			c.logger.Error("failed to close response body: %v", err)
 		}
 	}()
 
@@ -140,7 +140,7 @@ func (c *PlatformClient) CheckAuthRequestConfirmed(ctx context.Context, id, exch
 	}
 	defer func() {
 		if err := resp.Body.Close(); err != nil {
-			log.Printf("failed to close response body: %v", err)
+			c.logger.Error("failed to close response body: %v", err)
 		}
 	}()
 
@@ -175,7 +175,7 @@ func (c *PlatformClient) ExchangeAuthRequest(ctx context.Context, id, exchangeTo
 	}
 	defer func() {
 		if err := resp.Body.Close(); err != nil {
-			log.Printf("failed to close response body: %v", err)
+			c.logger.Error("failed to close response body: %v", err)
 		}
 	}()
 
@@ -204,7 +204,7 @@ func (c *PlatformClient) GetLicenseToken(ctx context.Context, bearerToken string
 	}
 	defer func() {
 		if err := resp.Body.Close(); err != nil {
-			log.Printf("failed to close response body: %v", err)
+			c.logger.Error("failed to close response body: %v", err)
 		}
 	}()
 
@@ -248,7 +248,7 @@ func (c *PlatformClient) GetLicense(ctx context.Context, licReq *LicenseRequest)
 		}
 	}
 	if err := resp.Body.Close(); err != nil {
-		log.Printf("failed to close response body: %v", err)
+		c.logger.Error("failed to close response body: %v", err)
 	}
 
 	if statusCode == http.StatusOK {
