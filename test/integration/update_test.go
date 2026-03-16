@@ -17,6 +17,7 @@ func TestUpdateCheckCommand(t *testing.T) {
 
 	stdout, stderr, err := runLstk(t, ctx, "", nil, "update", "--check")
 	require.NoError(t, err, "lstk update --check failed: %s", stderr)
+	requireExitCode(t, 0, err)
 
 	// Dev builds report a note about skipping update check
 	assert.Contains(t, stdout, "Note:", "should show a note (dev build or up-to-date)")
@@ -27,6 +28,7 @@ func TestUpdateCheckCommandNonInteractive(t *testing.T) {
 
 	stdout, stderr, err := runLstk(t, ctx, "", nil, "update", "--check", "--non-interactive")
 	require.NoError(t, err, "lstk update --check --non-interactive failed: %s", stderr)
+	requireExitCode(t, 0, err)
 	assert.Contains(t, stdout, "Note:", "should show a note in non-interactive mode")
 }
 
@@ -90,6 +92,7 @@ func TestUpdateNPMLocalInstall(t *testing.T) {
 	stdoutStr := string(stdout)
 
 	require.NoError(t, err, "lstk update failed: %s", stdoutStr)
+	requireExitCode(t, 0, err)
 	assert.Contains(t, stdoutStr, "npm (local)", "should detect local npm install")
 	assert.Contains(t, stdoutStr, projectDir, "should show the project directory")
 	assert.Contains(t, stdoutStr, "Updated to", "should complete the update")
@@ -127,6 +130,7 @@ func TestUpdateBinaryInPlace(t *testing.T) {
 	updateOut, err := updateCmd.CombinedOutput()
 	updateStr := string(updateOut)
 	require.NoError(t, err, "lstk update failed: %s", updateStr)
+	requireExitCode(t, 0, err)
 	assert.Contains(t, updateStr, "Update available: 0.0.1", "should detect update")
 	assert.Contains(t, updateStr, "Downloading update", "should download binary")
 	assert.Contains(t, updateStr, "Updated to", "should complete the update")
@@ -196,6 +200,7 @@ func TestUpdateHomebrew(t *testing.T) {
 	updateOut, err := updateCmd.CombinedOutput()
 	updateStr := string(updateOut)
 	require.NoError(t, err, "lstk update failed: %s", updateStr)
+	requireExitCode(t, 0, err)
 	assert.Contains(t, updateStr, "Homebrew", "should detect Homebrew install")
 	assert.Contains(t, updateStr, "brew upgrade", "should mention brew upgrade")
 }

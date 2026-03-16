@@ -8,13 +8,14 @@ import (
 )
 
 type ContainerConfig struct {
-	Image       string
-	Name        string
-	Port        string
-	HealthPath  string
-	Env         []string // e.g., ["KEY=value", "FOO=bar"]
-	Tag         string
-	ProductName string
+	Image         string
+	Name          string
+	Port          string
+	ContainerPort string // internal port the emulator listens on inside the container (e.g. "4566/tcp")
+	HealthPath    string
+	Env           []string // e.g., ["KEY=value", "FOO=bar"]
+	Tag           string
+	ProductName   string
 }
 
 type PullProgress struct {

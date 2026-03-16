@@ -22,6 +22,7 @@ func TestConfigFileCreatedOnStartup(t *testing.T) {
 		e := testEnvWithHome(tmpHome, xdgOverride)
 		_, stderr, err := runLstk(t, testContext(t), workDir, e, "logout")
 		require.NoError(t, err, stderr)
+		requireExitCode(t, 0, err)
 
 		expectedConfigFile := filepath.Join(tmpHome, ".config", "lstk", "config.toml")
 		assert.FileExists(t, expectedConfigFile)
@@ -36,6 +37,7 @@ func TestConfigFileCreatedOnStartup(t *testing.T) {
 		e := testEnvWithHome(tmpHome, xdgOverride)
 		_, stderr, err := runLstk(t, testContext(t), workDir, e, "logout")
 		require.NoError(t, err, stderr)
+		requireExitCode(t, 0, err)
 
 		expectedConfigFile := filepath.Join(expectedOSConfigDir(tmpHome, xdgOverride), "config.toml")
 		assert.FileExists(t, expectedConfigFile)
@@ -69,6 +71,7 @@ IAM_SOFT_MODE = "1"
 	ctx := testContext(t)
 	_, stderr, err := runLstk(t, ctx, "", env.With(env.APIEndpoint, mockServer.URL), "--config", configFile, "start")
 	require.NoError(t, err, "lstk start failed: %s", stderr)
+	requireExitCode(t, 0, err)
 
 	inspect, err := dockerClient.ContainerInspect(ctx, containerName)
 	require.NoError(t, err, "failed to inspect container")
@@ -81,6 +84,7 @@ func TestConfigFlagOverridesConfigPath(t *testing.T) {
 
 	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), os.Environ(), "--config", customConfig, "config", "path")
 	require.NoError(t, err, stderr)
+	requireExitCode(t, 0, err)
 
 	assertSamePath(t, customConfig, stdout)
 }
@@ -98,6 +102,7 @@ func TestLocalConfigTakesPrecedence(t *testing.T) {
 	e := testEnvWithHome(tmpHome, xdgOverride)
 	stdout, stderr, err := runLstk(t, testContext(t), workDir, e, "config", "path")
 	require.NoError(t, err, stderr)
+	requireExitCode(t, 0, err)
 
 	expectedLocalPath, err := filepath.Abs(localConfigFile)
 	require.NoError(t, err)
@@ -117,6 +122,7 @@ func TestXDGConfigTakesPrecedence(t *testing.T) {
 	e := testEnvWithHome(tmpHome, xdgOverride)
 	stdout, stderr, err := runLstk(t, testContext(t), workDir, e, "config", "path")
 	require.NoError(t, err, stderr)
+	requireExitCode(t, 0, err)
 
 	assertSamePath(t, xdgConfigFile, stdout)
 }
@@ -130,6 +136,7 @@ func TestConfigPathCommand(t *testing.T) {
 	e := testEnvWithHome(tmpHome, filepath.Join(tmpHome, "xdg-config-home"))
 	stdout, stderr, err := runLstk(t, testContext(t), workDir, e, "config", "path")
 	require.NoError(t, err, stderr)
+	requireExitCode(t, 0, err)
 
 	assertSamePath(t, xdgConfigFile, stdout)
 }
@@ -143,6 +150,7 @@ func TestConfigPathCommandDoesNotCreateConfig(t *testing.T) {
 	e := testEnvWithHome(tmpHome, xdgOverride)
 	stdout, stderr, err := runLstk(t, testContext(t), workDir, e, "config", "path")
 	require.NoError(t, err, stderr)
+	requireExitCode(t, 0, err)
 
 	assertSamePath(t, expectedConfigFile, stdout)
 	assert.NoFileExists(t, expectedConfigFile)

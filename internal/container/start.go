@@ -72,19 +72,25 @@ func Start(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts Start
 			return err
 		}
 
+		containerPort, err := c.ContainerPort()
+		if err != nil {
+			return err
+		}
+
 		resolvedEnv, err := c.ResolvedEnv(opts.Env)
 		if err != nil {
 			return err
 		}
 		env := append(resolvedEnv, "LOCALSTACK_AUTH_TOKEN="+token)
 		containers[i] = runtime.ContainerConfig{
-			Image:       image,
-			Name:        c.Name(),
-			Port:        c.Port,
-			HealthPath:  healthPath,
-			Env:         env,
-			Tag:         c.Tag,
-			ProductName: productName,
+			Image:         image,
+			Name:          c.Name(),
+			Port:          c.Port,
+			ContainerPort: containerPort,
+			HealthPath:    healthPath,
+			Env:           env,
+			Tag:           c.Tag,
+			ProductName:   productName,
 		}
 	}
 

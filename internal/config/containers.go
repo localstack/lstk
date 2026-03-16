@@ -84,6 +84,15 @@ func (c *ContainerConfig) HealthPath() (string, error) {
 	return path, nil
 }
 
+func (c *ContainerConfig) ContainerPort() (string, error) {
+	switch c.Type {
+	case EmulatorAWS:
+		return "4566/tcp", nil
+	default:
+		return "", fmt.Errorf("%s emulator not supported yet by lstk", c.Type)
+	}
+}
+
 func (c *ContainerConfig) DisplayName() string {
 	name, ok := emulatorDisplayNames[c.Type]
 	if !ok {

@@ -237,6 +237,17 @@ func runLstkInPTY(t *testing.T, ctx context.Context, environ []string, args ...s
 	return strings.TrimSpace(out.String()), err
 }
 
+func requireExitCode(t *testing.T, expected int, err error) {
+	t.Helper()
+	if expected == 0 {
+		require.NoError(t, err)
+		return
+	}
+	var exitErr *exec.ExitError
+	require.ErrorAs(t, err, &exitErr)
+	require.Equal(t, expected, exitErr.ExitCode())
+}
+
 func createMockLicenseServer(success bool) *httptest.Server {
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == "POST" && r.URL.Path == "/v1/license/request" {
