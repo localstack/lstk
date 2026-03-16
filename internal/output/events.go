@@ -57,8 +57,26 @@ type AuthEvent struct {
 	URL      string
 }
 
+type InstanceInfoEvent struct {
+	EmulatorName  string
+	Version       string
+	Host          string
+	ContainerName string
+	Uptime        time.Duration
+}
+
+type TableEvent struct {
+	Headers []string
+	Rows    [][]string
+}
+
+type ResourceSummaryEvent struct {
+	Resources int
+	Services  int
+}
+
 type Event interface {
-	MessageEvent | AuthEvent | SpinnerEvent | ErrorEvent | ContainerStatusEvent | ProgressEvent | UserInputRequestEvent | LogLineEvent
+	MessageEvent | AuthEvent | SpinnerEvent | ErrorEvent | ContainerStatusEvent | ProgressEvent | UserInputRequestEvent | LogLineEvent | InstanceInfoEvent | TableEvent | ResourceSummaryEvent
 }
 
 type Sink interface {
@@ -184,4 +202,16 @@ func EmitSpinnerStop(sink Sink) {
 
 func EmitError(sink Sink, event ErrorEvent) {
 	Emit(sink, event)
+}
+
+func EmitInstanceInfo(sink Sink, event InstanceInfoEvent) {
+	Emit(sink, event)
+}
+
+func EmitTable(sink Sink, event TableEvent) {
+	Emit(sink, event)
+}
+
+func EmitResourceSummary(sink Sink, resources, services int) {
+	Emit(sink, ResourceSummaryEvent{Resources: resources, Services: services})
 }

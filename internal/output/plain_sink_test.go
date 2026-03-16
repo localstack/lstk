@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -148,6 +150,142 @@ func TestPlainSink_EmitsErrorEvent(t *testing.T) {
 	assert.Equal(t, expected, out.String())
 }
 
+func TestPlainSink_EmitsInstanceInfoEvent(t *testing.T) {
+	t.Run("full", func(t *testing.T) {
+		var out bytes.Buffer
+		sink := NewPlainSink(&out)
+
+		Emit(sink, InstanceInfoEvent{
+			EmulatorName:  "LocalStack AWS Emulator",
+			Version:       "4.14.1",
+			Host:          "localhost.localstack.cloud:4566",
+			ContainerName: "localstack-aws",
+			Uptime:        4*time.Minute + 23*time.Second,
+		})
+
+		expected := "✓ LocalStack AWS Emulator is running (localhost.localstack.cloud:4566)\n  UPTIME: 4m 23s · CONTAINER: localstack-aws · VERSION: 4.14.1\n"
+		assert.Equal(t, expected, out.String())
+		assert.NoError(t, sink.Err())
+	})
+
+	t.Run("minimal", func(t *testing.T) {
+		var out bytes.Buffer
+		sink := NewPlainSink(&out)
+
+		Emit(sink, InstanceInfoEvent{
+			EmulatorName: "LocalStack AWS Emulator",
+			Host:         "127.0.0.1:4566",
+		})
+
+		expected := "✓ LocalStack AWS Emulator is running (127.0.0.1:4566)\n"
+		assert.Equal(t, expected, out.String())
+		assert.NoError(t, sink.Err())
+	})
+
+	t.Run("write error", func(t *testing.T) {
+		writeErr := errors.New("write failed")
+		sink := NewPlainSink(&failingWriter{err: writeErr})
+
+		Emit(sink, InstanceInfoEvent{
+			EmulatorName: "LocalStack AWS Emulator",
+			Host:         "127.0.0.1:4566",
+		})
+
+		assert.Equal(t, writeErr, sink.Err())
+	})
+}
+
+func TestPlainSink_EmitsTableEvent(t *testing.T) {
+	t.Run("with rows", func(t *testing.T) {
+		var out bytes.Buffer
+		sink := NewPlainSink(&out)
+
+		Emit(sink, TableEvent{
+			Headers: []string{"Service", "Resource", "Region", "Account"},
+			Rows: [][]string{
+				{"Lambda", "handler", "us-east-1", "000000000000"},
+				{"S3", "my-bucket", "us-east-1", "000000000000"},
+			},
+		})
+
+		got := out.String()
+		assert.Contains(t, got, "SERVICE")
+		assert.Contains(t, got, "Lambda")
+		assert.Contains(t, got, "S3")
+		assert.Contains(t, got, "my-bucket")
+		assert.True(t, strings.HasSuffix(got, "\n"))
+		assert.NoError(t, sink.Err())
+	})
+
+	t.Run("empty rows suppressed", func(t *testing.T) {
+		var out bytes.Buffer
+		sink := NewPlainSink(&out)
+
+		Emit(sink, TableEvent{Headers: []string{"A"}, Rows: [][]string{}})
+
+		assert.Equal(t, "", out.String())
+		assert.NoError(t, sink.Err())
+	})
+
+	t.Run("write error", func(t *testing.T) {
+		writeErr := errors.New("write failed")
+		sink := NewPlainSink(&failingWriter{err: writeErr})
+
+		Emit(sink, TableEvent{
+			Headers: []string{"A"},
+			Rows:    [][]string{{"val"}},
+		})
+
+		assert.Equal(t, writeErr, sink.Err())
+	})
+}
+
+func TestPlainSink_TableWidth(t *testing.T) {
+	t.Parallel()
+
+	tableEvent := TableEvent{
+		Headers: []string{"Service", "Resource", "Region", "Account"},
+		Rows: [][]string{
+			{"CloudFormation", "8245db0d-5c05-4209-90f0-51ec48446a58", "us-east-1", "000000000000"},
+			{"EC2", "subnet-816649cee2efc65ac", "eu-central-1", "000000000000"},
+			{"Lambda", "HelloWorldFunctionJavaScript", "us-east-1", "000000000000"},
+		},
+	}
+
+	t.Run("narrow terminal truncates via formatTableWidth", func(t *testing.T) {
+		t.Parallel()
+		got := formatTableWidth(tableEvent, 80)
+		var out bytes.Buffer
+		sink := NewPlainSink(&out)
+		Emit(sink, tableEvent)
+
+		// The sink output should contain the same table content (sink delegates to FormatEventLine
+		// which calls formatTable → formatTableWidth with the current terminal width).
+		// We verify structural properties here: truncation marker must appear at width 80.
+		assert.Contains(t, got, "…")
+		for i, line := range strings.Split(got, "\n") {
+			w := displayWidth(line)
+			if w > 80 {
+				t.Errorf("line %d has display width %d (>80): %q", i, w, line)
+			}
+		}
+	})
+
+	t.Run("wide terminal no truncation via formatTableWidth", func(t *testing.T) {
+		t.Parallel()
+		got := formatTableWidth(tableEvent, 200)
+		assert.NotContains(t, got, "…")
+		assert.Contains(t, got, "8245db0d-5c05-4209-90f0-51ec48446a58")
+	})
+
+	t.Run("very narrow terminal still renders", func(t *testing.T) {
+		t.Parallel()
+		got := formatTableWidth(tableEvent, 40)
+		assert.NotEmpty(t, got)
+		assert.Contains(t, got, "…")
+	})
+}
+
 func TestPlainSink_ErrReturnsNilOnSuccess(t *testing.T) {
 	var out bytes.Buffer
 	sink := NewPlainSink(&out)
@@ -189,6 +327,25 @@ func TestPlainSink_UsesFormatterParity(t *testing.T) {
 		ErrorEvent{Title: "Failed", Summary: "Something broke"},
 		ContainerStatusEvent{Phase: "starting", Container: "localstack"},
 		LogLineEvent{Source: "container", Line: "2024-01-01 hello"},
+		InstanceInfoEvent{
+			EmulatorName:  "LocalStack AWS Emulator",
+			Version:       "4.14.1",
+			Host:          "localhost.localstack.cloud:4566",
+			ContainerName: "localstack-aws",
+			Uptime:        4*time.Minute + 23*time.Second,
+		},
+		InstanceInfoEvent{
+			EmulatorName: "LocalStack AWS Emulator",
+			Host:         "127.0.0.1:4566",
+		},
+		ResourceSummaryEvent{Resources: 5, Services: 3},
+		TableEvent{
+			Headers: []string{"Service", "Resource", "Region", "Account"},
+			Rows: [][]string{
+				{"Lambda", "handler", "us-east-1", "000000000000"},
+				{"S3", "my-bucket", "us-east-1", "000000000000"},
+			},
+		},
 	}
 
 	for _, event := range events {
@@ -207,6 +364,12 @@ func TestPlainSink_UsesFormatterParity(t *testing.T) {
 		case ContainerStatusEvent:
 			Emit(sink, e)
 		case LogLineEvent:
+			Emit(sink, e)
+		case InstanceInfoEvent:
+			Emit(sink, e)
+		case ResourceSummaryEvent:
+			Emit(sink, e)
+		case TableEvent:
 			Emit(sink, e)
 		default:
 			t.Fatalf("unsupported event type in test: %T", event)

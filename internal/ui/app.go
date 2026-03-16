@@ -143,7 +143,7 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case output.MessageEvent:
 		line := styledLine{text: components.RenderMessage(msg)}
 		if a.spinner.PendingStop() {
-			a.bufferedLines = append(a.bufferedLines, line)
+			a.bufferedLines = appendLine(a.bufferedLines, line)
 		} else {
 			a.lines = appendLine(a.lines, line)
 		}
@@ -166,7 +166,7 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		prefix := styles.Secondary.Render(msg.Source + " | ")
 		line := styledLine{text: prefix + styles.Message.Render(msg.Line)}
 		if a.spinner.PendingStop() {
-			a.bufferedLines = append(a.bufferedLines, line)
+			a.bufferedLines = appendLine(a.bufferedLines, line)
 		} else {
 			a.lines = appendLine(a.lines, line)
 		}
@@ -208,9 +208,54 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			a.errorDisplay = a.errorDisplay.Show(output.ErrorEvent{Title: msg.err.Error()})
 		}
 		return a, tea.Quit
+	case output.TableEvent:
+		if line, ok := output.FormatEventLine(msg); ok {
+			parts := strings.Split(line, "\n")
+			var lines []styledLine
+			if len(parts) > 0 {
+				lines = append(lines, styledLine{text: parts[0], secondary: true})
+			}
+			for _, part := range parts[1:] {
+				lines = append(lines, styledLine{text: part})
+			}
+			if a.spinner.PendingStop() {
+				for _, l := range lines {
+					a.bufferedLines = appendLine(a.bufferedLines, l)
+				}
+			} else {
+				for _, l := range lines {
+					a.lines = appendLine(a.lines, l)
+				}
+			}
+		}
+	case output.ResourceSummaryEvent:
+		text := fmt.Sprintf("~ %d resources · %d services", msg.Resources, msg.Services)
+		style := styles.Message
+		if msg.Resources > 0 && msg.Services > 0 {
+			style = styles.Highlight
+		}
+		line := styledLine{text: style.Render(text)}
+		blank := styledLine{text: ""}
+		if a.spinner.PendingStop() {
+			a.bufferedLines = appendLine(a.bufferedLines, blank)
+			a.bufferedLines = appendLine(a.bufferedLines, line)
+			a.bufferedLines = appendLine(a.bufferedLines, blank)
+		} else {
+			a.lines = appendLine(a.lines, blank)
+			a.lines = appendLine(a.lines, line)
+			a.lines = appendLine(a.lines, blank)
+		}
+		return a, nil
 	default:
 		if line, ok := output.FormatEventLine(msg); ok {
-			a.lines = appendLine(a.lines, styledLine{text: line})
+			for _, part := range strings.Split(line, "\n") {
+				l := styledLine{text: part}
+				if a.spinner.PendingStop() {
+					a.bufferedLines = appendLine(a.bufferedLines, l)
+				} else {
+					a.lines = appendLine(a.lines, l)
+				}
+			}
 		}
 	}
 

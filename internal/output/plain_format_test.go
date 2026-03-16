@@ -1,6 +1,10 @@
 package output
 
-import "testing"
+import (
+	"strings"
+	"testing"
+	"time"
+)
 
 func TestFormatEventLine(t *testing.T) {
 	t.Parallel()
@@ -108,6 +112,45 @@ func TestFormatEventLine(t *testing.T) {
 			wantOK: true,
 		},
 		{
+			name: "instance info full",
+			event: InstanceInfoEvent{
+				EmulatorName:  "LocalStack AWS Emulator",
+				Version:       "4.14.1",
+				Host:          "localhost.localstack.cloud:4566",
+				ContainerName: "localstack-aws",
+				Uptime:        4*time.Minute + 23*time.Second,
+			},
+			want:   "✓ LocalStack AWS Emulator is running (localhost.localstack.cloud:4566)\n  UPTIME: 4m 23s · CONTAINER: localstack-aws · VERSION: 4.14.1",
+			wantOK: true,
+		},
+		{
+			name: "instance info minimal",
+			event: InstanceInfoEvent{
+				EmulatorName: "LocalStack AWS Emulator",
+				Host:         "127.0.0.1:4566",
+			},
+			want:   "✓ LocalStack AWS Emulator is running (127.0.0.1:4566)",
+			wantOK: true,
+		},
+		{
+			name: "table with entries",
+			event: TableEvent{
+				Headers: []string{"Service", "Resource", "Region", "Account"},
+				Rows: [][]string{
+					{"Lambda", "handler", "us-east-1", "000000000000"},
+					{"S3", "my-bucket", "us-east-1", "000000000000"},
+				},
+			},
+			want:   "  SERVICE  RESOURCE   REGION     ACCOUNT\n  Lambda   handler    us-east-1  000000000000\n  S3       my-bucket  us-east-1  000000000000",
+			wantOK: true,
+		},
+		{
+			name:   "table empty",
+			event:  TableEvent{Headers: []string{"A"}, Rows: [][]string{}},
+			want:   "",
+			wantOK: false,
+		},
+		{
 			name:   "unsupported event",
 			event:  struct{}{},
 			want:   "",
@@ -130,3 +173,56 @@ func TestFormatEventLine(t *testing.T) {
 		})
 	}
 }
+
+func TestFormatTableWidth(t *testing.T) {
+	t.Parallel()
+
+	e := TableEvent{
+		Headers: []string{"Service", "Resource", "Region", "Account"},
+		Rows: [][]string{
+			{"CloudFormation", "8245db0d-5c05-4209-90f0-51ec48446a58", "us-east-1", "000000000000"},
+			{"EC2", "subnet-816649cee2efc65ac", "eu-central-1", "000000000000"},
+			{"Lambda", "HelloWorldFunctionJavaScript", "us-east-1", "000000000000"},
+		},
+	}
+
+	t.Run("truncates widest column to fit terminal width", func(t *testing.T) {
+		t.Parallel()
+		got := formatTableWidth(e, 80)
+		for i, line := range strings.Split(got, "\n") {
+			w := displayWidth(line)
+			if w > 80 {
+				t.Errorf("line %d has display width %d (>80): %q", i, w, line)
+			}
+		}
+		if !strings.Contains(got, "8245db0d") {
+			t.Error("expected truncated UUID to still contain prefix")
+		}
+		if !strings.Contains(got, "…") {
+			t.Error("expected truncation marker")
+		}
+	})
+
+	t.Run("no truncation when terminal is wide enough", func(t *testing.T) {
+		t.Parallel()
+		got := formatTableWidth(e, 200)
+		if strings.Contains(got, "…") {
+			t.Error("expected no truncation at width 200")
+		}
+		if !strings.Contains(got, "8245db0d-5c05-4209-90f0-51ec48446a58") {
+			t.Error("expected full UUID")
+		}
+	})
+
+	t.Run("narrow terminal still renders without panic", func(t *testing.T) {
+		t.Parallel()
+		got := formatTableWidth(e, 40)
+		if got == "" {
+			t.Error("expected non-empty output")
+		}
+		if !strings.Contains(got, "…") {
+			t.Error("expected truncation at narrow width")
+		}
+	})
+}
+

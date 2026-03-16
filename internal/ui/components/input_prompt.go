@@ -39,6 +39,7 @@ func (p InputPrompt) View() string {
 	}
 
 	lines := strings.Split(p.prompt, "\n")
+
 	firstLine := lines[0]
 
 	var sb strings.Builder

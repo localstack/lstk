@@ -3,6 +3,7 @@ package output
 import (
 	"fmt"
 	"strings"
+	"time"
 )
 
 // FormatEventLine converts an output event into a single display line.
@@ -27,6 +28,12 @@ func FormatEventLine(event any) (string, bool) {
 		return formatUserInputRequest(e), true
 	case LogLineEvent:
 		return e.Line, true
+	case InstanceInfoEvent:
+		return formatInstanceInfo(e), true
+	case TableEvent:
+		return formatTable(e)
+	case ResourceSummaryEvent:
+		return formatResourceSummary(e), true
 	default:
 		return "", false
 	}
@@ -53,7 +60,6 @@ func formatStatusLine(e ContainerStatusEvent) (string, bool) {
 	}
 }
 
-
 func formatUserInputRequest(e UserInputRequestEvent) string {
 	return FormatPrompt(e.Prompt, e.Options)
 }
@@ -67,7 +73,6 @@ func FormatPromptLabels(options []InputOption) string {
 			labels = append(labels, opt.Label)
 		}
 	}
-
 	switch len(labels) {
 	case 0:
 		return ""
@@ -83,7 +88,6 @@ func FormatPrompt(prompt string, options []InputOption) string {
 	lines := strings.Split(prompt, "\n")
 	firstLine := lines[0] + FormatPromptLabels(options)
 	rest := lines[1:]
-
 	if len(rest) == 0 {
 		return firstLine
 	}
@@ -139,6 +143,125 @@ func formatErrorEvent(e ErrorEvent) string {
 		sb.WriteString(action.Label)
 		sb.WriteString(" ")
 		sb.WriteString(action.Value)
+	}
+	return sb.String()
+}
+
+func formatInstanceInfo(e InstanceInfoEvent) string {
+	var sb strings.Builder
+	sb.WriteString("✓ " + e.EmulatorName + " is running (" + e.Host + ")")
+	var meta []string
+	if e.Uptime > 0 {
+		meta = append(meta, "UPTIME: "+formatUptime(e.Uptime))
+	}
+	if e.ContainerName != "" {
+		meta = append(meta, "CONTAINER: "+e.ContainerName)
+	}
+	if e.Version != "" {
+		meta = append(meta, "VERSION: "+e.Version)
+	}
+	if len(meta) > 0 {
+		sb.WriteString("\n  " + strings.Join(meta, " · "))
+	}
+	return sb.String()
+}
+
+func formatUptime(d time.Duration) string {
+	d = d.Round(time.Second)
+	h := int(d.Hours())
+	m := int(d.Minutes()) % 60
+	s := int(d.Seconds()) % 60
+	if h > 0 {
+		return fmt.Sprintf("%dh %dm %ds", h, m, s)
+	}
+	if m > 0 {
+		return fmt.Sprintf("%dm %ds", m, s)
+	}
+	return fmt.Sprintf("%ds", s)
+}
+
+func formatResourceSummary(e ResourceSummaryEvent) string {
+	return fmt.Sprintf("~ %d resources · %d services", e.Resources, e.Services)
+}
+
+func formatTable(e TableEvent) (string, bool) {
+	if len(e.Rows) == 0 {
+		return "", false
+	}
+	return formatTableWidth(e, terminalWidth()), true
+}
+
+func formatTableWidth(e TableEvent, totalWidth int) string {
+	ncols := len(e.Headers)
+	if ncols == 0 {
+		return ""
+	}
+
+	widths := make([]int, ncols)
+	for i, h := range e.Headers {
+		widths[i] = len(h)
+	}
+	for _, row := range e.Rows {
+		for i := range min(len(row), ncols) {
+			if len(row[i]) > widths[i] {
+				widths[i] = len(row[i])
+			}
+		}
+	}
+
+	// When totalWidth is 0 (stdout is not a TTY), skip truncation entirely.
+	if totalWidth > 0 {
+		// Fixed overhead: 2 (indent) + (ncols-1)*2 (gaps between columns).
+		overhead := 2 + (ncols-1)*2
+
+		// Find the widest column and let it absorb any overflow.
+		maxCol := 0
+		for i := 1; i < ncols; i++ {
+			if widths[i] > widths[maxCol] {
+				maxCol = i
+			}
+		}
+		fixedWidth := overhead
+		for i, w := range widths {
+			if i != maxCol {
+				fixedWidth += w
+			}
+		}
+		maxFlexible := totalWidth - fixedWidth
+		if maxFlexible < 10 {
+			maxFlexible = 10
+		}
+		if widths[maxCol] > maxFlexible {
+			widths[maxCol] = maxFlexible
+		}
+	}
+
+	var sb strings.Builder
+	writeRow := func(cols []string) {
+		sb.WriteString("  ")
+		for i := range ncols {
+			cell := ""
+			if i < len(cols) {
+				cell = cols[i]
+			}
+			val := truncate(cell, widths[i])
+			sb.WriteString(val)
+			if i < ncols-1 {
+				padding := widths[i] - displayWidth(val) + 2
+				for range padding {
+					sb.WriteByte(' ')
+				}
+			}
+		}
+	}
+	upperHeaders := make([]string, len(e.Headers))
+	for i, h := range e.Headers {
+		upperHeaders[i] = strings.ToUpper(h)
+	}
+	writeRow(upperHeaders)
+	for _, row := range e.Rows {
+		sb.WriteString("\n")
+		writeRow(row)
 	}
 	return sb.String()
 }

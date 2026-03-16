@@ -13,6 +13,7 @@ import (
 	context "context"
 	io "io"
 	reflect "reflect"
+	time "time"
 
 	output "github.com/localstack/lstk/internal/output"
 	gomock "go.uber.org/mock/gomock"
@@ -40,6 +41,21 @@ func NewMockRuntime(ctrl *gomock.Controller) *MockRuntime {
 // EXPECT returns an object that allows the caller to indicate expected use.
 func (m *MockRuntime) EXPECT() *MockRuntimeMockRecorder {
 	return m.recorder
+}
+
+// ContainerStartedAt mocks base method.
+func (m *MockRuntime) ContainerStartedAt(ctx context.Context, containerName string) (time.Time, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ContainerStartedAt", ctx, containerName)
+	ret0, _ := ret[0].(time.Time)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ContainerStartedAt indicates an expected call of ContainerStartedAt.
+func (mr *MockRuntimeMockRecorder) ContainerStartedAt(ctx, containerName any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ContainerStartedAt", reflect.TypeOf((*MockRuntime)(nil).ContainerStartedAt), ctx, containerName)
 }
 
 // EmitUnhealthyError mocks base method.
