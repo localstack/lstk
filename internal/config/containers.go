@@ -31,10 +31,6 @@ var emulatorHealthPaths = map[EmulatorType]string{
 	EmulatorAWS: "/_localstack/health",
 }
 
-var emulatorContainerPorts = map[EmulatorType]string{
-	EmulatorAWS: "4566/tcp",
-}
-
 type ContainerConfig struct {
 	Type EmulatorType `mapstructure:"type"`
 	Tag  string       `mapstructure:"tag"`
@@ -89,11 +85,12 @@ func (c *ContainerConfig) HealthPath() (string, error) {
 }
 
 func (c *ContainerConfig) ContainerPort() (string, error) {
-	port, ok := emulatorContainerPorts[c.Type]
-	if !ok {
+	switch c.Type {
+	case EmulatorAWS:
+		return "4566/tcp", nil
+	default:
 		return "", fmt.Errorf("%s emulator not supported yet by lstk", c.Type)
 	}
-	return port, nil
 }
 
 func (c *ContainerConfig) DisplayName() string {
