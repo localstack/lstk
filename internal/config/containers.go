@@ -2,6 +2,8 @@ package config
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 )
@@ -33,11 +35,26 @@ var emulatorHealthPaths = map[EmulatorType]string{
 }
 
 type ContainerConfig struct {
-	Type EmulatorType `mapstructure:"type"`
-	Tag  string       `mapstructure:"tag"`
-	Port string       `mapstructure:"port"`
+	Type   EmulatorType `mapstructure:"type"`
+	Tag    string       `mapstructure:"tag"`
+	Port   string       `mapstructure:"port"`
+	Volume string       `mapstructure:"volume"`
 	// Env is a list of named environment references defined in the top-level [env.*] config sections.
 	Env []string `mapstructure:"env"`
+}
+
+// VolumeDir returns the host directory to mount into the container for persistence/caching.
+// If Volume is set in the config, it is returned as-is. Otherwise, a default is computed
+// from os.UserCacheDir()/lstk/volume/<container-name>.
+func (c *ContainerConfig) VolumeDir() (string, error) {
+	if c.Volume != "" {
+		return c.Volume, nil
+	}
+	cacheDir, err := os.UserCacheDir()
+	if err != nil {
+		return "", fmt.Errorf("failed to determine cache directory: %w", err)
+	}
+	return filepath.Join(cacheDir, "lstk", "volume", c.Name()), nil
 }
 
 func (c *ContainerConfig) Validate() error {

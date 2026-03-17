@@ -14,11 +14,17 @@ type Config struct {
 }
 
 func setDefaults() {
+	defaultVolume := ""
+	if cacheDir, err := os.UserCacheDir(); err == nil {
+		defaultVolume = filepath.Join(cacheDir, "lstk", "volume", "localstack-aws")
+	}
+
 	viper.SetDefault("containers", []map[string]any{
 		{
-			"type": "aws",
-			"tag":  "latest",
-			"port": "4566",
+			"type":   "aws",
+			"tag":    "latest",
+			"port":   "4566",
+			"volume": defaultVolume,
 		},
 	})
 }

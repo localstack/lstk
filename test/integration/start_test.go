@@ -182,6 +182,11 @@ func TestStartCommandSetsUpContainerCorrectly(t *testing.T) {
 		require.NotEmpty(t, mainBindings, "port 4566/tcp should be bound")
 		assert.Equal(t, "4566", mainBindings[0].HostPort)
 	})
+
+	t.Run("volume mount", func(t *testing.T) {
+		assert.True(t, hasBindTarget(inspect.HostConfig.Binds, "/var/lib/localstack"),
+			"expected volume bind mount to /var/lib/localstack, got: %v", inspect.HostConfig.Binds)
+	})
 }
 
 // containerEnvToMap converts a Docker container's []string env to a map.
