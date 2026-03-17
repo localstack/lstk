@@ -10,7 +10,7 @@ import (
 	"github.com/localstack/lstk/internal/runtime"
 )
 
-const stopTimeout = 10 * time.Second
+const stopTimeout = 30 * time.Second
 
 func Stop(ctx context.Context, rt runtime.Runtime, sink output.Sink, containers []config.ContainerConfig) error {
 	for _, c := range containers {
