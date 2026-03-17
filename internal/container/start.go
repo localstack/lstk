@@ -8,6 +8,7 @@ import (
 	"os"
 	stdruntime "runtime"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/containerd/errdefs"
@@ -121,10 +122,10 @@ func Start(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts Start
 	setups := map[config.EmulatorType]postStartSetupFunc{
 		config.EmulatorAWS: awsconfig.Setup,
 	}
-	return runPostStartSetups(ctx, sink, opts.Containers, interactive, opts.LocalStackHost, setups)
+	return runPostStartSetups(ctx, sink, opts.Containers, interactive, opts.LocalStackHost, opts.WebAppURL, setups)
 }
 
-func runPostStartSetups(ctx context.Context, sink output.Sink, containers []config.ContainerConfig, interactive bool, localStackHost string, setups map[config.EmulatorType]postStartSetupFunc) error {
+func runPostStartSetups(ctx context.Context, sink output.Sink, containers []config.ContainerConfig, interactive bool, localStackHost, webAppURL string, setups map[config.EmulatorType]postStartSetupFunc) error {
 	// build ordered list of unique types, keeping the first container config for each
 	firstByType := map[config.EmulatorType]config.ContainerConfig{}
 	var uniqueEmulatorTypes []config.EmulatorType
@@ -143,9 +144,18 @@ func runPostStartSetups(ctx context.Context, sink output.Sink, containers []conf
 			if err := setup(ctx, sink, interactive, resolvedHost); err != nil {
 				return err
 			}
+			emitPostStartPointers(sink, resolvedHost, webAppURL)
 		}
 	}
 	return nil
+}
+
+func emitPostStartPointers(sink output.Sink, resolvedHost, webAppURL string) {
+	output.EmitSecondary(sink, fmt.Sprintf("• Endpoint: %s", resolvedHost))
+	if webAppURL != "" {
+		output.EmitSecondary(sink, fmt.Sprintf("• Web app: %s", strings.TrimRight(webAppURL, "/")))
+	}
+	output.EmitSecondary(sink, "> Tip: View emulator logs: lstk logs --follow")
 }
 
 func pullImages(ctx context.Context, rt runtime.Runtime, sink output.Sink, containers []runtime.ContainerConfig) error {

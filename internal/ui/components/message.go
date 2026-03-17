@@ -15,7 +15,11 @@ func RenderMessage(e output.MessageEvent) string {
 func RenderWrappedMessage(e output.MessageEvent, width int) string {
 	prefixText, prefix := messagePrefix(e)
 	if prefixText == "" {
-		return styles.Message.Render(strings.Join(wrap.SoftWrap(e.Text, width), "\n"))
+		style := styles.Message
+		if e.Severity == output.SeveritySecondary {
+			style = styles.SecondaryMessage
+		}
+		return style.Render(strings.Join(wrap.SoftWrap(e.Text, width), "\n"))
 	}
 
 	if width <= len([]rune(prefixText))+1 {
