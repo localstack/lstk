@@ -19,6 +19,7 @@ func TestStatusCommandFailsWhenNotRunning(t *testing.T) {
 
 	stdout, _, err := runLstk(t, testContext(t), "", nil, "status")
 	require.Error(t, err, "expected lstk status to fail when emulator not running")
+	requireExitCode(t, 1, err)
 	assert.Contains(t, stdout, "is not running")
 	assert.Contains(t, stdout, "Start LocalStack:")
 	assert.Contains(t, stdout, "See help:")
@@ -52,6 +53,7 @@ func TestStatusCommandShowsResourcesWhenRunning(t *testing.T) {
 
 	stdout, stderr, err := runLstk(t, ctx, "", env.With(env.LocalStackHost, host), "status")
 	require.NoError(t, err, "lstk status failed: %s", stderr)
+	requireExitCode(t, 0, err)
 	assert.Contains(t, stdout, "running")
 	assert.Contains(t, stdout, "4.14.1")
 	assert.Contains(t, stdout, "2 resources")
@@ -89,5 +91,6 @@ func TestStatusCommandShowsNoResourcesWhenEmpty(t *testing.T) {
 
 	stdout, stderr, err := runLstk(t, ctx, "", env.With(env.LocalStackHost, host), "status")
 	require.NoError(t, err, "lstk status failed: %s", stderr)
+	requireExitCode(t, 0, err)
 	assert.Contains(t, stdout, "No resources deployed")
 }
