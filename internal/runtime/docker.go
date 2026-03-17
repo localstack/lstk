@@ -50,6 +50,7 @@ func findDockerSocket() string {
 	return probeSocket(
 		filepath.Join(home, ".colima", "default", "docker.sock"),
 		filepath.Join(home, ".colima", "docker.sock"),
+		filepath.Join(home, ".orbstack", "run", "docker.sock"),
 	)
 }
 
