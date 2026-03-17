@@ -48,7 +48,7 @@ func TestNonInteractiveFlagAppearsInStopHelp(t *testing.T) {
 func TestNonInteractiveFlagBindsToCfg(t *testing.T) {
 	cfg := &env.Env{}
 	root := NewRootCmd(cfg, telemetry.New("", true), log.Nop())
-	root.SetArgs([]string{"--non-interactive", "version"})
+	root.SetArgs([]string{"--non-interactive", "--version"})
 	_ = root.Execute()
 
 	if !cfg.NonInteractive {
@@ -59,7 +59,7 @@ func TestNonInteractiveFlagBindsToCfg(t *testing.T) {
 func TestNonInteractiveFlagDefaultIsOff(t *testing.T) {
 	cfg := &env.Env{}
 	root := NewRootCmd(cfg, telemetry.New("", true), log.Nop())
-	root.SetArgs([]string{"version"})
+	root.SetArgs([]string{"--version"})
 	_ = root.Execute()
 
 	if cfg.NonInteractive {

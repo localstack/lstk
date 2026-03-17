@@ -14,7 +14,7 @@ func TestLogging_NonTTY_WritesToLogFile(t *testing.T) {
 	_ = os.Remove(logPath)
 
 	ctx := testContext(t)
-	_, _, err := runLstk(t, ctx, "", nil, "version")
+	_, _, err := runLstk(t, ctx, "", nil, "--version")
 	require.NoError(t, err)
 
 	logContents, err := os.ReadFile(logPath)
@@ -28,7 +28,7 @@ func TestLogging_TTY_WritesToLogFile(t *testing.T) {
 	_ = os.Remove(logPath)
 
 	ctx := testContext(t)
-	_, err := runLstkInPTY(t, ctx, nil, "version")
+	_, err := runLstkInPTY(t, ctx, nil, "--version")
 	require.NoError(t, err)
 
 	logContents, err := os.ReadFile(logPath)

@@ -83,10 +83,9 @@ func TestDeviceFlowSuccess(t *testing.T) {
 	cleanup()
 	t.Cleanup(cleanup)
 
-	// Require valid token from environment
-	licenseToken := env.Require(t, env.AuthToken)
+	licenseToken := "test-license-token"
 
-	// Create mock API server that returns the real token
+	// Create mock API server that returns a synthetic token
 	mockServer := createMockAPIServer(t, licenseToken, true)
 	defer mockServer.Close()
 

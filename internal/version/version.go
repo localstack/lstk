@@ -1,13 +1,7 @@
 package version
 
-// Set via ldflags at build time. Must be variables, not constants,
+// Set via ldflags at build time. Must be a variable, not a constant,
 // because the linker can only modify variables at link time.
-var (
-	version   = "dev"
-	commit    = "none"
-	buildDate = "unknown"
-)
+var version = "dev"
 
-func Version() string   { return version }
-func Commit() string    { return commit }
-func BuildDate() string { return buildDate }
+func Version() string { return version }

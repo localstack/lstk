@@ -176,8 +176,6 @@ lstk update
 # Show resolved config file path
 lstk config path
 
-# Show version info
-lstk version
 ```
 
 ## Reporting bugs

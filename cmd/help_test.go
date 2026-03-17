@@ -35,6 +35,7 @@ func TestRootHelpOutputTemplate(t *testing.T) {
 	assertContains(t, out, "Options:")
 	assertNotContains(t, out, "Available Commands:")
 	assertNotContains(t, out, `Use "lstk [command] --help" for more information about a command.`)
+	assertNotContains(t, out, "\n  version ")
 }
 
 func TestSubcommandHelpUsesSubcommandUsageLine(t *testing.T) {
