@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/localstack/lstk/internal/api"
 	"github.com/localstack/lstk/internal/config"
@@ -17,6 +18,7 @@ import (
 	"github.com/localstack/lstk/internal/ui"
 	"github.com/localstack/lstk/internal/version"
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 )
 
 func NewRootCmd(cfg *env.Env, tel *telemetry.Client, logger log.Logger) *cobra.Command {
@@ -30,7 +32,7 @@ func NewRootCmd(cfg *env.Env, tel *telemetry.Client, logger log.Logger) *cobra.C
 			if err != nil {
 				return err
 			}
-			return runStart(cmd.Context(), rt, cfg, tel, logger)
+			return runStart(cmd, rt, cfg, tel, logger)
 		},
 	}
 
@@ -50,13 +52,13 @@ func NewRootCmd(cfg *env.Env, tel *telemetry.Client, logger log.Logger) *cobra.C
 
 	root.AddCommand(
 		newStartCmd(cfg, tel, logger),
-		newStopCmd(cfg),
-		newLoginCmd(cfg, logger),
-		newLogoutCmd(cfg, logger),
-		newStatusCmd(cfg),
-		newLogsCmd(cfg),
+		newStopCmd(cfg, tel),
+		newLoginCmd(cfg, tel, logger),
+		newLogoutCmd(cfg, tel, logger),
+		newStatusCmd(cfg, tel),
+		newLogsCmd(cfg, tel),
 		newConfigCmd(),
-		newUpdateCmd(cfg),
+		newUpdateCmd(cfg, tel),
 	)
 
 	return root
@@ -87,9 +89,7 @@ func Execute(ctx context.Context) error {
 	return nil
 }
 
-func runStart(ctx context.Context, rt runtime.Runtime, cfg *env.Env, tel *telemetry.Client, logger log.Logger) error {
-	// TODO: replace map with a typed payload struct once event schema is finalised
-	tel.Emit(ctx, "cli_cmd", map[string]any{"cmd": "lstk start", "params": []string{}})
+func startEmulator(ctx context.Context, rt runtime.Runtime, cfg *env.Env, tel *telemetry.Client, commandEventID string, logger log.Logger) error {
 
 	appConfig, err := config.Get()
 	if err != nil {
@@ -105,12 +105,82 @@ func runStart(ctx context.Context, rt runtime.Runtime, cfg *env.Env, tel *teleme
 		Containers:       appConfig.Containers,
 		Env:              appConfig.Env,
 		Logger:           logger,
+		Telemetry:        tel,
+		TriggerEventID:   commandEventID,
 	}
 
 	if isInteractiveMode(cfg) {
 		return ui.Run(ctx, rt, version.Version(), opts)
 	}
 	return container.Start(ctx, rt, output.NewPlainSink(os.Stdout), opts, false)
+}
+
+func runStart(cmd *cobra.Command, rt runtime.Runtime, cfg *env.Env, tel *telemetry.Client, logger log.Logger) error {
+	startTime := time.Now()
+	commandEventID := telemetry.NewEventID()
+
+	var flags []string
+	cmd.Flags().Visit(func(f *pflag.Flag) {
+		flags = append(flags, "--"+f.Name)
+	})
+
+	runErr := startEmulator(cmd.Context(), rt, cfg, tel, commandEventID, logger)
+
+	exitCode := 0
+	errorMsg := ""
+	if runErr != nil {
+		exitCode = 1
+		if !output.IsSilent(runErr) {
+			errorMsg = runErr.Error()
+		}
+	}
+	tel.Emit(cmd.Context(), "lstk_command", telemetry.ToMap(telemetry.CommandEvent{
+		Environment: tel.GetEnvironment(cfg.AuthToken),
+		Parameters:  telemetry.CommandParameters{Command: "start", Flags: flags},
+		Result: telemetry.CommandResult{
+			DurationMS: time.Since(startTime).Milliseconds(),
+			ExitCode:   exitCode,
+			ErrorMsg:   errorMsg,
+		},
+	}))
+
+	return runErr
+}
+
+// withCommandTelemetry wraps a RunE function so that an lstk_command event is
+// emitted after every invocation. Use this for commands that do not emit
+// lstk_lifecycle events (i.e. everything except start/stop, which manage their
+// own commandEventID for cross-event correlation).
+func withCommandTelemetry(name string, tel *telemetry.Client, authToken string, fn func(*cobra.Command, []string) error) func(*cobra.Command, []string) error {
+	return func(cmd *cobra.Command, args []string) error {
+		startTime := time.Now()
+		runErr := fn(cmd, args)
+
+		var flags []string
+		cmd.Flags().Visit(func(f *pflag.Flag) {
+			flags = append(flags, "--"+f.Name)
+		})
+
+		exitCode := 0
+		errorMsg := ""
+		if runErr != nil {
+			exitCode = 1
+			if !output.IsSilent(runErr) {
+				errorMsg = runErr.Error()
+			}
+		}
+		tel.Emit(cmd.Context(), "lstk_command", telemetry.ToMap(telemetry.CommandEvent{
+			Environment: tel.GetEnvironment(authToken),
+			Parameters:  telemetry.CommandParameters{Command: name, Flags: flags},
+			Result: telemetry.CommandResult{
+				DurationMS: time.Since(startTime).Milliseconds(),
+				ExitCode:   exitCode,
+				ErrorMsg:   errorMsg,
+			},
+		}))
+
+		return runErr
+	}
 }
 
 func isInteractiveMode(cfg *env.Env) bool {

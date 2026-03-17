@@ -23,6 +23,7 @@ import (
 	"github.com/localstack/lstk/internal/output"
 	"github.com/localstack/lstk/internal/ports"
 	"github.com/localstack/lstk/internal/runtime"
+	"github.com/localstack/lstk/internal/telemetry"
 )
 
 type postStartSetupFunc func(ctx context.Context, sink output.Sink, interactive bool, resolvedHost string) error
@@ -37,6 +38,47 @@ type StartOptions struct {
 	Containers       []config.ContainerConfig
 	Env              map[string]map[string]string
 	Logger           log.Logger
+	Telemetry        *telemetry.Client
+	TriggerEventID   string
+}
+
+// telCtx carries telemetry context for emitting per-container lifecycle events.
+type telCtx struct {
+	tel            *telemetry.Client
+	triggerEventID string
+	authToken      string
+}
+
+func (t telCtx) emitStartError(ctx context.Context, c runtime.ContainerConfig, errorCode, errorMsg string) {
+	if t.tel == nil {
+		return
+	}
+	t.tel.Emit(ctx, "lstk_lifecycle", telemetry.ToMap(telemetry.LifecycleEvent{
+		EventType:      telemetry.LifecycleStartError,
+		TriggerEventID: t.triggerEventID,
+		Environment:    t.tel.GetEnvironment(t.authToken),
+		Emulator:       c.EmulatorType,
+		Image:          c.Image,
+		ErrorCode:      errorCode,
+		ErrorMsg:       errorMsg,
+	}))
+}
+
+func (t telCtx) emitStartSuccess(ctx context.Context, c runtime.ContainerConfig, containerID string, durationMS int64, info *telemetry.LocalStackInfo) {
+	if t.tel == nil {
+		return
+	}
+	t.tel.Emit(ctx, "lstk_lifecycle", telemetry.ToMap(telemetry.LifecycleEvent{
+		EventType:      telemetry.LifecycleStartSuccess,
+		TriggerEventID: t.triggerEventID,
+		Environment:    t.tel.GetEnvironment(t.authToken),
+		Emulator:       c.EmulatorType,
+		Image:          c.Image,
+		ContainerID:    containerID,
+		DurationMS:     durationMS,
+		Pulled:         true, // TODO: track actual pull status from pullImages instead of hardcoding
+		LocalStackInfo: info,
+	}))
 }
 
 func Start(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts StartOptions, interactive bool) error {
@@ -58,6 +100,12 @@ func Start(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts Start
 
 	if hasDuplicateContainerTypes(opts.Containers) {
 		output.EmitWarning(sink, "Multiple emulators of the same type are defined in your config; this setup is not supported yet")
+	}
+
+	tel := telCtx{
+		tel:            opts.Telemetry,
+		triggerEventID: opts.TriggerEventID,
+		authToken:      opts.AuthToken,
 	}
 
 	containers := make([]runtime.ContainerConfig, len(opts.Containers))
@@ -110,6 +158,7 @@ func Start(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts Start
 		containers[i] = runtime.ContainerConfig{
 			Image:         image,
 			Name:          containerName,
+			EmulatorType:  string(c.Type),
 			Port:          c.Port,
 			ContainerPort: containerPort,
 			HealthPath:    healthPath,
@@ -121,7 +170,7 @@ func Start(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts Start
 		}
 	}
 
-	containers, err = selectContainersToStart(ctx, rt, sink, containers)
+	containers, err = selectContainersToStart(ctx, rt, sink, tel, containers)
 	if err != nil {
 		return err
 	}
@@ -131,15 +180,15 @@ func Start(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts Start
 
 	// TODO validate license for tag "latest" without resolving the actual image version,
 	// and avoid pulling all images first
-	if err := pullImages(ctx, rt, sink, containers); err != nil {
+	if err := pullImages(ctx, rt, sink, tel, containers); err != nil {
 		return err
 	}
 
-	if err := validateLicenses(ctx, rt, sink, opts, containers, token); err != nil {
+	if err := validateLicenses(ctx, rt, sink, opts, tel, containers, token); err != nil {
 		return err
 	}
 
-	if err := startContainers(ctx, rt, sink, containers); err != nil {
+	if err := startContainers(ctx, rt, sink, tel, containers); err != nil {
 		return err
 	}
 
@@ -188,7 +237,7 @@ func emitPostStartPointers(sink output.Sink, resolvedHost, webAppURL string) {
 	output.EmitSecondary(sink, tips[rand.IntN(len(tips))])
 }
 
-func pullImages(ctx context.Context, rt runtime.Runtime, sink output.Sink, containers []runtime.ContainerConfig) error {
+func pullImages(ctx context.Context, rt runtime.Runtime, sink output.Sink, tel telCtx, containers []runtime.ContainerConfig) error {
 	for _, c := range containers {
 		// Remove any existing stopped container with the same name
 		if err := rt.Remove(ctx, c.Name); err != nil && !errdefs.IsNotFound(err) {
@@ -209,6 +258,7 @@ func pullImages(ctx context.Context, rt runtime.Runtime, sink output.Sink, conta
 				Title:   fmt.Sprintf("Failed to pull %s", c.Image),
 				Summary: err.Error(),
 			})
+			tel.emitStartError(ctx, c, telemetry.ErrCodeImagePullFailed, err.Error())
 			return output.NewSilentError(fmt.Errorf("failed to pull image %s: %w", c.Image, err))
 		}
 		output.EmitSpinnerStop(sink)
@@ -217,35 +267,41 @@ func pullImages(ctx context.Context, rt runtime.Runtime, sink output.Sink, conta
 	return nil
 }
 
-func validateLicenses(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts StartOptions, containers []runtime.ContainerConfig, token string) error {
+func validateLicenses(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts StartOptions, tel telCtx, containers []runtime.ContainerConfig, token string) error {
 	for _, c := range containers {
-		if err := validateLicense(ctx, rt, sink, opts, c, token); err != nil {
+		if err := validateLicense(ctx, rt, sink, opts, tel, c, token); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func startContainers(ctx context.Context, rt runtime.Runtime, sink output.Sink, containers []runtime.ContainerConfig) error {
+func startContainers(ctx context.Context, rt runtime.Runtime, sink output.Sink, tel telCtx, containers []runtime.ContainerConfig) error {
 	for _, c := range containers {
+		startTime := time.Now()
 		output.EmitStatus(sink, "starting", c.Name, "")
 		containerID, err := rt.Start(ctx, c)
 		if err != nil {
+			tel.emitStartError(ctx, c, telemetry.ErrCodeStartFailed, err.Error())
 			return fmt.Errorf("failed to start LocalStack: %w", err)
 		}
 
 		output.EmitStatus(sink, "waiting", c.Name, "")
 		healthURL := fmt.Sprintf("http://localhost:%s%s", c.Port, c.HealthPath)
 		if err := awaitStartup(ctx, rt, sink, containerID, "LocalStack", healthURL); err != nil {
+			tel.emitStartError(ctx, c, telemetry.ErrCodeStartFailed, err.Error())
 			return err
 		}
 
 		output.EmitStatus(sink, "ready", c.Name, fmt.Sprintf("containerId: %s", containerID[:12]))
+
+		lsInfo, _ := fetchLocalStackInfo(ctx, c.Port)
+		tel.emitStartSuccess(ctx, c, containerID[:12], time.Since(startTime).Milliseconds(), lsInfo)
 	}
 	return nil
 }
 
-func selectContainersToStart(ctx context.Context, rt runtime.Runtime, sink output.Sink, containers []runtime.ContainerConfig) ([]runtime.ContainerConfig, error) {
+func selectContainersToStart(ctx context.Context, rt runtime.Runtime, sink output.Sink, tel telCtx, containers []runtime.ContainerConfig) ([]runtime.ContainerConfig, error) {
 	var filtered []runtime.ContainerConfig
 	for _, c := range containers {
 		running, err := rt.IsRunning(ctx, c.Name)
@@ -258,6 +314,7 @@ func selectContainersToStart(ctx context.Context, rt runtime.Runtime, sink outpu
 		}
 		if err := ports.CheckAvailable(c.Port); err != nil {
 			emitPortInUseError(sink, c.Port)
+			tel.emitStartError(ctx, c, telemetry.ErrCodePortConflict, fmt.Sprintf("port %s already in use", c.Port))
 			return nil, output.NewSilentError(err)
 		}
 		filtered = append(filtered, c)
@@ -280,7 +337,7 @@ func emitPortInUseError(sink output.Sink, port string) {
 	})
 }
 
-func validateLicense(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts StartOptions, containerConfig runtime.ContainerConfig, token string) error {
+func validateLicense(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts StartOptions, tel telCtx, containerConfig runtime.ContainerConfig, token string) error {
 	version := containerConfig.Tag
 	if version == "" || version == "latest" {
 		actualVersion, err := rt.GetImageVersion(ctx, containerConfig.Image)
@@ -313,6 +370,7 @@ func validateLicense(ctx context.Context, rt runtime.Runtime, sink output.Sink, 
 		if errors.As(err, &licErr) && licErr.Detail != "" {
 			opts.Logger.Error("license server response (HTTP %d): %s", licErr.Status, licErr.Detail)
 		}
+		tel.emitStartError(ctx, containerConfig, telemetry.ErrCodeLicenseInvalid, err.Error())
 		return fmt.Errorf("license validation failed for %s:%s: %w", containerConfig.ProductName, version, err)
 	}
 

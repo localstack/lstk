@@ -8,11 +8,18 @@ import (
 	"github.com/localstack/lstk/internal/config"
 	"github.com/localstack/lstk/internal/output"
 	"github.com/localstack/lstk/internal/runtime"
+	"github.com/localstack/lstk/internal/telemetry"
 )
 
-func Stop(ctx context.Context, rt runtime.Runtime, sink output.Sink, containers []config.ContainerConfig) error {
-	const stopTimeout = 30 * time.Second
+// StopOptions carries optional telemetry context for the stop command.
+type StopOptions struct {
+	Telemetry      *telemetry.Client
+	TriggerEventID string
+	AuthToken      string
+}
 
+func Stop(ctx context.Context, rt runtime.Runtime, sink output.Sink, containers []config.ContainerConfig, opts StopOptions) error {
+	const stopTimeout = 30 * time.Second
 	for _, c := range containers {
 		name := c.Name()
 
@@ -25,6 +32,12 @@ func Stop(ctx context.Context, rt runtime.Runtime, sink output.Sink, containers 
 		if !running {
 			return fmt.Errorf("LocalStack is not running")
 		}
+
+		// Fetch localstack info before stopping so it can be included in telemetry.
+		lsInfo, _ := fetchLocalStackInfo(ctx, c.Port)
+
+		stopStart := time.Now()
+
 		output.EmitSpinnerStart(sink, "Stopping LocalStack...")
 		stopCtx, stopCancel := context.WithTimeout(ctx, stopTimeout)
 		if err := rt.Stop(stopCtx, name); err != nil {
@@ -35,6 +48,17 @@ func Stop(ctx context.Context, rt runtime.Runtime, sink output.Sink, containers 
 		stopCancel()
 		output.EmitSpinnerStop(sink)
 		output.EmitSuccess(sink, "LocalStack stopped")
+
+		if opts.Telemetry != nil {
+			opts.Telemetry.Emit(ctx, "lstk_lifecycle", telemetry.ToMap(telemetry.LifecycleEvent{
+				EventType:      telemetry.LifecycleStop,
+				TriggerEventID: opts.TriggerEventID,
+				Environment:    opts.Telemetry.GetEnvironment(opts.AuthToken),
+				Emulator:       string(c.Type),
+				DurationMS:     time.Since(stopStart).Milliseconds(),
+				LocalStackInfo: lsInfo,
+			}))
+		}
 	}
 
 	return nil

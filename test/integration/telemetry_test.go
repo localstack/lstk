@@ -69,7 +69,7 @@ func TestStartCommandSendsTelemetryEvent(t *testing.T) {
 	// The telemetry goroutine is async; wait up to 3s for the event to arrive.
 	select {
 	case event := <-events:
-		assert.Equal(t, "cli_cmd", event["name"])
+		assert.Equal(t, "lstk_command", event["name"])
 
 		metadata, ok := event["metadata"].(map[string]any)
 		require.True(t, ok)
@@ -80,15 +80,71 @@ func TestStartCommandSendsTelemetryEvent(t *testing.T) {
 
 		payload, ok := event["payload"].(map[string]any)
 		require.True(t, ok)
-		assert.Equal(t, "lstk start", payload["cmd"])
-		assert.NotEmpty(t, payload["version"])
-		assert.Equal(t, runtime.GOOS, payload["os"])
-		assert.Equal(t, runtime.GOARCH, payload["arch"])
 		assert.NotEmpty(t, payload["machine_id"], "machine_id should be present")
 		assert.Equal(t, os.Getenv("CI") != "", payload["is_ci"])
+
+		environment, ok := payload["environment"].(map[string]any)
+		require.True(t, ok)
+		assert.NotEmpty(t, environment["lstk_version"])
+		assert.Equal(t, runtime.GOOS, environment["os"])
+		assert.Equal(t, runtime.GOARCH, environment["arch"])
+
+		params, ok := payload["parameters"].(map[string]any)
+		require.True(t, ok)
+		assert.Equal(t, "start", params["command"])
+
+		result, ok := payload["result"].(map[string]any)
+		require.True(t, ok)
+		assert.InDelta(t, 0, result["exit_code"], 0)
 	case <-time.After(3 * time.Second):
 		t.Fatal("timed out waiting for telemetry event")
 	}
+}
+
+func TestStopCommandSendsTelemetryEvents(t *testing.T) {
+	requireDocker(t)
+	cleanup()
+	t.Cleanup(cleanup)
+
+	ctx := testContext(t)
+	startTestContainer(t, ctx)
+
+	analyticsSrv, events := mockAnalyticsServer(t)
+
+	_, stderr, err := runLstk(t, ctx, "", env.With(env.AuthToken, "fake-token").
+		With(env.AnalyticsEndpoint, analyticsSrv.URL), "stop")
+	require.NoError(t, err, "lstk stop failed: %s", stderr)
+	requireExitCode(t, 0, err)
+
+	// Collect both the lstk_lifecycle and lstk_command events (order not guaranteed).
+	byName := make(map[string]map[string]any)
+	deadline := time.After(3 * time.Second)
+	for len(byName) < 2 {
+		select {
+		case event := <-events:
+			name, _ := event["name"].(string)
+			byName[name] = event
+		case <-deadline:
+			t.Fatalf("timed out waiting for telemetry events; received: %v", byName)
+		}
+	}
+
+	lifecycle, ok := byName["lstk_lifecycle"]
+	require.True(t, ok, "expected lstk_lifecycle event")
+	lp := lifecycle["payload"].(map[string]any)
+	assert.Equal(t, "stop", lp["event_type"])
+	assert.Equal(t, "aws", lp["emulator"])
+	assert.NotEmpty(t, lp["trigger_event_id"], "lifecycle event should carry trigger_event_id for correlation")
+
+	command, ok := byName["lstk_command"]
+	require.True(t, ok, "expected lstk_command event")
+	cp := command["payload"].(map[string]any)
+	params, ok := cp["parameters"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "stop", params["command"])
+	result, ok := cp["result"].(map[string]any)
+	require.True(t, ok)
+	assert.InDelta(t, 0, result["exit_code"], 0)
 }
 
 func TestStartCommandSucceedsWhenAnalyticsEndpointUnreachable(t *testing.T) {

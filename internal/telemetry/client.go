@@ -16,7 +16,7 @@ import (
 )
 
 func userAgent() string {
-	return fmt.Sprintf("localstack lstk/%s (%s; %s)", version.Version(), runtime.GOOS, runtime.GOARCH)
+	return fmt.Sprintf("localstack lstk/%s", version.Version())
 }
 
 type Client struct {
@@ -74,11 +74,10 @@ func (c *Client) Emit(ctx context.Context, name string, payload map[string]any) 
 		return
 	}
 
-	enriched := make(map[string]any, len(payload)+6)
+	enriched := make(map[string]any, len(payload)+5)
 	for k, v := range payload {
 		enriched[k] = v
 	}
-	enriched["version"] = version.Version()
 	enriched["os"] = runtime.GOOS
 	enriched["arch"] = runtime.GOARCH
 	_, enriched["is_ci"] = os.LookupEnv("CI")
@@ -95,7 +94,6 @@ func (c *Client) Emit(ctx context.Context, name string, payload map[string]any) 
 		},
 		Payload: enriched,
 	}
-
 	select {
 	case c.events <- body:
 	default:
