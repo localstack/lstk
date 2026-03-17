@@ -7,7 +7,7 @@ BUILD_DIR=bin
 .PHONY: build clean test test-integration lint mock-generate
 
 $(BUILD_DIR)/$(BINARY_NAME):
-	go build -o $(BUILD_DIR)/$(BINARY_NAME) .
+	CGO_ENABLED=0 go build -o $(BUILD_DIR)/$(BINARY_NAME) .
 
 build: clean $(BUILD_DIR)/$(BINARY_NAME)
 

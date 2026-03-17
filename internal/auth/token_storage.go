@@ -4,21 +4,15 @@ package auth
 
 import (
 	"errors"
-	"fmt"
-	"os"
-	"path/filepath"
 
-	"github.com/99designs/keyring"
 	"github.com/localstack/lstk/internal/config"
 	"github.com/localstack/lstk/internal/log"
+	"github.com/zalando/go-keyring"
 )
 
 const (
-	keyringService        = "lstk"
-	keyringAuthTokenKey   = "lstk.auth-token"
-	keyringPassword       = "lstk-keyring"
-	keyringFilename       = "keyring"
-	keyringAuthTokenLabel = "LocalStack Auth Token"
+	keyringService      = "lstk"
+	keyringAuthTokenKey = "lstk.auth-token"
 )
 
 var ErrTokenNotFound = errors.New("credential not found")
@@ -29,8 +23,29 @@ type AuthTokenStorage interface {
 	DeleteAuthToken() error
 }
 
-type authTokenStorage struct {
-	ring keyring.Keyring
+type systemTokenStorage struct{}
+
+func (s *systemTokenStorage) GetAuthToken() (string, error) {
+	token, err := keyring.Get(keyringService, keyringAuthTokenKey)
+	if err != nil {
+		if errors.Is(err, keyring.ErrNotFound) {
+			return "", ErrTokenNotFound
+		}
+		return "", err
+	}
+	return token, nil
+}
+
+func (s *systemTokenStorage) SetAuthToken(token string) error {
+	return keyring.Set(keyringService, keyringAuthTokenKey, token)
+}
+
+func (s *systemTokenStorage) DeleteAuthToken() error {
+	err := keyring.Delete(keyringService, keyringAuthTokenKey)
+	if errors.Is(err, keyring.ErrNotFound) {
+		return nil
+	}
+	return err
 }
 
 func NewTokenStorage(forceFileKeyring bool, logger log.Logger) (AuthTokenStorage, error) {
@@ -42,55 +57,17 @@ func NewTokenStorage(forceFileKeyring bool, logger log.Logger) (AuthTokenStorage
 		return nil, err
 	}
 
-	keyringConfig := keyring.Config{
-		ServiceName:             keyringService,
-		LibSecretCollectionName: "login", // use the default login keyring on Linux, ignored on other platforms
-		FileDir:                 filepath.Join(configDir, keyringFilename),
-		FilePasswordFunc: func(prompt string) (string, error) {
-			return keyringPassword, nil
-		},
-	}
-
 	if forceFileKeyring {
-		keyringConfig.AllowedBackends = []keyring.BackendType{keyring.FileBackend}
+		logger.Info("using file-based storage (forced)")
+		return newFileTokenStorage(configDir), nil
 	}
 
-	ring, err := keyring.Open(keyringConfig)
-	if err != nil && !forceFileKeyring {
-		logger.Info("system keyring unavailable (%v), falling back to file-based storage", err)
-		keyringConfig.AllowedBackends = []keyring.BackendType{keyring.FileBackend}
-		ring, err = keyring.Open(keyringConfig)
-	}
-	if err != nil {
-		return nil, fmt.Errorf("failed to open keyring: %w", err)
+	// Probe whether the system keyring is functional.
+	_, err = keyring.Get(keyringService, keyringAuthTokenKey)
+	if err == nil || errors.Is(err, keyring.ErrNotFound) {
+		return &systemTokenStorage{}, nil
 	}
 
-	return &authTokenStorage{ring: ring}, nil
-}
-
-func (s *authTokenStorage) GetAuthToken() (string, error) {
-	item, err := s.ring.Get(keyringAuthTokenKey)
-	if err != nil {
-		if errors.Is(err, keyring.ErrKeyNotFound) {
-			return "", ErrTokenNotFound
-		}
-		return "", err
-	}
-	return string(item.Data), nil
-}
-
-func (s *authTokenStorage) SetAuthToken(token string) error {
-	return s.ring.Set(keyring.Item{
-		Key:   keyringAuthTokenKey,
-		Data:  []byte(token),
-		Label: keyringAuthTokenLabel,
-	})
-}
-
-func (s *authTokenStorage) DeleteAuthToken() error {
-	err := s.ring.Remove(keyringAuthTokenKey)
-	if errors.Is(err, keyring.ErrKeyNotFound) || os.IsNotExist(err) {
-		return nil
-	}
-	return err
+	logger.Info("system keyring unavailable (%v), falling back to file-based storage", err)
+	return newFileTokenStorage(configDir), nil
 }
