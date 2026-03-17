@@ -22,6 +22,16 @@ import (
 func awsConfigEnv(t *testing.T) (env.Environ, string) {
 	t.Helper()
 	tmpHome := t.TempDir()
+	// Runs before t.TempDir() cleanup (LIFO order). The emulator runs as root
+	// inside the container, so files it writes into the volume are root-owned on
+	// Linux. Go's TempDir cleanup can't delete them, so we use a Docker container
+	// to remove them first.
+	t.Cleanup(func() {
+		volumeDir := filepath.Join(tmpHome, ".cache", "lstk", "volume")
+		if _, err := os.Stat(volumeDir); err == nil {
+			_ = exec.Command("docker", "run", "--rm", "-v", volumeDir+":/d", "alpine", "sh", "-c", "rm -rf /d/*").Run()
+		}
+	})
 	e := env.With(env.AuthToken, env.Get(env.AuthToken)).With(env.Home, tmpHome)
 	return e, tmpHome
 }

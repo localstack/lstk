@@ -97,6 +97,15 @@ func Start(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts Start
 			env = append(env, "DOCKER_HOST=unix:///var/run/docker.sock")
 		}
 
+		volumeDir, err := c.VolumeDir()
+		if err != nil {
+			return err
+		}
+		if err := os.MkdirAll(volumeDir, 0755); err != nil {
+			return fmt.Errorf("failed to create volume directory %s: %w", volumeDir, err)
+		}
+		binds = append(binds, runtime.BindMount{HostPath: volumeDir, ContainerPath: "/var/lib/localstack"})
+
 		containers[i] = runtime.ContainerConfig{
 			Image:         image,
 			Name:          containerName,
