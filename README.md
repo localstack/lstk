@@ -141,6 +141,7 @@ lstk --non-interactive
 |---|---|
 | `LOCALSTACK_AUTH_TOKEN` | Auth token used for non-interactive runs or to skip browser login |
 | `LOCALSTACK_DISABLE_EVENTS=1` | Disables telemetry event reporting |
+| `DOCKER_HOST` | Override the Docker daemon socket (e.g. `unix:///home/user/.colima/default/docker.sock`). When unset, lstk tries the default socket and then probes common alternatives (Colima, OrbStack). |
 
 ## Usage
 

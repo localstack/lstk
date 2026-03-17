@@ -26,7 +26,7 @@ func NewRootCmd(cfg *env.Env, tel *telemetry.Client, logger log.Logger) *cobra.C
 		Long:    "lstk is the command-line interface for LocalStack.",
 		PreRunE: initConfig,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			rt, err := runtime.NewDockerRuntime()
+			rt, err := runtime.NewDockerRuntime(cfg.DockerHost)
 			if err != nil {
 				return err
 			}
@@ -53,7 +53,7 @@ func NewRootCmd(cfg *env.Env, tel *telemetry.Client, logger log.Logger) *cobra.C
 		newLoginCmd(cfg, logger),
 		newLogoutCmd(cfg, logger),
 		newStatusCmd(cfg),
-		newLogsCmd(),
+		newLogsCmd(cfg),
 		newConfigCmd(),
 		newVersionCmd(),
 		newUpdateCmd(cfg),

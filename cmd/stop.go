@@ -20,7 +20,7 @@ func newStopCmd(cfg *env.Env) *cobra.Command {
 		Long:    "Stop emulator and services",
 		PreRunE: initConfig,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			rt, err := runtime.NewDockerRuntime()
+			rt, err := runtime.NewDockerRuntime(cfg.DockerHost)
 			if err != nil {
 				return err
 			}

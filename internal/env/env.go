@@ -10,6 +10,7 @@ import (
 type Env struct {
 	AuthToken      string
 	LocalStackHost string
+	DockerHost     string
 	DisableEvents  bool
 
 	APIEndpoint       string
@@ -35,6 +36,7 @@ func Init() *Env {
 	return &Env{
 		AuthToken:         os.Getenv("LOCALSTACK_AUTH_TOKEN"),
 		LocalStackHost:    os.Getenv("LOCALSTACK_HOST"),
+		DockerHost:        os.Getenv("DOCKER_HOST"),
 		DisableEvents:     os.Getenv("LOCALSTACK_DISABLE_EVENTS") == "1",
 		APIEndpoint:       viper.GetString("api_endpoint"),
 		WebAppURL:         viper.GetString("web_app_url"),

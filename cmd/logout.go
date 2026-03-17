@@ -29,7 +29,7 @@ func newLogoutCmd(cfg *env.Env, logger log.Logger) *cobra.Command {
 				return fmt.Errorf("failed to get config: %w", err)
 			}
 			var rt runtime.Runtime
-			if dockerRuntime, err := runtime.NewDockerRuntime(); err == nil {
+			if dockerRuntime, err := runtime.NewDockerRuntime(cfg.DockerHost); err == nil {
 				rt = dockerRuntime
 			}
 

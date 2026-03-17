@@ -2,12 +2,16 @@ package integration_test
 
 import (
 	"context"
+	"fmt"
 	"net"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/docker/docker/api/types/container"
+	"github.com/docker/go-connections/nat"
 	"github.com/localstack/lstk/test/integration/env"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -124,6 +128,81 @@ port = "4567"
 	ctx := testContext(t)
 	_, stderr, err := runLstk(t, ctx, "", env.With(env.APIEndpoint, mockServer.URL), "--config", configFile, "start")
 	require.NoError(t, err, "lstk start failed: %s", stderr)
+}
+
+func TestStartCommandSetsUpContainerCorrectly(t *testing.T) {
+	requireDocker(t)
+	_ = env.Require(t, env.AuthToken)
+
+	cleanup()
+	t.Cleanup(cleanup)
+
+	mockServer := createMockLicenseServer(true)
+	defer mockServer.Close()
+
+	ctx := testContext(t)
+	_, stderr, err := runLstk(t, ctx, "", env.With(env.APIEndpoint, mockServer.URL), "start")
+	require.NoError(t, err, "lstk start failed: %s", stderr)
+
+	inspect, err := dockerClient.ContainerInspect(ctx, containerName)
+	require.NoError(t, err, "failed to inspect container")
+	require.True(t, inspect.State.Running)
+
+	t.Run("environment variables", func(t *testing.T) {
+		envVars := containerEnvToMap(inspect.Config.Env)
+		assert.Equal(t, ":4566", envVars["GATEWAY_LISTEN"])
+		assert.Equal(t, containerName, envVars["MAIN_CONTAINER_NAME"])
+		assert.NotEmpty(t, envVars["LOCALSTACK_AUTH_TOKEN"])
+	})
+
+	t.Run("docker socket mount", func(t *testing.T) {
+		if !strings.HasPrefix(dockerClient.DaemonHost(), "unix://") {
+			t.Skip("Docker daemon is not reachable via unix socket")
+		}
+
+		assert.True(t, hasBindTarget(inspect.HostConfig.Binds, "/var/run/docker.sock"),
+			"expected Docker socket bind mount to /var/run/docker.sock, got: %v", inspect.HostConfig.Binds)
+
+		envVars := containerEnvToMap(inspect.Config.Env)
+		assert.Equal(t, "unix:///var/run/docker.sock", envVars["DOCKER_HOST"])
+	})
+
+	t.Run("service port range", func(t *testing.T) {
+		for p := 4510; p <= 4559; p++ {
+			port := nat.Port(fmt.Sprintf("%d/tcp", p))
+			bindings := inspect.HostConfig.PortBindings[port]
+			if assert.NotEmpty(t, bindings, "port %d/tcp should be bound", p) {
+				assert.Equal(t, strconv.Itoa(p), bindings[0].HostPort)
+			}
+		}
+	})
+
+	t.Run("main port", func(t *testing.T) {
+		mainBindings := inspect.HostConfig.PortBindings[nat.Port("4566/tcp")]
+		require.NotEmpty(t, mainBindings, "port 4566/tcp should be bound")
+		assert.Equal(t, "4566", mainBindings[0].HostPort)
+	})
+}
+
+// containerEnvToMap converts a Docker container's []string env to a map.
+func containerEnvToMap(envList []string) map[string]string {
+	m := make(map[string]string, len(envList))
+	for _, e := range envList {
+		k, v, _ := strings.Cut(e, "=")
+		m[k] = v
+	}
+	return m
+}
+
+// hasBindTarget checks if any bind mount targets the given container path.
+func hasBindTarget(binds []string, containerPath string) bool {
+	for _, b := range binds {
+		parts := strings.Split(b, ":")
+		if len(parts) >= 2 && parts[1] == containerPath {
+			return true
+		}
+	}
+	return false
 }
 
 func cleanup() {

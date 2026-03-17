@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"os"
+	"path/filepath"
 	stdruntime "runtime"
 	"strconv"
 	"strings"
@@ -25,12 +27,48 @@ type DockerRuntime struct {
 	client *client.Client
 }
 
-func NewDockerRuntime() (*DockerRuntime, error) {
-	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
+func NewDockerRuntime(dockerHost string) (*DockerRuntime, error) {
+	opts := []client.Opt{client.FromEnv, client.WithAPIVersionNegotiation()}
+
+	// When DOCKER_HOST is not set, the Docker SDK defaults to /var/run/docker.sock.
+	// If that socket doesn't exist, probe known alternative locations (e.g. Colima).
+	if dockerHost == "" {
+		if sock := findDockerSocket(); sock != "" {
+			opts = append(opts, client.WithHost("unix://"+sock))
+		}
+	}
+
+	cli, err := client.NewClientWithOpts(opts...)
 	if err != nil {
 		return nil, err
 	}
 	return &DockerRuntime{client: cli}, nil
+}
+
+func findDockerSocket() string {
+	home, _ := os.UserHomeDir()
+	return probeSocket(
+		filepath.Join(home, ".colima", "default", "docker.sock"),
+		filepath.Join(home, ".colima", "docker.sock"),
+		filepath.Join(home, ".orbstack", "run", "docker.sock"),
+	)
+}
+
+func probeSocket(candidates ...string) string {
+	for _, sock := range candidates {
+		if _, err := os.Stat(sock); err == nil {
+			return sock
+		}
+	}
+	return ""
+}
+
+func (d *DockerRuntime) SocketPath() string {
+	host := d.client.DaemonHost()
+	if strings.HasPrefix(host, "unix://") {
+		return strings.TrimPrefix(host, "unix://")
+	}
+	return ""
 }
 
 func (d *DockerRuntime) IsHealthy(ctx context.Context) error {
@@ -113,6 +151,25 @@ func (d *DockerRuntime) Start(ctx context.Context, config ContainerConfig) (stri
 	exposedPorts := nat.PortSet{containerPort: struct{}{}}
 	portBindings := nat.PortMap{containerPort: []nat.PortBinding{{HostPort: config.Port}}}
 
+	for _, ep := range config.ExtraPorts {
+		proto := ep.Protocol
+		if proto == "" {
+			proto = "tcp"
+		}
+		p := nat.Port(ep.ContainerPort + "/" + proto)
+		exposedPorts[p] = struct{}{}
+		portBindings[p] = []nat.PortBinding{{HostPort: ep.HostPort}}
+	}
+
+	var binds []string
+	for _, b := range config.Binds {
+		bind := b.HostPath + ":" + b.ContainerPath
+		if b.ReadOnly {
+			bind += ":ro"
+		}
+		binds = append(binds, bind)
+	}
+
 	resp, err := d.client.ContainerCreate(ctx,
 		&container.Config{
 			Image:        config.Image,
@@ -121,6 +178,7 @@ func (d *DockerRuntime) Start(ctx context.Context, config ContainerConfig) (stri
 		},
 		&container.HostConfig{
 			PortBindings: portBindings,
+			Binds:        binds,
 		},
 		nil, nil, config.Name,
 	)
