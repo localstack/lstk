@@ -8,7 +8,6 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"os/exec"
 	"runtime"
 	"testing"
@@ -81,16 +80,12 @@ func TestDeviceFlowSuccess(t *testing.T) {
 		t.Skip("PTY not supported on Windows")
 	}
 
-	// Use env token if set, otherwise fall back to a synthetic test token
-	licenseToken := os.Getenv(string(env.AuthToken))
-	if licenseToken == "" {
-		licenseToken = "test-license-token"
-	}
-
 	cleanup()
 	t.Cleanup(cleanup)
 
-	// Create mock API server that returns the real token
+	licenseToken := "test-license-token"
+
+	// Create mock API server that returns a synthetic token
 	mockServer := createMockAPIServer(t, licenseToken, true)
 	defer mockServer.Close()
 
