@@ -80,5 +80,10 @@ func Get() (*Config, error) {
 	if err := viper.Unmarshal(&cfg); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal config: %w", err)
 	}
+	for i := range cfg.Containers {
+		if err := cfg.Containers[i].Validate(); err != nil {
+			return nil, fmt.Errorf("invalid container config: %w", err)
+		}
+	}
 	return &cfg, nil
 }

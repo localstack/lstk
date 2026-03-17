@@ -48,3 +48,46 @@ func TestResolvedEnv_EmptyWhenNoEnvRefs(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, resolved)
 }
+
+func TestValidate_ValidPort(t *testing.T) {
+	c := &ContainerConfig{Type: EmulatorAWS, Port: "4566"}
+	assert.NoError(t, c.Validate())
+}
+
+func TestValidate_MinMaxPorts(t *testing.T) {
+	c := &ContainerConfig{Type: EmulatorAWS, Port: "1"}
+	assert.NoError(t, c.Validate())
+
+	c.Port = "65535"
+	assert.NoError(t, c.Validate())
+}
+
+func TestValidate_EmptyPort(t *testing.T) {
+	c := &ContainerConfig{Type: EmulatorAWS, Port: ""}
+	err := c.Validate()
+	assert.ErrorContains(t, err, "port is required")
+}
+
+func TestValidate_NonNumericPort(t *testing.T) {
+	c := &ContainerConfig{Type: EmulatorAWS, Port: "abc"}
+	err := c.Validate()
+	assert.ErrorContains(t, err, "not a valid number")
+}
+
+func TestValidate_PortZero(t *testing.T) {
+	c := &ContainerConfig{Type: EmulatorAWS, Port: "0"}
+	err := c.Validate()
+	assert.ErrorContains(t, err, "out of range")
+}
+
+func TestValidate_PortTooHigh(t *testing.T) {
+	c := &ContainerConfig{Type: EmulatorAWS, Port: "65536"}
+	err := c.Validate()
+	assert.ErrorContains(t, err, "out of range")
+}
+
+func TestValidate_NegativePort(t *testing.T) {
+	c := &ContainerConfig{Type: EmulatorAWS, Port: "-1"}
+	err := c.Validate()
+	assert.ErrorContains(t, err, "out of range")
+}
