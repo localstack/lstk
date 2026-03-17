@@ -17,13 +17,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/99designs/keyring"
 	"github.com/creack/pty"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/image"
 	"github.com/docker/docker/client"
 	"github.com/localstack/lstk/test/integration/env"
 	"github.com/stretchr/testify/require"
+	"github.com/zalando/go-keyring"
 )
 
 // syncBuffer is a thread-safe buffer for concurrent read/write access.
@@ -51,11 +51,9 @@ func (b *syncBuffer) String() string {
 }
 
 const (
-	keyringService        = "lstk"
-	keyringAuthTokenKey   = "lstk.auth-token"
-	keyringPassword       = "lstk-keyring"
-	keyringFilename       = "keyring"
-	keyringAuthTokenLabel = "LocalStack Auth Token"
+	keyringService      = "lstk"
+	keyringAuthTokenKey = "lstk.auth-token"
+	authTokenFile       = "auth-token"
 )
 
 func binaryPath() string {
@@ -67,7 +65,7 @@ func binaryPath() string {
 
 var dockerClient *client.Client
 var dockerAvailable bool
-var ring keyring.Keyring
+var useFileKeyring bool
 
 // configDir returns the lstk config directory.
 // Duplicated from internal/config to avoid importing prod code in tests.
@@ -96,24 +94,15 @@ func TestMain(m *testing.M) {
 		dockerAvailable = err == nil
 	}
 
-	keyringConfig := keyring.Config{
-		ServiceName:             keyringService,
-		FileDir:                 filepath.Join(configDir(), keyringFilename),
-		LibSecretCollectionName: "login",
-		FilePasswordFunc: func(prompt string) (string, error) {
-			return keyringPassword, nil
-		},
-	}
-
-	// Force file backend if LSTK_KEYRING env var is set to "file"
+	// Determine whether to use file-based keyring: forced via env var or
+	// probed by attempting a system keyring read.
 	if env.Get(env.Keyring) == "file" {
-		keyringConfig.AllowedBackends = []keyring.BackendType{keyring.FileBackend}
-	}
-
-	ring, err = keyring.Open(keyringConfig)
-	if err != nil {
-		keyringConfig.AllowedBackends = []keyring.BackendType{keyring.FileBackend}
-		ring, _ = keyring.Open(keyringConfig)
+		useFileKeyring = true
+	} else {
+		_, err := keyring.Get(keyringService, keyringAuthTokenKey)
+		if err != nil && !errors.Is(err, keyring.ErrNotFound) {
+			useFileKeyring = true
+		}
 	}
 
 	m.Run()
@@ -132,24 +121,44 @@ func requireDocker(t *testing.T) {
 }
 
 func GetAuthTokenFromKeyring() (string, error) {
-	item, err := ring.Get(keyringAuthTokenKey)
+	if useFileKeyring {
+		data, err := os.ReadFile(filepath.Join(configDir(), authTokenFile))
+		if err != nil {
+			if errors.Is(err, os.ErrNotExist) {
+				return "", fmt.Errorf("credential not found")
+			}
+			return "", err
+		}
+		return string(data), nil
+	}
+	token, err := keyring.Get(keyringService, keyringAuthTokenKey)
 	if err != nil {
 		return "", err
 	}
-	return string(item.Data), nil
+	return token, nil
 }
 
 func SetAuthTokenInKeyring(password string) error {
-	return ring.Set(keyring.Item{
-		Key:   keyringAuthTokenKey,
-		Data:  []byte(password),
-		Label: keyringAuthTokenLabel,
-	})
+	if useFileKeyring {
+		dir := configDir()
+		if err := os.MkdirAll(dir, 0700); err != nil {
+			return err
+		}
+		return os.WriteFile(filepath.Join(dir, authTokenFile), []byte(password), 0600)
+	}
+	return keyring.Set(keyringService, keyringAuthTokenKey, password)
 }
 
 func DeleteAuthTokenFromKeyring() error {
-	err := ring.Remove(keyringAuthTokenKey)
-	if errors.Is(err, keyring.ErrKeyNotFound) || os.IsNotExist(err) {
+	if useFileKeyring {
+		err := os.Remove(filepath.Join(configDir(), authTokenFile))
+		if errors.Is(err, os.ErrNotExist) {
+			return nil
+		}
+		return err
+	}
+	err := keyring.Delete(keyringService, keyringAuthTokenKey)
+	if errors.Is(err, keyring.ErrNotFound) {
 		return nil
 	}
 	return err
