@@ -10,10 +10,10 @@ import (
 func updateNPM(ctx context.Context, sink output.Sink, projectDir string) error {
 	var cmd *exec.Cmd
 	if projectDir != "" {
-		cmd = exec.CommandContext(ctx, "npm", "install", "@localstack/lstk")
+		cmd = exec.CommandContext(ctx, "npm", "install", "@localstack/lstk@latest")
 		cmd.Dir = projectDir
 	} else {
-		cmd = exec.CommandContext(ctx, "npm", "install", "-g", "@localstack/lstk")
+		cmd = exec.CommandContext(ctx, "npm", "install", "-g", "@localstack/lstk@latest")
 	}
 	w := newLogLineWriter(sink, output.LogSourceNPM)
 	cmd.Stdout = w
