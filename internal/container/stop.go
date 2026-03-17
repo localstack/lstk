@@ -17,8 +17,8 @@ func Stop(ctx context.Context, rt runtime.Runtime, sink output.Sink, containers 
 		name := c.Name()
 
 		checkCtx, checkCancel := context.WithTimeout(ctx, 5*time.Second)
-		defer checkCancel()
 		running, err := rt.IsRunning(checkCtx, name)
+		checkCancel()
 		if err != nil {
 			return fmt.Errorf("checking %s running: %w", name, err)
 		}
@@ -27,11 +27,12 @@ func Stop(ctx context.Context, rt runtime.Runtime, sink output.Sink, containers 
 		}
 		output.EmitSpinnerStart(sink, "Stopping LocalStack...")
 		stopCtx, stopCancel := context.WithTimeout(ctx, stopTimeout)
-		defer stopCancel()
 		if err := rt.Stop(stopCtx, name); err != nil {
+			stopCancel()
 			output.EmitSpinnerStop(sink)
 			return fmt.Errorf("failed to stop LocalStack: %w", err)
 		}
+		stopCancel()
 		output.EmitSpinnerStop(sink)
 		output.EmitSuccess(sink, "LocalStack stopped")
 	}
