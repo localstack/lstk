@@ -10,31 +10,29 @@ import (
 	"github.com/localstack/lstk/internal/runtime"
 )
 
-const stopTimeout = 30 * time.Second
-
-func Stop(ctx context.Context, rt runtime.Runtime, sink output.Sink, containers []config.ContainerConfig) error {
+func Stop(ctx context.Context, rt runtime.Runtime, sink output.Sink, containers []config.ContainerConfig, timeout time.Duration) error {
 	for _, c := range containers {
 		name := c.Name()
 
-		containerCtx, containerCancel := context.WithTimeout(ctx, stopTimeout)
-		running, err := rt.IsRunning(containerCtx, name)
+		checkCtx, checkCancel := context.WithTimeout(ctx, 5*time.Second)
+		running, err := rt.IsRunning(checkCtx, name)
+		checkCancel()
 		if err != nil {
-			containerCancel()
 			return fmt.Errorf("checking %s running: %w", name, err)
 		}
 		if !running {
-			containerCancel()
 			return fmt.Errorf("LocalStack is not running")
 		}
 		output.EmitSpinnerStart(sink, "Stopping LocalStack...")
-		if err := rt.Stop(containerCtx, name); err != nil {
+		stopCtx, stopCancel := context.WithTimeout(ctx, timeout)
+		if err := rt.Stop(stopCtx, name); err != nil {
 			output.EmitSpinnerStop(sink)
-			containerCancel()
+			stopCancel()
 			return fmt.Errorf("failed to stop LocalStack: %w", err)
 		}
+		stopCancel()
 		output.EmitSpinnerStop(sink)
 		output.EmitSuccess(sink, "LocalStack stopped")
-		containerCancel()
 	}
 
 	return nil
