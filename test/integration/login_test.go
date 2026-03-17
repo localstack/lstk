@@ -81,10 +81,10 @@ func TestDeviceFlowSuccess(t *testing.T) {
 		t.Skip("PTY not supported on Windows")
 	}
 
-	// Skip if no auth token available
+	// Use env token if set, otherwise fall back to a synthetic test token
 	licenseToken := os.Getenv(string(env.AuthToken))
 	if licenseToken == "" {
-		t.Skip("LOCALSTACK_AUTH_TOKEN not set")
+		licenseToken = "test-license-token"
 	}
 
 	cleanup()
