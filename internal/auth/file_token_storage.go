@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 type fileTokenStorage struct {
@@ -46,7 +47,7 @@ func (f *fileTokenStorage) GetAuthToken() (string, error) {
 			}
 			return err
 		}
-		token = string(data)
+		token = strings.TrimSpace(string(data))
 		return nil
 	})
 	return token, err
