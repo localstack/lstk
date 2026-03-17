@@ -180,4 +180,9 @@ jobs:
           prefix: "@localstack"
           license: Apache-2.0
           description: "LocalStack CLI v2 - Start and manage LocalStack emulators"
-          keywords: localstack, cli, aws, emulator, docker
+          keywords: |
+            localstack
+            cli
+            aws
+            emulator
+            docker
