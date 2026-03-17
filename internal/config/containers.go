@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 )
 
@@ -37,6 +38,20 @@ type ContainerConfig struct {
 	Port string       `mapstructure:"port"`
 	// Env is a list of named environment references defined in the top-level [env.*] config sections.
 	Env []string `mapstructure:"env"`
+}
+
+func (c *ContainerConfig) Validate() error {
+	if c.Port == "" {
+		return fmt.Errorf("port is required for %s emulator", c.Type)
+	}
+	port, err := strconv.Atoi(c.Port)
+	if err != nil {
+		return fmt.Errorf("port %q is not a valid number", c.Port)
+	}
+	if port < 1 || port > 65535 {
+		return fmt.Errorf("port %d is out of range (must be 1–65535)", port)
+	}
+	return nil
 }
 
 // ResolvedEnv resolves the container's named environment references into KEY=value pairs.
