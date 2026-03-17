@@ -120,7 +120,7 @@ func TestFormatEventLine(t *testing.T) {
 				ContainerName: "localstack-aws",
 				Uptime:        4*time.Minute + 23*time.Second,
 			},
-			want:   "✓ LocalStack AWS Emulator is running (localhost.localstack.cloud:4566)\n  UPTIME: 4m 23s · CONTAINER: localstack-aws · VERSION: 4.14.1",
+			want:   SuccessMarkerText() + " LocalStack AWS Emulator is running (localhost.localstack.cloud:4566)\n  UPTIME: 4m 23s · CONTAINER: localstack-aws · VERSION: 4.14.1",
 			wantOK: true,
 		},
 		{
@@ -129,7 +129,7 @@ func TestFormatEventLine(t *testing.T) {
 				EmulatorName: "LocalStack AWS Emulator",
 				Host:         "127.0.0.1:4566",
 			},
-			want:   "✓ LocalStack AWS Emulator is running (127.0.0.1:4566)",
+			want:   SuccessMarkerText() + " LocalStack AWS Emulator is running (127.0.0.1:4566)",
 			wantOK: true,
 		},
 		{

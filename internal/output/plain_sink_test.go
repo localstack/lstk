@@ -163,7 +163,7 @@ func TestPlainSink_EmitsInstanceInfoEvent(t *testing.T) {
 			Uptime:        4*time.Minute + 23*time.Second,
 		})
 
-		expected := "✓ LocalStack AWS Emulator is running (localhost.localstack.cloud:4566)\n  UPTIME: 4m 23s · CONTAINER: localstack-aws · VERSION: 4.14.1\n"
+		expected := SuccessMarkerText() + " LocalStack AWS Emulator is running (localhost.localstack.cloud:4566)\n  UPTIME: 4m 23s · CONTAINER: localstack-aws · VERSION: 4.14.1\n"
 		assert.Equal(t, expected, out.String())
 		assert.NoError(t, sink.Err())
 	})
@@ -177,7 +177,7 @@ func TestPlainSink_EmitsInstanceInfoEvent(t *testing.T) {
 			Host:         "127.0.0.1:4566",
 		})
 
-		expected := "✓ LocalStack AWS Emulator is running (127.0.0.1:4566)\n"
+		expected := SuccessMarkerText() + " LocalStack AWS Emulator is running (127.0.0.1:4566)\n"
 		assert.Equal(t, expected, out.String())
 		assert.NoError(t, sink.Err())
 	})
