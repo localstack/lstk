@@ -3,11 +3,12 @@ ifeq ($(OS),Windows_NT)
     BINARY_NAME=lstk.exe
 endif
 BUILD_DIR=bin
+export CGO_ENABLED=0
 
 .PHONY: build clean test test-integration lint mock-generate
 
 $(BUILD_DIR)/$(BINARY_NAME):
-	CGO_ENABLED=0 go build -o $(BUILD_DIR)/$(BINARY_NAME) .
+	go build -o $(BUILD_DIR)/$(BINARY_NAME) .
 
 build: clean $(BUILD_DIR)/$(BINARY_NAME)
 
