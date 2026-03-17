@@ -151,7 +151,7 @@ func formatErrorEvent(e ErrorEvent) string {
 
 func formatInstanceInfo(e InstanceInfoEvent) string {
 	var sb strings.Builder
-	sb.WriteString("✓ " + e.EmulatorName + " is running (" + e.Host + ")")
+	sb.WriteString(SuccessMarkerText() + " " + e.EmulatorName + " is running (" + e.Host + ")")
 	var meta []string
 	if e.Uptime > 0 {
 		meta = append(meta, "UPTIME: "+formatUptime(e.Uptime))
