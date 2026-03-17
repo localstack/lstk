@@ -156,6 +156,53 @@ func TestConfigPathCommandDoesNotCreateConfig(t *testing.T) {
 	assert.NoFileExists(t, expectedConfigFile)
 }
 
+func TestConfigWithUnknownFieldsIsAccepted(t *testing.T) {
+	configContent := `
+unknown_top_level = "should be ignored"
+
+[[containers]]
+type = "aws"
+tag = "latest"
+port = "4566"
+future_field = "should be ignored"
+`
+	configFile := filepath.Join(t.TempDir(), "config.toml")
+	require.NoError(t, os.WriteFile(configFile, []byte(configContent), 0644))
+
+	_, stderr, err := runLstk(t, testContext(t), t.TempDir(), os.Environ(), "--config", configFile, "config", "path")
+	require.NoError(t, err, stderr)
+	requireExitCode(t, 0, err)
+}
+
+func TestConfigWithMissingRequiredPortFails(t *testing.T) {
+	configContent := `
+[[containers]]
+type = "aws"
+tag = "latest"
+`
+	configFile := filepath.Join(t.TempDir(), "config.toml")
+	require.NoError(t, os.WriteFile(configFile, []byte(configContent), 0644))
+
+	_, stderr, err := runLstk(t, testContext(t), t.TempDir(), os.Environ(), "--config", configFile, "stop")
+	require.Error(t, err)
+	requireExitCode(t, 1, err)
+	assert.Contains(t, stderr, "port is required")
+}
+
+func TestConfigWithMissingOptionalTagSucceeds(t *testing.T) {
+	configContent := `
+[[containers]]
+type = "aws"
+port = "4566"
+`
+	configFile := filepath.Join(t.TempDir(), "config.toml")
+	require.NoError(t, os.WriteFile(configFile, []byte(configContent), 0644))
+
+	_, stderr, err := runLstk(t, testContext(t), t.TempDir(), os.Environ(), "--config", configFile, "config", "path")
+	require.NoError(t, err, stderr)
+	requireExitCode(t, 0, err)
+}
+
 func testEnvWithHome(tmpHome, xdgConfigHome string) []string {
 	e := env.Without("HOME", "XDG_CONFIG_HOME", "APPDATA", "USERPROFILE", "HOMEDRIVE", "HOMEPATH")
 	switch runtime.GOOS {
