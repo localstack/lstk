@@ -153,11 +153,11 @@ func runStart(cmd *cobra.Command, rt runtime.Runtime, cfg *env.Env, tel *telemet
 	return runErr
 }
 
-// withCommandTelemetry wraps a RunE function so that an lstk_command event is
+// commandWithTelemetry wraps a RunE function so that an lstk_command event is
 // emitted after every invocation. Use this for commands that do not emit
 // lstk_lifecycle events (i.e. everything except start/stop, which manage their
 // own telemetry).
-func withCommandTelemetry(name string, tel *telemetry.Client, resolveAuthToken func() string, fn func(*cobra.Command, []string) error) func(*cobra.Command, []string) error {
+func commandWithTelemetry(name string, tel *telemetry.Client, resolveAuthToken func() string, fn func(*cobra.Command, []string) error) func(*cobra.Command, []string) error {
 	return func(cmd *cobra.Command, args []string) error {
 		startTime := time.Now()
 		runErr := fn(cmd, args)

@@ -96,9 +96,9 @@ Create `test/integration/<name>_test.go` with:
 
 ## Telemetry
 
-Every new command must emit an `lstk_command` telemetry event. Wrap the command's `RunE` with `withCommandTelemetry(name, tel, func() string { return cfg.AuthToken }, fn)` — this handles timing, exit code, and error message automatically. The token resolver is called after the command runs, allowing commands like `login` to resolve the post-execution token.
+Every new command must emit an `lstk_command` telemetry event. Wrap the command's `RunE` with `commandWithTelemetry(name, tel, func() string { return cfg.AuthToken }, fn)` — this handles timing, exit code, and error message automatically. The token resolver is called after the command runs, allowing commands like `login` to resolve the post-execution token.
 
-Start and stop are exceptions: they emit `lstk_lifecycle` events in addition to `lstk_command`, so they manage their own telemetry manually instead of using `withCommandTelemetry`.
+Start and stop are exceptions: they emit `lstk_lifecycle` events in addition to `lstk_command`, so they manage their own telemetry manually instead of using `commandWithTelemetry`.
 
 ## Anti-patterns to avoid
 

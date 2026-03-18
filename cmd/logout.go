@@ -23,7 +23,7 @@ func newLogoutCmd(cfg *env.Env, tel *telemetry.Client, logger log.Logger) *cobra
 		Use:     "logout",
 		Short:   "Remove stored authentication credentials",
 		PreRunE: initConfig,
-		RunE: withCommandTelemetry("logout", tel, func() string { return cfg.AuthToken }, func(cmd *cobra.Command, args []string) error {
+		RunE: commandWithTelemetry("logout", tel, func() string { return cfg.AuthToken }, func(cmd *cobra.Command, args []string) error {
 			platformClient := api.NewPlatformClient(cfg.APIEndpoint, logger)
 			appConfig, err := config.Get()
 			if err != nil {

@@ -19,7 +19,7 @@ func newLoginCmd(cfg *env.Env, tel *telemetry.Client, logger log.Logger) *cobra.
 		Short:   "Manage login",
 		Long:    "Manage login and store credentials in system keyring",
 		PreRunE: initConfig,
-		RunE: withCommandTelemetry("login", tel, func() string {
+		RunE: commandWithTelemetry("login", tel, func() string {
 			tokenStorage, err := auth.NewTokenStorage(cfg.ForceFileKeyring, logger)
 			if err != nil {
 				return cfg.AuthToken

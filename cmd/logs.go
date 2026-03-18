@@ -19,7 +19,7 @@ func newLogsCmd(cfg *env.Env, tel *telemetry.Client) *cobra.Command {
 		Short:   "Show emulator logs",
 		Long:    "Show logs from the emulator. Use --follow to stream in real-time.",
 		PreRunE: initConfig,
-		RunE: withCommandTelemetry("logs", tel, func() string { return cfg.AuthToken }, func(cmd *cobra.Command, args []string) error {
+		RunE: commandWithTelemetry("logs", tel, func() string { return cfg.AuthToken }, func(cmd *cobra.Command, args []string) error {
 			follow, err := cmd.Flags().GetBool("follow")
 			if err != nil {
 				return err
