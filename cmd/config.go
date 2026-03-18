@@ -22,7 +22,7 @@ func newConfigPathCmd(cfg *env.Env, tel *telemetry.Client) *cobra.Command {
 	return &cobra.Command{
 		Use:   "path",
 		Short: "Print the configuration file path",
-		RunE: commandWithTelemetry("config path", tel, func() string { return cfg.AuthToken }, func(cmd *cobra.Command, args []string) error {
+		RunE: commandWithTelemetry("config path", tel, func(cmd *cobra.Command, args []string) error {
 			path, err := cmd.Flags().GetString("config")
 			if err != nil {
 				return err

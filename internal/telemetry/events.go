@@ -86,11 +86,12 @@ func ToMap(v any) map[string]any {
 	return m
 }
 
-// GetEnvironment returns the common environment payload for telemetry events.
-func (c *Client) GetEnvironment(authTokenID string) Environment {
+// GetEnvironment returns the common environment payload for telemetry events,
+// using the auth token set via SetAuthToken.
+func (c *Client) GetEnvironment() Environment {
 	env := Environment{
 		LstkVersion: version.Version(),
-		AuthTokenID: authTokenID,
+		AuthTokenID: c.authToken,
 		OS:          runtime.GOOS,
 		Arch:        runtime.GOARCH,
 	}

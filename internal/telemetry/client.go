@@ -23,6 +23,7 @@ type Client struct {
 	enabled   bool
 	sessionID string
 	machineID string
+	authToken string
 
 	httpClient *http.Client
 	endpoint   string
@@ -30,6 +31,12 @@ type Client struct {
 	events    chan eventBody
 	done      chan struct{}
 	closeOnce sync.Once
+}
+
+// SetAuthToken stores the resolved auth token for inclusion in telemetry events.
+// Call this once the token is known (e.g. after keyring resolution or interactive login).
+func (c *Client) SetAuthToken(token string) {
+	c.authToken = token
 }
 
 func New(endpoint string, disabled bool) *Client {

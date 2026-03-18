@@ -22,7 +22,7 @@ func newStatusCmd(cfg *env.Env, tel *telemetry.Client) *cobra.Command {
 		Short:   "Show emulator status and deployed resources",
 		Long:    "Show the status of a running emulator and its deployed resources",
 		PreRunE: initConfig,
-		RunE: commandWithTelemetry("status", tel, func() string { return cfg.AuthToken }, func(cmd *cobra.Command, args []string) error {
+		RunE: commandWithTelemetry("status", tel, func(cmd *cobra.Command, args []string) error {
 			rt, err := runtime.NewDockerRuntime(cfg.DockerHost)
 			if err != nil {
 				return err

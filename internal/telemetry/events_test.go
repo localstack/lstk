@@ -47,7 +47,8 @@ func drainEvent(t *testing.T, tel *Client, ch <-chan map[string]any) map[string]
 
 func TestGetEnvironment_PopulatesAllFields(t *testing.T) {
 	c := New("http://localhost", false)
-	env := c.GetEnvironment("ls-abc123")
+	c.SetAuthToken("ls-abc123")
+	env := c.GetEnvironment()
 
 	assert.Equal(t, version.Version(), env.LstkVersion)
 	assert.Equal(t, "ls-abc123", env.AuthTokenID)
@@ -58,15 +59,16 @@ func TestGetEnvironment_PopulatesAllFields(t *testing.T) {
 
 func TestGetEnvironment_OmitsAuthTokenWhenEmpty(t *testing.T) {
 	c := New("http://localhost", false)
-	env := c.GetEnvironment("")
+	env := c.GetEnvironment()
 	assert.Empty(t, env.AuthTokenID)
 }
 
 func TestEmitCommand_SendsCorrectEventNameAndStructure(t *testing.T) {
 	tel, ch := captureEvents(t)
 
+	tel.SetAuthToken("ls-token")
 	tel.Emit(context.Background(), "lstk_command", ToMap(CommandEvent{
-		Environment: tel.GetEnvironment("ls-token"),
+		Environment: tel.GetEnvironment(),
 		Parameters:  CommandParameters{Command: "start", Flags: []string{"--non-interactive"}},
 		Result:      CommandResult{DurationMS: 1200, ExitCode: 0},
 	}))
@@ -104,7 +106,7 @@ func TestEmitCommand_IncludesErrorMsgOnFailure(t *testing.T) {
 	tel, ch := captureEvents(t)
 
 	tel.Emit(context.Background(), "lstk_command", ToMap(CommandEvent{
-		Environment: tel.GetEnvironment(""),
+		Environment: tel.GetEnvironment(),
 		Parameters:  CommandParameters{Command: "start"},
 		Result:      CommandResult{DurationMS: 50, ExitCode: 1, ErrorMsg: "port 4566 already in use"},
 	}))

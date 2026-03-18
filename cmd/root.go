@@ -85,6 +85,7 @@ func Execute(ctx context.Context) error {
 		}
 	}
 	cfg.AuthToken = resolvedToken
+	tel.SetAuthToken(resolvedToken)
 
 	root := NewRootCmd(cfg, tel, logger)
 	root.SilenceErrors = true
@@ -141,7 +142,7 @@ func runStart(ctx context.Context, cmdFlags *pflag.FlagSet, rt runtime.Runtime, 
 		errorMsg = runErr.Error()
 	}
 	tel.Emit(ctx, "lstk_command", telemetry.ToMap(telemetry.CommandEvent{
-		Environment: tel.GetEnvironment(cfg.AuthToken),
+		Environment: tel.GetEnvironment(),
 		Parameters:  telemetry.CommandParameters{Command: "start", Flags: flags},
 		Result: telemetry.CommandResult{
 			DurationMS: time.Since(startTime).Milliseconds(),
@@ -157,7 +158,7 @@ func runStart(ctx context.Context, cmdFlags *pflag.FlagSet, rt runtime.Runtime, 
 // emitted after every invocation. Use this for commands that do not emit
 // lstk_lifecycle events (i.e. everything except start/stop, which manage their
 // own telemetry).
-func commandWithTelemetry(name string, tel *telemetry.Client, resolveAuthToken func() string, fn func(*cobra.Command, []string) error) func(*cobra.Command, []string) error {
+func commandWithTelemetry(name string, tel *telemetry.Client, fn func(*cobra.Command, []string) error) func(*cobra.Command, []string) error {
 	return func(cmd *cobra.Command, args []string) error {
 		startTime := time.Now()
 		runErr := fn(cmd, args)
@@ -174,7 +175,7 @@ func commandWithTelemetry(name string, tel *telemetry.Client, resolveAuthToken f
 			errorMsg = runErr.Error()
 		}
 		tel.Emit(cmd.Context(), "lstk_command", telemetry.ToMap(telemetry.CommandEvent{
-			Environment: tel.GetEnvironment(resolveAuthToken()),
+			Environment: tel.GetEnvironment(),
 			Parameters:  telemetry.CommandParameters{Command: name, Flags: flags},
 			Result: telemetry.CommandResult{
 				DurationMS: time.Since(startTime).Milliseconds(),

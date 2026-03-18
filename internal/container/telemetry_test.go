@@ -47,9 +47,9 @@ func TestStop_EmitsLifecycleStopEvent(t *testing.T) {
 	containers := []config.ContainerConfig{{Type: config.EmulatorAWS, Port: "4566"}}
 	sink := output.NewPlainSink(io.Discard)
 
+	tel.SetAuthToken("ls-abc")
 	err := Stop(context.Background(), mockRT, sink, containers, StopOptions{
 		Telemetry: tel,
-		AuthToken: "ls-abc",
 	})
 	require.NoError(t, err)
 	tel.Close()
@@ -83,22 +83,21 @@ func TestStop_SkipsTelemetryWhenNil(t *testing.T) {
 	require.NoError(t, err)
 }
 
-func TestTelCtx_EmitStartError_IsNoOpWhenTelNil(t *testing.T) {
-	tc := telCtx{tel: nil}
+func TestEmitEmulatorStartError_IsNoOpWhenTelNil(t *testing.T) {
 	c := runtime.ContainerConfig{EmulatorType: "aws", Image: "localstack/localstack-pro:latest"}
 	// Must not panic.
-	tc.emitEmulatorStartError(context.Background(), c, telemetry.ErrCodePortConflict, "port 4566 in use")
+	emitEmulatorStartError(context.Background(), nil, c, telemetry.ErrCodePortConflict, "port 4566 in use")
 }
 
-func TestTelCtx_EmitStartError_SendsLifecycleEvent(t *testing.T) {
+func TestEmitEmulatorStartError_SendsLifecycleEvent(t *testing.T) {
 	tel, ch := newCapturingTelClient(t)
-	tc := telCtx{tel: tel, authToken: "ls-xyz"}
+	tel.SetAuthToken("ls-xyz")
 
 	c := runtime.ContainerConfig{
 		EmulatorType: "aws",
 		Image:        "localstack/localstack-pro:latest",
 	}
-	tc.emitEmulatorStartError(context.Background(), c, telemetry.ErrCodePortConflict, "port 4566 already in use")
+	emitEmulatorStartError(context.Background(), tel, c, telemetry.ErrCodePortConflict, "port 4566 already in use")
 	tel.Close()
 
 	var got map[string]any
