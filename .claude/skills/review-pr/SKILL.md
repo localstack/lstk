@@ -59,6 +59,7 @@ Go through each changed file and check for violations. Flag only actual problems
 ### Testing
 
 - [ ] New functionality has tests (prefer integration tests)
+- [ ] Bug fixes have an integration test that reproduces the bug (fails before fix, passes after)
 - [ ] Interactive tests use PTY (`github.com/creack/pty`)
 - [ ] No unchecked errors outside of test files
 
