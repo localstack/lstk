@@ -161,7 +161,7 @@ func runStart(cmd *cobra.Command, rt runtime.Runtime, cfg *env.Env, tel *telemet
 // emitted after every invocation. Use this for commands that do not emit
 // lstk_lifecycle events (i.e. everything except start/stop, which manage their
 // own commandEventID for cross-event correlation).
-func withCommandTelemetry(name string, tel *telemetry.Client, authToken string, fn func(*cobra.Command, []string) error) func(*cobra.Command, []string) error {
+func withCommandTelemetry(name string, tel *telemetry.Client, resolveAuthToken func() string, fn func(*cobra.Command, []string) error) func(*cobra.Command, []string) error {
 	return func(cmd *cobra.Command, args []string) error {
 		startTime := time.Now()
 		runErr := fn(cmd, args)
@@ -180,7 +180,7 @@ func withCommandTelemetry(name string, tel *telemetry.Client, authToken string, 
 			}
 		}
 		tel.Emit(cmd.Context(), "lstk_command", telemetry.ToMap(telemetry.CommandEvent{
-			Environment: tel.GetEnvironment(authToken),
+			Environment: tel.GetEnvironment(resolveAuthToken()),
 			Parameters:  telemetry.CommandParameters{Command: name, Flags: flags},
 			Result: telemetry.CommandResult{
 				DurationMS: time.Since(startTime).Milliseconds(),

@@ -19,7 +19,7 @@ func newUpdateCmd(cfg *env.Env, tel *telemetry.Client) *cobra.Command {
 		Short:   "Update lstk to the latest version",
 		Long:    "Check for and apply updates to the lstk CLI. Respects the original installation method (Homebrew, npm, or direct binary).",
 		PreRunE: initConfig,
-		RunE: withCommandTelemetry("update", tel, cfg.AuthToken, func(cmd *cobra.Command, args []string) error {
+		RunE: withCommandTelemetry("update", tel, func() string { return cfg.AuthToken }, func(cmd *cobra.Command, args []string) error {
 			if isInteractiveMode(cfg) {
 				return ui.RunUpdate(cmd.Context(), checkOnly, cfg.GitHubToken)
 			}
