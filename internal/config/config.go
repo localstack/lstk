@@ -52,25 +52,26 @@ port = "4566"    # Host port the emulator will be accessible on
 
 # Environment profiles let you group environment variables and reference
 # them by name in one or more containers via the 'env' field above.
-# Variables are merged and passed to the container on start.
 #
-# Common environment variables:
+# Example variables based on commonly used current config options:
 #
-#   DEBUG=1                     - Enable verbose logging
-#   ENFORCE_IAM=1               - Enable IAM enforcement
-#   LAMBDA_KEEPALIVE_MS=300000  - Keep Lambda containers alive for 5 minutes
+#   DEBUG=1          - Enable verbose logging
+#   PERSISTENCE=1    - Persist LocalStack state across restarts
+#   ENFORCE_IAM=1    - Enable IAM enforcement
 #
 # See full list of configuration options:
 # > https://docs.localstack.cloud/references/configuration/
 #
 # Example:
 #
-# [env.default]
+# [env.debug]
 # DEBUG = "1"
 #
-# [env.myproject]
+# [env.persist]
+# PERSISTENCE = "1"
+#
+# [env.security]
 # ENFORCE_IAM = "1"
-# LAMBDA_KEEPALIVE_MS = "300000"
 `
 
 func Init() error {
