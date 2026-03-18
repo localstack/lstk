@@ -2,6 +2,7 @@ package components
 
 import (
 	"strings"
+	"unicode/utf8"
 
 	"github.com/localstack/lstk/internal/output"
 	"github.com/localstack/lstk/internal/ui/styles"
@@ -34,8 +35,19 @@ func (e ErrorDisplay) View(maxWidth int) string {
 
 	var sb strings.Builder
 
-	sb.WriteString(styles.ErrorTitle.Render("✗ " + e.event.Title))
-	sb.WriteString("\n")
+	titlePrefix := "✗ "
+	prefixWidth := utf8.RuneCountInString(titlePrefix)
+	titleWidth := maxWidth - prefixWidth
+	titleLines := wrap.SoftWrap(e.event.Title, titleWidth)
+	for i, line := range titleLines {
+		if i == 0 {
+			sb.WriteString(styles.ErrorTitle.Render(titlePrefix + line))
+		} else {
+			sb.WriteString(strings.Repeat(" ", prefixWidth))
+			sb.WriteString(styles.ErrorTitle.Render(line))
+		}
+		sb.WriteString("\n")
+	}
 
 	if e.event.Summary != "" {
 		prefix := "> "
