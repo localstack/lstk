@@ -105,7 +105,7 @@ func Start(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts Start
 	tel := telCtx{
 		tel:            opts.Telemetry,
 		triggerEventID: opts.TriggerEventID,
-		authToken:      opts.AuthToken,
+		authToken:      token,
 	}
 
 	containers := make([]runtime.ContainerConfig, len(opts.Containers))

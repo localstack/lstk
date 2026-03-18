@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/localstack/lstk/internal/api"
+	"github.com/localstack/lstk/internal/auth"
 	"github.com/localstack/lstk/internal/config"
 	"github.com/localstack/lstk/internal/container"
 	"github.com/localstack/lstk/internal/env"
@@ -75,6 +76,15 @@ func Execute(ctx context.Context) error {
 	}
 	defer cleanup()
 	logger.Info("lstk %s starting", version.Version())
+
+	// Resolve auth token for telemetry: keyring first, then env var.
+	resolvedToken := cfg.AuthToken
+	if tokenStorage, err := auth.NewTokenStorage(cfg.ForceFileKeyring, logger); err == nil {
+		if token, err := tokenStorage.GetAuthToken(); err == nil && token != "" {
+			resolvedToken = token
+		}
+	}
+	cfg.AuthToken = resolvedToken
 
 	root := NewRootCmd(cfg, tel, logger)
 	root.SilenceErrors = true
