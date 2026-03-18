@@ -33,7 +33,7 @@ func NewRootCmd(cfg *env.Env, tel *telemetry.Client, logger log.Logger) *cobra.C
 			if err != nil {
 				return err
 			}
-			return runStart(cmd, rt, cfg, tel, logger)
+			return runStart(cmd.Context(), cmd.Flags(), rt, cfg, tel, logger)
 		},
 	}
 
@@ -124,15 +124,15 @@ func startEmulator(ctx context.Context, rt runtime.Runtime, cfg *env.Env, tel *t
 	return container.Start(ctx, rt, output.NewPlainSink(os.Stdout), opts, false)
 }
 
-func runStart(cmd *cobra.Command, rt runtime.Runtime, cfg *env.Env, tel *telemetry.Client, logger log.Logger) error {
+func runStart(ctx context.Context, cmdFlags *pflag.FlagSet, rt runtime.Runtime, cfg *env.Env, tel *telemetry.Client, logger log.Logger) error {
 	startTime := time.Now()
 
 	var flags []string
-	cmd.Flags().Visit(func(f *pflag.Flag) {
+	cmdFlags.Visit(func(f *pflag.Flag) {
 		flags = append(flags, "--"+f.Name)
 	})
 
-	runErr := startEmulator(cmd.Context(), rt, cfg, tel, logger)
+	runErr := startEmulator(ctx, rt, cfg, tel, logger)
 
 	exitCode := 0
 	errorMsg := ""
@@ -140,7 +140,7 @@ func runStart(cmd *cobra.Command, rt runtime.Runtime, cfg *env.Env, tel *telemet
 		exitCode = 1
 		errorMsg = runErr.Error()
 	}
-	tel.Emit(cmd.Context(), "lstk_command", telemetry.ToMap(telemetry.CommandEvent{
+	tel.Emit(ctx, "lstk_command", telemetry.ToMap(telemetry.CommandEvent{
 		Environment: tel.GetEnvironment(cfg.AuthToken),
 		Parameters:  telemetry.CommandParameters{Command: "start", Flags: flags},
 		Result: telemetry.CommandResult{
