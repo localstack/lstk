@@ -58,7 +58,7 @@ func NewRootCmd(cfg *env.Env, tel *telemetry.Client, logger log.Logger) *cobra.C
 		newLogoutCmd(cfg, tel, logger),
 		newStatusCmd(cfg, tel),
 		newLogsCmd(cfg, tel),
-		newConfigCmd(),
+		newConfigCmd(cfg, tel),
 		newUpdateCmd(cfg, tel),
 	)
 
