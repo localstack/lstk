@@ -51,6 +51,7 @@ type CommandResult struct {
 }
 
 // LifecycleEvent is the payload for an lstk_lifecycle telemetry event.
+// TODO: verify that trigger_event_id always matches the id of the lstk_command event that triggered it.
 type LifecycleEvent struct {
 	EventType      string          `json:"event_type"`
 	TriggerEventID string          `json:"trigger_event_id,omitempty"`
