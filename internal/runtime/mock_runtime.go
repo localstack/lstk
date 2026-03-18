@@ -70,6 +70,21 @@ func (mr *MockRuntimeMockRecorder) EmitUnhealthyError(sink, err any) *gomock.Cal
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "EmitUnhealthyError", reflect.TypeOf((*MockRuntime)(nil).EmitUnhealthyError), sink, err)
 }
 
+// GetBoundPort mocks base method.
+func (m *MockRuntime) GetBoundPort(ctx context.Context, containerName string, containerPort string) (string, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetBoundPort", ctx, containerName, containerPort)
+	ret0, _ := ret[0].(string)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetBoundPort indicates an expected call of GetBoundPort.
+func (mr *MockRuntimeMockRecorder) GetBoundPort(ctx, containerName, containerPort any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetBoundPort", reflect.TypeOf((*MockRuntime)(nil).GetBoundPort), ctx, containerName, containerPort)
+}
+
 // GetImageVersion mocks base method.
 func (m *MockRuntime) GetImageVersion(ctx context.Context, imageName string) (string, error) {
 	m.ctrl.T.Helper()

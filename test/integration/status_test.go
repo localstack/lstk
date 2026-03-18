@@ -2,8 +2,11 @@ package integration_test
 
 import (
 	"fmt"
+	"net"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -64,6 +67,45 @@ func TestStatusCommandShowsResourcesWhenRunning(t *testing.T) {
 	assert.Contains(t, stdout, "my-bucket")
 	assert.Contains(t, stdout, "Lambda")
 	assert.Contains(t, stdout, "my-function")
+}
+
+func TestStatusCommandWorksWithNonDefaultPort(t *testing.T) {
+	requireDocker(t)
+	cleanup()
+	t.Cleanup(cleanup)
+
+	ctx := testContext(t)
+
+	// The mock server is assigned a random free port (guaranteed not to conflict).
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/_localstack/health":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = fmt.Fprintln(w, `{"version": "4.14.1", "services": {}}`)
+		case "/_localstack/resources":
+			w.Header().Set("Content-Type", "application/x-ndjson")
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+
+	// Extract the port so we can bind it to the container.
+	_, mockPort, err := net.SplitHostPort(server.Listener.Addr().String())
+	require.NoError(t, err)
+
+	// Simulates starting LocalStack on a non-default host port.
+	startTestContainer(t, ctx, mockPort)
+
+	// Write a config with the default port 4566
+	// Simulates the user changing the config port after starting the container
+	configContent := "[[containers]]\ntype = \"aws\"\ntag = \"latest\"\nport = \"4566\"\n"
+	configFile := filepath.Join(t.TempDir(), "config.toml")
+	require.NoError(t, os.WriteFile(configFile, []byte(configContent), 0644))
+
+	stdout, stderr, err := runLstk(t, ctx, "", nil, "--config", configFile, "status")
+	require.NoError(t, err, "lstk status failed: %s", stderr)
+	assert.Contains(t, stdout, "4.14.1")
 }
 
 func TestStatusCommandShowsNoResourcesWhenEmpty(t *testing.T) {

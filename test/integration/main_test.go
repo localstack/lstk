@@ -21,6 +21,7 @@ import (
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/image"
 	"github.com/docker/docker/client"
+	"github.com/docker/go-connections/nat"
 	"github.com/localstack/lstk/test/integration/env"
 	"github.com/stretchr/testify/require"
 	"github.com/zalando/go-keyring"
@@ -169,7 +170,10 @@ const (
 	testImage     = "alpine:latest"
 )
 
-func startTestContainer(t *testing.T, ctx context.Context) {
+// startTestContainer starts the test container with no port bindings by default.
+// Pass hostPort to bind 4566/tcp to a specific host port (e.g. to test that lstk status
+// uses the actual bound port rather than the port from config).
+func startTestContainer(t *testing.T, ctx context.Context, hostPort ...string) {
 	t.Helper()
 
 	reader, err := dockerClient.ImagePull(ctx, testImage, image.PullOptions{})
@@ -177,10 +181,23 @@ func startTestContainer(t *testing.T, ctx context.Context) {
 	_, _ = io.Copy(io.Discard, reader)
 	_ = reader.Close()
 
-	resp, err := dockerClient.ContainerCreate(ctx, &container.Config{
+	cfg := &container.Config{
 		Image: testImage,
 		Cmd:   []string{"sleep", "infinity"},
-	}, nil, nil, nil, containerName)
+	}
+	var hostCfg *container.HostConfig
+	if len(hostPort) > 0 {
+		const containerPort = nat.Port("4566/tcp")
+		cfg.ExposedPorts = nat.PortSet{containerPort: struct{}{}}
+		hostCfg = &container.HostConfig{
+			PortBindings: nat.PortMap{
+				// 127.0.0.2 avoids conflicting with the mock HTTP server on 127.0.0.1:hostPort.
+				containerPort: []nat.PortBinding{{HostIP: "127.0.0.2", HostPort: hostPort[0]}},
+			},
+		}
+	}
+
+	resp, err := dockerClient.ContainerCreate(ctx, cfg, hostCfg, nil, nil, containerName)
 	require.NoError(t, err, "failed to create test container")
 	err = dockerClient.ContainerStart(ctx, resp.ID, container.StartOptions{})
 	require.NoError(t, err, "failed to start test container")

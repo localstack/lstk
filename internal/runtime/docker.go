@@ -284,6 +284,18 @@ func (d *DockerRuntime) StreamLogs(ctx context.Context, containerID string, out 
 	return nil
 }
 
+func (d *DockerRuntime) GetBoundPort(ctx context.Context, containerName string, containerPort string) (string, error) {
+	inspect, err := d.client.ContainerInspect(ctx, containerName)
+	if err != nil {
+		return "", fmt.Errorf("failed to inspect container: %w", err)
+	}
+	bindings, ok := inspect.NetworkSettings.Ports[nat.Port(containerPort)]
+	if !ok || len(bindings) == 0 {
+		return "", fmt.Errorf("no binding found for port %s on container %s", containerPort, containerName)
+	}
+	return bindings[0].HostPort, nil
+}
+
 func (d *DockerRuntime) GetImageVersion(ctx context.Context, imageName string) (string, error) {
 	inspect, err := d.client.ImageInspect(ctx, imageName)
 	if err != nil {
