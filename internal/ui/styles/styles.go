@@ -54,7 +54,7 @@ var (
 	// Error styles
 	ErrorTitle = lipgloss.NewStyle().
 			Bold(true).
-			Foreground(lipgloss.Color("196"))
+			Foreground(lipgloss.Color("#C33820"))
 
 	ErrorDetail = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("245"))
