@@ -39,7 +39,16 @@ func Status(ctx context.Context, rt runtime.Runtime, containers []config.Contain
 			return output.NewSilentError(fmt.Errorf("%s is not running", name))
 		}
 
-		host, _ := endpoint.ResolveHost(c.Port, localStackHost)
+		// status makes direct HTTP calls to LocalStack, so it needs the actual host port.
+		// Ask Docker rather than trusting the config: the user may have changed the config
+		// port while the container still runs on the old one.
+		port := c.Port
+		if containerPort, err := c.ContainerPort(); err == nil {
+			if actualPort, err := rt.GetBoundPort(ctx, name, containerPort); err == nil {
+				port = actualPort
+			}
+		}
+		host, _ := endpoint.ResolveHost(port, localStackHost)
 
 		var uptime time.Duration
 		if startedAt, err := rt.ContainerStartedAt(ctx, name); err == nil {
