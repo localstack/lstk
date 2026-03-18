@@ -75,9 +75,11 @@ func Init() error {
 	_, writeErr := f.WriteString(defaultConfigTemplate)
 	closeErr := f.Close()
 	if writeErr != nil {
+		_ = os.Remove(configPath)
 		return fmt.Errorf("failed to write config file: %w", writeErr)
 	}
 	if closeErr != nil {
+		_ = os.Remove(configPath)
 		return fmt.Errorf("failed to close config file: %w", closeErr)
 	}
 
