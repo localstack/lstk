@@ -5,7 +5,7 @@
 # You can define multiple to run them side by side.
 [[containers]]
 type = "aws"     # Emulator type. Currently supported: "aws"
-tag  = "latest"  # Docker image tag, e.g. "latest", "3.8.0", "latest-arm64"
+tag  = "latest"  # Docker image tag, e.g. "latest", "2026.3"
 port = "4566"    # Host port the emulator will be accessible on
 # volume = ""    # Host directory for persistent state (default: OS cache dir)
 # env = []       # Named environment profiles to apply (see [env.*] sections below)
