@@ -94,6 +94,12 @@ Create `test/integration/<name>_test.go` with:
 - Use `cleanup()` and `t.Cleanup(cleanup)` for container state
 - Use `context.WithTimeout` for all tests
 
+## Telemetry
+
+Every new command must emit an `lstk_command` telemetry event. Wrap the command's `RunE` with `withCommandTelemetry(name, tel, cfg.AuthToken, fn)` — this handles timing, exit code, and error message automatically. Pass `cfg.AuthToken` as the auth token; it is pre-resolved from keyring/env at startup.
+
+Start and stop are exceptions: they manage their own `commandEventID` for cross-event correlation with `lstk_lifecycle` events, so they emit the `lstk_command` event manually.
+
 ## Anti-patterns to avoid
 
 - Do NOT put business logic in `cmd/` — the command file should be thin wiring only
