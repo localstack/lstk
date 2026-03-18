@@ -54,7 +54,7 @@ func emitEmulatorStartError(ctx context.Context, tel *telemetry.Client, c runtim
 	})
 }
 
-func emitEmulatorStartSuccess(ctx context.Context, tel *telemetry.Client, c runtime.ContainerConfig, containerID string, durationMS int64, info *telemetry.LocalStackInfo) {
+func emitEmulatorStartSuccess(ctx context.Context, tel *telemetry.Client, c runtime.ContainerConfig, containerID string, durationMS int64, pulled bool, info *telemetry.LocalStackInfo) {
 	if tel == nil {
 		return
 	}
@@ -64,7 +64,7 @@ func emitEmulatorStartSuccess(ctx context.Context, tel *telemetry.Client, c runt
 		Image:          c.Image,
 		ContainerID:    containerID,
 		DurationMS:     durationMS,
-		Pulled:         true, // TODO: track actual pull status from pullImages instead of hardcoding
+		Pulled:         pulled,
 		LocalStackInfo: info,
 	})
 }
@@ -168,7 +168,8 @@ func Start(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts Start
 
 	// TODO validate license for tag "latest" without resolving the actual image version,
 	// and avoid pulling all images first
-	if err := pullImages(ctx, rt, sink, tel, containers); err != nil {
+	pulled, err := pullImages(ctx, rt, sink, tel, containers)
+	if err != nil {
 		return err
 	}
 
@@ -176,7 +177,7 @@ func Start(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts Start
 		return err
 	}
 
-	if err := startContainers(ctx, rt, sink, tel, containers); err != nil {
+	if err := startContainers(ctx, rt, sink, tel, containers, pulled); err != nil {
 		return err
 	}
 
@@ -225,11 +226,12 @@ func emitPostStartPointers(sink output.Sink, resolvedHost, webAppURL string) {
 	output.EmitSecondary(sink, tips[rand.IntN(len(tips))])
 }
 
-func pullImages(ctx context.Context, rt runtime.Runtime, sink output.Sink, tel *telemetry.Client, containers []runtime.ContainerConfig) error {
+func pullImages(ctx context.Context, rt runtime.Runtime, sink output.Sink, tel *telemetry.Client, containers []runtime.ContainerConfig) (map[string]bool, error) {
+	pulled := make(map[string]bool, len(containers))
 	for _, c := range containers {
 		// Remove any existing stopped container with the same name
 		if err := rt.Remove(ctx, c.Name); err != nil && !errdefs.IsNotFound(err) {
-			return fmt.Errorf("failed to remove existing container %s: %w", c.Name, err)
+			return nil, fmt.Errorf("failed to remove existing container %s: %w", c.Name, err)
 		}
 
 		output.EmitSpinnerStart(sink, fmt.Sprintf("Pulling %s", c.Image))
@@ -247,12 +249,13 @@ func pullImages(ctx context.Context, rt runtime.Runtime, sink output.Sink, tel *
 				Summary: err.Error(),
 			})
 			emitEmulatorStartError(ctx, tel, c, telemetry.ErrCodeImagePullFailed, err.Error())
-			return output.NewSilentError(fmt.Errorf("failed to pull image %s: %w", c.Image, err))
+			return nil, output.NewSilentError(fmt.Errorf("failed to pull image %s: %w", c.Image, err))
 		}
 		output.EmitSpinnerStop(sink)
 		output.EmitSuccess(sink, fmt.Sprintf("Pulled %s", c.Image))
+		pulled[c.Name] = true
 	}
-	return nil
+	return pulled, nil
 }
 
 func validateLicenses(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts StartOptions, tel *telemetry.Client, containers []runtime.ContainerConfig, token string) error {
@@ -264,7 +267,7 @@ func validateLicenses(ctx context.Context, rt runtime.Runtime, sink output.Sink,
 	return nil
 }
 
-func startContainers(ctx context.Context, rt runtime.Runtime, sink output.Sink, tel *telemetry.Client, containers []runtime.ContainerConfig) error {
+func startContainers(ctx context.Context, rt runtime.Runtime, sink output.Sink, tel *telemetry.Client, containers []runtime.ContainerConfig, pulled map[string]bool) error {
 	for _, c := range containers {
 		startTime := time.Now()
 		output.EmitStatus(sink, "starting", c.Name, "")
@@ -284,7 +287,7 @@ func startContainers(ctx context.Context, rt runtime.Runtime, sink output.Sink, 
 		output.EmitStatus(sink, "ready", c.Name, fmt.Sprintf("containerId: %s", containerID[:12]))
 
 		lsInfo, _ := fetchLocalStackInfo(ctx, c.Port)
-		emitEmulatorStartSuccess(ctx, tel, c, containerID[:12], time.Since(startTime).Milliseconds(), lsInfo)
+		emitEmulatorStartSuccess(ctx, tel, c, containerID[:12], time.Since(startTime).Milliseconds(), pulled[c.Name], lsInfo)
 	}
 	return nil
 }
