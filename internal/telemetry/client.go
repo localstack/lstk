@@ -16,7 +16,7 @@ import (
 )
 
 func userAgent() string {
-	return fmt.Sprintf("localstack lstk/%s", version.Version())
+	return fmt.Sprintf("localstack lstk/%s (%s; %s)", version.Version(), runtime.GOOS, runtime.GOARCH)
 }
 
 type Client struct {
