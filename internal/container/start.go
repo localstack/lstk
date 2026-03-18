@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math/rand/v2"
 	"net/http"
 	"os"
 	stdruntime "runtime"
@@ -180,7 +181,11 @@ func emitPostStartPointers(sink output.Sink, resolvedHost, webAppURL string) {
 	if webAppURL != "" {
 		output.EmitSecondary(sink, fmt.Sprintf("• Web app: %s", strings.TrimRight(webAppURL, "/")))
 	}
-	output.EmitSecondary(sink, "> Tip: View emulator logs: lstk logs --follow")
+	tips := []string{
+		"> Tip: View emulator logs: lstk logs --follow",
+		"> Tip: View deployed resources: lstk status",
+	}
+	output.EmitSecondary(sink, tips[rand.IntN(len(tips))])
 }
 
 func pullImages(ctx context.Context, rt runtime.Runtime, sink output.Sink, containers []runtime.ContainerConfig) error {
