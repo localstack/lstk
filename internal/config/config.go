@@ -2,6 +2,7 @@ package config
 
 import (
 	_ "embed"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -64,8 +65,20 @@ func Init() error {
 	}
 
 	configPath := filepath.Join(creationDir, userConfigFileName)
-	if err := os.WriteFile(configPath, []byte(defaultConfigTemplate), 0644); err != nil {
-		return fmt.Errorf("failed to write config file: %w", err)
+	f, err := os.OpenFile(configPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0644)
+	if err != nil {
+		if errors.Is(err, os.ErrExist) {
+			return loadConfig(configPath)
+		}
+		return fmt.Errorf("failed to create config file: %w", err)
+	}
+	_, writeErr := f.WriteString(defaultConfigTemplate)
+	closeErr := f.Close()
+	if writeErr != nil {
+		return fmt.Errorf("failed to write config file: %w", writeErr)
+	}
+	if closeErr != nil {
+		return fmt.Errorf("failed to close config file: %w", closeErr)
 	}
 
 	return loadConfig(configPath)
