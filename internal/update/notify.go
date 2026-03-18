@@ -3,22 +3,30 @@ package update
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/localstack/lstk/internal/output"
 	"github.com/localstack/lstk/internal/version"
 )
 
+type versionFetcher func(ctx context.Context, token string) (string, error)
+
+const checkTimeout = 500 * time.Millisecond
+
 func CheckQuietly(ctx context.Context, githubToken string) (current, latest string, available bool) {
-	return checkQuietlyWithVersion(ctx, githubToken, version.Version())
+	return checkQuietlyWithVersion(ctx, githubToken, version.Version(), fetchLatestVersion)
 }
 
-func checkQuietlyWithVersion(ctx context.Context, githubToken string, currentVersion string) (current, latest string, available bool) {
+func checkQuietlyWithVersion(ctx context.Context, githubToken string, currentVersion string, fetch versionFetcher) (current, latest string, available bool) {
 	current = currentVersion
 	if current == "dev" {
 		return current, "", false
 	}
 
-	latestVer, err := fetchLatestVersion(ctx, githubToken)
+	ctx, cancel := context.WithTimeout(ctx, checkTimeout)
+	defer cancel()
+
+	latestVer, err := fetch(ctx, githubToken)
 	if err != nil {
 		return current, "", false
 	}
@@ -42,11 +50,11 @@ func UpdateCommandHint(info InstallInfo) string {
 }
 
 func NotifyUpdate(ctx context.Context, sink output.Sink, githubToken string, updatePrompt bool, persistDisable func() error) (exitAfter bool) {
-	return notifyUpdateWithVersion(ctx, sink, githubToken, updatePrompt, persistDisable, version.Version())
+	return notifyUpdateWithVersion(ctx, sink, githubToken, updatePrompt, persistDisable, version.Version(), fetchLatestVersion)
 }
 
-func notifyUpdateWithVersion(ctx context.Context, sink output.Sink, githubToken string, updatePrompt bool, persistDisable func() error, currentVersion string) (exitAfter bool) {
-	current, latest, available := checkQuietlyWithVersion(ctx, githubToken, currentVersion)
+func notifyUpdateWithVersion(ctx context.Context, sink output.Sink, githubToken string, updatePrompt bool, persistDisable func() error, currentVersion string, fetch versionFetcher) (exitAfter bool) {
+	current, latest, available := checkQuietlyWithVersion(ctx, githubToken, currentVersion, fetch)
 	if !available {
 		return false
 	}

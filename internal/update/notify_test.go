@@ -3,6 +3,7 @@ package update
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -22,11 +23,23 @@ func newTestGitHubServer(t *testing.T, tagName string) *httptest.Server {
 	}))
 }
 
-func withLatestReleaseURL(t *testing.T, url string) func() {
-	t.Helper()
-	orig := latestReleaseURL
-	latestReleaseURL = url
-	return func() { latestReleaseURL = orig }
+func testFetcher(serverURL string) versionFetcher {
+	return func(ctx context.Context, token string) (string, error) {
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, serverURL, nil)
+		if err != nil {
+			return "", err
+		}
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			return "", err
+		}
+		defer func() { _ = resp.Body.Close() }()
+		var release githubRelease
+		if err := json.NewDecoder(resp.Body).Decode(&release); err != nil {
+			return "", err
+		}
+		return release.TagName, nil
+	}
 }
 
 func TestCheckQuietlyDevBuild(t *testing.T) {
@@ -37,10 +50,11 @@ func TestCheckQuietlyDevBuild(t *testing.T) {
 }
 
 func TestCheckQuietlyNetworkError(t *testing.T) {
-	cleanup := withLatestReleaseURL(t, "http://localhost:1/nonexistent")
-	defer cleanup()
+	fetch := func(ctx context.Context, token string) (string, error) {
+		return "", fmt.Errorf("connection refused")
+	}
 
-	current, latest, available := checkQuietlyWithVersion(context.Background(), "", "1.0.0")
+	current, latest, available := checkQuietlyWithVersion(context.Background(), "", "1.0.0", fetch)
 	assert.Equal(t, "1.0.0", current)
 	assert.Empty(t, latest)
 	assert.False(t, available)
@@ -49,10 +63,8 @@ func TestCheckQuietlyNetworkError(t *testing.T) {
 func TestCheckQuietlyUpdateAvailable(t *testing.T) {
 	server := newTestGitHubServer(t, "v2.0.0")
 	defer server.Close()
-	cleanup := withLatestReleaseURL(t, server.URL)
-	defer cleanup()
 
-	current, latest, available := checkQuietlyWithVersion(context.Background(), "", "1.0.0")
+	current, latest, available := checkQuietlyWithVersion(context.Background(), "", "1.0.0", testFetcher(server.URL))
 	assert.Equal(t, "1.0.0", current)
 	assert.Equal(t, "v2.0.0", latest)
 	assert.True(t, available)
@@ -61,10 +73,8 @@ func TestCheckQuietlyUpdateAvailable(t *testing.T) {
 func TestCheckQuietlyAlreadyUpToDate(t *testing.T) {
 	server := newTestGitHubServer(t, "v1.0.0")
 	defer server.Close()
-	cleanup := withLatestReleaseURL(t, server.URL)
-	defer cleanup()
 
-	current, latest, available := checkQuietlyWithVersion(context.Background(), "", "v1.0.0")
+	current, latest, available := checkQuietlyWithVersion(context.Background(), "", "v1.0.0", testFetcher(server.URL))
 	assert.Equal(t, "v1.0.0", current)
 	assert.Equal(t, "v1.0.0", latest)
 	assert.False(t, available)
@@ -87,13 +97,11 @@ func TestUpdateCommandHint(t *testing.T) {
 func TestNotifyUpdateNoUpdateAvailable(t *testing.T) {
 	server := newTestGitHubServer(t, "v1.0.0")
 	defer server.Close()
-	cleanup := withLatestReleaseURL(t, server.URL)
-	defer cleanup()
 
 	var events []any
 	sink := output.SinkFunc(func(event any) { events = append(events, event) })
 
-	exit := notifyUpdateWithVersion(context.Background(), sink, "", true, nil, "v1.0.0")
+	exit := notifyUpdateWithVersion(context.Background(), sink, "", true, nil, "v1.0.0", testFetcher(server.URL))
 	assert.False(t, exit)
 	assert.Empty(t, events)
 }
@@ -101,13 +109,11 @@ func TestNotifyUpdateNoUpdateAvailable(t *testing.T) {
 func TestNotifyUpdatePromptDisabled(t *testing.T) {
 	server := newTestGitHubServer(t, "v2.0.0")
 	defer server.Close()
-	cleanup := withLatestReleaseURL(t, server.URL)
-	defer cleanup()
 
 	var events []any
 	sink := output.SinkFunc(func(event any) { events = append(events, event) })
 
-	exit := notifyUpdateWithVersion(context.Background(), sink, "", false, nil, "1.0.0")
+	exit := notifyUpdateWithVersion(context.Background(), sink, "", false, nil, "1.0.0", testFetcher(server.URL))
 	assert.False(t, exit)
 	assert.Len(t, events, 1)
 	msg, ok := events[0].(output.MessageEvent)
@@ -119,8 +125,6 @@ func TestNotifyUpdatePromptDisabled(t *testing.T) {
 func TestNotifyUpdatePromptSkip(t *testing.T) {
 	server := newTestGitHubServer(t, "v2.0.0")
 	defer server.Close()
-	cleanup := withLatestReleaseURL(t, server.URL)
-	defer cleanup()
 
 	var events []any
 	sink := output.SinkFunc(func(event any) {
@@ -130,15 +134,13 @@ func TestNotifyUpdatePromptSkip(t *testing.T) {
 		}
 	})
 
-	exit := notifyUpdateWithVersion(context.Background(), sink, "", true, nil, "1.0.0")
+	exit := notifyUpdateWithVersion(context.Background(), sink, "", true, nil, "1.0.0", testFetcher(server.URL))
 	assert.False(t, exit)
 }
 
 func TestNotifyUpdatePromptNever(t *testing.T) {
 	server := newTestGitHubServer(t, "v2.0.0")
 	defer server.Close()
-	cleanup := withLatestReleaseURL(t, server.URL)
-	defer cleanup()
 
 	persistCalled := false
 
@@ -153,7 +155,7 @@ func TestNotifyUpdatePromptNever(t *testing.T) {
 	exit := notifyUpdateWithVersion(context.Background(), sink, "", true, func() error {
 		persistCalled = true
 		return nil
-	}, "1.0.0")
+	}, "1.0.0", testFetcher(server.URL))
 	assert.False(t, exit)
 	assert.True(t, persistCalled)
 }
@@ -161,8 +163,6 @@ func TestNotifyUpdatePromptNever(t *testing.T) {
 func TestNotifyUpdatePromptCancelled(t *testing.T) {
 	server := newTestGitHubServer(t, "v2.0.0")
 	defer server.Close()
-	cleanup := withLatestReleaseURL(t, server.URL)
-	defer cleanup()
 
 	var events []any
 	sink := output.SinkFunc(func(event any) {
@@ -172,6 +172,6 @@ func TestNotifyUpdatePromptCancelled(t *testing.T) {
 		}
 	})
 
-	exit := notifyUpdateWithVersion(context.Background(), sink, "", true, nil, "1.0.0")
+	exit := notifyUpdateWithVersion(context.Background(), sink, "", true, nil, "1.0.0", testFetcher(server.URL))
 	assert.False(t, exit)
 }

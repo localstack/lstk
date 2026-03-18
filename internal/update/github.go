@@ -13,7 +13,7 @@ import (
 
 const githubRepo = "localstack/lstk"
 
-var latestReleaseURL = "https://api.github.com/repos/" + githubRepo + "/releases/latest"
+const latestReleaseURL = "https://api.github.com/repos/" + githubRepo + "/releases/latest"
 
 type githubRelease struct {
 	TagName string        `json:"tag_name"`
