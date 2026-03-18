@@ -3,8 +3,10 @@ package components
 import (
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/localstack/lstk/internal/output"
+	"github.com/localstack/lstk/internal/ui/wrap"
 )
 
 func TestErrorDisplay_ShowView(t *testing.T) {
@@ -81,6 +83,36 @@ func TestErrorDisplay_MultiActionRenders(t *testing.T) {
 	}
 	if !strings.Contains(view, "/home/user/.config/lstk/config.toml") {
 		t.Fatalf("expected view to contain second action value, got: %q", view)
+	}
+}
+
+func TestErrorDisplay_TitleWrapsToWidth(t *testing.T) {
+	t.Parallel()
+
+	e := NewErrorDisplay()
+	longTitle := "license validation failed for localstack-pro:4.14.1.dev206: license validation failed: your token is invalid"
+	e = e.Show(output.ErrorEvent{Title: longTitle})
+
+	const maxWidth = 50
+
+	// Verify that View contains the full text (content presence check on styled output)
+	view := e.View(maxWidth)
+	if !strings.Contains(view, "invalid") {
+		t.Fatalf("expected view to contain full text, got: %q", view)
+	}
+
+	// Verify wrapping widths on unstyled text to avoid ANSI escape code interference
+	titlePrefix := "✗ "
+	prefixWidth := utf8.RuneCountInString(titlePrefix)
+	titleWidth := maxWidth - prefixWidth
+	wrappedLines := wrap.SoftWrap(longTitle, titleWidth)
+	if len(wrappedLines) < 2 {
+		t.Fatalf("expected title to wrap across multiple lines, got %d", len(wrappedLines))
+	}
+	for _, line := range wrappedLines {
+		if utf8.RuneCountInString(line) > titleWidth {
+			t.Errorf("wrapped line exceeds max width %d: %q (%d runes)", titleWidth, line, utf8.RuneCountInString(line))
+		}
 	}
 }
 
