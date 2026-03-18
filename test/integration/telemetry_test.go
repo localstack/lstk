@@ -193,3 +193,49 @@ func TestStartCommandDoesNotSendTelemetryWhenDisabled(t *testing.T) {
 		// No event received — correct.
 	}
 }
+
+// receiveEventByName waits up to 3s for an event with the given name.
+// Events with a different name are skipped until the deadline.
+func receiveEventByName(t *testing.T, events <-chan map[string]any, name string) map[string]any {
+	t.Helper()
+	deadline := time.After(3 * time.Second)
+	for {
+		select {
+		case event := <-events:
+			if event["name"] == name {
+				return event
+			}
+		case <-deadline:
+			t.Fatalf("timed out waiting for %q telemetry event", name)
+			return nil
+		}
+	}
+}
+
+// asserts that a lstk_command event was emitted with the expected command name and exit code
+func assertCommandTelemetry(t *testing.T, events <-chan map[string]any, command string, exitCode int) {
+	t.Helper()
+	event := receiveEventByName(t, events, "lstk_command")
+	payload, _ := event["payload"].(map[string]any)
+	params, _ := payload["parameters"].(map[string]any)
+	assert.Equal(t, command, params["command"])
+	result, _ := payload["result"].(map[string]any)
+	assert.InDelta(t, exitCode, result["exit_code"], 0)
+}
+
+// collects events until count distinct event names have been received or the deadline expires.
+func collectTelemetryByName(t *testing.T, events <-chan map[string]any, count int) map[string]map[string]any {
+	t.Helper()
+	byName := make(map[string]map[string]any)
+	deadline := time.After(3 * time.Second)
+	for len(byName) < count {
+		select {
+		case event := <-events:
+			name, _ := event["name"].(string)
+			byName[name] = event
+		case <-deadline:
+			t.Fatalf("timed out waiting for %d telemetry events; received: %v", count, byName)
+		}
+	}
+	return byName
+}

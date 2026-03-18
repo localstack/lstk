@@ -17,22 +17,26 @@ func TestLogoutCommandRemovesToken(t *testing.T) {
 	err := SetAuthTokenInKeyring("test-token")
 	require.NoError(t, err, "failed to store token in keyring")
 
-	stdout, stderr, err := runLstk(t, testContext(t), "", nil, "logout")
+	analyticsSrv, events := mockAnalyticsServer(t)
+	stdout, stderr, err := runLstk(t, testContext(t), "", env.With(env.AnalyticsEndpoint, analyticsSrv.URL), "logout")
 	require.NoError(t, err, "lstk logout failed: %s", stderr)
 	requireExitCode(t, 0, err)
 	assert.Contains(t, stdout, "Logged out successfully")
 
 	_, err = GetAuthTokenFromKeyring()
 	assert.Error(t, err, "token should be removed from keyring")
+	assertCommandTelemetry(t, events, "logout", 0)
 }
 
 func TestLogoutCommandSucceedsWhenNoToken(t *testing.T) {
 	_ = DeleteAuthTokenFromKeyring()
 
-	stdout, stderr, err := runLstk(t, testContext(t), "", env.Without(env.AuthToken), "logout")
+	analyticsSrv, events := mockAnalyticsServer(t)
+	stdout, stderr, err := runLstk(t, testContext(t), "", env.Without(env.AuthToken).With(env.AnalyticsEndpoint, analyticsSrv.URL), "logout")
 	require.NoError(t, err, "lstk logout should succeed even with no token: %s", stderr)
 	requireExitCode(t, 0, err)
 	assert.Contains(t, stdout, "Not currently logged in")
+	assertCommandTelemetry(t, events, "logout", 0)
 }
 
 func TestLogoutCommandWithEnvVarToken(t *testing.T) {

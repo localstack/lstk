@@ -20,12 +20,14 @@ func TestStatusCommandFailsWhenNotRunning(t *testing.T) {
 	cleanup()
 	t.Cleanup(cleanup)
 
-	stdout, _, err := runLstk(t, testContext(t), "", nil, "status")
+	analyticsSrv, events := mockAnalyticsServer(t)
+	stdout, _, err := runLstk(t, testContext(t), "", env.With(env.AnalyticsEndpoint, analyticsSrv.URL), "status")
 	require.Error(t, err, "expected lstk status to fail when emulator not running")
 	requireExitCode(t, 1, err)
 	assert.Contains(t, stdout, "is not running")
 	assert.Contains(t, stdout, "Start LocalStack:")
 	assert.Contains(t, stdout, "See help:")
+	assertCommandTelemetry(t, events, "status", 1)
 }
 
 func TestStatusCommandShowsResourcesWhenRunning(t *testing.T) {
@@ -54,7 +56,8 @@ func TestStatusCommandShowsResourcesWhenRunning(t *testing.T) {
 
 	host := strings.TrimPrefix(server.URL, "http://")
 
-	stdout, stderr, err := runLstk(t, ctx, "", env.With(env.LocalStackHost, host), "status")
+	analyticsSrv, events := mockAnalyticsServer(t)
+	stdout, stderr, err := runLstk(t, ctx, "", env.With(env.LocalStackHost, host).With(env.AnalyticsEndpoint, analyticsSrv.URL), "status")
 	require.NoError(t, err, "lstk status failed: %s", stderr)
 	requireExitCode(t, 0, err)
 	assert.Contains(t, stdout, "running")
@@ -67,6 +70,7 @@ func TestStatusCommandShowsResourcesWhenRunning(t *testing.T) {
 	assert.Contains(t, stdout, "my-bucket")
 	assert.Contains(t, stdout, "Lambda")
 	assert.Contains(t, stdout, "my-function")
+	assertCommandTelemetry(t, events, "status", 0)
 }
 
 func TestStatusCommandWorksWithNonDefaultPort(t *testing.T) {
