@@ -26,6 +26,7 @@ func setDefaults() {
 			"port": "4566",
 		},
 	})
+	viper.SetDefault("update_prompt", true)
 }
 
 func loadConfig(path string) error {
@@ -88,6 +89,11 @@ func Init() error {
 
 func resolvedConfigPath() string {
 	return viper.ConfigFileUsed()
+}
+
+func Set(key string, value any) error {
+	viper.Set(key, value)
+	return viper.WriteConfig()
 }
 
 func Get() (*Config, error) {

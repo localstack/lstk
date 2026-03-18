@@ -46,8 +46,18 @@ func Update(ctx context.Context, sink output.Sink, checkOnly bool, githubToken s
 		return nil
 	}
 
+	if err := applyUpdate(ctx, sink, latest, githubToken); err != nil {
+		return err
+	}
+
+	output.EmitSuccess(sink, fmt.Sprintf("Updated to %s", latest))
+	return nil
+}
+
+func applyUpdate(ctx context.Context, sink output.Sink, latest, githubToken string) error {
 	info := DetectInstallMethod()
 
+	var err error
 	switch info.Method {
 	case InstallHomebrew:
 		output.EmitNote(sink, "Installed through Homebrew, running brew upgrade")
@@ -69,7 +79,6 @@ func Update(ctx context.Context, sink output.Sink, checkOnly bool, githubToken s
 		return fmt.Errorf("update failed: %w", err)
 	}
 
-	output.EmitSuccess(sink, fmt.Sprintf("Updated to %s", latest))
 	return nil
 }
 
