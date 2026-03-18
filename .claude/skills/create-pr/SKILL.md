@@ -27,7 +27,7 @@ If `$ARGUMENTS` is provided, use it as the base branch instead of `main`.
 
 Extract the ticket ID from the branch name. The ticket ID is the last path segment, uppercased (e.g., branch `user/abc-123` → ticket `ABC-123`).
 
-Use the Linear MCP tool (`mcp__plugin_linear_linear__get_issue`) to fetch the ticket details — title, description, and URL. Use this context to inform the PR motivation and to link in the Related section.
+Use the Linear MCP tool (`mcp__plugin_linear_linear__get_issue`) to fetch the ticket details — title and description. Use this context to inform the PR motivation.
 
 ## Step 3: Write the PR title
 
@@ -58,14 +58,13 @@ Use this structure:
 
 - [ ] Any remaining follow-up items (omit section if none)
 
-## Related
-
-- [TICKET-ID](https://linear.app/localstack/issue/TICKET-ID)
-- Links to related PRs, issues, or design docs
+Closes TICKET-ID
 ```
 
 Rules:
-- The Related section always includes the Linear ticket link (use the URL from the Linear API response)
+- Always end the body with a ticket reference — do not add a Related section or link to Linear
+  - Use `Closes TICKET-ID` if the PR fully resolves the issue
+  - Use `Towards TICKET-ID` if it's a partial contribution
 - Keep bullet points concise — what changed, not how every line was modified
 - Omit Todo section if there are no follow-up items
 - Don't over-explain; the diff speaks for itself
