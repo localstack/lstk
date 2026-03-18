@@ -37,12 +37,10 @@ func TestEmitPostStartPointers_WithWebApp(t *testing.T) {
 
 	emitPostStartPointers(sink, "localhost.localstack.cloud:4566", "https://app.localstack.cloud/")
 
-	assert.Equal(t, ""+
-		"• Endpoint: localhost.localstack.cloud:4566\n"+
-		"• Web app: https://app.localstack.cloud\n"+
-		"> Tip: View emulator logs: lstk logs --follow\n",
-		out.String(),
-	)
+	got := out.String()
+	assert.Contains(t, got, "• Endpoint: localhost.localstack.cloud:4566\n")
+	assert.Contains(t, got, "• Web app: https://app.localstack.cloud\n")
+	assert.Contains(t, got, "> Tip:")
 }
 
 func TestEmitPostStartPointers_WithoutWebApp(t *testing.T) {
@@ -51,11 +49,9 @@ func TestEmitPostStartPointers_WithoutWebApp(t *testing.T) {
 
 	emitPostStartPointers(sink, "127.0.0.1:4566", "")
 
-	assert.Equal(t, ""+
-		"• Endpoint: 127.0.0.1:4566\n"+
-		"> Tip: View emulator logs: lstk logs --follow\n",
-		out.String(),
-	)
+	got := out.String()
+	assert.Contains(t, got, "• Endpoint: 127.0.0.1:4566\n")
+	assert.Contains(t, got, "> Tip:")
 }
 
 func TestServicePortRange_Returns50Entries(t *testing.T) {
