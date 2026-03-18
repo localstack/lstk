@@ -100,6 +100,8 @@ Every new command must emit an `lstk_command` telemetry event. Wrap the command'
 
 Start and stop are exceptions: they emit `lstk_lifecycle` events in addition to `lstk_command`, so they manage their own telemetry manually instead of using `commandWithTelemetry`.
 
+In the corresponding integration test, add an assertion that the `lstk_command` event was emitted.
+
 ## Anti-patterns to avoid
 
 - Do NOT put business logic in `cmd/` — the command file should be thin wiring only
