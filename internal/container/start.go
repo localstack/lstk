@@ -38,15 +38,13 @@ type StartOptions struct {
 	Containers       []config.ContainerConfig
 	Env              map[string]map[string]string
 	Logger           log.Logger
-	Telemetry        *telemetry.Client
-	TriggerEventID   string
+	Telemetry *telemetry.Client
 }
 
 // telCtx carries telemetry context for emitting per-container lifecycle events.
 type telCtx struct {
-	tel            *telemetry.Client
-	triggerEventID string
-	authToken      string
+	tel       *telemetry.Client
+	authToken string
 }
 
 func (t telCtx) emitStartError(ctx context.Context, c runtime.ContainerConfig, errorCode, errorMsg string) {
@@ -54,9 +52,8 @@ func (t telCtx) emitStartError(ctx context.Context, c runtime.ContainerConfig, e
 		return
 	}
 	t.tel.Emit(ctx, "lstk_lifecycle", telemetry.ToMap(telemetry.LifecycleEvent{
-		EventType:      telemetry.LifecycleStartError,
-		TriggerEventID: t.triggerEventID,
-		Environment:    t.tel.GetEnvironment(t.authToken),
+		EventType:   telemetry.LifecycleStartError,
+		Environment: t.tel.GetEnvironment(t.authToken),
 		Emulator:       c.EmulatorType,
 		Image:          c.Image,
 		ErrorCode:      errorCode,
@@ -69,9 +66,8 @@ func (t telCtx) emitStartSuccess(ctx context.Context, c runtime.ContainerConfig,
 		return
 	}
 	t.tel.Emit(ctx, "lstk_lifecycle", telemetry.ToMap(telemetry.LifecycleEvent{
-		EventType:      telemetry.LifecycleStartSuccess,
-		TriggerEventID: t.triggerEventID,
-		Environment:    t.tel.GetEnvironment(t.authToken),
+		EventType:   telemetry.LifecycleStartSuccess,
+		Environment: t.tel.GetEnvironment(t.authToken),
 		Emulator:       c.EmulatorType,
 		Image:          c.Image,
 		ContainerID:    containerID,
@@ -103,9 +99,8 @@ func Start(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts Start
 	}
 
 	tel := telCtx{
-		tel:            opts.Telemetry,
-		triggerEventID: opts.TriggerEventID,
-		authToken:      token,
+		tel:       opts.Telemetry,
+		authToken: token,
 	}
 
 	containers := make([]runtime.ContainerConfig, len(opts.Containers))

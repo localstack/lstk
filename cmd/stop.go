@@ -33,11 +33,9 @@ func newStopCmd(cfg *env.Env, tel *telemetry.Client) *cobra.Command {
 				return fmt.Errorf("failed to get config: %w", err)
 			}
 
-			commandEventID := telemetry.NewEventID()
 			stopOpts := container.StopOptions{
-				Telemetry:      tel,
-				TriggerEventID: commandEventID,
-				AuthToken:      cfg.AuthToken,
+				Telemetry: tel,
+				AuthToken: cfg.AuthToken,
 			}
 
 			var runErr error
@@ -62,7 +60,6 @@ func newStopCmd(cfg *env.Env, tel *telemetry.Client) *cobra.Command {
 				flags = append(flags, "--"+f.Name)
 			})
 			tel.Emit(cmd.Context(), "lstk_command", telemetry.ToMap(telemetry.CommandEvent{
-				EventID:     commandEventID,
 				Environment: tel.GetEnvironment(cfg.AuthToken),
 				Parameters:  telemetry.CommandParameters{Command: "stop", Flags: flags},
 				Result: telemetry.CommandResult{

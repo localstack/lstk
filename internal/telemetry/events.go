@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"runtime"
 
-	"github.com/google/uuid"
 	"github.com/localstack/lstk/internal/version"
 )
 
@@ -32,7 +31,6 @@ type LocalStackInfo struct {
 
 // CommandEvent is the payload for an lstk_command telemetry event.
 type CommandEvent struct {
-	EventID     string           `json:"event_id,omitempty"`
 	Environment Environment      `json:"environment"`
 	Parameters  CommandParameters `json:"parameters"`
 	Result      CommandResult    `json:"result"`
@@ -54,7 +52,6 @@ type CommandResult struct {
 // LifecycleEvent is the payload for an lstk_lifecycle telemetry event.
 type LifecycleEvent struct {
 	EventType      string          `json:"event_type"`
-	TriggerEventID string          `json:"trigger_event_id,omitempty"`
 	Environment    Environment     `json:"environment"`
 	Emulator       string          `json:"emulator"`
 	Image          string          `json:"image,omitempty"`
@@ -87,11 +84,6 @@ func ToMap(v any) map[string]any {
 	m := map[string]any{}
 	_ = json.Unmarshal(b, &m)
 	return m
-}
-
-// NewEventID generates a new unique event ID for correlating telemetry events.
-func NewEventID() string {
-	return uuid.NewString()
 }
 
 // GetEnvironment returns the common environment payload for telemetry events.

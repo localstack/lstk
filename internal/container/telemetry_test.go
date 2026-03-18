@@ -48,9 +48,8 @@ func TestStop_EmitsLifecycleStopEvent(t *testing.T) {
 	sink := output.NewPlainSink(io.Discard)
 
 	err := Stop(context.Background(), mockRT, sink, containers, StopOptions{
-		Telemetry:      tel,
-		TriggerEventID: "trigger-123",
-		AuthToken:      "ls-abc",
+		Telemetry: tel,
+		AuthToken: "ls-abc",
 	})
 	require.NoError(t, err)
 	tel.Close()
@@ -65,7 +64,6 @@ func TestStop_EmitsLifecycleStopEvent(t *testing.T) {
 	assert.Equal(t, "lstk_lifecycle", got["name"])
 	payload := got["payload"].(map[string]any)
 	assert.Equal(t, telemetry.LifecycleStop, payload["event_type"])
-	assert.Equal(t, "trigger-123", payload["trigger_event_id"])
 	assert.Equal(t, "aws", payload["emulator"])
 
 	env := payload["environment"].(map[string]any)
@@ -94,7 +92,7 @@ func TestTelCtx_EmitStartError_IsNoOpWhenTelNil(t *testing.T) {
 
 func TestTelCtx_EmitStartError_SendsLifecycleEvent(t *testing.T) {
 	tel, ch := newCapturingTelClient(t)
-	tc := telCtx{tel: tel, triggerEventID: "cmd-456", authToken: "ls-xyz"}
+	tc := telCtx{tel: tel, authToken: "ls-xyz"}
 
 	c := runtime.ContainerConfig{
 		EmulatorType: "aws",
@@ -113,7 +111,6 @@ func TestTelCtx_EmitStartError_SendsLifecycleEvent(t *testing.T) {
 	assert.Equal(t, "lstk_lifecycle", got["name"])
 	payload := got["payload"].(map[string]any)
 	assert.Equal(t, telemetry.LifecycleStartError, payload["event_type"])
-	assert.Equal(t, "cmd-456", payload["trigger_event_id"])
 	assert.Equal(t, "aws", payload["emulator"])
 	assert.Equal(t, telemetry.ErrCodePortConflict, payload["error_code"])
 	assert.Equal(t, "port 4566 already in use", payload["error_msg"])

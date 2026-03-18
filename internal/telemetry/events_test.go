@@ -45,14 +45,6 @@ func drainEvent(t *testing.T, tel *Client, ch <-chan map[string]any) map[string]
 	}
 }
 
-func TestNewEventID_ReturnsUniqueNonEmptyStrings(t *testing.T) {
-	a := NewEventID()
-	b := NewEventID()
-	assert.NotEmpty(t, a)
-	assert.NotEmpty(t, b)
-	assert.NotEqual(t, a, b)
-}
-
 func TestGetEnvironment_PopulatesAllFields(t *testing.T) {
 	c := New("http://localhost", false)
 	env := c.GetEnvironment("ls-abc123")

@@ -13,9 +13,8 @@ import (
 
 // StopOptions carries optional telemetry context for the stop command.
 type StopOptions struct {
-	Telemetry      *telemetry.Client
-	TriggerEventID string
-	AuthToken      string
+	Telemetry *telemetry.Client
+	AuthToken string
 }
 
 func Stop(ctx context.Context, rt runtime.Runtime, sink output.Sink, containers []config.ContainerConfig, opts StopOptions) error {
@@ -52,7 +51,6 @@ func Stop(ctx context.Context, rt runtime.Runtime, sink output.Sink, containers 
 		if opts.Telemetry != nil {
 			opts.Telemetry.Emit(ctx, "lstk_lifecycle", telemetry.ToMap(telemetry.LifecycleEvent{
 				EventType:      telemetry.LifecycleStop,
-				TriggerEventID: opts.TriggerEventID,
 				Environment:    opts.Telemetry.GetEnvironment(opts.AuthToken),
 				Emulator:       string(c.Type),
 				DurationMS:     time.Since(stopStart).Milliseconds(),

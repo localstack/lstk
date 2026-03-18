@@ -99,7 +99,7 @@ func Execute(ctx context.Context) error {
 	return nil
 }
 
-func startEmulator(ctx context.Context, rt runtime.Runtime, cfg *env.Env, tel *telemetry.Client, commandEventID string, logger log.Logger) error {
+func startEmulator(ctx context.Context, rt runtime.Runtime, cfg *env.Env, tel *telemetry.Client, logger log.Logger) error {
 
 	appConfig, err := config.Get()
 	if err != nil {
@@ -116,7 +116,6 @@ func startEmulator(ctx context.Context, rt runtime.Runtime, cfg *env.Env, tel *t
 		Env:              appConfig.Env,
 		Logger:           logger,
 		Telemetry:        tel,
-		TriggerEventID:   commandEventID,
 	}
 
 	if isInteractiveMode(cfg) {
@@ -127,14 +126,13 @@ func startEmulator(ctx context.Context, rt runtime.Runtime, cfg *env.Env, tel *t
 
 func runStart(cmd *cobra.Command, rt runtime.Runtime, cfg *env.Env, tel *telemetry.Client, logger log.Logger) error {
 	startTime := time.Now()
-	commandEventID := telemetry.NewEventID()
 
 	var flags []string
 	cmd.Flags().Visit(func(f *pflag.Flag) {
 		flags = append(flags, "--"+f.Name)
 	})
 
-	runErr := startEmulator(cmd.Context(), rt, cfg, tel, commandEventID, logger)
+	runErr := startEmulator(cmd.Context(), rt, cfg, tel, logger)
 
 	exitCode := 0
 	errorMsg := ""
@@ -145,7 +143,6 @@ func runStart(cmd *cobra.Command, rt runtime.Runtime, cfg *env.Env, tel *telemet
 		}
 	}
 	tel.Emit(cmd.Context(), "lstk_command", telemetry.ToMap(telemetry.CommandEvent{
-		EventID:     commandEventID,
 		Environment: tel.GetEnvironment(cfg.AuthToken),
 		Parameters:  telemetry.CommandParameters{Command: "start", Flags: flags},
 		Result: telemetry.CommandResult{
@@ -161,7 +158,7 @@ func runStart(cmd *cobra.Command, rt runtime.Runtime, cfg *env.Env, tel *telemet
 // withCommandTelemetry wraps a RunE function so that an lstk_command event is
 // emitted after every invocation. Use this for commands that do not emit
 // lstk_lifecycle events (i.e. everything except start/stop, which manage their
-// own commandEventID for cross-event correlation).
+// own telemetry).
 func withCommandTelemetry(name string, tel *telemetry.Client, resolveAuthToken func() string, fn func(*cobra.Command, []string) error) func(*cobra.Command, []string) error {
 	return func(cmd *cobra.Command, args []string) error {
 		startTime := time.Now()
