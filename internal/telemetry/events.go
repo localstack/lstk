@@ -32,6 +32,7 @@ type LocalStackInfo struct {
 
 // CommandEvent is the payload for an lstk_command telemetry event.
 type CommandEvent struct {
+	EventID     string           `json:"event_id,omitempty"`
 	Environment Environment      `json:"environment"`
 	Parameters  CommandParameters `json:"parameters"`
 	Result      CommandResult    `json:"result"`
@@ -51,7 +52,6 @@ type CommandResult struct {
 }
 
 // LifecycleEvent is the payload for an lstk_lifecycle telemetry event.
-// TODO: verify that trigger_event_id always matches the id of the lstk_command event that triggered it.
 type LifecycleEvent struct {
 	EventType      string          `json:"event_type"`
 	TriggerEventID string          `json:"trigger_event_id,omitempty"`

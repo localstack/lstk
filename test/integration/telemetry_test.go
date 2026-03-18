@@ -166,6 +166,94 @@ func TestStartCommandSucceedsWhenAnalyticsEndpointUnreachable(t *testing.T) {
 	requireExitCode(t, 0, err)
 }
 
+func TestStopCommandCorrelatesTelemetryEventIDs(t *testing.T) {
+	requireDocker(t)
+	cleanup()
+	t.Cleanup(cleanup)
+
+	ctx := testContext(t)
+	startTestContainer(t, ctx)
+
+	analyticsSrv, events := mockAnalyticsServer(t)
+
+	_, stderr, err := runLstk(t, ctx, "", env.With(env.AuthToken, "fake-token").
+		With(env.AnalyticsEndpoint, analyticsSrv.URL), "stop")
+	require.NoError(t, err, "lstk stop failed: %s", stderr)
+
+	byName := make(map[string]map[string]any)
+	deadline := time.After(3 * time.Second)
+	for len(byName) < 2 {
+		select {
+		case event := <-events:
+			name, _ := event["name"].(string)
+			byName[name] = event
+		case <-deadline:
+			t.Fatalf("timed out waiting for telemetry events; received: %v", byName)
+		}
+	}
+
+	lifecycle, ok := byName["lstk_lifecycle"]
+	require.True(t, ok, "expected lstk_lifecycle event")
+	lp, ok := lifecycle["payload"].(map[string]any)
+	require.True(t, ok)
+	triggerEventID, _ := lp["trigger_event_id"].(string)
+	require.NotEmpty(t, triggerEventID, "lstk_lifecycle must carry a trigger_event_id")
+
+	command, ok := byName["lstk_command"]
+	require.True(t, ok, "expected lstk_command event")
+	cp, ok := command["payload"].(map[string]any)
+	require.True(t, ok)
+	eventID, _ := cp["event_id"].(string)
+	require.NotEmpty(t, eventID, "lstk_command must carry an event_id")
+
+	assert.Equal(t, eventID, triggerEventID, "lstk_lifecycle.trigger_event_id must match lstk_command.event_id")
+}
+
+func TestStartCommandCorrelatesTelemetryEventIDs(t *testing.T) {
+	requireDocker(t)
+	_ = env.Require(t, env.AuthToken)
+	cleanup()
+	t.Cleanup(cleanup)
+
+	mockServer := createMockLicenseServer(true)
+	defer mockServer.Close()
+
+	analyticsSrv, events := mockAnalyticsServer(t)
+
+	ctx := testContext(t)
+	_, stderr, err := runLstk(t, ctx, "", env.With(env.APIEndpoint, mockServer.URL).
+		With(env.AnalyticsEndpoint, analyticsSrv.URL), "start")
+	require.NoError(t, err, "lstk start failed: %s", stderr)
+
+	byName := make(map[string]map[string]any)
+	deadline := time.After(5 * time.Second)
+	for len(byName) < 2 {
+		select {
+		case event := <-events:
+			name, _ := event["name"].(string)
+			byName[name] = event
+		case <-deadline:
+			t.Fatalf("timed out waiting for telemetry events; received: %v", byName)
+		}
+	}
+
+	lifecycle, ok := byName["lstk_lifecycle"]
+	require.True(t, ok, "expected lstk_lifecycle event")
+	lp, ok := lifecycle["payload"].(map[string]any)
+	require.True(t, ok)
+	triggerEventID, _ := lp["trigger_event_id"].(string)
+	require.NotEmpty(t, triggerEventID, "lstk_lifecycle must carry a trigger_event_id")
+
+	command, ok := byName["lstk_command"]
+	require.True(t, ok, "expected lstk_command event")
+	cp, ok := command["payload"].(map[string]any)
+	require.True(t, ok)
+	eventID, _ := cp["event_id"].(string)
+	require.NotEmpty(t, eventID, "lstk_command must carry an event_id")
+
+	assert.Equal(t, eventID, triggerEventID, "lstk_lifecycle.trigger_event_id must match lstk_command.event_id")
+}
+
 func TestStartCommandDoesNotSendTelemetryWhenDisabled(t *testing.T) {
 	requireDocker(t)
 	cleanup()

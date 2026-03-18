@@ -145,6 +145,7 @@ func runStart(cmd *cobra.Command, rt runtime.Runtime, cfg *env.Env, tel *telemet
 		}
 	}
 	tel.Emit(cmd.Context(), "lstk_command", telemetry.ToMap(telemetry.CommandEvent{
+		EventID:     commandEventID,
 		Environment: tel.GetEnvironment(cfg.AuthToken),
 		Parameters:  telemetry.CommandParameters{Command: "start", Flags: flags},
 		Result: telemetry.CommandResult{
