@@ -146,10 +146,8 @@ func runStart(ctx context.Context, cmdFlags *pflag.FlagSet, rt runtime.Runtime, 
 	return runErr
 }
 
-// commandWithTelemetry wraps a RunE function so that an lstk_command event is
-// emitted after every invocation. Use this for commands that do not emit
-// lstk_lifecycle events (i.e. everything except start/stop, which manage their
-// own telemetry).
+// wraps a RunE function so that an lstk_command event is emitted after every invocation
+// used for commands that do not emit lstk_lifecycle events (i.e. status, logs, config path, etc)
 func commandWithTelemetry(name string, tel *telemetry.Client, fn func(*cobra.Command, []string) error) func(*cobra.Command, []string) error {
 	return func(cmd *cobra.Command, args []string) error {
 		startTime := time.Now()
