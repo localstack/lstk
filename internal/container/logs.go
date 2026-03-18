@@ -29,7 +29,12 @@ func Logs(ctx context.Context, rt runtime.Runtime, sink output.Sink, containers 
 
 	scanner := bufio.NewScanner(pr)
 	for scanner.Scan() {
-		output.EmitLogLine(sink, output.LogSourceEmulator, scanner.Text())
+		line := scanner.Text()
+		if shouldFilter(line) {
+			continue
+		}
+		level, _ := parseLogLine(line)
+		output.EmitLogLine(sink, output.LogSourceEmulator, line, level)
 	}
 	if err := scanner.Err(); err != nil && ctx.Err() == nil {
 		return err

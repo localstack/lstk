@@ -151,6 +151,18 @@ func TestFormatEventLine(t *testing.T) {
 			wantOK: false,
 		},
 		{
+			name:   "log line event info",
+			event:  LogLineEvent{Source: LogSourceEmulator, Line: "INFO --- [] localstack.core : started", Level: LogLevelInfo},
+			want:   "INFO --- [] localstack.core : started",
+			wantOK: true,
+		},
+		{
+			name:   "log line event unknown level",
+			event:  LogLineEvent{Source: LogSourceEmulator, Line: "Docker not available", Level: LogLevelUnknown},
+			want:   "Docker not available",
+			wantOK: true,
+		},
+		{
 			name:   "unsupported event",
 			event:  struct{}{},
 			want:   "",

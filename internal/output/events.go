@@ -130,9 +130,20 @@ const (
 	LogSourceNPM      = "npm"
 )
 
+type LogLevel int
+
+const (
+	LogLevelUnknown LogLevel = iota
+	LogLevelDebug
+	LogLevelInfo
+	LogLevelWarn
+	LogLevelError
+)
+
 type LogLineEvent struct {
-	Source string // use LogSource* constants
+	Source string   // use LogSource* constants
 	Line   string
+	Level  LogLevel // parsed from the log line; LogLevelUnknown if not parseable
 }
 
 // Emit sends an event to the sink with compile-time type safety via generics.
@@ -185,8 +196,8 @@ func EmitAuth(sink Sink, event AuthEvent) {
 	Emit(sink, event)
 }
 
-func EmitLogLine(sink Sink, source, line string) {
-	Emit(sink, LogLineEvent{Source: source, Line: line})
+func EmitLogLine(sink Sink, source, line string, level LogLevel) {
+	Emit(sink, LogLineEvent{Source: source, Line: line, Level: level})
 }
 
 const DefaultSpinnerMinDuration = 400 * time.Millisecond

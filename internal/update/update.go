@@ -99,7 +99,7 @@ func (w *logLineWriter) Write(p []byte) (int, error) {
 		line := string(w.buf[:i])
 		w.buf = w.buf[i+1:]
 		if line != "" {
-			output.EmitLogLine(w.sink, w.source, line)
+			output.EmitLogLine(w.sink, w.source, line, output.LogLevelUnknown)
 		}
 	}
 	return len(p), nil
@@ -110,7 +110,7 @@ func (w *logLineWriter) Flush() {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	if len(w.buf) > 0 {
-		output.EmitLogLine(w.sink, w.source, string(w.buf))
+		output.EmitLogLine(w.sink, w.source, string(w.buf), output.LogLevelUnknown)
 		w.buf = nil
 	}
 }

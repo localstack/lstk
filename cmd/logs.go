@@ -9,6 +9,7 @@ import (
 	"github.com/localstack/lstk/internal/env"
 	"github.com/localstack/lstk/internal/output"
 	"github.com/localstack/lstk/internal/runtime"
+	"github.com/localstack/lstk/internal/ui"
 	"github.com/spf13/cobra"
 )
 
@@ -30,6 +31,9 @@ func newLogsCmd(cfg *env.Env) *cobra.Command {
 			appConfig, err := config.Get()
 			if err != nil {
 				return fmt.Errorf("failed to get config: %w", err)
+			}
+			if isInteractiveMode(cfg) {
+				return ui.RunLogs(cmd.Context(), rt, appConfig.Containers, follow)
 			}
 			return container.Logs(cmd.Context(), rt, output.NewPlainSink(os.Stdout), appConfig.Containers, follow)
 		},
