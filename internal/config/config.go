@@ -39,6 +39,40 @@ func InitFromPath(path string) error {
 	return loadConfig(path)
 }
 
+const defaultConfigTemplate = `# lstk configuration file
+# Run 'lstk config path' to see where this file lives.
+
+# Each [[containers]] block defines an emulator instance.
+# You can define multiple to run them side by side.
+[[containers]]
+type = "aws"     # Emulator type. Currently supported: "aws"
+tag  = "latest"  # Docker image tag, e.g. "latest", "3.8.0", "latest-arm64"
+port = "4566"    # Host port the emulator will be accessible on
+# env = []       # Named environment profiles to apply (see [env.*] sections below)
+
+# Environment profiles let you group environment variables and reference
+# them by name in one or more containers via the 'env' field above.
+# Variables are merged and passed to the container on start.
+#
+# Common environment variables:
+#
+#   DEBUG=1                     - Enable verbose logging
+#   ENFORCE_IAM=1               - Enable IAM enforcement
+#   LAMBDA_KEEPALIVE_MS=300000  - Keep Lambda containers alive for 5 minutes
+#
+# See full list of configuration options:
+# > https://docs.localstack.cloud/references/configuration/
+#
+# Example:
+#
+# [env.default]
+# DEBUG = "1"
+#
+# [env.myproject]
+# ENFORCE_IAM = "1"
+# LAMBDA_KEEPALIVE_MS = "300000"
+`
+
 func Init() error {
 	// Reuse the same ordered path resolution used by ConfigFilePath.
 	existingPath, found, err := firstExistingConfigPath()
@@ -60,11 +94,7 @@ func Init() error {
 	}
 
 	configPath := filepath.Join(creationDir, userConfigFileName)
-	viper.Reset()
-	setDefaults()
-	viper.SetConfigType("toml")
-	viper.SetConfigFile(configPath)
-	if err := viper.SafeWriteConfigAs(configPath); err != nil {
+	if err := os.WriteFile(configPath, []byte(defaultConfigTemplate), 0644); err != nil {
 		return fmt.Errorf("failed to write config file: %w", err)
 	}
 
