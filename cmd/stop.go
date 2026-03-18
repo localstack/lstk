@@ -50,9 +50,7 @@ func newStopCmd(cfg *env.Env, tel *telemetry.Client) *cobra.Command {
 			errorMsg := ""
 			if runErr != nil {
 				exitCode = 1
-				if !output.IsSilent(runErr) {
-					errorMsg = runErr.Error()
-				}
+				errorMsg = runErr.Error()
 			}
 
 			var flags []string

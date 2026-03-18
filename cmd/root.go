@@ -138,9 +138,7 @@ func runStart(cmd *cobra.Command, rt runtime.Runtime, cfg *env.Env, tel *telemet
 	errorMsg := ""
 	if runErr != nil {
 		exitCode = 1
-		if !output.IsSilent(runErr) {
-			errorMsg = runErr.Error()
-		}
+		errorMsg = runErr.Error()
 	}
 	tel.Emit(cmd.Context(), "lstk_command", telemetry.ToMap(telemetry.CommandEvent{
 		Environment: tel.GetEnvironment(cfg.AuthToken),
@@ -173,9 +171,7 @@ func withCommandTelemetry(name string, tel *telemetry.Client, resolveAuthToken f
 		errorMsg := ""
 		if runErr != nil {
 			exitCode = 1
-			if !output.IsSilent(runErr) {
-				errorMsg = runErr.Error()
-			}
+			errorMsg = runErr.Error()
 		}
 		tel.Emit(cmd.Context(), "lstk_command", telemetry.ToMap(telemetry.CommandEvent{
 			Environment: tel.GetEnvironment(resolveAuthToken()),
