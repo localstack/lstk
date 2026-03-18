@@ -87,7 +87,7 @@ func TestTelCtx_EmitStartError_IsNoOpWhenTelNil(t *testing.T) {
 	tc := telCtx{tel: nil}
 	c := runtime.ContainerConfig{EmulatorType: "aws", Image: "localstack/localstack-pro:latest"}
 	// Must not panic.
-	tc.emitStartError(context.Background(), c, telemetry.ErrCodePortConflict, "port 4566 in use")
+	tc.emitEmulatorStartError(context.Background(), c, telemetry.ErrCodePortConflict, "port 4566 in use")
 }
 
 func TestTelCtx_EmitStartError_SendsLifecycleEvent(t *testing.T) {
@@ -98,7 +98,7 @@ func TestTelCtx_EmitStartError_SendsLifecycleEvent(t *testing.T) {
 		EmulatorType: "aws",
 		Image:        "localstack/localstack-pro:latest",
 	}
-	tc.emitStartError(context.Background(), c, telemetry.ErrCodePortConflict, "port 4566 already in use")
+	tc.emitEmulatorStartError(context.Background(), c, telemetry.ErrCodePortConflict, "port 4566 already in use")
 	tel.Close()
 
 	var got map[string]any

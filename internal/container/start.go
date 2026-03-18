@@ -38,7 +38,7 @@ type StartOptions struct {
 	Containers       []config.ContainerConfig
 	Env              map[string]map[string]string
 	Logger           log.Logger
-	Telemetry *telemetry.Client
+	Telemetry        *telemetry.Client
 }
 
 // telCtx carries telemetry context for emitting per-container lifecycle events.
@@ -47,27 +47,27 @@ type telCtx struct {
 	authToken string
 }
 
-func (t telCtx) emitStartError(ctx context.Context, c runtime.ContainerConfig, errorCode, errorMsg string) {
+func (t telCtx) emitEmulatorStartError(ctx context.Context, c runtime.ContainerConfig, errorCode, errorMsg string) {
 	if t.tel == nil {
 		return
 	}
 	t.tel.Emit(ctx, "lstk_lifecycle", telemetry.ToMap(telemetry.LifecycleEvent{
 		EventType:   telemetry.LifecycleStartError,
 		Environment: t.tel.GetEnvironment(t.authToken),
-		Emulator:       c.EmulatorType,
-		Image:          c.Image,
-		ErrorCode:      errorCode,
-		ErrorMsg:       errorMsg,
+		Emulator:    c.EmulatorType,
+		Image:       c.Image,
+		ErrorCode:   errorCode,
+		ErrorMsg:    errorMsg,
 	}))
 }
 
-func (t telCtx) emitStartSuccess(ctx context.Context, c runtime.ContainerConfig, containerID string, durationMS int64, info *telemetry.LocalStackInfo) {
+func (t telCtx) emitEmulatorStartSuccess(ctx context.Context, c runtime.ContainerConfig, containerID string, durationMS int64, info *telemetry.LocalStackInfo) {
 	if t.tel == nil {
 		return
 	}
 	t.tel.Emit(ctx, "lstk_lifecycle", telemetry.ToMap(telemetry.LifecycleEvent{
-		EventType:   telemetry.LifecycleStartSuccess,
-		Environment: t.tel.GetEnvironment(t.authToken),
+		EventType:      telemetry.LifecycleStartSuccess,
+		Environment:    t.tel.GetEnvironment(t.authToken),
 		Emulator:       c.EmulatorType,
 		Image:          c.Image,
 		ContainerID:    containerID,
@@ -253,7 +253,7 @@ func pullImages(ctx context.Context, rt runtime.Runtime, sink output.Sink, tel t
 				Title:   fmt.Sprintf("Failed to pull %s", c.Image),
 				Summary: err.Error(),
 			})
-			tel.emitStartError(ctx, c, telemetry.ErrCodeImagePullFailed, err.Error())
+			tel.emitEmulatorStartError(ctx, c, telemetry.ErrCodeImagePullFailed, err.Error())
 			return output.NewSilentError(fmt.Errorf("failed to pull image %s: %w", c.Image, err))
 		}
 		output.EmitSpinnerStop(sink)
@@ -277,21 +277,21 @@ func startContainers(ctx context.Context, rt runtime.Runtime, sink output.Sink, 
 		output.EmitStatus(sink, "starting", c.Name, "")
 		containerID, err := rt.Start(ctx, c)
 		if err != nil {
-			tel.emitStartError(ctx, c, telemetry.ErrCodeStartFailed, err.Error())
+			tel.emitEmulatorStartError(ctx, c, telemetry.ErrCodeStartFailed, err.Error())
 			return fmt.Errorf("failed to start LocalStack: %w", err)
 		}
 
 		output.EmitStatus(sink, "waiting", c.Name, "")
 		healthURL := fmt.Sprintf("http://localhost:%s%s", c.Port, c.HealthPath)
 		if err := awaitStartup(ctx, rt, sink, containerID, "LocalStack", healthURL); err != nil {
-			tel.emitStartError(ctx, c, telemetry.ErrCodeStartFailed, err.Error())
+			tel.emitEmulatorStartError(ctx, c, telemetry.ErrCodeStartFailed, err.Error())
 			return err
 		}
 
 		output.EmitStatus(sink, "ready", c.Name, fmt.Sprintf("containerId: %s", containerID[:12]))
 
 		lsInfo, _ := fetchLocalStackInfo(ctx, c.Port)
-		tel.emitStartSuccess(ctx, c, containerID[:12], time.Since(startTime).Milliseconds(), lsInfo)
+		tel.emitEmulatorStartSuccess(ctx, c, containerID[:12], time.Since(startTime).Milliseconds(), lsInfo)
 	}
 	return nil
 }
@@ -309,7 +309,7 @@ func selectContainersToStart(ctx context.Context, rt runtime.Runtime, sink outpu
 		}
 		if err := ports.CheckAvailable(c.Port); err != nil {
 			emitPortInUseError(sink, c.Port)
-			tel.emitStartError(ctx, c, telemetry.ErrCodePortConflict, fmt.Sprintf("port %s already in use", c.Port))
+			tel.emitEmulatorStartError(ctx, c, telemetry.ErrCodePortConflict, err.Error())
 			return nil, output.NewSilentError(err)
 		}
 		filtered = append(filtered, c)
@@ -365,7 +365,7 @@ func validateLicense(ctx context.Context, rt runtime.Runtime, sink output.Sink, 
 		if errors.As(err, &licErr) && licErr.Detail != "" {
 			opts.Logger.Error("license server response (HTTP %d): %s", licErr.Status, licErr.Detail)
 		}
-		tel.emitStartError(ctx, containerConfig, telemetry.ErrCodeLicenseInvalid, err.Error())
+		tel.emitEmulatorStartError(ctx, containerConfig, telemetry.ErrCodeLicenseInvalid, err.Error())
 		return fmt.Errorf("license validation failed for %s:%s: %w", containerConfig.ProductName, version, err)
 	}
 
