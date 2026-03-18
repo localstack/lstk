@@ -67,11 +67,7 @@ func TestEmitCommand_SendsCorrectEventNameAndStructure(t *testing.T) {
 	tel, ch := captureEvents(t)
 
 	tel.SetAuthToken("ls-token")
-	tel.Emit(context.Background(), "lstk_command", ToMap(CommandEvent{
-		Environment: tel.GetEnvironment(),
-		Parameters:  CommandParameters{Command: "start", Flags: []string{"--non-interactive"}},
-		Result:      CommandResult{DurationMS: 1200, ExitCode: 0},
-	}))
+	tel.EmitCommand(context.Background(), "start", []string{"--non-interactive"}, 1200, 0, "")
 
 	got := drainEvent(t, tel, ch)
 
@@ -105,11 +101,7 @@ func TestEmitCommand_SendsCorrectEventNameAndStructure(t *testing.T) {
 func TestEmitCommand_IncludesErrorMsgOnFailure(t *testing.T) {
 	tel, ch := captureEvents(t)
 
-	tel.Emit(context.Background(), "lstk_command", ToMap(CommandEvent{
-		Environment: tel.GetEnvironment(),
-		Parameters:  CommandParameters{Command: "start"},
-		Result:      CommandResult{DurationMS: 50, ExitCode: 1, ErrorMsg: "port 4566 already in use"},
-	}))
+	tel.EmitCommand(context.Background(), "start", nil, 50, 1, "port 4566 already in use")
 
 	got := drainEvent(t, tel, ch)
 	payload := got["payload"].(map[string]any)
@@ -126,7 +118,7 @@ func TestEmitCommand_IsNoOpWhenDisabled(t *testing.T) {
 	defer srv.Close()
 
 	tel := New(srv.URL, true) // disabled
-	tel.Emit(context.Background(), "lstk_command", ToMap(CommandEvent{}))
+	tel.EmitCommand(context.Background(), "start", nil, 0, 0, "")
 	tel.Close()
 
 	select {

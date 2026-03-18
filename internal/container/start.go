@@ -45,30 +45,28 @@ func emitEmulatorStartError(ctx context.Context, tel *telemetry.Client, c runtim
 	if tel == nil {
 		return
 	}
-	tel.Emit(ctx, "lstk_lifecycle", telemetry.ToMap(telemetry.LifecycleEvent{
-		EventType:   telemetry.LifecycleStartError,
-		Environment: tel.GetEnvironment(),
-		Emulator:    c.EmulatorType,
-		Image:       c.Image,
-		ErrorCode:   errorCode,
-		ErrorMsg:    errorMsg,
-	}))
+	tel.EmitEmulatorLifecycleEvent(ctx, telemetry.LifecycleEvent{
+		EventType: telemetry.LifecycleStartError,
+		Emulator:  c.EmulatorType,
+		Image:     c.Image,
+		ErrorCode: errorCode,
+		ErrorMsg:  errorMsg,
+	})
 }
 
 func emitEmulatorStartSuccess(ctx context.Context, tel *telemetry.Client, c runtime.ContainerConfig, containerID string, durationMS int64, info *telemetry.LocalStackInfo) {
 	if tel == nil {
 		return
 	}
-	tel.Emit(ctx, "lstk_lifecycle", telemetry.ToMap(telemetry.LifecycleEvent{
+	tel.EmitEmulatorLifecycleEvent(ctx, telemetry.LifecycleEvent{
 		EventType:      telemetry.LifecycleStartSuccess,
-		Environment:    tel.GetEnvironment(),
 		Emulator:       c.EmulatorType,
 		Image:          c.Image,
 		ContainerID:    containerID,
 		DurationMS:     durationMS,
 		Pulled:         true, // TODO: track actual pull status from pullImages instead of hardcoding
 		LocalStackInfo: info,
-	}))
+	})
 }
 
 func Start(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts StartOptions, interactive bool) error {

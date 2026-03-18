@@ -141,15 +141,7 @@ func runStart(ctx context.Context, cmdFlags *pflag.FlagSet, rt runtime.Runtime, 
 		exitCode = 1
 		errorMsg = runErr.Error()
 	}
-	tel.Emit(ctx, "lstk_command", telemetry.ToMap(telemetry.CommandEvent{
-		Environment: tel.GetEnvironment(),
-		Parameters:  telemetry.CommandParameters{Command: "start", Flags: flags},
-		Result: telemetry.CommandResult{
-			DurationMS: time.Since(startTime).Milliseconds(),
-			ExitCode:   exitCode,
-			ErrorMsg:   errorMsg,
-		},
-	}))
+	tel.EmitCommand(ctx, "start", flags, time.Since(startTime).Milliseconds(), exitCode, errorMsg)
 
 	return runErr
 }
@@ -174,15 +166,7 @@ func commandWithTelemetry(name string, tel *telemetry.Client, fn func(*cobra.Com
 			exitCode = 1
 			errorMsg = runErr.Error()
 		}
-		tel.Emit(cmd.Context(), "lstk_command", telemetry.ToMap(telemetry.CommandEvent{
-			Environment: tel.GetEnvironment(),
-			Parameters:  telemetry.CommandParameters{Command: name, Flags: flags},
-			Result: telemetry.CommandResult{
-				DurationMS: time.Since(startTime).Milliseconds(),
-				ExitCode:   exitCode,
-				ErrorMsg:   errorMsg,
-			},
-		}))
+		tel.EmitCommand(cmd.Context(), name, flags, time.Since(startTime).Milliseconds(), exitCode, errorMsg)
 
 		return runErr
 	}

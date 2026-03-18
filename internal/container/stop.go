@@ -48,13 +48,12 @@ func Stop(ctx context.Context, rt runtime.Runtime, sink output.Sink, containers 
 		output.EmitSuccess(sink, "LocalStack stopped")
 
 		if opts.Telemetry != nil {
-			opts.Telemetry.Emit(ctx, "lstk_lifecycle", telemetry.ToMap(telemetry.LifecycleEvent{
+			opts.Telemetry.EmitEmulatorLifecycleEvent(ctx, telemetry.LifecycleEvent{
 				EventType:      telemetry.LifecycleStop,
-				Environment:    opts.Telemetry.GetEnvironment(),
 				Emulator:       string(c.Type),
 				DurationMS:     time.Since(stopStart).Milliseconds(),
 				LocalStackInfo: lsInfo,
-			}))
+			})
 		}
 	}
 

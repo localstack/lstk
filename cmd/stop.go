@@ -56,15 +56,7 @@ func newStopCmd(cfg *env.Env, tel *telemetry.Client) *cobra.Command {
 			cmd.Flags().Visit(func(f *pflag.Flag) {
 				flags = append(flags, "--"+f.Name)
 			})
-			tel.Emit(cmd.Context(), "lstk_command", telemetry.ToMap(telemetry.CommandEvent{
-				Environment: tel.GetEnvironment(),
-				Parameters:  telemetry.CommandParameters{Command: "stop", Flags: flags},
-				Result: telemetry.CommandResult{
-					DurationMS: time.Since(startTime).Milliseconds(),
-					ExitCode:   exitCode,
-					ErrorMsg:   errorMsg,
-				},
-			}))
+			tel.EmitCommand(cmd.Context(), "stop", flags, time.Since(startTime).Milliseconds(), exitCode, errorMsg)
 
 			return runErr
 		},
