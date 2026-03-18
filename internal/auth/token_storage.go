@@ -48,6 +48,40 @@ func (s *systemTokenStorage) DeleteAuthToken() error {
 	return err
 }
 
+type fallbackTokenStorage struct {
+	system AuthTokenStorage
+	file   AuthTokenStorage
+	logger log.Logger
+}
+
+func (s *fallbackTokenStorage) GetAuthToken() (string, error) {
+	token, err := s.system.GetAuthToken()
+	if err == nil || errors.Is(err, ErrTokenNotFound) {
+		return token, err
+	}
+
+	s.logger.Info("system keyring unavailable (%v), falling back to file-based storage", err)
+	return s.file.GetAuthToken()
+}
+
+func (s *fallbackTokenStorage) SetAuthToken(token string) error {
+	if err := s.system.SetAuthToken(token); err != nil {
+		s.logger.Info("system keyring unavailable (%v), falling back to file-based storage", err)
+		return s.file.SetAuthToken(token)
+	}
+
+	return nil
+}
+
+func (s *fallbackTokenStorage) DeleteAuthToken() error {
+	if err := s.system.DeleteAuthToken(); err != nil {
+		s.logger.Info("system keyring unavailable (%v), falling back to file-based storage", err)
+		return s.file.DeleteAuthToken()
+	}
+
+	return nil
+}
+
 func NewTokenStorage(forceFileKeyring bool, logger log.Logger) (AuthTokenStorage, error) {
 	if logger == nil {
 		logger = log.Nop()
@@ -62,12 +96,9 @@ func NewTokenStorage(forceFileKeyring bool, logger log.Logger) (AuthTokenStorage
 		return newFileTokenStorage(configDir), nil
 	}
 
-	// Probe whether the system keyring is functional.
-	_, err = keyring.Get(keyringService, keyringAuthTokenKey)
-	if err == nil || errors.Is(err, keyring.ErrNotFound) {
-		return &systemTokenStorage{}, nil
-	}
-
-	logger.Info("system keyring unavailable (%v), falling back to file-based storage", err)
-	return newFileTokenStorage(configDir), nil
+	return &fallbackTokenStorage{
+		system: &systemTokenStorage{},
+		file:   newFileTokenStorage(configDir),
+		logger: logger,
+	}, nil
 }
