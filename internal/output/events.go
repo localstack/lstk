@@ -141,9 +141,9 @@ const (
 )
 
 type LogLineEvent struct {
-	Source string   // use LogSource* constants
+	Source string
 	Line   string
-	Level  LogLevel // parsed from the log line; LogLevelUnknown if not parseable
+	Level  LogLevel
 }
 
 // Emit sends an event to the sink with compile-time type safety via generics.

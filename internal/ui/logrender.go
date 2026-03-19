@@ -7,8 +7,6 @@ import (
 	"github.com/localstack/lstk/internal/ui/styles"
 )
 
-// renderLogLine renders a LocalStack log line with the metadata prefix (timestamp,
-// level, thread, logger) in grey and the message in a color matching the log level.
 func renderLogLine(line string, level output.LogLevel) string {
 	idx := strings.Index(line, " : ")
 	if idx < 0 {
