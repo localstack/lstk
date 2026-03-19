@@ -21,7 +21,6 @@ import (
 	"github.com/localstack/lstk/internal/version"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
-	"github.com/spf13/viper"
 )
 
 func NewRootCmd(cfg *env.Env, tel *telemetry.Client, logger log.Logger) *cobra.Command {
@@ -121,12 +120,10 @@ func startEmulator(ctx context.Context, rt runtime.Runtime, cfg *env.Env, tel *t
 		Telemetry:        tel,
 	}
 
-	notifyOpts := ui.UpdateNotifyOptions{
-		GitHubToken:  cfg.GitHubToken,
-		UpdatePrompt: viper.GetBool("update_prompt"),
-		PersistDisable: func() error {
-			return config.Set("update_prompt", false)
-		},
+	notifyOpts := update.NotifyOptions{
+		GitHubToken:    cfg.GitHubToken,
+		UpdatePrompt:   config.IsUpdatePromptEnabled(),
+		PersistDisable: config.DisableUpdatePrompt,
 	}
 
 	if isInteractiveMode(cfg) {
@@ -134,7 +131,7 @@ func startEmulator(ctx context.Context, rt runtime.Runtime, cfg *env.Env, tel *t
 	}
 
 	sink := output.NewPlainSink(os.Stdout)
-	update.NotifyUpdate(ctx, sink, notifyOpts.GitHubToken, false, nil)
+	update.NotifyUpdate(ctx, sink, update.NotifyOptions{GitHubToken: cfg.GitHubToken})
 	return container.Start(ctx, rt, sink, opts, false)
 }
 

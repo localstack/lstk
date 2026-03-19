@@ -11,6 +11,12 @@ import (
 
 type versionFetcher func(ctx context.Context, token string) (string, error)
 
+type NotifyOptions struct {
+	GitHubToken    string
+	UpdatePrompt   bool
+	PersistDisable func() error
+}
+
 const checkTimeout = 500 * time.Millisecond
 
 func CheckQuietly(ctx context.Context, githubToken string) (current, latest string, available bool) {
@@ -49,22 +55,22 @@ func UpdateCommandHint(info InstallInfo) string {
 	}
 }
 
-func NotifyUpdate(ctx context.Context, sink output.Sink, githubToken string, updatePrompt bool, persistDisable func() error) (exitAfter bool) {
-	return notifyUpdateWithVersion(ctx, sink, githubToken, updatePrompt, persistDisable, version.Version(), fetchLatestVersion)
+func NotifyUpdate(ctx context.Context, sink output.Sink, opts NotifyOptions) (exitAfter bool) {
+	return notifyUpdateWithVersion(ctx, sink, opts, version.Version(), fetchLatestVersion)
 }
 
-func notifyUpdateWithVersion(ctx context.Context, sink output.Sink, githubToken string, updatePrompt bool, persistDisable func() error, currentVersion string, fetch versionFetcher) (exitAfter bool) {
-	current, latest, available := checkQuietlyWithVersion(ctx, githubToken, currentVersion, fetch)
+func notifyUpdateWithVersion(ctx context.Context, sink output.Sink, opts NotifyOptions, currentVersion string, fetch versionFetcher) (exitAfter bool) {
+	current, latest, available := checkQuietlyWithVersion(ctx, opts.GitHubToken, currentVersion, fetch)
 	if !available {
 		return false
 	}
 
-	if !updatePrompt {
+	if !opts.UpdatePrompt {
 		output.EmitNote(sink, fmt.Sprintf("Update available: %s → %s (run %s)", current, latest, UpdateCommandHint(DetectInstallMethod())))
 		return false
 	}
 
-	return promptAndUpdate(ctx, sink, githubToken, current, latest, persistDisable)
+	return promptAndUpdate(ctx, sink, opts.GitHubToken, current, latest, opts.PersistDisable)
 }
 
 func promptAndUpdate(ctx context.Context, sink output.Sink, githubToken string, current, latest string, persistDisable func() error) (exitAfter bool) {

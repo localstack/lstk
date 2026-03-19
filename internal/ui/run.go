@@ -25,13 +25,7 @@ func (s programSender) Send(msg any) {
 	s.p.Send(msg)
 }
 
-type UpdateNotifyOptions struct {
-	GitHubToken    string
-	UpdatePrompt   bool
-	PersistDisable func() error
-}
-
-func Run(parentCtx context.Context, rt runtime.Runtime, version string, opts container.StartOptions, notifyOpts UpdateNotifyOptions) error {
+func Run(parentCtx context.Context, rt runtime.Runtime, version string, opts container.StartOptions, notifyOpts update.NotifyOptions) error {
 	ctx, cancel := context.WithCancel(parentCtx)
 	defer cancel()
 
@@ -53,7 +47,7 @@ func Run(parentCtx context.Context, rt runtime.Runtime, version string, opts con
 		var err error
 		defer func() { runErrCh <- err }()
 		sink := output.NewTUISink(programSender{p: p})
-		if update.NotifyUpdate(ctx, sink, notifyOpts.GitHubToken, notifyOpts.UpdatePrompt, notifyOpts.PersistDisable) {
+		if update.NotifyUpdate(ctx, sink, notifyOpts) {
 			p.Send(runDoneMsg{})
 			return
 		}

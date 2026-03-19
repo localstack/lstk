@@ -96,6 +96,14 @@ func Set(key string, value any) error {
 	return viper.WriteConfig()
 }
 
+func IsUpdatePromptEnabled() bool {
+	return viper.GetBool("update_prompt")
+}
+
+func DisableUpdatePrompt() error {
+	return Set("update_prompt", false)
+}
+
 func Get() (*Config, error) {
 	var cfg Config
 	if err := viper.Unmarshal(&cfg); err != nil {

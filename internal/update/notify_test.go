@@ -101,7 +101,7 @@ func TestNotifyUpdateNoUpdateAvailable(t *testing.T) {
 	var events []any
 	sink := output.SinkFunc(func(event any) { events = append(events, event) })
 
-	exit := notifyUpdateWithVersion(context.Background(), sink, "", true, nil, "v1.0.0", testFetcher(server.URL))
+	exit := notifyUpdateWithVersion(context.Background(), sink, NotifyOptions{UpdatePrompt: true}, "v1.0.0", testFetcher(server.URL))
 	assert.False(t, exit)
 	assert.Empty(t, events)
 }
@@ -113,7 +113,7 @@ func TestNotifyUpdatePromptDisabled(t *testing.T) {
 	var events []any
 	sink := output.SinkFunc(func(event any) { events = append(events, event) })
 
-	exit := notifyUpdateWithVersion(context.Background(), sink, "", false, nil, "1.0.0", testFetcher(server.URL))
+	exit := notifyUpdateWithVersion(context.Background(), sink, NotifyOptions{}, "1.0.0", testFetcher(server.URL))
 	assert.False(t, exit)
 	assert.Len(t, events, 1)
 	msg, ok := events[0].(output.MessageEvent)
@@ -134,7 +134,7 @@ func TestNotifyUpdatePromptSkip(t *testing.T) {
 		}
 	})
 
-	exit := notifyUpdateWithVersion(context.Background(), sink, "", true, nil, "1.0.0", testFetcher(server.URL))
+	exit := notifyUpdateWithVersion(context.Background(), sink, NotifyOptions{UpdatePrompt: true}, "1.0.0", testFetcher(server.URL))
 	assert.False(t, exit)
 }
 
@@ -152,9 +152,12 @@ func TestNotifyUpdatePromptNever(t *testing.T) {
 		}
 	})
 
-	exit := notifyUpdateWithVersion(context.Background(), sink, "", true, func() error {
-		persistCalled = true
-		return nil
+	exit := notifyUpdateWithVersion(context.Background(), sink, NotifyOptions{
+		UpdatePrompt: true,
+		PersistDisable: func() error {
+			persistCalled = true
+			return nil
+		},
 	}, "1.0.0", testFetcher(server.URL))
 	assert.False(t, exit)
 	assert.True(t, persistCalled)
@@ -172,6 +175,6 @@ func TestNotifyUpdatePromptCancelled(t *testing.T) {
 		}
 	})
 
-	exit := notifyUpdateWithVersion(context.Background(), sink, "", true, nil, "1.0.0", testFetcher(server.URL))
+	exit := notifyUpdateWithVersion(context.Background(), sink, NotifyOptions{UpdatePrompt: true}, "1.0.0", testFetcher(server.URL))
 	assert.False(t, exit)
 }
