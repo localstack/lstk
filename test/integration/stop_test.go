@@ -3,6 +3,7 @@ package integration_test
 import (
 	"testing"
 
+	"github.com/localstack/lstk/test/integration/env"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -15,7 +16,8 @@ func TestStopCommandSucceeds(t *testing.T) {
 	ctx := testContext(t)
 	startTestContainer(t, ctx)
 
-	stdout, stderr, err := runLstk(t, ctx, "", nil, "stop")
+	analyticsSrv, events := mockAnalyticsServer(t)
+	stdout, stderr, err := runLstk(t, ctx, "", env.With(env.AnalyticsEndpoint, analyticsSrv.URL), "stop")
 	require.NoError(t, err, "lstk stop failed: %s", stderr)
 	requireExitCode(t, 0, err)
 	assert.Contains(t, stdout, "Stopping", "should show stopping message")
@@ -23,6 +25,11 @@ func TestStopCommandSucceeds(t *testing.T) {
 
 	_, err = dockerClient.ContainerInspect(ctx, containerName)
 	assert.Error(t, err, "container should not exist after stop")
+
+	// Both lstk_lifecycle (stop) and lstk_command events should be emitted.
+	byName := collectTelemetryByName(t, events, 2)
+	assert.Contains(t, byName, "lstk_lifecycle")
+	assert.Contains(t, byName, "lstk_command")
 }
 
 func TestStopCommandFailsWhenNotRunning(t *testing.T) {
@@ -30,10 +37,12 @@ func TestStopCommandFailsWhenNotRunning(t *testing.T) {
 	cleanup()
 	t.Cleanup(cleanup)
 
-	_, stderr, err := runLstk(t, testContext(t), "", nil, "stop")
+	analyticsSrv, events := mockAnalyticsServer(t)
+	_, stderr, err := runLstk(t, testContext(t), "", env.With(env.AnalyticsEndpoint, analyticsSrv.URL), "stop")
 	require.Error(t, err, "expected lstk stop to fail when container not running")
 	requireExitCode(t, 1, err)
 	assert.Contains(t, stderr, "is not running")
+	assertCommandTelemetry(t, events, "stop", 1)
 }
 
 func TestStopCommandIsIdempotent(t *testing.T) {

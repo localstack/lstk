@@ -11,7 +11,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/localstack/lstk/internal/version"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -65,13 +64,12 @@ func TestTrack_SendsCorrectPayloadAndHeaders(t *testing.T) {
 	assert.Equal(t, c.sessionID, metadata["session_id"])
 	_, err := time.Parse("2006-01-02 15:04:05.000000", metadata["client_time"].(string))
 	assert.NoError(t, err, "client_time should match expected format")
-	assert.Nil(t, metadata["version"], "version should be in payload, not metadata")
-	assert.Nil(t, metadata["machine_id"], "machine_id should be in payload, not metadata")
+	assert.Nil(t, metadata["version"], "version should not be in metadata")
+	assert.Nil(t, metadata["machine_id"], "machine_id should not be in metadata")
 
 	payload, ok := got.event["payload"].(map[string]any)
 	require.True(t, ok, "payload should be an object")
 	assert.Equal(t, "lstk start", payload["cmd"])
-	assert.Equal(t, version.Version(), payload["version"])
 	assert.Equal(t, runtime.GOOS, payload["os"])
 	assert.Equal(t, runtime.GOARCH, payload["arch"])
 	_, isCI := os.LookupEnv("CI")

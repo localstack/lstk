@@ -25,6 +25,7 @@ type PortMapping struct {
 type ContainerConfig struct {
 	Image         string
 	Name          string
+	EmulatorType  string // e.g., "aws", "snowflake" — used for telemetry
 	Port          string
 	ContainerPort string // internal port the emulator listens on inside the container (e.g. "4566/tcp")
 	HealthPath    string

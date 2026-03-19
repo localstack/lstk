@@ -23,6 +23,7 @@ type Client struct {
 	enabled   bool
 	sessionID string
 	machineID string
+	authToken string
 
 	httpClient *http.Client
 	endpoint   string
@@ -30,6 +31,12 @@ type Client struct {
 	events    chan eventBody
 	done      chan struct{}
 	closeOnce sync.Once
+}
+
+// SetAuthToken stores the resolved auth token for inclusion in telemetry events.
+// Call this once the token is known (e.g. after keyring resolution or interactive login).
+func (c *Client) SetAuthToken(token string) {
+	c.authToken = token
 }
 
 func New(endpoint string, disabled bool) *Client {
@@ -74,11 +81,10 @@ func (c *Client) Emit(ctx context.Context, name string, payload map[string]any) 
 		return
 	}
 
-	enriched := make(map[string]any, len(payload)+6)
+	enriched := make(map[string]any, len(payload)+5)
 	for k, v := range payload {
 		enriched[k] = v
 	}
-	enriched["version"] = version.Version()
 	enriched["os"] = runtime.GOOS
 	enriched["arch"] = runtime.GOARCH
 	_, enriched["is_ci"] = os.LookupEnv("CI")
@@ -95,7 +101,6 @@ func (c *Client) Emit(ctx context.Context, name string, payload map[string]any) 
 		},
 		Payload: enriched,
 	}
-
 	select {
 	case c.events <- body:
 	default:

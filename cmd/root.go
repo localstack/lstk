@@ -5,8 +5,10 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/localstack/lstk/internal/api"
+	"github.com/localstack/lstk/internal/auth"
 	"github.com/localstack/lstk/internal/config"
 	"github.com/localstack/lstk/internal/container"
 	"github.com/localstack/lstk/internal/env"
@@ -17,6 +19,7 @@ import (
 	"github.com/localstack/lstk/internal/ui"
 	"github.com/localstack/lstk/internal/version"
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 )
 
 func NewRootCmd(cfg *env.Env, tel *telemetry.Client, logger log.Logger) *cobra.Command {
@@ -30,7 +33,7 @@ func NewRootCmd(cfg *env.Env, tel *telemetry.Client, logger log.Logger) *cobra.C
 			if err != nil {
 				return err
 			}
-			return runStart(cmd.Context(), rt, cfg, tel, logger)
+			return runStart(cmd.Context(), cmd.Flags(), rt, cfg, tel, logger)
 		},
 	}
 
@@ -50,13 +53,13 @@ func NewRootCmd(cfg *env.Env, tel *telemetry.Client, logger log.Logger) *cobra.C
 
 	root.AddCommand(
 		newStartCmd(cfg, tel, logger),
-		newStopCmd(cfg),
-		newLoginCmd(cfg, logger),
-		newLogoutCmd(cfg, logger),
-		newStatusCmd(cfg),
-		newLogsCmd(cfg),
-		newConfigCmd(),
-		newUpdateCmd(cfg),
+		newStopCmd(cfg, tel),
+		newLoginCmd(cfg, tel, logger),
+		newLogoutCmd(cfg, tel, logger),
+		newStatusCmd(cfg, tel),
+		newLogsCmd(cfg, tel),
+		newConfigCmd(cfg, tel),
+		newUpdateCmd(cfg, tel),
 	)
 
 	return root
@@ -74,6 +77,16 @@ func Execute(ctx context.Context) error {
 	defer cleanup()
 	logger.Info("lstk %s starting", version.Version())
 
+	// Resolve auth token for telemetry: keyring first, then env var.
+	resolvedToken := cfg.AuthToken
+	if tokenStorage, err := auth.NewTokenStorage(cfg.ForceFileKeyring, logger); err == nil {
+		if token, err := tokenStorage.GetAuthToken(); err == nil && token != "" {
+			resolvedToken = token
+		}
+	}
+	cfg.AuthToken = resolvedToken
+	tel.SetAuthToken(resolvedToken)
+
 	root := NewRootCmd(cfg, tel, logger)
 	root.SilenceErrors = true
 	root.SilenceUsage = true
@@ -87,9 +100,7 @@ func Execute(ctx context.Context) error {
 	return nil
 }
 
-func runStart(ctx context.Context, rt runtime.Runtime, cfg *env.Env, tel *telemetry.Client, logger log.Logger) error {
-	// TODO: replace map with a typed payload struct once event schema is finalised
-	tel.Emit(ctx, "cli_cmd", map[string]any{"cmd": "lstk start", "params": []string{}})
+func startEmulator(ctx context.Context, rt runtime.Runtime, cfg *env.Env, tel *telemetry.Client, logger log.Logger) error {
 
 	appConfig, err := config.Get()
 	if err != nil {
@@ -105,12 +116,58 @@ func runStart(ctx context.Context, rt runtime.Runtime, cfg *env.Env, tel *teleme
 		Containers:       appConfig.Containers,
 		Env:              appConfig.Env,
 		Logger:           logger,
+		Telemetry:        tel,
 	}
 
 	if isInteractiveMode(cfg) {
 		return ui.Run(ctx, rt, version.Version(), opts)
 	}
 	return container.Start(ctx, rt, output.NewPlainSink(os.Stdout), opts, false)
+}
+
+func runStart(ctx context.Context, cmdFlags *pflag.FlagSet, rt runtime.Runtime, cfg *env.Env, tel *telemetry.Client, logger log.Logger) error {
+	startTime := time.Now()
+
+	var flags []string
+	cmdFlags.Visit(func(f *pflag.Flag) {
+		flags = append(flags, "--"+f.Name)
+	})
+
+	runErr := startEmulator(ctx, rt, cfg, tel, logger)
+
+	exitCode := 0
+	errorMsg := ""
+	if runErr != nil {
+		exitCode = 1
+		errorMsg = runErr.Error()
+	}
+	tel.EmitCommand(ctx, "start", flags, time.Since(startTime).Milliseconds(), exitCode, errorMsg)
+
+	return runErr
+}
+
+// wraps a RunE function so that an lstk_command event is emitted after every invocation
+// used for commands that do not emit lstk_lifecycle events (i.e. status, logs, config path, etc)
+func commandWithTelemetry(name string, tel *telemetry.Client, fn func(*cobra.Command, []string) error) func(*cobra.Command, []string) error {
+	return func(cmd *cobra.Command, args []string) error {
+		startTime := time.Now()
+		runErr := fn(cmd, args)
+
+		var flags []string
+		cmd.Flags().Visit(func(f *pflag.Flag) {
+			flags = append(flags, "--"+f.Name)
+		})
+
+		exitCode := 0
+		errorMsg := ""
+		if runErr != nil {
+			exitCode = 1
+			errorMsg = runErr.Error()
+		}
+		tel.EmitCommand(cmd.Context(), name, flags, time.Since(startTime).Milliseconds(), exitCode, errorMsg)
+
+		return runErr
+	}
 }
 
 func isInteractiveMode(cfg *env.Env) bool {

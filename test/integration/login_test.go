@@ -89,11 +89,13 @@ func TestDeviceFlowSuccess(t *testing.T) {
 	mockServer := createMockAPIServer(t, licenseToken, true)
 	defer mockServer.Close()
 
+	analyticsSrv, events := mockAnalyticsServer(t)
+
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, binaryPath(), "login")
-	cmd.Env = env.Without(env.AuthToken).With(env.APIEndpoint, mockServer.URL)
+	cmd.Env = env.Without(env.AuthToken).With(env.APIEndpoint, mockServer.URL).With(env.AnalyticsEndpoint, analyticsSrv.URL)
 
 	ptmx, err := pty.Start(cmd)
 	require.NoError(t, err, "failed to start command in PTY")
@@ -133,6 +135,7 @@ func TestDeviceFlowSuccess(t *testing.T) {
 	storedToken, err := GetAuthTokenFromKeyring()
 	require.NoError(t, err)
 	assert.Equal(t, licenseToken, storedToken)
+	assertCommandTelemetry(t, events, "login", 0)
 }
 
 func TestDeviceFlowFailure_RequestNotConfirmed(t *testing.T) {
@@ -146,11 +149,13 @@ func TestDeviceFlowFailure_RequestNotConfirmed(t *testing.T) {
 	mockServer := createMockAPIServer(t, "", false)
 	defer mockServer.Close()
 
+	analyticsSrv, events := mockAnalyticsServer(t)
+
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, binaryPath(), "login")
-	cmd.Env = env.Without(env.AuthToken).With(env.APIEndpoint, mockServer.URL)
+	cmd.Env = env.Without(env.AuthToken).With(env.APIEndpoint, mockServer.URL).With(env.AnalyticsEndpoint, analyticsSrv.URL)
 
 	ptmx, err := pty.Start(cmd)
 	require.NoError(t, err, "failed to start command in PTY")
@@ -187,4 +192,5 @@ func TestDeviceFlowFailure_RequestNotConfirmed(t *testing.T) {
 	// Verify no token was stored in keyring
 	_, err = GetAuthTokenFromKeyring()
 	assert.Error(t, err, "no token should be stored when login fails")
+	assertCommandTelemetry(t, events, "login", 1)
 }
