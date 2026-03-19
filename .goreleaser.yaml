@@ -11,14 +11,36 @@ before:
     - sh -c "go run . completion fish > completions/lstk.fish"
 
 builds:
-  - id: lstk
+  - id: lstk-darwin
+    main: ./main.go
+    binary: lstk
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w -X github.com/localstack/lstk/internal/version.version={{ .Version }}
+    hooks:
+      post:
+        - cmd: >-
+            rcodesign sign
+            --p12-file "{{ .Env.APPLE_CERT_PATH }}"
+            --p12-password "{{ .Env.APPLE_SIGN_CERTS_PW }}"
+            --code-signature-flags runtime
+            "{{ .Path }}"
+
+  - id: lstk-other
     main: ./main.go
     binary: lstk
     env:
       - CGO_ENABLED=0
     goos:
       - linux
-      - darwin
       - windows
     goarch:
       - amd64
@@ -31,7 +53,8 @@ builds:
 archives:
   - id: lstk
     ids:
-      - lstk
+      - lstk-darwin
+      - lstk-other
     name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
     formats:
       - tar.gz

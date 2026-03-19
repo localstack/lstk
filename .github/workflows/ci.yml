@@ -157,6 +157,17 @@ jobs:
             exit 1
           fi
 
+      - name: Install rcodesign
+        run: |
+          curl -fsSL -o rcodesign.tar.gz \
+            "https://github.com/indygreg/apple-platform-rs/releases/download/apple-codesign%2F0.29.0/apple-codesign-0.29.0-x86_64-unknown-linux-musl.tar.gz"
+          tar xzf rcodesign.tar.gz
+          sudo mv apple-codesign-*/rcodesign /usr/local/bin/
+          rcodesign --version
+
+      - name: Write Apple signing certificate
+        run: echo "${{ secrets.APPLE_CERTS_BASE64 }}" | base64 -d > /tmp/apple-cert.p12
+
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v7
         with:
@@ -166,6 +177,26 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           HOMEBREW_TAP_TOKEN: ${{ secrets.PRO_ACCESS_TOKEN }}
+          APPLE_CERT_PATH: /tmp/apple-cert.p12
+          APPLE_SIGN_CERTS_PW: ${{ secrets.APPLE_SIGN_CERTS_PW }}
+
+      - name: Write App Store Connect API key
+        run: echo "${{ secrets.APPLE_API_KEY_BASE64 }}" | base64 -d > /tmp/apple-api-key.p8
+
+      - name: Notarize macOS archives
+        run: |
+          for f in dist/*darwin*.tar.gz; do
+            echo "Notarizing ${f}..."
+            rcodesign notary-submit "$f" \
+              --api-key-path /tmp/apple-api-key.p8 \
+              --api-key-id "${{ secrets.APPLE_API_KEY_ID }}" \
+              --api-issuer "${{ secrets.APPLE_API_ISSUER }}" \
+              --wait
+          done
+
+      - name: Clean up signing credentials
+        if: always()
+        run: rm -f /tmp/apple-cert.p12 /tmp/apple-api-key.p8
 
       - name: Set up Node.js
         uses: actions/setup-node@v6
