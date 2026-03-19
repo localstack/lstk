@@ -24,7 +24,7 @@ func renderLogMessage(s string, level output.LogLevel) string {
 	case output.LogLevelWarn:
 		return styles.Warning.Render(s)
 	case output.LogLevelError:
-		return styles.ErrorTitle.Render(s)
+		return styles.LogError.Render(s)
 	default:
 		return s
 	}
