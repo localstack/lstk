@@ -14,8 +14,9 @@ import (
 var defaultConfigTemplate string
 
 type Config struct {
-	Containers []ContainerConfig            `mapstructure:"containers"`
-	Env        map[string]map[string]string `mapstructure:"env"`
+	Containers   []ContainerConfig            `mapstructure:"containers"`
+	Env          map[string]map[string]string `mapstructure:"env"`
+	UpdatePrompt bool                          `mapstructure:"update_prompt"`
 }
 
 func setDefaults() {
@@ -26,6 +27,7 @@ func setDefaults() {
 			"port": "4566",
 		},
 	})
+	viper.SetDefault("update_prompt", true)
 }
 
 func loadConfig(path string) error {
@@ -88,6 +90,15 @@ func Init() error {
 
 func resolvedConfigPath() string {
 	return viper.ConfigFileUsed()
+}
+
+func Set(key string, value any) error {
+	viper.Set(key, value)
+	return viper.WriteConfig()
+}
+
+func DisableUpdatePrompt() error {
+	return Set("update_prompt", false)
 }
 
 func Get() (*Config, error) {

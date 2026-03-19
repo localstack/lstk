@@ -11,10 +11,9 @@ import (
 	goruntime "runtime"
 )
 
-const (
-	githubRepo       = "localstack/lstk"
-	latestReleaseURL = "https://api.github.com/repos/" + githubRepo + "/releases/latest"
-)
+const githubRepo = "localstack/lstk"
+
+const latestReleaseURL = "https://api.github.com/repos/" + githubRepo + "/releases/latest"
 
 type githubRelease struct {
 	TagName string        `json:"tag_name"`

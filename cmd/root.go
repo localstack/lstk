@@ -17,6 +17,7 @@ import (
 	"github.com/localstack/lstk/internal/runtime"
 	"github.com/localstack/lstk/internal/telemetry"
 	"github.com/localstack/lstk/internal/ui"
+	"github.com/localstack/lstk/internal/update"
 	"github.com/localstack/lstk/internal/version"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -119,10 +120,19 @@ func startEmulator(ctx context.Context, rt runtime.Runtime, cfg *env.Env, tel *t
 		Telemetry:        tel,
 	}
 
-	if isInteractiveMode(cfg) {
-		return ui.Run(ctx, rt, version.Version(), opts)
+	notifyOpts := update.NotifyOptions{
+		GitHubToken:    cfg.GitHubToken,
+		UpdatePrompt:   appConfig.UpdatePrompt,
+		PersistDisable: config.DisableUpdatePrompt,
 	}
-	return container.Start(ctx, rt, output.NewPlainSink(os.Stdout), opts, false)
+
+	if isInteractiveMode(cfg) {
+		return ui.Run(ctx, rt, version.Version(), opts, notifyOpts)
+	}
+
+	sink := output.NewPlainSink(os.Stdout)
+	update.NotifyUpdate(ctx, sink, update.NotifyOptions{GitHubToken: cfg.GitHubToken})
+	return container.Start(ctx, rt, sink, opts, false)
 }
 
 func runStart(ctx context.Context, cmdFlags *pflag.FlagSet, rt runtime.Runtime, cfg *env.Env, tel *telemetry.Client, logger log.Logger) error {

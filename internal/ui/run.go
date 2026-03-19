@@ -10,6 +10,7 @@ import (
 	"github.com/localstack/lstk/internal/endpoint"
 	"github.com/localstack/lstk/internal/output"
 	"github.com/localstack/lstk/internal/runtime"
+	"github.com/localstack/lstk/internal/update"
 	"golang.org/x/term"
 )
 
@@ -24,7 +25,7 @@ func (s programSender) Send(msg any) {
 	s.p.Send(msg)
 }
 
-func Run(parentCtx context.Context, rt runtime.Runtime, version string, opts container.StartOptions) error {
+func Run(parentCtx context.Context, rt runtime.Runtime, version string, opts container.StartOptions, notifyOpts update.NotifyOptions) error {
 	ctx, cancel := context.WithCancel(parentCtx)
 	defer cancel()
 
@@ -45,7 +46,12 @@ func Run(parentCtx context.Context, rt runtime.Runtime, version string, opts con
 	go func() {
 		var err error
 		defer func() { runErrCh <- err }()
-		err = container.Start(ctx, rt, output.NewTUISink(programSender{p: p}), opts, true)
+		sink := output.NewTUISink(programSender{p: p})
+		if update.NotifyUpdate(ctx, sink, notifyOpts) {
+			p.Send(runDoneMsg{})
+			return
+		}
+		err = container.Start(ctx, rt, sink, opts, true)
 		if err != nil {
 			if errors.Is(err, context.Canceled) {
 				return
