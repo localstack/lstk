@@ -133,12 +133,14 @@ func TestConfigPathCommand(t *testing.T) {
 	xdgConfigFile := filepath.Join(tmpHome, ".config", "lstk", "config.toml")
 	writeConfigFile(t, xdgConfigFile)
 
-	e := testEnvWithHome(tmpHome, filepath.Join(tmpHome, "xdg-config-home"))
+	analyticsSrv, events := mockAnalyticsServer(t)
+	e := env.Environ(testEnvWithHome(tmpHome, filepath.Join(tmpHome, "xdg-config-home"))).With(env.AnalyticsEndpoint, analyticsSrv.URL)
 	stdout, stderr, err := runLstk(t, testContext(t), workDir, e, "config", "path")
 	require.NoError(t, err, stderr)
 	requireExitCode(t, 0, err)
 
 	assertSamePath(t, xdgConfigFile, stdout)
+	assertCommandTelemetry(t, events, "config path", 0)
 }
 
 func TestConfigPathCommandDoesNotCreateConfig(t *testing.T) {

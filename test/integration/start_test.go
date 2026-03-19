@@ -83,10 +83,12 @@ func TestStartCommandDoesNothingWhenAlreadyRunning(t *testing.T) {
 	ctx := testContext(t)
 	startTestContainer(t, ctx)
 
-	stdout, stderr, err := runLstk(t, ctx, "", env.With(env.AuthToken, "fake-token"), "start")
+	analyticsSrv, events := mockAnalyticsServer(t)
+	stdout, stderr, err := runLstk(t, ctx, "", env.With(env.AuthToken, "fake-token").With(env.AnalyticsEndpoint, analyticsSrv.URL), "start")
 	require.NoError(t, err, "lstk start should succeed when container is already running: %s", stderr)
 	requireExitCode(t, 0, err)
 	assert.Contains(t, stdout, "already running")
+	assertCommandTelemetry(t, events, "start", 0)
 }
 
 func TestStartCommandFailsWhenPortInUse(t *testing.T) {
@@ -98,12 +100,18 @@ func TestStartCommandFailsWhenPortInUse(t *testing.T) {
 	require.NoError(t, err, "failed to bind port 4566 for test")
 	defer func() { _ = ln.Close() }()
 
-	stdout, _, err := runLstk(t, testContext(t), "", env.With(env.AuthToken, "fake-token"), "start")
+	analyticsSrv, events := mockAnalyticsServer(t)
+	stdout, _, err := runLstk(t, testContext(t), "", env.With(env.AuthToken, "fake-token").With(env.AnalyticsEndpoint, analyticsSrv.URL), "start")
 	require.Error(t, err, "expected lstk start to fail when port is in use")
 	requireExitCode(t, 1, err)
 	assert.Contains(t, stdout, "Port 4566 already in use")
 	assert.Contains(t, stdout, "LocalStack may already be running.")
 	assert.Contains(t, stdout, "lstk stop")
+
+	// Both lstk_lifecycle (start_error) and lstk_command events should be emitted.
+	byName := collectTelemetryByName(t, events, 2)
+	assert.Contains(t, byName, "lstk_lifecycle")
+	assert.Contains(t, byName, "lstk_command")
 }
 
 func TestStartCommandSucceedsWithNonDefaultPort(t *testing.T) {

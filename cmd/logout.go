@@ -13,16 +13,17 @@ import (
 	"github.com/localstack/lstk/internal/log"
 	"github.com/localstack/lstk/internal/output"
 	"github.com/localstack/lstk/internal/runtime"
+	"github.com/localstack/lstk/internal/telemetry"
 	"github.com/localstack/lstk/internal/ui"
 	"github.com/spf13/cobra"
 )
 
-func newLogoutCmd(cfg *env.Env, logger log.Logger) *cobra.Command {
+func newLogoutCmd(cfg *env.Env, tel *telemetry.Client, logger log.Logger) *cobra.Command {
 	return &cobra.Command{
 		Use:     "logout",
 		Short:   "Remove stored authentication credentials",
 		PreRunE: initConfig,
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: commandWithTelemetry("logout", tel, func(cmd *cobra.Command, args []string) error {
 			platformClient := api.NewPlatformClient(cfg.APIEndpoint, logger)
 			appConfig, err := config.Get()
 			if err != nil {
@@ -56,6 +57,6 @@ func newLogoutCmd(cfg *env.Env, logger log.Logger) *cobra.Command {
 				}
 			}
 			return nil
-		},
+		}),
 	}
 }

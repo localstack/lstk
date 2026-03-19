@@ -9,16 +9,17 @@ import (
 	"github.com/localstack/lstk/internal/env"
 	"github.com/localstack/lstk/internal/output"
 	"github.com/localstack/lstk/internal/runtime"
+	"github.com/localstack/lstk/internal/telemetry"
 	"github.com/spf13/cobra"
 )
 
-func newLogsCmd(cfg *env.Env) *cobra.Command {
+func newLogsCmd(cfg *env.Env, tel *telemetry.Client) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "logs",
 		Short:   "Show emulator logs",
 		Long:    "Show logs from the emulator. Use --follow to stream in real-time.",
 		PreRunE: initConfig,
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: commandWithTelemetry("logs", tel, func(cmd *cobra.Command, args []string) error {
 			follow, err := cmd.Flags().GetBool("follow")
 			if err != nil {
 				return err
@@ -32,7 +33,7 @@ func newLogsCmd(cfg *env.Env) *cobra.Command {
 				return fmt.Errorf("failed to get config: %w", err)
 			}
 			return container.Logs(cmd.Context(), rt, output.NewPlainSink(os.Stdout), appConfig.Containers, follow)
-		},
+		}),
 	}
 	cmd.Flags().BoolP("follow", "f", false, "Follow log output")
 	return cmd

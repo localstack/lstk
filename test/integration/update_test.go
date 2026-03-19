@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/localstack/lstk/test/integration/env"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -15,12 +16,14 @@ import (
 func TestUpdateCheckCommand(t *testing.T) {
 	ctx := testContext(t)
 
-	stdout, stderr, err := runLstk(t, ctx, "", nil, "update", "--check")
+	analyticsSrv, events := mockAnalyticsServer(t)
+	stdout, stderr, err := runLstk(t, ctx, "", env.With(env.AnalyticsEndpoint, analyticsSrv.URL), "update", "--check")
 	require.NoError(t, err, "lstk update --check failed: %s", stderr)
 	requireExitCode(t, 0, err)
 
 	// Dev builds report a note about skipping update check
 	assert.Contains(t, stdout, "Note:", "should show a note (dev build or up-to-date)")
+	assertCommandTelemetry(t, events, "update", 0)
 }
 
 func TestUpdateCheckCommandNonInteractive(t *testing.T) {

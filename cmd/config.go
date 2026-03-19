@@ -4,23 +4,25 @@ import (
 	"fmt"
 
 	"github.com/localstack/lstk/internal/config"
+	"github.com/localstack/lstk/internal/env"
+	"github.com/localstack/lstk/internal/telemetry"
 	"github.com/spf13/cobra"
 )
 
-func newConfigCmd() *cobra.Command {
+func newConfigCmd(cfg *env.Env, tel *telemetry.Client) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "config",
 		Short: "Manage configuration",
 	}
-	cmd.AddCommand(newConfigPathCmd())
+	cmd.AddCommand(newConfigPathCmd(cfg, tel))
 	return cmd
 }
 
-func newConfigPathCmd() *cobra.Command {
+func newConfigPathCmd(cfg *env.Env, tel *telemetry.Client) *cobra.Command {
 	return &cobra.Command{
 		Use:   "path",
 		Short: "Print the configuration file path",
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: commandWithTelemetry("config path", tel, func(cmd *cobra.Command, args []string) error {
 			path, err := cmd.Flags().GetString("config")
 			if err != nil {
 				return err
@@ -37,6 +39,6 @@ func newConfigPathCmd() *cobra.Command {
 
 			_, err = fmt.Fprintln(cmd.OutOrStdout(), configPath)
 			return err
-		},
+		}),
 	}
 }

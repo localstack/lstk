@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/docker/docker/api/types/container"
+	"github.com/localstack/lstk/test/integration/env"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -20,9 +21,11 @@ func TestLogsExitsByDefault(t *testing.T) {
 	ctx := testContext(t)
 	startTestContainer(t, ctx)
 
-	_, _, err := runLstk(t, ctx, "", nil, "logs")
+	analyticsSrv, events := mockAnalyticsServer(t)
+	_, _, err := runLstk(t, ctx, "", env.With(env.AnalyticsEndpoint, analyticsSrv.URL), "logs")
 	require.NoError(t, err, "lstk logs should exit cleanly when container is running")
 	requireExitCode(t, 0, err)
+	assertCommandTelemetry(t, events, "logs", 0)
 }
 
 func TestLogsCommandFailsWhenNotRunning(t *testing.T) {
@@ -30,10 +33,12 @@ func TestLogsCommandFailsWhenNotRunning(t *testing.T) {
 	cleanup()
 	t.Cleanup(cleanup)
 
-	_, stderr, err := runLstk(t, testContext(t), "", nil, "logs", "--follow")
+	analyticsSrv, events := mockAnalyticsServer(t)
+	_, stderr, err := runLstk(t, testContext(t), "", env.With(env.AnalyticsEndpoint, analyticsSrv.URL), "logs", "--follow")
 	require.Error(t, err, "expected lstk logs --follow to fail when container not running")
 	requireExitCode(t, 1, err)
 	assert.Contains(t, stderr, "emulator is not running")
+	assertCommandTelemetry(t, events, "logs", 1)
 }
 
 func TestLogsFollowStreamsOutput(t *testing.T) {
