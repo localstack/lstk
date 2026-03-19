@@ -80,20 +80,6 @@ func TestCheckQuietlyAlreadyUpToDate(t *testing.T) {
 	assert.False(t, available)
 }
 
-func TestUpdateCommandHint(t *testing.T) {
-	tests := []struct {
-		method InstallMethod
-		want   string
-	}{
-		{InstallHomebrew, "brew upgrade localstack/tap/lstk"},
-		{InstallNPM, "npm install -g @localstack/lstk@latest"},
-		{InstallBinary, "lstk update"},
-	}
-	for _, tt := range tests {
-		assert.Equal(t, tt.want, UpdateCommandHint(InstallInfo{Method: tt.method}))
-	}
-}
-
 func TestNotifyUpdateNoUpdateAvailable(t *testing.T) {
 	server := newTestGitHubServer(t, "v1.0.0")
 	defer server.Close()

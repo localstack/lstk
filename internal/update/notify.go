@@ -44,17 +44,6 @@ func checkQuietlyWithVersion(ctx context.Context, githubToken string, currentVer
 	return current, latestVer, true
 }
 
-func UpdateCommandHint(info InstallInfo) string {
-	switch info.Method {
-	case InstallHomebrew:
-		return "brew upgrade localstack/tap/lstk"
-	case InstallNPM:
-		return "npm install -g @localstack/lstk@latest"
-	default:
-		return "lstk update"
-	}
-}
-
 func NotifyUpdate(ctx context.Context, sink output.Sink, opts NotifyOptions) (exitAfter bool) {
 	return notifyUpdateWithVersion(ctx, sink, opts, version.Version(), fetchLatestVersion)
 }
@@ -66,7 +55,7 @@ func notifyUpdateWithVersion(ctx context.Context, sink output.Sink, opts NotifyO
 	}
 
 	if !opts.UpdatePrompt {
-		output.EmitNote(sink, fmt.Sprintf("Update available: %s → %s (run %s)", current, latest, UpdateCommandHint(DetectInstallMethod())))
+		output.EmitNote(sink, fmt.Sprintf("Update available: %s → %s (run lstk update)", current, latest))
 		return false
 	}
 

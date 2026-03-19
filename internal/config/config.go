@@ -14,8 +14,9 @@ import (
 var defaultConfigTemplate string
 
 type Config struct {
-	Containers []ContainerConfig            `mapstructure:"containers"`
-	Env        map[string]map[string]string `mapstructure:"env"`
+	Containers   []ContainerConfig            `mapstructure:"containers"`
+	Env          map[string]map[string]string `mapstructure:"env"`
+	UpdatePrompt bool                          `mapstructure:"update_prompt"`
 }
 
 func setDefaults() {
@@ -94,10 +95,6 @@ func resolvedConfigPath() string {
 func Set(key string, value any) error {
 	viper.Set(key, value)
 	return viper.WriteConfig()
-}
-
-func IsUpdatePromptEnabled() bool {
-	return viper.GetBool("update_prompt")
 }
 
 func DisableUpdatePrompt() error {
