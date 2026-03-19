@@ -15,20 +15,22 @@ port = "4566"    # Host port the emulator will be accessible on
 #
 # Example variables based on commonly used current config options:
 #
-#   DEBUG=1          - Enable verbose logging
-#   PERSISTENCE=1    - Persist LocalStack state across restarts
-#   ENFORCE_IAM=1    - Enable IAM enforcement
+#   DEBUG=1                 - Enable verbose logging
+#   PERSISTENCE=1           - Persist LocalStack state across restarts
+#   ENFORCE_IAM=1           - Enable IAM policy enforcement
+#   SERVICES=s3,sqs         - Limit services to load
+#   EAGER_SERVICE_LOADING=1 - Preload services at startup
 #
 # See full list of configuration options:
 # > https://docs.localstack.cloud/references/configuration/
 #
-# Example:
+# Example profiles:
 #
 # [env.debug]
 # DEBUG = "1"
-#
-# [env.persist]
 # PERSISTENCE = "1"
-#
-# [env.security]
 # ENFORCE_IAM = "1"
+#
+# [env.ci]
+# SERVICES = "s3,sqs"
+# EAGER_SERVICE_LOADING = "1"
