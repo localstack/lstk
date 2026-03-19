@@ -166,7 +166,7 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, nil
 	case output.LogLineEvent:
 		prefix := styles.Secondary.Render(msg.Source + " | ")
-		line := styledLine{text: prefix + styles.Message.Render(msg.Line)}
+		line := styledLine{text: prefix + renderLogLine(msg.Line, msg.Level)}
 		if a.spinner.PendingStop() {
 			a.bufferedLines = appendLine(a.bufferedLines, line)
 		} else {
