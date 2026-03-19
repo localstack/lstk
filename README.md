@@ -48,7 +48,7 @@ Running `lstk` will automatically handle configuration setup and start LocalStac
 - **Start / stop / status** — manage LocalStack emulators with a single command
 - **Interactive TUI** — a Bubble Tea-powered terminal UI when run in an interactive shell
 - **Plain output** for CI/CD and scripting (auto-detected in non-interactive environments or forced with `--non-interactive`)
-- **Log streaming** — tail emulator logs in real-time with `--follow`
+- **Log streaming** — tail emulator logs in real-time with `--follow`; use `--verbose` to show all logs without filtering
 - **Browser-based login** — authenticate via browser and store credentials securely in the system keyring
 - **AWS CLI profile** — optionally configure a `localstack` profile in `~/.aws/` after start
 - **Self-update** — check for and install the latest `lstk` release with `lstk update`
@@ -160,6 +160,9 @@ lstk status
 
 # Stream emulator logs
 lstk logs --follow
+
+# Stream all emulator logs without filtering
+lstk logs --follow --verbose
 
 # Log in (opens browser for authentication)
 lstk login

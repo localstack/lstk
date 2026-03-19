@@ -12,7 +12,7 @@ import (
 	"github.com/localstack/lstk/internal/runtime"
 )
 
-func RunLogs(parentCtx context.Context, rt runtime.Runtime, containers []config.ContainerConfig, follow bool) error {
+func RunLogs(parentCtx context.Context, rt runtime.Runtime, containers []config.ContainerConfig, follow bool, verbose bool) error {
 	ctx, cancel := context.WithCancel(parentCtx)
 	defer cancel()
 
@@ -21,7 +21,7 @@ func RunLogs(parentCtx context.Context, rt runtime.Runtime, containers []config.
 	runErrCh := make(chan error, 1)
 
 	go func() {
-		err := container.Logs(ctx, rt, output.NewTUISink(programSender{p: p}), containers, follow)
+		err := container.Logs(ctx, rt, output.NewTUISink(programSender{p: p}), containers, follow, verbose)
 		runErrCh <- err
 		if err != nil && !errors.Is(err, context.Canceled) {
 			p.Send(runErrMsg{err: err})

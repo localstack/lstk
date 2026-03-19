@@ -11,7 +11,7 @@ import (
 	"github.com/localstack/lstk/internal/runtime"
 )
 
-func Logs(ctx context.Context, rt runtime.Runtime, sink output.Sink, containers []config.ContainerConfig, follow bool) error {
+func Logs(ctx context.Context, rt runtime.Runtime, sink output.Sink, containers []config.ContainerConfig, follow bool, verbose bool) error {
 	if len(containers) == 0 {
 		return fmt.Errorf("no containers configured")
 	}
@@ -30,7 +30,7 @@ func Logs(ctx context.Context, rt runtime.Runtime, sink output.Sink, containers 
 	scanner := bufio.NewScanner(pr)
 	for scanner.Scan() {
 		line := scanner.Text()
-		if shouldFilter(line) {
+		if !verbose && shouldFilter(line) {
 			continue
 		}
 		level, _ := parseLogLine(line)
