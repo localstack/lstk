@@ -93,15 +93,18 @@ lstk --config /path/to/lstk.toml start
 
 ```toml
 [[containers]]
-type = "aws"
-tag  = "latest"
-port = "4566"
+type = "aws"     # Emulator type. Currently supported: "aws"
+tag  = "latest"  # Docker image tag, e.g. "latest", "2026.03"
+port = "4566"    # Host port the emulator will be accessible on
+# volume = ""    # Host directory for persistent state (default: OS cache dir)
+# env = []       # Named environment profiles to apply (see [env.*] sections below)
 ```
 
 **Fields:**
 - `type`: emulator type; only `"aws"` is supported for now
 - `tag`: Docker image tag for LocalStack (e.g. `"latest"`, `"4.14.0"`); useful for pinning a version
 - `port`: port LocalStack listens on (default `4566`)
+- `volume`: (optional) host directory for persistent emulator state (default: OS cache dir)
 - `env`: (optional) list of named environment variable groups to inject into the container (see below)
 
 ### Passing environment variables to the container
@@ -111,16 +114,18 @@ Define reusable named env sets and reference them per container:
 ```toml
 [[containers]]
 type = "aws"
-tag  = "4.14.0"
+tag  = "latest"
 port = "4566"
-env  = ["prod", "debug"]
-
-[env.prod]
-LOCALSTACK_HOST = "localstack.cloud"
+env  = ["debug", "ci"]
 
 [env.debug]
-LS_LOG = "trace"
-DEBUG  = "1"
+DEBUG = "1"
+ENFORCE_IAM = "1"
+PERSISTENCE = "1"
+
+[env.ci]
+SERVICES = "s3,sqs"
+EAGER_SERVICE_LOADING = "1"
 ```
 
 ## Interactive And Non-Interactive Mode
