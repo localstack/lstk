@@ -46,7 +46,7 @@ Running `lstk` will automatically handle configuration setup and start LocalStac
 ## Features
 
 - **Start / stop / status** — manage LocalStack emulators with a single command
-- **Interactive TUI** — a Bubble Tea-powered terminal UI when run in an interactive shell
+- **Interactive TUI** — a Bubble Tea-powered terminal UI shown in an interactive terminal for commands like `start`, `login`, `status`, etc.
 - **Plain output** for CI/CD and scripting (auto-detected in non-interactive environments or forced with `--non-interactive`)
 - **Log streaming** — tail emulator logs in real-time with `--follow`; use `--verbose` to show all logs without filtering
 - **Browser-based login** — authenticate via browser and store credentials securely in the system keyring
@@ -151,7 +151,7 @@ lstk --non-interactive
 ## Usage
 
 ```bash
-# Start the LocalStack emulator (interactive TUI in a terminal)
+# Start the LocalStack emulator
 lstk
 
 # Start non-interactively (e.g. in CI)
