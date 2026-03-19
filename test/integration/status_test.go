@@ -10,6 +10,11 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
+	awsconfig "github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/credentials"
+	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/aws/aws-sdk-go-v2/service/sqs"
 	"github.com/localstack/lstk/test/integration/env"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -32,44 +37,44 @@ func TestStatusCommandFailsWhenNotRunning(t *testing.T) {
 
 func TestStatusCommandShowsResourcesWhenRunning(t *testing.T) {
 	requireDocker(t)
+	_ = env.Require(t, env.AuthToken)
 	cleanup()
 	t.Cleanup(cleanup)
 
 	ctx := testContext(t)
-	startTestContainer(t, ctx)
 
-	// Mock the LocalStack HTTP API so we can test resource display without a real LocalStack instance.
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch r.URL.Path {
-		case "/_localstack/health":
-			w.Header().Set("Content-Type", "application/json")
-			_, _ = fmt.Fprintln(w, `{"version": "4.14.1", "services": {}}`)
-		case "/_localstack/resources":
-			w.Header().Set("Content-Type", "application/x-ndjson")
-			_, _ = fmt.Fprintln(w, `{"AWS::S3::Bucket": [{"region_name": "global", "account_id": "000000000000", "id": "my-bucket"}]}`)
-			_, _ = fmt.Fprintln(w, `{"AWS::Lambda::Function": [{"region_name": "us-east-1", "account_id": "000000000000", "id": "my-function"}]}`)
-		default:
-			w.WriteHeader(http.StatusNotFound)
-		}
-	}))
-	defer server.Close()
+	mockServer := createMockLicenseServer(true)
+	defer mockServer.Close()
 
-	host := strings.TrimPrefix(server.URL, "http://")
+	_, stderr, err := runLstk(t, ctx, "", env.With(env.APIEndpoint, mockServer.URL), "start")
+	require.NoError(t, err, "lstk start failed: %s", stderr)
+
+	awsCfg, err := awsconfig.LoadDefaultConfig(ctx,
+		awsconfig.WithRegion("us-east-1"),
+		awsconfig.WithCredentialsProvider(credentials.NewStaticCredentialsProvider("test", "test", "")),
+		awsconfig.WithBaseEndpoint("http://localhost:4566"),
+	)
+	require.NoError(t, err)
+
+	s3Client := s3.NewFromConfig(awsCfg, func(o *s3.Options) { o.UsePathStyle = true })
+	_, err = s3Client.CreateBucket(ctx, &s3.CreateBucketInput{Bucket: aws.String("my-test-bucket")})
+	require.NoError(t, err, "failed to create S3 bucket")
+
+	sqsClient := sqs.NewFromConfig(awsCfg)
+	_, err = sqsClient.CreateQueue(ctx, &sqs.CreateQueueInput{QueueName: aws.String("my-test-queue")})
+	require.NoError(t, err, "failed to create SQS queue")
 
 	analyticsSrv, events := mockAnalyticsServer(t)
-	stdout, stderr, err := runLstk(t, ctx, "", env.With(env.LocalStackHost, host).With(env.AnalyticsEndpoint, analyticsSrv.URL), "status")
+	stdout, stderr, err := runLstk(t, ctx, "", env.With(env.AnalyticsEndpoint, analyticsSrv.URL), "status")
 	require.NoError(t, err, "lstk status failed: %s", stderr)
 	requireExitCode(t, 0, err)
 	assert.Contains(t, stdout, "running")
-	assert.Contains(t, stdout, "4.14.1")
-	assert.Contains(t, stdout, "2 resources")
-	assert.Contains(t, stdout, "2 services")
 	assert.Contains(t, stdout, "SERVICE")
 	assert.Contains(t, stdout, "RESOURCE")
 	assert.Contains(t, stdout, "S3")
-	assert.Contains(t, stdout, "my-bucket")
-	assert.Contains(t, stdout, "Lambda")
-	assert.Contains(t, stdout, "my-function")
+	assert.Contains(t, stdout, "my-test-bucket")
+	assert.Contains(t, stdout, "SQS")
+	assert.Contains(t, stdout, "my-test-queue")
 	assertCommandTelemetry(t, events, "status", 0)
 }
 
