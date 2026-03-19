@@ -81,3 +81,70 @@ func (mr *MockAuthTokenStorageMockRecorder) SetAuthToken(token any) *gomock.Call
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetAuthToken", reflect.TypeOf((*MockAuthTokenStorage)(nil).SetAuthToken), token)
 }
+
+// Mockkeyringer is a mock of keyringer interface.
+type Mockkeyringer struct {
+	ctrl     *gomock.Controller
+	recorder *MockkeyringerMockRecorder
+	isgomock struct{}
+}
+
+// MockkeyringerMockRecorder is the mock recorder for Mockkeyringer.
+type MockkeyringerMockRecorder struct {
+	mock *Mockkeyringer
+}
+
+// NewMockkeyringer creates a new mock instance.
+func NewMockkeyringer(ctrl *gomock.Controller) *Mockkeyringer {
+	mock := &Mockkeyringer{ctrl: ctrl}
+	mock.recorder = &MockkeyringerMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *Mockkeyringer) EXPECT() *MockkeyringerMockRecorder {
+	return m.recorder
+}
+
+// Delete mocks base method.
+func (m *Mockkeyringer) Delete(service, user string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Delete", service, user)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// Delete indicates an expected call of Delete.
+func (mr *MockkeyringerMockRecorder) Delete(service, user any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Delete", reflect.TypeOf((*Mockkeyringer)(nil).Delete), service, user)
+}
+
+// Get mocks base method.
+func (m *Mockkeyringer) Get(service, user string) (string, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Get", service, user)
+	ret0, _ := ret[0].(string)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// Get indicates an expected call of Get.
+func (mr *MockkeyringerMockRecorder) Get(service, user any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Get", reflect.TypeOf((*Mockkeyringer)(nil).Get), service, user)
+}
+
+// Set mocks base method.
+func (m *Mockkeyringer) Set(service, user, password string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Set", service, user, password)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// Set indicates an expected call of Set.
+func (mr *MockkeyringerMockRecorder) Set(service, user, password any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Set", reflect.TypeOf((*Mockkeyringer)(nil).Set), service, user, password)
+}
