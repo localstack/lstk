@@ -70,8 +70,8 @@ The CLI supports multiple auth workflows. `lstk` resolves your auth token in thi
 
 `lstk` uses a TOML config file, created automatically on first run.
 
-`lstk` uses the first config file found in this order:
-1. `./lstk.toml` (project-local)
+`lstk` uses the first `config.toml` found in this order:
+1. `./.lstk/config.toml` (project-local)
 2. `$HOME/.config/lstk/config.toml`
 3. **macOS**: `$HOME/Library/Application Support/lstk/config.toml` / **Windows**: `%AppData%\lstk\config.toml`
 
@@ -86,7 +86,7 @@ lstk config path
 You can also point `lstk` at a specific config file for any command:
 
 ```bash
-lstk --config /path/to/lstk.toml start
+lstk --config /path/to/config.toml start
 ```
 
 ### Default config

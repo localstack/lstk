@@ -6,9 +6,15 @@ import (
 	"path/filepath"
 )
 
+const (
+	localConfigDir = ".lstk"
+	configName     = "config"
+	configType     = "toml"
+	configFileName = configName + "." + configType
+)
+
 func ConfigFilePath() (string, error) {
 	if resolved := resolvedConfigPath(); resolved != "" {
-		// If Init already ran, use Viper's selected file directly.
 		absResolved, err := filepath.Abs(resolved)
 		if err != nil {
 			return "", fmt.Errorf("failed to resolve absolute config path: %w", err)
@@ -34,7 +40,7 @@ func ConfigFilePath() (string, error) {
 		return "", err
 	}
 
-	creationPath := filepath.Join(creationDir, userConfigFileName)
+	creationPath := filepath.Join(creationDir, configFileName)
 	absCreationPath, err := filepath.Abs(creationPath)
 	if err != nil {
 		return "", fmt.Errorf("failed to resolve absolute config path: %w", err)
@@ -67,11 +73,9 @@ func osConfigDir() (string, error) {
 	return filepath.Join(configHome, "lstk"), nil
 }
 
-func localConfigPath() string {
-	return filepath.Join(".", localConfigFileName)
-}
-
-func configSearchPaths() ([]string, error) {
+// configSearchDirs returns directories to search for config.toml, in priority order:
+// project-local (.lstk/), XDG-style home config, OS-specific fallback.
+func configSearchDirs() ([]string, error) {
 	xdgDir, err := xdgConfigDir()
 	if err != nil {
 		return nil, err
@@ -83,10 +87,9 @@ func configSearchPaths() ([]string, error) {
 	}
 
 	return []string{
-		// Priority order: project-local, then XDG-style home config, then OS-specific fallback.
-		localConfigPath(),
-		filepath.Join(xdgDir, userConfigFileName),
-		filepath.Join(osDir, userConfigFileName),
+		filepath.Join(".", localConfigDir),
+		xdgDir,
+		osDir,
 	}, nil
 }
 
@@ -111,12 +114,13 @@ func configCreationDir() (string, error) {
 }
 
 func firstExistingConfigPath() (string, bool, error) {
-	paths, err := configSearchPaths()
+	dirs, err := configSearchDirs()
 	if err != nil {
 		return "", false, err
 	}
 
-	for _, path := range paths {
+	for _, dir := range dirs {
+		path := filepath.Join(dir, configFileName)
 		if _, err := os.Stat(path); err == nil {
 			return path, true, nil
 		} else if !os.IsNotExist(err) {

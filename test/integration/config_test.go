@@ -94,7 +94,7 @@ func TestLocalConfigTakesPrecedence(t *testing.T) {
 	workDir := t.TempDir()
 	xdgOverride := filepath.Join(tmpHome, "xdg-config-home")
 
-	localConfigFile := filepath.Join(workDir, "lstk.toml")
+	localConfigFile := filepath.Join(workDir, ".lstk", "config.toml")
 	writeConfigFile(t, localConfigFile)
 	writeConfigFile(t, filepath.Join(tmpHome, ".config", "lstk", "config.toml"))
 	writeConfigFile(t, filepath.Join(expectedOSConfigDir(tmpHome, xdgOverride), "config.toml"))
