@@ -183,7 +183,7 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if line, ok := output.FormatEventLine(msg); ok {
 			if msg.Phase == "ready" {
-				line = strings.Replace(line, output.SuccessMarkerText(), styles.Success.Render(output.SuccessMarkerText()), 1)
+				line = strings.Replace(line, output.SuccessMarker(), styles.Success.Render(output.SuccessMarker()), 1)
 			}
 			a.lines = appendLine(a.lines, styledLine{text: line})
 		}

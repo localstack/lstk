@@ -24,7 +24,7 @@ func TestFormatEventLine(t *testing.T) {
 		{
 			name:   "message event success",
 			event:  MessageEvent{Severity: SeveritySuccess, Text: "done"},
-			want:   SuccessMarkerText() + " done",
+			want:   SuccessMarker() + " done",
 			wantOK: true,
 		},
 		{
@@ -60,7 +60,7 @@ func TestFormatEventLine(t *testing.T) {
 		{
 			name:   "status ready with detail",
 			event:  ContainerStatusEvent{Phase: "ready", Container: "localstack-aws", Detail: "abc123"},
-			want:   SuccessMarkerText() + " LocalStack ready (abc123)",
+			want:   SuccessMarker() + " LocalStack ready (abc123)",
 			wantOK: true,
 		},
 		{
@@ -120,7 +120,7 @@ func TestFormatEventLine(t *testing.T) {
 				ContainerName: "localstack-aws",
 				Uptime:        4*time.Minute + 23*time.Second,
 			},
-			want:   SuccessMarkerText() + " LocalStack AWS Emulator is running (localhost.localstack.cloud:4566)\n  UPTIME: 4m 23s · CONTAINER: localstack-aws · VERSION: 4.14.1",
+			want:   SuccessMarker() + " LocalStack AWS Emulator is running (localhost.localstack.cloud:4566)\n  UPTIME: 4m 23s · CONTAINER: localstack-aws · VERSION: 4.14.1",
 			wantOK: true,
 		},
 		{
@@ -129,7 +129,7 @@ func TestFormatEventLine(t *testing.T) {
 				EmulatorName: "LocalStack AWS Emulator",
 				Host:         "127.0.0.1:4566",
 			},
-			want:   SuccessMarkerText() + " LocalStack AWS Emulator is running (127.0.0.1:4566)",
+			want:   SuccessMarker() + " LocalStack AWS Emulator is running (127.0.0.1:4566)",
 			wantOK: true,
 		},
 		{
@@ -237,4 +237,3 @@ func TestFormatTableWidth(t *testing.T) {
 		}
 	})
 }
-
