@@ -170,6 +170,12 @@ func TestStartCommandSetsUpContainerCorrectly(t *testing.T) {
 			t.Skip("Docker daemon is not reachable via unix socket")
 		}
 
+		// Skip bind-mount assertion for non-standard sockets (Colima, OrbStack)
+		// since these communicate with VMs and cannot be bind-mounted
+		if dockerClient.DaemonHost() != "unix:///var/run/docker.sock" {
+			t.Skip("Docker daemon uses non-standard socket (Colima/OrbStack) - socket not bind-mounted")
+		}
+
 		assert.True(t, hasBindTarget(inspect.HostConfig.Binds, "/var/run/docker.sock"),
 			"expected Docker socket bind mount to /var/run/docker.sock, got: %v", inspect.HostConfig.Binds)
 
