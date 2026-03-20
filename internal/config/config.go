@@ -47,45 +47,57 @@ func InitFromPath(path string) error {
 }
 
 func Init() error {
-	// Reuse the same ordered path resolution used by ConfigFilePath.
-	existingPath, found, err := firstExistingConfigPath()
+	viper.Reset()
+	setDefaults()
+	viper.SetConfigName(configName)
+	viper.SetConfigType(configType)
+
+	dirs, err := configSearchDirs()
 	if err != nil {
 		return err
 	}
-	if found {
-		return loadConfig(existingPath)
+	for _, dir := range dirs {
+		viper.AddConfigPath(dir)
 	}
 
-	// No config found anywhere, create one using creation policy.
-	creationDir, err := configCreationDir()
-	if err != nil {
-		return err
-	}
-
-	if err := os.MkdirAll(creationDir, 0755); err != nil {
-		return fmt.Errorf("failed to create config directory: %w", err)
-	}
-
-	configPath := filepath.Join(creationDir, userConfigFileName)
-	f, err := os.OpenFile(configPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0644)
-	if err != nil {
-		if errors.Is(err, os.ErrExist) {
-			return loadConfig(configPath)
+	if err := viper.ReadInConfig(); err != nil {
+		var notFoundErr viper.ConfigFileNotFoundError
+		if !errors.As(err, &notFoundErr) {
+			return fmt.Errorf("failed to read config file: %w", err)
 		}
-		return fmt.Errorf("failed to create config file: %w", err)
-	}
-	_, writeErr := f.WriteString(defaultConfigTemplate)
-	closeErr := f.Close()
-	if writeErr != nil {
-		_ = os.Remove(configPath)
-		return fmt.Errorf("failed to write config file: %w", writeErr)
-	}
-	if closeErr != nil {
-		_ = os.Remove(configPath)
-		return fmt.Errorf("failed to close config file: %w", closeErr)
-	}
 
-	return loadConfig(configPath)
+		// No config found anywhere, create one using creation policy.
+		creationDir, err := configCreationDir()
+		if err != nil {
+			return err
+		}
+
+		if err := os.MkdirAll(creationDir, 0755); err != nil {
+			return fmt.Errorf("failed to create config directory: %w", err)
+		}
+
+		configPath := filepath.Join(creationDir, configFileName)
+		f, err := os.OpenFile(configPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0644)
+		if err != nil {
+			if errors.Is(err, os.ErrExist) {
+				return loadConfig(configPath)
+			}
+			return fmt.Errorf("failed to create config file: %w", err)
+		}
+		_, writeErr := f.WriteString(defaultConfigTemplate)
+		closeErr := f.Close()
+		if writeErr != nil {
+			_ = os.Remove(configPath)
+			return fmt.Errorf("failed to write config file: %w", writeErr)
+		}
+		if closeErr != nil {
+			_ = os.Remove(configPath)
+			return fmt.Errorf("failed to close config file: %w", closeErr)
+		}
+
+		return loadConfig(configPath)
+	}
+	return nil
 }
 
 func resolvedConfigPath() string {

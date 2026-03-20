@@ -15,9 +15,7 @@ const (
 	EmulatorSnowflake EmulatorType = "snowflake"
 	EmulatorAzure     EmulatorType = "azure"
 
-	dockerRegistry      = "localstack"
-	localConfigFileName = "lstk.toml"
-	userConfigFileName  = "config.toml"
+	dockerRegistry = "localstack"
 )
 
 var emulatorDisplayNames = map[EmulatorType]string{

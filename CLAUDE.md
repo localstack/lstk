@@ -43,8 +43,8 @@ lstk always writes diagnostic logs to `$CONFIG_DIR/lstk.log` (appends across run
 
 # Configuration
 
-Uses Viper with TOML format. lstk uses the first config file found in this order:
-1. `./lstk.toml` (project-local)
+Uses Viper with TOML format. lstk uses the first `config.toml` found in this order:
+1. `./.lstk/config.toml` (project-local)
 2. `$HOME/.config/lstk/config.toml`
 3. **macOS**: `$HOME/Library/Application Support/lstk/config.toml` / **Windows**: `%AppData%\lstk\config.toml`
 
