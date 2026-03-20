@@ -41,25 +41,25 @@ func TestProbeSocket_ReturnsEmptyForNoCandidates(t *testing.T) {
 }
 
 func TestSocketPath_ExtractsUnixPath(t *testing.T) {
-	t.Run("standard socket returns path", func(t *testing.T) {
+	t.Run("standard socket returns daemon path", func(t *testing.T) {
 		cli, err := client.NewClientWithOpts(client.WithHost("unix:///var/run/docker.sock"))
 		require.NoError(t, err)
 		rt := &DockerRuntime{client: cli}
 		assert.Equal(t, "/var/run/docker.sock", rt.SocketPath())
 	})
 
-	t.Run("non-standard socket returns empty", func(t *testing.T) {
+	t.Run("non-standard socket returns daemon path", func(t *testing.T) {
 		cli, err := client.NewClientWithOpts(client.WithHost("unix:///home/user/.colima/default/docker.sock"))
 		require.NoError(t, err)
 		rt := &DockerRuntime{client: cli}
-		assert.Equal(t, "", rt.SocketPath(), "non-standard sockets should return empty to skip bind-mount")
+		assert.Equal(t, "/var/run/docker.sock", rt.SocketPath())
 	})
 
-	t.Run("orbstack socket returns empty", func(t *testing.T) {
+	t.Run("orbstack socket returns daemon path", func(t *testing.T) {
 		cli, err := client.NewClientWithOpts(client.WithHost("unix:///Users/user/.orbstack/run/docker.sock"))
 		require.NoError(t, err)
 		rt := &DockerRuntime{client: cli}
-		assert.Equal(t, "", rt.SocketPath(), "non-standard sockets should return empty to skip bind-mount")
+		assert.Equal(t, "/var/run/docker.sock", rt.SocketPath())
 	})
 }
 
