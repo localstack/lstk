@@ -49,9 +49,9 @@ func formatStatusLine(e ContainerStatusEvent) (string, bool) {
 		return "Waiting for LocalStack to be ready...", true
 	case "ready":
 		if e.Detail != "" {
-			return fmt.Sprintf("LocalStack ready (%s)", e.Detail), true
+			return fmt.Sprintf("%s LocalStack ready (%s)", SuccessMarker(), e.Detail), true
 		}
-		return "LocalStack ready", true
+		return SuccessMarker() + " LocalStack ready", true
 	default:
 		if e.Detail != "" {
 			return fmt.Sprintf("LocalStack: %s (%s)", e.Phase, e.Detail), true
@@ -116,7 +116,7 @@ func formatAuthEvent(e AuthEvent) string {
 func formatMessageEvent(e MessageEvent) string {
 	switch e.Severity {
 	case SeveritySuccess:
-		return "> Success: " + e.Text
+		return SuccessMarker() + " " + e.Text
 	case SeverityNote:
 		return "> Note: " + e.Text
 	case SeverityWarning:
@@ -151,7 +151,7 @@ func formatErrorEvent(e ErrorEvent) string {
 
 func formatInstanceInfo(e InstanceInfoEvent) string {
 	var sb strings.Builder
-	sb.WriteString("✓ " + e.EmulatorName + " is running (" + e.Host + ")")
+	sb.WriteString(SuccessMarker() + " " + e.EmulatorName + " is running (" + e.Host + ")")
 	var meta []string
 	if e.Uptime > 0 {
 		meta = append(meta, "UPTIME: "+formatUptime(e.Uptime))

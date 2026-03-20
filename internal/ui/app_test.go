@@ -176,7 +176,7 @@ func TestAppMessageEventRendering(t *testing.T) {
 	if len(app.lines) != 1 {
 		t.Fatalf("expected 1 line, got %d", len(app.lines))
 	}
-	if !strings.Contains(app.lines[0].text, "Success:") || !strings.Contains(app.lines[0].text, "Done") {
+	if !strings.Contains(app.lines[0].text, output.SuccessMarker()) || !strings.Contains(app.lines[0].text, "Done") {
 		t.Fatalf("expected rendered success message, got: %q", app.lines[0].text)
 	}
 }

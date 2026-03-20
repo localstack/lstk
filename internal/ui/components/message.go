@@ -45,7 +45,8 @@ func messagePrefix(e output.MessageEvent) (string, string) {
 	prefix := styles.Secondary.Render("> ")
 	switch e.Severity {
 	case output.SeveritySuccess:
-		return "> Success:", prefix + styles.Success.Render("Success:")
+		checkmark := output.SuccessMarker()
+		return checkmark, styles.Success.Render(checkmark)
 	case output.SeverityNote:
 		return "> Note:", prefix + styles.Note.Render("Note:")
 	case output.SeverityWarning:
