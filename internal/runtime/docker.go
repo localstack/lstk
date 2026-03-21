@@ -149,7 +149,7 @@ func (d *DockerRuntime) PullImage(ctx context.Context, imageName string, progres
 func (d *DockerRuntime) Start(ctx context.Context, config ContainerConfig) (string, error) {
 	containerPort := nat.Port(config.ContainerPort)
 	exposedPorts := nat.PortSet{containerPort: struct{}{}}
-	portBindings := nat.PortMap{containerPort: []nat.PortBinding{{HostPort: config.Port}}}
+	portBindings := nat.PortMap{containerPort: []nat.PortBinding{{HostIP: "127.0.0.1", HostPort: config.Port}}}
 
 	for _, ep := range config.ExtraPorts {
 		proto := ep.Protocol
@@ -158,7 +158,7 @@ func (d *DockerRuntime) Start(ctx context.Context, config ContainerConfig) (stri
 		}
 		p := nat.Port(ep.ContainerPort + "/" + proto)
 		exposedPorts[p] = struct{}{}
-		portBindings[p] = []nat.PortBinding{{HostPort: ep.HostPort}}
+		portBindings[p] = []nat.PortBinding{{HostIP: "127.0.0.1", HostPort: ep.HostPort}}
 	}
 
 	var binds []string
