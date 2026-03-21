@@ -71,12 +71,38 @@ func probeSocket(candidates ...string) string {
 	return ""
 }
 
+// isVM reports whether the Docker daemon is running inside a VM (e.g., Colima, OrbStack).
+// In these cases the socket is remapped inside the VM and the container sees it at
+// /var/run/docker.sock even if the CLI connects via a user-scoped socket path.
+func (d *DockerRuntime) isVM() bool {
+	host := d.client.DaemonHost()
+	if strings.HasPrefix(host, "unix://") {
+		socketPath := strings.TrimPrefix(host, "unix://")
+		// Check for known VM-based Docker socket locations
+		home, _ := os.UserHomeDir()
+		vmSockets := []string{
+			filepath.Join(home, ".colima", "default", "docker.sock"),
+			filepath.Join(home, ".colima", "docker.sock"),
+			filepath.Join(home, ".orbstack", "run", "docker.sock"),
+		}
+		for _, vmSock := range vmSockets {
+			if socketPath == vmSock {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // SocketPath returns the daemon-visible Unix socket path to bind-mount into
 // containers so LocalStack can launch nested workloads such as Lambda functions.
-// Even when the CLI connects through a user-scoped socket (for example Colima),
-// the daemon resolves bind mounts inside its own environment where the socket is
-// exposed at /var/run/docker.sock.
+// For VM-based Docker (Colima, OrbStack) returns /var/run/docker.sock as the
+// socket is remapped inside the VM. For rootless or custom setups, returns the
+// actual socket path extracted from the daemon host.
 func (d *DockerRuntime) SocketPath() string {
+	if d.isVM() {
+		return "/var/run/docker.sock"
+	}
 	return socketPathFromHost(d.client.DaemonHost())
 }
 
@@ -85,7 +111,7 @@ func (d *DockerRuntime) SocketPath() string {
 // but exposes the socket at /var/run/docker.sock for Linux containers to bind-mount (via WSL2).
 func socketPathFromHost(host string) string {
 	if strings.HasPrefix(host, "unix://") {
-		return "/var/run/docker.sock"
+		return strings.TrimPrefix(host, "unix://")
 	}
 	if strings.HasPrefix(host, "npipe://") {
 		return "/var/run/docker.sock"
