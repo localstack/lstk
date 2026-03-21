@@ -55,6 +55,7 @@ Running `lstk` will automatically handle configuration setup and start LocalStac
 - **Reset / restart** — clear in-memory emulator state with `lstk reset`, or restart the emulator with `lstk restart`
 - **Extensions** — Git-style `lstk-<name>` executables extend the CLI with new commands
 - **Self-update** — check for and install the latest `lstk` release with `lstk update`
+- **Feedback submission** — send CLI feedback directly to the LocalStack team with `lstk feedback`
 - **Shell completions** — bash, zsh, and fish completions included
 - **Structured JSON output** — pass `--json` to a supported command (`stop`, `reset`, `update` today, more planned) for a machine-readable envelope instead of formatted text; see [docs/structured-output.md](docs/structured-output.md)
 
@@ -425,6 +426,9 @@ lstk cdk synth
 lstk sam build
 lstk sam deploy
 
+# Send feedback interactively
+lstk feedback
+
 ```
 
 ## Snapshots
@@ -516,4 +520,4 @@ See [docs/extensions-authoring.md](docs/extensions-authoring.md) for the extensi
 
 ## Reporting bugs
 
-Feedback is welcome! Use the repository issue tracker for bug reports or feature requests.
+Feedback is welcome! You can submit feedback from the CLI with the `feedback` command or use the repository issue tracker for bug reports and feature requests.
