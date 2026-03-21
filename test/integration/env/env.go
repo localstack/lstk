@@ -17,6 +17,7 @@ const (
 	AnalyticsEndpoint Key = "LSTK_ANALYTICS_ENDPOINT"
 	DisableEvents     Key = "LOCALSTACK_DISABLE_EVENTS"
 	Home              Key = "HOME"
+	TermProgram       Key = "TERM_PROGRAM"
 )
 
 func Get(key Key) string {
