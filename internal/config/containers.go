@@ -138,3 +138,14 @@ func (c *ContainerConfig) ProductName() (string, error) {
 	}
 	return productName, nil
 }
+
+// GetAWSContainer returns the AWS container config from the list of containers.
+// Returns nil if no AWS container is configured.
+func GetAWSContainer(containers []ContainerConfig) *ContainerConfig {
+	for i := range containers {
+		if containers[i].Type == EmulatorAWS {
+			return &containers[i]
+		}
+	}
+	return nil
+}

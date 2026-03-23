@@ -96,10 +96,10 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if a.pendingInput != nil {
 			if opt := resolveOption(a.pendingInput.Options, msg); opt != nil {
-				a.lines = appendLine(a.lines, styledLine{text: formatResolvedInput(*a.pendingInput, opt.Key)})
 				responseCmd := sendInputResponseCmd(a.pendingInput.ResponseCh, output.InputResponse{SelectedKey: opt.Key})
 				a.pendingInput = nil
-				a.inputPrompt = a.inputPrompt.Hide()
+				a.inputPrompt = components.NewInputPrompt()
+				a.spinner = a.spinner.SetText("")
 				return a, responseCmd
 			}
 		}
@@ -293,27 +293,6 @@ func (a *App) flushBufferedLines() {
 		a.lines = appendLine(a.lines, line)
 	}
 	a.bufferedLines = nil
-}
-
-func formatResolvedInput(req output.UserInputRequestEvent, selectedKey string) string {
-	formatted := output.FormatPrompt(req.Prompt, req.Options)
-	firstLine := strings.Split(formatted, "\n")[0]
-
-	selected := selectedKey
-	hasLabels := false
-	for _, opt := range req.Options {
-		if opt.Label != "" {
-			hasLabels = true
-		}
-		if opt.Key == selectedKey && opt.Label != "" {
-			selected = opt.Label
-		}
-	}
-
-	if selected == "" || !hasLabels || selectedKey == "any" {
-		return firstLine
-	}
-	return fmt.Sprintf("%s %s", firstLine, selected)
 }
 
 // resolveOption finds the best matching option for a key event, in priority order:

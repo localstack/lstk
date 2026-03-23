@@ -207,7 +207,7 @@ func TestStartCommandSetsUpContainerCorrectly(t *testing.T) {
 	t.Run("http health endpoint", func(t *testing.T) {
 		resp, err := http.Get("http://localhost.localstack.cloud:4566/_localstack/health")
 		require.NoError(t, err)
-		defer func() { assert.NoError(t, resp.Body.Close()) }()
+		t.Cleanup(func() { _ = resp.Body.Close() })
 		assert.Equal(t, http.StatusOK, resp.StatusCode)
 	})
 
@@ -221,7 +221,7 @@ func TestStartCommandSetsUpContainerCorrectly(t *testing.T) {
 		}
 		resp, err := client.Get("https://localhost.localstack.cloud/_localstack/health")
 		require.NoError(t, err)
-		defer func() { assert.NoError(t, resp.Body.Close()) }()
+		t.Cleanup(func() { _ = resp.Body.Close() })
 		assert.Equal(t, http.StatusOK, resp.StatusCode)
 	})
 }

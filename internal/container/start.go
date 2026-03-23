@@ -190,7 +190,7 @@ func Start(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts Start
 	// Maps emulator types to their post-start setup functions.
 	// Add an entry here to run setup for a new emulator type (e.g. Azure, Snowflake).
 	setups := map[config.EmulatorType]postStartSetupFunc{
-		config.EmulatorAWS: awsconfig.Setup,
+		config.EmulatorAWS: awsconfig.EnsureProfile,
 	}
 	return runPostStartSetups(ctx, sink, opts.Containers, interactive, opts.LocalStackHost, opts.WebAppURL, setups)
 }
