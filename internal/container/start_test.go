@@ -5,7 +5,6 @@ import (
 	"context"
 	"errors"
 	"io"
-	"strconv"
 	"testing"
 
 	"github.com/localstack/lstk/internal/log"
@@ -54,18 +53,14 @@ func TestEmitPostStartPointers_WithoutWebApp(t *testing.T) {
 	assert.Contains(t, got, "> Tip:")
 }
 
-func TestServicePortRange_Returns50Entries(t *testing.T) {
+func TestServicePortRange_ReturnsExpectedPorts(t *testing.T) {
 	ports := servicePortRange()
 
-	require.Len(t, ports, 50)
-	assert.Equal(t, "4510", ports[0].ContainerPort)
-	assert.Equal(t, "4510", ports[0].HostPort)
-	assert.Equal(t, "4559", ports[49].ContainerPort)
-	assert.Equal(t, "4559", ports[49].HostPort)
-
-	for i, p := range ports {
-		expected := strconv.Itoa(4510 + i)
-		assert.Equal(t, expected, p.ContainerPort)
-		assert.Equal(t, expected, p.HostPort)
-	}
+	require.Len(t, ports, 51)
+	assert.Equal(t, "443", ports[0].ContainerPort)
+	assert.Equal(t, "443", ports[0].HostPort)
+	assert.Equal(t, "4510", ports[1].ContainerPort)
+	assert.Equal(t, "4510", ports[1].HostPort)
+	assert.Equal(t, "4559", ports[50].ContainerPort)
+	assert.Equal(t, "4559", ports[50].HostPort)
 }

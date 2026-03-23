@@ -160,7 +160,7 @@ func TestStartCommandSetsUpContainerCorrectly(t *testing.T) {
 
 	t.Run("environment variables", func(t *testing.T) {
 		envVars := containerEnvToMap(inspect.Config.Env)
-		assert.Equal(t, ":4566", envVars["GATEWAY_LISTEN"])
+		assert.Equal(t, ":4566,:443", envVars["GATEWAY_LISTEN"])
 		assert.Equal(t, containerName, envVars["MAIN_CONTAINER_NAME"])
 		assert.NotEmpty(t, envVars["LOCALSTACK_AUTH_TOKEN"])
 	})
@@ -212,7 +212,8 @@ func TestStartCommandSetsUpContainerCorrectly(t *testing.T) {
 	})
 
 	t.Run("https health endpoint", func(t *testing.T) {
-		// LocalStack uses a self-signed certificate for HTTPS.
+		// LS certificate is not in system trust store
+		// But cert validity is out of scope here: use InsecureSkipVerify
 		client := &http.Client{
 			Transport: &http.Transport{
 				TLSClientConfig: &tls.Config{InsecureSkipVerify: true},

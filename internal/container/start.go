@@ -124,7 +124,7 @@ func Start(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts Start
 		containerName := c.Name()
 		env := append(resolvedEnv,
 			"LOCALSTACK_AUTH_TOKEN="+token,
-			"GATEWAY_LISTEN=:4566",
+			"GATEWAY_LISTEN=:4566,:443",
 			"MAIN_CONTAINER_NAME="+containerName,
 		)
 
