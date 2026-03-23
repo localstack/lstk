@@ -1,6 +1,7 @@
 package runtime
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -55,16 +56,23 @@ func TestSocketPath_ReturnsEmptyForTCPHost(t *testing.T) {
 	assert.Equal(t, "", rt.SocketPath())
 }
 
-func TestWindowsDockerStartCommand_PowerShell(t *testing.T) {
+func TestWindowsDockerStartCommand_DockerAvailable(t *testing.T) {
+	lookPath := func(string) (string, error) { return "/usr/bin/docker", nil }
+	assert.Equal(t, "docker desktop start", windowsDockerStartCommand(func(string) string { return "" }, lookPath))
+}
+
+func TestWindowsDockerStartCommand_PowerShellFallback(t *testing.T) {
+	lookPath := func(string) (string, error) { return "", errors.New("not found") }
 	getenv := func(key string) string {
 		if key == "PSModulePath" {
 			return `C:\Windows\System32\WindowsPowerShell\v1.0\Modules`
 		}
 		return ""
 	}
-	assert.Equal(t, "Start-Process 'Docker Desktop'", windowsDockerStartCommand(getenv))
+	assert.Equal(t, `& 'C:\Program Files\Docker\Docker\Docker Desktop.exe'`, windowsDockerStartCommand(getenv, lookPath))
 }
 
-func TestWindowsDockerStartCommand_Cmd(t *testing.T) {
-	assert.Equal(t, `start "" "Docker Desktop"`, windowsDockerStartCommand(func(string) string { return "" }))
+func TestWindowsDockerStartCommand_CmdFallback(t *testing.T) {
+	lookPath := func(string) (string, error) { return "", errors.New("not found") }
+	assert.Equal(t, `"C:\Program Files\Docker\Docker\Docker Desktop.exe"`, windowsDockerStartCommand(func(string) string { return "" }, lookPath))
 }

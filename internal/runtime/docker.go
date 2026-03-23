@@ -7,6 +7,7 @@ import (
 	"io"
 	"log"
 	"os"
+	"os/exec"
 	"path/filepath"
 	stdruntime "runtime"
 	"strconv"
@@ -90,7 +91,7 @@ func (d *DockerRuntime) EmitUnhealthyError(sink output.Sink, err error) {
 	case "linux":
 		actions = append([]output.ErrorAction{{Label: "Start Docker:", Value: "sudo systemctl start docker"}}, actions...)
 	case "windows":
-		actions = append([]output.ErrorAction{{Label: "Start Docker Desktop:", Value: windowsDockerStartCommand(os.Getenv)}}, actions...)
+		actions = append([]output.ErrorAction{{Label: "Start Docker Desktop:", Value: windowsDockerStartCommand(os.Getenv, exec.LookPath)}}, actions...)
 		// Suppress the raw error: on Windows it's a named-pipe message that users can't act on.
 		summary = ""
 	}
@@ -102,11 +103,16 @@ func (d *DockerRuntime) EmitUnhealthyError(sink output.Sink, err error) {
 }
 
 // PSModulePath is always set by PowerShell and never by cmd.exe; use it to pick the right start command.
-func windowsDockerStartCommand(getenv func(string) string) string {
-	if getenv("PSModulePath") != "" {
-		return "Start-Process 'Docker Desktop'"
+// Prefers "docker desktop start" (documented CLI method); falls back to the full executable path.
+func windowsDockerStartCommand(getenv func(string) string, lookPath func(string) (string, error)) string {
+	if _, err := lookPath("docker"); err == nil {
+		return "docker desktop start"
 	}
-	return `start "" "Docker Desktop"`
+	const exePath = `C:\Program Files\Docker\Docker\Docker Desktop.exe`
+	if getenv("PSModulePath") != "" {
+		return "& '" + exePath + "'"
+	}
+	return `"` + exePath + `"`
 }
 
 func (d *DockerRuntime) PullImage(ctx context.Context, imageName string, progress chan<- PullProgress) error {

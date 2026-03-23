@@ -16,35 +16,16 @@ func windowsDockerErrorEnv() env.Environ {
 		With(env.Key("DOCKER_HOST"), "tcp://localhost:1")
 }
 
-// Verifies that with PSModulePath set, lstk suggests the PowerShell start command.
-func TestWindowsDockerErrorShowsPowerShellCommand(t *testing.T) {
+// Verifies that when docker is in PATH, lstk suggests "docker desktop start".
+func TestWindowsDockerErrorShowsDockerCLICommand(t *testing.T) {
 	if runtime.GOOS != "windows" {
 		t.Skip("Windows-only test")
 	}
 
-	environ := windowsDockerErrorEnv().
-		With(env.Key("PSModulePath"), `C:\Windows\System32\WindowsPowerShell\v1.0\Modules`)
-
-	stdout, _, err := runLstk(t, testContext(t), "", environ, "start")
+	stdout, _, err := runLstk(t, testContext(t), "", windowsDockerErrorEnv(), "start")
 	require.Error(t, err)
 	requireExitCode(t, 1, err)
-	assert.Contains(t, stdout, "Start-Process 'Docker Desktop'")
-	assert.NotContains(t, stdout, `start "" "Docker Desktop"`)
-}
-
-// Verifies that without PSModulePath, lstk suggests the cmd.exe start command.
-func TestWindowsDockerErrorShowsCmdCommand(t *testing.T) {
-	if runtime.GOOS != "windows" {
-		t.Skip("Windows-only test")
-	}
-
-	environ := windowsDockerErrorEnv()
-
-	stdout, _, err := runLstk(t, testContext(t), "", environ, "start")
-	require.Error(t, err)
-	requireExitCode(t, 1, err)
-	assert.Contains(t, stdout, `start "" "Docker Desktop"`)
-	assert.NotContains(t, stdout, "Start-Process 'Docker Desktop'")
+	assert.Contains(t, stdout, "docker desktop start")
 }
 
 // Verifies that the verbose Docker error message is suppressed on Windows.
@@ -53,9 +34,7 @@ func TestWindowsDockerErrorOmitsVerboseSummary(t *testing.T) {
 		t.Skip("Windows-only test")
 	}
 
-	environ := windowsDockerErrorEnv()
-
-	stdout, _, err := runLstk(t, testContext(t), "", environ, "start")
+	stdout, _, err := runLstk(t, testContext(t), "", windowsDockerErrorEnv(), "start")
 	require.Error(t, err)
 	requireExitCode(t, 1, err)
 	assert.Contains(t, stdout, "Docker is not available")
