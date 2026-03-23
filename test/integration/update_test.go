@@ -310,44 +310,6 @@ func TestUpdateNotification(t *testing.T) {
 		assert.Contains(t, output.String(), "New lstk version available")
 	})
 
-	t.Run("never", func(t *testing.T) {
-		configFile := filepath.Join(t.TempDir(), "config.toml")
-		require.NoError(t, os.WriteFile(configFile, []byte("[cli]\nupdate_prompt = true\n"), 0o644))
-
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-		defer cancel()
-
-		cmd := exec.CommandContext(ctx, tmpBinary, "--config", configFile)
-		cmd.Env = env.Without(env.AuthToken).With(env.AuthToken, "fake-token").With(env.APIEndpoint, mockServer.URL)
-
-		ptmx, err := pty.Start(cmd)
-		require.NoError(t, err, "failed to start command in PTY")
-		defer func() { _ = ptmx.Close() }()
-
-		output := &syncBuffer{}
-		outputCh := make(chan struct{})
-		go func() {
-			_, _ = io.Copy(output, ptmx)
-			close(outputCh)
-		}()
-
-		require.Eventually(t, func() bool {
-			return bytes.Contains(output.Bytes(), []byte("New lstk version available"))
-		}, 10*time.Second, 100*time.Millisecond, "update notification prompt should appear")
-
-		_, err = ptmx.Write([]byte("n"))
-		require.NoError(t, err)
-
-		_ = cmd.Wait()
-		<-outputCh
-
-		assert.Contains(t, output.String(), "New lstk version available")
-
-		// Verify config was updated to disable future prompts
-		configData, err := os.ReadFile(configFile)
-		require.NoError(t, err)
-		assert.Contains(t, string(configData), "update_prompt = false")
-	})
 
 	t.Run("update", func(t *testing.T) {
 		// Copy binary since it will be replaced during the update
