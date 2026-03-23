@@ -2,8 +2,10 @@ package integration_test
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"net"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -158,7 +160,7 @@ func TestStartCommandSetsUpContainerCorrectly(t *testing.T) {
 
 	t.Run("environment variables", func(t *testing.T) {
 		envVars := containerEnvToMap(inspect.Config.Env)
-		assert.Equal(t, ":4566", envVars["GATEWAY_LISTEN"])
+		assert.Equal(t, ":4566,:443", envVars["GATEWAY_LISTEN"])
 		assert.Equal(t, containerName, envVars["MAIN_CONTAINER_NAME"])
 		assert.NotEmpty(t, envVars["LOCALSTACK_AUTH_TOKEN"])
 	})
@@ -191,9 +193,36 @@ func TestStartCommandSetsUpContainerCorrectly(t *testing.T) {
 		assert.Equal(t, "4566", mainBindings[0].HostPort)
 	})
 
+	t.Run("https port", func(t *testing.T) {
+		httpsBindings := inspect.HostConfig.PortBindings[nat.Port("443/tcp")]
+		require.NotEmpty(t, httpsBindings, "port 443/tcp should be bound")
+		assert.Equal(t, "443", httpsBindings[0].HostPort)
+	})
+
 	t.Run("volume mount", func(t *testing.T) {
 		assert.True(t, hasBindTarget(inspect.HostConfig.Binds, "/var/lib/localstack"),
 			"expected volume bind mount to /var/lib/localstack, got: %v", inspect.HostConfig.Binds)
+	})
+
+	t.Run("http health endpoint", func(t *testing.T) {
+		resp, err := http.Get("http://localhost.localstack.cloud:4566/_localstack/health")
+		require.NoError(t, err)
+		defer resp.Body.Close()
+		assert.Equal(t, http.StatusOK, resp.StatusCode)
+	})
+
+	t.Run("https health endpoint", func(t *testing.T) {
+		// LS certificate is not in system trust store
+		// But cert validity is out of scope here: use InsecureSkipVerify
+		client := &http.Client{
+			Transport: &http.Transport{
+				TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+			},
+		}
+		resp, err := client.Get("https://localhost.localstack.cloud/_localstack/health")
+		require.NoError(t, err)
+		defer resp.Body.Close()
+		assert.Equal(t, http.StatusOK, resp.StatusCode)
 	})
 }
 

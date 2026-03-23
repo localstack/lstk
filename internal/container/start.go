@@ -124,7 +124,7 @@ func Start(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts Start
 		containerName := c.Name()
 		env := append(resolvedEnv,
 			"LOCALSTACK_AUTH_TOKEN="+token,
-			"GATEWAY_LISTEN=:4566",
+			"GATEWAY_LISTEN=:4566,:443",
 			"MAIN_CONTAINER_NAME="+containerName,
 		)
 
@@ -424,7 +424,7 @@ func hasDuplicateContainerTypes(containers []config.ContainerConfig) bool {
 func servicePortRange() []runtime.PortMapping {
 	const start = 4510
 	const end = 4559
-	var ports []runtime.PortMapping
+	ports := []runtime.PortMapping{{ContainerPort: "443", HostPort: "443"}}
 	for p := start; p <= end; p++ {
 		ps := strconv.Itoa(p)
 		ports = append(ports, runtime.PortMapping{ContainerPort: ps, HostPort: ps})
