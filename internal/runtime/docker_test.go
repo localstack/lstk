@@ -54,3 +54,17 @@ func TestSocketPath_ReturnsEmptyForTCPHost(t *testing.T) {
 
 	assert.Equal(t, "", rt.SocketPath())
 }
+
+func TestWindowsDockerStartCommand_PowerShell(t *testing.T) {
+	getenv := func(key string) string {
+		if key == "PSModulePath" {
+			return `C:\Windows\System32\WindowsPowerShell\v1.0\Modules`
+		}
+		return ""
+	}
+	assert.Equal(t, "Start-Process 'Docker Desktop'", windowsDockerStartCommand(getenv))
+}
+
+func TestWindowsDockerStartCommand_Cmd(t *testing.T) {
+	assert.Equal(t, `start "" "Docker Desktop"`, windowsDockerStartCommand(func(string) string { return "" }))
+}
