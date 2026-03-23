@@ -2,11 +2,8 @@ package integration_test
 
 import (
 	"fmt"
-	"net"
 	"net/http"
 	"net/http/httptest"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
@@ -85,7 +82,6 @@ func TestStatusCommandWorksWithNonDefaultPort(t *testing.T) {
 
 	ctx := testContext(t)
 
-	// The mock server is assigned a random free port (guaranteed not to conflict).
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/_localstack/health":
@@ -99,20 +95,10 @@ func TestStatusCommandWorksWithNonDefaultPort(t *testing.T) {
 	}))
 	defer server.Close()
 
-	// Extract the port so we can bind it to the container.
-	_, mockPort, err := net.SplitHostPort(server.Listener.Addr().String())
-	require.NoError(t, err)
+	startTestContainer(t, ctx)
 
-	// Simulates starting LocalStack on a non-default host port.
-	startTestContainer(t, ctx, mockPort)
-
-	// Write a config with the default port 4566
-	// Simulates the user changing the config port after starting the container
-	configContent := "[[containers]]\ntype = \"aws\"\ntag = \"latest\"\nport = \"4566\"\n"
-	configFile := filepath.Join(t.TempDir(), "config.toml")
-	require.NoError(t, os.WriteFile(configFile, []byte(configContent), 0644))
-
-	stdout, stderr, err := runLstk(t, ctx, "", nil, "--config", configFile, "status")
+	host := strings.TrimPrefix(server.URL, "http://")
+	stdout, stderr, err := runLstk(t, ctx, "", env.With(env.LocalStackHost, host), "status")
 	require.NoError(t, err, "lstk status failed: %s", stderr)
 	assert.Contains(t, stdout, "4.14.1")
 }
