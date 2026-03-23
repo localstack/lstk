@@ -88,8 +88,10 @@ func TestSocketPath_VMDetection(t *testing.T) {
 		require.NoError(t, os.MkdirAll(filepath.Dir(colimaSock), 0o755))
 		f, err := os.Create(colimaSock)
 		require.NoError(t, err)
-		f.Close()
-		defer os.Remove(colimaSock)
+		require.NoError(t, f.Close())
+		t.Cleanup(func() {
+			require.NoError(t, os.Remove(colimaSock))
+		})
 
 		cli, err := client.NewClientWithOpts(client.WithHost("unix://" + colimaSock))
 		require.NoError(t, err)
@@ -102,8 +104,10 @@ func TestSocketPath_VMDetection(t *testing.T) {
 		require.NoError(t, os.MkdirAll(filepath.Dir(orbstackSock), 0o755))
 		f, err := os.Create(orbstackSock)
 		require.NoError(t, err)
-		f.Close()
-		defer os.Remove(orbstackSock)
+		require.NoError(t, f.Close())
+		t.Cleanup(func() {
+			require.NoError(t, os.Remove(orbstackSock))
+		})
 
 		cli, err := client.NewClientWithOpts(client.WithHost("unix://" + orbstackSock))
 		require.NoError(t, err)
@@ -115,7 +119,9 @@ func TestSocketPath_VMDetection(t *testing.T) {
 		// Use a non-VM socket path (short path to avoid Docker client limit)
 		rootlessSock := "/tmp/lstk-docker.sock"
 		require.NoError(t, os.WriteFile(rootlessSock, nil, 0o600))
-		defer os.Remove(rootlessSock)
+		t.Cleanup(func() {
+			require.NoError(t, os.Remove(rootlessSock))
+		})
 
 		cli, err := client.NewClientWithOpts(client.WithHost("unix://" + rootlessSock))
 		require.NoError(t, err)
