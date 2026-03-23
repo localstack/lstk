@@ -72,7 +72,7 @@ jobs:
           path: test-results.xml
 
       - name: Test report
-        uses: dorny/test-reporter@v2
+        uses: dorny/test-reporter@v3
         if: always()
         with:
           name: Unit Test Results
@@ -120,7 +120,7 @@ jobs:
           path: test-integration-results.xml
 
       - name: Test report
-        uses: dorny/test-reporter@v2
+        uses: dorny/test-reporter@v3
         if: always()
         with:
           name: Integration Test Results (${{ matrix.os }})
