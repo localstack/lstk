@@ -71,7 +71,7 @@ func (mr *MockRuntimeMockRecorder) EmitUnhealthyError(sink, err any) *gomock.Cal
 }
 
 // GetBoundPort mocks base method.
-func (m *MockRuntime) GetBoundPort(ctx context.Context, containerName string, containerPort string) (string, error) {
+func (m *MockRuntime) GetBoundPort(ctx context.Context, containerName, containerPort string) (string, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetBoundPort", ctx, containerName, containerPort)
 	ret0, _ := ret[0].(string)
@@ -98,6 +98,21 @@ func (m *MockRuntime) GetImageVersion(ctx context.Context, imageName string) (st
 func (mr *MockRuntimeMockRecorder) GetImageVersion(ctx, imageName any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetImageVersion", reflect.TypeOf((*MockRuntime)(nil).GetImageVersion), ctx, imageName)
+}
+
+// HasImage mocks base method.
+func (m *MockRuntime) HasImage(ctx context.Context, image string) (bool, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "HasImage", ctx, image)
+	ret0, _ := ret[0].(bool)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// HasImage indicates an expected call of HasImage.
+func (mr *MockRuntimeMockRecorder) HasImage(ctx, image any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "HasImage", reflect.TypeOf((*MockRuntime)(nil).HasImage), ctx, image)
 }
 
 // IsHealthy mocks base method.

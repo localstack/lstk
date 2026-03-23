@@ -5,6 +5,8 @@ import (
 	"context"
 	"errors"
 	"io"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/localstack/lstk/internal/log"
@@ -51,6 +53,80 @@ func TestEmitPostStartPointers_WithoutWebApp(t *testing.T) {
 	got := out.String()
 	assert.Contains(t, got, "• Endpoint: 127.0.0.1:4566\n")
 	assert.Contains(t, got, "> Tip:")
+}
+
+func TestNeedsImagePull_AlwaysPolicy(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockRT := runtime.NewMockRuntime(ctrl)
+	// HasImage should not be called for "always"
+	needs, err := needsImagePull(context.Background(), mockRT, "always", "test/image:latest")
+	require.NoError(t, err)
+	assert.True(t, needs)
+}
+
+func TestNeedsImagePull_NeverPolicy_ImageExists(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockRT := runtime.NewMockRuntime(ctrl)
+	mockRT.EXPECT().HasImage(gomock.Any(), "test/image:latest").Return(true, nil)
+
+	needs, err := needsImagePull(context.Background(), mockRT, "never", "test/image:latest")
+	require.NoError(t, err)
+	assert.False(t, needs)
+}
+
+func TestNeedsImagePull_NeverPolicy_ImageMissing(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockRT := runtime.NewMockRuntime(ctrl)
+	mockRT.EXPECT().HasImage(gomock.Any(), "test/image:latest").Return(false, nil)
+
+	_, err := needsImagePull(context.Background(), mockRT, "never", "test/image:latest")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "not found locally")
+}
+
+func TestNeedsImagePull_AutoPolicy_NoCacheImageMissing(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockRT := runtime.NewMockRuntime(ctrl)
+	// No cache file exists for this image, so shouldPull returns true
+	needs, err := needsImagePull(context.Background(), mockRT, "auto", "uncached/image:latest")
+	require.NoError(t, err)
+	assert.True(t, needs)
+}
+
+func TestNeedsImagePull_AutoPolicy_FreshCacheImageExists(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockRT := runtime.NewMockRuntime(ctrl)
+
+	image := "test-auto-fresh/image:latest"
+	require.NoError(t, recordPull(image))
+	t.Cleanup(func() {
+		dir, _ := pullCacheDir()
+		_ = os.Remove(filepath.Join(dir, sanitizeImageName(image)))
+	})
+
+	mockRT.EXPECT().HasImage(gomock.Any(), image).Return(true, nil)
+
+	needs, err := needsImagePull(context.Background(), mockRT, "auto", image)
+	require.NoError(t, err)
+	assert.False(t, needs)
+}
+
+func TestNeedsImagePull_AutoPolicy_FreshCacheImageRemoved(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockRT := runtime.NewMockRuntime(ctrl)
+
+	image := "test-auto-removed/image:latest"
+	require.NoError(t, recordPull(image))
+	t.Cleanup(func() {
+		dir, _ := pullCacheDir()
+		_ = os.Remove(filepath.Join(dir, sanitizeImageName(image)))
+	})
+
+	mockRT.EXPECT().HasImage(gomock.Any(), image).Return(false, nil)
+
+	needs, err := needsImagePull(context.Background(), mockRT, "auto", image)
+	require.NoError(t, err)
+	assert.True(t, needs, "should pull when image was removed externally despite fresh cache")
 }
 
 func TestServicePortRange_ReturnsExpectedPorts(t *testing.T) {

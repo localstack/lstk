@@ -13,10 +13,20 @@ import (
 //go:embed default_config.toml
 var defaultConfigTemplate string
 
+// ImageUpdatePolicy controls when lstk pulls container images during startup.
+type ImageUpdatePolicy string
+
+const (
+	ImageUpdateAuto   ImageUpdatePolicy = "auto"   // pull only if missing or older than TTL
+	ImageUpdateAlways ImageUpdatePolicy = "always"  // always pull
+	ImageUpdateNever  ImageUpdatePolicy = "never"   // never pull automatically
+)
+
 type Config struct {
 	Containers   []ContainerConfig            `mapstructure:"containers"`
 	Env          map[string]map[string]string `mapstructure:"env"`
 	UpdatePrompt bool                          `mapstructure:"update_prompt"`
+	ImageUpdate  ImageUpdatePolicy             `mapstructure:"image_update"`
 }
 
 func setDefaults() {
@@ -28,6 +38,7 @@ func setDefaults() {
 		},
 	})
 	viper.SetDefault("update_prompt", true)
+	viper.SetDefault("image_update", string(ImageUpdateAuto))
 }
 
 func loadConfig(path string) error {
@@ -122,6 +133,13 @@ func Get() (*Config, error) {
 		if err := cfg.Containers[i].Validate(); err != nil {
 			return nil, fmt.Errorf("invalid container config: %w", err)
 		}
+	}
+	switch cfg.ImageUpdate {
+	case ImageUpdateAuto, ImageUpdateAlways, ImageUpdateNever:
+	case "":
+		cfg.ImageUpdate = ImageUpdateAuto
+	default:
+		return nil, fmt.Errorf("invalid image_update value %q (must be auto, always, or never)", cfg.ImageUpdate)
 	}
 	return &cfg, nil
 }

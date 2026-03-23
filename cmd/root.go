@@ -44,6 +44,7 @@ func NewRootCmd(cfg *env.Env, tel *telemetry.Client, logger log.Logger) *cobra.C
 
 	root.PersistentFlags().String("config", "", "Path to config file")
 	root.PersistentFlags().BoolVar(&cfg.NonInteractive, "non-interactive", false, "Disable interactive mode")
+	root.Flags().BoolVar(&cfg.ForcePull, "pull", false, "Always pull images, ignoring cache")
 
 	configureHelp(root)
 
@@ -108,6 +109,11 @@ func startEmulator(ctx context.Context, rt runtime.Runtime, cfg *env.Env, tel *t
 		return fmt.Errorf("failed to get config: %w", err)
 	}
 
+	imageUpdate := appConfig.ImageUpdate
+	if cfg.ForcePull {
+		imageUpdate = config.ImageUpdateAlways
+	}
+
 	opts := container.StartOptions{
 		PlatformClient:   api.NewPlatformClient(cfg.APIEndpoint, logger),
 		AuthToken:        cfg.AuthToken,
@@ -116,6 +122,7 @@ func startEmulator(ctx context.Context, rt runtime.Runtime, cfg *env.Env, tel *t
 		LocalStackHost:   cfg.LocalStackHost,
 		Containers:       appConfig.Containers,
 		Env:              appConfig.Env,
+		ImageUpdate:      imageUpdate,
 		Logger:           logger,
 		Telemetry:        tel,
 	}

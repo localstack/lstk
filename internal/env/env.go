@@ -19,6 +19,7 @@ type Env struct {
 	AnalyticsEndpoint string
 
 	NonInteractive    bool
+	ForcePull         bool
 	GitHubToken       string
 }
 

@@ -1,6 +1,12 @@
 # lstk configuration file
 # Run 'lstk config path' to see where this file lives.
 
+# Controls when lstk pulls container images on startup.
+# "auto"   - pull only if the image is missing or older than 24 hours (default)
+# "always" - always pull the latest image
+# "never"  - never pull automatically (fail if image is missing)
+image_update = "auto"
+
 # Each [[containers]] block defines an emulator instance.
 # You can define multiple to run them side by side.
 [[containers]]

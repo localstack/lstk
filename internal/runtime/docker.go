@@ -296,6 +296,17 @@ func (d *DockerRuntime) GetBoundPort(ctx context.Context, containerName string, 
 	return bindings[0].HostPort, nil
 }
 
+func (d *DockerRuntime) HasImage(ctx context.Context, image string) (bool, error) {
+	_, err := d.client.ImageInspect(ctx, image)
+	if err != nil {
+		if errdefs.IsNotFound(err) {
+			return false, nil
+		}
+		return false, fmt.Errorf("failed to inspect image: %w", err)
+	}
+	return true, nil
+}
+
 func (d *DockerRuntime) GetImageVersion(ctx context.Context, imageName string) (string, error) {
 	inspect, err := d.client.ImageInspect(ctx, imageName)
 	if err != nil {

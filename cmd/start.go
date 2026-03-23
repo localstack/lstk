@@ -9,7 +9,7 @@ import (
 )
 
 func newStartCmd(cfg *env.Env, tel *telemetry.Client, logger log.Logger) *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:     "start",
 		Short:   "Start emulator",
 		Long:    "Start emulator and services.",
@@ -22,4 +22,6 @@ func newStartCmd(cfg *env.Env, tel *telemetry.Client, logger log.Logger) *cobra.
 			return runStart(cmd.Context(), cmd.Flags(), rt, cfg, tel, logger)
 		},
 	}
+	cmd.Flags().BoolVar(&cfg.ForcePull, "pull", false, "Always pull images, ignoring cache")
+	return cmd
 }

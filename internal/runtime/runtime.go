@@ -56,6 +56,8 @@ type Runtime interface {
 	Logs(ctx context.Context, containerID string, tail int) (string, error)
 	StreamLogs(ctx context.Context, containerID string, out io.Writer, follow bool) error
 	GetImageVersion(ctx context.Context, imageName string) (string, error)
+	// HasImage reports whether the given image exists locally.
+	HasImage(ctx context.Context, image string) (bool, error)
 	// GetBoundPort returns the host port bound to the given container port (e.g. "4566/tcp").
 	GetBoundPort(ctx context.Context, containerName string, containerPort string) (string, error)
 	SocketPath() string

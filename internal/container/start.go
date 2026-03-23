@@ -37,6 +37,7 @@ type StartOptions struct {
 	LocalStackHost   string
 	Containers       []config.ContainerConfig
 	Env              map[string]map[string]string
+	ImageUpdate      config.ImageUpdatePolicy
 	Logger           log.Logger
 	Telemetry        *telemetry.Client
 }
@@ -168,7 +169,7 @@ func Start(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts Start
 
 	// TODO validate license for tag "latest" without resolving the actual image version,
 	// and avoid pulling all images first
-	pulled, err := pullImages(ctx, rt, sink, tel, containers)
+	pulled, err := pullImages(ctx, rt, sink, tel, opts.ImageUpdate, containers)
 	if err != nil {
 		return err
 	}
@@ -226,12 +227,21 @@ func emitPostStartPointers(sink output.Sink, resolvedHost, webAppURL string) {
 	output.EmitSecondary(sink, tips[rand.IntN(len(tips))])
 }
 
-func pullImages(ctx context.Context, rt runtime.Runtime, sink output.Sink, tel *telemetry.Client, containers []runtime.ContainerConfig) (map[string]bool, error) {
+func pullImages(ctx context.Context, rt runtime.Runtime, sink output.Sink, tel *telemetry.Client, policy config.ImageUpdatePolicy, containers []runtime.ContainerConfig) (map[string]bool, error) {
 	pulled := make(map[string]bool, len(containers))
 	for _, c := range containers {
 		// Remove any existing stopped container with the same name
 		if err := rt.Remove(ctx, c.Name); err != nil && !errdefs.IsNotFound(err) {
 			return nil, fmt.Errorf("failed to remove existing container %s: %w", c.Name, err)
+		}
+
+		needsPull, err := needsImagePull(ctx, rt, policy, c.Image)
+		if err != nil {
+			return nil, fmt.Errorf("failed to check image status for %s: %w", c.Image, err)
+		}
+		if !needsPull {
+			output.EmitSuccess(sink, fmt.Sprintf("Using cached %s", c.Image))
+			continue
 		}
 
 		output.EmitSpinnerStart(sink, fmt.Sprintf("Pulling %s", c.Image))
@@ -252,10 +262,41 @@ func pullImages(ctx context.Context, rt runtime.Runtime, sink output.Sink, tel *
 			return nil, output.NewSilentError(fmt.Errorf("failed to pull image %s: %w", c.Image, err))
 		}
 		output.EmitSpinnerStop(sink)
+		if err := recordPull(c.Image); err != nil {
+			// Non-fatal: cache write failure shouldn't block startup
+			output.EmitWarning(sink, fmt.Sprintf("Failed to cache pull timestamp: %v", err))
+		}
 		output.EmitSuccess(sink, fmt.Sprintf("Pulled %s", c.Image))
 		pulled[c.Name] = true
 	}
 	return pulled, nil
+}
+
+// needsImagePull decides whether an image should be pulled based on the policy.
+func needsImagePull(ctx context.Context, rt runtime.Runtime, policy config.ImageUpdatePolicy, image string) (bool, error) {
+	switch policy {
+	case config.ImageUpdateAlways:
+		return true, nil
+	case config.ImageUpdateNever:
+		has, err := rt.HasImage(ctx, image)
+		if err != nil {
+			return false, err
+		}
+		if !has {
+			return false, fmt.Errorf("image %s not found locally and image_update is set to \"never\"", image)
+		}
+		return false, nil
+	default: // auto
+		if shouldPull(image, pullCacheTTL) {
+			return true, nil
+		}
+		has, err := rt.HasImage(ctx, image)
+		if err != nil {
+			return false, err
+		}
+		// Image was pulled recently but was removed externally — pull again
+		return !has, nil
+	}
 }
 
 func validateLicenses(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts StartOptions, tel *telemetry.Client, containers []runtime.ContainerConfig, token string) error {
