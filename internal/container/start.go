@@ -424,7 +424,7 @@ func hasDuplicateContainerTypes(containers []config.ContainerConfig) bool {
 func servicePortRange() []runtime.PortMapping {
 	const start = 4510
 	const end = 4559
-	var ports []runtime.PortMapping
+	ports := []runtime.PortMapping{{ContainerPort: "443", HostPort: "443"}}
 	for p := start; p <= end; p++ {
 		ps := strconv.Itoa(p)
 		ports = append(ports, runtime.PortMapping{ContainerPort: ps, HostPort: ps})

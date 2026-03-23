@@ -2,8 +2,10 @@ package integration_test
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"net"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -191,9 +193,35 @@ func TestStartCommandSetsUpContainerCorrectly(t *testing.T) {
 		assert.Equal(t, "4566", mainBindings[0].HostPort)
 	})
 
+	t.Run("https port", func(t *testing.T) {
+		httpsBindings := inspect.HostConfig.PortBindings[nat.Port("443/tcp")]
+		require.NotEmpty(t, httpsBindings, "port 443/tcp should be bound")
+		assert.Equal(t, "443", httpsBindings[0].HostPort)
+	})
+
 	t.Run("volume mount", func(t *testing.T) {
 		assert.True(t, hasBindTarget(inspect.HostConfig.Binds, "/var/lib/localstack"),
 			"expected volume bind mount to /var/lib/localstack, got: %v", inspect.HostConfig.Binds)
+	})
+
+	t.Run("http health endpoint", func(t *testing.T) {
+		resp, err := http.Get("http://localhost.localstack.cloud:4566/_localstack/health")
+		require.NoError(t, err)
+		defer resp.Body.Close()
+		assert.Equal(t, http.StatusOK, resp.StatusCode)
+	})
+
+	t.Run("https health endpoint", func(t *testing.T) {
+		// LocalStack uses a self-signed certificate for HTTPS.
+		client := &http.Client{
+			Transport: &http.Transport{
+				TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+			},
+		}
+		resp, err := client.Get("https://localhost.localstack.cloud/_localstack/health")
+		require.NoError(t, err)
+		defer resp.Body.Close()
+		assert.Equal(t, http.StatusOK, resp.StatusCode)
 	})
 }
 
