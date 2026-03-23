@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"strings"
 	"testing"
 
 	"github.com/localstack/lstk/internal/log"
@@ -63,4 +64,27 @@ func TestServicePortRange_ReturnsExpectedPorts(t *testing.T) {
 	assert.Equal(t, "4510", ports[1].HostPort)
 	assert.Equal(t, "4559", ports[50].ContainerPort)
 	assert.Equal(t, "4559", ports[50].HostPort)
+}
+
+func TestFilterHostEnv(t *testing.T) {
+	tests := []struct {
+		name     string
+		env      string
+		expected bool
+	}{
+		{"CI is included", "CI=true", true},
+		{"LOCALSTACK_DISABLE_EVENTS is included", "LOCALSTACK_DISABLE_EVENTS=1", true},
+		{"LOCALSTACK_HOST is included", "LOCALSTACK_HOST=0.0.0.0", true},
+		{"LOCALSTACK_AUTH_TOKEN is excluded", "LOCALSTACK_AUTH_TOKEN=secret", false},
+		{"PATH is excluded", "PATH=/usr/bin", false},
+		{"HOME is excluded", "HOME=/root", false},
+		{"LOCALSTACK_BUILD_VERSION is included", "LOCALSTACK_BUILD_VERSION=3.0.0", true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := strings.HasPrefix(tt.env, "CI=") || (strings.HasPrefix(tt.env, "LOCALSTACK_") && !strings.HasPrefix(tt.env, "LOCALSTACK_AUTH_TOKEN="))
+			assert.Equal(t, tt.expected, got)
+		})
+	}
 }

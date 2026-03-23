@@ -97,6 +97,13 @@ func Start(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts Start
 
 	tel := opts.Telemetry
 
+	var hostEnv []string
+	for _, e := range os.Environ() {
+		if strings.HasPrefix(e, "CI=") || (strings.HasPrefix(e, "LOCALSTACK_") && !strings.HasPrefix(e, "LOCALSTACK_AUTH_TOKEN=")) {
+			hostEnv = append(hostEnv, e)
+		}
+	}
+
 	containers := make([]runtime.ContainerConfig, len(opts.Containers))
 	for i, c := range opts.Containers {
 		image, err := c.Image()
@@ -128,6 +135,8 @@ func Start(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts Start
 			"GATEWAY_LISTEN=:4566,:443",
 			"MAIN_CONTAINER_NAME="+containerName,
 		)
+
+		env = append(env, hostEnv...)
 
 		var binds []runtime.BindMount
 		if socketPath := rt.SocketPath(); socketPath != "" {
