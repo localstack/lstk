@@ -80,8 +80,8 @@ func TestSocketPathFromHost_ExtractsUnixPath(t *testing.T) {
 }
 
 func TestSocketPath_VMDetection(t *testing.T) {
-	home, err := os.UserHomeDir()
-	require.NoError(t, err)
+	home := t.TempDir()
+	t.Setenv("HOME", home)
 
 	t.Run("colima socket exists returns remapped path", func(t *testing.T) {
 		colimaSock := filepath.Join(home, ".colima", "default", "docker.sock")
