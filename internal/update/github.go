@@ -37,22 +37,30 @@ func githubRequest(ctx context.Context, url, token string) (*http.Response, erro
 	return http.DefaultClient.Do(req)
 }
 
-func fetchLatestVersion(ctx context.Context, token string) (string, error) {
+func fetchLatestRelease(ctx context.Context, token string) (*githubRelease, error) {
 	resp, err := githubRequest(ctx, latestReleaseURL, token)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("GitHub API returned %s", resp.Status)
+		return nil, fmt.Errorf("GitHub API returned %s", resp.Status)
 	}
 
 	var release githubRelease
 	if err := json.NewDecoder(resp.Body).Decode(&release); err != nil {
-		return "", err
+		return nil, err
 	}
 
+	return &release, nil
+}
+
+func fetchLatestVersion(ctx context.Context, token string) (string, error) {
+	release, err := fetchLatestRelease(ctx, token)
+	if err != nil {
+		return "", err
+	}
 	return release.TagName, nil
 }
 

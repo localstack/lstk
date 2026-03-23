@@ -13,10 +13,15 @@ import (
 //go:embed default_config.toml
 var defaultConfigTemplate string
 
+type CLIConfig struct {
+	UpdatePrompt         bool   `mapstructure:"update_prompt"`
+	UpdateSkippedVersion string `mapstructure:"update_skipped_version"`
+}
+
 type Config struct {
-	Containers   []ContainerConfig            `mapstructure:"containers"`
-	Env          map[string]map[string]string `mapstructure:"env"`
-	UpdatePrompt bool                          `mapstructure:"update_prompt"`
+	Containers []ContainerConfig            `mapstructure:"containers"`
+	Env        map[string]map[string]string `mapstructure:"env"`
+	CLI        CLIConfig                    `mapstructure:"cli"`
 }
 
 func setDefaults() {
@@ -27,7 +32,8 @@ func setDefaults() {
 			"port": "4566",
 		},
 	})
-	viper.SetDefault("update_prompt", true)
+	viper.SetDefault("cli.update_prompt", true)
+	viper.SetDefault("cli.update_skipped_version", "")
 }
 
 func loadConfig(path string) error {
@@ -113,13 +119,27 @@ func Set(key string, value any) error {
 }
 
 func DisableUpdatePrompt() error {
-	return Set("update_prompt", false)
+	return Set("cli.update_prompt", false)
+}
+
+func SetUpdateSkippedVersion(version string) error {
+	return Set("cli.update_skipped_version", version)
+}
+
+func GetUpdateSkippedVersion() string {
+	return viper.GetString("cli.update_skipped_version")
 }
 
 func Get() (*Config, error) {
 	var cfg Config
 	if err := viper.Unmarshal(&cfg); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal config: %w", err)
+	}
+	if !viper.InConfig("cli.update_prompt") && viper.InConfig("update_prompt") {
+		cfg.CLI.UpdatePrompt = viper.GetBool("update_prompt")
+	}
+	if !viper.InConfig("cli.update_skipped_version") && viper.InConfig("update_skipped_version") {
+		cfg.CLI.UpdateSkippedVersion = viper.GetString("update_skipped_version")
 	}
 	for i := range cfg.Containers {
 		if err := cfg.Containers[i].Validate(); err != nil {

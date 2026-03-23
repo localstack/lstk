@@ -14,6 +14,7 @@ func RenderMessage(e output.MessageEvent) string {
 
 func RenderWrappedMessage(e output.MessageEvent, width int) string {
 	prefixText, prefix := messagePrefix(e)
+
 	if prefixText == "" {
 		style := styles.Message
 		if e.Severity == output.SeveritySecondary {

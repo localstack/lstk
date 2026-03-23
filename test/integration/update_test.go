@@ -247,7 +247,7 @@ func TestUpdateNotification(t *testing.T) {
 
 	t.Run("prompt_disabled", func(t *testing.T) {
 		configFile := filepath.Join(t.TempDir(), "config.toml")
-		require.NoError(t, os.WriteFile(configFile, []byte("update_prompt = false\n"), 0o644))
+		require.NoError(t, os.WriteFile(configFile, []byte("[cli]\nupdate_prompt = false\n"), 0o644))
 
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
@@ -278,7 +278,7 @@ func TestUpdateNotification(t *testing.T) {
 
 	t.Run("skip", func(t *testing.T) {
 		configFile := filepath.Join(t.TempDir(), "config.toml")
-		require.NoError(t, os.WriteFile(configFile, []byte("update_prompt = true\n"), 0o644))
+		require.NoError(t, os.WriteFile(configFile, []byte("[cli]\nupdate_prompt = true\n"), 0o644))
 
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
@@ -298,7 +298,7 @@ func TestUpdateNotification(t *testing.T) {
 		}()
 
 		require.Eventually(t, func() bool {
-			return bytes.Contains(output.Bytes(), []byte("new version is available"))
+			return bytes.Contains(output.Bytes(), []byte("New lstk version available"))
 		}, 10*time.Second, 100*time.Millisecond, "update notification prompt should appear")
 
 		_, err = ptmx.Write([]byte("s"))
@@ -307,12 +307,12 @@ func TestUpdateNotification(t *testing.T) {
 		_ = cmd.Wait()
 		<-outputCh
 
-		assert.Contains(t, output.String(), "Update available: 0.0.1")
+		assert.Contains(t, output.String(), "New lstk version available")
 	})
 
 	t.Run("never", func(t *testing.T) {
 		configFile := filepath.Join(t.TempDir(), "config.toml")
-		require.NoError(t, os.WriteFile(configFile, []byte("update_prompt = true\n"), 0o644))
+		require.NoError(t, os.WriteFile(configFile, []byte("[cli]\nupdate_prompt = true\n"), 0o644))
 
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
@@ -332,7 +332,7 @@ func TestUpdateNotification(t *testing.T) {
 		}()
 
 		require.Eventually(t, func() bool {
-			return bytes.Contains(output.Bytes(), []byte("new version is available"))
+			return bytes.Contains(output.Bytes(), []byte("New lstk version available"))
 		}, 10*time.Second, 100*time.Millisecond, "update notification prompt should appear")
 
 		_, err = ptmx.Write([]byte("n"))
@@ -341,7 +341,7 @@ func TestUpdateNotification(t *testing.T) {
 		_ = cmd.Wait()
 		<-outputCh
 
-		assert.Contains(t, output.String(), "Update available: 0.0.1")
+		assert.Contains(t, output.String(), "New lstk version available")
 
 		// Verify config was updated to disable future prompts
 		configData, err := os.ReadFile(configFile)
@@ -357,7 +357,7 @@ func TestUpdateNotification(t *testing.T) {
 		require.NoError(t, os.WriteFile(updateBinary, data, 0o755))
 
 		configFile := filepath.Join(t.TempDir(), "config.toml")
-		require.NoError(t, os.WriteFile(configFile, []byte("update_prompt = true\n"), 0o644))
+		require.NoError(t, os.WriteFile(configFile, []byte("[cli]\nupdate_prompt = true\n"), 0o644))
 
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 		defer cancel()
@@ -377,7 +377,7 @@ func TestUpdateNotification(t *testing.T) {
 		}()
 
 		require.Eventually(t, func() bool {
-			return bytes.Contains(output.Bytes(), []byte("new version is available"))
+			return bytes.Contains(output.Bytes(), []byte("New lstk version available"))
 		}, 10*time.Second, 100*time.Millisecond, "update notification prompt should appear")
 
 		_, err = ptmx.Write([]byte("u"))
@@ -388,7 +388,7 @@ func TestUpdateNotification(t *testing.T) {
 
 		out := output.String()
 		require.NoError(t, err, "update should succeed: %s", out)
-		assert.Contains(t, out, "Update available: 0.0.1")
+		assert.Contains(t, out, "New lstk version available")
 		assert.Contains(t, out, "Updated to")
 
 		// Verify the binary was actually replaced

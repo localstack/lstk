@@ -120,6 +120,26 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return a, tea.Quit
 		}
 		if a.pendingInput != nil {
+			if componentsUsesVerticalPrompt(a.inputPrompt, a.pendingInput.Options) {
+				switch msg.Type {
+				case tea.KeyUp:
+					a.inputPrompt = a.inputPrompt.SetSelectedIndex(a.inputPrompt.SelectedIndex() - 1)
+					return a, nil
+				case tea.KeyDown:
+					a.inputPrompt = a.inputPrompt.SetSelectedIndex(a.inputPrompt.SelectedIndex() + 1)
+					return a, nil
+				case tea.KeyEnter:
+					idx := a.inputPrompt.SelectedIndex()
+					if idx >= 0 && idx < len(a.pendingInput.Options) {
+						opt := a.pendingInput.Options[idx]
+						a.lines = appendLine(a.lines, styledLine{text: formatResolvedInput(*a.pendingInput, opt.Key)})
+						responseCmd := sendInputResponseCmd(a.pendingInput.ResponseCh, output.InputResponse{SelectedKey: opt.Key})
+						a.pendingInput = nil
+						a.inputPrompt = a.inputPrompt.Hide()
+						return a, responseCmd
+					}
+				}
+			}
 			if opt := resolveOption(a.pendingInput.Options, msg); opt != nil {
 				responseCmd := sendInputResponseCmd(a.pendingInput.ResponseCh, output.InputResponse{SelectedKey: opt.Key})
 				a.pendingInput = nil
@@ -317,6 +337,45 @@ func (a *App) flushBufferedLines() {
 	}
 	a.bufferedLines = nil
 }
+
+func formatResolvedInput(req output.UserInputRequestEvent, selectedKey string) string {
+	// Special handling for lstk update prompt
+	if len(req.Options) > 0 && strings.Contains(req.Options[0].Label, "Update now") {
+		checkmark := styles.Success.Render(output.SuccessMarker())
+		switch selectedKey {
+		case "u":
+			return checkmark + " Updating lstk..."
+		case "s":
+			return checkmark + " Skipped this version"
+		case "n":
+			return checkmark + " Won't ask again"
+		}
+	}
+
+	formatted := output.FormatPrompt(req.Prompt, req.Options)
+	firstLine := strings.Split(formatted, "\n")[0]
+
+	selected := selectedKey
+	hasLabels := false
+	for _, opt := range req.Options {
+		if opt.Label != "" {
+			hasLabels = true
+		}
+		if opt.Key == selectedKey && opt.Label != "" {
+			selected = opt.Label
+		}
+	}
+
+	if selected == "" || !hasLabels || selectedKey == "any" {
+		return firstLine
+	}
+	return fmt.Sprintf("%s %s", firstLine, selected)
+}
+
+func componentsUsesVerticalPrompt(prompt components.InputPrompt, options []output.InputOption) bool {
+	return prompt.Visible() && len(options) > 1 && strings.Contains(options[0].Label, "[")
+}
+
 
 // resolveOption finds the best matching option for a key event, in priority order:
 //  1. "any" — matches any keypress
