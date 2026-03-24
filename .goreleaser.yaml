@@ -9,6 +9,8 @@ before:
     - sh -c "go run . completion bash > completions/lstk.bash"
     - sh -c "go run . completion zsh > completions/lstk.zsh"
     - sh -c "go run . completion fish > completions/lstk.fish"
+    - mkdir -p manpages
+    - sh -c "go run . docs --format man --dir ./manpages"
 
 builds:
   - id: lstk
@@ -41,6 +43,7 @@ archives:
           - zip
     files:
       - completions/*
+      - manpages/*
 
 checksum:
   name_template: checksums.txt
