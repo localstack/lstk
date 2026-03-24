@@ -166,14 +166,20 @@ func Start(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts Start
 		return nil
 	}
 
-	// TODO validate license for tag "latest" without resolving the actual image version,
-	// and avoid pulling all images first
+	// Validate licenses before pulling where possible (pinned tags always; "latest" tags via catalog API).
+	// Returns containers that still need post-pull validation (catalog unavailable).
+	postPullContainers, err := tryPrePullLicenseValidation(ctx, sink, opts, tel, containers, token)
+	if err != nil {
+		return err
+	}
+
 	pulled, err := pullImages(ctx, rt, sink, tel, containers)
 	if err != nil {
 		return err
 	}
 
-	if err := validateLicenses(ctx, rt, sink, opts, tel, containers, token); err != nil {
+	// Catalog was unavailable for these; fall back to image inspection.
+	if err := validateLicensesFromImages(ctx, rt, sink, opts, tel, postPullContainers, token); err != nil {
 		return err
 	}
 
@@ -258,9 +264,46 @@ func pullImages(ctx context.Context, rt runtime.Runtime, sink output.Sink, tel *
 	return pulled, nil
 }
 
-func validateLicenses(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts StartOptions, tel *telemetry.Client, containers []runtime.ContainerConfig, token string) error {
+// Validates licenses before pulling where the version is known.
+// Pinned tags are validated immediately; "latest" tags are resolved via the catalog API.
+// Returns containers that couldn't be resolved (catalog unavailable) for post-pull validation.
+func tryPrePullLicenseValidation(ctx context.Context, sink output.Sink, opts StartOptions, tel *telemetry.Client, containers []runtime.ContainerConfig, token string) ([]runtime.ContainerConfig, error) {
+	var needsPostPull []runtime.ContainerConfig
 	for _, c := range containers {
-		if err := validateLicense(ctx, rt, sink, opts, tel, c, token); err != nil {
+		if c.Tag != "" && c.Tag != "latest" {
+			if err := validateLicense(ctx, sink, opts, tel, c, token); err != nil {
+				return nil, err
+			}
+			continue
+		}
+
+		apiCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+		v, err := opts.PlatformClient.GetLatestCatalogVersion(apiCtx, c.EmulatorType)
+		cancel()
+
+		if err != nil {
+			needsPostPull = append(needsPostPull, c)
+			continue
+		}
+
+		cWithVersion := c
+		cWithVersion.Tag = v
+		if err := validateLicense(ctx, sink, opts, tel, cWithVersion, token); err != nil {
+			return nil, err
+		}
+	}
+	return needsPostPull, nil
+}
+
+// Fallback path: inspects each pulled image for its version, then validates the license.
+func validateLicensesFromImages(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts StartOptions, tel *telemetry.Client, containers []runtime.ContainerConfig, token string) error {
+	for _, c := range containers {
+		v, err := rt.GetImageVersion(ctx, c.Image)
+		if err != nil {
+			return fmt.Errorf("could not resolve version from image %s: %w", c.Image, err)
+		}
+		c.Tag = v
+		if err := validateLicense(ctx, sink, opts, tel, c, token); err != nil {
 			return err
 		}
 	}
@@ -328,16 +371,8 @@ func emitPortInUseError(sink output.Sink, port string) {
 	})
 }
 
-func validateLicense(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts StartOptions, tel *telemetry.Client, containerConfig runtime.ContainerConfig, token string) error {
+func validateLicense(ctx context.Context, sink output.Sink, opts StartOptions, tel *telemetry.Client, containerConfig runtime.ContainerConfig, token string) error {
 	version := containerConfig.Tag
-	if version == "" || version == "latest" {
-		actualVersion, err := rt.GetImageVersion(ctx, containerConfig.Image)
-		if err != nil {
-			return fmt.Errorf("could not resolve version from image %s: %w", containerConfig.Image, err)
-		}
-		version = actualVersion
-	}
-
 	output.EmitStatus(sink, "validating license", containerConfig.Name, version)
 
 	hostname, _ := os.Hostname()
