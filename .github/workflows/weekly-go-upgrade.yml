@@ -27,6 +27,9 @@ jobs:
         run: |
           go get toolchain@latest
           go mod tidy
+          cd test/integration
+          go get go@latest
+          go mod tidy
 
       - name: Create pull request
         uses: peter-evans/create-pull-request@v8
