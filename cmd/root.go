@@ -185,6 +185,19 @@ func isInteractiveMode(cfg *env.Env) bool {
 	return !cfg.NonInteractive && ui.IsInteractive()
 }
 
+// checkRuntimeHealth checks if the runtime is healthy and emits an error
+// through the sink if not in interactive mode. Returns a SilentError to
+// suppress duplicate error printing.
+func checkRuntimeHealth(ctx context.Context, rt runtime.Runtime, cfg *env.Env) error {
+	if err := rt.IsHealthy(ctx); err != nil {
+		if !isInteractiveMode(cfg) {
+			rt.EmitUnhealthyError(output.NewPlainSink(os.Stdout), err)
+		}
+		return output.NewSilentError(err)
+	}
+	return nil
+}
+
 const maxLogSize = 1 << 20 // 1 MB
 
 func newLogger() (log.Logger, func(), error) {

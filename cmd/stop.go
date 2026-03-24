@@ -28,6 +28,9 @@ func newStopCmd(cfg *env.Env, tel *telemetry.Client) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if err := checkRuntimeHealth(cmd.Context(), rt, cfg); err != nil {
+				return err
+			}
 			appConfig, err := config.Get()
 			if err != nil {
 				return fmt.Errorf("failed to get config: %w", err)
