@@ -46,6 +46,23 @@ jobs:
           version: "~> v2"
           args: check
 
+  tidy:
+    name: Go Mod Tidy Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+
+      - name: Check go mod tidy
+        run: |
+          go mod tidy
+          git diff --exit-code go.mod go.sum
+
   test-unit:
     name: Unit Tests
     runs-on: ubuntu-latest

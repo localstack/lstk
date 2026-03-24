@@ -1,4 +1,4 @@
-name: Weekly Go Upgrade
+name: Weekly Go Toolchain Upgrade
 
 on:
   schedule:
@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   upgrade-go:
-    name: Upgrade Go Version
+    name: Upgrade Go Toolchain
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -23,9 +23,9 @@ jobs:
           go-version: stable
           check-latest: true
 
-      - name: Upgrade Go version
+      - name: Upgrade Go toolchain
         run: |
-          go get go@latest
+          go get toolchain@latest
           go mod tidy
 
       - name: Create pull request
@@ -34,12 +34,12 @@ jobs:
           branch: chore/weekly-go-upgrade
           author: "LocalStack Bot <localstack-bot@users.noreply.github.com>"
           committer: "LocalStack Bot <localstack-bot@users.noreply.github.com>"
-          commit-message: "chore(go): weekly Go upgrade"
-          title: "chore(go): weekly Go upgrade"
+          commit-message: "chore(go): weekly Go toolchain upgrade"
+          title: "chore(go): weekly Go toolchain upgrade"
           body: |
-            Automated weekly Go upgrade.
+            Automated weekly Go toolchain upgrade.
 
-            - Updates the `go` directive to the latest released Go version.
+            - Updates the `toolchain` directive to the latest released Go version.
             - Runs `go mod tidy` to keep module files consistent.
           labels: dependencies
           token: ${{ secrets.PRO_ACCESS_TOKEN }}

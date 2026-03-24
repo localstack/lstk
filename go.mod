@@ -1,6 +1,8 @@
 module github.com/localstack/lstk
 
-go 1.26.1
+go 1.25.0
+
+toolchain go1.26.1
 
 require (
 	github.com/charmbracelet/bubbles v1.0.0
