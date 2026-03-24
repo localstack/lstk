@@ -32,6 +32,7 @@ Note: Integration tests require `LOCALSTACK_AUTH_TOKEN` environment variable for
   - `output/` - Generic event and sink abstractions for CLI/TUI/non-interactive rendering
   - `ui/` - Bubble Tea views for interactive output
   - `update/` - Self-update logic: version check via GitHub API, binary/Homebrew/npm update paths, archive extraction
+  - `feedback/` - Feedback API client and metadata helpers used by `lstk feedback`
   - `log/` - Internal diagnostic logging (not for user-facing output — use `output/` for that)
 
 # Logging
@@ -57,6 +58,7 @@ Created automatically on first run with defaults. Supports emulator types (aws, 
 
 Environment variables:
 - `LOCALSTACK_AUTH_TOKEN` - Auth token (skips browser login if set)
+- `LSTK_API_ENDPOINT` - Override the LocalStack platform API endpoint (also used by `lstk feedback`)
 
 # Code Style
 

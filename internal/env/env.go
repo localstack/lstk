@@ -18,8 +18,8 @@ type Env struct {
 	ForceFileKeyring  bool
 	AnalyticsEndpoint string
 
-	NonInteractive    bool
-	GitHubToken       string
+	NonInteractive bool
+	GitHubToken    string
 }
 
 // Init initializes environment variable configuration and returns the result.

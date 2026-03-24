@@ -52,6 +52,7 @@ Running `lstk` will automatically handle configuration setup and start LocalStac
 - **Browser-based login** — authenticate via browser and store credentials securely in the system keyring
 - **AWS CLI profile** — optionally configure a `localstack` profile in `~/.aws/` after start
 - **Self-update** — check for and install the latest `lstk` release with `lstk update`
+- **Feedback submission** — send CLI feedback directly to the LocalStack team with `lstk feedback`
 - **Shell completions** — bash, zsh, and fish completions included
 
 ## Authentication
@@ -184,8 +185,11 @@ lstk update
 # Show resolved config file path
 lstk config path
 
+# Send feedback interactively
+lstk feedback
+
 ```
 
 ## Reporting bugs
 
-Feedback is welcome! Use the repository issue tracker for bug reports or feature requests.
+Feedback is welcome! You can submit feedback from the CLI with the `feedback` command or use the repository issue tracker for bug reports and feature requests.
