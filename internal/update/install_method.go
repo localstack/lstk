@@ -64,26 +64,3 @@ func classifyPath(resolved string) InstallMethod {
 
 	return InstallBinary
 }
-
-// npmProjectDir returns the project directory for a local npm install,
-// or empty string for a global install. A local install has a package.json
-// in the parent of the node_modules directory.
-func npmProjectDir(resolvedPath string) string {
-	// Walk up to find node_modules, then check for package.json one level above
-	dir := resolvedPath
-	for {
-		parent := filepath.Dir(dir)
-		if parent == dir {
-			break
-		}
-		if filepath.Base(dir) == "node_modules" {
-			pkgJSON := filepath.Join(parent, "package.json")
-			if _, err := os.Stat(pkgJSON); err == nil {
-				return parent
-			}
-			return ""
-		}
-		dir = parent
-	}
-	return ""
-}

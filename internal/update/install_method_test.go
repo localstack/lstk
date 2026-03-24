@@ -1,8 +1,6 @@
 package update
 
 import (
-	"os"
-	"path/filepath"
 	"testing"
 )
 
@@ -35,6 +33,11 @@ func TestClassifyPath(t *testing.T) {
 			want: InstallNPM,
 		},
 		{
+			name: "npm global install via asdf",
+			path: "/Users/geo/.asdf/installs/nodejs/22.12.0/lib/node_modules/@localstack/lstk_darwin_arm64/lstk",
+			want: InstallNPM,
+		},
+		{
 			name: "standalone binary in usr local bin",
 			path: "/usr/local/bin/lstk",
 			want: InstallBinary,
@@ -60,47 +63,4 @@ func TestClassifyPath(t *testing.T) {
 			}
 		})
 	}
-}
-
-func TestNpmProjectDir(t *testing.T) {
-	t.Parallel()
-
-	t.Run("local install with package.json", func(t *testing.T) {
-		t.Parallel()
-		dir := t.TempDir()
-		if err := os.WriteFile(filepath.Join(dir, "package.json"), []byte("{}"), 0o644); err != nil {
-			t.Fatal(err)
-		}
-		binaryPath := filepath.Join(dir, "node_modules", "@localstack", "lstk_darwin_arm64", "lstk")
-		if err := os.MkdirAll(filepath.Dir(binaryPath), 0o755); err != nil {
-			t.Fatal(err)
-		}
-
-		got := npmProjectDir(binaryPath)
-		if got != dir {
-			t.Fatalf("npmProjectDir() = %q, want %q", got, dir)
-		}
-	})
-
-	t.Run("global install without package.json", func(t *testing.T) {
-		t.Parallel()
-		dir := t.TempDir()
-		binaryPath := filepath.Join(dir, "lib", "node_modules", "@localstack", "lstk_darwin_arm64", "lstk")
-		if err := os.MkdirAll(filepath.Dir(binaryPath), 0o755); err != nil {
-			t.Fatal(err)
-		}
-
-		got := npmProjectDir(binaryPath)
-		if got != "" {
-			t.Fatalf("npmProjectDir() = %q, want empty string", got)
-		}
-	})
-
-	t.Run("non-npm path", func(t *testing.T) {
-		t.Parallel()
-		got := npmProjectDir("/usr/local/bin/lstk")
-		if got != "" {
-			t.Fatalf("npmProjectDir() = %q, want empty string", got)
-		}
-	})
 }

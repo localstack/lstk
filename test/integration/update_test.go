@@ -47,12 +47,19 @@ func requireNPM(t *testing.T) {
 	}
 }
 
-func TestUpdateNPMLocalInstall(t *testing.T) {
+func TestUpdateNPMInstall(t *testing.T) {
 	requireNPM(t)
+
+	// Skip if lstk is already installed globally (e.g., via Homebrew).
+	// npm install -g fails with EEXIST when it tries to create a symlink
+	// over an existing binary at the same path.
+	if path, err := exec.LookPath("lstk"); err == nil {
+		t.Skipf("lstk already installed at %s, would conflict with npm install -g", path)
+	}
 
 	ctx := testContext(t)
 
-	// Set up a fake local npm project.
+	// Set up a fake local npm project so we get a binary inside node_modules.
 	// On Windows, t.TempDir() may return a short 8.3 path (e.g. RUNNER~1)
 	// while the program resolves the long path. EvalSymlinks normalizes both.
 	projectDir, err := filepath.EvalSymlinks(t.TempDir())
@@ -93,7 +100,8 @@ func TestUpdateNPMLocalInstall(t *testing.T) {
 	out, err = buildCmd.CombinedOutput()
 	require.NoError(t, err, "go build failed: %s", string(out))
 
-	// Run the binary directly (not through npx) so os.Executable() resolves to the node_modules path
+	// Run the binary directly (not through npx) so os.Executable() resolves to the node_modules path.
+	// The update should always use `npm install -g` regardless of local/global context.
 	cmd := exec.CommandContext(ctx, nmBinaryPath, "update", "--non-interactive")
 	cmd.Dir = projectDir
 	stdout, err := cmd.CombinedOutput()
@@ -101,8 +109,7 @@ func TestUpdateNPMLocalInstall(t *testing.T) {
 
 	require.NoError(t, err, "lstk update failed: %s", stdoutStr)
 	requireExitCode(t, 0, err)
-	assert.Contains(t, stdoutStr, "npm (local)", "should detect local npm install")
-	assert.Contains(t, stdoutStr, projectDir, "should show the project directory")
+	assert.Contains(t, stdoutStr, "npm install -g", "should always use global install")
 	assert.Contains(t, stdoutStr, "Updated to", "should complete the update")
 }
 

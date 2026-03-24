@@ -63,13 +63,8 @@ func applyUpdate(ctx context.Context, sink output.Sink, latest, githubToken stri
 		output.EmitNote(sink, "Installed through Homebrew, running brew upgrade")
 		err = updateHomebrew(ctx, sink)
 	case InstallNPM:
-		projectDir := npmProjectDir(info.ResolvedPath)
-		if projectDir != "" {
-			output.EmitNote(sink, fmt.Sprintf("Installed through npm (local), running npm install in %s", projectDir))
-		} else {
-			output.EmitNote(sink, "Installed through npm (global), running npm install -g")
-		}
-		err = updateNPM(ctx, sink, projectDir)
+		output.EmitNote(sink, "Installed through npm, running npm install -g")
+		err = updateNPM(ctx, sink)
 	default:
 		output.EmitSpinnerStart(sink, "Downloading update")
 		err = updateBinary(ctx, latest, githubToken)
