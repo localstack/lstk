@@ -134,7 +134,8 @@ func TestStartSkipsAWSProfilePromptWhenAlreadyConfigured(t *testing.T) {
 	_ = cmd.Process.Kill()
 	err = cmd.Wait()
 	<-outputCh
-	require.NoError(t, err, "lstk start should exit after kill")
+	// Process was killed, so we expect an error from Wait()
+	require.Error(t, err, "lstk start should exit after kill")
 
 	assert.NotContains(t, out.String(), awsSetupPrompt,
 		"profile prompt should not appear when profile is already correctly configured")

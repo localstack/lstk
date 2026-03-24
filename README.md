@@ -83,6 +83,14 @@ To see which config file is currently in use:
 lstk config path
 ```
 
+You can also configure AWS CLI integration:
+
+```bash
+lstk setup aws
+```
+
+This sets up a `localstack` profile in `~/.aws/config` and `~/.aws/credentials`.
+
 You can also point `lstk` at a specific config file for any command:
 
 ```bash
@@ -183,6 +191,9 @@ lstk update
 
 # Show resolved config file path
 lstk config path
+
+# Set up AWS CLI profile integration
+lstk setup aws
 
 ```
 
