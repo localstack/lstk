@@ -25,7 +25,7 @@ var emulatorDisplayNames = map[EmulatorType]string{
 }
 
 var emulatorImages = map[EmulatorType]string{
-	EmulatorAWS: "localstack-pro",
+	EmulatorAWS: "localstack",
 }
 
 var emulatorHealthPaths = map[EmulatorType]string{

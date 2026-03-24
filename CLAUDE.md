@@ -72,6 +72,7 @@ Environment variables:
 
 - Prefer integration tests to cover most cases. Use unit tests when integration tests are not practical.
 - **When fixing a bug, always add an integration test** that fails before the fix and passes after. This prevents regressions and documents the exact scenario that was broken.
+- Integration tests live in `test/integration/` and test the compiled binary as a black box — do not import internal packages from the binary in integration tests. Use hardcoded expected values (e.g. product names, image names) rather than deriving them from internal code.
 - Integration tests that run the CLI binary with Bubble Tea must use a PTY (`github.com/creack/pty`) since Bubble Tea requires a terminal. Use `pty.Start(cmd)` instead of `cmd.CombinedOutput()`, read output with `io.Copy()`, and send keystrokes by writing to the PTY (e.g., `ptmx.Write([]byte("\r"))` for Enter).
 
 # Output Routing and Events

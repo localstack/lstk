@@ -90,7 +90,7 @@ func TestErrorDisplay_TitleWrapsToWidth(t *testing.T) {
 	t.Parallel()
 
 	e := NewErrorDisplay()
-	longTitle := "license validation failed for localstack-pro:4.14.1.dev206: license validation failed: your token is invalid"
+	longTitle := "license validation failed for test-product:1.2.3: license validation failed: your token is invalid"
 	e = e.Show(output.ErrorEvent{Title: longTitle})
 
 	const maxWidth = 50

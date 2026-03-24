@@ -450,7 +450,7 @@ func TestAppPullProgressShowsOnPullingPhase(t *testing.T) {
 
 	app := NewApp("dev", "", "", nil)
 
-	model, _ := app.Update(output.ContainerStatusEvent{Phase: "pulling", Container: "localstack/localstack-pro:latest"})
+	model, _ := app.Update(output.ContainerStatusEvent{Phase: "pulling", Container: "test-image:latest"})
 	app = model.(App)
 
 	if !app.pullProgress.Visible() {
@@ -466,7 +466,7 @@ func TestAppPullProgressHidesOnNextPhase(t *testing.T) {
 
 	app := NewApp("dev", "", "", nil)
 
-	model, _ := app.Update(output.ContainerStatusEvent{Phase: "pulling", Container: "localstack/localstack-pro:latest"})
+	model, _ := app.Update(output.ContainerStatusEvent{Phase: "pulling", Container: "test-image:latest"})
 	app = model.(App)
 
 	model, _ = app.Update(output.ContainerStatusEvent{Phase: "starting", Container: "localstack"})
@@ -485,11 +485,11 @@ func TestAppProgressEventUpdatesPullProgress(t *testing.T) {
 
 	app := NewApp("dev", "", "", nil)
 
-	model, _ := app.Update(output.ContainerStatusEvent{Phase: "pulling", Container: "localstack/localstack-pro:latest"})
+	model, _ := app.Update(output.ContainerStatusEvent{Phase: "pulling", Container: "test-image:latest"})
 	app = model.(App)
 
 	model, _ = app.Update(output.ProgressEvent{
-		Container: "localstack/localstack-pro:latest",
+		Container: "test-image:latest",
 		LayerID:   "abc123",
 		Status:    "Downloading",
 		Current:   50,
@@ -513,7 +513,7 @@ func TestAppProgressEventIgnoredWhenNotPulling(t *testing.T) {
 	app := NewApp("dev", "", "", nil)
 
 	model, cmd := app.Update(output.ProgressEvent{
-		Container: "localstack/localstack-pro:latest",
+		Container: "test-image:latest",
 		LayerID:   "abc123",
 		Status:    "Downloading",
 		Current:   50,

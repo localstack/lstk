@@ -158,6 +158,10 @@ func TestStartCommandSetsUpContainerCorrectly(t *testing.T) {
 	require.NoError(t, err, "failed to inspect container")
 	require.True(t, inspect.State.Running)
 
+	t.Run("image", func(t *testing.T) {
+		assert.Equal(t, "localstack/localstack:latest", inspect.Config.Image)
+	})
+
 	t.Run("environment variables", func(t *testing.T) {
 		envVars := containerEnvToMap(inspect.Config.Env)
 		assert.Equal(t, ":4566,:443", envVars["GATEWAY_LISTEN"])

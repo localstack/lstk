@@ -106,11 +106,6 @@ func Start(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts Start
 		if err != nil {
 			return err
 		}
-		productName, err := c.ProductName()
-		if err != nil {
-			return err
-		}
-
 		containerPort, err := c.ContainerPort()
 		if err != nil {
 			return err
@@ -152,7 +147,6 @@ func Start(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts Start
 			HealthPath:    healthPath,
 			Env:           env,
 			Tag:           c.Tag,
-			ProductName:   productName,
 			Binds:         binds,
 			ExtraPorts:    servicePortRange(),
 		}
@@ -343,7 +337,7 @@ func validateLicense(ctx context.Context, rt runtime.Runtime, sink output.Sink, 
 	hostname, _ := os.Hostname()
 	licenseReq := &api.LicenseRequest{
 		Product: api.ProductInfo{
-			Name:    containerConfig.ProductName,
+			Name:    "localstack-pro",
 			Version: version,
 		},
 		Credentials: api.CredentialsInfo{

@@ -84,7 +84,7 @@ func TestStop_SkipsTelemetryWhenNil(t *testing.T) {
 }
 
 func TestEmitEmulatorStartError_IsNoOpWhenTelNil(t *testing.T) {
-	c := runtime.ContainerConfig{EmulatorType: "aws", Image: "localstack/localstack-pro:latest"}
+	c := runtime.ContainerConfig{EmulatorType: "aws", Image: "test-image:latest"}
 	// Must not panic.
 	emitEmulatorStartError(context.Background(), nil, c, telemetry.ErrCodePortConflict, "port 4566 in use")
 }
@@ -95,7 +95,7 @@ func TestEmitEmulatorStartError_SendsLifecycleEvent(t *testing.T) {
 
 	c := runtime.ContainerConfig{
 		EmulatorType: "aws",
-		Image:        "localstack/localstack-pro:latest",
+		Image:        "test-image:latest",
 	}
 	emitEmulatorStartError(context.Background(), tel, c, telemetry.ErrCodePortConflict, "port 4566 already in use")
 	tel.Close()

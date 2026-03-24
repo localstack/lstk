@@ -16,13 +16,13 @@ func TestPullProgress_InitiallyHidden(t *testing.T) {
 
 func TestPullProgress_ShowMakesVisible(t *testing.T) {
 	p := NewPullProgress()
-	p = p.Show("localstack/localstack-pro:latest")
+	p = p.Show("test-image:latest")
 	assert.True(t, p.Visible())
 }
 
 func TestPullProgress_HideMakesInvisible(t *testing.T) {
 	p := NewPullProgress()
-	p = p.Show("localstack/localstack-pro:latest")
+	p = p.Show("test-image:latest")
 	p = p.Hide()
 	assert.False(t, p.Visible())
 	assert.Equal(t, "", p.View())
