@@ -16,14 +16,14 @@ var defaultConfigTemplate string
 type Config struct {
 	Containers   []ContainerConfig            `mapstructure:"containers"`
 	Env          map[string]map[string]string `mapstructure:"env"`
-	UpdatePrompt bool                          `mapstructure:"update_prompt"`
+	UpdatePrompt bool                         `mapstructure:"update_prompt"`
 }
 
 func setDefaults() {
 	viper.SetDefault("containers", []map[string]any{
 		{
 			"type": "aws",
-			"tag":  "latest",
+			"tag":  "stable",
 			"port": "4566",
 		},
 	})

@@ -265,12 +265,12 @@ func pullImages(ctx context.Context, rt runtime.Runtime, sink output.Sink, tel *
 }
 
 // Validates licenses before pulling where the version is known.
-// Pinned tags are validated immediately; "latest" tags are resolved via the catalog API.
+// Pinned tags are validated immediately; "latest" and "stable" tags are resolved via the catalog API.
 // Returns containers that couldn't be resolved (catalog unavailable) for post-pull validation.
 func tryPrePullLicenseValidation(ctx context.Context, sink output.Sink, opts StartOptions, tel *telemetry.Client, containers []runtime.ContainerConfig, token string) ([]runtime.ContainerConfig, error) {
 	var needsPostPull []runtime.ContainerConfig
 	for _, c := range containers {
-		if c.Tag != "" && c.Tag != "latest" {
+		if c.Tag != "" && c.Tag != "latest" && c.Tag != "stable" {
 			if err := validateLicense(ctx, sink, opts, tel, c, token); err != nil {
 				return nil, err
 			}

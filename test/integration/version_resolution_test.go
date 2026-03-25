@@ -53,7 +53,7 @@ func createVersionResolutionMockServer(t *testing.T, catalogVersion string, lice
 }
 
 // Verifies that when the catalog API returns a version, the license request uses
-// that version (not "latest"), allowing license validation to happen before pulling the image.
+// that version (not "stable" or "latest"), allowing license validation to happen before pulling the image.
 func TestVersionResolvedViaCatalog(t *testing.T) {
 	requireDocker(t)
 	_ = env.Require(t, env.AuthToken)
@@ -71,6 +71,8 @@ func TestVersionResolvedViaCatalog(t *testing.T) {
 		"license request should carry the version returned by the catalog API")
 	assert.NotEqual(t, "latest", *capturedVersion,
 		"license request should not use the unresolved 'latest' tag")
+	assert.NotEqual(t, "stable", *capturedVersion,
+		"license request should not use the unresolved 'stable' tag")
 }
 
 // Verifies that when the catalog endpoint is unavailable, the version is resolved
@@ -91,6 +93,7 @@ func TestVersionFallsBackToImageInspectionWhenCatalogFails(t *testing.T) {
 
 	assert.NotEmpty(t, *capturedVersion, "license request should carry a version resolved from image inspection")
 	assert.NotEqual(t, "latest", *capturedVersion, "resolved version should not be the unresolved 'latest' tag")
+	assert.NotEqual(t, "stable", *capturedVersion, "resolved version should not be the unresolved 'stable' tag")
 }
 
 // Verifies that when both the catalog endpoint is unavailable and the license

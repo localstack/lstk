@@ -94,7 +94,7 @@ lstk --config /path/to/config.toml start
 ```toml
 [[containers]]
 type = "aws"     # Emulator type. Currently supported: "aws"
-tag  = "latest"  # Docker image tag, e.g. "latest", "2026.03"
+tag  = "stable"  # Docker image tag, e.g. "stable", "latest", "2026.03"
 port = "4566"    # Host port the emulator will be accessible on
 # volume = ""    # Host directory for persistent state (default: OS cache dir)
 # env = []       # Named environment profiles to apply (see [env.*] sections below)
@@ -102,7 +102,7 @@ port = "4566"    # Host port the emulator will be accessible on
 
 **Fields:**
 - `type`: emulator type; only `"aws"` is supported for now
-- `tag`: Docker image tag for LocalStack (e.g. `"latest"`, `"4.14.0"`); useful for pinning a version
+- `tag`: Docker image tag for LocalStack (e.g. `"latest"`, `"2026.03"`); useful for pinning a version
 - `port`: port LocalStack listens on (default `4566`)
 - `volume`: (optional) host directory for persistent emulator state (default: OS cache dir)
 - `env`: (optional) list of named environment variable groups to inject into the container (see below)

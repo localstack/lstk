@@ -97,10 +97,10 @@ func (c *ContainerConfig) Image() (string, error) {
 	return fmt.Sprintf("%s/%s:%s", dockerRegistry, productName, tag), nil
 }
 
-// Name returns the container name: "localstack-{type}" or "localstack-{type}-{tag}" if tag != latest
+// Name returns the container name: "localstack-{type}" or "localstack-{type}-{tag}" if tag is a pinned version
 func (c *ContainerConfig) Name() string {
 	tag := c.Tag
-	if tag == "" || tag == "latest" {
+	if tag == "" || tag == "latest" || tag == "stable" {
 		return fmt.Sprintf("localstack-%s", c.Type)
 	}
 	return fmt.Sprintf("localstack-%s-%s", c.Type, tag)
