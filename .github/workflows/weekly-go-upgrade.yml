@@ -28,7 +28,7 @@ jobs:
           go get toolchain@latest
           go mod tidy
           cd test/integration
-          go get go@latest
+          go get toolchain@latest
           go mod tidy
 
       - name: Create pull request
