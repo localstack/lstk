@@ -18,17 +18,13 @@ func Status(ctx context.Context, rt runtime.Runtime, containers []config.Contain
 	ctx, cancel := context.WithTimeout(ctx, statusTimeout)
 	defer cancel()
 
-	output.EmitSpinnerStart(sink, "Fetching LocalStack status")
-
 	for _, c := range containers {
 		name := c.Name()
 		running, err := rt.IsRunning(ctx, name)
 		if err != nil {
-			output.EmitSpinnerStop(sink)
 			return fmt.Errorf("checking %s running: %w", name, err)
 		}
 		if !running {
-			output.EmitSpinnerStop(sink)
 			output.EmitError(sink, output.ErrorEvent{
 				Title: fmt.Sprintf("%s is not running", c.DisplayName()),
 				Actions: []output.ErrorAction{
@@ -59,8 +55,8 @@ func Status(ctx context.Context, rt runtime.Runtime, containers []config.Contain
 		var rows []emulator.Resource
 		switch c.Type {
 		case config.EmulatorAWS:
+			output.EmitSpinnerStart(sink, "Fetching LocalStack status")
 			if v, err := emulatorClient.FetchVersion(ctx, host); err != nil {
-				output.EmitSpinnerStop(sink)
 				output.EmitWarning(sink, fmt.Sprintf("Could not fetch version: %v", err))
 			} else {
 				version = v
@@ -68,13 +64,11 @@ func Status(ctx context.Context, rt runtime.Runtime, containers []config.Contain
 
 			var fetchErr error
 			rows, fetchErr = emulatorClient.FetchResources(ctx, host)
+			output.EmitSpinnerStop(sink)
 			if fetchErr != nil {
-				output.EmitSpinnerStop(sink)
 				return fetchErr
 			}
 		}
-
-		output.EmitSpinnerStop(sink)
 
 		output.EmitInstanceInfo(sink, output.InstanceInfoEvent{
 			EmulatorName:  c.DisplayName(),
