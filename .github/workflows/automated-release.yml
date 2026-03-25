@@ -1,0 +1,69 @@
+name: Automated Weekly Release
+
+on:
+  schedule:
+    - cron: "0 10 * * 4"  # Every Thursday at 10 AM UTC
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+  checks: write
+
+concurrency:
+  group: create-release-tag
+  cancel-in-progress: false
+
+jobs:
+  check-changes:
+    name: Check for changes since last release
+    runs-on: ubuntu-latest
+    outputs:
+      has_changes: ${{ steps.check.outputs.has_changes }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+        with:
+          ref: main
+          fetch-depth: 0
+          token: ${{ secrets.PRO_ACCESS_TOKEN }}
+
+      - name: Fetch tags
+        run: git fetch --tags --force
+
+      - name: Check for changes
+        id: check
+        run: |
+          set -euo pipefail
+
+          latest_tag="$(git tag --list "v0.*.*" --sort=-v:refname | grep -E "^v0\.[0-9]+\.[0-9]+$" | head -n 1 || true)"
+          if [[ -z "${latest_tag}" ]]; then
+            echo "No previous tag found, proceeding with release"
+            echo "has_changes=true" >> "${GITHUB_OUTPUT}"
+          else
+            changes="$(git log "${latest_tag}..HEAD" --oneline)"
+            if [[ -z "${changes}" ]]; then
+              echo "No changes since ${latest_tag}, skipping release"
+              echo "has_changes=false" >> "${GITHUB_OUTPUT}"
+            else
+              echo "Changes found since ${latest_tag}, proceeding with release"
+              echo "has_changes=true" >> "${GITHUB_OUTPUT}"
+            fi
+          fi
+
+  ci:
+    name: CI
+    needs: check-changes
+    if: needs.check-changes.outputs.has_changes == 'true'
+    uses: ./.github/workflows/ci.yml
+    secrets: inherit
+
+  create-tag:
+    name: Create release tag
+    needs: [check-changes, ci]
+    if: needs.check-changes.outputs.has_changes == 'true'
+    uses: ./.github/workflows/create-release-tag.yml
+    with:
+      release_ref: main
+      bump: patch
+    secrets: inherit
