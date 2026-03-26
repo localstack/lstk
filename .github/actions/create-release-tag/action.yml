@@ -1,0 +1,64 @@
+name: Create Release Tag
+description: Compute the next version tag, create it, and push it.
+
+inputs:
+  bump:
+    description: Version bump type (patch or minor)
+    required: true
+
+outputs:
+  tag:
+    description: The created tag
+    value: ${{ steps.next_tag.outputs.tag }}
+
+runs:
+  using: composite
+  steps:
+    - name: Configure Git user
+      shell: bash
+      run: |
+        git config user.name "localstack[bot]"
+        git config user.email "localstack-bot@users.noreply.github.com"
+
+    - name: Compute next version tag
+      id: next_tag
+      shell: bash
+      env:
+        BUMP: ${{ inputs.bump }}
+      run: |
+        set -euo pipefail
+
+        latest="$(git tag --list "v0.*.*" --sort=-v:refname | grep -E "^v0\.[0-9]+\.[0-9]+$" | head -n 1 || true)"
+        if [[ -z "${latest}" ]]; then
+          minor=1
+          patch=0
+        else
+          current_minor="$(echo "${latest}" | cut -d. -f2)"
+          current_patch="$(echo "${latest}" | cut -d. -f3)"
+          if [[ "${BUMP}" == "minor" ]]; then
+            minor="$(( current_minor + 1 ))"
+            patch=0
+          else
+            minor="${current_minor}"
+            patch="$(( current_patch + 1 ))"
+          fi
+        fi
+
+        tag="v0.${minor}.${patch}"
+        if git rev-parse -q --verify "refs/tags/${tag}" >/dev/null; then
+          echo "Tag ${tag} already exists"
+          exit 1
+        fi
+
+        echo "tag=${tag}" >> "${GITHUB_OUTPUT}"
+
+    - name: Create and push tag
+      shell: bash
+      run: |
+        tag="${{ steps.next_tag.outputs.tag }}"
+        git tag -a "${tag}" -m "Release ${tag}"
+        git push origin "${tag}"
+
+    - name: Print created tag
+      shell: bash
+      run: echo "Created tag ${{ steps.next_tag.outputs.tag }}"
