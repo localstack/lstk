@@ -14,24 +14,9 @@ on:
         options:
           - patch
           - minor
-  workflow_call:
-    inputs:
-      release_ref:
-        description: Git ref to tag
-        required: true
-        default: main
-        type: string
-      bump:
-        description: Version bump type (patch or minor)
-        required: true
-        type: string
 
 permissions:
   contents: write
-
-env:
-  git_user_name: localstack[bot]
-  git_user_email: localstack-bot@users.noreply.github.com
 
 concurrency:
   group: create-release-tag
@@ -49,53 +34,10 @@ jobs:
           fetch-depth: 0
           token: ${{ secrets.PRO_ACCESS_TOKEN }}
 
-      - name: Configure Git user
-        env:
-          GIT_USER_NAME: ${{ env.git_user_name }}
-          GIT_USER_EMAIL: ${{ env.git_user_email }}
-        run: |
-          git config user.name "${GIT_USER_NAME}"
-          git config user.email "${GIT_USER_EMAIL}"
-
       - name: Fetch tags
         run: git fetch --tags --force
 
-      - name: Compute next version tag
-        id: next_tag
-        env:
-          BUMP: ${{ inputs.bump }}
-        run: |
-          set -euo pipefail
-
-          latest="$(git tag --list "v0.*.*" --sort=-v:refname | grep -E "^v0\.[0-9]+\.[0-9]+$" | head -n 1 || true)"
-          if [[ -z "${latest}" ]]; then
-            minor=1
-            patch=0
-          else
-            current_minor="$(echo "${latest}" | cut -d. -f2)"
-            current_patch="$(echo "${latest}" | cut -d. -f3)"
-            if [[ "${BUMP}" == "minor" ]]; then
-              minor="$(( current_minor + 1 ))"
-              patch=0
-            else
-              minor="${current_minor}"
-              patch="$(( current_patch + 1 ))"
-            fi
-          fi
-
-          tag="v0.${minor}.${patch}"
-          if git rev-parse -q --verify "refs/tags/${tag}" >/dev/null; then
-            echo "Tag ${tag} already exists"
-            exit 1
-          fi
-
-          echo "tag=${tag}" >> "${GITHUB_OUTPUT}"
-
-      - name: Create and push tag
-        run: |
-          tag="${{ steps.next_tag.outputs.tag }}"
-          git tag -a "${tag}" -m "Release ${tag}"
-          git push origin "${tag}"
-
-      - name: Print created tag
-        run: echo "Created tag ${{ steps.next_tag.outputs.tag }}"
+      - name: Create release tag
+        uses: ./.github/actions/create-release-tag
+        with:
+          bump: ${{ inputs.bump }}
