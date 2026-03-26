@@ -161,18 +161,3 @@ func TestNotifyUpdatePromptCancelled(t *testing.T) {
 	assert.False(t, exit)
 }
 
-func TestNotifyUpdateSkippedVersion(t *testing.T) {
-	server := newTestGitHubServer(t, "v2.0.0")
-	defer server.Close()
-
-	var events []any
-	sink := output.SinkFunc(func(event any) { events = append(events, event) })
-
-	// Should return early without prompting since v2.0.0 was skipped
-	exit := notifyUpdateWithVersion(context.Background(), sink, NotifyOptions{
-		UpdatePrompt:   true,
-		SkippedVersion: "v2.0.0",
-	}, "1.0.0", testFetcher(server.URL))
-	assert.False(t, exit)
-	assert.Empty(t, events) // No events should be emitted
-}

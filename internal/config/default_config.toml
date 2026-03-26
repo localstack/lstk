@@ -1,10 +1,6 @@
 # lstk configuration file
 # Run 'lstk config path' to see where this file lives.
 
-# CLI settings
-[cli]
-update_prompt = true
-
 # Each [[containers]] block defines an emulator instance.
 # You can define multiple to run them side by side.
 [[containers]]

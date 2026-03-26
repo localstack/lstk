@@ -14,8 +14,7 @@ import (
 var defaultConfigTemplate string
 
 type CLIConfig struct {
-	UpdatePrompt         bool   `mapstructure:"update_prompt"`
-	UpdateSkippedVersion string `mapstructure:"update_skipped_version"`
+	UpdatePrompt bool `mapstructure:"update_prompt"`
 }
 
 type Config struct {
@@ -33,7 +32,6 @@ func setDefaults() {
 		},
 	})
 	viper.SetDefault("cli.update_prompt", true)
-	viper.SetDefault("cli.update_skipped_version", "")
 }
 
 func loadConfig(path string) error {
@@ -122,14 +120,6 @@ func DisableUpdatePrompt() error {
 	return Set("cli.update_prompt", false)
 }
 
-func SetUpdateSkippedVersion(version string) error {
-	return Set("cli.update_skipped_version", version)
-}
-
-func GetUpdateSkippedVersion() string {
-	return viper.GetString("cli.update_skipped_version")
-}
-
 func Get() (*Config, error) {
 	var cfg Config
 	if err := viper.Unmarshal(&cfg); err != nil {
@@ -137,9 +127,6 @@ func Get() (*Config, error) {
 	}
 	if !viper.InConfig("cli.update_prompt") && viper.InConfig("update_prompt") {
 		cfg.CLI.UpdatePrompt = viper.GetBool("update_prompt")
-	}
-	if !viper.InConfig("cli.update_skipped_version") && viper.InConfig("update_skipped_version") {
-		cfg.CLI.UpdateSkippedVersion = viper.GetString("update_skipped_version")
 	}
 	for i := range cfg.Containers {
 		if err := cfg.Containers[i].Validate(); err != nil {

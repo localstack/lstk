@@ -12,10 +12,8 @@ import (
 type versionFetcher func(ctx context.Context, token string) (string, error)
 
 type NotifyOptions struct {
-	GitHubToken        string
-	UpdatePrompt       bool
-	SkippedVersion     string
-	PersistSkipVersion func(version string) error
+	GitHubToken  string
+	UpdatePrompt bool
 }
 
 const checkTimeout = 2 * time.Second
@@ -56,10 +54,6 @@ func notifyUpdateWithVersion(ctx context.Context, sink output.Sink, opts NotifyO
 		return false
 	}
 
-	if opts.SkippedVersion != "" && normalizeVersion(opts.SkippedVersion) == normalizeVersion(latest) {
-		return false
-	}
-
 	if !opts.UpdatePrompt {
 		output.EmitNote(sink, fmt.Sprintf("Update available: %s → %s (run lstk update)", current, latest))
 		return false
@@ -76,13 +70,10 @@ func promptAndUpdate(ctx context.Context, sink output.Sink, opts NotifyOptions, 
 
 	responseCh := make(chan output.InputResponse, 1)
 	output.EmitUserInputRequest(sink, output.UserInputRequestEvent{
-		Prompt: "Update lstk to latest version?",
-		Options: []output.InputOption{
-			{Key: "u", Label: "Update now [U]"},
-			{Key: "r", Label: "Remind me next time [R]"},
-			{Key: "s", Label: "Skip this version [S]"},
-		},
+		Prompt:     "Update lstk to latest version?",
+		Options:    []output.InputOption{{Key: "u", Label: "Update now [U]"}, {Key: "r", Label: "Remind me next time [R]"}, {Key: "s", Label: "Skip this version [S]"}},
 		ResponseCh: responseCh,
+		Vertical:   true,
 	})
 
 	var resp output.InputResponse
@@ -107,11 +98,7 @@ func promptAndUpdate(ctx context.Context, sink output.Sink, opts NotifyOptions, 
 	case "r":
 		return false
 	case "s":
-		if opts.PersistSkipVersion != nil {
-			if err := opts.PersistSkipVersion(latest); err != nil {
-				output.EmitWarning(sink, fmt.Sprintf("Failed to save preference: %v", err))
-			}
-		}
+		output.EmitNote(sink, "Skipping version " + latest)
 		return false
 	}
 

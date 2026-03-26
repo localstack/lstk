@@ -453,13 +453,10 @@ func TestAppEnterSelectsHighlightedVerticalOption(t *testing.T) {
 	responseCh := make(chan output.InputResponse, 1)
 
 	model, _ := app.Update(output.UserInputRequestEvent{
-		Prompt: "Update lstk to latest version?",
-		Options: []output.InputOption{
-			{Key: "u", Label: "Update now [U]"},
-			{Key: "s", Label: "Skip this version [S]"},
-			{Key: "n", Label: "Never ask again [N]"},
-		},
+		Prompt:     "Update lstk to latest version?",
+		Options:    []output.InputOption{{Key: "u", Label: "Update now [U]"}, {Key: "s", Label: "Skip this version [S]"}, {Key: "n", Label: "Never ask again [N]"}},
 		ResponseCh: responseCh,
+		Vertical:   true,
 	})
 	app = model.(App)
 

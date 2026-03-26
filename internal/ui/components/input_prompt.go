@@ -12,17 +12,19 @@ type InputPrompt struct {
 	options       []output.InputOption
 	visible       bool
 	selectedIndex int
+	vertical      bool
 }
 
 func NewInputPrompt() InputPrompt {
 	return InputPrompt{}
 }
 
-func (p InputPrompt) Show(prompt string, options []output.InputOption) InputPrompt {
+func (p InputPrompt) Show(prompt string, options []output.InputOption, vertical bool) InputPrompt {
 	p.prompt = prompt
 	p.options = options
 	p.visible = true
 	p.selectedIndex = 0
+	p.vertical = vertical
 	return p
 }
 
@@ -51,7 +53,7 @@ func (p InputPrompt) View() string {
 		return ""
 	}
 
-	if usesVerticalOptions(p.options) {
+	if p.vertical {
 		return p.viewVertical()
 	}
 
@@ -95,14 +97,3 @@ func (p InputPrompt) viewVertical() string {
 	return sb.String()
 }
 
-func usesVerticalOptions(options []output.InputOption) bool {
-	if len(options) < 2 {
-		return false
-	}
-	for _, opt := range options {
-		if strings.Contains(opt.Label, "[") && strings.Contains(opt.Label, "]") {
-			return true
-		}
-	}
-	return false
-}
