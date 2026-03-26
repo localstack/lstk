@@ -55,6 +55,7 @@ func NewRootCmd(cfg *env.Env, tel *telemetry.Client, logger log.Logger) *cobra.C
 	root.AddCommand(
 		newStartCmd(cfg, tel, logger),
 		newStopCmd(cfg, tel),
+		newRestartCmd(cfg, tel, logger),
 		newLoginCmd(cfg, tel, logger),
 		newLogoutCmd(cfg, tel, logger),
 		newStatusCmd(cfg, tel),
@@ -81,7 +82,7 @@ func Execute(ctx context.Context) error {
 
 	// Resolve auth token for telemetry: keyring first, then env var.
 	resolvedToken := cfg.AuthToken
-	if tokenStorage, err := auth.NewTokenStorage(cfg.ForceFileKeyring, logger); err == nil {
+	if tokenStorage, err := auth.NewTokenStorage(cfg.ForceFileKeyring, cfg.AuthTokenFile, logger); err == nil {
 		if token, err := tokenStorage.GetAuthToken(); err == nil && token != "" {
 			resolvedToken = token
 		}
@@ -113,9 +114,10 @@ func startEmulator(ctx context.Context, rt runtime.Runtime, cfg *env.Env, tel *t
 		PlatformClient:   api.NewPlatformClient(cfg.APIEndpoint, logger),
 		AuthToken:        cfg.AuthToken,
 		ForceFileKeyring: cfg.ForceFileKeyring,
+		AuthTokenFile:    cfg.AuthTokenFile,
 		WebAppURL:        cfg.WebAppURL,
 		LocalStackHost:   cfg.LocalStackHost,
-		Containers:       appConfig.Containers,
+		Containers:       applyContainerNameOverride(appConfig.Containers, cfg.ContainerName),
 		Env:              appConfig.Env,
 		Logger:           logger,
 		Telemetry:        tel,
@@ -206,6 +208,21 @@ func newLogger() (log.Logger, func(), error) {
 		return nil, func() {}, fmt.Errorf("open log file %s: %w", path, err)
 	}
 	return log.New(f), func() { _ = f.Close() }, nil
+}
+
+// applyContainerNameOverride sets ContainerName on every entry when name is
+// non-empty, giving callers (e.g. tests) a way to use a unique container name
+// without modifying the config file.
+func applyContainerNameOverride(containers []config.ContainerConfig, name string) []config.ContainerConfig {
+	if name == "" {
+		return containers
+	}
+	result := make([]config.ContainerConfig, len(containers))
+	copy(result, containers)
+	for i := range result {
+		result[i].ContainerName = name
+	}
+	return result
 }
 
 func initConfig(cmd *cobra.Command, _ []string) error {

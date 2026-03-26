@@ -70,10 +70,19 @@ func (s *systemTokenStorage) DeleteAuthToken() error {
 	return s.file.DeleteAuthToken()
 }
 
-func NewTokenStorage(forceFileKeyring bool, logger log.Logger) (AuthTokenStorage, error) {
+// NewTokenStorage creates an AuthTokenStorage. If filePath is non-empty it
+// takes precedence over all other settings and uses that exact path as the
+// token file. Otherwise forceFileKeyring selects file-based storage in the
+// default config directory, falling back to the system keyring.
+func NewTokenStorage(forceFileKeyring bool, filePath string, logger log.Logger) (AuthTokenStorage, error) {
 	if logger == nil {
 		logger = log.Nop()
 	}
+
+	if filePath != "" {
+		return newFileTokenStorageAtPath(filePath), nil
+	}
+
 	configDir, err := config.ConfigDir()
 	if err != nil {
 		return nil, err

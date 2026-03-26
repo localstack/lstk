@@ -37,10 +37,11 @@ func newLogsCmd(cfg *env.Env, tel *telemetry.Client) *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("failed to get config: %w", err)
 			}
+			containers := applyContainerNameOverride(appConfig.Containers, cfg.ContainerName)
 			if isInteractiveMode(cfg) {
-				return ui.RunLogs(cmd.Context(), rt, appConfig.Containers, follow, verbose)
+				return ui.RunLogs(cmd.Context(), rt, containers, follow, verbose)
 			}
-			return container.Logs(cmd.Context(), rt, output.NewPlainSink(os.Stdout), appConfig.Containers, follow, verbose)
+			return container.Logs(cmd.Context(), rt, output.NewPlainSink(os.Stdout), containers, follow, verbose)
 		}),
 	}
 	cmd.Flags().BoolP("follow", "f", false, "Follow log output")

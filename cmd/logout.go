@@ -35,11 +35,11 @@ func newLogoutCmd(cfg *env.Env, tel *telemetry.Client, logger log.Logger) *cobra
 			}
 
 			if isInteractiveMode(cfg) {
-				return ui.RunLogout(cmd.Context(), rt, platformClient, cfg.AuthToken, cfg.ForceFileKeyring, appConfig.Containers, logger)
+				return ui.RunLogout(cmd.Context(), rt, platformClient, cfg.AuthToken, cfg.ForceFileKeyring, cfg.AuthTokenFile, applyContainerNameOverride(appConfig.Containers, cfg.ContainerName), logger)
 			}
 
 			sink := output.NewPlainSink(os.Stdout)
-			tokenStorage, err := auth.NewTokenStorage(cfg.ForceFileKeyring, logger)
+			tokenStorage, err := auth.NewTokenStorage(cfg.ForceFileKeyring, cfg.AuthTokenFile, logger)
 			if err != nil {
 				return fmt.Errorf("failed to initialize token storage: %w", err)
 			}

@@ -37,6 +37,8 @@ type ContainerConfig struct {
 	Tag    string       `mapstructure:"tag"`
 	Port   string       `mapstructure:"port"`
 	Volume string       `mapstructure:"volume"`
+	// ContainerName overrides the default container name when set.
+	ContainerName string `mapstructure:"name"`
 	// Env is a list of named environment references defined in the top-level [env.*] config sections.
 	Env []string `mapstructure:"env"`
 }
@@ -97,8 +99,13 @@ func (c *ContainerConfig) Image() (string, error) {
 	return fmt.Sprintf("%s/%s:%s", dockerRegistry, productName, tag), nil
 }
 
-// Name returns the container name: "localstack-{type}" or "localstack-{type}-{tag}" if tag != latest
+// Name returns the container name. If ContainerName is set it is returned
+// directly; otherwise the name is derived as "localstack-{type}" or
+// "localstack-{type}-{tag}" when the tag is not "latest".
 func (c *ContainerConfig) Name() string {
+	if c.ContainerName != "" {
+		return c.ContainerName
+	}
 	tag := c.Tag
 	if tag == "" || tag == "latest" {
 		return fmt.Sprintf("localstack-%s", c.Type)

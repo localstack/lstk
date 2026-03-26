@@ -13,9 +13,13 @@ type fileTokenStorage struct {
 }
 
 func newFileTokenStorage(configDir string) *fileTokenStorage {
+	return newFileTokenStorageAtPath(filepath.Join(configDir, "auth-token"))
+}
+
+func newFileTokenStorageAtPath(filePath string) *fileTokenStorage {
 	return &fileTokenStorage{
-		path:     filepath.Join(configDir, "auth-token"),
-		lockPath: filepath.Join(configDir, "auth-token.lock"),
+		path:     filePath,
+		lockPath: filePath + ".lock",
 	}
 }
 

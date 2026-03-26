@@ -34,11 +34,12 @@ func newStatusCmd(cfg *env.Env, tel *telemetry.Client) *cobra.Command {
 			}
 
 			awsClient := aws.NewClient(&http.Client{})
+			containers := applyContainerNameOverride(appCfg.Containers, cfg.ContainerName)
 
 			if isInteractiveMode(cfg) {
-				return ui.RunStatus(cmd.Context(), rt, appCfg.Containers, cfg.LocalStackHost, awsClient)
+				return ui.RunStatus(cmd.Context(), rt, containers, cfg.LocalStackHost, awsClient)
 			}
-			return container.Status(cmd.Context(), rt, appCfg.Containers, cfg.LocalStackHost, awsClient, output.NewPlainSink(os.Stdout))
+			return container.Status(cmd.Context(), rt, containers, cfg.LocalStackHost, awsClient, output.NewPlainSink(os.Stdout))
 		}),
 	}
 }

@@ -33,12 +33,15 @@ type StartOptions struct {
 	PlatformClient   api.PlatformAPI
 	AuthToken        string
 	ForceFileKeyring bool
+	AuthTokenFile    string
 	WebAppURL        string
 	LocalStackHost   string
 	Containers       []config.ContainerConfig
 	Env              map[string]map[string]string
 	Logger           log.Logger
 	Telemetry        *telemetry.Client
+	// Skips image pull and license validation; the stopped container is still removed.
+	SkipPull bool
 }
 
 func emitEmulatorStartError(ctx context.Context, tel *telemetry.Client, c runtime.ContainerConfig, errorCode, errorMsg string) {
@@ -75,7 +78,7 @@ func Start(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts Start
 		return output.NewSilentError(fmt.Errorf("runtime not healthy: %w", err))
 	}
 
-	tokenStorage, err := auth.NewTokenStorage(opts.ForceFileKeyring, opts.Logger)
+	tokenStorage, err := auth.NewTokenStorage(opts.ForceFileKeyring, opts.AuthTokenFile, opts.Logger)
 	if err != nil {
 		return fmt.Errorf("failed to initialize token storage: %w", err)
 	}
@@ -166,21 +169,31 @@ func Start(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts Start
 		return nil
 	}
 
-	// Validate licenses before pulling where possible (pinned tags always; "latest" tags via catalog API).
-	// Returns containers that still need post-pull validation (catalog unavailable).
-	postPullContainers, err := tryPrePullLicenseValidation(ctx, sink, opts, tel, containers, token)
-	if err != nil {
-		return err
-	}
+	var pulled map[string]bool
+	if opts.SkipPull {
+		pulled = make(map[string]bool)
+		for _, c := range containers {
+			if err := rt.Remove(ctx, c.Name); err != nil && !errdefs.IsNotFound(err) {
+				return fmt.Errorf("failed to remove container %s: %w", c.Name, err)
+			}
+		}
+	} else {
+		// Validate licenses before pulling where possible (pinned tags always; "latest" tags via catalog API).
+		// Returns containers that still need post-pull validation (catalog unavailable).
+		postPullContainers, err := tryPrePullLicenseValidation(ctx, sink, opts, tel, containers, token)
+		if err != nil {
+			return err
+		}
 
-	pulled, err := pullImages(ctx, rt, sink, tel, containers)
-	if err != nil {
-		return err
-	}
+		pulled, err = pullImages(ctx, rt, sink, tel, containers)
+		if err != nil {
+			return err
+		}
 
-	// Catalog was unavailable for these; fall back to image inspection.
-	if err := validateLicensesFromImages(ctx, rt, sink, opts, tel, postPullContainers, token); err != nil {
-		return err
+		// Catalog was unavailable for these; fall back to image inspection.
+		if err := validateLicensesFromImages(ctx, rt, sink, opts, tel, postPullContainers, token); err != nil {
+			return err
+		}
 	}
 
 	if err := startContainers(ctx, rt, sink, tel, containers, pulled); err != nil {

@@ -37,12 +37,14 @@ func newStopCmd(cfg *env.Env, tel *telemetry.Client) *cobra.Command {
 				Telemetry: tel,
 			}
 
+			containers := applyContainerNameOverride(appConfig.Containers, cfg.ContainerName)
+
 			var runErr error
 
 			if isInteractiveMode(cfg) {
-				runErr = ui.RunStop(cmd.Context(), rt, appConfig.Containers, stopOpts)
+				runErr = ui.RunStop(cmd.Context(), rt, containers, stopOpts)
 			} else {
-				runErr = container.Stop(cmd.Context(), rt, output.NewPlainSink(os.Stdout), appConfig.Containers, stopOpts)
+				runErr = container.Stop(cmd.Context(), rt, output.NewPlainSink(os.Stdout), containers, stopOpts)
 			}
 
 			exitCode := 0

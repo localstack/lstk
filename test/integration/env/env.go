@@ -13,6 +13,8 @@ const (
 	LocalStackHost    Key = "LOCALSTACK_HOST"
 	APIEndpoint       Key = "LSTK_API_ENDPOINT"
 	Keyring           Key = "LSTK_KEYRING"
+	AuthTokenFile     Key = "LSTK_AUTH_TOKEN_FILE"
+	ContainerName     Key = "LSTK_CONTAINER_NAME"
 	CI                Key = "CI"
 	AnalyticsEndpoint Key = "LSTK_ANALYTICS_ENDPOINT"
 	DisableEvents     Key = "LOCALSTACK_DISABLE_EVENTS"

@@ -160,6 +160,9 @@ LOCALSTACK_AUTH_TOKEN=<token> lstk --non-interactive
 # Stop the running emulator
 lstk stop
 
+# Restart the running emulator
+lstk restart
+
 # Show emulator status and deployed resources
 lstk status
 

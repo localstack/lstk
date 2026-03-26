@@ -24,10 +24,10 @@ func newLoginCmd(cfg *env.Env, tel *telemetry.Client, logger log.Logger) *cobra.
 				return fmt.Errorf("login requires an interactive terminal")
 			}
 			platformClient := api.NewPlatformClient(cfg.APIEndpoint, logger)
-			if err := ui.RunLogin(cmd.Context(), version.Version(), platformClient, cfg.AuthToken, cfg.ForceFileKeyring, cfg.WebAppURL, logger); err != nil {
+			if err := ui.RunLogin(cmd.Context(), version.Version(), platformClient, cfg.AuthToken, cfg.ForceFileKeyring, cfg.AuthTokenFile, cfg.WebAppURL, logger); err != nil {
 				return err
 			}
-			if tokenStorage, err := auth.NewTokenStorage(cfg.ForceFileKeyring, logger); err == nil {
+			if tokenStorage, err := auth.NewTokenStorage(cfg.ForceFileKeyring, cfg.AuthTokenFile, logger); err == nil {
 				if token, err := tokenStorage.GetAuthToken(); err == nil && token != "" {
 					tel.SetAuthToken(token)
 				}
