@@ -5,6 +5,7 @@ package auth
 import (
 	"context"
 	"fmt"
+	"io"
 	"net/url"
 	"strings"
 
@@ -44,6 +45,8 @@ func (l *loginProvider) Login(ctx context.Context) (string, error) {
 		Code:     authReq.Code,
 		URL:      authURL,
 	})
+	browser.Stdout = io.Discard
+	browser.Stderr = io.Discard
 	if err := browser.OpenURL(authURL); err != nil {
 		output.EmitWarning(l.sink, fmt.Sprintf("Failed to open browser automatically. Open this URL manually to continue: %s", authURL))
 	}
