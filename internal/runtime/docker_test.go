@@ -56,6 +56,14 @@ func TestSocketPath_ReturnsEmptyForTCPHost(t *testing.T) {
 	assert.Equal(t, "", rt.SocketPath())
 }
 
+func TestSocketPathFromHost_ReturnsDockerSockForWindowsNamedPipe(t *testing.T) {
+	assert.Equal(t, "/var/run/docker.sock", socketPathFromHost("npipe:////./pipe/docker_engine"))
+}
+
+func TestSocketPathFromHost_ExtractsUnixPath(t *testing.T) {
+	assert.Equal(t, "/var/run/docker.sock", socketPathFromHost("unix:///var/run/docker.sock"))
+}
+
 func TestWindowsDockerStartCommand_DockerAvailable(t *testing.T) {
 	lookPath := func(string) (string, error) { return "/usr/bin/docker", nil }
 	assert.Equal(t, "docker desktop start", windowsDockerStartCommand(func(string) string { return "" }, lookPath))
