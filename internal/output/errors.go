@@ -26,3 +26,32 @@ func IsSilent(err error) bool {
 	var silent *SilentError
 	return errors.As(err, &silent)
 }
+
+// ExitCodeError carries a specific process exit code through the error chain.
+// Used by passthrough commands (e.g. lstk aws) to propagate the subprocess exit code.
+type ExitCodeError struct {
+	Code int
+	Err  error
+}
+
+func (e *ExitCodeError) Error() string {
+	return e.Err.Error()
+}
+
+func (e *ExitCodeError) Unwrap() error {
+	return e.Err
+}
+
+func NewExitCodeError(code int, err error) *ExitCodeError {
+	return &ExitCodeError{Code: code, Err: err}
+}
+
+// ExitCode returns the exit code if err (or any error in its chain) is an ExitCodeError,
+// or 1 as a default.
+func ExitCode(err error) int {
+	var exitErr *ExitCodeError
+	if errors.As(err, &exitErr) {
+		return exitErr.Code
+	}
+	return 1
+}
