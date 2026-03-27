@@ -7,6 +7,7 @@ import (
 	"syscall"
 
 	"github.com/localstack/lstk/cmd"
+	"github.com/localstack/lstk/internal/output"
 )
 
 func main() {
@@ -14,6 +15,6 @@ func main() {
 	defer cancel()
 
 	if err := cmd.Execute(ctx); err != nil {
-		os.Exit(1)
+		os.Exit(output.ExitCode(err))
 	}
 }
