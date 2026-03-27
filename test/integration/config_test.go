@@ -191,6 +191,27 @@ tag = "latest"
 	assert.Contains(t, stderr, "port is required")
 }
 
+func TestLegacyYAMLConfigGivesHelpfulError(t *testing.T) {
+	tmpHome := t.TempDir()
+	workDir := t.TempDir()
+	xdgOverride := filepath.Join(tmpHome, "xdg-config-home")
+
+	legacyConfigDir := filepath.Join(tmpHome, ".config", "lstk")
+	require.NoError(t, os.MkdirAll(legacyConfigDir, 0755))
+	require.NoError(t, os.WriteFile(
+		filepath.Join(legacyConfigDir, "config.yaml"),
+		[]byte("emulators:\n  - type: aws\n    port: 4566\n"),
+		0644,
+	))
+
+	e := testEnvWithHome(tmpHome, xdgOverride)
+	_, stderr, err := runLstk(t, testContext(t), workDir, e, "logout")
+	require.Error(t, err)
+	requireExitCode(t, 1, err)
+	assert.Contains(t, stderr, "config.yaml")
+	assert.Contains(t, stderr, "TOML")
+}
+
 func TestConfigWithMissingOptionalTagSucceeds(t *testing.T) {
 	configContent := `
 [[containers]]
