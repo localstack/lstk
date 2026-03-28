@@ -391,7 +391,7 @@ func validateLicense(ctx context.Context, sink output.Sink, opts StartOptions, t
 		},
 	}
 
-	if err := opts.PlatformClient.GetLicense(ctx, licenseReq); err != nil {
+	if _, err := opts.PlatformClient.GetLicense(ctx, licenseReq); err != nil {
 		var licErr *api.LicenseError
 		if errors.As(err, &licErr) && licErr.Detail != "" {
 			opts.Logger.Error("license server response (HTTP %d): %s", licErr.Status, licErr.Detail)

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 const (
@@ -46,6 +47,39 @@ func ConfigFilePath() (string, error) {
 		return "", fmt.Errorf("failed to resolve absolute config path: %w", err)
 	}
 	return absCreationPath, nil
+}
+
+// FriendlyConfigPath returns a human-readable config path: relative for
+// project-local configs, ~-prefixed for paths under $HOME, absolute otherwise.
+func FriendlyConfigPath() (string, error) {
+	absPath, err := ConfigFilePath()
+	if err != nil {
+		return "", err
+	}
+
+	resolved, err := filepath.EvalSymlinks(absPath)
+	if err != nil {
+		resolved = absPath
+	}
+
+	cwd, err := os.Getwd()
+	if err == nil {
+		if rel, relErr := filepath.Rel(cwd, resolved); relErr == nil && !strings.HasPrefix(rel, "..") {
+			return rel, nil
+		}
+	}
+
+	if home, err := os.UserHomeDir(); err == nil {
+		resolvedHome, evalErr := filepath.EvalSymlinks(home)
+		if evalErr != nil {
+			resolvedHome = home
+		}
+		if rel, relErr := filepath.Rel(resolvedHome, resolved); relErr == nil && !strings.HasPrefix(rel, "..") {
+			return filepath.Join("~", rel), nil
+		}
+	}
+
+	return absPath, nil
 }
 
 func ConfigDir() (string, error) {

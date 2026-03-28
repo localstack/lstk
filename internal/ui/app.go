@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 	"unicode"
 
 	"github.com/charmbracelet/bubbles/progress"
@@ -21,6 +22,18 @@ type runDoneMsg struct{}
 
 type runErrMsg struct {
 	err error
+}
+
+type headerLabelMsg struct {
+	label string
+}
+
+type headerTickMsg struct{}
+
+var headerDotFrames = [3]string{"LocalStack .", "LocalStack ..", "LocalStack ..."}
+
+func headerTick() tea.Cmd {
+	return tea.Tick(300*time.Millisecond, func(time.Time) tea.Msg { return headerTickMsg{} })
 }
 
 type styledLine struct {
@@ -41,9 +54,11 @@ type App struct {
 	width         int
 	cancel        func()
 	pendingInput  *output.UserInputRequestEvent
-	err           error
-	quitting      bool
-	hideHeader    bool
+	err            error
+	quitting       bool
+	hideHeader     bool
+	headerLoading  bool
+	headerFrame    int
 }
 
 type AppOption func(*App)
@@ -52,9 +67,13 @@ func withoutHeader() AppOption {
 	return func(a *App) { a.hideHeader = true }
 }
 
-func NewApp(version, emulatorName, endpoint string, cancel func(), opts ...AppOption) App {
+func withHeaderLoading() AppOption {
+	return func(a *App) { a.headerLoading = true }
+}
+
+func NewApp(version, emulatorName, configPath string, cancel func(), opts ...AppOption) App {
 	app := App{
-		header:       components.NewHeader(version, emulatorName, endpoint),
+		header:       components.NewHeader(version, emulatorName, configPath),
 		inputPrompt:  components.NewInputPrompt(),
 		spinner:      components.NewSpinner(),
 		pullProgress: components.NewPullProgress(),
@@ -65,10 +84,16 @@ func NewApp(version, emulatorName, endpoint string, cancel func(), opts ...AppOp
 	for _, opt := range opts {
 		opt(&app)
 	}
+	if app.headerLoading {
+		app.header = app.header.SetEmulatorName(headerDotFrames[0])
+	}
 	return app
 }
 
 func (a App) Init() tea.Cmd {
+	if a.headerLoading {
+		return tea.Batch(a.spinner.Tick(), headerTick())
+	}
 	return a.spinner.Tick()
 }
 
@@ -105,6 +130,17 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	case tea.WindowSizeMsg:
 		a.width = msg.Width
+	case headerTickMsg:
+		if a.headerLoading {
+			a.headerFrame = (a.headerFrame + 1) % len(headerDotFrames)
+			a.header = a.header.SetEmulatorName(headerDotFrames[a.headerFrame])
+			return a, headerTick()
+		}
+		return a, nil
+	case headerLabelMsg:
+		a.headerLoading = false
+		a.header = a.header.SetEmulatorName(msg.label)
+		return a, nil
 	case output.UserInputRequestEvent:
 		a.pendingInput = &msg
 		if a.spinner.Visible() {

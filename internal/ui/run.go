@@ -7,7 +7,6 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/localstack/lstk/internal/container"
-	"github.com/localstack/lstk/internal/endpoint"
 	"github.com/localstack/lstk/internal/output"
 	"github.com/localstack/lstk/internal/runtime"
 	"github.com/localstack/lstk/internal/update"
@@ -25,23 +24,29 @@ func (s programSender) Send(msg any) {
 	s.p.Send(msg)
 }
 
-func Run(parentCtx context.Context, rt runtime.Runtime, version string, opts container.StartOptions, notifyOpts update.NotifyOptions) error {
+func Run(parentCtx context.Context, rt runtime.Runtime, version string, opts container.StartOptions, notifyOpts update.NotifyOptions, configPath, emulatorLabel string, labelCh <-chan string, animateHeader bool) error {
 	ctx, cancel := context.WithCancel(parentCtx)
 	defer cancel()
 
-	// FIXME: This assumes a single emulator; revisit for proper multi-emulator support
-	emulatorName := "LocalStack Emulator"
-	host := endpoint.Hostname
-	if len(opts.Containers) > 0 {
-		emulatorName = opts.Containers[0].DisplayName()
-		if opts.Containers[0].Port != "" {
-			host, _ = endpoint.ResolveHost(opts.Containers[0].Port, opts.LocalStackHost)
-		}
+	var appOpts []AppOption
+	if animateHeader {
+		appOpts = append(appOpts, withHeaderLoading())
 	}
-
-	app := NewApp(version, emulatorName, host, cancel)
+	app := NewApp(version, emulatorLabel, configPath, cancel, appOpts...)
 	p := tea.NewProgram(app)
 	runErrCh := make(chan error, 1)
+
+	if labelCh != nil {
+		go func() {
+			select {
+			case label, ok := <-labelCh:
+				if ok && label != "" {
+					p.Send(headerLabelMsg{label: label})
+				}
+			case <-ctx.Done():
+			}
+		}()
+	}
 
 	go func() {
 		var err error

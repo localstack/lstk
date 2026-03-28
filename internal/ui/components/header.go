@@ -30,11 +30,16 @@ func nimboLine3() string {
 type Header struct {
 	version      string
 	emulatorName string
-	endpoint     string
+	configPath   string
 }
 
-func NewHeader(version, emulatorName, endpoint string) Header {
-	return Header{version: version, emulatorName: emulatorName, endpoint: endpoint}
+func NewHeader(version, emulatorName, configPath string) Header {
+	return Header{version: version, emulatorName: emulatorName, configPath: configPath}
+}
+
+func (h Header) SetEmulatorName(name string) Header {
+	h.emulatorName = name
+	return h
 }
 
 func (h Header) View() string {
@@ -46,10 +51,11 @@ func (h Header) View() string {
 		nimboLine3(),
 	))
 
+	configLine := h.configPath
 	text := lipgloss.JoinVertical(lipgloss.Left,
-		"lstk " + styles.Secondary.Render("("+h.version+")"),
+		"lstk "+styles.Secondary.Render("("+h.version+")"),
 		styles.Secondary.Render(h.emulatorName),
-		styles.Secondary.Render(h.endpoint),
+		styles.Secondary.Render(configLine),
 	)
 
 	spacer := strings.Repeat(" ", headerPadding)

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	stdruntime "runtime"
 	"time"
 
 	"github.com/localstack/lstk/internal/api"
@@ -128,11 +129,29 @@ func startEmulator(ctx context.Context, rt runtime.Runtime, cfg *env.Env, tel *t
 		PersistDisable: config.DisableUpdatePrompt,
 	}
 
+	configPath, _ := config.FriendlyConfigPath()
+
 	if isInteractiveMode(cfg) {
-		return ui.Run(ctx, rt, version.Version(), opts, notifyOpts)
+		cached := config.CachedPlanLabel()
+		animateHeader := cached == ""
+		if cached == "" {
+			cached = "LocalStack"
+		}
+
+		labelCh := make(chan string, 1)
+		go func() {
+			label := resolveEmulatorLabel(ctx, opts.PlatformClient, appConfig.Containers, cfg.AuthToken, logger)
+			config.CachePlanLabel(label)
+			labelCh <- label
+		}()
+
+		return ui.Run(ctx, rt, version.Version(), opts, notifyOpts, configPath, cached, labelCh, animateHeader)
 	}
 
 	sink := output.NewPlainSink(os.Stdout)
+	if configPath != "" {
+		output.EmitInfo(sink, configPath)
+	}
 	update.NotifyUpdate(ctx, sink, update.NotifyOptions{GitHubToken: cfg.GitHubToken})
 	return container.Start(ctx, rt, sink, opts, false)
 }
@@ -180,6 +199,56 @@ func commandWithTelemetry(name string, tel *telemetry.Client, fn func(*cobra.Com
 
 		return runErr
 	}
+}
+
+// resolveEmulatorLabel tries to fetch the plan name from the license API
+// to build a label like "LocalStack Ultimate". Falls back to
+// "LocalStack (No license)" when the plan cannot be determined.
+func resolveEmulatorLabel(ctx context.Context, client api.PlatformAPI, containers []config.ContainerConfig, token string, logger log.Logger) string {
+	const noLicense = "LocalStack (No license)"
+
+	if len(containers) == 0 || token == "" {
+		return noLicense
+	}
+
+	c := containers[0]
+
+	productName, err := c.ProductName()
+	if err != nil {
+		return noLicense
+	}
+
+	tag := c.Tag
+	if tag == "" || tag == "latest" {
+		apiCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+		v, err := client.GetLatestCatalogVersion(apiCtx, string(c.Type))
+		cancel()
+		if err != nil {
+			logger.Info("could not resolve catalog version for header: %v", err)
+			return noLicense
+		}
+		tag = v
+	}
+
+	hostname, _ := os.Hostname()
+	licReq := &api.LicenseRequest{
+		Product:     api.ProductInfo{Name: productName, Version: tag},
+		Credentials: api.CredentialsInfo{Token: token},
+		Machine:     api.MachineInfo{Hostname: hostname, Platform: stdruntime.GOOS, PlatformRelease: stdruntime.GOARCH},
+	}
+
+	licCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
+	resp, err := client.GetLicense(licCtx, licReq)
+	if err != nil {
+		logger.Info("could not fetch license for header: %v", err)
+		return noLicense
+	}
+
+	if plan := resp.PlanDisplayName(); plan != "" {
+		return "LocalStack " + plan
+	}
+	return noLicense
 }
 
 func isInteractiveMode(cfg *env.Env) bool {

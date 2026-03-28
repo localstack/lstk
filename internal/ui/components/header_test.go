@@ -1,6 +1,7 @@
 package components
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/charmbracelet/lipgloss"
@@ -13,6 +14,28 @@ func TestHeaderView(t *testing.T) {
 	lipgloss.SetColorProfile(termenv.TrueColor)
 	t.Cleanup(func() { lipgloss.SetColorProfile(original) })
 
-	view := NewHeader("v1.0.0", "LocalStack AWS Emulator", "localhost.localstack.cloud:4566").View()
+	view := NewHeader("v1.0.0", "LocalStack AWS Emulator", "~/.config/lstk/config.toml").View()
 	golden.Assert(t, view, "header.golden")
+}
+
+func TestHeaderViewWithPlanName(t *testing.T) {
+	original := lipgloss.ColorProfile()
+	lipgloss.SetColorProfile(termenv.TrueColor)
+	t.Cleanup(func() { lipgloss.SetColorProfile(original) })
+
+	view := NewHeader("v1.0.0", "LocalStack Ultimate", "~/.config/lstk/config.toml").View()
+	if !strings.Contains(view, "LocalStack Ultimate") {
+		t.Fatal("expected plan name in header view")
+	}
+}
+
+func TestHeaderViewWithoutConfigPath(t *testing.T) {
+	original := lipgloss.ColorProfile()
+	lipgloss.SetColorProfile(termenv.TrueColor)
+	t.Cleanup(func() { lipgloss.SetColorProfile(original) })
+
+	view := NewHeader("v1.0.0", "LocalStack AWS Emulator", "").View()
+	if strings.Contains(view, "Config:") {
+		t.Fatal("expected no config line when configPath is empty")
+	}
 }

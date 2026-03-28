@@ -278,7 +278,9 @@ func createMockLicenseServer(success bool) *httptest.Server {
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == "POST" && r.URL.Path == "/v1/license/request" {
 			if success {
+				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(http.StatusOK)
+				_, _ = w.Write([]byte(`{"license_type":"ultimate"}`))
 			} else {
 				w.WriteHeader(http.StatusForbidden)
 			}
