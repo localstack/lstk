@@ -143,12 +143,7 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, nil
 	case output.MessageEvent:
 		msgCopy := msg
-		line := styledLine{text: components.RenderMessage(msg), message: &msgCopy}
-		if a.spinner.PendingStop() {
-			a.bufferedLines = appendLine(a.bufferedLines, line)
-		} else {
-			a.lines = appendLine(a.lines, line)
-		}
+		a.addLine(styledLine{text: components.RenderMessage(msg), message: &msgCopy})
 		return a, nil
 	case output.AuthEvent:
 		if msg.Preamble != "" {
@@ -166,12 +161,7 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, nil
 	case output.LogLineEvent:
 		prefix := styles.Secondary.Render(msg.Source + " | ")
-		line := styledLine{text: prefix + renderLogLine(msg.Line, msg.Level)}
-		if a.spinner.PendingStop() {
-			a.bufferedLines = appendLine(a.bufferedLines, line)
-		} else {
-			a.lines = appendLine(a.lines, line)
-		}
+		a.addLine(styledLine{text: prefix + renderLogLine(msg.Line, msg.Level)})
 		return a, nil
 	case output.ContainerStatusEvent:
 		if msg.Phase == "pulling" {
@@ -216,21 +206,11 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case output.TableEvent:
 		if line, ok := output.FormatEventLine(msg); ok {
 			parts := strings.Split(line, "\n")
-			var lines []styledLine
 			if len(parts) > 0 {
-				lines = append(lines, styledLine{text: parts[0], secondary: true})
+				a.addLine(styledLine{text: parts[0], secondary: true})
 			}
 			for _, part := range parts[1:] {
-				lines = append(lines, styledLine{text: part})
-			}
-			if a.spinner.PendingStop() {
-				for _, l := range lines {
-					a.bufferedLines = appendLine(a.bufferedLines, l)
-				}
-			} else {
-				for _, l := range lines {
-					a.lines = appendLine(a.lines, l)
-				}
+				a.addLine(styledLine{text: part})
 			}
 		}
 	case output.ResourceSummaryEvent:
@@ -239,40 +219,23 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.Resources > 0 && msg.Services > 0 {
 			style = styles.Highlight
 		}
-		line := styledLine{text: style.Render(text)}
 		blank := styledLine{text: ""}
-		if a.spinner.PendingStop() {
-			a.bufferedLines = appendLine(a.bufferedLines, blank)
-			a.bufferedLines = appendLine(a.bufferedLines, line)
-			a.bufferedLines = appendLine(a.bufferedLines, blank)
-		} else {
-			a.lines = appendLine(a.lines, blank)
-			a.lines = appendLine(a.lines, line)
-			a.lines = appendLine(a.lines, blank)
-		}
+		a.addLine(blank)
+		a.addLine(styledLine{text: style.Render(text)})
+		a.addLine(blank)
 		return a, nil
 	case output.InstanceInfoEvent:
 		if line, ok := output.FormatEventLine(msg); ok {
 			line = strings.Replace(line, output.SuccessMarker(), styles.Success.Render(output.SuccessMarker()), 1)
 			for _, part := range strings.Split(line, "\n") {
-				l := styledLine{text: part}
-				if a.spinner.PendingStop() {
-					a.bufferedLines = appendLine(a.bufferedLines, l)
-				} else {
-					a.lines = appendLine(a.lines, l)
-				}
+				a.addLine(styledLine{text: part})
 			}
 		}
 		return a, nil
 	default:
 		if line, ok := output.FormatEventLine(msg); ok {
 			for _, part := range strings.Split(line, "\n") {
-				l := styledLine{text: part}
-				if a.spinner.PendingStop() {
-					a.bufferedLines = appendLine(a.bufferedLines, l)
-				} else {
-					a.lines = appendLine(a.lines, l)
-				}
+				a.addLine(styledLine{text: part})
 			}
 		}
 	}
@@ -299,6 +262,14 @@ func appendLine(lines []styledLine, line styledLine) []styledLine {
 		lines = lines[len(lines)-maxLines:]
 	}
 	return lines
+}
+
+func (a *App) addLine(line styledLine) {
+	if a.spinner.PendingStop() {
+		a.bufferedLines = appendLine(a.bufferedLines, line)
+	} else {
+		a.lines = appendLine(a.lines, line)
+	}
 }
 
 func (a *App) flushBufferedLines() {
