@@ -251,6 +251,19 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			a.lines = appendLine(a.lines, blank)
 		}
 		return a, nil
+	case output.InstanceInfoEvent:
+		if line, ok := output.FormatEventLine(msg); ok {
+			line = strings.Replace(line, output.SuccessMarker(), styles.Success.Render(output.SuccessMarker()), 1)
+			for _, part := range strings.Split(line, "\n") {
+				l := styledLine{text: part}
+				if a.spinner.PendingStop() {
+					a.bufferedLines = appendLine(a.bufferedLines, l)
+				} else {
+					a.lines = appendLine(a.lines, l)
+				}
+			}
+		}
+		return a, nil
 	default:
 		if line, ok := output.FormatEventLine(msg); ok {
 			for _, part := range strings.Split(line, "\n") {
