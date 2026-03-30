@@ -76,3 +76,23 @@ func TestWindowsDockerStartCommand_CmdFallback(t *testing.T) {
 	lookPath := func(string) (string, error) { return "", errors.New("not found") }
 	assert.Equal(t, `"C:\Program Files\Docker\Docker\Docker Desktop.exe"`, windowsDockerStartCommand(func(string) string { return "" }, lookPath))
 }
+
+func TestFindDockerSocket_LimaVM(t *testing.T) {
+	t.Setenv("LIMA_INSTANCE", "default")
+	sock := findDockerSocket()
+	assert.Equal(t, "/var/run/docker.sock", sock)
+}
+
+func TestFindDockerSocket_IncludesLimaPathOnHost(t *testing.T) {
+	t.Setenv("LIMA_INSTANCE", "")
+
+	tmpDir := t.TempDir()
+	limaSock := filepath.Join(tmpDir, ".lima", "docker", "sock", "docker.sock")
+	require.NoError(t, os.MkdirAll(filepath.Dir(limaSock), 0o700))
+	require.NoError(t, os.WriteFile(limaSock, nil, 0o600))
+
+	t.Setenv("HOME", tmpDir)
+
+	result := findDockerSocket()
+	assert.Equal(t, limaSock, result)
+}

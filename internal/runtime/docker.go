@@ -47,11 +47,18 @@ func NewDockerRuntime(dockerHost string) (*DockerRuntime, error) {
 }
 
 func findDockerSocket() string {
+	// Lima VM: Docker socket is natively available at the standard path.
+	// Lima sets LIMA_INSTANCE inside the VM.
+	if os.Getenv("LIMA_INSTANCE") != "" {
+		return "/var/run/docker.sock"
+	}
+
 	home, _ := os.UserHomeDir()
 	return probeSocket(
 		filepath.Join(home, ".colima", "default", "docker.sock"),
 		filepath.Join(home, ".colima", "docker.sock"),
 		filepath.Join(home, ".orbstack", "run", "docker.sock"),
+		filepath.Join(home, ".lima", "docker", "sock", "docker.sock"),
 	)
 }
 
