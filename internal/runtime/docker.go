@@ -47,8 +47,9 @@ func NewDockerRuntime(dockerHost string) (*DockerRuntime, error) {
 }
 
 func findDockerSocket() string {
-	// Check if running inside a Lima VM - Docker socket is natively available
-	if isLimaVM() {
+	// Lima VM: Docker socket is natively available at the standard path.
+	// Lima sets LIMA_INSTANCE inside the VM.
+	if os.Getenv("LIMA_INSTANCE") != "" {
 		return "/var/run/docker.sock"
 	}
 
@@ -59,12 +60,6 @@ func findDockerSocket() string {
 		filepath.Join(home, ".orbstack", "run", "docker.sock"),
 		filepath.Join(home, ".lima", "docker", "sock", "docker.sock"),
 	)
-}
-
-// isLimaVM detects if running inside a Lima virtual machine.
-// Lima sets the LIMA_INSTANCE environment variable in the VM.
-func isLimaVM() bool {
-	return os.Getenv("LIMA_INSTANCE") != ""
 }
 
 func probeSocket(candidates ...string) string {
