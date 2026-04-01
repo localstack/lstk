@@ -2,11 +2,13 @@ package container
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"math/rand/v2"
 	"net/http"
 	"os"
+	"path/filepath"
 	stdruntime "runtime"
 	"slices"
 	"strconv"
@@ -166,9 +168,14 @@ func Start(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts Start
 		return nil
 	}
 
+	licenseFilePath, err := config.LicenseFilePath()
+	if err != nil {
+		return fmt.Errorf("failed to determine license file path: %w", err)
+	}
+
 	// Validate licenses before pulling where possible (pinned tags always; "latest" tags via catalog API).
 	// Returns containers that still need post-pull validation (catalog unavailable).
-	postPullContainers, err := tryPrePullLicenseValidation(ctx, sink, opts, tel, containers, token)
+	postPullContainers, err := tryPrePullLicenseValidation(ctx, sink, opts, tel, containers, token, licenseFilePath)
 	if err != nil {
 		return err
 	}
@@ -179,8 +186,19 @@ func Start(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts Start
 	}
 
 	// Catalog was unavailable for these; fall back to image inspection.
-	if err := validateLicensesFromImages(ctx, rt, sink, opts, tel, postPullContainers, token); err != nil {
+	if err := validateLicensesFromImages(ctx, rt, sink, opts, tel, postPullContainers, token, licenseFilePath); err != nil {
 		return err
+	}
+
+	// Mount the cached license file into each container if available.
+	if _, err := os.Stat(licenseFilePath); err == nil {
+		for i := range containers {
+			containers[i].Binds = append(containers[i].Binds, runtime.BindMount{
+				HostPath:      licenseFilePath,
+				ContainerPath: "/etc/localstack/conf.d/license.json",
+				ReadOnly:      true,
+			})
+		}
 	}
 
 	if err := startContainers(ctx, rt, sink, tel, containers, pulled); err != nil {
@@ -267,11 +285,11 @@ func pullImages(ctx context.Context, rt runtime.Runtime, sink output.Sink, tel *
 // Validates licenses before pulling where the version is known.
 // Pinned tags are validated immediately; "latest" tags are resolved via the catalog API.
 // Returns containers that couldn't be resolved (catalog unavailable) for post-pull validation.
-func tryPrePullLicenseValidation(ctx context.Context, sink output.Sink, opts StartOptions, tel *telemetry.Client, containers []runtime.ContainerConfig, token string) ([]runtime.ContainerConfig, error) {
+func tryPrePullLicenseValidation(ctx context.Context, sink output.Sink, opts StartOptions, tel *telemetry.Client, containers []runtime.ContainerConfig, token, licenseFilePath string) ([]runtime.ContainerConfig, error) {
 	var needsPostPull []runtime.ContainerConfig
 	for _, c := range containers {
 		if c.Tag != "" && c.Tag != "latest" {
-			if err := validateLicense(ctx, sink, opts, tel, c, token); err != nil {
+			if err := validateLicense(ctx, sink, opts, tel, c, token, licenseFilePath); err != nil {
 				return nil, err
 			}
 			continue
@@ -288,7 +306,7 @@ func tryPrePullLicenseValidation(ctx context.Context, sink output.Sink, opts Sta
 
 		cWithVersion := c
 		cWithVersion.Tag = v
-		if err := validateLicense(ctx, sink, opts, tel, cWithVersion, token); err != nil {
+		if err := validateLicense(ctx, sink, opts, tel, cWithVersion, token, licenseFilePath); err != nil {
 			return nil, err
 		}
 	}
@@ -296,14 +314,14 @@ func tryPrePullLicenseValidation(ctx context.Context, sink output.Sink, opts Sta
 }
 
 // Fallback path: inspects each pulled image for its version, then validates the license.
-func validateLicensesFromImages(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts StartOptions, tel *telemetry.Client, containers []runtime.ContainerConfig, token string) error {
+func validateLicensesFromImages(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts StartOptions, tel *telemetry.Client, containers []runtime.ContainerConfig, token, licenseFilePath string) error {
 	for _, c := range containers {
 		v, err := rt.GetImageVersion(ctx, c.Image)
 		if err != nil {
 			return fmt.Errorf("could not resolve version from image %s: %w", c.Image, err)
 		}
 		c.Tag = v
-		if err := validateLicense(ctx, sink, opts, tel, c, token); err != nil {
+		if err := validateLicense(ctx, sink, opts, tel, c, token, licenseFilePath); err != nil {
 			return err
 		}
 	}
@@ -371,7 +389,7 @@ func emitPortInUseError(sink output.Sink, port string) {
 	})
 }
 
-func validateLicense(ctx context.Context, sink output.Sink, opts StartOptions, tel *telemetry.Client, containerConfig runtime.ContainerConfig, token string) error {
+func validateLicense(ctx context.Context, sink output.Sink, opts StartOptions, tel *telemetry.Client, containerConfig runtime.ContainerConfig, token, licenseFilePath string) error {
 	version := containerConfig.Tag
 	output.EmitStatus(sink, "validating license", containerConfig.Name, version)
 
@@ -391,13 +409,24 @@ func validateLicense(ctx context.Context, sink output.Sink, opts StartOptions, t
 		},
 	}
 
-	if _, err := opts.PlatformClient.GetLicense(ctx, licenseReq); err != nil {
+	licenseResp, err := opts.PlatformClient.GetLicense(ctx, licenseReq)
+	if err != nil {
 		var licErr *api.LicenseError
 		if errors.As(err, &licErr) && licErr.Detail != "" {
 			opts.Logger.Error("license server response (HTTP %d): %s", licErr.Status, licErr.Detail)
 		}
 		emitEmulatorStartError(ctx, tel, containerConfig, telemetry.ErrCodeLicenseInvalid, err.Error())
 		return fmt.Errorf("license validation failed for %s:%s: %w", containerConfig.ProductName, version, err)
+	}
+
+	if licenseResp != nil {
+		if licenseData, err := json.Marshal(licenseResp); err != nil {
+			opts.Logger.Error("failed to marshal license response: %v", err)
+		} else if err := os.MkdirAll(filepath.Dir(licenseFilePath), 0755); err != nil {
+			opts.Logger.Error("failed to create license cache directory: %v", err)
+		} else if err := os.WriteFile(licenseFilePath, licenseData, 0600); err != nil {
+			opts.Logger.Error("failed to cache license file: %v", err)
+		}
 	}
 
 	return nil
