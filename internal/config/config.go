@@ -63,6 +63,9 @@ func Init() error {
 	if err := viper.ReadInConfig(); err != nil {
 		var notFoundErr viper.ConfigFileNotFoundError
 		if !errors.As(err, &notFoundErr) {
+			if used := viper.ConfigFileUsed(); filepath.Ext(used) == ".yaml" || filepath.Ext(used) == ".yml" {
+				return fmt.Errorf("%s is from an old lstk version; lstk now uses TOML format — remove it or replace it with a config.toml file", used)
+			}
 			return fmt.Errorf("failed to read config file: %w", err)
 		}
 
