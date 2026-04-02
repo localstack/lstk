@@ -72,15 +72,11 @@ func newVolumeClearCmd(cfg *env.Env, tel *telemetry.Client) *cobra.Command {
 				}
 			}
 
-			if !isInteractiveMode(cfg) {
-				if !force {
-					return fmt.Errorf("volume clear requires confirmation; use --force to skip in non-interactive mode")
-				}
-				sink := output.NewPlainSink(os.Stdout)
-				return volume.Clear(cmd.Context(), sink, containers, true)
+			if !isInteractiveMode(cfg) && !force {
+				return fmt.Errorf("volume clear requires confirmation; use --force to skip in non-interactive mode")
 			}
 
-			if force {
+			if !isInteractiveMode(cfg) || force {
 				sink := output.NewPlainSink(os.Stdout)
 				return volume.Clear(cmd.Context(), sink, containers, true)
 			}

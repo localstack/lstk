@@ -64,7 +64,6 @@ volume = "` + escapeTomlPath(customVolume) + `"
 func TestVolumeClearCommand(t *testing.T) {
 	t.Run("clears volume with force flag", func(t *testing.T) {
 		volumeDir := t.TempDir()
-		// Create some files in the volume directory
 		require.NoError(t, os.MkdirAll(filepath.Join(volumeDir, "cache", "certs"), 0755))
 		require.NoError(t, os.WriteFile(filepath.Join(volumeDir, "cache", "certs", "cert.pem"), []byte("fake cert"), 0644))
 		require.NoError(t, os.WriteFile(filepath.Join(volumeDir, "cache", "machine.json"), []byte("{}"), 0644))
@@ -175,9 +174,7 @@ volume = "` + escapeTomlPath(volumeDir) + `"
 	})
 }
 
-// escapeTomlPath escapes backslashes in a path for embedding in a TOML quoted string.
-// On Windows, t.TempDir() returns paths like D:\Users\... where \U is parsed as a
-// Unicode escape sequence by the TOML parser.
+// escapeTomlPath escapes backslashes for Windows paths in TOML quoted strings.
 func escapeTomlPath(path string) string {
 	return strings.ReplaceAll(path, `\`, `\\`)
 }
