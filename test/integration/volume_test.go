@@ -3,6 +3,7 @@ package integration_test
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/localstack/lstk/test/integration/env"
@@ -32,7 +33,7 @@ func TestVolumePathCommand(t *testing.T) {
 type = "aws"
 tag = "latest"
 port = "4566"
-volume = "` + customVolume + `"
+volume = "` + escapeTomlPath(customVolume) + `"
 `
 		configFile := filepath.Join(t.TempDir(), "config.toml")
 		require.NoError(t, os.WriteFile(configFile, []byte(configContent), 0644))
@@ -73,7 +74,7 @@ func TestVolumeClearCommand(t *testing.T) {
 type = "aws"
 tag = "latest"
 port = "4566"
-volume = "` + volumeDir + `"
+volume = "` + escapeTomlPath(volumeDir) + `"
 `
 		configFile := filepath.Join(t.TempDir(), "config.toml")
 		require.NoError(t, os.WriteFile(configFile, []byte(configContent), 0644))
@@ -116,7 +117,7 @@ volume = "` + volumeDir + `"
 type = "aws"
 tag = "latest"
 port = "4566"
-volume = "` + volumeDir + `"
+volume = "` + escapeTomlPath(volumeDir) + `"
 `
 		configFile := filepath.Join(t.TempDir(), "config.toml")
 		require.NoError(t, os.WriteFile(configFile, []byte(configContent), 0644))
@@ -137,7 +138,7 @@ volume = "` + volumeDir + `"
 type = "aws"
 tag = "latest"
 port = "4566"
-volume = "` + volumeDir + `"
+volume = "` + escapeTomlPath(volumeDir) + `"
 `
 		configFile := filepath.Join(t.TempDir(), "config.toml")
 		require.NoError(t, os.WriteFile(configFile, []byte(configContent), 0644))
@@ -172,4 +173,11 @@ volume = "` + volumeDir + `"
 
 		assertCommandTelemetry(t, events, "volume clear", 0)
 	})
+}
+
+// escapeTomlPath escapes backslashes in a path for embedding in a TOML quoted string.
+// On Windows, t.TempDir() returns paths like D:\Users\... where \U is parsed as a
+// Unicode escape sequence by the TOML parser.
+func escapeTomlPath(path string) string {
+	return strings.ReplaceAll(path, `\`, `\\`)
 }
