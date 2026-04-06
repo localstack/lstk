@@ -235,15 +235,15 @@ func TestStartCommandPassesCIAndLocalStackEnvVars(t *testing.T) {
 	cleanup()
 	t.Cleanup(cleanup)
 
-	t.Setenv("CI", "true")
-	t.Setenv("LOCALSTACK_DISABLE_EVENTS", "1")
-	t.Setenv("LOCALSTACK_AUTH_TOKEN", "host-token")
-
 	mockServer := createMockLicenseServer(true)
 	defer mockServer.Close()
 
 	ctx := testContext(t)
-	_, stderr, err := runLstk(t, ctx, "", env.With(env.APIEndpoint, mockServer.URL), "start")
+	_, stderr, err := runLstk(t, ctx, "", env.With(env.APIEndpoint, mockServer.URL).
+		With(env.CI, "true").
+		With(env.DisableEvents, "1").
+		With(env.AuthToken, "host-token"),
+		"start")
 	require.NoError(t, err, "lstk start failed: %s", stderr)
 	requireExitCode(t, 0, err)
 
