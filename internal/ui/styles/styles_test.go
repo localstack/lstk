@@ -14,7 +14,7 @@ func TestNimboColorConstants(t *testing.T) {
 	if NimboLightColor != "#7E88EC" {
 		t.Fatalf("unexpected NimboLightColor: %s", NimboLightColor)
 	}
-	if SuccessColor != "#22C55E" {
+	if SuccessColor != "#5FD700" {
 		t.Fatalf("unexpected SuccessColor: %s", SuccessColor)
 	}
 }

@@ -7,7 +7,7 @@ import (
 )
 
 const (
-	ansiGreen  = "\x1b[32m"
+	ansiGreen  = "\x1b[38;2;95;215;0m"
 	ansiYellow = "\x1b[33m"
 	ansiRed    = "\x1b[31m"
 	ansiReset  = "\x1b[0m"
