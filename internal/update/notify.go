@@ -12,8 +12,10 @@ import (
 type versionFetcher func(ctx context.Context, token string) (string, error)
 
 type NotifyOptions struct {
-	GitHubToken  string
-	UpdatePrompt bool
+	GitHubToken          string
+	UpdatePrompt         bool
+	SkippedVersion       string
+	PersistSkipVersion   func(version string) error
 }
 
 const checkTimeout = 2 * time.Second
@@ -51,6 +53,10 @@ func NotifyUpdate(ctx context.Context, sink output.Sink, opts NotifyOptions) (ex
 func notifyUpdateWithVersion(ctx context.Context, sink output.Sink, opts NotifyOptions, currentVersion string, fetch versionFetcher) (exitAfter bool) {
 	current, latest, available := checkQuietlyWithVersion(ctx, opts.GitHubToken, currentVersion, fetch)
 	if !available {
+		return false
+	}
+
+	if opts.SkippedVersion != "" && normalizeVersion(opts.SkippedVersion) == normalizeVersion(latest) {
 		return false
 	}
 
@@ -98,6 +104,9 @@ func promptAndUpdate(ctx context.Context, sink output.Sink, opts NotifyOptions, 
 	case "r":
 		return false
 	case "s":
+		if opts.PersistSkipVersion != nil {
+			_ = opts.PersistSkipVersion(latest)
+		}
 		output.EmitNote(sink, "Skipping version " + latest)
 		return false
 	}

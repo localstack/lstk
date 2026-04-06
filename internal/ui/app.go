@@ -351,9 +351,6 @@ func (a App) handleVerticalPromptKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 func formatResolvedInput(req output.UserInputRequestEvent, selectedKey string) string {
-	formatted := output.FormatPrompt(req.Prompt, req.Options)
-	firstLine := strings.Split(formatted, "\n")[0]
-
 	selected := selectedKey
 	hasLabels := false
 	for _, opt := range req.Options {
@@ -364,6 +361,17 @@ func formatResolvedInput(req output.UserInputRequestEvent, selectedKey string) s
 			selected = opt.Label
 		}
 	}
+
+	if req.Vertical {
+		firstLine := strings.Split(req.Prompt, "\n")[0]
+		if selected == "" || !hasLabels || selectedKey == "any" {
+			return firstLine
+		}
+		return fmt.Sprintf("%s %s", firstLine, selected)
+	}
+
+	formatted := output.FormatPrompt(req.Prompt, req.Options)
+	firstLine := strings.Split(formatted, "\n")[0]
 
 	if selected == "" || !hasLabels || selectedKey == "any" {
 		return firstLine
