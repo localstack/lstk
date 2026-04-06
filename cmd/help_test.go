@@ -51,6 +51,15 @@ func TestSubcommandHelpUsesSubcommandUsageLine(t *testing.T) {
 	assertNotContains(t, out, "LSTK - LocalStack command-line interface")
 }
 
+func TestRootHelpIncludesDoctorCommand(t *testing.T) {
+	out, err := executeWithArgs(t, "--help")
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+
+	assertContains(t, out, "doctor")
+}
+
 func assertContains(t *testing.T, s, want string) {
 	t.Helper()
 	if !strings.Contains(s, want) {
