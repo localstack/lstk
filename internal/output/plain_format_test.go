@@ -237,3 +237,27 @@ func TestFormatTableWidth(t *testing.T) {
 		}
 	})
 }
+
+func TestFormatTableWidthStyledColorsStatusColumn(t *testing.T) {
+	t.Parallel()
+
+	got := formatTableWidthStyled(TableEvent{
+		Headers: []string{"Check", "Status", "Detail"},
+		Rows: [][]string{
+			{"Config file", "OK", "/tmp/config.toml"},
+			{"Docker runtime", "WARN", "Not available"},
+			{"Health", "FAIL", "Timed out"},
+		},
+	}, 120, true)
+
+	assertContains := func(t *testing.T, s, want string) {
+		t.Helper()
+		if !strings.Contains(s, want) {
+			t.Fatalf("expected %q to contain %q", s, want)
+		}
+	}
+
+	assertContains(t, got, ansiGreen+"OK"+ansiReset)
+	assertContains(t, got, ansiYellow+"WARN"+ansiReset)
+	assertContains(t, got, ansiRed+"FAIL"+ansiReset)
+}

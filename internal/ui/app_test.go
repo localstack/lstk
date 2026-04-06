@@ -11,6 +11,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/exp/teatest"
 	"github.com/localstack/lstk/internal/output"
+	"github.com/localstack/lstk/internal/ui/styles"
 	"github.com/muesli/termenv"
 )
 
@@ -203,6 +204,38 @@ func TestAppMessageEventWrapsOnVisibleWidth(t *testing.T) {
 	}
 	if strings.Contains(view, "backg\nround") {
 		t.Fatalf("expected message to wrap at word boundary, got: %q", view)
+	}
+}
+
+func TestAppTableStatusesAreColored(t *testing.T) {
+	t.Parallel()
+
+	original := lipgloss.ColorProfile()
+	lipgloss.SetColorProfile(termenv.TrueColor)
+	t.Cleanup(func() { lipgloss.SetColorProfile(original) })
+
+	app := NewApp("dev", "", "", nil)
+	app.width = 120
+
+	model, _ := app.Update(output.TableEvent{
+		Headers: []string{"Check", "Status", "Detail"},
+		Rows: [][]string{
+			{"Config file", "OK", "/tmp/config.toml"},
+			{"Docker runtime", "WARN", "Slow response"},
+			{"Health", "FAIL", "Timed out"},
+		},
+	})
+	app = model.(App)
+
+	view := app.View()
+	if !strings.Contains(view, styles.Success.Render("OK")) {
+		t.Fatalf("expected OK status to be colored, got: %q", view)
+	}
+	if !strings.Contains(view, styles.Warning.Render("WARN")) {
+		t.Fatalf("expected WARN status to be colored, got: %q", view)
+	}
+	if !strings.Contains(view, styles.LogError.Render("FAIL")) {
+		t.Fatalf("expected FAIL status to be colored, got: %q", view)
 	}
 }
 

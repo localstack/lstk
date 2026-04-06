@@ -6,6 +6,13 @@ import (
 	"time"
 )
 
+const (
+	ansiGreen  = "\x1b[32m"
+	ansiYellow = "\x1b[33m"
+	ansiRed    = "\x1b[31m"
+	ansiReset  = "\x1b[0m"
+)
+
 // FormatEventLine converts an output event into a single display line.
 func FormatEventLine(event any) (string, bool) {
 	switch e := event.(type) {
@@ -194,6 +201,10 @@ func formatTable(e TableEvent) (string, bool) {
 }
 
 func formatTableWidth(e TableEvent, totalWidth int) string {
+	return formatTableWidthStyled(e, totalWidth, false)
+}
+
+func formatTableWidthStyled(e TableEvent, totalWidth int, colorizeStatus bool) string {
 	ncols := len(e.Headers)
 	if ncols == 0 {
 		return ""
@@ -239,6 +250,7 @@ func formatTableWidth(e TableEvent, totalWidth int) string {
 	}
 
 	var sb strings.Builder
+	statusCol := statusColumnIndex(e.Headers)
 	writeRow := func(cols []string) {
 		sb.WriteString("  ")
 		for i := range ncols {
@@ -247,7 +259,11 @@ func formatTableWidth(e TableEvent, totalWidth int) string {
 				cell = cols[i]
 			}
 			val := truncate(cell, widths[i])
-			sb.WriteString(val)
+			renderedVal := val
+			if colorizeStatus && i == statusCol {
+				renderedVal = colorizeStatusANSI(val)
+			}
+			sb.WriteString(renderedVal)
 			if i < ncols-1 {
 				padding := widths[i] - displayWidth(val) + 2
 				for range padding {
@@ -266,4 +282,26 @@ func formatTableWidth(e TableEvent, totalWidth int) string {
 		writeRow(row)
 	}
 	return sb.String()
+}
+
+func statusColumnIndex(headers []string) int {
+	for i, h := range headers {
+		if strings.EqualFold(strings.TrimSpace(h), "status") {
+			return i
+		}
+	}
+	return -1
+}
+
+func colorizeStatusANSI(status string) string {
+	switch strings.TrimSpace(status) {
+	case "OK":
+		return ansiGreen + status + ansiReset
+	case "WARN":
+		return ansiYellow + status + ansiReset
+	case "FAIL":
+		return ansiRed + status + ansiReset
+	default:
+		return status
+	}
 }

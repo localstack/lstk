@@ -3,6 +3,7 @@ package ui
 import (
 	"context"
 	"fmt"
+	"regexp"
 	"strings"
 	"unicode"
 
@@ -16,6 +17,8 @@ import (
 )
 
 const maxLines = 200
+
+var statusTokenPattern = regexp.MustCompile(`\b(OK|WARN|FAIL)\b`)
 
 type runDoneMsg struct{}
 
@@ -392,7 +395,7 @@ func (a App) View() string {
 			sb.WriteString(styles.SecondaryMessage.Render(text))
 		} else {
 			text := wrap.HardWrap(line.text, a.width)
-			sb.WriteString(text)
+			sb.WriteString(styleStatusTokens(text))
 		}
 		sb.WriteString("\n")
 	}
@@ -418,4 +421,26 @@ func (a App) View() string {
 
 func (a App) Err() error {
 	return a.err
+}
+
+func styleStatusTokens(text string) string {
+	if !strings.HasPrefix(text, "  ") {
+		return text
+	}
+	if !strings.Contains(text, "OK") && !strings.Contains(text, "WARN") && !strings.Contains(text, "FAIL") {
+		return text
+	}
+
+	return statusTokenPattern.ReplaceAllStringFunc(text, func(token string) string {
+		switch token {
+		case "OK":
+			return styles.Success.Render(token)
+		case "WARN":
+			return styles.Warning.Render(token)
+		case "FAIL":
+			return styles.LogError.Render(token)
+		default:
+			return token
+		}
+	})
 }

@@ -30,10 +30,22 @@ func (s *PlainSink) setErr(err error) {
 }
 
 func (s *PlainSink) emit(event any) {
-	line, ok := FormatEventLine(event)
+	line, ok := s.formatEvent(event)
 	if !ok {
 		return
 	}
 	_, err := fmt.Fprintln(s.out, line)
 	s.setErr(err)
+}
+
+func (s *PlainSink) formatEvent(event any) (string, bool) {
+	switch e := event.(type) {
+	case TableEvent:
+		if len(e.Rows) == 0 {
+			return "", false
+		}
+		return formatTableWidthStyled(e, terminalWidthForWriter(s.out), writerSupportsANSI(s.out)), true
+	default:
+		return FormatEventLine(event)
+	}
 }
