@@ -48,6 +48,22 @@ func ConfigFilePath() (string, error) {
 	return absCreationPath, nil
 }
 
+func ExistingConfigFilePath() (string, bool, error) {
+	existingPath, found, err := firstExistingConfigPath()
+	if err != nil {
+		return "", false, err
+	}
+	if !found {
+		return "", false, nil
+	}
+
+	absPath, err := filepath.Abs(existingPath)
+	if err != nil {
+		return "", false, fmt.Errorf("failed to resolve absolute config path: %w", err)
+	}
+	return absPath, true, nil
+}
+
 func ConfigDir() (string, error) {
 	configPath, err := ConfigFilePath()
 	if err != nil {
