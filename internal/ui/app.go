@@ -175,7 +175,7 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if msg.Phase == "ready" {
 				line = strings.Replace(line, output.SuccessMarker(), styles.Success.Render(output.SuccessMarker()), 1)
 			}
-			a.lines = appendLine(a.lines, styledLine{text: line})
+			a.addLine(styledLine{text: line})
 		}
 		return a, nil
 	case output.ProgressEvent:
