@@ -76,8 +76,12 @@ func (s profileStatus) anyNeeded() bool {
 	return s.configNeeded || s.credsNeeded
 }
 
-// checkProfileStatus determines which AWS profile files need to be written or updated.
-func checkProfileStatus(configPath, credsPath, resolvedHost string) (profileStatus, error) {
+// CheckProfileStatus determines which AWS profile files need to be written or updated.
+func CheckProfileStatus(resolvedHost string) (profileStatus, error) {
+	configPath, credsPath, err := awsPaths()
+	if err != nil {
+		return profileStatus{}, err
+	}
 	configNeeded, err := configNeedsWrite(configPath, resolvedHost)
 	if err != nil {
 		return profileStatus{}, err
@@ -184,17 +188,40 @@ func writeCredsProfile(credsPath string) error {
 	return upsertSection(credsPath, credsSectionName, credentialsDefaults())
 }
 
-// Setup checks for the localstack AWS profile and prompts to create or update it if needed.
-// resolvedHost must be a host:port string (e.g. "localhost.localstack.cloud:4566").
-// In non-interactive mode, emits a note instead of prompting.
-func Setup(ctx context.Context, sink output.Sink, interactive bool, resolvedHost string) error {
+func emitMissingProfileNote(sink output.Sink) {
+	output.EmitNote(sink, "LocalStack AWS profile is incomplete. Run 'lstk setup aws'.")
+}
+
+// checkProfileSetup returns both the profile status (which files need writing) and presence (which files exist).
+// This avoids loading the same files twice by combining needsProfileSetup and profilePresence.
+func checkProfileSetup(resolvedHost string) (profileStatus, bool, bool, error) {
 	configPath, credsPath, err := awsPaths()
 	if err != nil {
-		output.EmitWarning(sink, fmt.Sprintf("could not determine AWS config paths: %v", err))
-		return nil
+		return profileStatus{}, false, false, err
 	}
 
-	status, err := checkProfileStatus(configPath, credsPath, resolvedHost)
+	status, err := CheckProfileStatus(resolvedHost)
+	if err != nil {
+		return profileStatus{}, false, false, err
+	}
+
+	configOK, err := sectionExists(configPath, configSectionName)
+	if err != nil {
+		return profileStatus{}, false, false, err
+	}
+	credsOK, err := sectionExists(credsPath, credsSectionName)
+	if err != nil {
+		return profileStatus{}, false, false, err
+	}
+
+	return status, configOK, credsOK, nil
+}
+
+// EnsureProfile checks for the LocalStack AWS profile and either emits a note when it is incomplete
+// or triggers the interactive setup flow.
+// resolvedHost must be a host:port string (e.g. "localhost.localstack.cloud:4566").
+func EnsureProfile(ctx context.Context, sink output.Sink, interactive bool, resolvedHost string) error {
+	status, configOK, credsOK, err := checkProfileSetup(resolvedHost)
 	if err != nil {
 		output.EmitWarning(sink, fmt.Sprintf("could not check AWS profile: %v", err))
 		return nil
@@ -202,22 +229,43 @@ func Setup(ctx context.Context, sink output.Sink, interactive bool, resolvedHost
 	if !status.anyNeeded() {
 		return nil
 	}
+	if interactive && !configOK && !credsOK {
+		return Setup(ctx, sink, resolvedHost, status)
+	}
 
-	if !interactive {
-		output.EmitNote(sink, fmt.Sprintf("No complete LocalStack AWS profile found. Run lstk interactively to configure one, or add a [profile %s] section to ~/.aws/config manually.", profileName))
+	emitMissingProfileNote(sink)
+	return nil
+}
+
+// Setup checks for the localstack AWS profile and prompts to create or update it if needed.
+// resolvedHost must be a host:port string (e.g. "localhost.localstack.cloud:4566").
+// status is passed in from EnsureProfile to avoid re-checking the profile status.
+func Setup(ctx context.Context, sink output.Sink, resolvedHost string, status profileStatus) error {
+	if !status.anyNeeded() {
+		output.EmitNote(sink, "LocalStack AWS profile is already configured.")
+		return nil
+	}
+
+	configPath, credsPath, err := awsPaths()
+	if err != nil {
+		output.EmitWarning(sink, fmt.Sprintf("could not determine AWS config paths: %v", err))
 		return nil
 	}
 
 	responseCh := make(chan output.InputResponse, 1)
 	output.EmitUserInputRequest(sink, output.UserInputRequestEvent{
-		Prompt:     "Configure AWS profile in ~/.aws/?",
+		Prompt:     "Set up a LocalStack profile for AWS CLI and SDKs in ~/.aws?",
 		Options:    []output.InputOption{{Key: "y", Label: "Y"}, {Key: "n", Label: "n"}},
 		ResponseCh: responseCh,
 	})
 
 	select {
 	case resp := <-responseCh:
-		if resp.Cancelled || resp.SelectedKey == "n" {
+		if resp.Cancelled {
+			return nil
+		}
+		if resp.SelectedKey == "n" {
+			output.EmitNote(sink, "Skipped adding LocalStack AWS profile.")
 			return nil
 		}
 		if status.configNeeded {
@@ -232,12 +280,16 @@ func Setup(ctx context.Context, sink output.Sink, interactive bool, resolvedHost
 				return nil
 			}
 		}
-		output.EmitSuccess(sink, "AWS profile successfully configured")
-		output.EmitNote(sink, fmt.Sprintf("Try: aws s3 mb s3://test --profile %s", profileName))
+		if status.configNeeded && status.credsNeeded {
+			output.EmitSuccess(sink, "Created LocalStack profile in ~/.aws")
+		} else if status.configNeeded {
+			output.EmitSuccess(sink, "Created LocalStack profile in ~/.aws/config")
+		} else {
+			output.EmitSuccess(sink, "Updated LocalStack credentials in ~/.aws/credentials")
+		}
 	case <-ctx.Done():
 		return ctx.Err()
 	}
 
 	return nil
 }
-

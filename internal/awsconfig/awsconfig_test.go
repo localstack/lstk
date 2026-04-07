@@ -199,7 +199,8 @@ func TestCheckProfileStatus(t *testing.T) {
 			if tc.credsContent != "" {
 				writeFile(t, credsPath, tc.credsContent)
 			}
-			status, err := checkProfileStatus(configPath, credsPath, tc.resolvedHost)
+			t.Setenv("HOME", dir)
+			status, err := CheckProfileStatus(tc.resolvedHost)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -221,7 +222,9 @@ func TestCheckProfileStatusMalformedFile(t *testing.T) {
 	writeFile(t, configPath, "this is not valid \x00\x01\x02 ini content [[[")
 	writeFile(t, credsPath, "[localstack]\naws_access_key_id = test\naws_secret_access_key = test\n")
 
-	_, err := checkProfileStatus(configPath, credsPath, "127.0.0.1:4566")
+	// Override HOME to use our test directory
+	t.Setenv("HOME", dir)
+	_, err := CheckProfileStatus("127.0.0.1:4566")
 	if err == nil {
 		t.Error("expected error for malformed config file, got nil")
 	}

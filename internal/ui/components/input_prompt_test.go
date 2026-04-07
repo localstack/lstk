@@ -38,12 +38,12 @@ func TestInputPromptView(t *testing.T) {
 		},
 		{
 			name:   "multiple options shows brackets",
-			prompt: "Configure AWS profile?",
+			prompt: "Set up a LocalStack profile for AWS CLI and SDKs in ~/.aws?",
 			options: []output.InputOption{
 				{Key: "y", Label: "Y"},
 				{Key: "n", Label: "n"},
 			},
-			contains: []string{"?", "Configure AWS profile?", "[Y/n]"},
+			contains: []string{"?", "Set up a LocalStack profile for AWS CLI and SDKs in ~/.aws?", "[Y/n]"},
 		},
 		{
 			name:   "multi-line prompt renders trailing lines",

@@ -55,6 +55,14 @@ When adding a new command that depends on configuration, wire config initializat
 
 Created automatically on first run with defaults. Supports emulator types (aws, snowflake, azure) - currently only aws is implemented.
 
+# Emulator Setup Commands
+
+Use `lstk setup <emulator>` to set up CLI integration for an emulator type:
+- `lstk setup aws` — Sets up AWS CLI profile in `~/.aws/config` and `~/.aws/credentials`
+
+This naming avoids AWS-specific "profile" terminology and uses a clear verb for mutation operations.
+The deprecated `lstk config profile` command still works but points users to `lstk setup aws`.
+
 Environment variables:
 - `LOCALSTACK_AUTH_TOKEN` - Auth token (skips browser login if set)
 
