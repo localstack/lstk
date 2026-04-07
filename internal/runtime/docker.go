@@ -72,9 +72,18 @@ func probeSocket(candidates ...string) string {
 }
 
 func (d *DockerRuntime) SocketPath() string {
-	host := d.client.DaemonHost()
+	return socketPathFromHost(d.client.DaemonHost())
+}
+
+// Resolves the host-side Docker socket path to bind-mount into containers.
+// On Unix, it strips the unix:// prefix. On Windows, Docker Desktop connects via a named pipe
+// but exposes the socket at /var/run/docker.sock for Linux containers to bind-mount (via WSL2).
+func socketPathFromHost(host string) string {
 	if strings.HasPrefix(host, "unix://") {
 		return strings.TrimPrefix(host, "unix://")
+	}
+	if strings.HasPrefix(host, "npipe://") {
+		return "/var/run/docker.sock"
 	}
 	return ""
 }
