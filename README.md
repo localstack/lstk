@@ -45,7 +45,7 @@ Running `lstk` will automatically handle configuration setup and start LocalStac
 
 ## Features
 
-- **Start / stop / status** — manage LocalStack emulators with a single command
+- **Start / stop / status / doctor** — manage and diagnose LocalStack emulators with a single command set
 - **Interactive TUI** — a Bubble Tea-powered terminal UI shown in an interactive terminal for commands like `start`, `login`, `status`, etc.
 - **Plain output** for CI/CD and scripting (auto-detected in non-interactive environments or forced with `--non-interactive`)
 - **Log streaming** — tail emulator logs in real-time with `--follow`; use `--verbose` to show all logs without filtering
@@ -170,6 +170,9 @@ lstk stop
 
 # Show emulator status and deployed resources
 lstk status
+
+# Diagnose config, Docker, auth, and emulator connectivity
+lstk doctor
 
 # Stream emulator logs
 lstk logs --follow

@@ -8,7 +8,7 @@ const (
 	NimboDarkColor  = "#3F51C7"
 	NimboMidColor   = "#5E6AD2"
 	NimboLightColor = "#7E88EC"
-	SuccessColor    = "#B7C95C"
+	SuccessColor    = "#5FD700"
 )
 
 var (
