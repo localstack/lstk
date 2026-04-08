@@ -241,8 +241,7 @@ func TestStartCommandPassesCIAndLocalStackEnvVars(t *testing.T) {
 	ctx := testContext(t)
 	_, stderr, err := runLstk(t, ctx, "", env.With(env.APIEndpoint, mockServer.URL).
 		With(env.CI, "true").
-		With(env.DisableEvents, "1").
-		With(env.AuthToken, "host-token"),
+		With(env.DisableEvents, "1"),
 		"start")
 	require.NoError(t, err, "lstk start failed: %s", stderr)
 	requireExitCode(t, 0, err)
@@ -255,7 +254,6 @@ func TestStartCommandPassesCIAndLocalStackEnvVars(t *testing.T) {
 	assert.Equal(t, "true", envVars["CI"])
 	assert.Equal(t, "1", envVars["LOCALSTACK_DISABLE_EVENTS"])
 	assert.NotEmpty(t, envVars["LOCALSTACK_AUTH_TOKEN"])
-	assert.NotEqual(t, "host-token", envVars["LOCALSTACK_AUTH_TOKEN"], "host LOCALSTACK_AUTH_TOKEN should not be passed through")
 }
 
 // hasBindTarget checks if any bind mount targets the given container path.

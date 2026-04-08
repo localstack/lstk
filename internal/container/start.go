@@ -97,12 +97,7 @@ func Start(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts Start
 
 	tel := opts.Telemetry
 
-	var hostEnv []string
-	for _, e := range os.Environ() {
-		if strings.HasPrefix(e, "CI=") || (strings.HasPrefix(e, "LOCALSTACK_") && !strings.HasPrefix(e, "LOCALSTACK_AUTH_TOKEN=")) {
-			hostEnv = append(hostEnv, e)
-		}
-	}
+	hostEnv := filterHostEnv(os.Environ())
 
 	containers := make([]runtime.ContainerConfig, len(opts.Containers))
 	for i, c := range opts.Containers {
@@ -483,6 +478,20 @@ func awaitStartup(ctx context.Context, rt runtime.Runtime, sink output.Sink, con
 		case <-time.After(1 * time.Second):
 		}
 	}
+}
+
+// filterHostEnv returns the subset of host environment entries that should be
+// forwarded to the emulator container. It keeps CI and LOCALSTACK_* variables
+// but explicitly drops LOCALSTACK_AUTH_TOKEN so the host value cannot overwrite
+// the token resolved by lstk (which may come from the keyring).
+func filterHostEnv(envList []string) []string {
+	var out []string
+	for _, e := range envList {
+		if strings.HasPrefix(e, "CI=") || (strings.HasPrefix(e, "LOCALSTACK_") && !strings.HasPrefix(e, "LOCALSTACK_AUTH_TOKEN=")) {
+			out = append(out, e)
+		}
+	}
+	return out
 }
 
 func hasDuplicateContainerTypes(containers []config.ContainerConfig) bool {

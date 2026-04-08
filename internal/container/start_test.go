@@ -53,3 +53,26 @@ func TestEmitPostStartPointers_WithoutWebApp(t *testing.T) {
 	assert.Contains(t, got, "> Tip:")
 }
 
+func TestFilterHostEnv(t *testing.T) {
+	input := []string{
+		"CI=true",
+		"LOCALSTACK_DISABLE_EVENTS=1",
+		"LOCALSTACK_API_ENDPOINT=https://example.test",
+		"LOCALSTACK_AUTH_TOKEN=host-token",
+		"PATH=/usr/bin",
+		"HOME=/home/user",
+		"CI_PIPELINE=foo",
+	}
+
+	got := filterHostEnv(input)
+
+	assert.Contains(t, got, "CI=true")
+	assert.Contains(t, got, "LOCALSTACK_DISABLE_EVENTS=1")
+	assert.Contains(t, got, "LOCALSTACK_API_ENDPOINT=https://example.test")
+	assert.NotContains(t, got, "LOCALSTACK_AUTH_TOKEN=host-token",
+		"host LOCALSTACK_AUTH_TOKEN must be filtered so it cannot overwrite the lstk-resolved token")
+	assert.NotContains(t, got, "PATH=/usr/bin")
+	assert.NotContains(t, got, "HOME=/home/user")
+	assert.NotContains(t, got, "CI_PIPELINE=foo", "only exact CI= must be forwarded, not CI_*")
+}
+
