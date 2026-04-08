@@ -64,7 +64,7 @@ func FriendlyConfigPath() (string, error) {
 
 	cwd, err := os.Getwd()
 	if err == nil {
-		if rel, relErr := filepath.Rel(cwd, resolved); relErr == nil && !strings.HasPrefix(rel, "..") {
+		if rel, relErr := filepath.Rel(cwd, resolved); relErr == nil && isInside(rel) {
 			return rel, nil
 		}
 	}
@@ -74,12 +74,21 @@ func FriendlyConfigPath() (string, error) {
 		if evalErr != nil {
 			resolvedHome = home
 		}
-		if rel, relErr := filepath.Rel(resolvedHome, resolved); relErr == nil && !strings.HasPrefix(rel, "..") {
+		if rel, relErr := filepath.Rel(resolvedHome, resolved); relErr == nil && isInside(rel) {
 			return filepath.Join("~", rel), nil
 		}
 	}
 
 	return absPath, nil
+}
+
+// isInside reports whether a relative path produced by filepath.Rel stays
+// inside the base directory (i.e. does not climb out via "..").
+func isInside(rel string) bool {
+	if rel == ".." {
+		return false
+	}
+	return !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
 
 func ConfigDir() (string, error) {

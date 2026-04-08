@@ -131,12 +131,6 @@ func startEmulator(ctx context.Context, rt runtime.Runtime, cfg *env.Env, tel *t
 	configPath, _ := config.FriendlyConfigPath()
 
 	if isInteractiveMode(cfg) {
-		cached := config.CachedPlanLabel()
-		animateHeader := cached == ""
-		if cached == "" {
-			cached = "LocalStack"
-		}
-
 		labelCh := make(chan string, 1)
 		go func() {
 			label := container.ResolveEmulatorLabel(ctx, opts.PlatformClient, appConfig.Containers, cfg.AuthToken, logger)
@@ -150,9 +144,8 @@ func startEmulator(ctx context.Context, rt runtime.Runtime, cfg *env.Env, tel *t
 			StartOptions:  opts,
 			NotifyOptions: notifyOpts,
 			ConfigPath:    configPath,
-			EmulatorLabel: cached,
+			EmulatorLabel: config.CachedPlanLabel(),
 			LabelCh:       labelCh,
-			AnimateHeader: animateHeader,
 		})
 	}
 

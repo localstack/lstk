@@ -34,7 +34,6 @@ type RunOptions struct {
 	ConfigPath    string
 	EmulatorLabel string
 	LabelCh       <-chan string
-	AnimateHeader bool
 }
 
 func Run(parentCtx context.Context, runOpts RunOptions) error {
@@ -42,7 +41,7 @@ func Run(parentCtx context.Context, runOpts RunOptions) error {
 	defer cancel()
 
 	var appOpts []AppOption
-	if runOpts.AnimateHeader {
+	if runOpts.EmulatorLabel == "" {
 		appOpts = append(appOpts, withHeaderLoading())
 	}
 	app := NewApp(runOpts.Version, runOpts.EmulatorLabel, runOpts.ConfigPath, cancel, appOpts...)

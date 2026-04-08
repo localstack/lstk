@@ -54,11 +54,11 @@ type App struct {
 	width         int
 	cancel        func()
 	pendingInput  *output.UserInputRequestEvent
-	err            error
-	quitting       bool
-	hideHeader     bool
-	headerLoading  bool
-	headerFrame    int
+	err           error
+	quitting      bool
+	hideHeader    bool
+	headerLoading bool
+	headerFrame   int
 }
 
 type AppOption func(*App)

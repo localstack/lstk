@@ -69,20 +69,21 @@ type LicenseResponse struct {
 	LicenseType string `json:"license_type"`
 }
 
+var planDisplayNames = map[string]string{
+	"hobby":      "Hobby",
+	"pro":        "Pro",
+	"team":       "Teams",
+	"enterprise": "Enterprise",
+	"trial":      "Trial",
+	"freemium":   "Community",
+	"base":       "Starter",
+	"ultimate":   "Ultimate",
+	"student":    "Student",
+}
+
 func (r *LicenseResponse) PlanDisplayName() string {
 	if r == nil || r.LicenseType == "" {
 		return ""
-	}
-	planDisplayNames := map[string]string{
-		"hobby":      "Hobby",
-		"pro":        "Pro",
-		"team":       "Teams",
-		"enterprise": "Enterprise",
-		"trial":      "Trial",
-		"freemium":   "Community",
-		"base":       "Starter",
-		"ultimate":   "Ultimate",
-		"student":    "Student",
 	}
 	if name, ok := planDisplayNames[r.LicenseType]; ok {
 		return name
@@ -269,9 +270,6 @@ func (c *PlatformClient) GetLicense(ctx context.Context, licReq *LicenseRequest)
 	if statusCode == http.StatusOK {
 		var licResp LicenseResponse
 		decErr := json.NewDecoder(resp.Body).Decode(&licResp)
-		if decErr != nil {
-			c.logger.Error("failed to decode license response: %v", decErr)
-		}
 		if err := resp.Body.Close(); err != nil {
 			c.logger.Error("failed to close response body: %v", err)
 		}
