@@ -24,22 +24,35 @@ func (s programSender) Send(msg any) {
 	s.p.Send(msg)
 }
 
-func Run(parentCtx context.Context, rt runtime.Runtime, version string, opts container.StartOptions, notifyOpts update.NotifyOptions, configPath, emulatorLabel string, labelCh <-chan string, animateHeader bool) error {
+// RunOptions groups the parameters for Run. Bundling them keeps the call
+// site readable as the UI entry point grows new concerns.
+type RunOptions struct {
+	Runtime       runtime.Runtime
+	Version       string
+	StartOptions  container.StartOptions
+	NotifyOptions update.NotifyOptions
+	ConfigPath    string
+	EmulatorLabel string
+	LabelCh       <-chan string
+	AnimateHeader bool
+}
+
+func Run(parentCtx context.Context, runOpts RunOptions) error {
 	ctx, cancel := context.WithCancel(parentCtx)
 	defer cancel()
 
 	var appOpts []AppOption
-	if animateHeader {
+	if runOpts.AnimateHeader {
 		appOpts = append(appOpts, withHeaderLoading())
 	}
-	app := NewApp(version, emulatorLabel, configPath, cancel, appOpts...)
+	app := NewApp(runOpts.Version, runOpts.EmulatorLabel, runOpts.ConfigPath, cancel, appOpts...)
 	p := tea.NewProgram(app)
 	runErrCh := make(chan error, 1)
 
-	if labelCh != nil {
+	if runOpts.LabelCh != nil {
 		go func() {
 			select {
-			case label, ok := <-labelCh:
+			case label, ok := <-runOpts.LabelCh:
 				if ok && label != "" {
 					p.Send(headerLabelMsg{label: label})
 				}
@@ -52,11 +65,11 @@ func Run(parentCtx context.Context, rt runtime.Runtime, version string, opts con
 		var err error
 		defer func() { runErrCh <- err }()
 		sink := output.NewTUISink(programSender{p: p})
-		if update.NotifyUpdate(ctx, sink, notifyOpts) {
+		if update.NotifyUpdate(ctx, sink, runOpts.NotifyOptions) {
 			p.Send(runDoneMsg{})
 			return
 		}
-		err = container.Start(ctx, rt, sink, opts, true)
+		err = container.Start(ctx, runOpts.Runtime, sink, runOpts.StartOptions, true)
 		if err != nil {
 			if errors.Is(err, context.Canceled) {
 				return

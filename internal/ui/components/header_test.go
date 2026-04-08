@@ -34,8 +34,13 @@ func TestHeaderViewWithoutConfigPath(t *testing.T) {
 	lipgloss.SetColorProfile(termenv.TrueColor)
 	t.Cleanup(func() { lipgloss.SetColorProfile(original) })
 
-	view := NewHeader("v1.0.0", "LocalStack AWS Emulator", "").View()
-	if strings.Contains(view, "Config:") {
-		t.Fatal("expected no config line when configPath is empty")
+	withPath := NewHeader("v1.0.0", "LocalStack AWS Emulator", "~/.config/lstk/config.toml").View()
+	withoutPath := NewHeader("v1.0.0", "LocalStack AWS Emulator", "").View()
+
+	if !strings.Contains(withPath, "~/.config/lstk/config.toml") {
+		t.Fatal("expected config path in header view when provided")
+	}
+	if strings.Contains(withoutPath, "~/.config/lstk/config.toml") {
+		t.Fatal("expected no config path in header view when empty")
 	}
 }

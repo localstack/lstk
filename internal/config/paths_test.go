@@ -10,7 +10,7 @@ import (
 )
 
 func TestFriendlyConfigPathRelativeForProjectLocal(t *testing.T) {
-	t.Parallel()
+	// Cannot run in parallel: mutates process-wide cwd and viper state.
 
 	tmpDir := t.TempDir()
 	dir, err := filepath.EvalSymlinks(tmpDir)
@@ -28,6 +28,7 @@ func TestFriendlyConfigPathRelativeForProjectLocal(t *testing.T) {
 	t.Cleanup(func() { _ = os.Chdir(origDir) })
 
 	viper.Reset()
+	t.Cleanup(viper.Reset)
 	viper.SetConfigFile(configFile)
 	require.NoError(t, viper.ReadInConfig())
 
@@ -37,22 +38,22 @@ func TestFriendlyConfigPathRelativeForProjectLocal(t *testing.T) {
 }
 
 func TestFriendlyConfigPathTildeForHomeDir(t *testing.T) {
-	t.Parallel()
+	// Cannot run in parallel: mutates process-wide viper state and HOME env.
 
-	home, err := os.UserHomeDir()
+	fakeHome := t.TempDir()
+	resolvedHome, err := filepath.EvalSymlinks(fakeHome)
 	require.NoError(t, err)
 
-	configDir := filepath.Join(home, ".config", "lstk")
-	if _, err := os.Stat(configDir); os.IsNotExist(err) {
-		t.Skip("~/.config/lstk does not exist")
-	}
+	configDir := filepath.Join(resolvedHome, ".config", "lstk")
+	require.NoError(t, os.MkdirAll(configDir, 0755))
 
 	configFile := filepath.Join(configDir, "config.toml")
-	if _, err := os.Stat(configFile); os.IsNotExist(err) {
-		t.Skip("~/.config/lstk/config.toml does not exist")
-	}
+	require.NoError(t, os.WriteFile(configFile, []byte("[aws]\n"), 0644))
+
+	t.Setenv("HOME", resolvedHome)
 
 	viper.Reset()
+	t.Cleanup(viper.Reset)
 	viper.SetConfigFile(configFile)
 	require.NoError(t, viper.ReadInConfig())
 

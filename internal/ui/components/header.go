@@ -51,19 +51,21 @@ func (h Header) View() string {
 		nimboLine3(),
 	))
 
-	configLine := h.configPath
-	text := lipgloss.JoinVertical(lipgloss.Left,
-		"lstk "+styles.Secondary.Render("("+h.version+")"),
+	lines := []string{
+		"lstk " + styles.Secondary.Render("("+h.version+")"),
 		styles.Secondary.Render(h.emulatorName),
-		styles.Secondary.Render(configLine),
-	)
+	}
+	if h.configPath != "" {
+		lines = append(lines, styles.Secondary.Render(h.configPath))
+	}
+	text := lipgloss.JoinVertical(lipgloss.Left, lines...)
 
 	spacer := strings.Repeat(" ", headerPadding)
 
 	joined := lipgloss.JoinHorizontal(lipgloss.Top, nimbo, spacer, text)
-	lines := strings.Split(joined, "\n")
-	for i, line := range lines {
-		lines[i] = strings.TrimRight(line, " ")
+	joinedLines := strings.Split(joined, "\n")
+	for i, line := range joinedLines {
+		joinedLines[i] = strings.TrimRight(line, " ")
 	}
-	return "\n" + strings.Join(lines, "\n") + "\n"
+	return "\n" + strings.Join(joinedLines, "\n") + "\n"
 }
