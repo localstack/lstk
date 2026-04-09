@@ -47,7 +47,9 @@ func TestLicenseValidationSuccess(t *testing.T) {
 				return
 			}
 
+			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"license_type":"pro"}`))
 			return
 		}
 		http.NotFound(w, r)
