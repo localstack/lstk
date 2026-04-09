@@ -128,7 +128,10 @@ func startEmulator(ctx context.Context, rt runtime.Runtime, cfg *env.Env, tel *t
 		PersistDisable: config.DisableUpdatePrompt,
 	}
 
-	configPath, _ := config.FriendlyConfigPath()
+	configPath, err := config.FriendlyConfigPath()
+	if err != nil {
+		logger.Info("could not resolve friendly config path: %v", err)
+	}
 
 	if isInteractiveMode(cfg) {
 		labelCh := make(chan string, 1)

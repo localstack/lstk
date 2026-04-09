@@ -19,6 +19,7 @@ func setupCacheTest(t *testing.T) string {
 	require.NoError(t, os.WriteFile(configFile, []byte("[aws]\n"), 0600))
 
 	viper.Reset()
+	t.Cleanup(viper.Reset)
 	viper.SetConfigFile(configFile)
 	require.NoError(t, viper.ReadInConfig())
 
