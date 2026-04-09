@@ -44,6 +44,42 @@ func TestAppBoundsMessageHistory(t *testing.T) {
 	}
 }
 
+func TestAppRunDoneWaitsForLabelWhenHeaderLoading(t *testing.T) {
+	t.Parallel()
+
+	// Simulates a first run where no label is cached yet: the app starts with
+	// headerLoading=true and resolves the label asynchronously. If the emulator
+	// starts before the label goroutine finishes, runDoneMsg arrives first and
+	// the TUI must stay alive until headerLabelMsg delivers the resolved label.
+	app := NewApp("dev", "", "", nil, withHeaderLoading())
+
+	// runDoneMsg while header is still loading: must not quit yet
+	model, cmd := app.Update(runDoneMsg{})
+	app = model.(App)
+	if cmd != nil {
+		if msg := cmd(); msg != nil {
+			if _, isQuit := msg.(tea.QuitMsg); isQuit {
+				t.Fatal("expected no quit while header label is still loading")
+			}
+		}
+	}
+	if !app.quitting {
+		t.Fatal("expected quitting flag to be set")
+	}
+
+	// headerLabelMsg arrives: now the TUI should quit
+	model, cmd = app.Update(headerLabelMsg{label: "LocalStack Ultimate"})
+	if cmd == nil {
+		t.Fatal("expected quit command after label received")
+	}
+	if msg := cmd(); msg == nil {
+		t.Fatal("expected tea.QuitMsg, got nil")
+	} else if _, isQuit := msg.(tea.QuitMsg); !isQuit {
+		t.Fatalf("expected tea.QuitMsg, got %T", msg)
+	}
+	_ = model
+}
+
 func TestAppQuitCancelsContext(t *testing.T) {
 	t.Parallel()
 

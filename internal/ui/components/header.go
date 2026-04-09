@@ -30,11 +30,16 @@ func nimboLine3() string {
 type Header struct {
 	version      string
 	emulatorName string
-	endpoint     string
+	configPath   string
 }
 
-func NewHeader(version, emulatorName, endpoint string) Header {
-	return Header{version: version, emulatorName: emulatorName, endpoint: endpoint}
+func NewHeader(version, emulatorName, configPath string) Header {
+	return Header{version: version, emulatorName: emulatorName, configPath: configPath}
+}
+
+func (h Header) SetEmulatorName(name string) Header {
+	h.emulatorName = name
+	return h
 }
 
 func (h Header) View() string {
@@ -46,18 +51,21 @@ func (h Header) View() string {
 		nimboLine3(),
 	))
 
-	text := lipgloss.JoinVertical(lipgloss.Left,
+	lines := []string{
 		"lstk " + styles.Secondary.Render("("+h.version+")"),
 		styles.Secondary.Render(h.emulatorName),
-		styles.Secondary.Render(h.endpoint),
-	)
+	}
+	if h.configPath != "" {
+		lines = append(lines, styles.Secondary.Render(h.configPath))
+	}
+	text := lipgloss.JoinVertical(lipgloss.Left, lines...)
 
 	spacer := strings.Repeat(" ", headerPadding)
 
 	joined := lipgloss.JoinHorizontal(lipgloss.Top, nimbo, spacer, text)
-	lines := strings.Split(joined, "\n")
-	for i, line := range lines {
-		lines[i] = strings.TrimRight(line, " ")
+	joinedLines := strings.Split(joined, "\n")
+	for i, line := range joinedLines {
+		joinedLines[i] = strings.TrimRight(line, " ")
 	}
-	return "\n" + strings.Join(lines, "\n") + "\n"
+	return "\n" + strings.Join(joinedLines, "\n") + "\n"
 }

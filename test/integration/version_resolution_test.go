@@ -40,7 +40,9 @@ func createVersionResolutionMockServer(t *testing.T, catalogVersion string, lice
 			_ = json.Unmarshal(body, &req)
 			*capturedVersion = req.Product.Version
 			if licenseSuccess {
+				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(http.StatusOK)
+				_, _ = w.Write([]byte(`{"license_type":"pro"}`))
 			} else {
 				w.WriteHeader(http.StatusForbidden)
 			}

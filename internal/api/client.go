@@ -21,7 +21,7 @@ type PlatformAPI interface {
 	CheckAuthRequestConfirmed(ctx context.Context, id, exchangeToken string) (bool, error)
 	ExchangeAuthRequest(ctx context.Context, id, exchangeToken string) (string, error)
 	GetLicenseToken(ctx context.Context, bearerToken string) (string, error)
-	GetLicense(ctx context.Context, req *LicenseRequest) error
+	GetLicense(ctx context.Context, req *LicenseRequest) (*LicenseResponse, error)
 	GetLatestCatalogVersion(ctx context.Context, emulatorType string) (string, error)
 }
 
@@ -63,6 +63,34 @@ type MachineInfo struct {
 	Hostname        string `json:"hostname,omitempty"`
 	Platform        string `json:"platform,omitempty"`
 	PlatformRelease string `json:"platform_release,omitempty"`
+}
+
+type LicenseResponse struct {
+	LicenseType string `json:"license_type"`
+}
+
+var planDisplayNames = map[string]string{
+	"hobby":      "Hobby",
+	"pro":        "Pro",
+	"team":       "Teams",
+	"enterprise": "Enterprise",
+	"trial":      "Trial",
+	"freemium":   "Community",
+	"base":       "Starter",
+	"ultimate":   "Ultimate",
+	"student":    "Student",
+}
+
+// PlanDisplayName returns a human-readable plan name for the license type.
+// Returns an empty string for a nil receiver or unknown types.
+func (r *LicenseResponse) PlanDisplayName() string {
+	if r == nil {
+		return ""
+	}
+	if name, ok := planDisplayNames[r.LicenseType]; ok {
+		return name
+	}
+	return r.LicenseType
 }
 
 // LicenseError is returned when license validation fails.
@@ -222,56 +250,63 @@ func (c *PlatformClient) GetLicenseToken(ctx context.Context, bearerToken string
 	return tokenResp.Token, nil
 }
 
-func (c *PlatformClient) GetLicense(ctx context.Context, licReq *LicenseRequest) error {
+func (c *PlatformClient) GetLicense(ctx context.Context, licReq *LicenseRequest) (*LicenseResponse, error) {
 	body, err := json.Marshal(licReq)
 	if err != nil {
-		return fmt.Errorf("failed to marshal request: %w", err)
+		return nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/v1/license/request", bytes.NewReader(body))
 	if err != nil {
-		return fmt.Errorf("failed to create request: %w", err)
+		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return fmt.Errorf("failed to request license: %w", err)
+		return nil, fmt.Errorf("failed to request license: %w", err)
 	}
 
 	statusCode := resp.StatusCode
-	var detail string
-	if statusCode != http.StatusOK {
-		respBody, err := io.ReadAll(io.LimitReader(resp.Body, 1024))
-		if err != nil {
-			detail = fmt.Sprintf("failed to read response body: %v", err)
-		} else {
-			detail = string(bytes.TrimSpace(respBody))
+
+	if statusCode == http.StatusOK {
+		var licResp LicenseResponse
+		decErr := json.NewDecoder(resp.Body).Decode(&licResp)
+		if err := resp.Body.Close(); err != nil {
+			c.logger.Error("failed to close response body: %v", err)
 		}
+		if decErr != nil {
+			return nil, fmt.Errorf("failed to decode license response: %w", decErr)
+		}
+		return &licResp, nil
+	}
+
+	var detail string
+	respBody, err := io.ReadAll(io.LimitReader(resp.Body, 1024))
+	if err != nil {
+		detail = fmt.Sprintf("failed to read response body: %v", err)
+	} else {
+		detail = string(bytes.TrimSpace(respBody))
 	}
 	if err := resp.Body.Close(); err != nil {
 		c.logger.Error("failed to close response body: %v", err)
 	}
 
-	if statusCode == http.StatusOK {
-		return nil
-	}
-
 	switch statusCode {
 	case http.StatusBadRequest:
-		return &LicenseError{
+		return nil, &LicenseError{
 			Status:  statusCode,
 			Message: "invalid token format, missing license assignment, or missing subscription",
 			Detail:  detail,
 		}
 	case http.StatusForbidden:
-		return &LicenseError{
+		return nil, &LicenseError{
 			Status:  statusCode,
 			Message: "invalid, inactive, or expired authentication token or subscription",
 			Detail:  detail,
 		}
 	default:
-		return &LicenseError{
+		return nil, &LicenseError{
 			Status:  statusCode,
 			Message: fmt.Sprintf("unexpected status %d", statusCode),
 			Detail:  detail,

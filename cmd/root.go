@@ -128,8 +128,30 @@ func startEmulator(ctx context.Context, rt runtime.Runtime, cfg *env.Env, tel *t
 		PersistDisable: config.DisableUpdatePrompt,
 	}
 
+	configPath, err := config.FriendlyConfigPath()
+	if err != nil {
+		logger.Info("could not resolve friendly config path: %v", err)
+	}
+
 	if isInteractiveMode(cfg) {
-		return ui.Run(ctx, rt, version.Version(), opts, notifyOpts)
+		labelCh := make(chan string, 1)
+		go func() {
+			label, ok := container.ResolveEmulatorLabel(ctx, opts.PlatformClient, appConfig.Containers, cfg.AuthToken, logger)
+			if ok {
+				config.CachePlanLabel(label)
+			}
+			labelCh <- label
+		}()
+
+		return ui.Run(ctx, ui.RunOptions{
+			Runtime:       rt,
+			Version:       version.Version(),
+			StartOptions:  opts,
+			NotifyOptions: notifyOpts,
+			ConfigPath:    configPath,
+			EmulatorLabel: config.CachedPlanLabel(),
+			LabelCh:       labelCh,
+		})
 	}
 
 	sink := output.NewPlainSink(os.Stdout)
