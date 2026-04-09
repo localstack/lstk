@@ -140,6 +140,9 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case headerLabelMsg:
 		a.headerLoading = false
 		a.header = a.header.SetEmulatorName(msg.label)
+		if a.quitting {
+			return a, tea.Quit
+		}
 		return a, nil
 	case output.UserInputRequestEvent:
 		a.pendingInput = &msg
@@ -226,7 +229,7 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.pullProgress, cmd = a.pullProgress.Update(msg)
 		return a, cmd
 	case runDoneMsg:
-		if a.spinner.PendingStop() {
+		if a.spinner.PendingStop() || a.headerLoading {
 			a.quitting = true
 			return a, nil
 		}

@@ -136,8 +136,10 @@ func startEmulator(ctx context.Context, rt runtime.Runtime, cfg *env.Env, tel *t
 	if isInteractiveMode(cfg) {
 		labelCh := make(chan string, 1)
 		go func() {
-			label := container.ResolveEmulatorLabel(ctx, opts.PlatformClient, appConfig.Containers, cfg.AuthToken, logger)
-			config.CachePlanLabel(label)
+			label, ok := container.ResolveEmulatorLabel(ctx, opts.PlatformClient, appConfig.Containers, cfg.AuthToken, logger)
+			if ok {
+				config.CachePlanLabel(label)
+			}
 			labelCh <- label
 		}()
 

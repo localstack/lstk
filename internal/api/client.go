@@ -69,20 +69,23 @@ type LicenseResponse struct {
 	LicenseType string `json:"license_type"`
 }
 
+var planDisplayNames = map[string]string{
+	"hobby":      "Hobby",
+	"pro":        "Pro",
+	"team":       "Teams",
+	"enterprise": "Enterprise",
+	"trial":      "Trial",
+	"freemium":   "Community",
+	"base":       "Starter",
+	"ultimate":   "Ultimate",
+	"student":    "Student",
+}
+
+// PlanDisplayName returns a human-readable plan name for the license type.
+// Returns an empty string for a nil receiver or unknown types.
 func (r *LicenseResponse) PlanDisplayName() string {
-	if r == nil || r.LicenseType == "" {
+	if r == nil {
 		return ""
-	}
-	planDisplayNames := map[string]string{
-		"hobby":      "Hobby",
-		"pro":        "Pro",
-		"team":       "Teams",
-		"enterprise": "Enterprise",
-		"trial":      "Trial",
-		"freemium":   "Community",
-		"base":       "Starter",
-		"ultimate":   "Ultimate",
-		"student":    "Student",
 	}
 	if name, ok := planDisplayNames[r.LicenseType]; ok {
 		return name

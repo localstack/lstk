@@ -11,31 +11,32 @@ import (
 	"github.com/localstack/lstk/internal/log"
 )
 
+const NoLicenseLabel = "LocalStack (No license)"
+
 // ResolveEmulatorLabel tries to fetch the plan name from the license API
 // to build a label like "LocalStack Ultimate". Falls back to
-// "LocalStack (No license)" when the plan cannot be determined.
-func ResolveEmulatorLabel(ctx context.Context, client api.PlatformAPI, containers []config.ContainerConfig, token string, logger log.Logger) string {
-	const noLicense = "LocalStack (No license)"
-
+// NoLicenseLabel when the plan cannot be determined. The returned bool
+// is true only when a real plan was resolved (i.e. the result is worth caching).
+func ResolveEmulatorLabel(ctx context.Context, client api.PlatformAPI, containers []config.ContainerConfig, token string, logger log.Logger) (string, bool) {
 	if len(containers) == 0 || token == "" {
-		return noLicense
+		return NoLicenseLabel, false
 	}
 
 	c := containers[0]
 
 	productName, err := c.ProductName()
 	if err != nil {
-		return noLicense
+		return NoLicenseLabel, false
 	}
 
 	tag := c.Tag
 	if tag == "" || tag == "latest" {
 		apiCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
-		defer cancel()
 		v, err := client.GetLatestCatalogVersion(apiCtx, string(c.Type))
+		cancel()
 		if err != nil {
 			logger.Info("could not resolve catalog version for header: %v", err)
-			return noLicense
+			return NoLicenseLabel, false
 		}
 		tag = v
 	}
@@ -52,11 +53,11 @@ func ResolveEmulatorLabel(ctx context.Context, client api.PlatformAPI, container
 	resp, err := client.GetLicense(licCtx, licReq)
 	if err != nil {
 		logger.Info("could not fetch license for header: %v", err)
-		return noLicense
+		return NoLicenseLabel, false
 	}
 
 	if plan := resp.PlanDisplayName(); plan != "" {
-		return "LocalStack " + plan
+		return "LocalStack " + plan, true
 	}
-	return noLicense
+	return NoLicenseLabel, false
 }
