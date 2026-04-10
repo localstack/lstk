@@ -10,6 +10,7 @@ import (
 	"github.com/charmbracelet/bubbles/progress"
 	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/localstack/lstk/internal/output"
 	"github.com/localstack/lstk/internal/ui/components"
 	"github.com/localstack/lstk/internal/ui/styles"
@@ -37,10 +38,11 @@ func headerTick() tea.Cmd {
 }
 
 type styledLine struct {
-	text      string
-	highlight bool
-	secondary bool
-	message   *output.MessageEvent
+	text       string
+	highlight  bool
+	secondary  bool
+	preWrapped bool
+	message    *output.MessageEvent
 }
 
 type App struct {
@@ -200,7 +202,18 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, nil
 	case output.LogLineEvent:
 		prefix := styles.Secondary.Render(msg.Source + " | ")
-		a.addLine(styledLine{text: prefix + renderLogLine(msg.Line, msg.Level)})
+		prefixWidth := lipgloss.Width(prefix)
+		availableWidth := 0
+		if a.width > 0 {
+			availableWidth = a.width - prefixWidth
+			if availableWidth < 0 {
+				availableWidth = 0
+			}
+		}
+		a.addLine(styledLine{
+			text:       prefix + renderLogLine(msg.Line, msg.Level, availableWidth, prefixWidth),
+			preWrapped: true,
+		})
 		return a, nil
 	case output.ContainerStatusEvent:
 		if msg.Phase == "pulling" {
@@ -368,6 +381,11 @@ func (a App) View() string {
 	for _, line := range a.lines {
 		if line.message != nil {
 			sb.WriteString(components.RenderWrappedMessage(*line.message, a.width))
+			sb.WriteString("\n")
+			continue
+		}
+		if line.preWrapped {
+			sb.WriteString(line.text)
 			sb.WriteString("\n")
 			continue
 		}
