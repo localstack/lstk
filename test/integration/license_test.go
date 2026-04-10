@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/docker/docker/api/types/container"
@@ -93,8 +95,50 @@ func TestLicenseValidationFailure(t *testing.T) {
 	assert.Error(t, err, "container should not exist after license failure")
 }
 
+func licenseFilePath(t *testing.T) string {
+	t.Helper()
+	cacheDir, err := os.UserCacheDir()
+	require.NoError(t, err)
+	return filepath.Join(cacheDir, "lstk", "license.json")
+}
+
 func cleanupLicense() {
 	ctx := context.Background()
 	_ = dockerClient.ContainerStop(ctx, containerName, container.StopOptions{})
 	_ = dockerClient.ContainerRemove(ctx, containerName, container.RemoveOptions{Force: true})
+	if cacheDir, err := os.UserCacheDir(); err == nil {
+		_ = os.Remove(filepath.Join(cacheDir, "lstk", "license.json"))
+	}
+}
+
+func TestLicenseCacheAndMount(t *testing.T) {
+	requireDocker(t)
+	env.Require(t, env.AuthToken)
+
+	cleanupLicense()
+	t.Cleanup(cleanupLicense)
+
+	licenseBody := `{"license":"test-license-data"}`
+	mockServer := createMockLicenseServerWithBody(licenseBody)
+	defer mockServer.Close()
+
+	ctx := testContext(t)
+	_, stderr, err := runLstk(t, ctx, "", env.With(env.APIEndpoint, mockServer.URL), "start")
+	require.NoError(t, err, "lstk start failed: %s", stderr)
+
+	data, err := os.ReadFile(licenseFilePath(t))
+	require.NoError(t, err, "license cache file should exist after successful start")
+	assert.Equal(t, licenseBody, string(data))
+
+	inspect, err := dockerClient.ContainerInspect(ctx, containerName)
+	require.NoError(t, err, "failed to inspect container")
+
+	var mounted bool
+	for _, m := range inspect.Mounts {
+		if m.Destination == "/etc/localstack/conf.d/license.json" {
+			mounted = true
+			break
+		}
+	}
+	assert.True(t, mounted, "license file should be mounted into container at /etc/localstack/conf.d/license.json")
 }

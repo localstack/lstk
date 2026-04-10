@@ -33,7 +33,8 @@ func RunLogout(parentCtx context.Context, rt runtime.Runtime, platformClient api
 		}
 
 		sink := output.NewTUISink(programSender{p: p})
-		a := auth.New(sink, platformClient, tokenStorage, authToken, "", false)
+		licenseFilePath, _ := config.LicenseFilePath()
+		a := auth.New(sink, platformClient, tokenStorage, authToken, "", false, licenseFilePath)
 		err = a.Logout()
 		if err == nil && rt != nil {
 			if running, runningErr := container.AnyRunning(ctx, rt, containers); runningErr == nil && running {

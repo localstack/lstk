@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 
 	"github.com/localstack/lstk/internal/api"
 	"github.com/localstack/lstk/internal/output"
@@ -12,20 +13,22 @@ import (
 var ErrNotLoggedIn = errors.New("not logged in")
 
 type Auth struct {
-	tokenStorage AuthTokenStorage
-	login        LoginProvider
-	sink         output.Sink
-	authToken    string
-	allowLogin   bool
+	tokenStorage    AuthTokenStorage
+	login           LoginProvider
+	sink            output.Sink
+	authToken       string
+	allowLogin      bool
+	licenseFilePath string
 }
 
-func New(sink output.Sink, platform api.PlatformAPI, storage AuthTokenStorage, authToken, webAppURL string, allowLogin bool) *Auth {
+func New(sink output.Sink, platform api.PlatformAPI, storage AuthTokenStorage, authToken, webAppURL string, allowLogin bool, licenseFilePath string) *Auth {
 	return &Auth{
-		tokenStorage: storage,
-		login:        newLoginProvider(sink, platform, webAppURL),
-		sink:         sink,
-		authToken:    authToken,
-		allowLogin:   allowLogin,
+		tokenStorage:    storage,
+		login:           newLoginProvider(sink, platform, webAppURL),
+		sink:            sink,
+		authToken:       authToken,
+		allowLogin:      allowLogin,
+		licenseFilePath: licenseFilePath,
 	}
 }
 
@@ -81,6 +84,10 @@ func (a *Auth) Logout() error {
 	if err := a.tokenStorage.DeleteAuthToken(); err != nil {
 		output.EmitSpinnerStop(a.sink)
 		return fmt.Errorf("failed to delete auth token: %w", err)
+	}
+
+	if a.licenseFilePath != "" {
+		_ = os.Remove(a.licenseFilePath)
 	}
 
 	output.EmitSpinnerStop(a.sink)

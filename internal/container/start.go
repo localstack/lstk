@@ -81,7 +81,7 @@ func Start(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts Start
 	if err != nil {
 		return fmt.Errorf("failed to initialize token storage: %w", err)
 	}
-	a := auth.New(sink, opts.PlatformClient, tokenStorage, opts.AuthToken, opts.WebAppURL, interactive)
+	a := auth.New(sink, opts.PlatformClient, tokenStorage, opts.AuthToken, opts.WebAppURL, interactive, "")
 
 	token, err := a.GetToken(ctx)
 	if err != nil {
