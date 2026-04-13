@@ -14,6 +14,8 @@ import (
 	"time"
 
 	"github.com/containerd/errdefs"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+
 	"github.com/localstack/lstk/internal/api"
 	"github.com/localstack/lstk/internal/auth"
 	"github.com/localstack/lstk/internal/awsconfig"
@@ -322,7 +324,7 @@ func startContainers(ctx context.Context, rt runtime.Runtime, sink output.Sink, 
 
 		output.EmitStatus(sink, "waiting", c.Name, "")
 		healthURL := fmt.Sprintf("http://localhost:%s%s", c.Port, c.HealthPath)
-		if err := awaitStartup(ctx, rt, sink, containerID, "LocalStack", healthURL); err != nil {
+		if err := awaitStartup(ctx, rt, sink, containerID, c.EmulatorType, "LocalStack", healthURL); err != nil {
 			emitEmulatorStartError(ctx, tel, c, telemetry.ErrCodeStartFailed, err.Error())
 			return err
 		}
@@ -408,8 +410,16 @@ func validateLicense(ctx context.Context, sink output.Sink, opts StartOptions, t
 //   - Failure: container stops running (e.g., license activation failed), returns error with container logs
 //
 // TODO: move to Runtime interface if other runtimes (k8s?) need native readiness probes
-func awaitStartup(ctx context.Context, rt runtime.Runtime, sink output.Sink, containerID, name, healthURL string) error {
-	client := &http.Client{Timeout: 2 * time.Second}
+func awaitStartup(ctx context.Context, rt runtime.Runtime, sink output.Sink, containerID, emulatorType, name, healthURL string) error {
+	client := &http.Client{
+		Timeout: 2 * time.Second,
+		Transport: otelhttp.NewTransport(
+			http.DefaultTransport,
+			otelhttp.WithSpanNameFormatter(func(_ string, r *http.Request) string {
+				return emulatorType + " " + r.Method + " " + r.URL.Path
+			}),
+		),
+	}
 
 	for {
 		running, err := rt.IsRunning(ctx, containerID)

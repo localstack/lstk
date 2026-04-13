@@ -1,0 +1,17 @@
+# Starts Jaeger for local trace collection and visualization.
+# UI:        http://localhost:16686
+# OTLP HTTP: http://localhost:4318   (used by lstk)
+# OTLP gRPC: localhost:4317
+#
+# Usage:
+#   docker compose -f docker-compose.tracing.yaml up -d
+
+services:
+  jaeger:
+    image: jaegertracing/all-in-one:latest
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+    ports:
+      - "4317:4317"    # OTLP gRPC
+      - "4318:4318"    # OTLP HTTP
+      - "16686:16686"  # UI

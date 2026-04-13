@@ -17,9 +17,10 @@ type Env struct {
 	WebAppURL         string
 	ForceFileKeyring  bool
 	AnalyticsEndpoint string
+	OTLPEndpoint      string
 
-	NonInteractive    bool
-	GitHubToken       string
+	NonInteractive bool
+	GitHubToken    string
 }
 
 // Init initializes environment variable configuration and returns the result.
@@ -31,6 +32,7 @@ func Init() *Env {
 	viper.SetDefault("api_endpoint", "https://api.localstack.cloud")
 	viper.SetDefault("web_app_url", "https://app.localstack.cloud")
 	viper.SetDefault("analytics_endpoint", "https://analytics.localstack.cloud/v1/events")
+	viper.SetDefault("otlp_endpoint", "http://localhost:4318")
 	// LOCALSTACK_* variables are not prefixed with LSTK_ so they work seamlessly
 	// across all LocalStack tools without per-tool configuration
 	return &Env{
@@ -42,6 +44,7 @@ func Init() *Env {
 		WebAppURL:         viper.GetString("web_app_url"),
 		ForceFileKeyring:  viper.GetString("keyring") == "file",
 		AnalyticsEndpoint: viper.GetString("analytics_endpoint"),
+		OTLPEndpoint:      viper.GetString("otlp_endpoint"),
 		GitHubToken:       viper.GetString("github_token"),
 	}
 
