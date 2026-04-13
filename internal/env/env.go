@@ -12,14 +12,15 @@ type Env struct {
 	LocalStackHost string
 	DockerHost     string
 	DisableEvents  bool
+	TracesEnabled  bool
 
 	APIEndpoint       string
 	WebAppURL         string
 	ForceFileKeyring  bool
 	AnalyticsEndpoint string
 
-	NonInteractive    bool
-	GitHubToken       string
+	NonInteractive bool
+	GitHubToken    string
 }
 
 // Init initializes environment variable configuration and returns the result.
@@ -38,6 +39,7 @@ func Init() *Env {
 		LocalStackHost:    os.Getenv("LOCALSTACK_HOST"),
 		DockerHost:        os.Getenv("DOCKER_HOST"),
 		DisableEvents:     os.Getenv("LOCALSTACK_DISABLE_EVENTS") == "1",
+		TracesEnabled:     viper.GetBool("otel"),
 		APIEndpoint:       viper.GetString("api_endpoint"),
 		WebAppURL:         viper.GetString("web_app_url"),
 		ForceFileKeyring:  viper.GetString("keyring") == "file",

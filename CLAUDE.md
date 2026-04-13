@@ -65,6 +65,7 @@ The deprecated `lstk config profile` command still works but points users to `ls
 
 Environment variables:
 - `LOCALSTACK_AUTH_TOKEN` - Auth token (skips browser login if set)
+- `LSTK_OTEL=1` - Enables OpenTelemetry trace export (disabled by default); when enabled, standard `OTEL_EXPORTER_OTLP_*` env vars are respected by the SDK
 
 # Code Style
 
