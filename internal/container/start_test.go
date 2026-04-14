@@ -5,6 +5,8 @@ import (
 	"context"
 	"errors"
 	"io"
+	"net"
+	"strconv"
 	"testing"
 
 	"github.com/localstack/lstk/internal/log"
@@ -51,6 +53,90 @@ func TestEmitPostStartPointers_WithoutWebApp(t *testing.T) {
 	got := out.String()
 	assert.Contains(t, got, "• Endpoint: 127.0.0.1:4566\n")
 	assert.Contains(t, got, "> Tip:")
+}
+
+func TestSelectContainersToStart_AttachesExternalContainerWithMatchingVersion(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockRT := runtime.NewMockRuntime(ctrl)
+
+	c := runtime.ContainerConfig{
+		Image:         "localstack/localstack-pro:3.5.0",
+		Name:          "localstack-aws-3.5.0",
+		Tag:           "3.5.0",
+		Port:          "4566",
+		ContainerPort: "4566/tcp",
+	}
+
+	mockRT.EXPECT().IsRunning(gomock.Any(), c.Name).Return(false, nil)
+	mockRT.EXPECT().FindRunningByImage(gomock.Any(), "localstack/localstack-pro", "4566/tcp", "4566").
+		Return(&runtime.RunningContainer{Name: "external-container", Image: "localstack/localstack-pro:3.5.0", BoundPort: "4566"}, nil)
+
+	var out bytes.Buffer
+	sink := output.NewPlainSink(&out)
+
+	result, err := selectContainersToStart(context.Background(), mockRT, sink, nil, []runtime.ContainerConfig{c})
+
+	require.NoError(t, err)
+	assert.Empty(t, result, "container should be skipped (already running)")
+	assert.Contains(t, out.String(), "already running")
+	assert.NotContains(t, out.String(), "config specifies")
+}
+
+func TestSelectContainersToStart_WarnsAndAttachesOnVersionMismatch(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockRT := runtime.NewMockRuntime(ctrl)
+
+	c := runtime.ContainerConfig{
+		Image:         "localstack/localstack-pro:3.4.0",
+		Name:          "localstack-aws-3.4.0",
+		Tag:           "3.4.0",
+		Port:          "4566",
+		ContainerPort: "4566/tcp",
+	}
+
+	mockRT.EXPECT().IsRunning(gomock.Any(), c.Name).Return(false, nil)
+	mockRT.EXPECT().FindRunningByImage(gomock.Any(), "localstack/localstack-pro", "4566/tcp", "4566").
+		Return(&runtime.RunningContainer{Name: "external-container", Image: "localstack/localstack-pro:3.5.0", BoundPort: "4566"}, nil)
+
+	var out bytes.Buffer
+	sink := output.NewPlainSink(&out)
+
+	result, err := selectContainersToStart(context.Background(), mockRT, sink, nil, []runtime.ContainerConfig{c})
+
+	require.NoError(t, err)
+	assert.Empty(t, result, "container should be skipped (already running)")
+	assert.Contains(t, out.String(), "3.5.0", "should mention running version")
+	assert.Contains(t, out.String(), "3.4.0", "should mention configured version")
+}
+
+func TestSelectContainersToStart_QueuesContainerWhenNoneRunningOnPort(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockRT := runtime.NewMockRuntime(ctrl)
+
+	// Use a free port by binding one and immediately releasing it.
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	freePort := ln.Addr().(*net.TCPAddr).Port
+	ln.Close()
+
+	c := runtime.ContainerConfig{
+		Image:         "localstack/localstack-pro:3.5.0",
+		Name:          "localstack-aws-3.5.0",
+		Tag:           "3.5.0",
+		Port:          strconv.Itoa(freePort),
+		ContainerPort: "4566/tcp",
+	}
+
+	mockRT.EXPECT().IsRunning(gomock.Any(), c.Name).Return(false, nil)
+	mockRT.EXPECT().FindRunningByImage(gomock.Any(), "localstack/localstack-pro", "4566/tcp", c.Port).
+		Return(nil, nil)
+
+	sink := output.NewPlainSink(io.Discard)
+
+	result, err := selectContainersToStart(context.Background(), mockRT, sink, nil, []runtime.ContainerConfig{c})
+
+	require.NoError(t, err)
+	assert.Equal(t, []runtime.ContainerConfig{c}, result, "container should be queued for start")
 }
 
 func TestServicePortRange_ReturnsExpectedPorts(t *testing.T) {

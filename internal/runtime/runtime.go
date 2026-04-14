@@ -43,6 +43,13 @@ type PullProgress struct {
 	Total   int64
 }
 
+// RunningContainer holds basic info about a discovered running container.
+type RunningContainer struct {
+	Name      string
+	Image     string // full image with tag, e.g. "localstack/localstack-pro:3.5.0"
+	BoundPort string // host port bound to the queried container port
+}
+
 // Runtime abstracts container runtime operations (Docker, Podman, Kubernetes, etc.)
 type Runtime interface {
 	IsHealthy(ctx context.Context) error
@@ -58,5 +65,9 @@ type Runtime interface {
 	GetImageVersion(ctx context.Context, imageName string) (string, error)
 	// GetBoundPort returns the host port bound to the given container port (e.g. "4566/tcp").
 	GetBoundPort(ctx context.Context, containerName string, containerPort string) (string, error)
+	// FindRunningByImage returns the container running with the given image repository (e.g.
+	// "localstack/localstack-pro"), regardless of tag, that has containerPort bound to hostPort.
+	// Returns nil if no such container is running.
+	FindRunningByImage(ctx context.Context, imageRepo string, containerPort string, hostPort string) (*RunningContainer, error)
 	SocketPath() string
 }

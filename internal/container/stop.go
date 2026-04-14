@@ -19,15 +19,11 @@ type StopOptions struct {
 func Stop(ctx context.Context, rt runtime.Runtime, sink output.Sink, containers []config.ContainerConfig, opts StopOptions) error {
 	const stopTimeout = 30 * time.Second
 	for _, c := range containers {
-		name := c.Name()
-
-		checkCtx, checkCancel := context.WithTimeout(ctx, 5*time.Second)
-		running, err := rt.IsRunning(checkCtx, name)
-		checkCancel()
+		name, err := resolveRunningContainerName(ctx, rt, c)
 		if err != nil {
-			return fmt.Errorf("checking %s running: %w", name, err)
+			return err
 		}
-		if !running {
+		if name == "" {
 			return fmt.Errorf("LocalStack is not running")
 		}
 

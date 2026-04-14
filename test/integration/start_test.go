@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -98,6 +99,8 @@ func TestStartCommandFailsWhenPortInUse(t *testing.T) {
 	cleanup()
 	t.Cleanup(cleanup)
 
+	// net.Listen does not speak HTTP, so fetchLocalStackInfo will fail and the
+	// generic "port already in use" message is shown (not the version-specific one).
 	ln, err := net.Listen("tcp", ":4566")
 	require.NoError(t, err, "failed to bind port 4566 for test")
 	defer func() { _ = ln.Close() }()
@@ -114,6 +117,33 @@ func TestStartCommandFailsWhenPortInUse(t *testing.T) {
 	byName := collectTelemetryByName(t, events, 2)
 	assert.Contains(t, byName, "lstk_lifecycle")
 	assert.Contains(t, byName, "lstk_command")
+}
+
+func TestStartCommandShowsVersionConflictWhenLocalStackPortInUse(t *testing.T) {
+	requireDocker(t)
+	cleanup()
+	t.Cleanup(cleanup)
+
+	// Serve a mock /_localstack/info on port 4566 so lstk can identify the running version.
+	ln, err := net.Listen("tcp", ":4566")
+	require.NoError(t, err, "failed to bind port 4566 for test")
+	srv := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/_localstack/info" {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"version":"3.4.0","edition":"pro"}`))
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	srv.Listener = ln
+	srv.Start()
+	defer srv.Close()
+
+	stdout, stderr, err := runLstk(t, testContext(t), "", env.With(env.AuthToken, "fake-token"), "start")
+	require.NoError(t, err, "lstk start should succeed when LocalStack is already running: %s", stderr)
+	requireExitCode(t, 0, err)
+	assert.Contains(t, stdout, "3.4.0")
+	assert.Contains(t, stdout, "already running")
 }
 
 func TestStartCommandSucceedsWithNonDefaultPort(t *testing.T) {
