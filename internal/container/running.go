@@ -11,11 +11,11 @@ import (
 
 func AnyRunning(ctx context.Context, rt runtime.Runtime, containers []config.ContainerConfig) (bool, error) {
 	for _, c := range containers {
-		running, err := rt.IsRunning(ctx, c.Name())
+		name, err := resolveRunningContainerName(ctx, rt, c)
 		if err != nil {
-			return false, fmt.Errorf("checking %s running: %w", c.Name(), err)
+			return false, err
 		}
-		if running {
+		if name != "" {
 			return true, nil
 		}
 	}
