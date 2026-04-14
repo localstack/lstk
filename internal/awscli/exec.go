@@ -33,8 +33,11 @@ func Exec(ctx context.Context, endpointURL string, args []string) error {
 		return fmt.Errorf("aws CLI not found in PATH — install it from https://aws.amazon.com/cli/")
 	}
 
+	proxyURL, stopProxy := startTraceProxy(ctx, endpointURL)
+	defer stopProxy()
+
 	cmdArgs := make([]string, 0, len(args)+2)
-	cmdArgs = append(cmdArgs, "--endpoint-url", endpointURL)
+	cmdArgs = append(cmdArgs, "--endpoint-url", proxyURL)
 	cmdArgs = append(cmdArgs, args...)
 
 	cmd := exec.CommandContext(ctx, awsBin, cmdArgs...)
