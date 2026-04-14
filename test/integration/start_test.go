@@ -14,6 +14,7 @@ import (
 	"testing"
 
 	"github.com/docker/docker/api/types/container"
+	"github.com/docker/docker/api/types/image"
 	"github.com/docker/go-connections/nat"
 	"github.com/localstack/lstk/test/integration/env"
 	"github.com/stretchr/testify/assert"
@@ -117,6 +118,34 @@ func TestStartCommandFailsWhenPortInUse(t *testing.T) {
 	byName := collectTelemetryByName(t, events, 2)
 	assert.Contains(t, byName, "lstk_lifecycle")
 	assert.Contains(t, byName, "lstk_command")
+}
+
+func TestStartCommandAttachesExternalContainer(t *testing.T) {
+	requireDocker(t)
+	cleanup()
+	t.Cleanup(cleanup)
+
+	ctx := testContext(t)
+
+	// Tag alpine as a fake LocalStack image. No pull needed — just an alias.
+	// FindRunningByImage matches on image name prefix, so this is sufficient.
+	const fakeImage = "localstack/localstack-pro:test-fake"
+	require.NoError(t, dockerClient.ImageTag(ctx, testImage, fakeImage))
+	t.Cleanup(func() {
+		_, _ = dockerClient.ImageRemove(context.Background(), fakeImage, image.RemoveOptions{})
+	})
+
+	// Start a container with a different name to simulate an externally-managed instance.
+	startExternalContainer(t, ctx, fakeImage, "localstack-external")
+
+	analyticsSrv, events := mockAnalyticsServer(t)
+	stdout, stderr, err := runLstk(t, ctx, "", env.With(env.AuthToken, "fake-token").With(env.AnalyticsEndpoint, analyticsSrv.URL), "start")
+	require.NoError(t, err, "lstk start should succeed when external container is running: %s", stderr)
+	requireExitCode(t, 0, err)
+	// Default config tag is "latest"; running tag is "test-fake" → version mismatch warning.
+	assert.Contains(t, stdout, "test-fake")
+	assert.Contains(t, stdout, "already running")
+	assertCommandTelemetry(t, events, "start", 0)
 }
 
 func TestStartCommandShowsVersionConflictWhenLocalStackPortInUse(t *testing.T) {

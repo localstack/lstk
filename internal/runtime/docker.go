@@ -351,11 +351,13 @@ func (d *DockerRuntime) GetBoundPort(ctx context.Context, containerName string, 
 }
 
 func (d *DockerRuntime) FindRunningByImage(ctx context.Context, imageRepo string, containerPort string, hostPort string) (*RunningContainer, error) {
-	args := filters.NewArgs(
-		filters.Arg("ancestor", imageRepo),
-		filters.Arg("status", "running"),
-	)
-	list, err := d.client.ContainerList(ctx, container.ListOptions{Filters: args})
+	// List all running containers and match by image name in Go. Using Docker's
+	// ancestor filter is unreliable: it requires the untagged image to be pulled
+	// locally to resolve the query, so it silently misses containers whose image
+	// was only pulled with an explicit tag (e.g. localstack/localstack-pro:3.4.0).
+	list, err := d.client.ContainerList(ctx, container.ListOptions{
+		Filters: filters.NewArgs(filters.Arg("status", "running")),
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -369,7 +371,11 @@ func (d *DockerRuntime) FindRunningByImage(ctx context.Context, imageRepo string
 		return nil, fmt.Errorf("invalid container port %q: %w", containerPort, err)
 	}
 
+	prefix := imageRepo + ":"
 	for _, c := range list {
+		if c.Image != imageRepo && !strings.HasPrefix(c.Image, prefix) {
+			continue
+		}
 		for _, p := range c.Ports {
 			if p.PrivatePort == uint16(privatePort) && p.Type == proto && strconv.Itoa(int(p.PublicPort)) == hostPort {
 				name := ""

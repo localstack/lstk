@@ -203,6 +203,35 @@ func startTestContainer(t *testing.T, ctx context.Context, hostPort ...string) {
 	require.NoError(t, err, "failed to start test container")
 }
 
+// startExternalContainer starts a container named name from imgName with port 4566/tcp
+// bound to host port 4566. It registers cleanup to stop and remove the container.
+// Use this to simulate a LocalStack container started outside lstk.
+func startExternalContainer(t *testing.T, ctx context.Context, imgName, name string) {
+	t.Helper()
+
+	const containerPort = nat.Port("4566/tcp")
+	resp, err := dockerClient.ContainerCreate(ctx,
+		&container.Config{
+			Image:        imgName,
+			Cmd:          []string{"sleep", "infinity"},
+			ExposedPorts: nat.PortSet{containerPort: struct{}{}},
+		},
+		&container.HostConfig{
+			PortBindings: nat.PortMap{
+				containerPort: []nat.PortBinding{{HostPort: "4566"}},
+			},
+		},
+		nil, nil, name,
+	)
+	require.NoError(t, err, "failed to create external container")
+	err = dockerClient.ContainerStart(ctx, resp.ID, container.StartOptions{})
+	require.NoError(t, err, "failed to start external container")
+	t.Cleanup(func() {
+		_ = dockerClient.ContainerStop(context.Background(), name, container.StopOptions{})
+		_ = dockerClient.ContainerRemove(context.Background(), name, container.RemoveOptions{Force: true})
+	})
+}
+
 func testContext(t *testing.T) context.Context {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
