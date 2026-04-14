@@ -144,7 +144,7 @@ func TestStartCommandAttachesExternalContainer(t *testing.T) {
 	requireExitCode(t, 0, err)
 	// Default config tag is "latest"; running tag is "test-fake" → version mismatch warning.
 	assert.Contains(t, stdout, "test-fake")
-	assert.Contains(t, stdout, "already running")
+	assert.Contains(t, stdout, "using the running instance")
 	assertCommandTelemetry(t, events, "start", 0)
 }
 
