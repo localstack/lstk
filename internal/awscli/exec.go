@@ -10,6 +10,8 @@ import (
 	"strings"
 	"sync"
 
+	"go.opentelemetry.io/otel/trace"
+
 	"github.com/localstack/lstk/internal/output"
 )
 
@@ -32,6 +34,8 @@ func Exec(ctx context.Context, endpointURL string, args []string) error {
 	if err != nil {
 		return fmt.Errorf("aws CLI not found in PATH — install it from https://aws.amazon.com/cli/")
 	}
+
+	trace.SpanFromContext(ctx).SetName(spanName(args))
 
 	proxyURL, stopProxy := startTraceProxy(ctx, endpointURL)
 	defer stopProxy()
@@ -69,6 +73,44 @@ func Exec(ctx context.Context, endpointURL string, args []string) error {
 		return output.NewSilentError(output.NewExitCodeError(exitErr.ExitCode(), err))
 	}
 	return err
+}
+
+// boolFlags are AWS CLI global flags that take no value.
+// All other --flags are assumed to consume the next argument as their value.
+var boolFlags = map[string]bool{
+	"--debug":           true,
+	"--no-sign-request": true,
+	"--no-verify-ssl":   true,
+	"--version":         true,
+	"--help":            true,
+}
+
+// spanName builds a descriptive OTel span name from the AWS CLI args.
+// It picks up to the first two positional args (service + operation), skipping
+// flags and their values, to produce names like "lstk aws s3 ls" or "lstk aws lambda invoke".
+func spanName(args []string) string {
+	var positional []string
+	for i := 0; i < len(args); i++ {
+		a := args[i]
+		if strings.HasPrefix(a, "--") {
+			// Skip the flag's value unless it's a boolean flag or --flag=value form.
+			if !boolFlags[a] && !strings.Contains(a, "=") {
+				i++
+			}
+			continue
+		}
+		if strings.HasPrefix(a, "-") {
+			continue
+		}
+		positional = append(positional, a)
+		if len(positional) == 2 {
+			break
+		}
+	}
+	if len(positional) == 0 {
+		return "lstk aws"
+	}
+	return "lstk aws " + strings.Join(positional, " ")
 }
 
 func BuildEnv(base []string) []string {

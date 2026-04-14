@@ -6,6 +6,25 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+func TestSpanName(t *testing.T) {
+	cases := []struct {
+		args []string
+		want string
+	}{
+		{[]string{"s3", "ls"}, "lstk aws s3 ls"},
+		{[]string{"lambda", "invoke", "--function-name", "foo"}, "lstk aws lambda invoke"},
+		{[]string{"sqs", "send-message", "--queue-url", "http://..."}, "lstk aws sqs send-message"},
+		{[]string{"--region", "eu-west-1", "s3", "ls"}, "lstk aws s3 ls"},
+		{[]string{"s3"}, "lstk aws s3"},
+		{[]string{}, "lstk aws"},
+		{[]string{"--version"}, "lstk aws"},
+	}
+	for _, c := range cases {
+		got := spanName(c.args)
+		assert.Equal(t, c.want, got, "spanName(%v)", c.args)
+	}
+}
+
 func TestBuildEnvSetsDefaultsWhenAbsent(t *testing.T) {
 	base := []string{"PATH=/usr/bin", "HOME=/home/user"}
 	env := BuildEnv(base)
