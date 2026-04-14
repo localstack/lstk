@@ -1,8 +1,10 @@
 package integration_test
 
 import (
+	"context"
 	"testing"
 
+	"github.com/docker/docker/api/types/image"
 	"github.com/localstack/lstk/test/integration/env"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -43,6 +45,30 @@ func TestStopCommandFailsWhenNotRunning(t *testing.T) {
 	requireExitCode(t, 1, err)
 	assert.Contains(t, stderr, "is not running")
 	assertCommandTelemetry(t, events, "stop", 1)
+}
+
+func TestStopCommandStopsExternalContainer(t *testing.T) {
+	requireDocker(t)
+	cleanup()
+	t.Cleanup(cleanup)
+
+	ctx := testContext(t)
+
+	const fakeImage = "localstack/localstack-pro:test-fake"
+	require.NoError(t, dockerClient.ImageTag(ctx, testImage, fakeImage))
+	t.Cleanup(func() {
+		_, _ = dockerClient.ImageRemove(context.Background(), fakeImage, image.RemoveOptions{})
+	})
+
+	startExternalContainer(t, ctx, fakeImage, "localstack-external")
+
+	stdout, stderr, err := runLstk(t, ctx, "", nil, "stop")
+	require.NoError(t, err, "lstk stop should stop external container: %s", stderr)
+	requireExitCode(t, 0, err)
+	assert.Contains(t, stdout, "stopped")
+
+	_, err = dockerClient.ContainerInspect(ctx, "localstack-external")
+	assert.Error(t, err, "external container should be gone after lstk stop")
 }
 
 func TestStopCommandIsIdempotent(t *testing.T) {

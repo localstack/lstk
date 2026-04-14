@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -13,6 +14,7 @@ import (
 	"testing"
 
 	"github.com/docker/docker/api/types/container"
+	"github.com/docker/docker/api/types/image"
 	"github.com/docker/go-connections/nat"
 	"github.com/localstack/lstk/test/integration/env"
 	"github.com/stretchr/testify/assert"
@@ -98,6 +100,7 @@ func TestStartCommandFailsWhenPortInUse(t *testing.T) {
 	cleanup()
 	t.Cleanup(cleanup)
 
+	// Simulates port in use by non-LocalStack process (/_localstack/info will fail)
 	ln, err := net.Listen("tcp", ":4566")
 	require.NoError(t, err, "failed to bind port 4566 for test")
 	defer func() { _ = ln.Close() }()
@@ -114,6 +117,60 @@ func TestStartCommandFailsWhenPortInUse(t *testing.T) {
 	byName := collectTelemetryByName(t, events, 2)
 	assert.Contains(t, byName, "lstk_lifecycle")
 	assert.Contains(t, byName, "lstk_command")
+}
+
+func TestStartCommandAttachesWithWarning(t *testing.T) {
+	requireDocker(t)
+	cleanup()
+	t.Cleanup(cleanup)
+
+	ctx := testContext(t)
+
+	// Simulates a LocalStack image
+	const fakeImage = "localstack/localstack-pro:test-fake"
+	require.NoError(t, dockerClient.ImageTag(ctx, testImage, fakeImage))
+	t.Cleanup(func() {
+		_, _ = dockerClient.ImageRemove(context.Background(), fakeImage, image.RemoveOptions{})
+	})
+
+	// Start a container with a different name to simulate an externally-managed instance.
+	startExternalContainer(t, ctx, fakeImage, "localstack-external")
+
+	analyticsSrv, events := mockAnalyticsServer(t)
+	stdout, stderr, err := runLstk(t, ctx, "", env.With(env.AuthToken, "fake-token").With(env.AnalyticsEndpoint, analyticsSrv.URL), "start")
+	require.NoError(t, err, "lstk start should succeed when external container is running: %s", stderr)
+	requireExitCode(t, 0, err)
+	// Default config tag is "latest"; running tag is "test-fake" → version mismatch warning.
+	assert.Contains(t, stdout, "test-fake")
+	assert.Contains(t, stdout, "using the running instance")
+	assertCommandTelemetry(t, events, "start", 0)
+}
+
+func TestStartCommandAttachesToSameVersion(t *testing.T) {
+	requireDocker(t)
+	cleanup()
+	t.Cleanup(cleanup)
+
+	// Serve a mock /_localstack/info on port 4566 so lstk can identify the running version.
+	ln, err := net.Listen("tcp", ":4566")
+	require.NoError(t, err, "failed to bind port 4566 for test")
+	srv := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/_localstack/info" {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"version":"3.4.0","edition":"pro"}`))
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	srv.Listener = ln
+	srv.Start()
+	defer srv.Close()
+
+	stdout, stderr, err := runLstk(t, testContext(t), "", env.With(env.AuthToken, "fake-token"), "start")
+	require.NoError(t, err, "lstk start should succeed when LocalStack is already running: %s", stderr)
+	requireExitCode(t, 0, err)
+	assert.Contains(t, stdout, "3.4.0")
+	assert.Contains(t, stdout, "already running")
 }
 
 func TestStartCommandSucceedsWithNonDefaultPort(t *testing.T) {

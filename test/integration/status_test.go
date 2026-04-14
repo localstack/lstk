@@ -1,6 +1,7 @@
 package integration_test
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"net/http"
@@ -15,6 +16,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/sqs"
+	"github.com/docker/docker/api/types/image"
 	"github.com/localstack/lstk/test/integration/env"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -115,6 +117,42 @@ func TestStatusCommandWorksWithNonDefaultPort(t *testing.T) {
 	stdout, stderr, err := runLstk(t, ctx, "", nil, "--config", configFile, "status")
 	require.NoError(t, err, "lstk status failed: %s", stderr)
 	assert.Contains(t, stdout, "4.14.1")
+}
+
+func TestStatusCommandWorksWithExternalContainer(t *testing.T) {
+	requireDocker(t)
+	cleanup()
+	t.Cleanup(cleanup)
+
+	ctx := testContext(t)
+
+	const fakeImage = "localstack/localstack-pro:test-fake"
+	require.NoError(t, dockerClient.ImageTag(ctx, testImage, fakeImage))
+	t.Cleanup(func() {
+		_, _ = dockerClient.ImageRemove(context.Background(), fakeImage, image.RemoveOptions{})
+	})
+
+	startExternalContainer(t, ctx, fakeImage, "localstack-external")
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/_localstack/health":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = fmt.Fprintln(w, `{"version": "3.5.0", "services": {}}`)
+		case "/_localstack/resources":
+			w.Header().Set("Content-Type", "application/x-ndjson")
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+
+	host := strings.TrimPrefix(server.URL, "http://")
+
+	stdout, stderr, err := runLstk(t, ctx, "", env.With(env.LocalStackHost, host), "status")
+	require.NoError(t, err, "lstk status should work with external container: %s", stderr)
+	requireExitCode(t, 0, err)
+	assert.Contains(t, stdout, "3.5.0")
 }
 
 func TestStatusCommandShowsNoResourcesWhenEmpty(t *testing.T) {

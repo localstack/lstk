@@ -372,7 +372,34 @@ func selectContainersToStart(ctx context.Context, rt runtime.Runtime, sink outpu
 			emitPostStartPointers(sink, resolvedHost, webAppURL)
 			continue
 		}
+
+		imageRepo, _, _ := strings.Cut(c.Image, ":")
+		found, err := rt.FindRunningByImage(ctx, imageRepo, c.ContainerPort, c.Port)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan for running containers: %w", err)
+		}
+		if found != nil {
+			runningTag := imageTagFrom(found.Image)
+			configTag := c.Tag
+			if configTag == "" {
+				configTag = "latest"
+			}
+			if runningTag != configTag {
+				output.EmitWarning(sink, fmt.Sprintf(
+					"Found running LocalStack %s, config specifies %s — using the running instance",
+					runningTag, configTag,
+				))
+			} else {
+				output.EmitInfo(sink, "LocalStack is already running")
+			}
+			continue
+		}
+
 		if err := ports.CheckAvailable(c.Port); err != nil {
+			if info, infoErr := fetchLocalStackInfo(ctx, c.Port); infoErr == nil {
+				emitLocalStackAlreadyRunningWarning(sink, c.Port, info.Version, c.Tag)
+				continue
+			}
 			emitPortInUseError(sink, c.Port)
 			emitEmulatorStartError(ctx, tel, c, telemetry.ErrCodePortConflict, err.Error())
 			return nil, output.NewSilentError(err)
@@ -380,6 +407,28 @@ func selectContainersToStart(ctx context.Context, rt runtime.Runtime, sink outpu
 		filtered = append(filtered, c)
 	}
 	return filtered, nil
+}
+
+func imageTagFrom(image string) string {
+	_, tag, found := strings.Cut(image, ":")
+	if !found || tag == "" {
+		return "latest"
+	}
+	return tag
+}
+
+func emitLocalStackAlreadyRunningWarning(sink output.Sink, port, runningVersion, configTag string) {
+	if configTag == "" {
+		configTag = "latest"
+	}
+	if runningVersion != configTag {
+		output.EmitWarning(sink, fmt.Sprintf(
+			"LocalStack %s is already running on port %s (config specifies %s) — using the running instance",
+			runningVersion, port, configTag,
+		))
+	} else {
+		output.EmitInfo(sink, fmt.Sprintf("LocalStack %s is already running on port %s", runningVersion, port))
+	}
 }
 
 func emitPortInUseError(sink output.Sink, port string) {
