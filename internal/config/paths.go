@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 )
 
@@ -13,6 +14,32 @@ const (
 	configType     = "toml"
 	configFileName = configName + "." + configType
 )
+
+// LogDir returns the standard path for diagnostic logs.
+func LogDir() (string, error) {
+	return logDirForOS(runtime.GOOS)
+}
+
+func logDirForOS(goos string) (string, error) {
+	if goos == "windows" {
+		dir := os.Getenv("LOCALAPPDATA")
+		if dir == "" {
+			home, _ := os.UserHomeDir()
+			dir = filepath.Join(home, "AppData", "Local")
+		}
+		return filepath.Join(dir, "lstk"), nil
+	}
+
+	dir := os.Getenv("XDG_STATE_HOME")
+	if dir == "" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", err
+		}
+		dir = filepath.Join(home, ".local", "state")
+	}
+	return filepath.Join(dir, "lstk"), nil
+}
 
 func ConfigFilePath() (string, error) {
 	if resolved := resolvedConfigPath(); resolved != "" {

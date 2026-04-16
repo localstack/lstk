@@ -14,6 +14,7 @@ make clean              # Remove build artifacts
 ```
 
 Run a single integration test:
+
 ```bash
 make test-integration RUN=TestStartCommandSucceedsWithValidToken
 ```
@@ -36,7 +37,7 @@ Note: Integration tests require `LOCALSTACK_AUTH_TOKEN` environment variable for
 
 # Logging
 
-lstk always writes diagnostic logs to `$CONFIG_DIR/lstk.log` (appends across runs, cleared at 1 MB). Two log levels: `Info` and `Error`.
+lstk always writes diagnostic logs to `$LOG_DIR/lstk.log` (appends across runs, cleared at 1 MB). Two log levels: `Info` and `Error`.
 
 - `log.Logger` is injected as a dependency (via `StartOptions` or constructor params). Use `log.Nop()` in tests.
 - This is separate from `output.Sink` — the logger is for internal diagnostics, the sink is for user-facing output.
@@ -44,6 +45,7 @@ lstk always writes diagnostic logs to `$CONFIG_DIR/lstk.log` (appends across run
 # Configuration
 
 Uses Viper with TOML format. lstk uses the first `config.toml` found in this order:
+
 1. `./.lstk/config.toml` (project-local)
 2. `$HOME/.config/lstk/config.toml`
 3. **macOS**: `$HOME/Library/Application Support/lstk/config.toml` / **Windows**: `%AppData%\lstk\config.toml`
@@ -58,12 +60,14 @@ Created automatically on first run with defaults. Supports emulator types (aws, 
 # Emulator Setup Commands
 
 Use `lstk setup <emulator>` to set up CLI integration for an emulator type:
+
 - `lstk setup aws` — Sets up AWS CLI profile in `~/.aws/config` and `~/.aws/credentials`
 
 This naming avoids AWS-specific "profile" terminology and uses a clear verb for mutation operations.
 The deprecated `lstk config profile` command still works but points users to `lstk setup aws`.
 
 Environment variables:
+
 - `LOCALSTACK_AUTH_TOKEN` - Auth token (skips browser login if set)
 
 # Code Style
@@ -116,6 +120,7 @@ Domain code must never read from stdin or wait for user input directly. Instead:
 4. In non-interactive mode, commands requiring user input should fail early with a helpful error (e.g., "set LOCALSTACK_AUTH_TOKEN or run in interactive mode").
 
 Example flow in auth login:
+
 ```go
 responseCh := make(chan output.InputResponse, 1)
 output.EmitUserInputRequest(sink, output.UserInputRequestEvent{
@@ -138,11 +143,13 @@ case <-ctx.Done():
 # UI Development (Bubble Tea TUI)
 
 ## Structure
+
 - `internal/ui/` - Bubble Tea app model and run orchestration
 - `internal/ui/components/` - Reusable presentational components
 - `internal/ui/styles/` - Lipgloss style definitions and palette constants
 
 ## Component and Model Rules
+
 1. Keep components small and focused (single concern each).
 2. Keep UI as presentation/orchestration only; business logic stays in domain packages.
 3. Long-running work must run outside `Update()` (goroutine or command path), with UI updates sent asynchronously.
@@ -152,6 +159,7 @@ case <-ctx.Done():
 7. Keep message/history state bounded (for example, capped line buffer).
 
 ## Styling Rules
+
 - Define styles with semantic names in `internal/ui/styles/styles.go`.
 - Preserve the Nimbo palette constants (`#3F51C7`, `#5E6AD2`, `#7E88EC`) unless intentionally changing branding.
 - If changing palette constants, update/add tests to guard against accidental drift.

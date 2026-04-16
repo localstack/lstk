@@ -104,7 +104,6 @@ func Execute(ctx context.Context) error {
 }
 
 func startEmulator(ctx context.Context, rt runtime.Runtime, cfg *env.Env, tel *telemetry.Client, logger log.Logger) error {
-
 	appConfig, err := config.Get()
 	if err != nil {
 		return fmt.Errorf("failed to get config: %w", err)
@@ -211,20 +210,20 @@ func isInteractiveMode(cfg *env.Env) bool {
 const maxLogSize = 1 << 20 // 1 MB
 
 func newLogger() (log.Logger, func(), error) {
-	configDir, err := config.ConfigDir()
+	logDir, err := config.LogDir()
 	if err != nil {
-		return nil, func() {}, fmt.Errorf("resolve config directory: %w", err)
+		return nil, func() {}, fmt.Errorf("resolve log directory: %w", err)
 	}
-	if err := os.MkdirAll(configDir, 0755); err != nil {
-		return nil, func() {}, fmt.Errorf("create config directory %s: %w", configDir, err)
+	if err := os.MkdirAll(logDir, 0o755); err != nil {
+		return nil, func() {}, fmt.Errorf("create log directory %s: %w", logDir, err)
 	}
-	path := filepath.Join(configDir, "lstk.log")
+	path := filepath.Join(logDir, "lstk.log")
 	if info, err := os.Stat(path); err == nil && info.Size() > maxLogSize {
 		if err := os.Truncate(path, 0); err != nil {
 			return nil, func() {}, fmt.Errorf("truncate log file %s: %w", path, err)
 		}
 	}
-	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600)
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
 	if err != nil {
 		return nil, func() {}, fmt.Errorf("open log file %s: %w", path, err)
 	}

@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/spf13/viper"
@@ -16,10 +17,10 @@ func TestFriendlyConfigPathRelativeForProjectLocal(t *testing.T) {
 	dir, err := filepath.EvalSymlinks(tmpDir)
 	require.NoError(t, err)
 	configDir := filepath.Join(dir, ".lstk")
-	require.NoError(t, os.MkdirAll(configDir, 0755))
+	require.NoError(t, os.MkdirAll(configDir, 0o755))
 
 	configFile := filepath.Join(configDir, "config.toml")
-	require.NoError(t, os.WriteFile(configFile, []byte("[aws]\n"), 0644))
+	require.NoError(t, os.WriteFile(configFile, []byte("[aws]\n"), 0o644))
 
 	origDir, err := os.Getwd()
 	require.NoError(t, err)
@@ -45,10 +46,10 @@ func TestFriendlyConfigPathTildeForHomeDir(t *testing.T) {
 	require.NoError(t, err)
 
 	configDir := filepath.Join(resolvedHome, ".config", "lstk")
-	require.NoError(t, os.MkdirAll(configDir, 0755))
+	require.NoError(t, os.MkdirAll(configDir, 0o755))
 
 	configFile := filepath.Join(configDir, "config.toml")
-	require.NoError(t, os.WriteFile(configFile, []byte("[aws]\n"), 0644))
+	require.NoError(t, os.WriteFile(configFile, []byte("[aws]\n"), 0o644))
 
 	t.Setenv("HOME", resolvedHome)
 
@@ -60,4 +61,37 @@ func TestFriendlyConfigPathTildeForHomeDir(t *testing.T) {
 	friendly, err := FriendlyConfigPath()
 	require.NoError(t, err)
 	require.Equal(t, filepath.Join("~", ".config", "lstk", "config.toml"), friendly)
+}
+
+func TestLogDir(t *testing.T) {
+	// Cannot run in parallel: mutates process-wide environment variables.
+
+	tmp := t.TempDir()
+	resolvedTmp, err := filepath.EvalSymlinks(tmp)
+	require.NoError(t, err)
+
+	if runtime.GOOS == "windows" {
+		t.Setenv("LOCALAPPDATA", resolvedTmp)
+
+		path, err := LogDir()
+		require.NoError(t, err)
+		require.Equal(t, filepath.Join(resolvedTmp, "lstk"), path)
+	} else {
+		// Test XDG_STATE_HOME preference
+		t.Setenv("XDG_STATE_HOME", resolvedTmp)
+
+		path, err := LogDir()
+		require.NoError(t, err)
+		require.Equal(t, filepath.Join(resolvedTmp, "lstk"), path)
+
+		// Test fallback to HOME
+		t.Setenv("XDG_STATE_HOME", "")
+		fakeHome := t.TempDir()
+		resolvedHome, _ := filepath.EvalSymlinks(fakeHome)
+		t.Setenv("HOME", resolvedHome)
+
+		path, err = LogDir()
+		require.NoError(t, err)
+		require.Equal(t, filepath.Join(resolvedHome, ".local", "state", "lstk"), path)
+	}
 }
