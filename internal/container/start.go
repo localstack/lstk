@@ -2,7 +2,6 @@ package container
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"math/rand/v2"
@@ -419,12 +418,10 @@ func validateLicense(ctx context.Context, sink output.Sink, opts StartOptions, t
 		return fmt.Errorf("license validation failed for %s:%s: %w", containerConfig.ProductName, version, err)
 	}
 
-	if licenseResp != nil {
-		if licenseData, err := json.Marshal(licenseResp); err != nil {
-			opts.Logger.Error("failed to marshal license response: %v", err)
-		} else if err := os.MkdirAll(filepath.Dir(licenseFilePath), 0755); err != nil {
+	if licenseResp != nil && len(licenseResp.RawBytes) > 0 {
+		if err := os.MkdirAll(filepath.Dir(licenseFilePath), 0755); err != nil {
 			opts.Logger.Error("failed to create license cache directory: %v", err)
-		} else if err := os.WriteFile(licenseFilePath, licenseData, 0600); err != nil {
+		} else if err := os.WriteFile(licenseFilePath, licenseResp.RawBytes, 0600); err != nil {
 			opts.Logger.Error("failed to cache license file: %v", err)
 		}
 	}
