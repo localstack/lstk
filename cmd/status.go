@@ -25,9 +25,11 @@ func newStatusCmd(cfg *env.Env, tel *telemetry.Client) *cobra.Command {
 		RunE: commandWithTelemetry("status", tel, func(cmd *cobra.Command, args []string) error {
 			rt, err := runtime.NewDockerRuntime(cfg.DockerHost)
 			if err != nil {
+				return dockerNotAvailableError(err)
+			}
+			if err := checkRuntimeHealth(cmd.Context(), rt); err != nil {
 				return err
 			}
-
 			appCfg, err := config.Get()
 			if err != nil {
 				return fmt.Errorf("failed to get config: %w", err)

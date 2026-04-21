@@ -26,6 +26,9 @@ func newStopCmd(cfg *env.Env, tel *telemetry.Client) *cobra.Command {
 			startTime := time.Now()
 			rt, err := runtime.NewDockerRuntime(cfg.DockerHost)
 			if err != nil {
+				return dockerNotAvailableError(err)
+			}
+			if err := checkRuntimeHealth(cmd.Context(), rt); err != nil {
 				return err
 			}
 			appConfig, err := config.Get()
