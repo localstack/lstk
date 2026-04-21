@@ -159,7 +159,7 @@ func Start(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts Start
 		}
 	}
 
-	containers, err = selectContainersToStart(ctx, rt, sink, tel, containers)
+	containers, err = selectContainersToStart(ctx, rt, sink, tel, containers, opts.LocalStackHost, opts.WebAppURL)
 	if err != nil {
 		return err
 	}
@@ -226,7 +226,7 @@ func runPostStartSetups(ctx context.Context, sink output.Sink, containers []conf
 		if setup, ok := setups[t]; ok {
 			resolvedHost, dnsOK := endpoint.ResolveHost(firstByType[t].Port, localStackHost)
 			if !dnsOK {
-				output.EmitNote(sink, `Could not resolve "localhost.localstack.cloud" — your system may have DNS rebind protection enabled. Using 127.0.0.1 as the endpoint.`)
+				output.EmitNote(sink, endpoint.DNSRebindNote)
 			}
 			if err := setup(ctx, sink, interactive, resolvedHost); err != nil {
 				return err
@@ -352,7 +352,7 @@ func startContainers(ctx context.Context, rt runtime.Runtime, sink output.Sink, 
 	return nil
 }
 
-func selectContainersToStart(ctx context.Context, rt runtime.Runtime, sink output.Sink, tel *telemetry.Client, containers []runtime.ContainerConfig) ([]runtime.ContainerConfig, error) {
+func selectContainersToStart(ctx context.Context, rt runtime.Runtime, sink output.Sink, tel *telemetry.Client, containers []runtime.ContainerConfig, localStackHost, webAppURL string) ([]runtime.ContainerConfig, error) {
 	var filtered []runtime.ContainerConfig
 	for _, c := range containers {
 		running, err := rt.IsRunning(ctx, c.Name)
@@ -360,7 +360,12 @@ func selectContainersToStart(ctx context.Context, rt runtime.Runtime, sink outpu
 			return nil, fmt.Errorf("failed to check container status: %w", err)
 		}
 		if running {
-			output.EmitInfo(sink, "LocalStack is already running")
+			output.EmitNote(sink, "LocalStack is already running")
+			resolvedHost, dnsOK := endpoint.ResolveHost(c.Port, localStackHost)
+			if !dnsOK {
+				output.EmitNote(sink, endpoint.DNSRebindNote)
+			}
+			emitPostStartPointers(sink, resolvedHost, webAppURL)
 			continue
 		}
 		if err := ports.CheckAvailable(c.Port); err != nil {

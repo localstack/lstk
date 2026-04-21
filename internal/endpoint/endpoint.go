@@ -4,6 +4,8 @@ import "net"
 
 const Hostname = "localhost.localstack.cloud"
 
+const DNSRebindNote = "Could not resolve localhost.localstack.cloud, falling back to 127.0.0.1."
+
 // ResolveHost returns the best host:port for reaching LocalStack on the given port.
 // If override is non-empty it is returned as-is. Otherwise a DNS check is performed;
 // if Hostname does not resolve to 127.0.0.1 (e.g. DNS rebind protection is active),
