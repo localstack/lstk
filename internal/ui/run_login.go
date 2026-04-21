@@ -27,7 +27,7 @@ func RunLogin(parentCtx context.Context, version string, platformClient api.Plat
 			p.Send(runErrMsg{err: err})
 			return
 		}
-		a := auth.New(output.NewTUISink(programSender{p: p}), platformClient, tokenStorage, authToken, webAppURL, true)
+		a := auth.New(output.NewTUISink(programSender{p: p}), platformClient, tokenStorage, authToken, webAppURL, true, "")
 
 		_, err = a.GetToken(ctx)
 		runErrCh <- err

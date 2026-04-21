@@ -98,7 +98,7 @@ func TestLoginFlow_DeviceFlowSuccess(t *testing.T) {
 
 	errCh := make(chan error, 1)
 	go func() {
-		a := auth.New(output.NewTUISink(sender), platformClient, mockStorage, "", mockServer.URL, true)
+		a := auth.New(output.NewTUISink(sender), platformClient, mockStorage, "", mockServer.URL, true, "")
 		_, err := a.GetToken(ctx)
 		errCh <- err
 		if err != nil && !errors.Is(err, context.Canceled) {
@@ -146,7 +146,7 @@ func TestLoginFlow_DeviceFlowFailure_NotConfirmed(t *testing.T) {
 
 	errCh := make(chan error, 1)
 	go func() {
-		a := auth.New(output.NewTUISink(sender), platformClient, mockStorage, "", mockServer.URL, true)
+		a := auth.New(output.NewTUISink(sender), platformClient, mockStorage, "", mockServer.URL, true, "")
 		_, err := a.GetToken(ctx)
 		errCh <- err
 		if err != nil && !errors.Is(err, context.Canceled) {
@@ -195,7 +195,7 @@ func TestLoginFlow_DeviceFlowCancelWithCtrlC(t *testing.T) {
 
 	errCh := make(chan error, 1)
 	go func() {
-		a := auth.New(output.NewTUISink(sender), platformClient, mockStorage, "", mockServer.URL, true)
+		a := auth.New(output.NewTUISink(sender), platformClient, mockStorage, "", mockServer.URL, true, "")
 		_, err := a.GetToken(ctx)
 		errCh <- err
 		if err != nil && !errors.Is(err, context.Canceled) {

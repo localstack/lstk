@@ -156,6 +156,17 @@ func configCreationDir() (string, error) {
 	return osConfigDir()
 }
 
+// LicenseFilePath returns the path where the license file is cached on the host.
+// This file is written after a successful license validation and mounted read-only
+// into containers so they can activate offline.
+func LicenseFilePath() (string, error) {
+	cacheDir, err := os.UserCacheDir()
+	if err != nil {
+		return "", fmt.Errorf("failed to determine cache directory: %w", err)
+	}
+	return filepath.Join(cacheDir, "lstk", "license.json"), nil
+}
+
 func firstExistingConfigPath() (string, bool, error) {
 	dirs, err := configSearchDirs()
 	if err != nil {

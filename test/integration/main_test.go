@@ -289,3 +289,14 @@ func createMockLicenseServer(success bool) *httptest.Server {
 		w.WriteHeader(http.StatusNotFound)
 	}))
 }
+
+func createMockLicenseServerWithBody(body string) *httptest.Server {
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == "POST" && r.URL.Path == "/v1/license/request" {
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(body))
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+	}))
+}

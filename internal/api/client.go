@@ -66,7 +66,8 @@ type MachineInfo struct {
 }
 
 type LicenseResponse struct {
-	LicenseType string `json:"license_type"`
+	LicenseType string          `json:"license_type"`
+	RawBytes    json.RawMessage `json:"-"`
 }
 
 var planDisplayNames = map[string]string{
@@ -270,14 +271,18 @@ func (c *PlatformClient) GetLicense(ctx context.Context, licReq *LicenseRequest)
 	statusCode := resp.StatusCode
 
 	if statusCode == http.StatusOK {
-		var licResp LicenseResponse
-		decErr := json.NewDecoder(resp.Body).Decode(&licResp)
+		rawBytes, err := io.ReadAll(resp.Body)
 		if err := resp.Body.Close(); err != nil {
 			c.logger.Error("failed to close response body: %v", err)
 		}
-		if decErr != nil {
-			return nil, fmt.Errorf("failed to decode license response: %w", decErr)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read license response: %w", err)
 		}
+		var licResp LicenseResponse
+		if err := json.Unmarshal(rawBytes, &licResp); err != nil {
+			return nil, fmt.Errorf("failed to decode license response: %w", err)
+		}
+		licResp.RawBytes = rawBytes
 		return &licResp, nil
 	}
 
