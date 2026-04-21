@@ -172,6 +172,8 @@ func TestStartCommandSetsUpContainerCorrectly(t *testing.T) {
 
 		assert.True(t, hasBindTarget(inspect.HostConfig.Binds, "/var/run/docker.sock"),
 			"expected Docker socket bind mount to /var/run/docker.sock, got: %v", inspect.HostConfig.Binds)
+		assert.True(t, hasBindSource(inspect.HostConfig.Binds, "/var/run/docker.sock"),
+			"expected Docker socket bind mount from /var/run/docker.sock, got: %v", inspect.HostConfig.Binds)
 
 		envVars := containerEnvToMap(inspect.Config.Env)
 		assert.Equal(t, "unix:///var/run/docker.sock", envVars["DOCKER_HOST"])
@@ -241,6 +243,16 @@ func hasBindTarget(binds []string, containerPath string) bool {
 	for _, b := range binds {
 		parts := strings.Split(b, ":")
 		if len(parts) >= 2 && parts[1] == containerPath {
+			return true
+		}
+	}
+	return false
+}
+
+func hasBindSource(binds []string, hostPath string) bool {
+	for _, b := range binds {
+		parts := strings.Split(b, ":")
+		if len(parts) >= 2 && parts[0] == hostPath {
 			return true
 		}
 	}
