@@ -34,7 +34,7 @@ func TestStatus_MultipleContainers_StopsAtFirstNotRunning(t *testing.T) {
 	mockRT := runtime.NewMockRuntime(ctrl)
 	mockRT.EXPECT().IsHealthy(gomock.Any()).Return(nil)
 	mockRT.EXPECT().IsRunning(gomock.Any(), "localstack-aws").Return(false, nil)
-	mockRT.EXPECT().FindRunningByImage(gomock.Any(), "localstack/localstack-pro", "4566/tcp").Return(nil, nil)
+	mockRT.EXPECT().FindRunningByImage(gomock.Any(), []string{"localstack/localstack-pro", "localstack/localstack"}, "4566/tcp").Return(nil, nil)
 
 	containers := []config.ContainerConfig{
 		{Type: config.EmulatorAWS},

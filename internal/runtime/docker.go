@@ -376,7 +376,7 @@ func (d *DockerRuntime) GetBoundPort(ctx context.Context, containerName string, 
 	return bindings[0].HostPort, nil
 }
 
-func (d *DockerRuntime) FindRunningByImage(ctx context.Context, imageRepo string, containerPort string) (*RunningContainer, error) {
+func (d *DockerRuntime) FindRunningByImage(ctx context.Context, imageRepos []string, containerPort string) (*RunningContainer, error) {
 	list, err := d.client.ContainerList(ctx, container.ListOptions{
 		Filters: filters.NewArgs(filters.Arg("status", "running")),
 	})
@@ -393,9 +393,8 @@ func (d *DockerRuntime) FindRunningByImage(ctx context.Context, imageRepo string
 		return nil, fmt.Errorf("invalid container port %q: %w", containerPort, err)
 	}
 
-	prefix := imageRepo + ":"
 	for _, c := range list {
-		if c.Image != imageRepo && !strings.HasPrefix(c.Image, prefix) {
+		if !matchesAnyImageRepo(c.Image, imageRepos) {
 			continue
 		}
 		for _, p := range c.Ports {
@@ -413,6 +412,15 @@ func (d *DockerRuntime) FindRunningByImage(ctx context.Context, imageRepo string
 		}
 	}
 	return nil, nil
+}
+
+func matchesAnyImageRepo(image string, repos []string) bool {
+	for _, repo := range repos {
+		if image == repo || strings.HasPrefix(image, repo+":") {
+			return true
+		}
+	}
+	return false
 }
 
 func (d *DockerRuntime) GetImageVersion(ctx context.Context, imageName string) (string, error) {

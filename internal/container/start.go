@@ -374,7 +374,7 @@ func selectContainersToStart(ctx context.Context, rt runtime.Runtime, sink outpu
 		}
 
 		imageRepo, _, _ := strings.Cut(c.Image, ":")
-		found, err := rt.FindRunningByImage(ctx, imageRepo, c.ContainerPort)
+		found, err := rt.FindRunningByImage(ctx, []string{imageRepo, "localstack/localstack"}, c.ContainerPort)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan for running containers: %w", err)
 		}

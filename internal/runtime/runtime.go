@@ -64,6 +64,6 @@ type Runtime interface {
 	GetImageVersion(ctx context.Context, imageName string) (string, error)
 	// GetBoundPort returns the host port bound to the given container port (e.g. "4566/tcp").
 	GetBoundPort(ctx context.Context, containerName string, containerPort string) (string, error)
-	FindRunningByImage(ctx context.Context, imageRepo string, containerPort string) (*RunningContainer, error)
+	FindRunningByImage(ctx context.Context, imageRepos []string, containerPort string) (*RunningContainer, error)
 	SocketPath() string
 }
