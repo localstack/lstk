@@ -76,9 +76,8 @@ func newVolumeClearCmd(cfg *env.Env, tel *telemetry.Client) *cobra.Command {
 				return fmt.Errorf("volume clear requires confirmation; use --force to skip in non-interactive mode")
 			}
 
-			if !isInteractiveMode(cfg) || force {
-				sink := output.NewPlainSink(os.Stdout)
-				return volume.Clear(cmd.Context(), sink, containers, true)
+			if force {
+				return volume.Clear(cmd.Context(), output.NewPlainSink(os.Stdout), containers, true)
 			}
 
 			return ui.RunVolumeClear(cmd.Context(), containers)
@@ -92,13 +91,11 @@ func newVolumeClearCmd(cfg *env.Env, tel *telemetry.Client) *cobra.Command {
 }
 
 func filterContainers(containers []config.ContainerConfig, emulatorType string) ([]config.ContainerConfig, error) {
+	var types []string
 	for _, c := range containers {
 		if c.Type == config.EmulatorType(emulatorType) {
 			return []config.ContainerConfig{c}, nil
 		}
-	}
-	var types []string
-	for _, c := range containers {
 		types = append(types, string(c.Type))
 	}
 	return nil, fmt.Errorf("emulator type %q not found in config; available: %v", emulatorType, types)

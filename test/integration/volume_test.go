@@ -134,7 +134,7 @@ volume = "` + escapeTomlPath(volumeDir) + `"
 		assert.Contains(t, stdout, "Volume data cleared")
 	})
 
-	t.Run("filters by container name", func(t *testing.T) {
+	t.Run("filters by emulator type", func(t *testing.T) {
 		volumeDir := t.TempDir()
 		require.NoError(t, os.WriteFile(filepath.Join(volumeDir, "data.json"), []byte("{}"), 0644))
 
@@ -199,33 +199,34 @@ volume = "` + escapeTomlPath(volumeDir) + `"
 		return configFile
 	}
 
-	t.Run("clears volume when user confirms with y", func(t *testing.T) {
-		volumeDir := t.TempDir()
-		require.NoError(t, os.WriteFile(filepath.Join(volumeDir, "data.json"), []byte("{}"), 0644))
-		configFile := makeConfig(t, volumeDir)
-
-		ctx := testContext(t)
-		cmd := exec.CommandContext(ctx, binaryPath(), "--config", configFile, "volume", "clear")
+	// startVolumeClear launches lstk volume clear in a PTY and returns the ptmx,
+	// output buffer, and a channel that closes when output draining is done.
+	startVolumeClear := func(t *testing.T, configFile string) (*os.File, *syncBuffer, chan struct{}, *exec.Cmd) {
+		t.Helper()
+		cmd := exec.CommandContext(testContext(t), binaryPath(), "--config", configFile, "volume", "clear")
 		cmd.Env = os.Environ()
-
 		ptmx, err := pty.Start(cmd)
 		require.NoError(t, err, "failed to start command in PTY")
-		defer func() { _ = ptmx.Close() }()
-
+		t.Cleanup(func() { _ = ptmx.Close() })
 		out := &syncBuffer{}
 		outputCh := make(chan struct{})
 		go func() {
 			_, _ = io.Copy(out, ptmx)
 			close(outputCh)
 		}()
-
 		require.Eventually(t, func() bool {
 			return bytes.Contains(out.Bytes(), []byte("Clear volume data?"))
 		}, 10*time.Second, 100*time.Millisecond, "confirmation prompt should appear")
+		return ptmx, out, outputCh, cmd
+	}
 
-		_, err = ptmx.Write([]byte("y"))
+	t.Run("clears volume when user confirms with y", func(t *testing.T) {
+		volumeDir := t.TempDir()
+		require.NoError(t, os.WriteFile(filepath.Join(volumeDir, "data.json"), []byte("{}"), 0644))
+
+		ptmx, out, outputCh, cmd := startVolumeClear(t, makeConfig(t, volumeDir))
+		_, err := ptmx.Write([]byte("y"))
 		require.NoError(t, err)
-
 		require.NoError(t, cmd.Wait())
 		<-outputCh
 
@@ -238,30 +239,10 @@ volume = "` + escapeTomlPath(volumeDir) + `"
 	t.Run("cancels when user presses n", func(t *testing.T) {
 		volumeDir := t.TempDir()
 		require.NoError(t, os.WriteFile(filepath.Join(volumeDir, "data.json"), []byte("{}"), 0644))
-		configFile := makeConfig(t, volumeDir)
 
-		ctx := testContext(t)
-		cmd := exec.CommandContext(ctx, binaryPath(), "--config", configFile, "volume", "clear")
-		cmd.Env = os.Environ()
-
-		ptmx, err := pty.Start(cmd)
-		require.NoError(t, err, "failed to start command in PTY")
-		defer func() { _ = ptmx.Close() }()
-
-		out := &syncBuffer{}
-		outputCh := make(chan struct{})
-		go func() {
-			_, _ = io.Copy(out, ptmx)
-			close(outputCh)
-		}()
-
-		require.Eventually(t, func() bool {
-			return bytes.Contains(out.Bytes(), []byte("Clear volume data?"))
-		}, 10*time.Second, 100*time.Millisecond, "confirmation prompt should appear")
-
-		_, err = ptmx.Write([]byte("n"))
+		ptmx, out, outputCh, cmd := startVolumeClear(t, makeConfig(t, volumeDir))
+		_, err := ptmx.Write([]byte("n"))
 		require.NoError(t, err)
-
 		require.NoError(t, cmd.Wait())
 		<-outputCh
 
