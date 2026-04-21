@@ -55,7 +55,7 @@ func TestEmitPostStartPointers_WithoutWebApp(t *testing.T) {
 	assert.Contains(t, got, "> Tip:")
 }
 
-func TestSelectContainersToStart_AttachesExternalContainerWithMatchingVersion(t *testing.T) {
+func TestSelectContainersToStart_AttachesWhenExternalContainerOnConfiguredPort(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	mockRT := runtime.NewMockRuntime(ctrl)
 
@@ -82,7 +82,7 @@ func TestSelectContainersToStart_AttachesExternalContainerWithMatchingVersion(t 
 	assert.NotContains(t, out.String(), "config specifies")
 }
 
-func TestSelectContainersToStart_AttachesToExternalContainerOnSamePort(t *testing.T) {
+func TestSelectContainersToStart_AttachesWhenExternalContainerVersionDiffers(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	mockRT := runtime.NewMockRuntime(ctrl)
 

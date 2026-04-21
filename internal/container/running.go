@@ -23,8 +23,6 @@ func AnyRunning(ctx context.Context, rt runtime.Runtime, containers []config.Con
 	return false, nil
 }
 
-// First checks the configured name,
-// then falls back to FindRunningByImage for containers started outside lstk
 func resolveRunningContainerName(ctx context.Context, rt runtime.Runtime, c config.ContainerConfig) (string, error) {
 	running, err := rt.IsRunning(ctx, c.Name())
 	if err != nil {

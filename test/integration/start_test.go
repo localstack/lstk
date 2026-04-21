@@ -143,7 +143,7 @@ func TestStartCommandAttachesToExternalContainer(t *testing.T) {
 	assertCommandTelemetry(t, events, "start", 0)
 }
 
-func TestStartCommandAttachesToSameVersion(t *testing.T) {
+func TestStartCommandAttachesWhenLocalStackRespondingOnPort(t *testing.T) {
 	requireDocker(t)
 	cleanup()
 	t.Cleanup(cleanup)
@@ -170,7 +170,7 @@ func TestStartCommandAttachesToSameVersion(t *testing.T) {
 	assert.Contains(t, stdout, "already running")
 }
 
-func TestStartCommandFailsWhenLSRunningOnDifferentPort(t *testing.T) {
+func TestStartCommandFailsWhenLocalStackRunningOnDifferentPort(t *testing.T) {
 	requireDocker(t)
 	cleanup()
 	t.Cleanup(cleanup)
