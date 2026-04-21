@@ -51,7 +51,7 @@ func newVolumePathCmd(cfg *env.Env, tel *telemetry.Client) *cobra.Command {
 
 func newVolumeClearCmd(cfg *env.Env, tel *telemetry.Client) *cobra.Command {
 	var force bool
-	var containerName string
+	var emulatorType string
 
 	cmd := &cobra.Command{
 		Use:     "clear",
@@ -65,8 +65,8 @@ func newVolumeClearCmd(cfg *env.Env, tel *telemetry.Client) *cobra.Command {
 			}
 
 			containers := appConfig.Containers
-			if containerName != "" {
-				containers, err = filterContainers(appConfig.Containers, containerName)
+			if emulatorType != "" {
+				containers, err = filterContainers(appConfig.Containers, emulatorType)
 				if err != nil {
 					return err
 				}
@@ -86,21 +86,20 @@ func newVolumeClearCmd(cfg *env.Env, tel *telemetry.Client) *cobra.Command {
 	}
 
 	cmd.Flags().BoolVar(&force, "force", false, "Skip confirmation prompt")
-	cmd.Flags().StringVar(&containerName, "emulator", "", "Target emulator by type or container name")
+	cmd.Flags().StringVar(&emulatorType, "type", "", "Filter by emulator type (aws, azure, snowflake)")
 
 	return cmd
 }
 
-func filterContainers(containers []config.ContainerConfig, target string) ([]config.ContainerConfig, error) {
+func filterContainers(containers []config.ContainerConfig, emulatorType string) ([]config.ContainerConfig, error) {
 	for _, c := range containers {
-		if string(c.Type) == target || c.Name() == target {
+		if c.Type == config.EmulatorType(emulatorType) {
 			return []config.ContainerConfig{c}, nil
 		}
 	}
-	var types, names []string
+	var types []string
 	for _, c := range containers {
 		types = append(types, string(c.Type))
-		names = append(names, c.Name())
 	}
-	return nil, fmt.Errorf("emulator %q not found in config; available types: %v, container names: %v", target, types, names)
+	return nil, fmt.Errorf("emulator type %q not found in config; available: %v", emulatorType, types)
 }

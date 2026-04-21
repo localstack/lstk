@@ -142,14 +142,14 @@ volume = "` + escapeTomlPath(volumeDir) + `"
 		configFile := filepath.Join(t.TempDir(), "config.toml")
 		require.NoError(t, os.WriteFile(configFile, []byte(configContent), 0644))
 
-		// Wrong emulator type should fail
-		_, stderr, err := runLstk(t, testContext(t), t.TempDir(), os.Environ(), "--config", configFile, "--non-interactive", "volume", "clear", "--force", "--emulator", "snowflake")
+		// Wrong type should fail
+		_, stderr, err := runLstk(t, testContext(t), t.TempDir(), os.Environ(), "--config", configFile, "--non-interactive", "volume", "clear", "--force", "--type", "snowflake")
 		require.Error(t, err)
 		requireExitCode(t, 1, err)
 		assert.Contains(t, stderr, "not found")
 
-		// Correct emulator type should succeed
-		stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), os.Environ(), "--config", configFile, "--non-interactive", "volume", "clear", "--force", "--emulator", "aws")
+		// Correct type should succeed
+		stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), os.Environ(), "--config", configFile, "--non-interactive", "volume", "clear", "--force", "--type", "aws")
 		require.NoError(t, err, "lstk volume clear failed: %s\nstdout: %s", stderr, stdout)
 		requireExitCode(t, 0, err)
 
