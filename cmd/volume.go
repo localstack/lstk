@@ -25,8 +25,8 @@ func newVolumeCmd(cfg *env.Env, tel *telemetry.Client) *cobra.Command {
 
 func newVolumePathCmd(cfg *env.Env, tel *telemetry.Client) *cobra.Command {
 	return &cobra.Command{
-		Use:   "path",
-		Short: "Print the volume directory path",
+		Use:     "path",
+		Short:   "Print the volume directory path",
 		PreRunE: initConfig,
 		RunE: commandWithTelemetry("volume path", tel, func(cmd *cobra.Command, args []string) error {
 			appConfig, err := config.Get()
@@ -54,9 +54,9 @@ func newVolumeClearCmd(cfg *env.Env, tel *telemetry.Client) *cobra.Command {
 	var containerName string
 
 	cmd := &cobra.Command{
-		Use:   "clear",
-		Short: "Clear emulator volume data",
-		Long:  "Remove all data from the emulator volume directory. This resets cached state such as certificates, downloaded tools, and persistence data.",
+		Use:     "clear",
+		Short:   "Clear emulator volume data",
+		Long:    "Remove all data from the emulator volume directory. This resets cached state such as certificates, downloaded tools, and persistence data.",
 		PreRunE: initConfig,
 		RunE: commandWithTelemetry("volume clear", tel, func(cmd *cobra.Command, args []string) error {
 			appConfig, err := config.Get()
@@ -86,20 +86,21 @@ func newVolumeClearCmd(cfg *env.Env, tel *telemetry.Client) *cobra.Command {
 	}
 
 	cmd.Flags().BoolVar(&force, "force", false, "Skip confirmation prompt")
-	cmd.Flags().StringVar(&containerName, "emulator", "", "Target a specific emulator container name")
+	cmd.Flags().StringVar(&containerName, "emulator", "", "Target emulator by type or container name")
 
 	return cmd
 }
 
-func filterContainers(containers []config.ContainerConfig, name string) ([]config.ContainerConfig, error) {
+func filterContainers(containers []config.ContainerConfig, target string) ([]config.ContainerConfig, error) {
 	for _, c := range containers {
-		if c.Name() == name {
+		if string(c.Type) == target || c.Name() == target {
 			return []config.ContainerConfig{c}, nil
 		}
 	}
-	var names []string
+	var types, names []string
 	for _, c := range containers {
+		types = append(types, string(c.Type))
 		names = append(names, c.Name())
 	}
-	return nil, fmt.Errorf("container %q not found in config; available: %v", name, names)
+	return nil, fmt.Errorf("emulator %q not found in config; available types: %v, container names: %v", target, types, names)
 }

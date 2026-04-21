@@ -142,14 +142,14 @@ volume = "` + escapeTomlPath(volumeDir) + `"
 		configFile := filepath.Join(t.TempDir(), "config.toml")
 		require.NoError(t, os.WriteFile(configFile, []byte(configContent), 0644))
 
-		// Wrong container name should fail
-		_, stderr, err := runLstk(t, testContext(t), t.TempDir(), os.Environ(), "--config", configFile, "--non-interactive", "volume", "clear", "--force", "--container", "localstack-snowflake")
+		// Wrong emulator type should fail
+		_, stderr, err := runLstk(t, testContext(t), t.TempDir(), os.Environ(), "--config", configFile, "--non-interactive", "volume", "clear", "--force", "--emulator", "snowflake")
 		require.Error(t, err)
 		requireExitCode(t, 1, err)
 		assert.Contains(t, stderr, "not found")
 
-		// Correct container name should succeed
-		stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), os.Environ(), "--config", configFile, "--non-interactive", "volume", "clear", "--force", "--container", "localstack-aws")
+		// Correct emulator type should succeed
+		stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), os.Environ(), "--config", configFile, "--non-interactive", "volume", "clear", "--force", "--emulator", "aws")
 		require.NoError(t, err, "lstk volume clear failed: %s\nstdout: %s", stderr, stdout)
 		requireExitCode(t, 0, err)
 
