@@ -44,18 +44,18 @@ func (m *MockRuntime) EXPECT() *MockRuntimeMockRecorder {
 }
 
 // FindRunningByImage mocks base method.
-func (m *MockRuntime) FindRunningByImage(ctx context.Context, imageRepo string, containerPort string, hostPort string) (*RunningContainer, error) {
+func (m *MockRuntime) FindRunningByImage(ctx context.Context, imageRepo string, containerPort string) (*RunningContainer, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "FindRunningByImage", ctx, imageRepo, containerPort, hostPort)
+	ret := m.ctrl.Call(m, "FindRunningByImage", ctx, imageRepo, containerPort)
 	ret0, _ := ret[0].(*RunningContainer)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // FindRunningByImage indicates an expected call of FindRunningByImage.
-func (mr *MockRuntimeMockRecorder) FindRunningByImage(ctx, imageRepo, containerPort, hostPort any) *gomock.Call {
+func (mr *MockRuntimeMockRecorder) FindRunningByImage(ctx, imageRepo, containerPort any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FindRunningByImage", reflect.TypeOf((*MockRuntime)(nil).FindRunningByImage), ctx, imageRepo, containerPort, hostPort)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FindRunningByImage", reflect.TypeOf((*MockRuntime)(nil).FindRunningByImage), ctx, imageRepo, containerPort)
 }
 
 // ContainerStartedAt mocks base method.

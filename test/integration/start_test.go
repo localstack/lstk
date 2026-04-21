@@ -134,7 +134,7 @@ func TestStartCommandAttachesWithWarning(t *testing.T) {
 	})
 
 	// Start a container with a different name to simulate an externally-managed instance.
-	startExternalContainer(t, ctx, fakeImage, "localstack-external")
+	startExternalContainer(t, ctx, fakeImage, "localstack-external", "4566")
 
 	analyticsSrv, events := mockAnalyticsServer(t)
 	stdout, stderr, err := runLstk(t, ctx, "", env.With(env.AuthToken, "fake-token").With(env.AnalyticsEndpoint, analyticsSrv.URL), "start")
@@ -171,6 +171,39 @@ func TestStartCommandAttachesToSameVersion(t *testing.T) {
 	requireExitCode(t, 0, err)
 	assert.Contains(t, stdout, "3.4.0")
 	assert.Contains(t, stdout, "already running")
+}
+
+func TestStartCommandFailsWhenLSRunningOnDifferentPort(t *testing.T) {
+	requireDocker(t)
+	cleanup()
+	t.Cleanup(cleanup)
+
+	ctx := testContext(t)
+
+	// Tag the test image as a LocalStack pro image to simulate an instance running.
+	const fakeImage = "localstack/localstack-pro:test-fake"
+	require.NoError(t, dockerClient.ImageTag(ctx, testImage, fakeImage))
+	t.Cleanup(func() {
+		_, _ = dockerClient.ImageRemove(context.Background(), fakeImage, image.RemoveOptions{})
+	})
+
+	// Start it on another port
+	startExternalContainer(t, ctx, fakeImage, "localstack-external", "4566")
+
+	configContent := `
+[[containers]]
+type = "aws"
+port = "4567"
+`
+	configFile := filepath.Join(t.TempDir(), "config.toml")
+	require.NoError(t, os.WriteFile(configFile, []byte(configContent), 0644))
+
+	analyticsSrv, events := mockAnalyticsServer(t)
+	stdout, _, err := runLstk(t, ctx, "", env.With(env.AuthToken, "fake-token").With(env.AnalyticsEndpoint, analyticsSrv.URL), "--config", configFile, "start")
+	require.Error(t, err, "expected lstk start to fail when LS is already running on a different port")
+	requireExitCode(t, 1, err)
+	assert.Contains(t, stdout, "already running")
+	assertCommandTelemetry(t, events, "start", 1)
 }
 
 func TestStartCommandSucceedsWithNonDefaultPort(t *testing.T) {

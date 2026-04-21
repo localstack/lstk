@@ -204,7 +204,7 @@ func startTestContainer(t *testing.T, ctx context.Context, hostPort ...string) {
 }
 
 // Use this to simulate a LocalStack container started outside lstk.
-func startExternalContainer(t *testing.T, ctx context.Context, imgName, name string) {
+func startExternalContainer(t *testing.T, ctx context.Context, imgName, name, hostPort string) {
 	t.Helper()
 
 	const containerPort = nat.Port("4566/tcp")
@@ -216,7 +216,7 @@ func startExternalContainer(t *testing.T, ctx context.Context, imgName, name str
 		},
 		&container.HostConfig{
 			PortBindings: nat.PortMap{
-				containerPort: []nat.PortBinding{{HostPort: "4566"}},
+				containerPort: []nat.PortBinding{{HostPort: hostPort}},
 			},
 		},
 		nil, nil, name,

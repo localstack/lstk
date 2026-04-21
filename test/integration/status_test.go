@@ -132,7 +132,7 @@ func TestStatusCommandWorksWithExternalContainer(t *testing.T) {
 		_, _ = dockerClient.ImageRemove(context.Background(), fakeImage, image.RemoveOptions{})
 	})
 
-	startExternalContainer(t, ctx, fakeImage, "localstack-external")
+	startExternalContainer(t, ctx, fakeImage, "localstack-external", "4566")
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {

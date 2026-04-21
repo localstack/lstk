@@ -68,7 +68,7 @@ func TestSelectContainersToStart_AttachesExternalContainerWithMatchingVersion(t 
 	}
 
 	mockRT.EXPECT().IsRunning(gomock.Any(), c.Name).Return(false, nil)
-	mockRT.EXPECT().FindRunningByImage(gomock.Any(), "localstack/localstack-pro", "4566/tcp", "4566").
+	mockRT.EXPECT().FindRunningByImage(gomock.Any(), "localstack/localstack-pro", "4566/tcp").
 		Return(&runtime.RunningContainer{Name: "external-container", Image: "localstack/localstack-pro:3.5.0", BoundPort: "4566"}, nil)
 
 	var out bytes.Buffer
@@ -95,7 +95,7 @@ func TestSelectContainersToStart_WarnsAndAttachesOnVersionMismatch(t *testing.T)
 	}
 
 	mockRT.EXPECT().IsRunning(gomock.Any(), c.Name).Return(false, nil)
-	mockRT.EXPECT().FindRunningByImage(gomock.Any(), "localstack/localstack-pro", "4566/tcp", "4566").
+	mockRT.EXPECT().FindRunningByImage(gomock.Any(), "localstack/localstack-pro", "4566/tcp").
 		Return(&runtime.RunningContainer{Name: "external-container", Image: "localstack/localstack-pro:3.5.0", BoundPort: "4566"}, nil)
 
 	var out bytes.Buffer
@@ -128,7 +128,7 @@ func TestSelectContainersToStart_QueuesContainerWhenNoneRunningOnPort(t *testing
 	}
 
 	mockRT.EXPECT().IsRunning(gomock.Any(), c.Name).Return(false, nil)
-	mockRT.EXPECT().FindRunningByImage(gomock.Any(), "localstack/localstack-pro", "4566/tcp", c.Port).
+	mockRT.EXPECT().FindRunningByImage(gomock.Any(), "localstack/localstack-pro", "4566/tcp").
 		Return(nil, nil)
 
 	sink := output.NewPlainSink(io.Discard)

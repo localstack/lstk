@@ -374,11 +374,22 @@ func selectContainersToStart(ctx context.Context, rt runtime.Runtime, sink outpu
 		}
 
 		imageRepo, _, _ := strings.Cut(c.Image, ":")
-		found, err := rt.FindRunningByImage(ctx, imageRepo, c.ContainerPort, c.Port)
+		found, err := rt.FindRunningByImage(ctx, imageRepo, c.ContainerPort)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan for running containers: %w", err)
 		}
 		if found != nil {
+			if found.BoundPort != c.Port {
+				output.EmitError(sink, output.ErrorEvent{
+					Title:   fmt.Sprintf("LocalStack is already running on port %s", found.BoundPort),
+					Summary: fmt.Sprintf("Config expects port %s. Only one instance can run at a time.", c.Port),
+					Actions: []output.ErrorAction{
+						{Label: "Stop existing emulator:", Value: "lstk stop"},
+					},
+				})
+				emitEmulatorStartError(ctx, tel, c, telemetry.ErrCodePortConflict, fmt.Sprintf("running on port %s, configured port %s", found.BoundPort, c.Port))
+				return nil, output.NewSilentError(fmt.Errorf("LocalStack already running on port %s", found.BoundPort))
+			}
 			runningTag := imageTagFrom(found.Image)
 			configTag := c.Tag
 			if configTag == "" {
@@ -395,7 +406,7 @@ func selectContainersToStart(ctx context.Context, rt runtime.Runtime, sink outpu
 			continue
 		}
 
-		if err := ports.CheckAvailable(c.Port); err != nil {
+		if _, err := ports.CheckAvailable(c.Port); err != nil {
 			if info, infoErr := fetchLocalStackInfo(ctx, c.Port); infoErr == nil {
 				emitLocalStackAlreadyRunningWarning(sink, c.Port, info.Version, c.Tag)
 				continue
@@ -404,6 +415,26 @@ func selectContainersToStart(ctx context.Context, rt runtime.Runtime, sink outpu
 			emitEmulatorStartError(ctx, tel, c, telemetry.ErrCodePortConflict, err.Error())
 			return nil, output.NewSilentError(err)
 		}
+
+		// Check extra ports required by this emulator (443 for HTTPS, 4510-4559 for
+		// the service port range). These are singletons: if any is taken, another
+		// LocalStack instance is likely running and we cannot start a new one.
+		extraSpecs := make([]string, len(c.ExtraPorts))
+		for i, ep := range c.ExtraPorts {
+			extraSpecs[i] = ep.HostPort
+		}
+		if conflictPort, err := ports.CheckAvailable(extraSpecs...); err != nil {
+			output.EmitError(sink, output.ErrorEvent{
+				Title:   fmt.Sprintf("Port %s is already in use", conflictPort),
+				Summary: "LocalStack requires this port. Another instance may be running.",
+				Actions: []output.ErrorAction{
+					{Label: "Stop existing emulator:", Value: "lstk stop"},
+				},
+			})
+			emitEmulatorStartError(ctx, tel, c, telemetry.ErrCodePortConflict, err.Error())
+			return nil, output.NewSilentError(err)
+		}
+
 		filtered = append(filtered, c)
 	}
 	return filtered, nil

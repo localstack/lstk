@@ -45,7 +45,7 @@ func resolveRunningContainerName(ctx context.Context, rt runtime.Runtime, c conf
 		return "", err
 	}
 
-	found, err := rt.FindRunningByImage(ctx, imageRepo, containerPort, c.Port)
+	found, err := rt.FindRunningByImage(ctx, imageRepo, containerPort)
 	if err != nil {
 		return "", fmt.Errorf("failed to scan for running containers: %w", err)
 	}

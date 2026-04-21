@@ -60,7 +60,7 @@ func TestStopCommandStopsExternalContainer(t *testing.T) {
 		_, _ = dockerClient.ImageRemove(context.Background(), fakeImage, image.RemoveOptions{})
 	})
 
-	startExternalContainer(t, ctx, fakeImage, "localstack-external")
+	startExternalContainer(t, ctx, fakeImage, "localstack-external", "4566")
 
 	stdout, stderr, err := runLstk(t, ctx, "", nil, "stop")
 	require.NoError(t, err, "lstk stop should stop external container: %s", stderr)
