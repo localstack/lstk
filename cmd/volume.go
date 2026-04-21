@@ -86,7 +86,7 @@ func newVolumeClearCmd(cfg *env.Env, tel *telemetry.Client) *cobra.Command {
 	}
 
 	cmd.Flags().BoolVar(&force, "force", false, "Skip confirmation prompt")
-	cmd.Flags().StringVar(&emulatorType, "type", "", "Filter by emulator type (aws, azure, snowflake)")
+	cmd.Flags().StringVar(&emulatorType, "type", "", "Filter by emulator type")
 
 	return cmd
 }
