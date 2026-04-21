@@ -24,13 +24,17 @@ func ResolveEmulatorLabel(ctx context.Context, client api.PlatformAPI, container
 
 	c := containers[0]
 
-	productName, err := c.ProductName()
+	licenseProductName, err := c.LicenseProductName()
 	if err != nil {
 		return NoLicenseLabel, false
 	}
 
 	tag := c.Tag
 	if tag == "" || tag == "latest" {
+		// Platform catalog API does not support Snowflake yet; skip the header label lookup.
+		if c.Type == config.EmulatorSnowflake {
+			return NoLicenseLabel, false
+		}
 		apiCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
 		v, err := client.GetLatestCatalogVersion(apiCtx, string(c.Type))
 		cancel()
@@ -43,7 +47,7 @@ func ResolveEmulatorLabel(ctx context.Context, client api.PlatformAPI, container
 
 	hostname, _ := os.Hostname()
 	licReq := &api.LicenseRequest{
-		Product:     api.ProductInfo{Name: productName, Version: tag},
+		Product:     api.ProductInfo{Name: licenseProductName, Version: tag},
 		Credentials: api.CredentialsInfo{Token: token},
 		Machine:     api.MachineInfo{Hostname: hostname, Platform: stdruntime.GOOS, PlatformRelease: stdruntime.GOARCH},
 	}

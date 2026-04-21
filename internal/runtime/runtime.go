@@ -30,8 +30,9 @@ type ContainerConfig struct {
 	ContainerPort string // internal port the emulator listens on inside the container (e.g. "4566/tcp")
 	HealthPath    string
 	Env           []string // e.g., ["KEY=value", "FOO=bar"]
-	Tag           string
-	ProductName   string
+	Tag                string
+	ProductName        string
+	LicenseProductName string
 	Binds         []BindMount
 	ExtraPorts    []PortMapping
 }

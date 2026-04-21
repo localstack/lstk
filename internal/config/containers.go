@@ -25,11 +25,20 @@ var emulatorDisplayNames = map[EmulatorType]string{
 }
 
 var emulatorImages = map[EmulatorType]string{
-	EmulatorAWS: "localstack-pro",
+	EmulatorAWS:       "localstack-pro",
+	EmulatorSnowflake: "snowflake",
+}
+
+// emulatorLicenseProductNames maps emulator types to the product name used in license requests.
+// Snowflake is an add-on to localstack-pro, so it shares the same license product name.
+var emulatorLicenseProductNames = map[EmulatorType]string{
+	EmulatorAWS:       "localstack-pro",
+	EmulatorSnowflake: "localstack-pro",
 }
 
 var emulatorHealthPaths = map[EmulatorType]string{
-	EmulatorAWS: "/_localstack/health",
+	EmulatorAWS:       "/_localstack/health",
+	EmulatorSnowflake: "/_localstack/health",
 }
 
 type ContainerConfig struct {
@@ -116,7 +125,7 @@ func (c *ContainerConfig) HealthPath() (string, error) {
 
 func (c *ContainerConfig) ContainerPort() (string, error) {
 	switch c.Type {
-	case EmulatorAWS:
+	case EmulatorAWS, EmulatorSnowflake:
 		return "4566/tcp", nil
 	default:
 		return "", fmt.Errorf("%s emulator not supported yet by lstk", c.Type)
@@ -137,4 +146,14 @@ func (c *ContainerConfig) ProductName() (string, error) {
 		return "", fmt.Errorf("%s emulator not supported yet by lstk", c.Type)
 	}
 	return productName, nil
+}
+
+// LicenseProductName returns the product name to use in license API requests.
+// This differs from ProductName for emulators like Snowflake that are add-ons to localstack-pro.
+func (c *ContainerConfig) LicenseProductName() (string, error) {
+	name, ok := emulatorLicenseProductNames[c.Type]
+	if !ok {
+		return "", fmt.Errorf("%s emulator not supported yet by lstk", c.Type)
+	}
+	return name, nil
 }
