@@ -390,19 +390,7 @@ func selectContainersToStart(ctx context.Context, rt runtime.Runtime, sink outpu
 				emitEmulatorStartError(ctx, tel, c, telemetry.ErrCodePortConflict, fmt.Sprintf("running on port %s, configured port %s", found.BoundPort, c.Port))
 				return nil, output.NewSilentError(fmt.Errorf("LocalStack already running on port %s", found.BoundPort))
 			}
-			runningTag := imageTagFrom(found.Image)
-			configTag := c.Tag
-			if configTag == "" {
-				configTag = "latest"
-			}
-			if runningTag != configTag {
-				output.EmitWarning(sink, fmt.Sprintf(
-					"Found running LocalStack %s, config specifies %s — using the running instance",
-					runningTag, configTag,
-				))
-			} else {
-				output.EmitInfo(sink, "LocalStack is already running")
-			}
+			output.EmitInfo(sink, "LocalStack is already running")
 			continue
 		}
 
@@ -438,14 +426,6 @@ func selectContainersToStart(ctx context.Context, rt runtime.Runtime, sink outpu
 		filtered = append(filtered, c)
 	}
 	return filtered, nil
-}
-
-func imageTagFrom(image string) string {
-	_, tag, found := strings.Cut(image, ":")
-	if !found || tag == "" {
-		return "latest"
-	}
-	return tag
 }
 
 func emitLocalStackAlreadyRunningWarning(sink output.Sink, port, runningVersion, configTag string) {

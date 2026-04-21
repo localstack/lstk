@@ -82,7 +82,7 @@ func TestSelectContainersToStart_AttachesExternalContainerWithMatchingVersion(t 
 	assert.NotContains(t, out.String(), "config specifies")
 }
 
-func TestSelectContainersToStart_WarnsAndAttachesOnVersionMismatch(t *testing.T) {
+func TestSelectContainersToStart_AttachesToExternalContainerOnSamePort(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	mockRT := runtime.NewMockRuntime(ctrl)
 
@@ -105,8 +105,7 @@ func TestSelectContainersToStart_WarnsAndAttachesOnVersionMismatch(t *testing.T)
 
 	require.NoError(t, err)
 	assert.Empty(t, result, "container should be skipped (already running)")
-	assert.Contains(t, out.String(), "3.5.0", "should mention running version")
-	assert.Contains(t, out.String(), "3.4.0", "should mention configured version")
+	assert.Contains(t, out.String(), "already running")
 }
 
 func TestSelectContainersToStart_QueuesContainerWhenNoneRunningOnPort(t *testing.T) {

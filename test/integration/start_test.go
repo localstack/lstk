@@ -119,14 +119,13 @@ func TestStartCommandFailsWhenPortInUse(t *testing.T) {
 	assert.Contains(t, byName, "lstk_command")
 }
 
-func TestStartCommandAttachesWithWarning(t *testing.T) {
+func TestStartCommandAttachesToExternalContainer(t *testing.T) {
 	requireDocker(t)
 	cleanup()
 	t.Cleanup(cleanup)
 
 	ctx := testContext(t)
 
-	// Simulates a LocalStack image
 	const fakeImage = "localstack/localstack-pro:test-fake"
 	require.NoError(t, dockerClient.ImageTag(ctx, testImage, fakeImage))
 	t.Cleanup(func() {
@@ -140,9 +139,7 @@ func TestStartCommandAttachesWithWarning(t *testing.T) {
 	stdout, stderr, err := runLstk(t, ctx, "", env.With(env.AuthToken, "fake-token").With(env.AnalyticsEndpoint, analyticsSrv.URL), "start")
 	require.NoError(t, err, "lstk start should succeed when external container is running: %s", stderr)
 	requireExitCode(t, 0, err)
-	// Default config tag is "latest"; running tag is "test-fake" → version mismatch warning.
-	assert.Contains(t, stdout, "test-fake")
-	assert.Contains(t, stdout, "using the running instance")
+	assert.Contains(t, stdout, "already running")
 	assertCommandTelemetry(t, events, "start", 0)
 }
 
