@@ -14,7 +14,7 @@ func newSetupCmd(cfg *env.Env, tel *telemetry.Client) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "setup",
 		Short: "Set up emulator CLI integration",
-		Long:  "Set up emulator CLI integration (e.g., AWS, Snowflake, Azure). Currently only AWS is supported.",
+		Long:  "Set up emulator CLI integration. Currently only AWS is supported.",
 	}
 	cmd.AddCommand(newSetupAWSCmd(cfg, tel))
 	return cmd

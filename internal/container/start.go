@@ -114,6 +114,11 @@ func Start(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts Start
 			return err
 		}
 
+		licenseProductName, err := c.LicenseProductName()
+		if err != nil {
+			return err
+		}
+
 		containerPort, err := c.ContainerPort()
 		if err != nil {
 			return err
@@ -149,17 +154,18 @@ func Start(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts Start
 		binds = append(binds, runtime.BindMount{HostPath: volumeDir, ContainerPath: "/var/lib/localstack"})
 
 		containers[i] = runtime.ContainerConfig{
-			Image:         image,
-			Name:          containerName,
-			EmulatorType:  string(c.Type),
-			Port:          c.Port,
-			ContainerPort: containerPort,
-			HealthPath:    healthPath,
-			Env:           env,
-			Tag:           c.Tag,
-			ProductName:   productName,
-			Binds:         binds,
-			ExtraPorts:    servicePortRange(),
+			Image:              image,
+			Name:               containerName,
+			EmulatorType:       string(c.Type),
+			Port:               c.Port,
+			ContainerPort:      containerPort,
+			HealthPath:         healthPath,
+			Env:                env,
+			Tag:                c.Tag,
+			ProductName:        productName,
+			LicenseProductName: licenseProductName,
+			Binds:              binds,
+			ExtraPorts:         servicePortRange(),
 		}
 	}
 
@@ -295,6 +301,12 @@ func tryPrePullLicenseValidation(ctx context.Context, sink output.Sink, opts Sta
 			if err := validateLicense(ctx, sink, opts, tel, c, token, licenseFilePath); err != nil {
 				return nil, err
 			}
+			continue
+		}
+
+		// Platform catalog API does not support Snowflake yet; fall through to post-pull image inspection.
+		if c.EmulatorType == string(config.EmulatorSnowflake) {
+			needsPostPull = append(needsPostPull, c)
 			continue
 		}
 
@@ -459,7 +471,7 @@ func validateLicense(ctx context.Context, sink output.Sink, opts StartOptions, t
 	hostname, _ := os.Hostname()
 	licenseReq := &api.LicenseRequest{
 		Product: api.ProductInfo{
-			Name:    containerConfig.ProductName,
+			Name:    containerConfig.LicenseProductName,
 			Version: version,
 		},
 		Credentials: api.CredentialsInfo{
@@ -480,6 +492,17 @@ func validateLicense(ctx context.Context, sink output.Sink, opts StartOptions, t
 		}
 		emitEmulatorStartError(ctx, tel, containerConfig, telemetry.ErrCodeLicenseInvalid, err.Error())
 		return fmt.Errorf("license validation failed for %s:%s: %w", containerConfig.ProductName, version, err)
+	}
+
+	if containerConfig.EmulatorType == string(config.EmulatorSnowflake) {
+		if !licenseResp.HasProduct(config.SnowflakeAddonProduct) {
+			licErr := &api.LicenseError{
+				Status:  http.StatusForbidden,
+				Message: "your subscription does not include the Snowflake emulator",
+			}
+			emitEmulatorStartError(ctx, tel, containerConfig, telemetry.ErrCodeLicenseInvalid, licErr.Error())
+			return fmt.Errorf("license validation failed for %s:%s: %w", containerConfig.ProductName, version, licErr)
+		}
 	}
 
 	if licenseResp != nil && len(licenseResp.RawBytes) > 0 {

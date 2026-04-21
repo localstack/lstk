@@ -307,7 +307,7 @@ func createMockLicenseServer(success bool) *httptest.Server {
 			if success {
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(http.StatusOK)
-				_, _ = w.Write([]byte(`{"license_type":"ultimate"}`))
+				_, _ = w.Write([]byte(`{"license_type":"ultimate","products":[{"name":"localstack.snowflake"}]}`))
 			} else {
 				w.WriteHeader(http.StatusForbidden)
 			}

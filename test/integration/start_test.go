@@ -21,6 +21,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+const snowflakeContainerName = "localstack-snowflake"
+
 func TestStartCommandSucceedsWithValidToken(t *testing.T) {
 	requireDocker(t)
 	_ = env.Require(t, env.AuthToken)
@@ -441,3 +443,72 @@ func cleanup() {
 	_ = dockerClient.ContainerRemove(ctx, containerName, container.RemoveOptions{Force: true})
 	_ = DeleteAuthTokenFromKeyring()
 }
+
+func cleanupSnowflake() {
+	ctx := context.Background()
+	_ = dockerClient.ContainerStop(ctx, snowflakeContainerName, container.StopOptions{})
+	_ = dockerClient.ContainerRemove(ctx, snowflakeContainerName, container.RemoveOptions{Force: true})
+}
+
+func writeSnowflakeConfig(t *testing.T, hostPort string) string {
+	t.Helper()
+	content := fmt.Sprintf(`
+[[containers]]
+type = "snowflake"
+tag  = "latest"
+port = %q
+`, hostPort)
+	configFile := filepath.Join(t.TempDir(), "config.toml")
+	require.NoError(t, os.WriteFile(configFile, []byte(content), 0644))
+	return configFile
+}
+
+func TestStartCommandSucceedsForSnowflake(t *testing.T) {
+	requireDocker(t)
+	_ = env.Require(t, env.AuthToken)
+
+	cleanup()
+	cleanupSnowflake()
+	t.Cleanup(cleanup)
+	t.Cleanup(cleanupSnowflake)
+
+	mockServer := createMockLicenseServer(true)
+	defer mockServer.Close()
+
+	const hostPort = "4567"
+	configFile := writeSnowflakeConfig(t, hostPort)
+
+	ctx := testContext(t)
+	_, stderr, err := runLstk(t, ctx, "", env.With(env.APIEndpoint, mockServer.URL), "--config", configFile, "start")
+	require.NoError(t, err, "lstk start failed: %s", stderr)
+	requireExitCode(t, 0, err)
+
+	inspect, err := dockerClient.ContainerInspect(ctx, snowflakeContainerName)
+	require.NoError(t, err, "failed to inspect snowflake container")
+	require.True(t, inspect.State.Running, "snowflake container should be running")
+	assert.Contains(t, inspect.Config.Image, "localstack/snowflake",
+		"expected localstack/snowflake image, got %s", inspect.Config.Image)
+
+	resp, err := http.Get(fmt.Sprintf("http://localhost:%s/_localstack/health", hostPort))
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = resp.Body.Close() })
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+}
+
+func TestStartCommandFailsForSnowflakeWithoutAddon(t *testing.T) {
+	requireDocker(t)
+	cleanupSnowflake()
+	t.Cleanup(cleanupSnowflake)
+
+	// License response without the Snowflake add-on product.
+	mockServer := createMockLicenseServerWithBody(`{"license_type":"ultimate","products":[]}`)
+	defer mockServer.Close()
+
+	configFile := writeSnowflakeConfig(t, "4567")
+
+	_, stderr, err := runLstk(t, testContext(t), "", env.With(env.AuthToken, "fake-token").With(env.APIEndpoint, mockServer.URL), "--config", configFile, "start")
+	require.Error(t, err, "expected lstk start to fail when Snowflake add-on is not in license")
+	requireExitCode(t, 1, err)
+	assert.Contains(t, stderr, "subscription does not include the Snowflake emulator")
+}
+
