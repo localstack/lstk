@@ -80,7 +80,11 @@ func TestSocketPathFromHost_ExtractsUnixPath(t *testing.T) {
 }
 
 func TestSocketPath_VMDetection(t *testing.T) {
-	home := t.TempDir()
+	// Use /tmp directly to keep socket paths short — macOS limits unix socket paths to 104 chars
+	// and t.TempDir() produces paths under /var/folders/... that exceed it.
+	home, err := os.MkdirTemp("/tmp", "lstk-home-*")
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = os.RemoveAll(home) })
 	t.Setenv("HOME", home)
 
 	t.Run("colima socket exists returns remapped path", func(t *testing.T) {
