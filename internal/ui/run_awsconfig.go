@@ -28,7 +28,7 @@ func RunConfigProfile(parentCtx context.Context, containers []config.ContainerCo
 
 	return runWithTUI(parentCtx, withoutHeader(), func(ctx context.Context, sink output.Sink) error {
 		if !dnsOK {
-			output.EmitNote(sink, `Could not resolve "localhost.localstack.cloud" - your system may have DNS rebind protection enabled. Using 127.0.0.1 as the endpoint.`)
+			output.EmitNote(sink, endpoint.DNSRebindNote)
 		}
 		status, err := awsconfig.CheckProfileStatus(resolvedHost)
 		if err != nil {

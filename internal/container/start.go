@@ -226,7 +226,7 @@ func runPostStartSetups(ctx context.Context, sink output.Sink, containers []conf
 		if setup, ok := setups[t]; ok {
 			resolvedHost, dnsOK := endpoint.ResolveHost(firstByType[t].Port, localStackHost)
 			if !dnsOK {
-				output.EmitNote(sink, `Could not resolve "localhost.localstack.cloud" — your system may have DNS rebind protection enabled. Using 127.0.0.1 as the endpoint.`)
+				output.EmitNote(sink, endpoint.DNSRebindNote)
 			}
 			if err := setup(ctx, sink, interactive, resolvedHost); err != nil {
 				return err
@@ -363,7 +363,7 @@ func selectContainersToStart(ctx context.Context, rt runtime.Runtime, sink outpu
 			output.EmitNote(sink, "LocalStack is already running")
 			resolvedHost, dnsOK := endpoint.ResolveHost(c.Port, localStackHost)
 			if !dnsOK {
-				output.EmitNote(sink, `Could not resolve "localhost.localstack.cloud" — your system may have DNS rebind protection enabled. Using 127.0.0.1 as the endpoint.`)
+				output.EmitNote(sink, endpoint.DNSRebindNote)
 			}
 			emitPostStartPointers(sink, resolvedHost, webAppURL)
 			continue
