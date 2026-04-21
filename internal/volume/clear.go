@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/docker/go-units"
 	"github.com/localstack/lstk/internal/config"
 	"github.com/localstack/lstk/internal/output"
 )
@@ -32,7 +33,7 @@ func Clear(ctx context.Context, sink output.Sink, containers []config.ContainerC
 	}
 
 	for _, t := range targets {
-		output.EmitInfo(sink, fmt.Sprintf("%s: %s (%s)", t.name, t.path, formatSize(t.size)))
+		output.EmitInfo(sink, fmt.Sprintf("%s: %s (%s)", t.name, t.path, units.BytesSize(float64(t.size))))
 	}
 
 	if !force {
@@ -101,20 +102,3 @@ func dirSize(path string) (int64, error) {
 	return size, err
 }
 
-func formatSize(bytes int64) string {
-	const (
-		kb = 1024
-		mb = 1024 * kb
-		gb = 1024 * mb
-	)
-	switch {
-	case bytes >= gb:
-		return fmt.Sprintf("%.1f GB", float64(bytes)/float64(gb))
-	case bytes >= mb:
-		return fmt.Sprintf("%.1f MB", float64(bytes)/float64(mb))
-	case bytes >= kb:
-		return fmt.Sprintf("%.1f KB", float64(bytes)/float64(kb))
-	default:
-		return fmt.Sprintf("%d B", bytes)
-	}
-}
