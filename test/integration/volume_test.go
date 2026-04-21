@@ -1,11 +1,17 @@
 package integration_test
 
 import (
+	"bytes"
+	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/creack/pty"
 	"github.com/localstack/lstk/test/integration/env"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -171,6 +177,98 @@ volume = "` + escapeTomlPath(volumeDir) + `"
 		requireExitCode(t, 0, err)
 
 		assertCommandTelemetry(t, events, "volume clear", 0)
+	})
+}
+
+func TestVolumeClearInteractive(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("PTY not supported on Windows")
+	}
+
+	makeConfig := func(t *testing.T, volumeDir string) string {
+		t.Helper()
+		configContent := `
+[[containers]]
+type = "aws"
+tag = "latest"
+port = "4566"
+volume = "` + escapeTomlPath(volumeDir) + `"
+`
+		configFile := filepath.Join(t.TempDir(), "config.toml")
+		require.NoError(t, os.WriteFile(configFile, []byte(configContent), 0644))
+		return configFile
+	}
+
+	t.Run("clears volume when user confirms with y", func(t *testing.T) {
+		volumeDir := t.TempDir()
+		require.NoError(t, os.WriteFile(filepath.Join(volumeDir, "data.json"), []byte("{}"), 0644))
+		configFile := makeConfig(t, volumeDir)
+
+		ctx := testContext(t)
+		cmd := exec.CommandContext(ctx, binaryPath(), "--config", configFile, "volume", "clear")
+		cmd.Env = os.Environ()
+
+		ptmx, err := pty.Start(cmd)
+		require.NoError(t, err, "failed to start command in PTY")
+		defer func() { _ = ptmx.Close() }()
+
+		out := &syncBuffer{}
+		outputCh := make(chan struct{})
+		go func() {
+			_, _ = io.Copy(out, ptmx)
+			close(outputCh)
+		}()
+
+		require.Eventually(t, func() bool {
+			return bytes.Contains(out.Bytes(), []byte("Clear volume data?"))
+		}, 10*time.Second, 100*time.Millisecond, "confirmation prompt should appear")
+
+		_, err = ptmx.Write([]byte("y"))
+		require.NoError(t, err)
+
+		require.NoError(t, cmd.Wait())
+		<-outputCh
+
+		assert.Contains(t, out.String(), "Volume data cleared")
+		entries, err := os.ReadDir(volumeDir)
+		require.NoError(t, err)
+		assert.Empty(t, entries, "volume directory should be empty after confirm")
+	})
+
+	t.Run("cancels when user presses n", func(t *testing.T) {
+		volumeDir := t.TempDir()
+		require.NoError(t, os.WriteFile(filepath.Join(volumeDir, "data.json"), []byte("{}"), 0644))
+		configFile := makeConfig(t, volumeDir)
+
+		ctx := testContext(t)
+		cmd := exec.CommandContext(ctx, binaryPath(), "--config", configFile, "volume", "clear")
+		cmd.Env = os.Environ()
+
+		ptmx, err := pty.Start(cmd)
+		require.NoError(t, err, "failed to start command in PTY")
+		defer func() { _ = ptmx.Close() }()
+
+		out := &syncBuffer{}
+		outputCh := make(chan struct{})
+		go func() {
+			_, _ = io.Copy(out, ptmx)
+			close(outputCh)
+		}()
+
+		require.Eventually(t, func() bool {
+			return bytes.Contains(out.Bytes(), []byte("Clear volume data?"))
+		}, 10*time.Second, 100*time.Millisecond, "confirmation prompt should appear")
+
+		_, err = ptmx.Write([]byte("n"))
+		require.NoError(t, err)
+
+		require.NoError(t, cmd.Wait())
+		<-outputCh
+
+		assert.Contains(t, out.String(), "Cancelled")
+		entries, err := os.ReadDir(volumeDir)
+		require.NoError(t, err)
+		assert.Len(t, entries, 1, "volume directory should be untouched after cancel")
 	})
 }
 
