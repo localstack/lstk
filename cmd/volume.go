@@ -86,7 +86,7 @@ func newVolumeClearCmd(cfg *env.Env, tel *telemetry.Client) *cobra.Command {
 	}
 
 	cmd.Flags().BoolVar(&force, "force", false, "Skip confirmation prompt")
-	cmd.Flags().StringVar(&containerName, "container", "", "Target a specific emulator container name")
+	cmd.Flags().StringVar(&containerName, "emulator", "", "Target a specific emulator container name")
 
 	return cmd
 }
