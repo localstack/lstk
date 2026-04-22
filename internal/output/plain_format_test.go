@@ -163,6 +163,30 @@ func TestFormatEventLine(t *testing.T) {
 			wantOK: true,
 		},
 		{
+			name:   "snapshot service ok",
+			event:  SnapshotServiceEvent{Service: "s3", Status: "ok", Operation: "save"},
+			want:   "  " + SuccessMarker() + " s3",
+			wantOK: true,
+		},
+		{
+			name:   "snapshot service error",
+			event:  SnapshotServiceEvent{Service: "lambda", Status: "error", Operation: "load"},
+			want:   "  ✗ lambda (error)",
+			wantOK: true,
+		},
+		{
+			name:   "snapshot transfer download with total",
+			event:  SnapshotTransferEvent{Operation: "download", Done: 4 * 1024 * 1024, Total: 12 * 1024 * 1024},
+			want:   "  downloading... 4.0 MB / 12.0 MB",
+			wantOK: true,
+		},
+		{
+			name:   "snapshot transfer upload no total",
+			event:  SnapshotTransferEvent{Operation: "upload", Done: 2 * 1024 * 1024},
+			want:   "  uploading... 2.0 MB",
+			wantOK: true,
+		},
+		{
 			name:   "unsupported event",
 			event:  struct{}{},
 			want:   "",

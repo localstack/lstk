@@ -43,6 +43,58 @@ func TestEmitAuth(t *testing.T) {
 	}
 }
 
+func TestEmitSnapshotService(t *testing.T) {
+	t.Parallel()
+
+	sink := &captureSink{}
+	EmitSnapshotService(sink, "s3", "ok", "save")
+
+	if len(sink.events) != 1 {
+		t.Fatalf("expected 1 event, got %d", len(sink.events))
+	}
+	event, ok := sink.events[0].(SnapshotServiceEvent)
+	if !ok {
+		t.Fatalf("expected SnapshotServiceEvent, got %T", sink.events[0])
+	}
+	if event.Service != "s3" || event.Status != "ok" || event.Operation != "save" {
+		t.Fatalf("unexpected event: %+v", event)
+	}
+
+	line, ok := FormatEventLine(event)
+	if !ok {
+		t.Fatal("expected formatter output")
+	}
+	if line != "  "+SuccessMarker()+" s3" {
+		t.Fatalf("unexpected line: %q", line)
+	}
+}
+
+func TestEmitSnapshotTransfer(t *testing.T) {
+	t.Parallel()
+
+	sink := &captureSink{}
+	EmitSnapshotTransfer(sink, "download", 1024*1024, 5*1024*1024)
+
+	if len(sink.events) != 1 {
+		t.Fatalf("expected 1 event, got %d", len(sink.events))
+	}
+	event, ok := sink.events[0].(SnapshotTransferEvent)
+	if !ok {
+		t.Fatalf("expected SnapshotTransferEvent, got %T", sink.events[0])
+	}
+	if event.Operation != "download" || event.Done != 1024*1024 || event.Total != 5*1024*1024 {
+		t.Fatalf("unexpected event: %+v", event)
+	}
+
+	line, ok := FormatEventLine(event)
+	if !ok {
+		t.Fatal("expected formatter output")
+	}
+	if line != "  downloading... 1.0 MB / 5.0 MB" {
+		t.Fatalf("unexpected line: %q", line)
+	}
+}
+
 func TestEmitAuthWithCode(t *testing.T) {
 	t.Parallel()
 

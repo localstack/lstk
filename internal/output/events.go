@@ -76,8 +76,20 @@ type ResourceSummaryEvent struct {
 	Services  int
 }
 
+type SnapshotServiceEvent struct {
+	Service   string // e.g. "s3", "lambda"
+	Status    string // "ok" or "error"
+	Operation string // "save", "load", "import"
+}
+
+type SnapshotTransferEvent struct {
+	Operation string // "upload" or "download"
+	Done      int64
+	Total     int64 // 0 if unknown
+}
+
 type Event interface {
-	MessageEvent | AuthEvent | SpinnerEvent | ErrorEvent | ContainerStatusEvent | ProgressEvent | UserInputRequestEvent | LogLineEvent | InstanceInfoEvent | TableEvent | ResourceSummaryEvent
+	MessageEvent | AuthEvent | SpinnerEvent | ErrorEvent | ContainerStatusEvent | ProgressEvent | UserInputRequestEvent | LogLineEvent | InstanceInfoEvent | TableEvent | ResourceSummaryEvent | SnapshotServiceEvent | SnapshotTransferEvent
 }
 
 type Sink interface {
@@ -230,4 +242,12 @@ func EmitTable(sink Sink, event TableEvent) {
 
 func EmitResourceSummary(sink Sink, resources, services int) {
 	Emit(sink, ResourceSummaryEvent{Resources: resources, Services: services})
+}
+
+func EmitSnapshotService(sink Sink, service, status, operation string) {
+	Emit(sink, SnapshotServiceEvent{Service: service, Status: status, Operation: operation})
+}
+
+func EmitSnapshotTransfer(sink Sink, operation string, done, total int64) {
+	Emit(sink, SnapshotTransferEvent{Operation: operation, Done: done, Total: total})
 }

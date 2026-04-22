@@ -34,6 +34,10 @@ func FormatEventLine(event any) (string, bool) {
 		return formatTable(e)
 	case ResourceSummaryEvent:
 		return formatResourceSummary(e), true
+	case SnapshotServiceEvent:
+		return formatSnapshotService(e), true
+	case SnapshotTransferEvent:
+		return formatSnapshotTransfer(e), true
 	default:
 		return "", false
 	}
@@ -184,6 +188,32 @@ func formatUptime(d time.Duration) string {
 
 func formatResourceSummary(e ResourceSummaryEvent) string {
 	return fmt.Sprintf("~ %d resources · %d services", e.Resources, e.Services)
+}
+
+func formatSnapshotService(e SnapshotServiceEvent) string {
+	if e.Status == "ok" {
+		return "  " + SuccessMarker() + " " + e.Service
+	}
+	return "  ✗ " + e.Service + " (error)"
+}
+
+func formatSnapshotTransfer(e SnapshotTransferEvent) string {
+	verb := e.Operation + "ing"
+	if e.Total > 0 {
+		return fmt.Sprintf("  %s... %s / %s", verb, formatBytes(e.Done), formatBytes(e.Total))
+	}
+	return fmt.Sprintf("  %s... %s", verb, formatBytes(e.Done))
+}
+
+func formatBytes(n int64) string {
+	switch {
+	case n >= 1024*1024:
+		return fmt.Sprintf("%.1f MB", float64(n)/(1024*1024))
+	case n >= 1024:
+		return fmt.Sprintf("%.1f KB", float64(n)/1024)
+	default:
+		return fmt.Sprintf("%d B", n)
+	}
 }
 
 func formatTable(e TableEvent) (string, bool) {
