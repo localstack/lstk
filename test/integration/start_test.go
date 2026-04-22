@@ -228,14 +228,32 @@ func TestStartCommandSetsUpContainerCorrectly(t *testing.T) {
 	})
 }
 
-// containerEnvToMap converts a Docker container's []string env to a map.
-func containerEnvToMap(envList []string) map[string]string {
-	m := make(map[string]string, len(envList))
-	for _, e := range envList {
-		k, v, _ := strings.Cut(e, "=")
-		m[k] = v
-	}
-	return m
+func TestStartCommandPassesCIAndLocalStackEnvVars(t *testing.T) {
+	requireDocker(t)
+	_ = env.Require(t, env.AuthToken)
+
+	cleanup()
+	t.Cleanup(cleanup)
+
+	mockServer := createMockLicenseServer(true)
+	defer mockServer.Close()
+
+	ctx := testContext(t)
+	_, stderr, err := runLstk(t, ctx, "", env.With(env.APIEndpoint, mockServer.URL).
+		With(env.CI, "true").
+		With(env.DisableEvents, "1"),
+		"start")
+	require.NoError(t, err, "lstk start failed: %s", stderr)
+	requireExitCode(t, 0, err)
+
+	inspect, err := dockerClient.ContainerInspect(ctx, containerName)
+	require.NoError(t, err, "failed to inspect container")
+	require.True(t, inspect.State.Running)
+
+	envVars := containerEnvToMap(inspect.Config.Env)
+	assert.Equal(t, "true", envVars["CI"])
+	assert.Equal(t, "1", envVars["LOCALSTACK_DISABLE_EVENTS"])
+	assert.NotEmpty(t, envVars["LOCALSTACK_AUTH_TOKEN"])
 }
 
 // hasBindTarget checks if any bind mount targets the given container path.
@@ -257,6 +275,16 @@ func hasBindSource(binds []string, hostPath string) bool {
 		}
 	}
 	return false
+}
+
+// containerEnvToMap converts a Docker container's []string env to a map.
+func containerEnvToMap(envList []string) map[string]string {
+	m := make(map[string]string, len(envList))
+	for _, e := range envList {
+		k, v, _ := strings.Cut(e, "=")
+		m[k] = v
+	}
+	return m
 }
 
 func cleanup() {
