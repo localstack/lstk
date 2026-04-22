@@ -17,7 +17,7 @@ func newStartCmd(cfg *env.Env, tel *telemetry.Client, logger log.Logger) *cobra.
 		RunE: func(cmd *cobra.Command, args []string) error {
 			rt, err := runtime.NewDockerRuntime(cfg.DockerHost)
 			if err != nil {
-				return dockerNotAvailableError(err)
+				return err
 			}
 			return runStart(cmd.Context(), cmd.Flags(), rt, cfg, tel, logger)
 		},

@@ -17,6 +17,7 @@ import (
 func TestStatus_IsRunningError(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	mockRT := runtime.NewMockRuntime(ctrl)
+	mockRT.EXPECT().IsHealthy(gomock.Any()).Return(nil)
 	mockRT.EXPECT().IsRunning(gomock.Any(), "localstack-aws").Return(false, fmt.Errorf("docker unavailable"))
 
 	containers := []config.ContainerConfig{{Type: config.EmulatorAWS}}
@@ -31,6 +32,7 @@ func TestStatus_IsRunningError(t *testing.T) {
 func TestStatus_MultipleContainers_StopsAtFirstNotRunning(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	mockRT := runtime.NewMockRuntime(ctrl)
+	mockRT.EXPECT().IsHealthy(gomock.Any()).Return(nil)
 	mockRT.EXPECT().IsRunning(gomock.Any(), "localstack-aws").Return(false, nil)
 
 	containers := []config.ContainerConfig{

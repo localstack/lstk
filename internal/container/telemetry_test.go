@@ -39,6 +39,7 @@ func newCapturingTelClient(t *testing.T) (*telemetry.Client, <-chan map[string]a
 func TestStop_EmitsLifecycleStopEvent(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	mockRT := runtime.NewMockRuntime(ctrl)
+	mockRT.EXPECT().IsHealthy(gomock.Any()).Return(nil)
 	mockRT.EXPECT().IsRunning(gomock.Any(), "localstack-aws").Return(true, nil)
 	mockRT.EXPECT().Stop(gomock.Any(), "localstack-aws").Return(nil)
 
@@ -73,6 +74,7 @@ func TestStop_EmitsLifecycleStopEvent(t *testing.T) {
 func TestStop_SkipsTelemetryWhenNil(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	mockRT := runtime.NewMockRuntime(ctrl)
+	mockRT.EXPECT().IsHealthy(gomock.Any()).Return(nil)
 	mockRT.EXPECT().IsRunning(gomock.Any(), "localstack-aws").Return(true, nil)
 	mockRT.EXPECT().Stop(gomock.Any(), "localstack-aws").Return(nil)
 

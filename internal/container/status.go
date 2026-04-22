@@ -15,6 +15,11 @@ import (
 const statusTimeout = 10 * time.Second
 
 func Status(ctx context.Context, rt runtime.Runtime, containers []config.ContainerConfig, localStackHost string, emulatorClient emulator.Client, sink output.Sink) error {
+	if err := rt.IsHealthy(ctx); err != nil {
+		rt.EmitUnhealthyError(sink, err)
+		return output.NewSilentError(fmt.Errorf("runtime not healthy: %w", err))
+	}
+
 	ctx, cancel := context.WithTimeout(ctx, statusTimeout)
 	defer cancel()
 

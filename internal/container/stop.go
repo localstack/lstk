@@ -17,6 +17,11 @@ type StopOptions struct {
 }
 
 func Stop(ctx context.Context, rt runtime.Runtime, sink output.Sink, containers []config.ContainerConfig, opts StopOptions) error {
+	if err := rt.IsHealthy(ctx); err != nil {
+		rt.EmitUnhealthyError(sink, err)
+		return output.NewSilentError(fmt.Errorf("runtime not healthy: %w", err))
+	}
+
 	const stopTimeout = 30 * time.Second
 	for _, c := range containers {
 		name := c.Name()
