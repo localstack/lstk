@@ -35,9 +35,21 @@ echo "AWS_DEFAULT_REGION=$AWS_DEFAULT_REGION"
 	return dir
 }
 
+// writeAWSProfile writes a minimal localstack AWS profile to dir/.aws/{config,credentials}.
+func writeAWSProfile(t *testing.T, homeDir string) {
+	t.Helper()
+	awsDir := filepath.Join(homeDir, ".aws")
+	require.NoError(t, os.MkdirAll(awsDir, 0700))
+	require.NoError(t, os.WriteFile(filepath.Join(awsDir, "config"),
+		[]byte("[profile localstack]\nregion = us-east-1\noutput = json\nendpoint_url = http://localhost.localstack.cloud:4566\n"), 0600))
+	require.NoError(t, os.WriteFile(filepath.Join(awsDir, "credentials"),
+		[]byte("[localstack]\naws_access_key_id = test\naws_secret_access_key = test\n"), 0600))
+}
+
 func TestAWSCommandInjectsEndpointAndArgs(t *testing.T) {
 	fakeDir := writeFakeAWS(t)
-	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir)
+	// Use a fresh HOME so a real localstack profile doesn't affect the args output.
+	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).With(env.Home, t.TempDir())
 
 	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), e, "aws", "s3", "ls")
 	require.NoError(t, err, "lstk aws failed: %s", stderr)
@@ -48,7 +60,8 @@ func TestAWSCommandInjectsEndpointAndArgs(t *testing.T) {
 
 func TestAWSCommandInjectsCredentials(t *testing.T) {
 	fakeDir := writeFakeAWS(t)
-	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir)
+	// Use a fresh HOME so no localstack profile exists; credentials are injected via env vars.
+	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).With(env.Home, t.TempDir())
 
 	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), e, "aws", "sts", "get-caller-identity")
 	require.NoError(t, err, "lstk aws failed: %s", stderr)
@@ -60,8 +73,10 @@ func TestAWSCommandInjectsCredentials(t *testing.T) {
 
 func TestAWSCommandRespectsExistingCredentials(t *testing.T) {
 	fakeDir := writeFakeAWS(t)
+	// Use a fresh HOME so no localstack profile exists; the user-provided env vars are preserved.
 	e := env.With(env.DisableEvents, "1").
 		With("PATH", fakeDir).
+		With(env.Home, t.TempDir()).
 		With("AWS_ACCESS_KEY_ID", "custom-key").
 		With("AWS_SECRET_ACCESS_KEY", "custom-secret").
 		With("AWS_DEFAULT_REGION", "eu-west-1")
@@ -74,12 +89,40 @@ func TestAWSCommandRespectsExistingCredentials(t *testing.T) {
 	assert.Contains(t, stdout, "AWS_DEFAULT_REGION=eu-west-1")
 }
 
+func TestAWSCommandUsesProfileWhenAvailable(t *testing.T) {
+	fakeDir := writeFakeAWS(t)
+	homeDir := t.TempDir()
+	writeAWSProfile(t, homeDir)
+
+	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).With(env.Home, homeDir)
+
+	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), e, "aws", "s3", "ls")
+	require.NoError(t, err, "lstk aws failed: %s", stderr)
+
+	assert.Contains(t, stdout, "--profile localstack")
+	// Credentials must not be injected via env when the profile is in use.
+	assert.NotContains(t, stdout, "AWS_ACCESS_KEY_ID=test")
+}
+
 func TestAWSCommandFailsWhenAWSCLINotInstalled(t *testing.T) {
 	e := env.With(env.DisableEvents, "1").With("PATH", t.TempDir())
 
 	_, stderr, err := runLstk(t, testContext(t), t.TempDir(), e, "aws", "s3", "ls")
 	require.Error(t, err)
 	assert.Contains(t, stderr, "aws CLI not found")
+}
+
+func TestAWSCommandUsesDefaultPortWithoutConfig(t *testing.T) {
+	fakeDir := writeFakeAWS(t)
+	workDir := t.TempDir()
+	e := env.With(env.DisableEvents, "1").
+		With("PATH", fakeDir).
+		With(env.Home, t.TempDir()) // isolate from any real config file
+
+	stdout, stderr, err := runLstk(t, testContext(t), workDir, e, "aws", "s3", "ls")
+	require.NoError(t, err, "lstk aws failed: %s", stderr)
+
+	assert.Contains(t, stdout, ":4566")
 }
 
 func TestAWSCommandUsesPortFromConfig(t *testing.T) {

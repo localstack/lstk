@@ -10,13 +10,15 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/localstack/lstk/internal/awsconfig"
 	"github.com/localstack/lstk/internal/output"
+	"github.com/localstack/lstk/internal/terminal"
 )
 
 // stopOnWriteWriter wraps a writer and stops the spinner on first write
 type stopOnWriteWriter struct {
 	w       io.Writer
-	spinner *spinner
+	spinner *terminal.Spinner
 	once    sync.Once
 }
 
@@ -33,17 +35,31 @@ func Exec(ctx context.Context, endpointURL string, args []string) error {
 		return fmt.Errorf("aws CLI not found in PATH — install it from https://aws.amazon.com/cli/")
 	}
 
-	cmdArgs := make([]string, 0, len(args)+2)
+	// Use the localstack AWS profile when it exists (written by lstk start/setup aws),
+	// so credentials and region come from ~/.aws rather than being re-injected here.
+	// Fall back to env var injection when the profile hasn't been set up yet.
+	profileExists, _ := awsconfig.ProfileExists()
+
+	capacity := len(args) + 2
+	if profileExists {
+		capacity += 2
+	}
+	cmdArgs := make([]string, 0, capacity)
 	cmdArgs = append(cmdArgs, "--endpoint-url", endpointURL)
+	if profileExists {
+		cmdArgs = append(cmdArgs, "--profile", awsconfig.ProfileName)
+	}
 	cmdArgs = append(cmdArgs, args...)
 
 	cmd := exec.CommandContext(ctx, awsBin, cmdArgs...)
 	cmd.Stdin = os.Stdin
-	cmd.Env = BuildEnv(os.Environ())
+	if !profileExists {
+		cmd.Env = BuildEnv(os.Environ())
+	}
 
-	var s *spinner
-	if isTerminal(os.Stderr) {
-		s = newSpinner(os.Stderr, "Loading...")
+	var s *terminal.Spinner
+	if terminal.IsTerminal(os.Stderr) {
+		s = terminal.NewSpinner(os.Stderr, "Loading...")
 		s.Start()
 
 		// Wrap stdout/stderr to stop spinner on first output
@@ -57,13 +73,17 @@ func Exec(ctx context.Context, endpointURL string, args []string) error {
 
 	err = cmd.Run()
 
+	if s != nil {
+		s.Stop()
+	}
+
 	if err == nil {
 		return nil
 	}
 
 	var exitErr *exec.ExitError
 	if errors.As(err, &exitErr) {
-		return output.NewSilentError(output.NewExitCodeError(exitErr.ExitCode(), err))
+		return output.NewSilentError(err)
 	}
 	return err
 }

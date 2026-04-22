@@ -15,6 +15,7 @@ const (
 	EmulatorSnowflake EmulatorType = "snowflake"
 	EmulatorAzure     EmulatorType = "azure"
 
+	DefaultAWSPort = "4566"
 	dockerRegistry = "localstack"
 )
 

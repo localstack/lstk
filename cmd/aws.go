@@ -33,18 +33,17 @@ Examples:
 }
 
 func resolveAWSPort() string {
-	const defaultPort = "4566"
 	if err := config.Init(); err != nil {
-		return defaultPort
+		return config.DefaultAWSPort
 	}
 	appCfg, err := config.Get()
 	if err != nil {
-		return defaultPort
+		return config.DefaultAWSPort
 	}
 	for _, c := range appCfg.Containers {
 		if c.Type == config.EmulatorAWS {
 			return c.Port
 		}
 	}
-	return defaultPort
+	return config.DefaultAWSPort
 }

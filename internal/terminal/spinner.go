@@ -1,4 +1,4 @@
-package awscli
+package terminal
 
 import (
 	"fmt"
@@ -11,23 +11,24 @@ import (
 
 var dotFrames = []string{"⣾", "⣽", "⣻", "⢿", "⡿", "⣟", "⣯", "⣷"}
 
-// ANSI color codes matching lstk's spinner style (color 69 blue) and secondary (color 241 gray)
+// ANSI color codes matching the lstk style palette (color 69 = Nimbo blue, color 241 = secondary gray).
 const (
 	spinnerColor   = "\033[38;5;69m"
 	secondaryColor = "\033[38;5;241m"
 	resetColor     = "\033[0m"
 )
 
-type spinner struct {
-	out   io.Writer
-	label string
-	stop  chan struct{}
-	done  chan struct{}
-	mu    sync.Mutex
+type Spinner struct {
+	out      io.Writer
+	label    string
+	stop     chan struct{}
+	done     chan struct{}
+	mu       sync.Mutex
+	stopOnce sync.Once
 }
 
-func newSpinner(out io.Writer, label string) *spinner {
-	return &spinner{
+func NewSpinner(out io.Writer, label string) *Spinner {
+	return &Spinner{
 		out:   out,
 		label: label,
 		stop:  make(chan struct{}),
@@ -35,7 +36,7 @@ func newSpinner(out io.Writer, label string) *spinner {
 	}
 }
 
-func (s *spinner) Start() {
+func (s *Spinner) Start() {
 	go func() {
 		defer close(s.done)
 		tick := time.NewTicker(100 * time.Millisecond)
@@ -58,20 +59,22 @@ func (s *spinner) Start() {
 	}()
 }
 
-func (s *spinner) Stop() {
-	close(s.stop)
+func (s *Spinner) Stop() {
+	s.stopOnce.Do(func() {
+		close(s.stop)
+	})
 	<-s.done
 }
 
-func (s *spinner) clearLine() {
+func (s *Spinner) clearLine() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	width := len(s.label) + 10
 	_, _ = fmt.Fprintf(s.out, "\r%s\r", strings.Repeat(" ", width))
 }
 
-// isTerminal returns true if the writer is a terminal
-func isTerminal(w io.Writer) bool {
+// IsTerminal reports whether w is a character device (i.e. a terminal).
+func IsTerminal(w io.Writer) bool {
 	f, ok := w.(*os.File)
 	if !ok {
 		return false
