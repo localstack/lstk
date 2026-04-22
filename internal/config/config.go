@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"github.com/pelletier/go-toml/v2"
@@ -117,8 +118,8 @@ func Set(key string, value any) error {
 	return setInFile(viper.ConfigFileUsed(), key, value)
 }
 
-// setInFile updates a single key in the TOML config file using go-toml/v2.
-// The key must be in "section.field" form (e.g. "cli.update_skipped_version").
+// setInFile inserts or updates a single "section.field" key in the TOML config
+// file without rewriting unrelated content, preserving comments and formatting.
 func setInFile(path, key string, value any) error {
 	parts := strings.SplitN(key, ".", 2)
 	if len(parts) != 2 {
@@ -126,32 +127,31 @@ func setInFile(path, key string, value any) error {
 	}
 	section, field := parts[0], parts[1]
 
+	// Encode value using go-toml for correct scalar quoting.
+	type wrapper struct {
+		V any `toml:"v"`
+	}
+	enc, err := toml.Marshal(wrapper{V: value})
+	if err != nil {
+		return fmt.Errorf("failed to encode value: %w", err)
+	}
+	line := strings.TrimSpace(string(enc))
+	assignment := field + " =" + line[strings.IndexByte(line, '=')+1:]
+
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return fmt.Errorf("failed to read config file: %w", err)
 	}
+	content := string(data)
 
-	doc := map[string]any{}
-	if err := toml.Unmarshal(data, &doc); err != nil {
-		return fmt.Errorf("failed to parse config file: %w", err)
+	re := regexp.MustCompile(`(?m)^\s*` + regexp.QuoteMeta(field) + `\s*=.*$`)
+	if re.MatchString(content) {
+		content = re.ReplaceAllString(content, assignment)
+	} else {
+		content = strings.TrimRight(content, "\n") + "\n\n[" + section + "]\n" + assignment + "\n"
 	}
 
-	if doc[section] == nil {
-		doc[section] = map[string]any{}
-	}
-	sectionMap, ok := doc[section].(map[string]any)
-	if !ok {
-		return fmt.Errorf("config section %q is not a table", section)
-	}
-	sectionMap[field] = value
-	doc[section] = sectionMap
-
-	out, err := toml.Marshal(doc)
-	if err != nil {
-		return fmt.Errorf("failed to marshal config: %w", err)
-	}
-
-	return os.WriteFile(path, out, 0644)
+	return os.WriteFile(path, []byte(content), 0644)
 }
 
 func SetUpdateSkippedVersion(version string) error {

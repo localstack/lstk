@@ -247,7 +247,13 @@ func TestUpdateNotification(t *testing.T) {
 
 	t.Run("skip", func(t *testing.T) {
 		configFile := filepath.Join(t.TempDir(), "config.toml")
-		require.NoError(t, os.WriteFile(configFile, []byte(""), 0o644))
+		originalConfig := `# User-maintained lstk config
+[[containers]]
+type = "aws"     # Emulator type
+tag  = "latest"  # Docker image tag
+port = "4566"    # Host port
+`
+		require.NoError(t, os.WriteFile(configFile, []byte(originalConfig), 0o644))
 
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
@@ -280,7 +286,11 @@ func TestUpdateNotification(t *testing.T) {
 
 		configData, err := os.ReadFile(configFile)
 		require.NoError(t, err)
-		assert.Contains(t, string(configData), "update_skipped_version")
+		configStr := string(configData)
+		assert.Contains(t, configStr, "update_skipped_version", "skipped version should be persisted")
+		assert.Contains(t, configStr, "# User-maintained lstk config", "file header comment should be preserved")
+		assert.Contains(t, configStr, "# Emulator type", "inline comments should be preserved")
+		assert.Contains(t, configStr, `port = "4566"`, "existing config values should be preserved")
 	})
 
 
