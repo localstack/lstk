@@ -24,7 +24,7 @@ func setDefaults() {
 		{
 			"type": "aws",
 			"tag":  "latest",
-			"port": "4566",
+			"port": DefaultAWSPort,
 		},
 	})
 	viper.SetDefault("update_prompt", true)
