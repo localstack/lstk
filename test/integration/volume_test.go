@@ -178,6 +178,42 @@ volume = "` + escapeTomlPath(volumeDir) + `"
 
 		assertCommandTelemetry(t, events, "volume clear", 0)
 	})
+
+	t.Run("suggests sudo when volume contains root-owned files", func(t *testing.T) {
+		if runtime.GOOS != "linux" {
+			t.Skip("root-owned bind-mount files only occur on Linux")
+		}
+		if os.Getuid() == 0 {
+			t.Skip("test requires non-root user")
+		}
+
+		volumeDir := t.TempDir()
+
+		// Simulate LocalStack creating files as root inside a bind-mounted volume.
+		out, err := exec.CommandContext(testContext(t), "docker", "run", "--rm",
+			"-v", volumeDir+":/vol",
+			"alpine", "sh", "-c", "mkdir /vol/cache && touch /vol/cache/cert.pem",
+		).CombinedOutput()
+		require.NoError(t, err, "docker setup failed: %s", out)
+
+		configContent := `
+[[containers]]
+type = "aws"
+tag = "latest"
+port = "4566"
+volume = "` + escapeTomlPath(volumeDir) + `"
+`
+		configFile := filepath.Join(t.TempDir(), "config.toml")
+		require.NoError(t, os.WriteFile(configFile, []byte(configContent), 0644))
+
+		_, stderr, err := runLstk(t, testContext(t), t.TempDir(), os.Environ(), "--config", configFile, "--non-interactive", "volume", "clear", "--force")
+		if err == nil {
+			t.Skip("Docker is configured with user namespace remapping; root-owned files cleared without issue")
+		}
+
+		requireExitCode(t, 1, err)
+		assert.Contains(t, stderr, "sudo")
+	})
 }
 
 func TestVolumeClearInteractive(t *testing.T) {

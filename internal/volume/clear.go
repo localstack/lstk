@@ -78,6 +78,9 @@ func clearDir(dir string) error {
 	}
 	for _, entry := range entries {
 		if err := os.RemoveAll(filepath.Join(dir, entry.Name())); err != nil {
+			if os.IsPermission(err) {
+				return fmt.Errorf("%w — some files are owned by root (created by Docker); try: sudo lstk volume clear", err)
+			}
 			return err
 		}
 	}
