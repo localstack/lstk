@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"bufio"
 	"fmt"
 	"os"
 	"strings"
@@ -13,6 +12,7 @@ import (
 	"github.com/localstack/lstk/internal/output"
 	"github.com/localstack/lstk/internal/snapshot"
 	"github.com/localstack/lstk/internal/telemetry"
+	"github.com/localstack/lstk/internal/ui"
 	"github.com/spf13/cobra"
 )
 
@@ -144,7 +144,6 @@ func newSnapshotLoadCmd(cfg *env.Env, tel *telemetry.Client) *cobra.Command {
 	}
 	cmd.Flags().String("strategy", "account-region-merge", "Merge strategy: account-region-merge, overwrite, service-merge")
 	cmd.Flags().Bool("dry-run", false, "Preview what would be loaded without applying")
-	cmd.Flags().Bool("yes", false, "Skip version-mismatch warning")
 	return cmd
 }
 
@@ -240,7 +239,6 @@ func newSnapshotListCmd(cfg *env.Env, tel *telemetry.Client) *cobra.Command {
 			return err
 		}),
 	}
-	cmd.Flags().String("format", "table", "Output format: table or json")
 	return cmd
 }
 
@@ -261,22 +259,16 @@ func newSnapshotDeleteCmd(cfg *env.Env, tel *telemetry.Client) *cobra.Command {
 			name := args[0]
 			skipConfirm, _ := cmd.Flags().GetBool("yes")
 
-			if !skipConfirm {
-				if !isInteractiveMode(cfg) {
-					return fmt.Errorf("use --yes to confirm deletion in non-interactive mode")
-				}
-				fmt.Fprintf(os.Stderr, "About to delete '%s' and all its versions. This cannot be undone.\nConfirm? [y/N] ", name)
-				reader := bufio.NewReader(os.Stdin)
-				answer, _ := reader.ReadString('\n')
-				answer = strings.TrimSpace(strings.ToLower(answer))
-				if answer != "y" && answer != "yes" {
-					output.EmitNote(sink, "Deletion cancelled.")
-					return nil
-				}
+			if !skipConfirm && !isInteractiveMode(cfg) {
+				return fmt.Errorf("use --yes to confirm deletion in non-interactive mode")
 			}
 
-			client := snapshot.NewPlatformClient(cfg.APIEndpoint, cfg.AuthToken)
-			return snapshot.Delete(cmd.Context(), client, sink, name)
+			if skipConfirm {
+				client := snapshot.NewPlatformClient(cfg.APIEndpoint, cfg.AuthToken)
+				return snapshot.Delete(cmd.Context(), client, sink, name, true)
+			}
+
+			return ui.RunSnapshotDelete(cmd.Context(), cfg.APIEndpoint, cfg.AuthToken, name)
 		}),
 	}
 	cmd.Flags().BoolP("yes", "y", false, "Skip confirmation prompt")
@@ -301,7 +293,6 @@ func newSnapshotVersionsCmd(cfg *env.Env, tel *telemetry.Client) *cobra.Command 
 			return err
 		}),
 	}
-	cmd.Flags().String("format", "table", "Output format: table or json")
 	return cmd
 }
 

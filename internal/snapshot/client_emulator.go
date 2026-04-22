@@ -165,40 +165,6 @@ func (c *EmulatorClient) Export(ctx context.Context, services []string, w io.Wri
 	return nil
 }
 
-// ExportedServices returns the comma-separated services from the x-localstack-pod-services header.
-// Call after Export to discover which services were included.
-func (c *EmulatorClient) ExportedServices(ctx context.Context, services []string) ([]string, error) {
-	reqURL := c.baseURL() + "/state"
-	if len(services) > 0 {
-		reqURL += "?services=" + url.QueryEscape(strings.Join(services, ","))
-	}
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("x-localstack-data", "{}")
-
-	resp, err := c.http.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	_ = resp.Body.Close()
-
-	header := resp.Header.Get("x-localstack-pod-services")
-	if header == "" {
-		return nil, nil
-	}
-	parts := strings.Split(header, ",")
-	result := make([]string, 0, len(parts))
-	for _, p := range parts {
-		if s := strings.TrimSpace(p); s != "" {
-			result = append(result, s)
-		}
-	}
-	return result, nil
-}
-
 // Import uploads a ZIP file to the emulator and calls onEvent for each streamed event.
 // size is the total byte count of r (used for progress reporting); pass 0 if unknown.
 func (c *EmulatorClient) Import(ctx context.Context, r io.Reader, size int64, onProgress func(done, total int64), onEvent func(streamEvent)) error {

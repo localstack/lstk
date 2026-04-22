@@ -29,9 +29,6 @@ func Save(ctx context.Context, client *EmulatorClient, sink output.Sink, opts Sa
 					result.Services = ev.Info.Services
 				}
 			}
-			if ev.Status == "error" {
-				// error message comes through the completion event
-			}
 		}
 	}
 
