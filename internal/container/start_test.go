@@ -53,6 +53,18 @@ func TestEmitPostStartPointers_WithoutWebApp(t *testing.T) {
 	assert.Contains(t, got, "> Tip:")
 }
 
+func TestServicePortRange_ReturnsExpectedPorts(t *testing.T) {
+	ports := servicePortRange()
+
+	require.Len(t, ports, 51)
+	assert.Equal(t, "443", ports[0].ContainerPort)
+	assert.Equal(t, "443", ports[0].HostPort)
+	assert.Equal(t, "4510", ports[1].ContainerPort)
+	assert.Equal(t, "4510", ports[1].HostPort)
+	assert.Equal(t, "4559", ports[50].ContainerPort)
+	assert.Equal(t, "4559", ports[50].HostPort)
+}
+
 func TestFilterHostEnv(t *testing.T) {
 	input := []string{
 		"CI=true",
