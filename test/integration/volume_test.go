@@ -195,6 +195,12 @@ volume = "` + escapeTomlPath(volumeDir) + `"
 			"alpine", "sh", "-c", "mkdir /vol/cache && touch /vol/cache/cert.pem",
 		).CombinedOutput()
 		require.NoError(t, err, "docker setup failed: %s", out)
+		t.Cleanup(func() {
+			_ = exec.Command("docker", "run", "--rm",
+				"-v", volumeDir+":/vol",
+				"alpine", "sh", "-c", "rm -rf /vol/cache",
+			).Run()
+		})
 
 		configContent := `
 [[containers]]
