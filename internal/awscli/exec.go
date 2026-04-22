@@ -62,7 +62,6 @@ func Exec(ctx context.Context, endpointURL string, args []string) error {
 		s = terminal.NewSpinner(os.Stderr, "Loading...")
 		s.Start()
 
-		// Wrap stdout/stderr to stop spinner on first output
 		stopWriter := &stopOnWriteWriter{w: os.Stdout, spinner: s}
 		cmd.Stdout = stopWriter
 		cmd.Stderr = &stopOnWriteWriter{w: os.Stderr, spinner: s}

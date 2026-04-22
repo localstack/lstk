@@ -7,6 +7,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"golang.org/x/term"
 )
 
 var dotFrames = []string{"⣾", "⣽", "⣻", "⢿", "⡿", "⣟", "⣯", "⣷"}
@@ -73,15 +75,11 @@ func (s *Spinner) clearLine() {
 	_, _ = fmt.Fprintf(s.out, "\r%s\r", strings.Repeat(" ", width))
 }
 
-// IsTerminal reports whether w is a character device (i.e. a terminal).
+// IsTerminal reports whether w is a terminal.
 func IsTerminal(w io.Writer) bool {
 	f, ok := w.(*os.File)
 	if !ok {
 		return false
 	}
-	stat, err := f.Stat()
-	if err != nil {
-		return false
-	}
-	return (stat.Mode() & os.ModeCharDevice) != 0
+	return term.IsTerminal(int(f.Fd()))
 }
