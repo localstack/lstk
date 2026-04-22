@@ -131,7 +131,7 @@ func setInFile(path, key string, value any) error {
 		return fmt.Errorf("failed to read config file: %w", err)
 	}
 
-	var doc map[string]any
+	doc := map[string]any{}
 	if err := toml.Unmarshal(data, &doc); err != nil {
 		return fmt.Errorf("failed to parse config file: %w", err)
 	}
