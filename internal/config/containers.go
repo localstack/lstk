@@ -16,6 +16,10 @@ const (
 	EmulatorAzure     EmulatorType = "azure"
 
 	dockerRegistry = "localstack"
+
+	// SnowflakeAddonProduct is the product name returned in license responses when the
+	// subscription includes the Snowflake emulator add-on.
+	SnowflakeAddonProduct = "localstack.snowflake"
 )
 
 var emulatorDisplayNames = map[EmulatorType]string{
@@ -157,3 +161,4 @@ func (c *ContainerConfig) LicenseProductName() (string, error) {
 	}
 	return name, nil
 }
+

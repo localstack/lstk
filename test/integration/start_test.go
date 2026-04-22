@@ -6,12 +6,10 @@ import (
 	"fmt"
 	"net"
 	"net/http"
-	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
-	"sync"
 	"testing"
 
 	"github.com/docker/docker/api/types/container"
@@ -304,35 +302,6 @@ func cleanupSnowflake() {
 	_ = dockerClient.ContainerRemove(ctx, snowflakeContainerName, container.RemoveOptions{Force: true})
 }
 
-// recordingLicenseServer wraps createMockLicenseServer's behaviour but records every
-// request path it sees so tests can assert which endpoints lstk did (or did not) call.
-func recordingLicenseServer(success bool) (*httptest.Server, func() []string) {
-	var mu sync.Mutex
-	var paths []string
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		mu.Lock()
-		paths = append(paths, r.URL.Path)
-		mu.Unlock()
-
-		if r.Method == "POST" && r.URL.Path == "/v1/license/request" {
-			if success {
-				w.Header().Set("Content-Type", "application/json")
-				w.WriteHeader(http.StatusOK)
-				_, _ = w.Write([]byte(`{"license_type":"ultimate"}`))
-			} else {
-				w.WriteHeader(http.StatusForbidden)
-			}
-			return
-		}
-		w.WriteHeader(http.StatusNotFound)
-	}))
-	return srv, func() []string {
-		mu.Lock()
-		defer mu.Unlock()
-		return append([]string(nil), paths...)
-	}
-}
-
 func writeSnowflakeConfig(t *testing.T, hostPort string) string {
 	t.Helper()
 	content := fmt.Sprintf(`
@@ -378,27 +347,20 @@ func TestStartCommandSucceedsForSnowflake(t *testing.T) {
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 }
 
-func TestStartCommandSkipsCatalogVersionForSnowflake(t *testing.T) {
+func TestStartCommandFailsForSnowflakeWithoutAddon(t *testing.T) {
 	requireDocker(t)
-	_ = env.Require(t, env.AuthToken)
-
-	cleanup()
 	cleanupSnowflake()
-	t.Cleanup(cleanup)
 	t.Cleanup(cleanupSnowflake)
 
-	mockServer, recordedPaths := recordingLicenseServer(true)
+	// License response without the Snowflake add-on product.
+	mockServer := createMockLicenseServerWithBody(`{"license_type":"ultimate","products":[]}`)
 	defer mockServer.Close()
 
 	configFile := writeSnowflakeConfig(t, "4567")
 
-	ctx := testContext(t)
-	_, stderr, err := runLstk(t, ctx, "", env.With(env.APIEndpoint, mockServer.URL), "--config", configFile, "start")
-	require.NoError(t, err, "lstk start failed: %s", stderr)
-	requireExitCode(t, 0, err)
-
-	for _, p := range recordedPaths() {
-		assert.NotContains(t, p, "/v1/license/catalog/",
-			"lstk must not call the catalog-version endpoint for Snowflake, got: %s", p)
-	}
+	_, stderr, err := runLstk(t, testContext(t), "", env.With(env.AuthToken, "fake-token").With(env.APIEndpoint, mockServer.URL), "--config", configFile, "start")
+	require.Error(t, err, "expected lstk start to fail when Snowflake add-on is not in license")
+	requireExitCode(t, 1, err)
+	assert.Contains(t, stderr, "subscription does not include the Snowflake emulator")
 }
+

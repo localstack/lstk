@@ -440,7 +440,7 @@ func validateLicense(ctx context.Context, sink output.Sink, opts StartOptions, t
 	}
 
 	if containerConfig.EmulatorType == string(config.EmulatorSnowflake) {
-		if !licenseResp.HasProduct("localstack.snowflake") {
+		if !licenseResp.HasProduct(config.SnowflakeAddonProduct) {
 			licErr := &api.LicenseError{
 				Status:  http.StatusForbidden,
 				Message: "your subscription does not include the Snowflake emulator",
