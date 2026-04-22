@@ -105,9 +105,11 @@ func promptAndUpdate(ctx context.Context, sink output.Sink, opts NotifyOptions, 
 		return false
 	case "s":
 		if opts.PersistSkipVersion != nil {
-			_ = opts.PersistSkipVersion(latest)
+			if err := opts.PersistSkipVersion(latest); err != nil {
+				output.EmitWarning(sink, fmt.Sprintf("Failed to persist skipped version: %v", err))
+			}
 		}
-		output.EmitNote(sink, "Skipping version " + latest)
+		output.EmitNote(sink, "Skipping version "+latest)
 		return false
 	}
 

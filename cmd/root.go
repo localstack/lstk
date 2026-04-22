@@ -124,7 +124,7 @@ func startEmulator(ctx context.Context, rt runtime.Runtime, cfg *env.Env, tel *t
 
 	notifyOpts := update.NotifyOptions{
 		GitHubToken:        cfg.GitHubToken,
-		UpdatePrompt:       appConfig.CLI.UpdatePrompt,
+		UpdatePrompt:       true,
 		SkippedVersion:     appConfig.CLI.UpdateSkippedVersion,
 		PersistSkipVersion: config.SetUpdateSkippedVersion,
 	}

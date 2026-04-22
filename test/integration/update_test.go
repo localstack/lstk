@@ -245,40 +245,9 @@ func TestUpdateNotification(t *testing.T) {
 	mockServer := createMockLicenseServer(false)
 	defer mockServer.Close()
 
-	t.Run("prompt_disabled", func(t *testing.T) {
-		configFile := filepath.Join(t.TempDir(), "config.toml")
-		require.NoError(t, os.WriteFile(configFile, []byte("[cli]\nupdate_prompt = false\n"), 0o644))
-
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-		defer cancel()
-
-		cmd := exec.CommandContext(ctx, tmpBinary, "--config", configFile)
-		cmd.Env = env.Without(env.AuthToken).With(env.AuthToken, "fake-token").With(env.APIEndpoint, mockServer.URL)
-
-		ptmx, err := pty.Start(cmd)
-		require.NoError(t, err, "failed to start command in PTY")
-		defer func() { _ = ptmx.Close() }()
-
-		output := &syncBuffer{}
-		outputCh := make(chan struct{})
-		go func() {
-			_, _ = io.Copy(output, ptmx)
-			close(outputCh)
-		}()
-
-		// Process should exit without prompting (license validation fails)
-		_ = cmd.Wait()
-		<-outputCh
-
-		out := output.String()
-		assert.Contains(t, out, "Update available: 0.0.1", "should show update note")
-		assert.Contains(t, out, "lstk update", "should include the update command hint")
-		assert.NotContains(t, out, "new version is available", "should not show interactive prompt")
-	})
-
 	t.Run("skip", func(t *testing.T) {
 		configFile := filepath.Join(t.TempDir(), "config.toml")
-		require.NoError(t, os.WriteFile(configFile, []byte("[cli]\nupdate_prompt = true\n"), 0o644))
+		require.NoError(t, os.WriteFile(configFile, []byte(""), 0o644))
 
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
@@ -319,7 +288,7 @@ func TestUpdateNotification(t *testing.T) {
 		require.NoError(t, os.WriteFile(updateBinary, data, 0o755))
 
 		configFile := filepath.Join(t.TempDir(), "config.toml")
-		require.NoError(t, os.WriteFile(configFile, []byte("[cli]\nupdate_prompt = true\n"), 0o644))
+		require.NoError(t, os.WriteFile(configFile, []byte(""), 0o644))
 
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 		defer cancel()

@@ -1,7 +1,6 @@
 package config
 
 import (
-	"bufio"
 	_ "embed"
 	"errors"
 	"fmt"
@@ -9,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/pelletier/go-toml/v2"
 	"github.com/spf13/viper"
 )
 
@@ -16,7 +16,6 @@ import (
 var defaultConfigTemplate string
 
 type CLIConfig struct {
-	UpdatePrompt         bool   `mapstructure:"update_prompt"`
 	UpdateSkippedVersion string `mapstructure:"update_skipped_version"`
 }
 
@@ -34,7 +33,6 @@ func setDefaults() {
 			"port": "4566",
 		},
 	})
-	viper.SetDefault("cli.update_prompt", true)
 }
 
 func loadConfig(path string) error {
@@ -119,115 +117,51 @@ func Set(key string, value any) error {
 	return setInFile(viper.ConfigFileUsed(), key, value)
 }
 
-// setInFile updates a single key in the TOML config file without
-// rewriting unrelated keys (avoids Viper dumping all defaults).
+// setInFile updates a single key in the TOML config file using go-toml/v2.
+// The key must be in "section.field" form (e.g. "cli.update_skipped_version").
 func setInFile(path, key string, value any) error {
-	// Split "cli.update_skipped_version" into section "cli" and field "update_skipped_version".
 	parts := strings.SplitN(key, ".", 2)
 	if len(parts) != 2 {
-		// Top-level keys: fall back to full rewrite.
 		return viper.WriteConfig()
 	}
 	section, field := parts[0], parts[1]
-
-	formatted := formatTOMLValue(value)
-	targetLine := field + " = " + formatted
 
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return fmt.Errorf("failed to read config file: %w", err)
 	}
 
-	var result []string
-	scanner := bufio.NewScanner(strings.NewReader(string(data)))
-	inSection := false
-	replaced := false
-	sectionHeader := "[" + section + "]"
-
-	for scanner.Scan() {
-		line := scanner.Text()
-		trimmed := strings.TrimSpace(line)
-
-		// Detect section headers.
-		if strings.HasPrefix(trimmed, "[") {
-			if trimmed == sectionHeader {
-				inSection = true
-			} else if inSection {
-				// Leaving our section without having replaced — insert before the new section.
-				if !replaced {
-					result = append(result, targetLine)
-					replaced = true
-				}
-				inSection = false
-			}
-		}
-
-		// Replace existing key in the target section.
-		if inSection && strings.HasPrefix(trimmed, field+" ") || inSection && strings.HasPrefix(trimmed, field+"=") {
-			result = append(result, targetLine)
-			replaced = true
-			continue
-		}
-
-		result = append(result, line)
+	var doc map[string]any
+	if err := toml.Unmarshal(data, &doc); err != nil {
+		return fmt.Errorf("failed to parse config file: %w", err)
 	}
 
-	// Section exists but key was not found — append to end of file (still in section).
-	if !replaced && inSection {
-		result = append(result, targetLine)
-		replaced = true
+	if doc[section] == nil {
+		doc[section] = map[string]any{}
+	}
+	sectionMap, ok := doc[section].(map[string]any)
+	if !ok {
+		return fmt.Errorf("config section %q is not a table", section)
+	}
+	sectionMap[field] = value
+	doc[section] = sectionMap
+
+	out, err := toml.Marshal(doc)
+	if err != nil {
+		return fmt.Errorf("failed to marshal config: %w", err)
 	}
 
-	// Section doesn't exist at all — append section and key.
-	if !replaced {
-		if len(result) > 0 && strings.TrimSpace(result[len(result)-1]) != "" {
-			result = append(result, "")
-		}
-		result = append(result, sectionHeader)
-		result = append(result, targetLine)
-	}
-
-	output := strings.Join(result, "\n")
-	if !strings.HasSuffix(output, "\n") {
-		output += "\n"
-	}
-
-	return os.WriteFile(path, []byte(output), 0644)
-}
-
-func formatTOMLValue(v any) string {
-	switch val := v.(type) {
-	case string:
-		return fmt.Sprintf("%q", val)
-	case bool:
-		if val {
-			return "true"
-		}
-		return "false"
-	default:
-		return fmt.Sprintf("%v", val)
-	}
-}
-
-func DisableUpdatePrompt() error {
-	return Set("cli.update_prompt", false)
+	return os.WriteFile(path, out, 0644)
 }
 
 func SetUpdateSkippedVersion(version string) error {
 	return Set("cli.update_skipped_version", version)
 }
 
-func GetUpdateSkippedVersion() string {
-	return viper.GetString("cli.update_skipped_version")
-}
-
 func Get() (*Config, error) {
 	var cfg Config
 	if err := viper.Unmarshal(&cfg); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal config: %w", err)
-	}
-	if !viper.InConfig("cli.update_prompt") && viper.InConfig("update_prompt") {
-		cfg.CLI.UpdatePrompt = viper.GetBool("update_prompt")
 	}
 	for i := range cfg.Containers {
 		if err := cfg.Containers[i].Validate(); err != nil {
