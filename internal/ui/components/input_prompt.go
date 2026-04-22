@@ -81,7 +81,7 @@ func (p InputPrompt) viewVertical() string {
 
 	if p.prompt != "" {
 		sb.WriteString(styles.Secondary.Render("? "))
-		sb.WriteString(styles.Message.Render(strings.TrimPrefix(p.prompt, "? ")))
+		sb.WriteString(styles.Message.Render(p.prompt))
 		sb.WriteString("\n")
 	}
 
