@@ -55,6 +55,7 @@ func NewRootCmd(cfg *env.Env, tel *telemetry.Client, logger log.Logger) *cobra.C
 	root.AddCommand(
 		newStartCmd(cfg, tel, logger),
 		newStopCmd(cfg, tel),
+		newRestartCmd(cfg, tel, logger),
 		newLoginCmd(cfg, tel, logger),
 		newLogoutCmd(cfg, tel, logger),
 		newStatusCmd(cfg, tel),
@@ -104,14 +105,8 @@ func Execute(ctx context.Context) error {
 	return nil
 }
 
-func startEmulator(ctx context.Context, rt runtime.Runtime, cfg *env.Env, tel *telemetry.Client, logger log.Logger) error {
-
-	appConfig, err := config.Get()
-	if err != nil {
-		return fmt.Errorf("failed to get config: %w", err)
-	}
-
-	opts := container.StartOptions{
+func buildStartOptions(cfg *env.Env, appConfig *config.Config, logger log.Logger, tel *telemetry.Client) container.StartOptions {
+	return container.StartOptions{
 		PlatformClient:   api.NewPlatformClient(cfg.APIEndpoint, logger),
 		AuthToken:        cfg.AuthToken,
 		ForceFileKeyring: cfg.ForceFileKeyring,
@@ -122,6 +117,16 @@ func startEmulator(ctx context.Context, rt runtime.Runtime, cfg *env.Env, tel *t
 		Logger:           logger,
 		Telemetry:        tel,
 	}
+}
+
+func startEmulator(ctx context.Context, rt runtime.Runtime, cfg *env.Env, tel *telemetry.Client, logger log.Logger) error {
+
+	appConfig, err := config.Get()
+	if err != nil {
+		return fmt.Errorf("failed to get config: %w", err)
+	}
+
+	opts := buildStartOptions(cfg, appConfig, logger, tel)
 
 	notifyOpts := update.NotifyOptions{
 		GitHubToken:    cfg.GitHubToken,
