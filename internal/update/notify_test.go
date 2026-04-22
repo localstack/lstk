@@ -112,6 +112,7 @@ func TestNotifyUpdatePromptSkip(t *testing.T) {
 	server := newTestGitHubServer(t, "v2.0.0")
 	defer server.Close()
 
+	var skippedVersion string
 	var events []any
 	sink := output.SinkFunc(func(event any) {
 		events = append(events, event)
@@ -120,8 +121,30 @@ func TestNotifyUpdatePromptSkip(t *testing.T) {
 		}
 	})
 
-	exit := notifyUpdateWithVersion(context.Background(), sink, NotifyOptions{UpdatePrompt: true}, "1.0.0", testFetcher(server.URL))
+	exit := notifyUpdateWithVersion(context.Background(), sink, NotifyOptions{
+		UpdatePrompt: true,
+		PersistSkipVersion: func(v string) error {
+			skippedVersion = v
+			return nil
+		},
+	}, "1.0.0", testFetcher(server.URL))
 	assert.False(t, exit)
+	assert.Equal(t, "v2.0.0", skippedVersion)
+}
+
+func TestNotifyUpdateSkippedVersionSuppressesPrompt(t *testing.T) {
+	server := newTestGitHubServer(t, "v2.0.0")
+	defer server.Close()
+
+	var events []any
+	sink := output.SinkFunc(func(event any) { events = append(events, event) })
+
+	exit := notifyUpdateWithVersion(context.Background(), sink, NotifyOptions{
+		UpdatePrompt:   true,
+		SkippedVersion: "v2.0.0",
+	}, "1.0.0", testFetcher(server.URL))
+	assert.False(t, exit)
+	assert.Empty(t, events)
 }
 
 func TestNotifyUpdatePromptRemind(t *testing.T) {

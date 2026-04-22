@@ -277,6 +277,10 @@ func TestUpdateNotification(t *testing.T) {
 		<-outputCh
 
 		assert.Contains(t, output.String(), "New lstk version available")
+
+		configData, err := os.ReadFile(configFile)
+		require.NoError(t, err)
+		assert.Contains(t, string(configData), "update_skipped_version")
 	})
 
 
