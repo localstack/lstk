@@ -12,6 +12,11 @@ import (
 )
 
 func Logs(ctx context.Context, rt runtime.Runtime, sink output.Sink, containers []config.ContainerConfig, follow bool, verbose bool) error {
+	if err := rt.IsHealthy(ctx); err != nil {
+		rt.EmitUnhealthyError(sink, err)
+		return output.NewSilentError(fmt.Errorf("runtime not healthy: %w", err))
+	}
+
 	if len(containers) == 0 {
 		return fmt.Errorf("no containers configured")
 	}
