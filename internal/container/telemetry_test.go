@@ -85,21 +85,29 @@ func TestStop_SkipsTelemetryWhenNil(t *testing.T) {
 	require.NoError(t, err)
 }
 
-func TestEmitEmulatorStartError_IsNoOpWhenTelNil(t *testing.T) {
-	c := runtime.ContainerConfig{EmulatorType: "aws", Image: "localstack/localstack-pro:latest"}
+func TestEmitEmulatorLifecycleEvent_IsNoOpWhenNil(t *testing.T) {
+	var tel *telemetry.Client
 	// Must not panic.
-	emitEmulatorStartError(context.Background(), nil, c, telemetry.ErrCodePortConflict, "port 4566 in use")
+	tel.EmitEmulatorLifecycleEvent(context.Background(), telemetry.LifecycleEvent{
+		EventType: telemetry.LifecycleStartError,
+		Emulator:  "aws",
+		Image:     "localstack/localstack-pro:latest",
+		ErrorCode: telemetry.ErrCodePortConflict,
+		ErrorMsg:  "port 4566 in use",
+	})
 }
 
-func TestEmitEmulatorStartError_SendsLifecycleEvent(t *testing.T) {
+func TestEmitEmulatorLifecycleEvent_SendsStartErrorEvent(t *testing.T) {
 	tel, ch := newCapturingTelClient(t)
 	tel.SetAuthToken("ls-xyz")
 
-	c := runtime.ContainerConfig{
-		EmulatorType: "aws",
-		Image:        "localstack/localstack-pro:latest",
-	}
-	emitEmulatorStartError(context.Background(), tel, c, telemetry.ErrCodePortConflict, "port 4566 already in use")
+	tel.EmitEmulatorLifecycleEvent(context.Background(), telemetry.LifecycleEvent{
+		EventType: telemetry.LifecycleStartError,
+		Emulator:  "aws",
+		Image:     "localstack/localstack-pro:latest",
+		ErrorCode: telemetry.ErrCodePortConflict,
+		ErrorMsg:  "port 4566 already in use",
+	})
 	tel.Close()
 
 	var got map[string]any

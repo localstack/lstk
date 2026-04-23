@@ -120,6 +120,9 @@ func (c *Client) EmitCommand(ctx context.Context, command string, flags []string
 // Environment field is populated automatically from the client state; any
 // value set by the caller is overwritten.
 func (c *Client) EmitEmulatorLifecycleEvent(ctx context.Context, event LifecycleEvent) {
+	if c == nil {
+		return
+	}
 	event.Environment = c.GetEnvironment()
 	c.Emit(ctx, "lstk_lifecycle", ToMap(event))
 }

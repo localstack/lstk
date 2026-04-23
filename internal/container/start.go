@@ -42,34 +42,6 @@ type StartOptions struct {
 	Telemetry        *telemetry.Client
 }
 
-func emitEmulatorStartError(ctx context.Context, tel *telemetry.Client, c runtime.ContainerConfig, errorCode, errorMsg string) {
-	if tel == nil {
-		return
-	}
-	tel.EmitEmulatorLifecycleEvent(ctx, telemetry.LifecycleEvent{
-		EventType: telemetry.LifecycleStartError,
-		Emulator:  c.EmulatorType,
-		Image:     c.Image,
-		ErrorCode: errorCode,
-		ErrorMsg:  errorMsg,
-	})
-}
-
-func emitEmulatorStartSuccess(ctx context.Context, tel *telemetry.Client, c runtime.ContainerConfig, containerID string, durationMS int64, pulled bool, info *telemetry.LocalStackInfo) {
-	if tel == nil {
-		return
-	}
-	tel.EmitEmulatorLifecycleEvent(ctx, telemetry.LifecycleEvent{
-		EventType:      telemetry.LifecycleStartSuccess,
-		Emulator:       c.EmulatorType,
-		Image:          c.Image,
-		ContainerID:    containerID,
-		DurationMS:     durationMS,
-		Pulled:         pulled,
-		LocalStackInfo: info,
-	})
-}
-
 func Start(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts StartOptions, interactive bool) error {
 	if err := rt.IsHealthy(ctx); err != nil {
 		rt.EmitUnhealthyError(sink, err)
@@ -87,9 +59,7 @@ func Start(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts Start
 		return err
 	}
 
-	if opts.Telemetry != nil {
-		opts.Telemetry.SetAuthToken(token)
-	}
+	opts.Telemetry.SetAuthToken(token)
 
 	if hasDuplicateContainerTypes(opts.Containers) {
 		sink.Emit(output.MessageEvent{Severity: output.SeverityWarning, Text: "Multiple emulators of the same type are defined in your config; this setup is not supported yet"})
@@ -277,7 +247,13 @@ func pullImages(ctx context.Context, rt runtime.Runtime, sink output.Sink, tel *
 				Title:   fmt.Sprintf("Failed to pull %s", c.Image),
 				Summary: err.Error(),
 			})
-			emitEmulatorStartError(ctx, tel, c, telemetry.ErrCodeImagePullFailed, err.Error())
+			tel.EmitEmulatorLifecycleEvent(ctx, telemetry.LifecycleEvent{
+				EventType: telemetry.LifecycleStartError,
+				Emulator:  c.EmulatorType,
+				Image:     c.Image,
+				ErrorCode: telemetry.ErrCodeImagePullFailed,
+				ErrorMsg:  err.Error(),
+			})
 			return nil, output.NewSilentError(fmt.Errorf("failed to pull image %s: %w", c.Image, err))
 		}
 		sink.Emit(output.SpinnerStop())
@@ -347,21 +323,41 @@ func startContainers(ctx context.Context, rt runtime.Runtime, sink output.Sink, 
 		sink.Emit(output.ContainerStatusEvent{Phase: "starting", Container: c.Name})
 		containerID, err := rt.Start(ctx, c)
 		if err != nil {
-			emitEmulatorStartError(ctx, tel, c, telemetry.ErrCodeStartFailed, err.Error())
+			tel.EmitEmulatorLifecycleEvent(ctx, telemetry.LifecycleEvent{
+				EventType: telemetry.LifecycleStartError,
+				Emulator:  c.EmulatorType,
+				Image:     c.Image,
+				ErrorCode: telemetry.ErrCodeStartFailed,
+				ErrorMsg:  err.Error(),
+			})
 			return fmt.Errorf("failed to start LocalStack: %w", err)
 		}
 
 		sink.Emit(output.ContainerStatusEvent{Phase: "waiting", Container: c.Name})
 		healthURL := fmt.Sprintf("http://localhost:%s%s", c.Port, c.HealthPath)
 		if err := awaitStartup(ctx, rt, sink, containerID, "LocalStack", healthURL); err != nil {
-			emitEmulatorStartError(ctx, tel, c, telemetry.ErrCodeStartFailed, err.Error())
+			tel.EmitEmulatorLifecycleEvent(ctx, telemetry.LifecycleEvent{
+				EventType: telemetry.LifecycleStartError,
+				Emulator:  c.EmulatorType,
+				Image:     c.Image,
+				ErrorCode: telemetry.ErrCodeStartFailed,
+				ErrorMsg:  err.Error(),
+			})
 			return err
 		}
 
 		sink.Emit(output.ContainerStatusEvent{Phase: "ready", Container: c.Name, Detail: fmt.Sprintf("containerId: %s", containerID[:12])})
 
 		lsInfo, _ := fetchLocalStackInfo(ctx, c.Port)
-		emitEmulatorStartSuccess(ctx, tel, c, containerID[:12], time.Since(startTime).Milliseconds(), pulled[c.Name], lsInfo)
+		tel.EmitEmulatorLifecycleEvent(ctx, telemetry.LifecycleEvent{
+			EventType:      telemetry.LifecycleStartSuccess,
+			Emulator:       c.EmulatorType,
+			Image:          c.Image,
+			ContainerID:    containerID[:12],
+			DurationMS:     time.Since(startTime).Milliseconds(),
+			Pulled:         pulled[c.Name],
+			LocalStackInfo: lsInfo,
+		})
 	}
 	return nil
 }
@@ -410,7 +406,13 @@ func selectContainersToStart(ctx context.Context, rt runtime.Runtime, sink outpu
 				continue
 			}
 			emitPortInUseError(sink, c.Port)
-			emitEmulatorStartError(ctx, tel, c, telemetry.ErrCodePortConflict, err.Error())
+			tel.EmitEmulatorLifecycleEvent(ctx, telemetry.LifecycleEvent{
+				EventType: telemetry.LifecycleStartError,
+				Emulator:  c.EmulatorType,
+				Image:     c.Image,
+				ErrorCode: telemetry.ErrCodePortConflict,
+				ErrorMsg:  err.Error(),
+			})
 			return nil, output.NewSilentError(err)
 		}
 
@@ -488,7 +490,13 @@ func validateLicense(ctx context.Context, sink output.Sink, opts StartOptions, t
 		if errors.As(err, &licErr) && licErr.Detail != "" {
 			opts.Logger.Error("license server response (HTTP %d): %s", licErr.Status, licErr.Detail)
 		}
-		emitEmulatorStartError(ctx, tel, containerConfig, telemetry.ErrCodeLicenseInvalid, err.Error())
+		tel.EmitEmulatorLifecycleEvent(ctx, telemetry.LifecycleEvent{
+			EventType: telemetry.LifecycleStartError,
+			Emulator:  containerConfig.EmulatorType,
+			Image:     containerConfig.Image,
+			ErrorCode: telemetry.ErrCodeLicenseInvalid,
+			ErrorMsg:  err.Error(),
+		})
 		return fmt.Errorf("license validation failed for %s:%s: %w", containerConfig.ProductName, version, err)
 	}
 
