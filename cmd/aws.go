@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"fmt"
 	"io"
 	"os"
 
@@ -10,6 +11,7 @@ import (
 	"github.com/localstack/lstk/internal/endpoint"
 	"github.com/localstack/lstk/internal/env"
 	"github.com/localstack/lstk/internal/output"
+	"github.com/localstack/lstk/internal/runtime"
 	"github.com/localstack/lstk/internal/telemetry"
 	"github.com/localstack/lstk/internal/terminal"
 	"github.com/spf13/cobra"
@@ -25,18 +27,60 @@ Equivalent to running:
   aws --endpoint-url http://localhost:4566 <args>
 with AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, and AWS_DEFAULT_REGION set automatically.
 
+Run 'lstk setup aws' to configure the LocalStack AWS profile for use with CLI and SDKs.
+
 Examples:
   lstk aws s3 ls
   lstk aws sqs list-queues
   lstk aws s3 mb s3://my-bucket`,
 		DisableFlagParsing: true,
+		PreRunE:            initConfig,
 		RunE: commandWithTelemetry("aws", tel, func(cmd *cobra.Command, args []string) error {
-			port := resolveAWSPort()
-			host, _ := endpoint.ResolveHost(port, cfg.LocalStackHost)
+			rt, err := runtime.NewDockerRuntime(cfg.DockerHost)
+			if err != nil {
+				return err
+			}
+
+			appCfg, err := config.Get()
+			if err != nil {
+				return fmt.Errorf("failed to get config: %w", err)
+			}
+
+			awsContainer := config.ContainerConfig{Type: config.EmulatorAWS, Port: config.DefaultAWSPort}
+			for _, c := range appCfg.Containers {
+				if c.Type == config.EmulatorAWS {
+					awsContainer = c
+					break
+				}
+			}
+
+			sink := output.NewPlainSink(os.Stdout)
+
+			if err := rt.IsHealthy(cmd.Context()); err != nil {
+				rt.EmitUnhealthyError(sink, err)
+				return output.NewSilentError(fmt.Errorf("runtime not healthy: %w", err))
+			}
+
+			running, err := rt.IsRunning(cmd.Context(), awsContainer.Name())
+			if err != nil {
+				return fmt.Errorf("checking emulator status: %w", err)
+			}
+			if !running {
+				output.EmitError(sink, output.ErrorEvent{
+					Title: fmt.Sprintf("%s is not running", awsContainer.DisplayName()),
+					Actions: []output.ErrorAction{
+						{Label: "Start LocalStack:", Value: "lstk"},
+						{Label: "See help:", Value: "lstk -h"},
+					},
+				})
+				return output.NewSilentError(fmt.Errorf("%s is not running", awsContainer.Name()))
+			}
+
+			host, _ := endpoint.ResolveHost(awsContainer.Port, cfg.LocalStackHost)
 
 			profileExists, _ := awsconfig.ProfileExists()
 			if !profileExists {
-				output.EmitNote(output.NewPlainSink(os.Stdout), "No AWS profile found, run 'lstk setup aws'")
+				output.EmitNote(sink, "No AWS profile found, run 'lstk setup aws'")
 			}
 
 			stdout, stderr := io.Writer(os.Stdout), io.Writer(os.Stderr)
@@ -51,20 +95,4 @@ Examples:
 			return awscli.Exec(cmd.Context(), "http://"+host, profileExists, stdout, stderr, args)
 		}),
 	}
-}
-
-func resolveAWSPort() string {
-	if err := config.Init(); err != nil {
-		return config.DefaultAWSPort
-	}
-	appCfg, err := config.Get()
-	if err != nil {
-		return config.DefaultAWSPort
-	}
-	for _, c := range appCfg.Containers {
-		if c.Type == config.EmulatorAWS {
-			return c.Port
-		}
-	}
-	return config.DefaultAWSPort
 }
