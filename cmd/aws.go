@@ -12,12 +12,11 @@ import (
 	"github.com/localstack/lstk/internal/env"
 	"github.com/localstack/lstk/internal/output"
 	"github.com/localstack/lstk/internal/runtime"
-	"github.com/localstack/lstk/internal/telemetry"
 	"github.com/localstack/lstk/internal/terminal"
 	"github.com/spf13/cobra"
 )
 
-func newAWSCmd(cfg *env.Env, tel *telemetry.Client) *cobra.Command {
+func newAWSCmd(cfg *env.Env) *cobra.Command {
 	return &cobra.Command{
 		Use:   "aws [args...]",
 		Short: "Run AWS CLI commands against LocalStack",
@@ -35,7 +34,7 @@ Examples:
   lstk aws s3 mb s3://my-bucket`,
 		DisableFlagParsing: true,
 		PreRunE:            initConfig,
-		RunE: commandWithTelemetry("aws", tel, func(cmd *cobra.Command, args []string) error {
+		RunE: func(cmd *cobra.Command, args []string) error {
 			rt, err := runtime.NewDockerRuntime(cfg.DockerHost)
 			if err != nil {
 				return err
@@ -93,6 +92,6 @@ Examples:
 			}
 
 			return awscli.Exec(cmd.Context(), "http://"+host, profileExists, stdout, stderr, args)
-		}),
+		},
 	}
 }

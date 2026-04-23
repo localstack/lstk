@@ -40,7 +40,7 @@ func NewRootCmd(cfg *env.Env, tel *telemetry.Client, logger log.Logger) *cobra.C
 			if err != nil {
 				return err
 			}
-			return runStart(cmd.Context(), cmd.Flags(), rt, cfg, tel, logger)
+			return startEmulator(cmd.Context(), rt, cfg, tel, logger)
 		},
 	}
 
@@ -63,15 +63,15 @@ func NewRootCmd(cfg *env.Env, tel *telemetry.Client, logger log.Logger) *cobra.C
 		newStopCmd(cfg, tel),
 		newRestartCmd(cfg, tel, logger),
 		newLoginCmd(cfg, tel, logger),
-		newLogoutCmd(cfg, tel, logger),
-		newStatusCmd(cfg, tel),
-		newLogsCmd(cfg, tel),
-		newSetupCmd(cfg, tel),
-		newConfigCmd(cfg, tel),
-		newVolumeCmd(cfg, tel),
-		newUpdateCmd(cfg, tel),
+		newLogoutCmd(cfg, logger),
+		newStatusCmd(cfg),
+		newLogsCmd(cfg),
+		newSetupCmd(cfg),
+		newConfigCmd(cfg),
+		newVolumeCmd(cfg),
+		newUpdateCmd(cfg),
 		newDocsCmd(),
-		newAWSCmd(cfg, tel),
+		newAWSCmd(cfg),
 	)
 
 	return root
@@ -118,6 +118,7 @@ func Execute(ctx context.Context) error {
 	root := NewRootCmd(cfg, tel, logger)
 	root.SilenceErrors = true
 	root.SilenceUsage = true
+	instrumentCommands(root, tel)
 	if cfg.TracesEnabled {
 		wrapCommandsWithTracing(root)
 	}
@@ -192,48 +193,34 @@ func startEmulator(ctx context.Context, rt runtime.Runtime, cfg *env.Env, tel *t
 	return container.Start(ctx, rt, sink, opts, false)
 }
 
-func runStart(ctx context.Context, cmdFlags *pflag.FlagSet, rt runtime.Runtime, cfg *env.Env, tel *telemetry.Client, logger log.Logger) error {
-	startTime := time.Now()
+// instrumentCommands walks the Cobra command tree and wraps every RunE with telemetry emission.
+func instrumentCommands(cmd *cobra.Command, tel *telemetry.Client) {
+	if cmd.RunE != nil {
+		original := cmd.RunE
+		cmd.RunE = func(c *cobra.Command, args []string) error {
+			startTime := time.Now()
+			runErr := original(c, args)
 
-	var flags []string
-	cmdFlags.Visit(func(f *pflag.Flag) {
-		flags = append(flags, "--"+f.Name)
-	})
+			var flags []string
+			c.Flags().Visit(func(f *pflag.Flag) {
+				flags = append(flags, "--"+f.Name)
+			})
 
-	runErr := startEmulator(ctx, rt, cfg, tel, logger)
+			exitCode := 0
+			errorMsg := ""
+			if runErr != nil {
+				exitCode = 1
+				errorMsg = runErr.Error()
+			}
 
-	exitCode := 0
-	errorMsg := ""
-	if runErr != nil {
-		exitCode = 1
-		errorMsg = runErr.Error()
-	}
-	tel.EmitCommand(ctx, "start", flags, time.Since(startTime).Milliseconds(), exitCode, errorMsg)
+			commandName := strings.TrimPrefix(c.CommandPath(), c.Root().Name()+" ")
+			tel.EmitCommand(c.Context(), commandName, flags, time.Since(startTime).Milliseconds(), exitCode, errorMsg)
 
-	return runErr
-}
-
-// wraps a RunE function so that an lstk_command event is emitted after every invocation
-// used for commands that do not emit lstk_lifecycle events (i.e. status, logs, config path, etc)
-func commandWithTelemetry(name string, tel *telemetry.Client, fn func(*cobra.Command, []string) error) func(*cobra.Command, []string) error {
-	return func(cmd *cobra.Command, args []string) error {
-		startTime := time.Now()
-		runErr := fn(cmd, args)
-
-		var flags []string
-		cmd.Flags().Visit(func(f *pflag.Flag) {
-			flags = append(flags, "--"+f.Name)
-		})
-
-		exitCode := 0
-		errorMsg := ""
-		if runErr != nil {
-			exitCode = 1
-			errorMsg = runErr.Error()
+			return runErr
 		}
-		tel.EmitCommand(cmd.Context(), name, flags, time.Since(startTime).Milliseconds(), exitCode, errorMsg)
-
-		return runErr
+	}
+	for _, child := range cmd.Commands() {
+		instrumentCommands(child, tel)
 	}
 }
 

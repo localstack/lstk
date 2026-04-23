@@ -53,52 +53,61 @@ func TestStartCommandSendsTelemetryEvent(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	// Pre-start a container so lstk start exits immediately after telemetry fires,
-	// without needing a real token or license server.
+	// Pre-start a container so both invocations exit immediately without a real token.
 	startTestContainer(t, ctx)
 
 	analyticsSrv, events := mockAnalyticsServer(t)
 
-	cmd := exec.CommandContext(ctx, binaryPath(), "start")
-	cmd.Env = env.With(env.AuthToken, "fake-token").
-		With(env.AnalyticsEndpoint, analyticsSrv.URL)
-	out, err := cmd.CombinedOutput()
-	require.NoError(t, err, "lstk start failed: %s", out)
-	requireExitCode(t, 0, err)
-
-	// The telemetry goroutine is async; wait up to 3s for the event to arrive.
-	select {
-	case event := <-events:
-		assert.Equal(t, "lstk_command", event["name"])
-
-		metadata, ok := event["metadata"].(map[string]any)
-		require.True(t, ok)
-		_, err := uuid.Parse(metadata["session_id"].(string))
-		assert.NoError(t, err, "session_id should be a valid UUID")
-		_, err = time.Parse("2006-01-02 15:04:05.000000", metadata["client_time"].(string))
-		assert.NoError(t, err, "client_time should match expected format")
-
-		payload, ok := event["payload"].(map[string]any)
-		require.True(t, ok)
-		assert.NotEmpty(t, payload["machine_id"], "machine_id should be present")
-		assert.Equal(t, os.Getenv("CI") != "", payload["is_ci"])
-
-		environment, ok := payload["environment"].(map[string]any)
-		require.True(t, ok)
-		assert.NotEmpty(t, environment["lstk_version"])
-		assert.Equal(t, runtime.GOOS, environment["os"])
-		assert.Equal(t, runtime.GOARCH, environment["arch"])
-
-		params, ok := payload["parameters"].(map[string]any)
-		require.True(t, ok)
-		assert.Equal(t, "start", params["command"])
-
-		result, ok := payload["result"].(map[string]any)
-		require.True(t, ok)
-		assert.InDelta(t, 0, result["exit_code"], 0)
-	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for telemetry event")
+	runCmd := func(t *testing.T, args ...string) {
+		t.Helper()
+		cmd := exec.CommandContext(ctx, binaryPath(), args...)
+		cmd.Env = env.With(env.AuthToken, "fake-token").
+			With(env.AnalyticsEndpoint, analyticsSrv.URL)
+		out, err := cmd.CombinedOutput()
+		require.NoError(t, err, "lstk %v failed: %s", args, out)
 	}
+
+	t.Run("lstk start emits command=start", func(t *testing.T) {
+		runCmd(t, "start")
+
+		select {
+		case event := <-events:
+			assert.Equal(t, "lstk_command", event["name"])
+
+			metadata, ok := event["metadata"].(map[string]any)
+			require.True(t, ok)
+			_, err := uuid.Parse(metadata["session_id"].(string))
+			assert.NoError(t, err, "session_id should be a valid UUID")
+			_, err = time.Parse("2006-01-02 15:04:05.000000", metadata["client_time"].(string))
+			assert.NoError(t, err, "client_time should match expected format")
+
+			payload, ok := event["payload"].(map[string]any)
+			require.True(t, ok)
+			assert.NotEmpty(t, payload["machine_id"], "machine_id should be present")
+			assert.Equal(t, os.Getenv("CI") != "", payload["is_ci"])
+
+			environment, ok := payload["environment"].(map[string]any)
+			require.True(t, ok)
+			assert.NotEmpty(t, environment["lstk_version"])
+			assert.Equal(t, runtime.GOOS, environment["os"])
+			assert.Equal(t, runtime.GOARCH, environment["arch"])
+
+			params, ok := payload["parameters"].(map[string]any)
+			require.True(t, ok)
+			assert.Equal(t, "start", params["command"])
+
+			result, ok := payload["result"].(map[string]any)
+			require.True(t, ok)
+			assert.InDelta(t, 0, result["exit_code"], 0)
+		case <-time.After(3 * time.Second):
+			t.Fatal("timed out waiting for telemetry event")
+		}
+	})
+
+	t.Run("lstk (no subcommand) emits command=lstk", func(t *testing.T) {
+		runCmd(t)
+		assertCommandTelemetry(t, events, "lstk", 0)
+	})
 }
 
 func TestStopCommandSendsTelemetryEvents(t *testing.T) {
