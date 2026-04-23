@@ -33,7 +33,16 @@ func TestRestartCommandSucceeds(t *testing.T) {
 	require.NoError(t, err, "failed to inspect container after restart")
 	assert.True(t, inspect.State.Running, "container should be running after restart")
 
-	assertCommandTelemetry(t, events, "restart", 0)
+	// Both lstk_lifecycle (stop + start) and lstk_command events should be emitted.
+	byName := collectTelemetryByName(t, events, 2)
+	assert.Contains(t, byName, "lstk_lifecycle")
+	if cmdEvent, ok := byName["lstk_command"]; assert.True(t, ok, "lstk_command event not received") {
+		payload, _ := cmdEvent["payload"].(map[string]any)
+		params, _ := payload["parameters"].(map[string]any)
+		assert.Equal(t, "restart", params["command"])
+		result, _ := payload["result"].(map[string]any)
+		assert.InDelta(t, 0, result["exit_code"], 0)
+	}
 }
 
 func TestRestartCommandFailsWhenNotRunning(t *testing.T) {
