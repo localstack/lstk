@@ -23,7 +23,7 @@ func TestFetchVersion(t *testing.T) {
 		}))
 		defer server.Close()
 
-		c := NewClient(&http.Client{})
+		c := NewClient()
 		version, err := c.FetchVersion(context.Background(), server.Listener.Addr().String())
 		require.NoError(t, err)
 		assert.Equal(t, "4.14.1", version)
@@ -36,7 +36,7 @@ func TestFetchVersion(t *testing.T) {
 		}))
 		defer server.Close()
 
-		c := NewClient(&http.Client{})
+		c := NewClient()
 		_, err := c.FetchVersion(context.Background(), server.Listener.Addr().String())
 		require.Error(t, err)
 	})
@@ -54,7 +54,7 @@ func TestFetchResources(t *testing.T) {
 		}))
 		defer server.Close()
 
-		c := NewClient(&http.Client{})
+		c := NewClient()
 		rows, err := c.FetchResources(context.Background(), server.Listener.Addr().String())
 		require.NoError(t, err)
 		require.Len(t, rows, 2)
@@ -74,7 +74,7 @@ func TestFetchResources(t *testing.T) {
 		}))
 		defer server.Close()
 
-		c := NewClient(&http.Client{})
+		c := NewClient()
 		rows, err := c.FetchResources(context.Background(), server.Listener.Addr().String())
 		require.NoError(t, err)
 		require.Len(t, rows, 1)
@@ -88,7 +88,7 @@ func TestFetchResources(t *testing.T) {
 		}))
 		defer server.Close()
 
-		c := NewClient(&http.Client{})
+		c := NewClient()
 		rows, err := c.FetchResources(context.Background(), server.Listener.Addr().String())
 		require.NoError(t, err)
 		assert.Empty(t, rows)
@@ -101,7 +101,7 @@ func TestFetchResources(t *testing.T) {
 		}))
 		defer server.Close()
 
-		c := NewClient(&http.Client{})
+		c := NewClient()
 		_, err := c.FetchResources(context.Background(), server.Listener.Addr().String())
 		require.Error(t, err)
 	})

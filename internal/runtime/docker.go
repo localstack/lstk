@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -20,16 +21,25 @@ import (
 	"github.com/docker/docker/client"
 	"github.com/docker/docker/pkg/stdcopy"
 	"github.com/docker/go-connections/nat"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+
 	"github.com/localstack/lstk/internal/output"
 )
 
-// DockerRuntime implements Runtime using the Docker API.
 type DockerRuntime struct {
 	client *client.Client
 }
 
 func NewDockerRuntime(dockerHost string) (*DockerRuntime, error) {
-	opts := []client.Opt{client.FromEnv, client.WithAPIVersionNegotiation()}
+	opts := []client.Opt{
+		client.FromEnv,
+		client.WithAPIVersionNegotiation(),
+		client.WithTraceOptions(
+			otelhttp.WithSpanNameFormatter(func(_ string, r *http.Request) string {
+				return "docker " + r.Method + " " + r.URL.Path
+			}),
+		),
+	}
 
 	// When DOCKER_HOST is not set, the Docker SDK defaults to /var/run/docker.sock.
 	// If that socket doesn't exist, probe known alternative locations (e.g. Colima).

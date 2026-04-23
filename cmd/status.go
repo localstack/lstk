@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"fmt"
-	"net/http"
 	"os"
 
 	"github.com/localstack/lstk/internal/config"
@@ -32,7 +31,7 @@ func newStatusCmd(cfg *env.Env, tel *telemetry.Client) *cobra.Command {
 				return fmt.Errorf("failed to get config: %w", err)
 			}
 
-			awsClient := aws.NewClient(&http.Client{})
+			awsClient := aws.NewClient()
 
 			if isInteractiveMode(cfg) {
 				return ui.RunStatus(cmd.Context(), rt, appCfg.Containers, cfg.LocalStackHost, awsClient)

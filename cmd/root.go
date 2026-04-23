@@ -5,7 +5,12 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
+
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
 
 	"github.com/localstack/lstk/internal/api"
 	"github.com/localstack/lstk/internal/auth"
@@ -16,6 +21,7 @@ import (
 	"github.com/localstack/lstk/internal/output"
 	"github.com/localstack/lstk/internal/runtime"
 	"github.com/localstack/lstk/internal/telemetry"
+	"github.com/localstack/lstk/internal/tracing"
 	"github.com/localstack/lstk/internal/ui"
 	"github.com/localstack/lstk/internal/update"
 	"github.com/localstack/lstk/internal/version"
@@ -81,6 +87,22 @@ func Execute(ctx context.Context) error {
 		logger = log.Nop()
 	}
 	defer cleanup()
+
+	shutdownTracing := func(context.Context) error { return nil }
+	if cfg.TracesEnabled {
+		logger.Info("otel tracing enabled")
+		shutdownTracing = tracing.Init(ctx, logger)
+	}
+	defer func() {
+		// Use a fresh context: the parent ctx may already be cancelled (e.g. Ctrl+C)
+		// by the time this defer runs, which would cause Shutdown to return immediately
+		// without flushing buffered spans to the collector.
+		shutCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := shutdownTracing(shutCtx); err != nil {
+			logger.Error("failed to shut down tracing: %v", err)
+		}
+	}()
 	logger.Info("lstk %s starting", version.Version())
 
 	// Resolve auth token for telemetry: keyring first, then env var.
@@ -96,6 +118,9 @@ func Execute(ctx context.Context) error {
 	root := NewRootCmd(cfg, tel, logger)
 	root.SilenceErrors = true
 	root.SilenceUsage = true
+	if cfg.TracesEnabled {
+		wrapCommandsWithTracing(root)
+	}
 
 	if err := root.ExecuteContext(ctx); err != nil {
 		if !output.IsSilent(err) {
@@ -212,9 +237,38 @@ func commandWithTelemetry(name string, tel *telemetry.Client, fn func(*cobra.Com
 	}
 }
 
+// wrapCommandsWithTracing walks the Cobra command tree and wraps every RunE with
+// an OTel span. This is done once after the tree is built so individual commands
+// don't need to know about tracing at all.
+func wrapCommandsWithTracing(cmd *cobra.Command) {
+	if cmd.RunE != nil {
+		original := cmd.RunE
+		spanName := strings.ReplaceAll(cmd.CommandPath(), " ", ".")
+		cmd.RunE = func(c *cobra.Command, args []string) error {
+			ctx, span := otel.Tracer("github.com/localstack/lstk").Start(c.Context(), spanName)
+			defer span.End()
+			c.SetContext(ctx)
+
+			err := original(c, args)
+			if err != nil {
+				span.RecordError(err)
+				span.SetStatus(codes.Error, err.Error())
+				span.SetAttributes(attribute.Int("lstk.exit_code", 1))
+			} else {
+				span.SetAttributes(attribute.Int("lstk.exit_code", 0))
+			}
+			return err
+		}
+	}
+	for _, child := range cmd.Commands() {
+		wrapCommandsWithTracing(child)
+	}
+}
+
 func isInteractiveMode(cfg *env.Env) bool {
 	return !cfg.NonInteractive && ui.IsInteractive()
 }
+
 
 const maxLogSize = 1 << 20 // 1 MB
 
