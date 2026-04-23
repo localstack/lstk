@@ -29,7 +29,7 @@ func (s *PlainSink) setErr(err error) {
 	}
 }
 
-func (s *PlainSink) emit(event any) {
+func (s *PlainSink) Emit(event Event) {
 	line, ok := FormatEventLine(event)
 	if !ok {
 		return

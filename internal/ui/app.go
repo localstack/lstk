@@ -275,9 +275,11 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return a, nil
 	default:
-		if line, ok := output.FormatEventLine(msg); ok {
-			for _, part := range strings.Split(line, "\n") {
-				a.addLine(styledLine{text: part})
+		if e, ok := msg.(output.Event); ok {
+			if line, ok := output.FormatEventLine(e); ok {
+				for _, part := range strings.Split(line, "\n") {
+					a.addLine(styledLine{text: part})
+				}
 			}
 		}
 	}

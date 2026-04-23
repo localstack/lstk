@@ -84,9 +84,9 @@ Environment variables:
 
 # Output Routing and Events
 
-- Emit typed events through `internal/output` (`EmitInfo`, `EmitSuccess`, `EmitNote`, `EmitWarning`, `EmitStatus`, `EmitProgress`, etc.) instead of printing from domain/command handlers.
-- Keep `output.Sink` sealed (unexported `emit`); sink implementations belong in `internal/output`.
-- Reuse `FormatEventLine(event any)` for all line-oriented rendering so plain and TUI output stay consistent.
+- Emit typed events via `sink.Emit(output.XxxEvent{...})` instead of printing from domain/command handlers. For simple messages use `output.MessageEvent{Severity: output.SeverityInfo, Text: "..."}` (severities: `SeverityInfo`, `SeveritySuccess`, `SeverityNote`, `SeverityWarning`, `SeveritySecondary`).
+- Sink implementations belong in `internal/output`; do not implement `output.Sink` outside that package.
+- Reuse `FormatEventLine(event Event)` for all line-oriented rendering so plain and TUI output stay consistent.
 - Select output mode at the command boundary in `cmd/`: interactive TTY runs Bubble Tea, non-interactive mode uses `output.NewPlainSink(...)`.
 - Keep non-TTY mode non-interactive (no stdin prompts or input waits).
 - Domain packages must not import Bubble Tea or UI packages.
@@ -94,7 +94,7 @@ Environment variables:
 - Do not pass UI callbacks like `onProgress func(...)` through domain layers; prefer typed output events.
 - Event payloads should be domain facts (phase/status/progress), not pre-rendered UI strings.
 - When adding a new event type, update all of:
-  - `internal/output/events.go` (event type + `Event` union constraint + emit helper)
+  - `internal/output/events.go` (event struct definition)
   - `internal/output/plain_format.go` (line formatting fallback)
   - tests in `internal/output/*_test.go` for formatter/sink behavior parity
 
@@ -102,7 +102,7 @@ Environment variables:
 
 Domain code must never read from stdin or wait for user input directly. Instead:
 
-1. Emit a `UserInputRequestEvent` via `output.EmitUserInputRequest()` with:
+1. Emit a `UserInputRequestEvent` via `sink.Emit(output.UserInputRequestEvent{...})` with:
    - `Prompt`: message to display
    - `Options`: available choices (e.g., `{Key: "enter", Label: "Press ENTER to continue"}`)
    - `ResponseCh`: channel to receive the user's response
@@ -118,7 +118,7 @@ Domain code must never read from stdin or wait for user input directly. Instead:
 Example flow in auth login:
 ```go
 responseCh := make(chan output.InputResponse, 1)
-output.EmitUserInputRequest(sink, output.UserInputRequestEvent{
+sink.Emit(output.UserInputRequestEvent{
     Prompt:     "Waiting for authentication...",
     Options:    []output.InputOption{{Key: "enter", Label: "Press ENTER when complete"}},
     ResponseCh: responseCh,

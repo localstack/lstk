@@ -3,10 +3,10 @@ package output
 import "testing"
 
 type captureSink struct {
-	events []any
+	events []Event
 }
 
-func (s *captureSink) emit(event any) {
+func (s *captureSink) Emit(event Event) {
 	s.events = append(s.events, event)
 }
 
@@ -14,7 +14,7 @@ func TestEmitAuth(t *testing.T) {
 	t.Parallel()
 
 	sink := &captureSink{}
-	EmitAuth(sink, AuthEvent{
+	sink.Emit(AuthEvent{
 		Preamble: "Welcome",
 		URL:      "https://example.com",
 	})
@@ -47,7 +47,7 @@ func TestEmitAuthWithCode(t *testing.T) {
 	t.Parallel()
 
 	sink := &captureSink{}
-	EmitAuth(sink, AuthEvent{
+	sink.Emit(AuthEvent{
 		Preamble: "Welcome",
 		URL:      "https://example.com",
 		Code:     "1234",

@@ -61,7 +61,7 @@ func notifyUpdateWithVersion(ctx context.Context, sink output.Sink, opts NotifyO
 	}
 
 	if !opts.UpdatePrompt {
-		output.EmitNote(sink, fmt.Sprintf("Update available: %s → %s (run lstk update)", current, latest))
+		sink.Emit(output.MessageEvent{Severity: output.SeverityNote, Text: fmt.Sprintf("Update available: %s → %s (run lstk update)", current, latest)})
 		return false
 	}
 
@@ -71,11 +71,11 @@ func notifyUpdateWithVersion(ctx context.Context, sink output.Sink, opts NotifyO
 func promptAndUpdate(ctx context.Context, sink output.Sink, opts NotifyOptions, current, latest string) (exitAfter bool) {
 	releaseNotesURL := fmt.Sprintf("https://github.com/%s/releases/latest", githubRepo)
 
-	output.EmitNote(sink, fmt.Sprintf("New lstk version available! %s → %s", current, latest))
-	output.EmitSecondary(sink, fmt.Sprintf("> Release notes: %s", releaseNotesURL))
+	sink.Emit(output.MessageEvent{Severity: output.SeverityNote, Text: fmt.Sprintf("New lstk version available! %s → %s", current, latest)})
+	sink.Emit(output.MessageEvent{Severity: output.SeveritySecondary, Text: fmt.Sprintf("> Release notes: %s", releaseNotesURL)})
 
 	responseCh := make(chan output.InputResponse, 1)
-	output.EmitUserInputRequest(sink, output.UserInputRequestEvent{
+	sink.Emit(output.UserInputRequestEvent{
 		Prompt:     "Update lstk to latest version?",
 		Options:    []output.InputOption{{Key: "u", Label: "Update now [U]"}, {Key: "r", Label: "Remind me next time [R]"}, {Key: "s", Label: "Skip this version [S]"}},
 		ResponseCh: responseCh,
@@ -96,20 +96,20 @@ func promptAndUpdate(ctx context.Context, sink output.Sink, opts NotifyOptions, 
 	switch resp.SelectedKey {
 	case "u":
 		if err := applyUpdate(ctx, sink, latest, opts.GitHubToken); err != nil {
-			output.EmitWarning(sink, fmt.Sprintf("Update failed: %v", err))
+			sink.Emit(output.MessageEvent{Severity: output.SeverityWarning, Text: fmt.Sprintf("Update failed: %v", err)})
 			return false
 		}
-		output.EmitSuccess(sink, fmt.Sprintf("Updated to %s — please re-run your command.", latest))
+		sink.Emit(output.MessageEvent{Severity: output.SeveritySuccess, Text: fmt.Sprintf("Updated to %s — please re-run your command.", latest)})
 		return true
 	case "r":
 		return false
 	case "s":
 		if opts.PersistSkipVersion != nil {
 			if err := opts.PersistSkipVersion(latest); err != nil {
-				output.EmitWarning(sink, fmt.Sprintf("Failed to persist skipped version: %v", err))
+				sink.Emit(output.MessageEvent{Severity: output.SeverityWarning, Text: fmt.Sprintf("Failed to persist skipped version: %v", err)})
 			}
 		}
-		output.EmitNote(sink, "Skipping version "+latest)
+		sink.Emit(output.MessageEvent{Severity: output.SeverityNote, Text: "Skipping version " + latest})
 		return false
 	}
 

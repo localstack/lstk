@@ -84,8 +84,8 @@ func TestNotifyUpdateNoUpdateAvailable(t *testing.T) {
 	server := newTestGitHubServer(t, "v1.0.0")
 	defer server.Close()
 
-	var events []any
-	sink := output.SinkFunc(func(event any) { events = append(events, event) })
+	var events []output.Event
+	sink := output.SinkFunc(func(event output.Event) { events = append(events, event) })
 
 	exit := notifyUpdateWithVersion(context.Background(), sink, NotifyOptions{UpdatePrompt: true}, "v1.0.0", testFetcher(server.URL))
 	assert.False(t, exit)
@@ -96,8 +96,8 @@ func TestNotifyUpdatePromptDisabled(t *testing.T) {
 	server := newTestGitHubServer(t, "v2.0.0")
 	defer server.Close()
 
-	var events []any
-	sink := output.SinkFunc(func(event any) { events = append(events, event) })
+	var events []output.Event
+	sink := output.SinkFunc(func(event output.Event) { events = append(events, event) })
 
 	exit := notifyUpdateWithVersion(context.Background(), sink, NotifyOptions{}, "1.0.0", testFetcher(server.URL))
 	assert.False(t, exit)
@@ -113,8 +113,8 @@ func TestNotifyUpdatePromptSkip(t *testing.T) {
 	defer server.Close()
 
 	var skippedVersion string
-	var events []any
-	sink := output.SinkFunc(func(event any) {
+	var events []output.Event
+	sink := output.SinkFunc(func(event output.Event) {
 		events = append(events, event)
 		if req, ok := event.(output.UserInputRequestEvent); ok {
 			req.ResponseCh <- output.InputResponse{SelectedKey: "s"}
@@ -136,8 +136,8 @@ func TestNotifyUpdateSkippedVersionSuppressesPrompt(t *testing.T) {
 	server := newTestGitHubServer(t, "v2.0.0")
 	defer server.Close()
 
-	var events []any
-	sink := output.SinkFunc(func(event any) { events = append(events, event) })
+	var events []output.Event
+	sink := output.SinkFunc(func(event output.Event) { events = append(events, event) })
 
 	exit := notifyUpdateWithVersion(context.Background(), sink, NotifyOptions{
 		UpdatePrompt:   true,
@@ -151,8 +151,8 @@ func TestNotifyUpdatePromptRemind(t *testing.T) {
 	server := newTestGitHubServer(t, "v2.0.0")
 	defer server.Close()
 
-	var events []any
-	sink := output.SinkFunc(func(event any) {
+	var events []output.Event
+	sink := output.SinkFunc(func(event output.Event) {
 		events = append(events, event)
 		if req, ok := event.(output.UserInputRequestEvent); ok {
 			req.ResponseCh <- output.InputResponse{SelectedKey: "r"}
@@ -167,8 +167,8 @@ func TestNotifyUpdatePromptCancelled(t *testing.T) {
 	server := newTestGitHubServer(t, "v2.0.0")
 	defer server.Close()
 
-	var events []any
-	sink := output.SinkFunc(func(event any) {
+	var events []output.Event
+	sink := output.SinkFunc(func(event output.Event) {
 		events = append(events, event)
 		if req, ok := event.(output.UserInputRequestEvent); ok {
 			assert.Equal(t, "Update lstk to latest version?", req.Prompt)

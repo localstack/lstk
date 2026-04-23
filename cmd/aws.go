@@ -66,7 +66,7 @@ Examples:
 				return fmt.Errorf("checking emulator status: %w", err)
 			}
 			if !running {
-				output.EmitError(sink, output.ErrorEvent{
+				sink.Emit(output.ErrorEvent{
 					Title: fmt.Sprintf("%s is not running", awsContainer.DisplayName()),
 					Actions: []output.ErrorAction{
 						{Label: "Start LocalStack:", Value: "lstk"},
@@ -80,7 +80,7 @@ Examples:
 
 			profileExists, _ := awsconfig.ProfileExists()
 			if !profileExists {
-				output.EmitNote(sink, "No AWS profile found, run 'lstk setup aws'")
+				sink.Emit(output.MessageEvent{Severity: output.SeverityNote, Text: "No AWS profile found, run 'lstk setup aws'"})
 			}
 
 			stdout, stderr := io.Writer(os.Stdout), io.Writer(os.Stderr)

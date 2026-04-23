@@ -16,23 +16,23 @@ import (
 func Check(ctx context.Context, sink output.Sink, githubToken string) (string, bool, error) {
 	current := version.Version()
 	if current == "dev" {
-		output.EmitNote(sink, "Running a development build, skipping update check")
+		sink.Emit(output.MessageEvent{Severity: output.SeverityNote, Text: "Running a development build, skipping update check"})
 		return "", false, nil
 	}
 
-	output.EmitSpinnerStart(sink, "Checking for updates")
+	sink.Emit(output.SpinnerStart("Checking for updates"))
 	latest, err := fetchLatestVersion(ctx, githubToken)
-	output.EmitSpinnerStop(sink)
+	sink.Emit(output.SpinnerStop())
 	if err != nil {
 		return "", false, fmt.Errorf("failed to check for updates: %w", err)
 	}
 
 	if normalizeVersion(current) == normalizeVersion(latest) {
-		output.EmitNote(sink, fmt.Sprintf("Already up to date (%s)", current))
+		sink.Emit(output.MessageEvent{Severity: output.SeverityNote, Text: fmt.Sprintf("Already up to date (%s)", current)})
 		return latest, false, nil
 	}
 
-	output.EmitInfo(sink, fmt.Sprintf("Update available: %s → %s", current, latest))
+	sink.Emit(output.MessageEvent{Severity: output.SeverityInfo, Text: fmt.Sprintf("Update available: %s → %s", current, latest)})
 	return latest, true, nil
 }
 
@@ -50,7 +50,7 @@ func Update(ctx context.Context, sink output.Sink, checkOnly bool, githubToken s
 		return err
 	}
 
-	output.EmitSuccess(sink, fmt.Sprintf("Updated to %s", latest))
+	sink.Emit(output.MessageEvent{Severity: output.SeveritySuccess, Text: fmt.Sprintf("Updated to %s", latest)})
 	return nil
 }
 
@@ -60,15 +60,15 @@ func applyUpdate(ctx context.Context, sink output.Sink, latest, githubToken stri
 	var err error
 	switch info.Method {
 	case InstallHomebrew:
-		output.EmitNote(sink, "Installed through Homebrew, running brew upgrade")
+		sink.Emit(output.MessageEvent{Severity: output.SeverityNote, Text: "Installed through Homebrew, running brew upgrade"})
 		err = updateHomebrew(ctx, sink)
 	case InstallNPM:
-		output.EmitNote(sink, "Installed through npm, running npm install -g")
+		sink.Emit(output.MessageEvent{Severity: output.SeverityNote, Text: "Installed through npm, running npm install -g"})
 		err = updateNPM(ctx, sink)
 	default:
-		output.EmitSpinnerStart(sink, "Downloading update")
+		sink.Emit(output.SpinnerStart("Downloading update"))
 		err = updateBinary(ctx, latest, githubToken)
-		output.EmitSpinnerStop(sink)
+		sink.Emit(output.SpinnerStop())
 	}
 	if err != nil {
 		return fmt.Errorf("update failed: %w", err)
@@ -103,7 +103,7 @@ func (w *logLineWriter) Write(p []byte) (int, error) {
 		line := string(w.buf[:i])
 		w.buf = w.buf[i+1:]
 		if line != "" {
-			output.EmitLogLine(w.sink, w.source, line, output.LogLevelUnknown)
+			w.sink.Emit(output.LogLineEvent{Source: w.source, Line: line, Level: output.LogLevelUnknown})
 		}
 	}
 	return len(p), nil
@@ -114,7 +114,7 @@ func (w *logLineWriter) Flush() {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	if len(w.buf) > 0 {
-		output.EmitLogLine(w.sink, w.source, string(w.buf), output.LogLevelUnknown)
+		w.sink.Emit(output.LogLineEvent{Source: w.source, Line: string(w.buf), Level: output.LogLevelUnknown})
 		w.buf = nil
 	}
 }

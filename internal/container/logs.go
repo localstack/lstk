@@ -39,7 +39,7 @@ func Logs(ctx context.Context, rt runtime.Runtime, sink output.Sink, containers 
 			continue
 		}
 		level, _ := parseLogLine(line)
-		output.EmitLogLine(sink, output.LogSourceEmulator, line, level)
+		sink.Emit(output.LogLineEvent{Source: output.LogSourceEmulator, Line: line, Level: level})
 	}
 	if err := scanner.Err(); err != nil && ctx.Err() == nil {
 		return err

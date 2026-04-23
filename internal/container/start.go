@@ -92,7 +92,7 @@ func Start(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts Start
 	}
 
 	if hasDuplicateContainerTypes(opts.Containers) {
-		output.EmitWarning(sink, "Multiple emulators of the same type are defined in your config; this setup is not supported yet")
+		sink.Emit(output.MessageEvent{Severity: output.SeverityWarning, Text: "Multiple emulators of the same type are defined in your config; this setup is not supported yet"})
 	}
 
 	tel := opts.Telemetry
@@ -230,7 +230,7 @@ func runPostStartSetups(ctx context.Context, sink output.Sink, containers []conf
 		if setup, ok := setups[t]; ok {
 			resolvedHost, dnsOK := endpoint.ResolveHost(firstByType[t].Port, localStackHost)
 			if !dnsOK {
-				output.EmitNote(sink, endpoint.DNSRebindNote)
+				sink.Emit(output.MessageEvent{Severity: output.SeverityNote, Text: endpoint.DNSRebindNote})
 			}
 			if err := setup(ctx, sink, interactive, resolvedHost); err != nil {
 				return err
@@ -242,15 +242,15 @@ func runPostStartSetups(ctx context.Context, sink output.Sink, containers []conf
 }
 
 func emitPostStartPointers(sink output.Sink, resolvedHost, webAppURL string) {
-	output.EmitSecondary(sink, fmt.Sprintf("• Endpoint: %s", resolvedHost))
+	sink.Emit(output.MessageEvent{Severity: output.SeveritySecondary, Text: fmt.Sprintf("• Endpoint: %s", resolvedHost)})
 	if webAppURL != "" {
-		output.EmitSecondary(sink, fmt.Sprintf("• Web app: %s", strings.TrimRight(webAppURL, "/")))
+		sink.Emit(output.MessageEvent{Severity: output.SeveritySecondary, Text: fmt.Sprintf("• Web app: %s", strings.TrimRight(webAppURL, "/"))})
 	}
 	tips := []string{
 		"> Tip: View emulator logs: lstk logs --follow",
 		"> Tip: View deployed resources: lstk status",
 	}
-	output.EmitSecondary(sink, tips[rand.IntN(len(tips))])
+	sink.Emit(output.MessageEvent{Severity: output.SeveritySecondary, Text: tips[rand.IntN(len(tips))]})
 }
 
 func pullImages(ctx context.Context, rt runtime.Runtime, sink output.Sink, tel *telemetry.Client, containers []runtime.ContainerConfig) (map[string]bool, error) {
@@ -261,25 +261,25 @@ func pullImages(ctx context.Context, rt runtime.Runtime, sink output.Sink, tel *
 			return nil, fmt.Errorf("failed to remove existing container %s: %w", c.Name, err)
 		}
 
-		output.EmitSpinnerStart(sink, fmt.Sprintf("Pulling %s", c.Image))
-		output.EmitStatus(sink, "pulling", c.Image, "")
+		sink.Emit(output.SpinnerStart(fmt.Sprintf("Pulling %s", c.Image)))
+		sink.Emit(output.ContainerStatusEvent{Phase: "pulling", Container: c.Image})
 		progress := make(chan runtime.PullProgress)
 		go func() {
 			for p := range progress {
-				output.EmitProgress(sink, c.Image, p.LayerID, p.Status, p.Current, p.Total)
+				sink.Emit(output.ProgressEvent{Container: c.Image, LayerID: p.LayerID, Status: p.Status, Current: p.Current, Total: p.Total})
 			}
 		}()
 		if err := rt.PullImage(ctx, c.Image, progress); err != nil {
-			output.EmitSpinnerStop(sink)
-			output.EmitError(sink, output.ErrorEvent{
+			sink.Emit(output.SpinnerStop())
+			sink.Emit(output.ErrorEvent{
 				Title:   fmt.Sprintf("Failed to pull %s", c.Image),
 				Summary: err.Error(),
 			})
 			emitEmulatorStartError(ctx, tel, c, telemetry.ErrCodeImagePullFailed, err.Error())
 			return nil, output.NewSilentError(fmt.Errorf("failed to pull image %s: %w", c.Image, err))
 		}
-		output.EmitSpinnerStop(sink)
-		output.EmitSuccess(sink, fmt.Sprintf("Pulled %s", c.Image))
+		sink.Emit(output.SpinnerStop())
+		sink.Emit(output.MessageEvent{Severity: output.SeveritySuccess, Text: fmt.Sprintf("Pulled %s", c.Image)})
 		pulled[c.Name] = true
 	}
 	return pulled, nil
@@ -334,21 +334,21 @@ func validateLicensesFromImages(ctx context.Context, rt runtime.Runtime, sink ou
 func startContainers(ctx context.Context, rt runtime.Runtime, sink output.Sink, tel *telemetry.Client, containers []runtime.ContainerConfig, pulled map[string]bool) error {
 	for _, c := range containers {
 		startTime := time.Now()
-		output.EmitStatus(sink, "starting", c.Name, "")
+		sink.Emit(output.ContainerStatusEvent{Phase: "starting", Container: c.Name})
 		containerID, err := rt.Start(ctx, c)
 		if err != nil {
 			emitEmulatorStartError(ctx, tel, c, telemetry.ErrCodeStartFailed, err.Error())
 			return fmt.Errorf("failed to start LocalStack: %w", err)
 		}
 
-		output.EmitStatus(sink, "waiting", c.Name, "")
+		sink.Emit(output.ContainerStatusEvent{Phase: "waiting", Container: c.Name})
 		healthURL := fmt.Sprintf("http://localhost:%s%s", c.Port, c.HealthPath)
 		if err := awaitStartup(ctx, rt, sink, containerID, "LocalStack", healthURL); err != nil {
 			emitEmulatorStartError(ctx, tel, c, telemetry.ErrCodeStartFailed, err.Error())
 			return err
 		}
 
-		output.EmitStatus(sink, "ready", c.Name, fmt.Sprintf("containerId: %s", containerID[:12]))
+		sink.Emit(output.ContainerStatusEvent{Phase: "ready", Container: c.Name, Detail: fmt.Sprintf("containerId: %s", containerID[:12])})
 
 		lsInfo, _ := fetchLocalStackInfo(ctx, c.Port)
 		emitEmulatorStartSuccess(ctx, tel, c, containerID[:12], time.Since(startTime).Milliseconds(), pulled[c.Name], lsInfo)
@@ -364,10 +364,10 @@ func selectContainersToStart(ctx context.Context, rt runtime.Runtime, sink outpu
 			return nil, fmt.Errorf("failed to check container status: %w", err)
 		}
 		if running {
-			output.EmitNote(sink, "LocalStack is already running")
+			sink.Emit(output.MessageEvent{Severity: output.SeverityNote, Text: "LocalStack is already running"})
 			resolvedHost, dnsOK := endpoint.ResolveHost(c.Port, localStackHost)
 			if !dnsOK {
-				output.EmitNote(sink, endpoint.DNSRebindNote)
+				sink.Emit(output.MessageEvent{Severity: output.SeverityNote, Text: endpoint.DNSRebindNote})
 			}
 			emitPostStartPointers(sink, resolvedHost, webAppURL)
 			continue
@@ -390,7 +390,7 @@ func emitPortInUseError(sink output.Sink, port string) {
 	if pathErr == nil {
 		actions = append(actions, output.ErrorAction{Label: "Use another port in the configuration:", Value: configPath})
 	}
-	output.EmitError(sink, output.ErrorEvent{
+	sink.Emit(output.ErrorEvent{
 		Title:   fmt.Sprintf("Port %s already in use", port),
 		Summary: "LocalStack may already be running.",
 		Actions: actions,
@@ -399,7 +399,7 @@ func emitPortInUseError(sink output.Sink, port string) {
 
 func validateLicense(ctx context.Context, sink output.Sink, opts StartOptions, tel *telemetry.Client, containerConfig runtime.ContainerConfig, token, licenseFilePath string) error {
 	version := containerConfig.Tag
-	output.EmitStatus(sink, "validating license", containerConfig.Name, version)
+	sink.Emit(output.ContainerStatusEvent{Phase: "validating license", Container: containerConfig.Name, Detail: version})
 
 	hostname, _ := os.Hostname()
 	licenseReq := &api.LicenseRequest{
@@ -462,13 +462,13 @@ func awaitStartup(ctx context.Context, rt runtime.Runtime, sink output.Sink, con
 		resp, err := client.Get(healthURL)
 		if err == nil && resp.StatusCode == http.StatusOK {
 			if err := resp.Body.Close(); err != nil {
-				output.EmitWarning(sink, fmt.Sprintf("failed to close response body: %v", err))
+				sink.Emit(output.MessageEvent{Severity: output.SeverityWarning, Text: fmt.Sprintf("failed to close response body: %v", err)})
 			}
 			return nil
 		}
 		if resp != nil {
 			if err := resp.Body.Close(); err != nil {
-				output.EmitWarning(sink, fmt.Sprintf("failed to close response body: %v", err))
+				sink.Emit(output.MessageEvent{Severity: output.SeverityWarning, Text: fmt.Sprintf("failed to close response body: %v", err)})
 			}
 		}
 

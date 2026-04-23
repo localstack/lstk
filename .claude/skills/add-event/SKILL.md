@@ -13,7 +13,7 @@ Add a new event type `$ARGUMENTS` to the output event system.
 
 Read these files first — they are the source of truth:
 
-- `internal/output/events.go` — all event types, the `Event` union constraint, and emit helpers
+- `internal/output/events.go` — all event types, the `Event` marker interface, and its `sealedEvent()` implementations
 - `internal/output/plain_format.go` — `FormatEventLine()` switch for plain text rendering
 - `internal/output/plain_format_test.go` — test cases for format parity
 - `internal/ui/app.go` — `Update()` method that handles events in the TUI
@@ -29,18 +29,14 @@ In `internal/output/events.go`:
    }
    ```
 
-2. Add the new type to the `Event` union constraint:
+2. Add the marker method so the type satisfies the `Event` interface and `Sink.Emit` accepts it:
    ```go
-   type Event interface {
-       MessageEvent | AuthEvent | ... | <Name>Event
-   }
+   func (<Name>Event) sealedEvent() {}
    ```
 
-3. Add an emit helper function:
+   Call sites emit directly on the sink — no helper needed:
    ```go
-   func Emit<Name>(sink Sink, ...) {
-       Emit(sink, <Name>Event{...})
-   }
+   sink.Emit(output.<Name>Event{...})
    ```
 
 ## Step 2: Add plain text formatting
@@ -80,4 +76,5 @@ If the event doesn't need special TUI handling, the `default` case in `Update()`
 - Do NOT put pre-rendered UI strings in event fields — use typed domain data
 - Do NOT add lipgloss/styling imports to `plain_format.go`
 - Do NOT skip the format test — every event type needs parity coverage
-- Do NOT forget to add the type to the `Event` union — it won't compile without it
+- Do NOT add a package-level emit helper — call sites use `sink.Emit(output.<Name>Event{...})` directly
+- Do NOT forget to add `func (<Name>Event) sealedEvent() {}` — without it `Sink.Emit` will reject the type at compile time

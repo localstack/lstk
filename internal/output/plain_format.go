@@ -7,7 +7,7 @@ import (
 )
 
 // FormatEventLine converts an output event into a single display line.
-func FormatEventLine(event any) (string, bool) {
+func FormatEventLine(event Event) (string, bool) {
 	switch e := event.(type) {
 	case MessageEvent:
 		return formatMessageEvent(e), true
