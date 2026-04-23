@@ -26,3 +26,4 @@ func IsSilent(err error) bool {
 	var silent *SilentError
 	return errors.As(err, &silent)
 }
+

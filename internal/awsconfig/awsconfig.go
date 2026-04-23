@@ -16,7 +16,7 @@ import (
 )
 
 const (
-	profileName       = "localstack"
+	ProfileName       = "localstack"
 	configSectionName = "profile localstack" // ~/.aws/config uses "profile <name>" as section header
 	credsSectionName  = "localstack"         // ~/.aws/credentials uses just the profile name
 	// TODO: make region configurable (e.g. from container env or lstk config)
@@ -136,9 +136,9 @@ func credsNeedWrite(path string) (bool, error) {
 	return false, nil
 }
 
-// profileExists reports whether the localstack profile section is present in both
+// ProfileExists reports whether the localstack profile section is present in both
 // ~/.aws/config and ~/.aws/credentials.
-func profileExists() (bool, error) {
+func ProfileExists() (bool, error) {
 	configPath, credsPath, err := awsPaths()
 	if err != nil {
 		return false, err

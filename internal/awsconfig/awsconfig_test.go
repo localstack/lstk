@@ -50,7 +50,7 @@ func TestProfileExists(t *testing.T) {
 			dir := t.TempDir()
 			t.Setenv("HOME", dir)
 			tc.setup(t, dir)
-			ok, err := profileExists()
+			ok, err := ProfileExists()
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -71,7 +71,7 @@ func TestWriteProfile(t *testing.T) {
 			name:  "creates files when absent",
 			setup: func(t *testing.T, dir string) {},
 			check: func(t *testing.T, dir string) {
-				ok, err := profileExists()
+				ok, err := ProfileExists()
 				if err != nil {
 					t.Fatal(err)
 				}

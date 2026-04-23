@@ -2,7 +2,9 @@ package main
 
 import (
 	"context"
+	"errors"
 	"os"
+	"os/exec"
 	"os/signal"
 	"syscall"
 
@@ -14,6 +16,10 @@ func main() {
 	defer cancel()
 
 	if err := cmd.Execute(ctx); err != nil {
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) {
+			os.Exit(exitErr.ExitCode())
+		}
 		os.Exit(1)
 	}
 }
