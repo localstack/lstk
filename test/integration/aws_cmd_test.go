@@ -54,14 +54,17 @@ func TestAWSCommandInjectsEndpointAndArgs(t *testing.T) {
 	startTestContainer(t, ctx)
 
 	fakeDir := writeFakeAWS(t)
+	analyticsSrv, events := mockAnalyticsServer(t)
 	// Use a fresh HOME so a real localstack profile doesn't affect the args output.
-	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).With(env.Home, t.TempDir())
+	e := env.With("PATH", fakeDir).With(env.Home, t.TempDir()).
+		With(env.AnalyticsEndpoint, analyticsSrv.URL)
 
 	stdout, stderr, err := runLstk(t, ctx, t.TempDir(), e, "aws", "s3", "ls")
 	require.NoError(t, err, "lstk aws failed: %s", stderr)
 
 	assert.Contains(t, stdout, "ENDPOINT:http://")
 	assert.Contains(t, stdout, "ARGS:s3 ls")
+	assertCommandTelemetry(t, events, "aws", 0)
 }
 
 func TestAWSCommandInjectsCredentials(t *testing.T) {
@@ -245,13 +248,16 @@ func TestAWSCommandFailsWhenEmulatorNotRunning(t *testing.T) {
 	t.Cleanup(cleanup)
 
 	fakeDir := writeFakeAWS(t)
-	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir)
+	analyticsSrv, events := mockAnalyticsServer(t)
+	e := env.With("PATH", fakeDir).
+		With(env.AnalyticsEndpoint, analyticsSrv.URL)
 
 	stdout, _, err := runLstk(t, testContext(t), t.TempDir(), e, "aws", "s3", "ls")
 	require.Error(t, err)
 	assert.Contains(t, stdout, "is not running")
 	assert.Contains(t, stdout, "Start LocalStack:")
 	assert.Contains(t, stdout, "lstk")
+	assertCommandTelemetry(t, events, "aws", 1)
 }
 
 func TestAWSCommandHintsSetupCommandWhenProfileMissing(t *testing.T) {
