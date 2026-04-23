@@ -159,6 +159,10 @@ func TestFilterHostEnv(t *testing.T) {
 		"PATH=/usr/bin",
 		"HOME=/home/user",
 		"CI_PIPELINE=foo",
+		"PERSISTENCE=1",
+		"SNAPSHOT_SAVE_STRATEGY=ON_SHUTDOWN",
+		"SNAPSHOT_LOAD_STRATEGY=ON_STARTUP",
+		"SNAPSHOT_FLUSH_INTERVAL=30",
 	}
 
 	got := filterHostEnv(input)
@@ -171,5 +175,9 @@ func TestFilterHostEnv(t *testing.T) {
 	assert.NotContains(t, got, "PATH=/usr/bin")
 	assert.NotContains(t, got, "HOME=/home/user")
 	assert.NotContains(t, got, "CI_PIPELINE=foo", "only exact CI= must be forwarded, not CI_*")
+	assert.Contains(t, got, "PERSISTENCE=1")
+	assert.Contains(t, got, "SNAPSHOT_SAVE_STRATEGY=ON_SHUTDOWN")
+	assert.Contains(t, got, "SNAPSHOT_LOAD_STRATEGY=ON_STARTUP")
+	assert.Contains(t, got, "SNAPSHOT_FLUSH_INTERVAL=30")
 }
 
