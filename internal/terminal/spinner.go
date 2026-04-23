@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"strings"
 	"sync"
 	"time"
 
@@ -47,7 +46,7 @@ func (s *Spinner) Start() {
 		i := 0
 		for {
 			s.mu.Lock()
-			_, _ = fmt.Fprintf(s.out, "\r%s%s%s %s%s%s", spinnerColor, dotFrames[i%len(dotFrames)], resetColor, secondaryColor, s.label, resetColor)
+			_, _ = fmt.Fprintf(s.out, "\r\033[2K%s%s%s %s%s%s", spinnerColor, dotFrames[i%len(dotFrames)], resetColor, secondaryColor, s.label, resetColor)
 			s.mu.Unlock()
 
 			select {
@@ -71,8 +70,7 @@ func (s *Spinner) Stop() {
 func (s *Spinner) clearLine() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	width := len(s.label) + 10
-	_, _ = fmt.Fprintf(s.out, "\r%s\r", strings.Repeat(" ", width))
+	_, _ = fmt.Fprint(s.out, "\r\033[2K")
 }
 
 // IsTerminal reports whether w is a terminal.
@@ -82,4 +80,18 @@ func IsTerminal(w io.Writer) bool {
 		return false
 	}
 	return term.IsTerminal(int(f.Fd()))
+}
+
+// StopOnWriteWriter wraps a writer and stops the spinner on the first write.
+type StopOnWriteWriter struct {
+	W       io.Writer
+	Spinner *Spinner
+	once    sync.Once
+}
+
+func (s *StopOnWriteWriter) Write(p []byte) (int, error) {
+	s.once.Do(func() {
+		s.Spinner.Stop()
+	})
+	return s.W.Write(p)
 }

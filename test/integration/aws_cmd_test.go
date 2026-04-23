@@ -2,7 +2,6 @@ package integration_test
 
 import (
 	"fmt"
-	"os"
 	"path/filepath"
 	"runtime"
 	"testing"
@@ -174,4 +173,25 @@ func TestAWSCommandPropagatesExitCode(t *testing.T) {
 	require.Error(t, err, "lstk aws should fail when aws command fails")
 	assert.Contains(t, stderr, "simulated failure")
 	requireExitCode(t, 42, err)
+}
+
+func TestAWSCommandHintsSetupCommandWhenProfileMissing(t *testing.T) {
+	fakeDir := writeFakeAWS(t)
+	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).With(env.Home, t.TempDir())
+
+	stdout, _, err := runLstk(t, testContext(t), t.TempDir(), e, "aws", "s3", "ls")
+	require.NoError(t, err)
+	assert.Contains(t, stdout, "lstk setup aws")
+}
+
+func TestAWSCommandSuppressesHintWhenProfileExists(t *testing.T) {
+	fakeDir := writeFakeAWS(t)
+	homeDir := t.TempDir()
+	writeAWSProfile(t, homeDir)
+
+	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).With(env.Home, homeDir)
+
+	stdout, _, err := runLstk(t, testContext(t), t.TempDir(), e, "aws", "s3", "ls")
+	require.NoError(t, err)
+	assert.NotContains(t, stdout, "lstk setup aws")
 }
