@@ -446,6 +446,44 @@ func TestAppEnterDoesNothingWithNonLetterLabel(t *testing.T) {
 	}
 }
 
+func TestAppEnterSelectsHighlightedVerticalOption(t *testing.T) {
+	t.Parallel()
+
+	app := NewApp("dev", "", "", nil)
+	responseCh := make(chan output.InputResponse, 1)
+
+	model, _ := app.Update(output.UserInputRequestEvent{
+		Prompt:     "Update lstk to latest version?",
+		Options:    []output.InputOption{{Key: "u", Label: "Update now [U]"}, {Key: "s", Label: "Skip this version [S]"}, {Key: "n", Label: "Never ask again [N]"}},
+		ResponseCh: responseCh,
+		Vertical:   true,
+	})
+	app = model.(App)
+
+	model, _ = app.Update(tea.KeyMsg{Type: tea.KeyDown})
+	app = model.(App)
+
+	model, cmd := app.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	app = model.(App)
+	if cmd == nil {
+		t.Fatal("expected response command when enter is pressed on vertical prompt")
+	}
+	cmd()
+
+	select {
+	case resp := <-responseCh:
+		if resp.SelectedKey != "s" {
+			t.Fatalf("expected s key, got %q", resp.SelectedKey)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for response on channel")
+	}
+
+	if app.inputPrompt.Visible() {
+		t.Fatal("expected input prompt to be hidden after response")
+	}
+}
+
 func TestAppAnyKeyOptionResolvesOnAnyKeypress(t *testing.T) {
 	t.Parallel()
 

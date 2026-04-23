@@ -6,17 +6,24 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
+	"strings"
 
+	"github.com/pelletier/go-toml/v2"
 	"github.com/spf13/viper"
 )
 
 //go:embed default_config.toml
 var defaultConfigTemplate string
 
+type CLIConfig struct {
+	UpdateSkippedVersion string `mapstructure:"update_skipped_version"`
+}
+
 type Config struct {
-	Containers   []ContainerConfig            `mapstructure:"containers"`
-	Env          map[string]map[string]string `mapstructure:"env"`
-	UpdatePrompt bool                          `mapstructure:"update_prompt"`
+	Containers []ContainerConfig            `mapstructure:"containers"`
+	Env        map[string]map[string]string `mapstructure:"env"`
+	CLI        CLIConfig                    `mapstructure:"cli"`
 }
 
 func setDefaults() {
@@ -27,7 +34,6 @@ func setDefaults() {
 			"port": "4566",
 		},
 	})
-	viper.SetDefault("update_prompt", true)
 }
 
 func loadConfig(path string) error {
@@ -109,11 +115,47 @@ func resolvedConfigPath() string {
 
 func Set(key string, value any) error {
 	viper.Set(key, value)
-	return viper.WriteConfig()
+	return setInFile(viper.ConfigFileUsed(), key, value)
 }
 
-func DisableUpdatePrompt() error {
-	return Set("update_prompt", false)
+// setInFile inserts or updates a single "section.field" key in the TOML config
+// file without rewriting unrelated content, preserving comments and formatting.
+func setInFile(path, key string, value any) error {
+	parts := strings.SplitN(key, ".", 2)
+	if len(parts) != 2 {
+		return viper.WriteConfig()
+	}
+	section, field := parts[0], parts[1]
+
+	// Encode value using go-toml for correct scalar quoting.
+	type wrapper struct {
+		V any `toml:"v"`
+	}
+	enc, err := toml.Marshal(wrapper{V: value})
+	if err != nil {
+		return fmt.Errorf("failed to encode value: %w", err)
+	}
+	line := strings.TrimSpace(string(enc))
+	assignment := field + " =" + line[strings.IndexByte(line, '=')+1:]
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return fmt.Errorf("failed to read config file: %w", err)
+	}
+	content := string(data)
+
+	re := regexp.MustCompile(`(?m)^\s*` + regexp.QuoteMeta(field) + `\s*=.*$`)
+	if re.MatchString(content) {
+		content = re.ReplaceAllString(content, assignment)
+	} else {
+		content = strings.TrimRight(content, "\n") + "\n\n[" + section + "]\n" + assignment + "\n"
+	}
+
+	return os.WriteFile(path, []byte(content), 0644)
+}
+
+func SetUpdateSkippedVersion(version string) error {
+	return Set("cli.update_skipped_version", version)
 }
 
 func Get() (*Config, error) {

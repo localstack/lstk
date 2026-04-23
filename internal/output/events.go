@@ -122,6 +122,7 @@ type UserInputRequestEvent struct {
 	Prompt     string
 	Options    []InputOption
 	ResponseCh chan<- InputResponse
+	Vertical   bool
 }
 
 const (

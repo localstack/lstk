@@ -14,6 +14,7 @@ func TestInputPromptView(t *testing.T) {
 		name     string
 		prompt   string
 		options  []output.InputOption
+		vertical bool
 		contains []string
 		excludes []string
 	}{
@@ -21,12 +22,14 @@ func TestInputPromptView(t *testing.T) {
 			name:     "hidden returns empty",
 			prompt:   "",
 			options:  nil,
+			vertical: false,
 			contains: nil,
 		},
 		{
 			name:   "no options",
 			prompt: "Continue?",
 			options: nil,
+			vertical: false,
 			contains: []string{"?", "Continue?"},
 			excludes: []string{"(", "["},
 		},
@@ -34,6 +37,7 @@ func TestInputPromptView(t *testing.T) {
 			name:   "single option shows parentheses",
 			prompt: "Continue?",
 			options: []output.InputOption{{Key: "enter", Label: "Press ENTER"}},
+			vertical: false,
 			contains: []string{"?", "Continue?", "(Press ENTER)"},
 		},
 		{
@@ -43,12 +47,14 @@ func TestInputPromptView(t *testing.T) {
 				{Key: "y", Label: "Y"},
 				{Key: "n", Label: "n"},
 			},
+			vertical: false,
 			contains: []string{"?", "Set up a LocalStack profile for AWS CLI and SDKs in ~/.aws?", "[Y/n]"},
 		},
 		{
 			name:   "multi-line prompt renders trailing lines",
 			prompt: "First line\nSecond line\nThird line",
 			options: []output.InputOption{{Key: "y", Label: "Y"}},
+			vertical: false,
 			contains: []string{"?", "First line", "Second line", "Third line", "(Y)"},
 		},
 	}
@@ -67,7 +73,7 @@ func TestInputPromptView(t *testing.T) {
 				return
 			}
 
-			p = p.Show(tc.prompt, tc.options)
+			p = p.Show(tc.prompt, tc.options, tc.vertical)
 			view := p.View()
 
 			for _, s := range tc.contains {
