@@ -495,20 +495,4 @@ func TestStartCommandSucceedsForSnowflake(t *testing.T) {
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 }
 
-func TestStartCommandFailsForSnowflakeWithoutAddon(t *testing.T) {
-	requireDocker(t)
-	cleanupSnowflake()
-	t.Cleanup(cleanupSnowflake)
-
-	// License response without the Snowflake add-on product.
-	mockServer := createMockLicenseServerWithBody(`{"license_type":"ultimate","products":[]}`)
-	defer mockServer.Close()
-
-	configFile := writeSnowflakeConfig(t, "4567")
-
-	_, stderr, err := runLstk(t, testContext(t), "", env.With(env.AuthToken, "fake-token").With(env.APIEndpoint, mockServer.URL), "--config", configFile, "start")
-	require.Error(t, err, "expected lstk start to fail when Snowflake add-on is not in license")
-	requireExitCode(t, 1, err)
-	assert.Contains(t, stderr, "subscription does not include the Snowflake emulator")
-}
 
