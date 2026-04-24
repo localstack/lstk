@@ -3,7 +3,7 @@ description: Compute the next version tag, create it, and push it.
 
 inputs:
   bump:
-    description: Version bump type (patch or minor)
+    description: Version bump type (patch, minor, or major)
     required: true
 
 outputs:
@@ -28,23 +28,31 @@ runs:
       run: |
         set -euo pipefail
 
-        latest="$(git tag --list "v0.*.*" --sort=-v:refname | grep -E "^v0\.[0-9]+\.[0-9]+$" | head -n 1 || true)"
+        latest="$(git tag --list "v*.*.*" --sort=-v:refname | grep -E "^v[0-9]+\.[0-9]+\.[0-9]+$" | head -n 1 || true)"
         if [[ -z "${latest}" ]]; then
+          major=0
           minor=1
           patch=0
         else
+          current_major="$(echo "${latest}" | cut -d. -f1 | tr -d 'v')"
           current_minor="$(echo "${latest}" | cut -d. -f2)"
           current_patch="$(echo "${latest}" | cut -d. -f3)"
-          if [[ "${BUMP}" == "minor" ]]; then
+          if [[ "${BUMP}" == "major" ]]; then
+            major="$(( current_major + 1 ))"
+            minor=0
+            patch=0
+          elif [[ "${BUMP}" == "minor" ]]; then
+            major="${current_major}"
             minor="$(( current_minor + 1 ))"
             patch=0
           else
+            major="${current_major}"
             minor="${current_minor}"
             patch="$(( current_patch + 1 ))"
           fi
         fi
 
-        tag="v0.${minor}.${patch}"
+        tag="v${major}.${minor}.${patch}"
         if git rev-parse -q --verify "refs/tags/${tag}" >/dev/null; then
           echo "Tag ${tag} already exists"
           exit 1
