@@ -297,16 +297,14 @@ func pullImages(ctx context.Context, rt runtime.Runtime, sink output.Sink, tel *
 func tryPrePullLicenseValidation(ctx context.Context, sink output.Sink, opts StartOptions, tel *telemetry.Client, containers []runtime.ContainerConfig, token, licenseFilePath string) ([]runtime.ContainerConfig, error) {
 	var needsPostPull []runtime.ContainerConfig
 	for _, c := range containers {
+		if c.EmulatorType == string(config.EmulatorSnowflake) {
+			continue
+		}
+
 		if c.Tag != "" && c.Tag != "latest" {
 			if err := validateLicense(ctx, sink, opts, tel, c, token, licenseFilePath); err != nil {
 				return nil, err
 			}
-			continue
-		}
-
-		// Platform catalog API does not support Snowflake yet; fall through to post-pull image inspection.
-		if c.EmulatorType == string(config.EmulatorSnowflake) {
-			needsPostPull = append(needsPostPull, c)
 			continue
 		}
 
@@ -331,6 +329,10 @@ func tryPrePullLicenseValidation(ctx context.Context, sink output.Sink, opts Sta
 // Fallback path: inspects each pulled image for its version, then validates the license.
 func validateLicensesFromImages(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts StartOptions, tel *telemetry.Client, containers []runtime.ContainerConfig, token, licenseFilePath string) error {
 	for _, c := range containers {
+		if c.EmulatorType == string(config.EmulatorSnowflake) {
+			continue
+		}
+
 		v, err := rt.GetImageVersion(ctx, c.Image)
 		if err != nil {
 			return fmt.Errorf("could not resolve version from image %s: %w", c.Image, err)

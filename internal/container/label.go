@@ -31,9 +31,8 @@ func ResolveEmulatorLabel(ctx context.Context, client api.PlatformAPI, container
 
 	tag := c.Tag
 	if tag == "" || tag == "latest" {
-		// Platform catalog API does not support Snowflake yet; skip the header label lookup.
 		if c.Type == config.EmulatorSnowflake {
-			return NoLicenseLabel, false
+			return "LocalStack Snowflake", false
 		}
 		apiCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
 		v, err := client.GetLatestCatalogVersion(apiCtx, string(c.Type))
