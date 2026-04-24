@@ -17,10 +17,6 @@ const (
 
 	DefaultAWSPort = "4566"
 	dockerRegistry = "localstack"
-
-	// SnowflakeAddonProduct is the product name returned in license responses when the
-	// subscription includes the Snowflake emulator add-on.
-	SnowflakeAddonProduct = "localstack.snowflake"
 )
 
 var emulatorDisplayNames = map[EmulatorType]string{
@@ -32,13 +28,6 @@ var emulatorDisplayNames = map[EmulatorType]string{
 var emulatorImages = map[EmulatorType]string{
 	EmulatorAWS:       "localstack-pro",
 	EmulatorSnowflake: "snowflake",
-}
-
-// emulatorLicenseProductNames maps emulator types to the product name used in license requests.
-// Snowflake is an add-on to localstack-pro, so it shares the same license product name.
-var emulatorLicenseProductNames = map[EmulatorType]string{
-	EmulatorAWS:       "localstack-pro",
-	EmulatorSnowflake: "localstack-pro",
 }
 
 var emulatorHealthPaths = map[EmulatorType]string{
@@ -151,15 +140,5 @@ func (c *ContainerConfig) ProductName() (string, error) {
 		return "", fmt.Errorf("%s emulator not supported yet by lstk", c.Type)
 	}
 	return productName, nil
-}
-
-// LicenseProductName returns the product name to use in license API requests.
-// This differs from ProductName for emulators like Snowflake that are add-ons to localstack-pro.
-func (c *ContainerConfig) LicenseProductName() (string, error) {
-	name, ok := emulatorLicenseProductNames[c.Type]
-	if !ok {
-		return "", fmt.Errorf("%s emulator not supported yet by lstk", c.Type)
-	}
-	return name, nil
 }
 

@@ -24,7 +24,7 @@ func ResolveEmulatorLabel(ctx context.Context, client api.PlatformAPI, container
 
 	c := containers[0]
 
-	licenseProductName, err := c.LicenseProductName()
+	productName, err := c.ProductName()
 	if err != nil {
 		return NoLicenseLabel, false
 	}
@@ -46,7 +46,7 @@ func ResolveEmulatorLabel(ctx context.Context, client api.PlatformAPI, container
 
 	hostname, _ := os.Hostname()
 	licReq := &api.LicenseRequest{
-		Product:     api.ProductInfo{Name: licenseProductName, Version: tag},
+		Product:     api.ProductInfo{Name: productName, Version: tag},
 		Credentials: api.CredentialsInfo{Token: token},
 		Machine:     api.MachineInfo{Hostname: hostname, Platform: stdruntime.GOOS, PlatformRelease: stdruntime.GOARCH},
 	}

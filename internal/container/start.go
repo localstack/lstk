@@ -114,11 +114,6 @@ func Start(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts Start
 			return err
 		}
 
-		licenseProductName, err := c.LicenseProductName()
-		if err != nil {
-			return err
-		}
-
 		containerPort, err := c.ContainerPort()
 		if err != nil {
 			return err
@@ -162,9 +157,8 @@ func Start(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts Start
 			HealthPath:         healthPath,
 			Env:                env,
 			Tag:                c.Tag,
-			ProductName:        productName,
-			LicenseProductName: licenseProductName,
-			Binds:              binds,
+			ProductName: productName,
+			Binds:       binds,
 			ExtraPorts:         servicePortRange(),
 		}
 	}
@@ -473,7 +467,7 @@ func validateLicense(ctx context.Context, sink output.Sink, opts StartOptions, t
 	hostname, _ := os.Hostname()
 	licenseReq := &api.LicenseRequest{
 		Product: api.ProductInfo{
-			Name:    containerConfig.LicenseProductName,
+			Name:    containerConfig.ProductName,
 			Version: version,
 		},
 		Credentials: api.CredentialsInfo{
@@ -494,17 +488,6 @@ func validateLicense(ctx context.Context, sink output.Sink, opts StartOptions, t
 		}
 		emitEmulatorStartError(ctx, tel, containerConfig, telemetry.ErrCodeLicenseInvalid, err.Error())
 		return fmt.Errorf("license validation failed for %s:%s: %w", containerConfig.ProductName, version, err)
-	}
-
-	if containerConfig.EmulatorType == string(config.EmulatorSnowflake) {
-		if !licenseResp.HasProduct(config.SnowflakeAddonProduct) {
-			licErr := &api.LicenseError{
-				Status:  http.StatusForbidden,
-				Message: "your subscription does not include the Snowflake emulator",
-			}
-			emitEmulatorStartError(ctx, tel, containerConfig, telemetry.ErrCodeLicenseInvalid, licErr.Error())
-			return fmt.Errorf("license validation failed for %s:%s: %w", containerConfig.ProductName, version, licErr)
-		}
 	}
 
 	if licenseResp != nil && len(licenseResp.RawBytes) > 0 {

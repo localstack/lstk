@@ -67,27 +67,9 @@ type MachineInfo struct {
 	PlatformRelease string `json:"platform_release,omitempty"`
 }
 
-type LicenseProductEntry struct {
-	Name string `json:"name"`
-}
-
 type LicenseResponse struct {
-	LicenseType string                `json:"license_type"`
-	Products    []LicenseProductEntry `json:"products"`
-	RawBytes    json.RawMessage       `json:"-"`
-}
-
-// HasProduct reports whether the license response includes a product with the given name.
-func (r *LicenseResponse) HasProduct(name string) bool {
-	if r == nil {
-		return false
-	}
-	for _, p := range r.Products {
-		if p.Name == name {
-			return true
-		}
-	}
-	return false
+	LicenseType string          `json:"license_type"`
+	RawBytes    json.RawMessage `json:"-"`
 }
 
 var planDisplayNames = map[string]string{
