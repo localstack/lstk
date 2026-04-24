@@ -475,7 +475,7 @@ func TestStartCommandSucceedsForSnowflake(t *testing.T) {
 	mockServer := createMockLicenseServer(true)
 	defer mockServer.Close()
 
-	const hostPort = "4567"
+	const hostPort = "4566"
 	configFile := writeSnowflakeConfig(t, hostPort)
 
 	ctx := testContext(t)
@@ -494,5 +494,3 @@ func TestStartCommandSucceedsForSnowflake(t *testing.T) {
 	t.Cleanup(func() { _ = resp.Body.Close() })
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 }
-
-
