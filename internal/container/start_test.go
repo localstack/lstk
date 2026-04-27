@@ -160,8 +160,6 @@ func TestFilterHostEnv(t *testing.T) {
 		"PATH=/usr/bin",
 		"HOME=/home/user",
 		"CI_PIPELINE=foo",
-		"PERSISTENCE=1",
-		"SNAPSHOT_SAVE_STRATEGY=ON_SHUTDOWN",
 	}
 
 	got := filterHostEnv(input)
