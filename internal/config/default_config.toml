@@ -2,9 +2,11 @@
 # Run 'lstk config path' to see where this file lives.
 
 # Each [[containers]] block defines an emulator instance.
-# You can define multiple to run them side by side.
+# Currently, running AWS and Snowflake at the same time is not fully supported —
+# enable only one [[containers]] block at a time.
+
 [[containers]]
-type = "aws"     # Emulator type. Currently supported: "aws"
+type = "aws"     # Emulator type. Currently supported: "aws", "snowflake"
 tag  = "latest"  # Docker image tag, e.g. "latest", "2026.03"
 port = "4566"    # Host port the emulator will be accessible on
 # volume = ""    # Host directory for persistent state (default: OS cache dir)

@@ -149,17 +149,17 @@ func Start(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts Start
 		binds = append(binds, runtime.BindMount{HostPath: volumeDir, ContainerPath: "/var/lib/localstack"})
 
 		containers[i] = runtime.ContainerConfig{
-			Image:         image,
-			Name:          containerName,
-			EmulatorType:  string(c.Type),
-			Port:          c.Port,
-			ContainerPort: containerPort,
-			HealthPath:    healthPath,
-			Env:           env,
-			Tag:           c.Tag,
-			ProductName:   productName,
-			Binds:         binds,
-			ExtraPorts:    servicePortRange(),
+			Image:              image,
+			Name:               containerName,
+			EmulatorType:       string(c.Type),
+			Port:               c.Port,
+			ContainerPort:      containerPort,
+			HealthPath:         healthPath,
+			Env:                env,
+			Tag:                c.Tag,
+			ProductName: productName,
+			Binds:       binds,
+			ExtraPorts:         servicePortRange(),
 		}
 	}
 
@@ -235,22 +235,24 @@ func runPostStartSetups(ctx context.Context, sink output.Sink, containers []conf
 			if err := setup(ctx, sink, interactive, resolvedHost); err != nil {
 				return err
 			}
-			emitPostStartPointers(sink, resolvedHost, webAppURL)
+			emitPostStartPointers(sink, resolvedHost, webAppURL, true)
 		}
 	}
 	return nil
 }
 
-func emitPostStartPointers(sink output.Sink, resolvedHost, webAppURL string) {
+func emitPostStartPointers(sink output.Sink, resolvedHost, webAppURL string, showTip bool) {
 	output.EmitSecondary(sink, fmt.Sprintf("• Endpoint: %s", resolvedHost))
 	if webAppURL != "" {
 		output.EmitSecondary(sink, fmt.Sprintf("• Web app: %s", strings.TrimRight(webAppURL, "/")))
 	}
-	tips := []string{
-		"> Tip: View emulator logs: lstk logs --follow",
-		"> Tip: View deployed resources: lstk status",
+	if showTip {
+		tips := []string{
+			"> Tip: View emulator logs: lstk logs --follow",
+			"> Tip: View deployed resources: lstk status",
+		}
+		output.EmitSecondary(sink, tips[rand.IntN(len(tips))])
 	}
-	output.EmitSecondary(sink, tips[rand.IntN(len(tips))])
 }
 
 func pullImages(ctx context.Context, rt runtime.Runtime, sink output.Sink, tel *telemetry.Client, containers []runtime.ContainerConfig) (map[string]bool, error) {
@@ -291,6 +293,10 @@ func pullImages(ctx context.Context, rt runtime.Runtime, sink output.Sink, tel *
 func tryPrePullLicenseValidation(ctx context.Context, sink output.Sink, opts StartOptions, tel *telemetry.Client, containers []runtime.ContainerConfig, token, licenseFilePath string) ([]runtime.ContainerConfig, error) {
 	var needsPostPull []runtime.ContainerConfig
 	for _, c := range containers {
+		if c.EmulatorType == string(config.EmulatorSnowflake) {
+			continue
+		}
+
 		if c.Tag != "" && c.Tag != "latest" {
 			if err := validateLicense(ctx, sink, opts, tel, c, token, licenseFilePath); err != nil {
 				return nil, err
@@ -319,6 +325,10 @@ func tryPrePullLicenseValidation(ctx context.Context, sink output.Sink, opts Sta
 // Fallback path: inspects each pulled image for its version, then validates the license.
 func validateLicensesFromImages(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts StartOptions, tel *telemetry.Client, containers []runtime.ContainerConfig, token, licenseFilePath string) error {
 	for _, c := range containers {
+		if c.EmulatorType == string(config.EmulatorSnowflake) {
+			continue
+		}
+
 		v, err := rt.GetImageVersion(ctx, c.Image)
 		if err != nil {
 			return fmt.Errorf("could not resolve version from image %s: %w", c.Image, err)
@@ -369,7 +379,7 @@ func selectContainersToStart(ctx context.Context, rt runtime.Runtime, sink outpu
 			if !dnsOK {
 				output.EmitNote(sink, endpoint.DNSRebindNote)
 			}
-			emitPostStartPointers(sink, resolvedHost, webAppURL)
+			emitPostStartPointers(sink, resolvedHost, webAppURL, c.EmulatorType == string(config.EmulatorAWS))
 			continue
 		}
 

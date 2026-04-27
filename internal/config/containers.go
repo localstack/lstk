@@ -26,11 +26,13 @@ var emulatorDisplayNames = map[EmulatorType]string{
 }
 
 var emulatorImages = map[EmulatorType]string{
-	EmulatorAWS: "localstack-pro",
+	EmulatorAWS:       "localstack-pro",
+	EmulatorSnowflake: "snowflake",
 }
 
 var emulatorHealthPaths = map[EmulatorType]string{
-	EmulatorAWS: "/_localstack/health",
+	EmulatorAWS:       "/_localstack/health",
+	EmulatorSnowflake: "/_localstack/health",
 }
 
 type ContainerConfig struct {
@@ -117,7 +119,7 @@ func (c *ContainerConfig) HealthPath() (string, error) {
 
 func (c *ContainerConfig) ContainerPort() (string, error) {
 	switch c.Type {
-	case EmulatorAWS:
+	case EmulatorAWS, EmulatorSnowflake:
 		return DefaultAWSPort + "/tcp", nil
 	default:
 		return "", fmt.Errorf("%s emulator not supported yet by lstk", c.Type)
@@ -139,3 +141,4 @@ func (c *ContainerConfig) ProductName() (string, error) {
 	}
 	return productName, nil
 }
+

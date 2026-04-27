@@ -36,7 +36,7 @@ func TestEmitPostStartPointers_WithWebApp(t *testing.T) {
 	var out bytes.Buffer
 	sink := output.NewPlainSink(&out)
 
-	emitPostStartPointers(sink, "localhost.localstack.cloud:4566", "https://app.localstack.cloud/")
+	emitPostStartPointers(sink, "localhost.localstack.cloud:4566", "https://app.localstack.cloud/", true)
 
 	got := out.String()
 	assert.Contains(t, got, "• Endpoint: localhost.localstack.cloud:4566\n")
@@ -48,7 +48,7 @@ func TestEmitPostStartPointers_WithoutWebApp(t *testing.T) {
 	var out bytes.Buffer
 	sink := output.NewPlainSink(&out)
 
-	emitPostStartPointers(sink, "127.0.0.1:4566", "")
+	emitPostStartPointers(sink, "127.0.0.1:4566", "", true)
 
 	got := out.String()
 	assert.Contains(t, got, "• Endpoint: 127.0.0.1:4566\n")
@@ -136,6 +136,18 @@ func TestSelectContainersToStart_QueuesContainerWhenNoneRunningOnPort(t *testing
 
 	require.NoError(t, err)
 	assert.Equal(t, []runtime.ContainerConfig{c}, result, "container should be queued for start")
+}
+
+func TestEmitPostStartPointers_NoTip(t *testing.T) {
+	var out bytes.Buffer
+	sink := output.NewPlainSink(&out)
+
+	emitPostStartPointers(sink, "localhost.localstack.cloud:4566", "https://app.localstack.cloud/", false)
+
+	got := out.String()
+	assert.Contains(t, got, "• Endpoint: localhost.localstack.cloud:4566\n")
+	assert.Contains(t, got, "• Web app: https://app.localstack.cloud\n")
+	assert.NotContains(t, got, "> Tip:")
 }
 
 func TestServicePortRange_ReturnsExpectedPorts(t *testing.T) {

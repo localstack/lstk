@@ -22,9 +22,9 @@ test:
 test-integration: $(BUILD_DIR)/$(BINARY_NAME)
 	@JUNIT=""; [ -n "$$CREATE_JUNIT_REPORT" ] && JUNIT="--junitfile ../../test-integration-results.xml"; \
 	if [ "$$(uname)" = "Darwin" ]; then \
-		cd test/integration && LSTK_KEYRING=file go run gotest.tools/gotestsum@latest --format testname $$JUNIT -- -count=1 $(if $(RUN),-run $(RUN)) ./...; \
+		cd test/integration && LSTK_KEYRING=file go run gotest.tools/gotestsum@latest --format testname $$JUNIT -- -count=1 -timeout 15m $(if $(RUN),-run $(RUN)) ./...; \
 	else \
-		cd test/integration && go run gotest.tools/gotestsum@latest --format testname $$JUNIT -- -count=1 $(if $(RUN),-run $(RUN)) ./...; \
+		cd test/integration && go run gotest.tools/gotestsum@latest --format testname $$JUNIT -- -count=1 -timeout 15m $(if $(RUN),-run $(RUN)) ./...; \
 	fi
 
 otel:
