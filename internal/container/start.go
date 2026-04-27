@@ -414,10 +414,7 @@ func selectContainersToStart(ctx context.Context, rt runtime.Runtime, sink outpu
 		if conflictPort, err := ports.CheckAvailable(extraSpecs...); err != nil {
 			output.EmitError(sink, output.ErrorEvent{
 				Title:   fmt.Sprintf("Port %s is already in use", conflictPort),
-				Summary: "LocalStack requires this port. Another instance may be running.",
-				Actions: []output.ErrorAction{
-					{Label: "Stop existing emulator:", Value: "lstk stop"},
-				},
+				Summary: "LocalStack requires this port. Free it before starting.",
 			})
 			emitEmulatorStartError(ctx, tel, c, telemetry.ErrCodePortConflict, err.Error())
 			return nil, output.NewSilentError(err)
