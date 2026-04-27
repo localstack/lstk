@@ -235,22 +235,24 @@ func runPostStartSetups(ctx context.Context, sink output.Sink, containers []conf
 			if err := setup(ctx, sink, interactive, resolvedHost); err != nil {
 				return err
 			}
-			emitPostStartPointers(sink, resolvedHost, webAppURL)
+			emitPostStartPointers(sink, resolvedHost, webAppURL, true)
 		}
 	}
 	return nil
 }
 
-func emitPostStartPointers(sink output.Sink, resolvedHost, webAppURL string) {
+func emitPostStartPointers(sink output.Sink, resolvedHost, webAppURL string, showTip bool) {
 	output.EmitSecondary(sink, fmt.Sprintf("• Endpoint: %s", resolvedHost))
 	if webAppURL != "" {
 		output.EmitSecondary(sink, fmt.Sprintf("• Web app: %s", strings.TrimRight(webAppURL, "/")))
 	}
-	tips := []string{
-		"> Tip: View emulator logs: lstk logs --follow",
-		"> Tip: View deployed resources: lstk status",
+	if showTip {
+		tips := []string{
+			"> Tip: View emulator logs: lstk logs --follow",
+			"> Tip: View deployed resources: lstk status",
+		}
+		output.EmitSecondary(sink, tips[rand.IntN(len(tips))])
 	}
-	output.EmitSecondary(sink, tips[rand.IntN(len(tips))])
 }
 
 func pullImages(ctx context.Context, rt runtime.Runtime, sink output.Sink, tel *telemetry.Client, containers []runtime.ContainerConfig) (map[string]bool, error) {
@@ -377,7 +379,7 @@ func selectContainersToStart(ctx context.Context, rt runtime.Runtime, sink outpu
 			if !dnsOK {
 				output.EmitNote(sink, endpoint.DNSRebindNote)
 			}
-			emitPostStartPointers(sink, resolvedHost, webAppURL)
+			emitPostStartPointers(sink, resolvedHost, webAppURL, c.EmulatorType == string(config.EmulatorAWS))
 			continue
 		}
 

@@ -12,12 +12,6 @@ port = "4566"    # Host port the emulator will be accessible on
 # volume = ""    # Host directory for persistent state (default: OS cache dir)
 # env = []       # Named environment profiles to apply (see [env.*] sections below)
 
-# To use the Snowflake emulator instead, comment out the AWS block above and uncomment this one.
-# [[containers]]
-# type = "snowflake"
-# tag  = "latest"
-# port = "4566"
-
 # Environment profiles let you group environment variables and reference
 # them by name in one or more containers via the 'env' field above.
 #
