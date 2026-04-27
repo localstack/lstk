@@ -365,7 +365,7 @@ func TestStartCommandForwardsPersistenceEnvFromHost(t *testing.T) {
 	require.True(t, inspect.State.Running)
 
 	envVars := containerEnvToMap(inspect.Config.Env)
-	assert.Equal(t, "1", envVars["PERSISTENCE"])
+	assert.Equal(t, "1", envVars["LOCALSTACK_PERSISTENCE"])
 }
 
 func TestStartCommandSetsPersistenceEnvFromConfig(t *testing.T) {

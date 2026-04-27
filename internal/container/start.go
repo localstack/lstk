@@ -536,18 +536,14 @@ func awaitStartup(ctx context.Context, rt runtime.Runtime, sink output.Sink, con
 }
 
 // filterHostEnv returns the subset of host environment entries that should be
-// forwarded to the emulator container. It keeps CI, LOCALSTACK_*, and persistence-related variables
+// forwarded to the emulator container. It keeps CI and LOCALSTACK_* variables
 // but explicitly drops LOCALSTACK_AUTH_TOKEN so the host value cannot overwrite
 // the token resolved by lstk (which may come from the keyring).
 func filterHostEnv(envList []string) []string {
 	var out []string
 	for _, e := range envList {
 		if strings.HasPrefix(e, "CI=") ||
-			(strings.HasPrefix(e, "LOCALSTACK_") && !strings.HasPrefix(e, "LOCALSTACK_AUTH_TOKEN=")) ||
-			strings.HasPrefix(e, "PERSISTENCE=") ||
-			strings.HasPrefix(e, "SNAPSHOT_SAVE_STRATEGY=") ||
-			strings.HasPrefix(e, "SNAPSHOT_LOAD_STRATEGY=") ||
-			strings.HasPrefix(e, "SNAPSHOT_FLUSH_INTERVAL=") {
+			(strings.HasPrefix(e, "LOCALSTACK_") && !strings.HasPrefix(e, "LOCALSTACK_AUTH_TOKEN=")) {
 			out = append(out, e)
 		}
 	}
