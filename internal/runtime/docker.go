@@ -17,6 +17,7 @@ import (
 
 	"github.com/containerd/errdefs"
 	"github.com/docker/docker/api/types/container"
+	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/api/types/image"
 	"github.com/docker/docker/client"
 	"github.com/docker/docker/pkg/stdcopy"
@@ -271,7 +272,12 @@ func (d *DockerRuntime) Stop(ctx context.Context, containerName string) error {
 	if err := d.client.ContainerStop(ctx, containerName, container.StopOptions{}); err != nil {
 		return err
 	}
-	return d.client.ContainerRemove(ctx, containerName, container.RemoveOptions{})
+	err := d.client.ContainerRemove(ctx, containerName, container.RemoveOptions{})
+	// Ignore conflict and not-found: container is gone, which is the goal.
+	if err != nil && !errdefs.IsConflict(err) && !errdefs.IsNotFound(err) {
+		return err
+	}
+	return nil
 }
 
 func (d *DockerRuntime) Remove(ctx context.Context, containerName string) error {
@@ -368,6 +374,53 @@ func (d *DockerRuntime) GetBoundPort(ctx context.Context, containerName string, 
 		return "", fmt.Errorf("no binding found for port %s on container %s", containerPort, containerName)
 	}
 	return bindings[0].HostPort, nil
+}
+
+func (d *DockerRuntime) FindRunningByImage(ctx context.Context, imageRepos []string, containerPort string) (*RunningContainer, error) {
+	list, err := d.client.ContainerList(ctx, container.ListOptions{
+		Filters: filters.NewArgs(filters.Arg("status", "running")),
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	portStr, proto, found := strings.Cut(containerPort, "/")
+	if !found {
+		proto = "tcp"
+	}
+	privatePort, err := strconv.ParseUint(portStr, 10, 16)
+	if err != nil {
+		return nil, fmt.Errorf("invalid container port %q: %w", containerPort, err)
+	}
+
+	for _, c := range list {
+		if !matchesAnyImageRepo(c.Image, imageRepos) {
+			continue
+		}
+		for _, p := range c.Ports {
+			if p.PrivatePort == uint16(privatePort) && p.Type == proto {
+				name := ""
+				if len(c.Names) > 0 {
+					name = strings.TrimPrefix(c.Names[0], "/")
+				}
+				return &RunningContainer{
+					Name:      name,
+					Image:     c.Image,
+					BoundPort: strconv.Itoa(int(p.PublicPort)),
+				}, nil
+			}
+		}
+	}
+	return nil, nil
+}
+
+func matchesAnyImageRepo(image string, repos []string) bool {
+	for _, repo := range repos {
+		if image == repo || strings.HasPrefix(image, repo+":") {
+			return true
+		}
+	}
+	return false
 }
 
 func (d *DockerRuntime) GetImageVersion(ctx context.Context, imageName string) (string, error) {
