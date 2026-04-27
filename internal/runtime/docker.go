@@ -57,20 +57,24 @@ func NewDockerRuntime(dockerHost string) (*DockerRuntime, error) {
 	return &DockerRuntime{client: cli}, nil
 }
 
+func vmSocketPaths(home string) []string {
+	return []string{
+		filepath.Join(home, ".docker", "run", "docker.sock"),
+		filepath.Join(home, ".colima", "default", "docker.sock"),
+		filepath.Join(home, ".colima", "docker.sock"),
+		filepath.Join(home, ".orbstack", "run", "docker.sock"),
+		filepath.Join(home, ".lima", "docker", "sock", "docker.sock"),
+	}
+}
+
 func findDockerSocket() string {
-	// Lima VM: Docker socket is natively available at the standard path.
-	// Lima sets LIMA_INSTANCE inside the VM.
+	// Lima sets LIMA_INSTANCE inside the VM; the socket is at the standard path natively.
 	if os.Getenv("LIMA_INSTANCE") != "" {
 		return "/var/run/docker.sock"
 	}
 
 	home, _ := os.UserHomeDir()
-	return probeSocket(
-		filepath.Join(home, ".colima", "default", "docker.sock"),
-		filepath.Join(home, ".colima", "docker.sock"),
-		filepath.Join(home, ".orbstack", "run", "docker.sock"),
-		filepath.Join(home, ".lima", "docker", "sock", "docker.sock"),
-	)
+	return probeSocket(vmSocketPaths(home)...)
 }
 
 func probeSocket(candidates ...string) string {
@@ -82,21 +86,15 @@ func probeSocket(candidates ...string) string {
 	return ""
 }
 
-// isVM reports whether the Docker daemon is running inside a VM (e.g., Colima, OrbStack).
+// isVM reports whether the Docker daemon is running inside a VM (e.g., Docker Desktop, Colima, OrbStack, Lima).
 // In these cases the socket is remapped inside the VM and the container sees it at
 // /var/run/docker.sock even if the CLI connects via a user-scoped socket path.
 func (d *DockerRuntime) isVM() bool {
 	host := d.client.DaemonHost()
 	if strings.HasPrefix(host, "unix://") {
 		socketPath := strings.TrimPrefix(host, "unix://")
-		// Check for known VM-based Docker socket locations
 		home, _ := os.UserHomeDir()
-		vmSockets := []string{
-			filepath.Join(home, ".colima", "default", "docker.sock"),
-			filepath.Join(home, ".colima", "docker.sock"),
-			filepath.Join(home, ".orbstack", "run", "docker.sock"),
-		}
-		for _, vmSock := range vmSockets {
+		for _, vmSock := range vmSocketPaths(home) {
 			if socketPath == vmSock {
 				return true
 			}
