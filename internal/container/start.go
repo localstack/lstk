@@ -440,16 +440,14 @@ func emitLocalStackAlreadyRunningWarning(sink output.Sink, port, runningVersion,
 }
 
 func emitPortInUseError(sink output.Sink, port string) {
-	actions := []output.ErrorAction{
-		{Label: "Stop existing emulator:", Value: "lstk stop"},
-	}
+	actions := []output.ErrorAction{}
 	configPath, pathErr := config.ConfigFilePath()
 	if pathErr == nil {
 		actions = append(actions, output.ErrorAction{Label: "Use another port in the configuration:", Value: configPath})
 	}
 	output.EmitError(sink, output.ErrorEvent{
 		Title:   fmt.Sprintf("Port %s already in use", port),
-		Summary: "LocalStack may already be running.",
+		Summary: "Free the port or configure a different one.",
 		Actions: actions,
 	})
 }
