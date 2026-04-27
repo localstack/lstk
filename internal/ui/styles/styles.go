@@ -51,7 +51,7 @@ var (
 		Foreground(lipgloss.Color("214"))
 
 	LogError = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#C33820"))
+			Foreground(lipgloss.Color("1"))
 
 	// Secondary/muted style for prefixes
 	Secondary = lipgloss.NewStyle().
@@ -60,7 +60,7 @@ var (
 	// Error styles
 	ErrorTitle = lipgloss.NewStyle().
 			Bold(true).
-			Foreground(lipgloss.Color("#C33820"))
+			Foreground(lipgloss.Color("1"))
 
 	ErrorDetail = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("245"))
