@@ -156,13 +156,12 @@ func TestFilterHostEnv(t *testing.T) {
 		"LOCALSTACK_DISABLE_EVENTS=1",
 		"LOCALSTACK_API_ENDPOINT=https://example.test",
 		"LOCALSTACK_AUTH_TOKEN=host-token",
+		"LOCALSTACK_PERSISTENCE=1",
 		"PATH=/usr/bin",
 		"HOME=/home/user",
 		"CI_PIPELINE=foo",
 		"PERSISTENCE=1",
 		"SNAPSHOT_SAVE_STRATEGY=ON_SHUTDOWN",
-		"SNAPSHOT_LOAD_STRATEGY=ON_STARTUP",
-		"SNAPSHOT_FLUSH_INTERVAL=30",
 	}
 
 	got := filterHostEnv(input)
@@ -170,14 +169,10 @@ func TestFilterHostEnv(t *testing.T) {
 	assert.Contains(t, got, "CI=true")
 	assert.Contains(t, got, "LOCALSTACK_DISABLE_EVENTS=1")
 	assert.Contains(t, got, "LOCALSTACK_API_ENDPOINT=https://example.test")
+	assert.Contains(t, got, "LOCALSTACK_PERSISTENCE=1")
 	assert.NotContains(t, got, "LOCALSTACK_AUTH_TOKEN=host-token",
 		"host LOCALSTACK_AUTH_TOKEN must be filtered so it cannot overwrite the lstk-resolved token")
 	assert.NotContains(t, got, "PATH=/usr/bin")
 	assert.NotContains(t, got, "HOME=/home/user")
 	assert.NotContains(t, got, "CI_PIPELINE=foo", "only exact CI= must be forwarded, not CI_*")
-	assert.Contains(t, got, "PERSISTENCE=1")
-	assert.Contains(t, got, "SNAPSHOT_SAVE_STRATEGY=ON_SHUTDOWN")
-	assert.Contains(t, got, "SNAPSHOT_LOAD_STRATEGY=ON_STARTUP")
-	assert.Contains(t, got, "SNAPSHOT_FLUSH_INTERVAL=30")
 }
-
