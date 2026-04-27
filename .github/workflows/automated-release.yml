@@ -36,7 +36,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          latest_tag="$(git tag --list "v0.*.*" --sort=-v:refname | grep -E "^v0\.[0-9]+\.[0-9]+$" | head -n 1 || true)"
+          latest_tag="$(git tag --list "v*.*.*" --sort=-v:refname | grep -E "^v[0-9]+\.[0-9]+\.[0-9]+$" | head -n 1 || true)"
           if [[ -z "${latest_tag}" ]]; then
             echo "No previous tag found, proceeding with release"
             echo "has_changes=true" >> "${GITHUB_OUTPUT}"
@@ -51,6 +51,62 @@ jobs:
             fi
           fi
 
+  determine-bump:
+    name: Determine version bump
+    needs: check-changes
+    if: needs.check-changes.outputs.has_changes == 'true'
+    runs-on: ubuntu-latest
+    outputs:
+      bump: ${{ steps.bump.outputs.bump }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+        with:
+          ref: main
+          fetch-depth: 0
+          token: ${{ secrets.PRO_ACCESS_TOKEN }}
+
+      - name: Fetch tags
+        run: git fetch --tags --force
+
+      - name: Determine bump type from PR labels
+        id: bump
+        env:
+          GH_TOKEN: ${{ secrets.PRO_ACCESS_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          latest_tag="$(git tag --list "v*.*.*" --sort=-v:refname | grep -E "^v[0-9]+\.[0-9]+\.[0-9]+$" | head -n 1 || true)"
+
+          if [[ -z "${latest_tag}" ]]; then
+            echo "No previous tag found, defaulting to patch"
+            echo "bump=patch" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+
+          # Use git history to find exactly which PRs are part of this release
+          pr_numbers="$(git log "${latest_tag}..HEAD" --oneline | grep -oE '#[0-9]+' | tr -d '#' | sort -u)"
+
+          if [[ -z "${pr_numbers}" ]]; then
+            echo "No PRs found since ${latest_tag}, defaulting to patch"
+            echo "bump=patch" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+
+          bump="patch"
+          for pr in ${pr_numbers}; do
+            labels="$(gh pr view "${pr}" --json labels --jq '.labels[].name' 2>/dev/null || true)"
+            if echo "${labels}" | grep -q "semver: major"; then
+              bump="major"
+              break
+            elif echo "${labels}" | grep -q "semver: minor"; then
+              bump="minor"
+            fi
+          done
+
+          echo "Determined bump type: ${bump}"
+          echo "bump=${bump}" >> "${GITHUB_OUTPUT}"
+
   ci:
     name: CI
     needs: check-changes
@@ -60,7 +116,7 @@ jobs:
 
   create-tag:
     name: Create release tag
-    needs: [check-changes, ci]
+    needs: [check-changes, determine-bump, ci]
     if: needs.check-changes.outputs.has_changes == 'true'
     runs-on: ubuntu-latest
     steps:
@@ -77,4 +133,4 @@ jobs:
       - name: Create release tag
         uses: ./.github/actions/create-release-tag
         with:
-          bump: patch
+          bump: ${{ needs.determine-bump.outputs.bump }}
