@@ -463,6 +463,25 @@ port = %q
 	return configFile
 }
 
+func TestStartCommandForSnowflakeSkipsLicenseValidation(t *testing.T) {
+	requireDocker(t)
+	_ = env.Require(t, env.AuthToken)
+
+	cleanup()
+	cleanupSnowflake()
+	t.Cleanup(cleanup)
+	t.Cleanup(cleanupSnowflake)
+
+	// Mock server that rejects all license requests — this would cause lstk start to fail for AWS.
+	mockServer := createMockLicenseServer(false)
+	defer mockServer.Close()
+
+	ctx := testContext(t)
+	_, stderr, err := runLstk(t, ctx, "", env.With(env.APIEndpoint, mockServer.URL), "--config", writeSnowflakeConfig(t, "4566"), "start")
+	require.NoError(t, err, "lstk start should succeed for snowflake even when the license server rejects the request: %s", stderr)
+	requireExitCode(t, 0, err)
+}
+
 func TestStartCommandSucceedsForSnowflake(t *testing.T) {
 	requireDocker(t)
 	_ = env.Require(t, env.AuthToken)

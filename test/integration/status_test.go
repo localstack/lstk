@@ -155,6 +155,25 @@ func TestStatusCommandWorksWithExternalContainer(t *testing.T) {
 	assert.Contains(t, stdout, "3.5.0")
 }
 
+func TestStatusCommandForSnowflakeShowsNoResources(t *testing.T) {
+	requireDocker(t)
+	cleanupSnowflake()
+	t.Cleanup(cleanupSnowflake)
+
+	ctx := testContext(t)
+	startTestSnowflakeContainer(t, ctx)
+
+	stdout, stderr, err := runLstk(t, ctx, "", nil, "--config", writeSnowflakeConfig(t, "4566"), "status")
+	require.NoError(t, err, "lstk status failed for snowflake: %s", stderr)
+	requireExitCode(t, 0, err)
+
+	assert.Contains(t, stdout, "Snowflake")
+	assert.Contains(t, stdout, "running")
+	// Snowflake does not expose AWS resources — no resource table or empty-state message.
+	assert.NotContains(t, stdout, "SERVICE")
+	assert.NotContains(t, stdout, "No resources deployed")
+}
+
 func TestStatusCommandShowsNoResourcesWhenEmpty(t *testing.T) {
 	requireDocker(t)
 	cleanup()
