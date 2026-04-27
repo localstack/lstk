@@ -74,7 +74,7 @@ func TestSelectContainersToStart_AttachesWhenExternalContainerOnConfiguredPort(t
 	var out bytes.Buffer
 	sink := output.NewPlainSink(&out)
 
-	result, err := selectContainersToStart(context.Background(), mockRT, sink, nil, []runtime.ContainerConfig{c})
+	result, err := selectContainersToStart(context.Background(), mockRT, sink, nil, []runtime.ContainerConfig{c}, "", "")
 
 	require.NoError(t, err)
 	assert.Empty(t, result, "container should be skipped (already running)")
@@ -101,7 +101,7 @@ func TestSelectContainersToStart_AttachesWhenExternalContainerVersionDiffers(t *
 	var out bytes.Buffer
 	sink := output.NewPlainSink(&out)
 
-	result, err := selectContainersToStart(context.Background(), mockRT, sink, nil, []runtime.ContainerConfig{c})
+	result, err := selectContainersToStart(context.Background(), mockRT, sink, nil, []runtime.ContainerConfig{c}, "", "")
 
 	require.NoError(t, err)
 	assert.Empty(t, result, "container should be skipped (already running)")
@@ -132,7 +132,7 @@ func TestSelectContainersToStart_QueuesContainerWhenNoneRunningOnPort(t *testing
 
 	sink := output.NewPlainSink(io.Discard)
 
-	result, err := selectContainersToStart(context.Background(), mockRT, sink, nil, []runtime.ContainerConfig{c})
+	result, err := selectContainersToStart(context.Background(), mockRT, sink, nil, []runtime.ContainerConfig{c}, "", "")
 
 	require.NoError(t, err)
 	assert.Equal(t, []runtime.ContainerConfig{c}, result, "container should be queued for start")
