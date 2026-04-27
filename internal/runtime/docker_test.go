@@ -87,45 +87,35 @@ func TestSocketPath_VMDetection(t *testing.T) {
 	t.Cleanup(func() { _ = os.RemoveAll(home) })
 	t.Setenv("HOME", home)
 
-	t.Run("colima socket exists returns remapped path", func(t *testing.T) {
-		colimaSock := filepath.Join(home, ".colima", "default", "docker.sock")
-		require.NoError(t, os.MkdirAll(filepath.Dir(colimaSock), 0o755))
-		f, err := os.Create(colimaSock)
-		require.NoError(t, err)
-		require.NoError(t, f.Close())
-		t.Cleanup(func() {
-			require.NoError(t, os.Remove(colimaSock))
+	vmTests := []struct {
+		name    string
+		relPath string
+	}{
+		{"docker desktop", ".docker/run/docker.sock"},
+		{"colima", ".colima/default/docker.sock"},
+		{"orbstack", ".orbstack/run/docker.sock"},
+		{"lima host", ".lima/docker/sock/docker.sock"},
+	}
+
+	for _, tc := range vmTests {
+		t.Run(tc.name+" socket returns remapped path", func(t *testing.T) {
+			sock := filepath.Join(home, filepath.FromSlash(tc.relPath))
+			require.NoError(t, os.MkdirAll(filepath.Dir(sock), 0o755))
+			require.NoError(t, os.WriteFile(sock, nil, 0o600))
+			t.Cleanup(func() { require.NoError(t, os.Remove(sock)) })
+
+			cli, err := client.NewClientWithOpts(client.WithHost("unix://" + sock))
+			require.NoError(t, err)
+			rt := &DockerRuntime{client: cli}
+			assert.Equal(t, "/var/run/docker.sock", rt.SocketPath())
 		})
+	}
 
-		cli, err := client.NewClientWithOpts(client.WithHost("unix://" + colimaSock))
-		require.NoError(t, err)
-		rt := &DockerRuntime{client: cli}
-		assert.Equal(t, "/var/run/docker.sock", rt.SocketPath())
-	})
-
-	t.Run("orbstack socket exists returns remapped path", func(t *testing.T) {
-		orbstackSock := filepath.Join(home, ".orbstack", "run", "docker.sock")
-		require.NoError(t, os.MkdirAll(filepath.Dir(orbstackSock), 0o755))
-		f, err := os.Create(orbstackSock)
-		require.NoError(t, err)
-		require.NoError(t, f.Close())
-		t.Cleanup(func() {
-			require.NoError(t, os.Remove(orbstackSock))
-		})
-
-		cli, err := client.NewClientWithOpts(client.WithHost("unix://" + orbstackSock))
-		require.NoError(t, err)
-		rt := &DockerRuntime{client: cli}
-		assert.Equal(t, "/var/run/docker.sock", rt.SocketPath())
-	})
-
-	t.Run("rootless socket exists returns actual path", func(t *testing.T) {
+	t.Run("rootless socket returns actual path", func(t *testing.T) {
 		// Use a non-VM socket path (short path to avoid Docker client limit)
 		rootlessSock := "/tmp/lstk-docker.sock"
 		require.NoError(t, os.WriteFile(rootlessSock, nil, 0o600))
-		t.Cleanup(func() {
-			require.NoError(t, os.Remove(rootlessSock))
-		})
+		t.Cleanup(func() { require.NoError(t, os.Remove(rootlessSock)) })
 
 		cli, err := client.NewClientWithOpts(client.WithHost("unix://" + rootlessSock))
 		require.NoError(t, err)
@@ -161,16 +151,28 @@ func TestFindDockerSocket_LimaVM(t *testing.T) {
 	assert.Equal(t, "/var/run/docker.sock", sock)
 }
 
-func TestFindDockerSocket_IncludesLimaPathOnHost(t *testing.T) {
+func TestFindDockerSocket_ProbesVMSockets(t *testing.T) {
 	t.Setenv("LIMA_INSTANCE", "")
 
-	tmpDir := t.TempDir()
-	limaSock := filepath.Join(tmpDir, ".lima", "docker", "sock", "docker.sock")
-	require.NoError(t, os.MkdirAll(filepath.Dir(limaSock), 0o700))
-	require.NoError(t, os.WriteFile(limaSock, nil, 0o600))
+	tests := []struct {
+		name    string
+		relPath string
+	}{
+		{"docker desktop", ".docker/run/docker.sock"},
+		{"colima", ".colima/default/docker.sock"},
+		{"orbstack", ".orbstack/run/docker.sock"},
+		{"lima host", ".lima/docker/sock/docker.sock"},
+	}
 
-	t.Setenv("HOME", tmpDir)
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			tmpDir := t.TempDir()
+			sock := filepath.Join(tmpDir, filepath.FromSlash(tc.relPath))
+			require.NoError(t, os.MkdirAll(filepath.Dir(sock), 0o700))
+			require.NoError(t, os.WriteFile(sock, nil, 0o600))
+			t.Setenv("HOME", tmpDir)
 
-	result := findDockerSocket()
-	assert.Equal(t, limaSock, result)
+			assert.Equal(t, sock, findDockerSocket())
+		})
+	}
 }
