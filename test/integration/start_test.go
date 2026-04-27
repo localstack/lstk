@@ -110,8 +110,8 @@ func TestStartCommandFailsWhenPortInUse(t *testing.T) {
 	require.Error(t, err, "expected lstk start to fail when port is in use")
 	requireExitCode(t, 1, err)
 	assert.Contains(t, stdout, "Port 4566 already in use")
-	assert.Contains(t, stdout, "LocalStack may already be running.")
-	assert.Contains(t, stdout, "lstk stop")
+	assert.Contains(t, stdout, "Free the port or configure a different one.")
+	assert.Contains(t, stdout, "Use another port in the configuration:")
 
 	// Both lstk_lifecycle (start_error) and lstk_command events should be emitted.
 	byName := collectTelemetryByName(t, events, 2)
