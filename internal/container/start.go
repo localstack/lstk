@@ -542,7 +542,8 @@ func awaitStartup(ctx context.Context, rt runtime.Runtime, sink output.Sink, con
 func filterHostEnv(envList []string) []string {
 	var out []string
 	for _, e := range envList {
-		if strings.HasPrefix(e, "CI=") || (strings.HasPrefix(e, "LOCALSTACK_") && !strings.HasPrefix(e, "LOCALSTACK_AUTH_TOKEN=")) {
+		if strings.HasPrefix(e, "CI=") ||
+			(strings.HasPrefix(e, "LOCALSTACK_") && !strings.HasPrefix(e, "LOCALSTACK_AUTH_TOKEN=")) {
 			out = append(out, e)
 		}
 	}

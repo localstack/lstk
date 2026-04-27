@@ -343,6 +343,67 @@ func TestStartCommandPassesCIAndLocalStackEnvVars(t *testing.T) {
 	assert.NotEmpty(t, envVars["LOCALSTACK_AUTH_TOKEN"])
 }
 
+func TestStartCommandForwardsPersistenceEnvFromHost(t *testing.T) {
+	requireDocker(t)
+	_ = env.Require(t, env.AuthToken)
+
+	cleanup()
+	t.Cleanup(cleanup)
+
+	mockServer := createMockLicenseServer(true)
+	defer mockServer.Close()
+
+	ctx := testContext(t)
+	_, stderr, err := runLstk(t, ctx, "", env.With(env.APIEndpoint, mockServer.URL).
+		With(env.Persistence, "1"),
+		"start")
+	require.NoError(t, err, "lstk start failed: %s", stderr)
+	requireExitCode(t, 0, err)
+
+	inspect, err := dockerClient.ContainerInspect(ctx, containerName)
+	require.NoError(t, err, "failed to inspect container")
+	require.True(t, inspect.State.Running)
+
+	envVars := containerEnvToMap(inspect.Config.Env)
+	assert.Equal(t, "1", envVars["LOCALSTACK_PERSISTENCE"])
+}
+
+func TestStartCommandSetsPersistenceEnvFromConfig(t *testing.T) {
+	requireDocker(t)
+	_ = env.Require(t, env.AuthToken)
+
+	cleanup()
+	t.Cleanup(cleanup)
+
+	mockServer := createMockLicenseServer(true)
+	defer mockServer.Close()
+
+	configContent := `
+[env.persistence]
+PERSISTENCE = "1"
+
+[[containers]]
+type = "aws"
+tag = "latest"
+port = "4566"
+env = ["persistence"]
+`
+	configFile := filepath.Join(t.TempDir(), "config.toml")
+	require.NoError(t, os.WriteFile(configFile, []byte(configContent), 0644))
+
+	ctx := testContext(t)
+	_, stderr, err := runLstk(t, ctx, "", env.With(env.APIEndpoint, mockServer.URL), "--config", configFile, "start")
+	require.NoError(t, err, "lstk start failed: %s", stderr)
+	requireExitCode(t, 0, err)
+
+	inspect, err := dockerClient.ContainerInspect(ctx, containerName)
+	require.NoError(t, err, "failed to inspect container")
+	require.True(t, inspect.State.Running)
+
+	envVars := containerEnvToMap(inspect.Config.Env)
+	assert.Equal(t, "1", envVars["PERSISTENCE"])
+}
+
 // hasBindTarget checks if any bind mount targets the given container path.
 func hasBindTarget(binds []string, containerPath string) bool {
 	for _, b := range binds {
