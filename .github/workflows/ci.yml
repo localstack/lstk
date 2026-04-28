@@ -92,9 +92,6 @@ jobs:
         # sharding.
         include:
           - os: ubuntu-latest
-            shard: 0
-            shard_total: 4
-          - os: ubuntu-latest
             shard: 1
             shard_total: 4
           - os: ubuntu-latest
@@ -102,6 +99,9 @@ jobs:
             shard_total: 4
           - os: ubuntu-latest
             shard: 3
+            shard_total: 4
+          - os: ubuntu-latest
+            shard: 4
             shard_total: 4
           - os: macos-latest
           - os: windows-latest

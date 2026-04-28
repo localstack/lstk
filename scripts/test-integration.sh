@@ -3,7 +3,7 @@
 #
 # Honors:
 #   CREATE_JUNIT_REPORT  Emit JUnit XML when set.
-#   SHARD_INDEX          0-based shard index (used with SHARD_TOTAL).
+#   SHARD_INDEX          1-based shard index (used with SHARD_TOTAL).
 #   SHARD_TOTAL          Total number of shards. When set, this run executes
 #                        only the tests assigned to SHARD_INDEX (round-robin
 #                        partition by sorted test name).
@@ -27,12 +27,13 @@ fi
 
 RUN_FLAG=()
 if [ -n "${SHARD_TOTAL:-}" ]; then
-  IDX="${SHARD_INDEX:-0}"
+  IDX="${SHARD_INDEX:-1}"
   # `go test -list` enumerates top-level tests in each package; we filter to
   # lines matching /^Test/ to drop the trailing "ok pkg" summary lines, sort
-  # for stable partitioning, and pick every N-th entry.
+  # for stable partitioning, and pick every N-th entry. SHARD_INDEX is
+  # 1-based for human-friendly CI labels (shard 1/4, 2/4, ...).
   TESTS=$(go test -list '.*' ./... 2>/dev/null | awk '/^Test/' | sort \
-    | awk -v idx="$IDX" -v total="$SHARD_TOTAL" '(NR-1) % total == idx')
+    | awk -v idx="$IDX" -v total="$SHARD_TOTAL" '((NR-1) % total) + 1 == idx')
   if [ -z "$TESTS" ]; then
     echo "no tests for shard $IDX/$SHARD_TOTAL — skipping"
     exit 0
