@@ -104,7 +104,6 @@ func licenseFilePath(t *testing.T) string {
 
 func cleanupLicense() {
 	ctx := context.Background()
-	_ = dockerClient.ContainerStop(ctx, containerName, container.StopOptions{})
 	_ = dockerClient.ContainerRemove(ctx, containerName, container.RemoveOptions{Force: true})
 	if cacheDir, err := os.UserCacheDir(); err == nil {
 		_ = os.Remove(filepath.Join(cacheDir, "lstk", "license.json"))

@@ -439,14 +439,14 @@ func containerEnvToMap(envList []string) map[string]string {
 
 func cleanup() {
 	ctx := context.Background()
-	_ = dockerClient.ContainerStop(ctx, containerName, container.StopOptions{})
+	// ContainerRemove with Force already SIGKILLs the container; an explicit
+	// ContainerStop first would add the default 10s SIGTERM grace period.
 	_ = dockerClient.ContainerRemove(ctx, containerName, container.RemoveOptions{Force: true})
 	_ = DeleteAuthTokenFromKeyring()
 }
 
 func cleanupSnowflake() {
 	ctx := context.Background()
-	_ = dockerClient.ContainerStop(ctx, snowflakeContainerName, container.StopOptions{})
 	_ = dockerClient.ContainerRemove(ctx, snowflakeContainerName, container.RemoveOptions{Force: true})
 }
 

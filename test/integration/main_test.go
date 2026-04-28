@@ -225,7 +225,6 @@ func startExternalContainer(t *testing.T, ctx context.Context, imgName, name, ho
 	err = dockerClient.ContainerStart(ctx, resp.ID, container.StartOptions{})
 	require.NoError(t, err, "failed to start external container")
 	t.Cleanup(func() {
-		_ = dockerClient.ContainerStop(context.Background(), name, container.StopOptions{})
 		_ = dockerClient.ContainerRemove(context.Background(), name, container.RemoveOptions{Force: true})
 	})
 }
