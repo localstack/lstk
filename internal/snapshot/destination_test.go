@@ -1,6 +1,8 @@
 package snapshot_test
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/localstack/lstk/internal/snapshot"
@@ -9,30 +11,35 @@ import (
 )
 
 func TestParseDestination(t *testing.T) {
+	wd, err := os.Getwd()
+	require.NoError(t, err)
+	home, err := os.UserHomeDir()
+	require.NoError(t, err)
+
 	tests := []struct {
-		input   string
-		want    snapshot.Destination
-		wantErr string
+		input    string
+		wantPath string
+		wantErr  string
 	}{
 		{
-			input: "",
-			want:  snapshot.LocalDestination{Path: "ls-state-export"},
+			input:    "",
+			wantPath: filepath.Join(wd, "ls-state-export"),
 		},
 		{
-			input: "./my-state",
-			want:  snapshot.LocalDestination{Path: "./my-state"},
+			input:    "./my-state",
+			wantPath: filepath.Join(wd, "my-state"),
 		},
 		{
-			input: "/tmp/state",
-			want:  snapshot.LocalDestination{Path: "/tmp/state"},
+			input:    "/tmp/state",
+			wantPath: "/tmp/state",
 		},
 		{
-			input: "~/snapshots/s",
-			want:  snapshot.LocalDestination{Path: "~/snapshots/s"},
+			input:    "~/snapshots/s",
+			wantPath: filepath.Join(home, "snapshots/s"),
 		},
 		{
-			input: "subdir/state",
-			want:  snapshot.LocalDestination{Path: "subdir/state"},
+			input:    "subdir/state",
+			wantPath: filepath.Join(wd, "subdir/state"),
 		},
 		{
 			input:   "my-pod",
@@ -58,7 +65,7 @@ func TestParseDestination(t *testing.T) {
 				return
 			}
 			require.NoError(t, err)
-			assert.Equal(t, tc.want, got)
+			assert.Equal(t, snapshot.LocalDestination{Path: tc.wantPath}, got)
 		})
 	}
 }
