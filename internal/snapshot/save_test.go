@@ -153,7 +153,7 @@ func TestSave_DestinationDirNotExist(t *testing.T) {
 
 	err := snapshot.Save(context.Background(), healthyRunningMock(t), awsContainers, exporter, dest, sink)
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "open destination")
+	assert.Contains(t, err.Error(), "save to")
 }
 
 func TestSave_OverwritesExistingFile(t *testing.T) {

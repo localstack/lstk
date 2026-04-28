@@ -45,7 +45,7 @@ func Save(ctx context.Context, rt runtime.Runtime, containers []config.Container
 	w, err := dest.Writer()
 	if err != nil {
 		output.EmitSpinnerStop(sink)
-		return fmt.Errorf("open destination %s: %w", dest, err)
+		return fmt.Errorf("save to %s: %w", dest, err)
 	}
 
 	if _, err := io.Copy(w, body); err != nil {
