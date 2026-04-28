@@ -45,7 +45,7 @@ var (
 		Foreground(lipgloss.Color(SuccessColor))
 
 	Note = lipgloss.NewStyle().
-		Foreground(lipgloss.Color("33"))
+		Foreground(lipgloss.Color("69"))
 
 	Warning = lipgloss.NewStyle().
 		Foreground(lipgloss.Color("214"))
