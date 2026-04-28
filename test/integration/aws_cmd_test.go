@@ -48,16 +48,14 @@ func writeAWSProfile(t *testing.T, homeDir string) {
 
 func TestAWSCommandInjectsEndpointAndArgs(t *testing.T) {
 	requireDocker(t)
-	cleanup()
-	t.Cleanup(cleanup)
+	t.Parallel()
+	daemon := startEphemeralDocker(t)
 	ctx := testContext(t)
-	startTestContainer(t, ctx)
+	startStubInDind(t, daemon, containerName)
 
 	fakeDir := writeFakeAWS(t)
 	analyticsSrv, events := mockAnalyticsServer(t)
-	// Use a fresh HOME so a real localstack profile doesn't affect the args output.
-	e := env.With("PATH", fakeDir).With(env.Home, t.TempDir()).
-		With(env.AnalyticsEndpoint, analyticsSrv.URL)
+	e := envWithDockerHost(t, daemon).With("PATH", fakeDir).With(env.AnalyticsEndpoint, analyticsSrv.URL)
 
 	stdout, stderr, err := runLstk(t, ctx, t.TempDir(), e, "aws", "s3", "ls")
 	require.NoError(t, err, "lstk aws failed: %s", stderr)
@@ -69,14 +67,13 @@ func TestAWSCommandInjectsEndpointAndArgs(t *testing.T) {
 
 func TestAWSCommandInjectsCredentials(t *testing.T) {
 	requireDocker(t)
-	cleanup()
-	t.Cleanup(cleanup)
+	t.Parallel()
+	daemon := startEphemeralDocker(t)
 	ctx := testContext(t)
-	startTestContainer(t, ctx)
+	startStubInDind(t, daemon, containerName)
 
 	fakeDir := writeFakeAWS(t)
-	// Use a fresh HOME so no localstack profile exists; credentials are injected via env vars.
-	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).With(env.Home, t.TempDir())
+	e := envWithDockerHost(t, daemon).With(env.DisableEvents, "1").With("PATH", fakeDir)
 
 	stdout, stderr, err := runLstk(t, ctx, t.TempDir(), e, "aws", "sts", "get-caller-identity")
 	require.NoError(t, err, "lstk aws failed: %s", stderr)
@@ -88,16 +85,14 @@ func TestAWSCommandInjectsCredentials(t *testing.T) {
 
 func TestAWSCommandRespectsExistingCredentials(t *testing.T) {
 	requireDocker(t)
-	cleanup()
-	t.Cleanup(cleanup)
+	t.Parallel()
+	daemon := startEphemeralDocker(t)
 	ctx := testContext(t)
-	startTestContainer(t, ctx)
+	startStubInDind(t, daemon, containerName)
 
 	fakeDir := writeFakeAWS(t)
-	// Use a fresh HOME so no localstack profile exists; the user-provided env vars are preserved.
-	e := env.With(env.DisableEvents, "1").
+	e := envWithDockerHost(t, daemon).With(env.DisableEvents, "1").
 		With("PATH", fakeDir).
-		With(env.Home, t.TempDir()).
 		With("AWS_ACCESS_KEY_ID", "custom-key").
 		With("AWS_SECRET_ACCESS_KEY", "custom-secret").
 		With("AWS_DEFAULT_REGION", "eu-west-1")
@@ -112,16 +107,16 @@ func TestAWSCommandRespectsExistingCredentials(t *testing.T) {
 
 func TestAWSCommandUsesProfileWhenAvailable(t *testing.T) {
 	requireDocker(t)
-	cleanup()
-	t.Cleanup(cleanup)
+	t.Parallel()
+	daemon := startEphemeralDocker(t)
 	ctx := testContext(t)
-	startTestContainer(t, ctx)
+	startStubInDind(t, daemon, containerName)
 
 	fakeDir := writeFakeAWS(t)
 	homeDir := t.TempDir()
 	writeAWSProfile(t, homeDir)
 
-	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).With(env.Home, homeDir)
+	e := envWithDockerHost(t, daemon).With(env.DisableEvents, "1").With("PATH", fakeDir).With(env.Home, homeDir)
 
 	stdout, stderr, err := runLstk(t, ctx, t.TempDir(), e, "aws", "s3", "ls")
 	require.NoError(t, err, "lstk aws failed: %s", stderr)
@@ -133,12 +128,12 @@ func TestAWSCommandUsesProfileWhenAvailable(t *testing.T) {
 
 func TestAWSCommandFailsWhenAWSCLINotInstalled(t *testing.T) {
 	requireDocker(t)
-	cleanup()
-	t.Cleanup(cleanup)
+	t.Parallel()
+	daemon := startEphemeralDocker(t)
 	ctx := testContext(t)
-	startTestContainer(t, ctx)
+	startStubInDind(t, daemon, containerName)
 
-	e := env.With(env.DisableEvents, "1").With("PATH", t.TempDir())
+	e := envWithDockerHost(t, daemon).With(env.DisableEvents, "1").With("PATH", t.TempDir())
 
 	_, stderr, err := runLstk(t, ctx, t.TempDir(), e, "aws", "s3", "ls")
 	require.Error(t, err)
@@ -147,16 +142,14 @@ func TestAWSCommandFailsWhenAWSCLINotInstalled(t *testing.T) {
 
 func TestAWSCommandUsesDefaultPortWithoutConfig(t *testing.T) {
 	requireDocker(t)
-	cleanup()
-	t.Cleanup(cleanup)
+	t.Parallel()
+	daemon := startEphemeralDocker(t)
 	ctx := testContext(t)
-	startTestContainer(t, ctx)
+	startStubInDind(t, daemon, containerName)
 
 	fakeDir := writeFakeAWS(t)
 	workDir := t.TempDir()
-	e := env.With(env.DisableEvents, "1").
-		With("PATH", fakeDir).
-		With(env.Home, t.TempDir()) // isolate from any real config file
+	e := envWithDockerHost(t, daemon).With(env.DisableEvents, "1").With("PATH", fakeDir)
 
 	stdout, stderr, err := runLstk(t, ctx, workDir, e, "aws", "s3", "ls")
 	require.NoError(t, err, "lstk aws failed: %s", stderr)
@@ -166,10 +159,11 @@ func TestAWSCommandUsesDefaultPortWithoutConfig(t *testing.T) {
 
 func TestAWSCommandUsesPortFromConfig(t *testing.T) {
 	requireDocker(t)
-	cleanup()
-	t.Cleanup(cleanup)
+	t.Parallel()
+	daemon := startEphemeralDocker(t)
 	ctx := testContext(t)
-	startTestContainer(t, ctx)
+	// container name uses port-suffixed convention when port is non-default
+	startStubInDind(t, daemon, containerName)
 
 	fakeDir := writeFakeAWS(t)
 	workDir := t.TempDir()
@@ -184,7 +178,7 @@ port = "4599"
 	require.NoError(t, os.MkdirAll(lstkDir, 0755))
 	require.NoError(t, os.WriteFile(filepath.Join(lstkDir, "config.toml"), []byte(configContent), 0644))
 
-	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir)
+	e := envWithDockerHost(t, daemon).With(env.DisableEvents, "1").With("PATH", fakeDir)
 
 	stdout, stderr, err := runLstk(t, ctx, workDir, e, "aws", "s3", "ls")
 	require.NoError(t, err, "lstk aws failed: %s", stderr)
@@ -213,13 +207,13 @@ exit %d
 
 func TestAWSCommandPropagatesExitCode(t *testing.T) {
 	requireDocker(t)
-	cleanup()
-	t.Cleanup(cleanup)
+	t.Parallel()
+	daemon := startEphemeralDocker(t)
 	ctx := testContext(t)
-	startTestContainer(t, ctx)
+	startStubInDind(t, daemon, containerName)
 
 	fakeDir := writeFakeAWSFailing(t, 42)
-	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir)
+	e := envWithDockerHost(t, daemon).With(env.DisableEvents, "1").With("PATH", fakeDir)
 
 	_, stderr, err := runLstk(t, ctx, t.TempDir(), e, "aws", "s3", "ls")
 	require.Error(t, err, "lstk aws should fail when aws command fails")
@@ -231,6 +225,7 @@ func TestAWSCommandFailsWhenDockerNotRunning(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("Windows Docker error tested separately via windowsDockerErrorEnv")
 	}
+	t.Parallel()
 
 	fakeDir := writeFakeAWS(t)
 	e := env.With(env.DisableEvents, "1").
@@ -244,13 +239,12 @@ func TestAWSCommandFailsWhenDockerNotRunning(t *testing.T) {
 
 func TestAWSCommandFailsWhenEmulatorNotRunning(t *testing.T) {
 	requireDocker(t)
-	cleanup()
-	t.Cleanup(cleanup)
+	t.Parallel()
+	daemon := startEphemeralDocker(t)
 
 	fakeDir := writeFakeAWS(t)
 	analyticsSrv, events := mockAnalyticsServer(t)
-	e := env.With("PATH", fakeDir).
-		With(env.AnalyticsEndpoint, analyticsSrv.URL)
+	e := envWithDockerHost(t, daemon).With("PATH", fakeDir).With(env.AnalyticsEndpoint, analyticsSrv.URL)
 
 	stdout, _, err := runLstk(t, testContext(t), t.TempDir(), e, "aws", "s3", "ls")
 	require.Error(t, err)
@@ -262,13 +256,13 @@ func TestAWSCommandFailsWhenEmulatorNotRunning(t *testing.T) {
 
 func TestAWSCommandHintsSetupCommandWhenProfileMissing(t *testing.T) {
 	requireDocker(t)
-	cleanup()
-	t.Cleanup(cleanup)
+	t.Parallel()
+	daemon := startEphemeralDocker(t)
 	ctx := testContext(t)
-	startTestContainer(t, ctx)
+	startStubInDind(t, daemon, containerName)
 
 	fakeDir := writeFakeAWS(t)
-	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).With(env.Home, t.TempDir())
+	e := envWithDockerHost(t, daemon).With(env.DisableEvents, "1").With("PATH", fakeDir)
 
 	stdout, _, err := runLstk(t, ctx, t.TempDir(), e, "aws", "s3", "ls")
 	require.NoError(t, err)
@@ -277,16 +271,16 @@ func TestAWSCommandHintsSetupCommandWhenProfileMissing(t *testing.T) {
 
 func TestAWSCommandSuppressesHintWhenProfileExists(t *testing.T) {
 	requireDocker(t)
-	cleanup()
-	t.Cleanup(cleanup)
+	t.Parallel()
+	daemon := startEphemeralDocker(t)
 	ctx := testContext(t)
-	startTestContainer(t, ctx)
+	startStubInDind(t, daemon, containerName)
 
 	fakeDir := writeFakeAWS(t)
 	homeDir := t.TempDir()
 	writeAWSProfile(t, homeDir)
 
-	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).With(env.Home, homeDir)
+	e := envWithDockerHost(t, daemon).With(env.DisableEvents, "1").With("PATH", fakeDir).With(env.Home, homeDir)
 
 	stdout, _, err := runLstk(t, ctx, t.TempDir(), e, "aws", "s3", "ls")
 	require.NoError(t, err)

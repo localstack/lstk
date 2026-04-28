@@ -47,20 +47,20 @@ func mockAnalyticsServer(t *testing.T) (*httptest.Server, <-chan map[string]any)
 
 func TestStartCommandSendsTelemetryEvent(t *testing.T) {
 	requireDocker(t)
-	cleanup()
-	t.Cleanup(cleanup)
+	t.Parallel()
+	daemon := startEphemeralDocker(t)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
 	// Pre-start a container so lstk start exits immediately after telemetry fires,
 	// without needing a real token or license server.
-	startTestContainer(t, ctx)
+	startStubInDind(t, daemon, containerName)
 
 	analyticsSrv, events := mockAnalyticsServer(t)
 
 	cmd := exec.CommandContext(ctx, binaryPath(), "start")
-	cmd.Env = env.With(env.AuthToken, "fake-token").
+	cmd.Env = envWithDockerHost(t, daemon).With(env.AuthToken, "fake-token").
 		With(env.AnalyticsEndpoint, analyticsSrv.URL)
 	out, err := cmd.CombinedOutput()
 	require.NoError(t, err, "lstk start failed: %s", out)
@@ -103,15 +103,15 @@ func TestStartCommandSendsTelemetryEvent(t *testing.T) {
 
 func TestStopCommandSendsTelemetryEvents(t *testing.T) {
 	requireDocker(t)
-	cleanup()
-	t.Cleanup(cleanup)
+	t.Parallel()
+	daemon := startEphemeralDocker(t)
 
 	ctx := testContext(t)
-	startTestContainer(t, ctx)
+	startStubInDind(t, daemon, containerName)
 
 	analyticsSrv, events := mockAnalyticsServer(t)
 
-	_, stderr, err := runLstk(t, ctx, "", env.With(env.AuthToken, "fake-token").
+	_, stderr, err := runLstk(t, ctx, "", envWithDockerHost(t, daemon).With(env.AuthToken, "fake-token").
 		With(env.AnalyticsEndpoint, analyticsSrv.URL), "stop")
 	require.NoError(t, err, "lstk stop failed: %s", stderr)
 	requireExitCode(t, 0, err)
@@ -148,16 +148,16 @@ func TestStopCommandSendsTelemetryEvents(t *testing.T) {
 
 func TestStartCommandSucceedsWhenAnalyticsEndpointUnreachable(t *testing.T) {
 	requireDocker(t)
-	cleanup()
-	t.Cleanup(cleanup)
+	t.Parallel()
+	daemon := startEphemeralDocker(t)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	startTestContainer(t, ctx)
+	startStubInDind(t, daemon, containerName)
 
 	cmd := exec.CommandContext(ctx, binaryPath(), "start")
-	cmd.Env = env.With(env.AuthToken, "fake-token").
+	cmd.Env = envWithDockerHost(t, daemon).With(env.AuthToken, "fake-token").
 		With(env.AnalyticsEndpoint, "http://127.0.0.1:1")
 	out, err := cmd.CombinedOutput()
 
@@ -167,18 +167,18 @@ func TestStartCommandSucceedsWhenAnalyticsEndpointUnreachable(t *testing.T) {
 
 func TestStartCommandDoesNotSendTelemetryWhenDisabled(t *testing.T) {
 	requireDocker(t)
-	cleanup()
-	t.Cleanup(cleanup)
+	t.Parallel()
+	daemon := startEphemeralDocker(t)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	startTestContainer(t, ctx)
+	startStubInDind(t, daemon, containerName)
 
 	analyticsSrv, events := mockAnalyticsServer(t)
 
 	cmd := exec.CommandContext(ctx, binaryPath(), "start")
-	cmd.Env = env.With(env.AuthToken, "fake-token").
+	cmd.Env = envWithDockerHost(t, daemon).With(env.AuthToken, "fake-token").
 		With(env.AnalyticsEndpoint, analyticsSrv.URL).
 		With(env.DisableEvents, "1")
 	out, err := cmd.CombinedOutput()

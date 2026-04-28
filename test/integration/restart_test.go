@@ -47,11 +47,11 @@ func TestRestartCommandSucceeds(t *testing.T) {
 
 func TestRestartCommandFailsWhenNotRunning(t *testing.T) {
 	requireDocker(t)
-	cleanup()
-	t.Cleanup(cleanup)
+	t.Parallel()
+	daemon := startEphemeralDocker(t)
 
 	analyticsSrv, events := mockAnalyticsServer(t)
-	_, stderr, err := runLstk(t, testContext(t), "", env.With(env.AnalyticsEndpoint, analyticsSrv.URL), "restart")
+	_, stderr, err := runLstk(t, testContext(t), "", envWithDockerHost(t, daemon).With(env.AnalyticsEndpoint, analyticsSrv.URL), "restart")
 	require.Error(t, err, "expected lstk restart to fail when emulator is not running")
 	requireExitCode(t, 1, err)
 	assert.Contains(t, stderr, "is not running")

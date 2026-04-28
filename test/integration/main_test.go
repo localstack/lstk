@@ -229,23 +229,6 @@ func startExternalContainer(t *testing.T, ctx context.Context, imgName, name, ho
 	})
 }
 
-func startTestSnowflakeContainer(t *testing.T, ctx context.Context) {
-	t.Helper()
-
-	reader, err := dockerClient.ImagePull(ctx, testImage, image.PullOptions{})
-	require.NoError(t, err, "failed to pull test image")
-	_, _ = io.Copy(io.Discard, reader)
-	_ = reader.Close()
-
-	resp, err := dockerClient.ContainerCreate(ctx, &container.Config{
-		Image: testImage,
-		Cmd:   []string{"sleep", "infinity"},
-	}, nil, nil, nil, snowflakeContainerName)
-	require.NoError(t, err, "failed to create snowflake test container")
-	err = dockerClient.ContainerStart(ctx, resp.ID, container.StartOptions{})
-	require.NoError(t, err, "failed to start snowflake test container")
-}
-
 func testContext(t *testing.T) context.Context {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)

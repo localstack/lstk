@@ -80,8 +80,9 @@ func TestDeviceFlowSuccess(t *testing.T) {
 		t.Skip("PTY not supported on Windows")
 	}
 
-	cleanup()
-	t.Cleanup(cleanup)
+	// Sequential: login tests share the file keyring in the suite-wide HOME.
+	_ = DeleteAuthTokenFromKeyring()
+	t.Cleanup(func() { _ = DeleteAuthTokenFromKeyring() })
 
 	licenseToken := "test-license-token"
 
@@ -143,8 +144,9 @@ func TestDeviceFlowFailure_RequestNotConfirmed(t *testing.T) {
 		t.Skip("PTY not supported on Windows")
 	}
 
-	cleanup()
-	t.Cleanup(cleanup)
+	// Sequential: login tests share the file keyring in the suite-wide HOME.
+	_ = DeleteAuthTokenFromKeyring()
+	t.Cleanup(func() { _ = DeleteAuthTokenFromKeyring() })
 
 	mockServer := createMockAPIServer(t, "", false)
 	defer mockServer.Close()
