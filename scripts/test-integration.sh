@@ -44,5 +44,11 @@ elif [ -n "${RUN:-}" ]; then
   RUN_FLAG=(-run "$RUN")
 fi
 
-exec go run gotest.tools/gotestsum@latest --format testname "${JUNIT_FLAG[@]}" \
-  -- -count=1 -timeout 15m "${RUN_FLAG[@]}" ./...
+# Bash 3 (macOS default) treats `${arr[@]}` on an empty array as unbound under
+# `set -u`. The `${arr[@]+"${arr[@]}"}` idiom expands to nothing when the
+# array is empty and to the array's contents otherwise.
+exec go run gotest.tools/gotestsum@latest --format testname \
+  ${JUNIT_FLAG[@]+"${JUNIT_FLAG[@]}"} \
+  -- -count=1 -timeout 15m \
+  ${RUN_FLAG[@]+"${RUN_FLAG[@]}"} \
+  ./...
