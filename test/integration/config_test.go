@@ -13,7 +13,9 @@ import (
 )
 
 func TestConfigFileCreatedOnStartup(t *testing.T) {
+	t.Parallel()
 	t.Run("creates in home .config when present", func(t *testing.T) {
+		t.Parallel()
 		tmpHome := t.TempDir()
 		workDir := t.TempDir()
 		xdgOverride := filepath.Join(tmpHome, "xdg-config-home")
@@ -30,6 +32,7 @@ func TestConfigFileCreatedOnStartup(t *testing.T) {
 	})
 
 	t.Run("falls back to os user config dir when home .config is missing", func(t *testing.T) {
+		t.Parallel()
 		tmpHome := t.TempDir()
 		workDir := t.TempDir()
 		xdgOverride := filepath.Join(tmpHome, "xdg-config-home")
@@ -79,6 +82,7 @@ IAM_SOFT_MODE = "1"
 }
 
 func TestConfigFlagOverridesConfigPath(t *testing.T) {
+	t.Parallel()
 	customConfig := filepath.Join(t.TempDir(), "custom.toml")
 	writeConfigFile(t, customConfig)
 
@@ -90,6 +94,7 @@ func TestConfigFlagOverridesConfigPath(t *testing.T) {
 }
 
 func TestLocalConfigTakesPrecedence(t *testing.T) {
+	t.Parallel()
 	tmpHome := t.TempDir()
 	workDir := t.TempDir()
 	xdgOverride := filepath.Join(tmpHome, "xdg-config-home")
@@ -110,6 +115,7 @@ func TestLocalConfigTakesPrecedence(t *testing.T) {
 }
 
 func TestXDGConfigTakesPrecedence(t *testing.T) {
+	t.Parallel()
 	tmpHome := t.TempDir()
 	workDir := t.TempDir()
 	xdgOverride := filepath.Join(tmpHome, "xdg-config-home")
@@ -128,6 +134,7 @@ func TestXDGConfigTakesPrecedence(t *testing.T) {
 }
 
 func TestConfigPathCommand(t *testing.T) {
+	t.Parallel()
 	tmpHome := t.TempDir()
 	workDir := t.TempDir()
 	xdgConfigFile := filepath.Join(tmpHome, ".config", "lstk", "config.toml")
@@ -144,6 +151,7 @@ func TestConfigPathCommand(t *testing.T) {
 }
 
 func TestConfigPathCommandDoesNotCreateConfig(t *testing.T) {
+	t.Parallel()
 	tmpHome := t.TempDir()
 	workDir := t.TempDir()
 	xdgOverride := filepath.Join(tmpHome, "xdg-config-home")
@@ -159,6 +167,7 @@ func TestConfigPathCommandDoesNotCreateConfig(t *testing.T) {
 }
 
 func TestConfigWithUnknownFieldsIsAccepted(t *testing.T) {
+	t.Parallel()
 	configContent := `
 unknown_top_level = "should be ignored"
 
@@ -177,6 +186,7 @@ future_field = "should be ignored"
 }
 
 func TestConfigWithMissingRequiredPortFails(t *testing.T) {
+	t.Parallel()
 	configContent := `
 [[containers]]
 type = "aws"
@@ -192,6 +202,7 @@ tag = "latest"
 }
 
 func TestLegacyYAMLConfigGivesHelpfulError(t *testing.T) {
+	t.Parallel()
 	tmpHome := t.TempDir()
 	workDir := t.TempDir()
 	xdgOverride := filepath.Join(tmpHome, "xdg-config-home")
@@ -213,6 +224,7 @@ func TestLegacyYAMLConfigGivesHelpfulError(t *testing.T) {
 }
 
 func TestConfigWithMissingOptionalTagSucceeds(t *testing.T) {
+	t.Parallel()
 	configContent := `
 [[containers]]
 type = "aws"

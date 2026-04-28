@@ -10,6 +10,7 @@ import (
 )
 
 func TestDocsCommandGeneratesManPages(t *testing.T) {
+	t.Parallel()
 	dir := filepath.Join(t.TempDir(), "manpages")
 
 	_, stderr, err := runLstk(t, testContext(t), "", os.Environ(), "docs", "--format", "man", "--dir", dir)
@@ -22,6 +23,7 @@ func TestDocsCommandGeneratesManPages(t *testing.T) {
 }
 
 func TestDocsCommandGeneratesMarkdown(t *testing.T) {
+	t.Parallel()
 	dir := filepath.Join(t.TempDir(), "markdown")
 
 	_, stderr, err := runLstk(t, testContext(t), "", os.Environ(), "docs", "--format", "markdown", "--dir", dir)
@@ -34,6 +36,7 @@ func TestDocsCommandGeneratesMarkdown(t *testing.T) {
 }
 
 func TestDocsCommandRejectsInvalidFormat(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 
 	_, _, err := runLstk(t, testContext(t), "", os.Environ(), "docs", "--format", "invalid", "--dir", dir)
@@ -42,6 +45,7 @@ func TestDocsCommandRejectsInvalidFormat(t *testing.T) {
 }
 
 func TestDocsCommandIsHidden(t *testing.T) {
+	t.Parallel()
 	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), os.Environ(), "--help")
 	require.NoError(t, err, stderr)
 

@@ -208,6 +208,7 @@ func TestStartEmitsNoteWhenAWSProfileIsPartial(t *testing.T) {
 }
 
 func TestConfigProfileCreatesAWSProfileWhenConfirmed(t *testing.T) {
+	t.Parallel()
 	if runtime.GOOS == "windows" {
 		t.Skip("PTY not supported on Windows")
 	}
@@ -258,6 +259,7 @@ func TestConfigProfileCreatesAWSProfileWhenConfirmed(t *testing.T) {
 }
 
 func TestSetupAWSCreatesAWSProfileWhenConfirmed(t *testing.T) {
+	t.Parallel()
 	if runtime.GOOS == "windows" {
 		t.Skip("PTY not supported on Windows")
 	}
@@ -308,6 +310,7 @@ func TestSetupAWSCreatesAWSProfileWhenConfirmed(t *testing.T) {
 }
 
 func TestConfigProfileDoesNotCreateAWSProfileWhenDeclined(t *testing.T) {
+	t.Parallel()
 	if runtime.GOOS == "windows" {
 		t.Skip("PTY not supported on Windows")
 	}
@@ -349,6 +352,7 @@ func TestConfigProfileDoesNotCreateAWSProfileWhenDeclined(t *testing.T) {
 }
 
 func TestSetupAWSNonInteractiveReturnsError(t *testing.T) {
+	t.Parallel()
 	baseEnv, _ := awsConfigEnv(t)
 
 	_, stderr, err := runLstk(t, testContext(t), "",

@@ -19,6 +19,7 @@ import (
 )
 
 func TestUpdateCheckCommand(t *testing.T) {
+	t.Parallel()
 	ctx := testContext(t)
 
 	analyticsSrv, events := mockAnalyticsServer(t)
@@ -32,6 +33,7 @@ func TestUpdateCheckCommand(t *testing.T) {
 }
 
 func TestUpdateCheckCommandNonInteractive(t *testing.T) {
+	t.Parallel()
 	ctx := testContext(t)
 
 	stdout, stderr, err := runLstk(t, ctx, "", nil, "update", "--check", "--non-interactive")
@@ -48,6 +50,7 @@ func requireNPM(t *testing.T) {
 }
 
 func TestUpdateNPMInstall(t *testing.T) {
+	t.Parallel()
 	requireNPM(t)
 
 	// Skip if lstk is already installed globally (e.g., via Homebrew).
@@ -114,6 +117,7 @@ func TestUpdateNPMInstall(t *testing.T) {
 }
 
 func TestUpdateBinaryInPlace(t *testing.T) {
+	t.Parallel()
 	ctx := testContext(t)
 
 	// Build a fake old version to a temp location
@@ -221,6 +225,7 @@ func TestUpdateHomebrew(t *testing.T) {
 }
 
 func TestUpdateNotification(t *testing.T) {
+	t.Parallel()
 	if runtime.GOOS == "windows" {
 		t.Skip("PTY not supported on Windows")
 	}
@@ -243,9 +248,10 @@ func TestUpdateNotification(t *testing.T) {
 
 	// Mock API server so license validation fails fast after the notification
 	mockServer := createMockLicenseServer(false)
-	defer mockServer.Close()
+	t.Cleanup(mockServer.Close)
 
 	t.Run("skip", func(t *testing.T) {
+		t.Parallel()
 		configFile := filepath.Join(t.TempDir(), "config.toml")
 		originalConfig := `# User-maintained lstk config
 [[containers]]
@@ -295,6 +301,7 @@ port = "4566"    # Host port
 
 
 	t.Run("update", func(t *testing.T) {
+		t.Parallel()
 		// Copy binary since it will be replaced during the update
 		updateBinary := filepath.Join(t.TempDir(), "lstk")
 		data, err := os.ReadFile(tmpBinary)
