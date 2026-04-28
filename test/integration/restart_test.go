@@ -11,25 +11,24 @@ import (
 func TestRestartCommandSucceeds(t *testing.T) {
 	requireDocker(t)
 	_ = env.Require(t, env.AuthToken)
-
-	cleanup()
-	t.Cleanup(cleanup)
+	t.Parallel()
+	daemon := startEphemeralDocker(t, localstackProImage)
 
 	mockServer := createMockLicenseServer(true)
 	defer mockServer.Close()
 
 	ctx := testContext(t)
-	_, stderr, err := runLstk(t, ctx, "", env.With(env.APIEndpoint, mockServer.URL), "start")
+	_, stderr, err := runLstk(t, ctx, "", envWithDockerHost(t, daemon).With(env.APIEndpoint, mockServer.URL), "start")
 	require.NoError(t, err, "lstk start failed: %s", stderr)
 
 	analyticsSrv, events := mockAnalyticsServer(t)
-	stdout, stderr, err := runLstk(t, ctx, "", env.With(env.APIEndpoint, mockServer.URL).With(env.AnalyticsEndpoint, analyticsSrv.URL), "restart")
+	stdout, stderr, err := runLstk(t, ctx, "", envWithDockerHost(t, daemon).With(env.APIEndpoint, mockServer.URL).With(env.AnalyticsEndpoint, analyticsSrv.URL), "restart")
 	require.NoError(t, err, "lstk restart failed: %s", stderr)
 	requireExitCode(t, 0, err)
 	assert.Contains(t, stdout, "stopped")
 	assert.Contains(t, stdout, "LocalStack")
 
-	inspect, err := dockerClient.ContainerInspect(ctx, containerName)
+	inspect, err := daemon.Client.ContainerInspect(ctx, containerName)
 	require.NoError(t, err, "failed to inspect container after restart")
 	assert.True(t, inspect.State.Running, "container should be running after restart")
 

@@ -37,21 +37,22 @@ func TestStatusCommandFailsWhenNotRunning(t *testing.T) {
 func TestStatusCommandShowsResourcesWhenRunning(t *testing.T) {
 	requireDocker(t)
 	_ = env.Require(t, env.AuthToken)
-	cleanup()
-	t.Cleanup(cleanup)
+	t.Parallel()
+	daemon := startEphemeralDocker(t, localstackProImage)
 
 	ctx := testContext(t)
 
 	mockServer := createMockLicenseServer(true)
 	defer mockServer.Close()
 
-	_, stderr, err := runLstk(t, ctx, "", env.With(env.APIEndpoint, mockServer.URL), "start")
+	_, stderr, err := runLstk(t, ctx, "", envWithDockerHost(t, daemon).With(env.APIEndpoint, mockServer.URL), "start")
 	require.NoError(t, err, "lstk start failed: %s", stderr)
 
+	awsEndpoint := fmt.Sprintf("http://127.0.0.1:%d", daemon.hostPortFor(4566))
 	awsCfg, err := awsconfig.LoadDefaultConfig(ctx,
 		awsconfig.WithRegion("us-east-1"),
 		awsconfig.WithCredentialsProvider(credentials.NewStaticCredentialsProvider("test", "test", "")),
-		awsconfig.WithBaseEndpoint("http://localhost:4566"),
+		awsconfig.WithBaseEndpoint(awsEndpoint),
 	)
 	require.NoError(t, err)
 
@@ -64,7 +65,9 @@ func TestStatusCommandShowsResourcesWhenRunning(t *testing.T) {
 	require.NoError(t, err, "failed to create SQS queue")
 
 	analyticsSrv, events := mockAnalyticsServer(t)
-	stdout, stderr, err := runLstk(t, ctx, "", env.With(env.AnalyticsEndpoint, analyticsSrv.URL), "status")
+	// LOCALSTACK_HOST tells lstk status which host:port to query.
+	host := fmt.Sprintf("127.0.0.1:%d", daemon.hostPortFor(4566))
+	stdout, stderr, err := runLstk(t, ctx, "", envWithDockerHost(t, daemon).With(env.AnalyticsEndpoint, analyticsSrv.URL).With(env.LocalStackHost, host), "status")
 	require.NoError(t, err, "lstk status failed: %s", stderr)
 	requireExitCode(t, 0, err)
 	assert.Contains(t, stdout, "running")

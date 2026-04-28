@@ -59,14 +59,13 @@ func createVersionResolutionMockServer(t *testing.T, catalogVersion string, lice
 func TestVersionResolvedViaCatalog(t *testing.T) {
 	requireDocker(t)
 	_ = env.Require(t, env.AuthToken)
-
-	cleanup()
-	t.Cleanup(cleanup)
+	t.Parallel()
+	daemon := startEphemeralDocker(t, localstackProImage)
 
 	mockServer, capturedVersion := createVersionResolutionMockServer(t, "4.14.0", true)
 
 	ctx := testContext(t)
-	stdout, stderr, err := runLstk(t, ctx, "", env.With(env.APIEndpoint, mockServer.URL), "start")
+	stdout, stderr, err := runLstk(t, ctx, "", envWithDockerHost(t, daemon).With(env.APIEndpoint, mockServer.URL), "start")
 	require.NoError(t, err, "lstk start failed:\nstdout: %s\nstderr: %s", stdout, stderr)
 
 	assert.Equal(t, "4.14.0", *capturedVersion,
@@ -80,15 +79,14 @@ func TestVersionResolvedViaCatalog(t *testing.T) {
 func TestVersionFallsBackToImageInspectionWhenCatalogFails(t *testing.T) {
 	requireDocker(t)
 	_ = env.Require(t, env.AuthToken)
-
-	cleanup()
-	t.Cleanup(cleanup)
+	t.Parallel()
+	daemon := startEphemeralDocker(t, localstackProImage)
 
 	// Catalog returns 503; license accepts all requests
 	mockServer, capturedVersion := createVersionResolutionMockServer(t, "", true)
 
 	ctx := testContext(t)
-	stdout, stderr, err := runLstk(t, ctx, "", env.With(env.APIEndpoint, mockServer.URL), "start")
+	stdout, stderr, err := runLstk(t, ctx, "", envWithDockerHost(t, daemon).With(env.APIEndpoint, mockServer.URL), "start")
 	require.NoError(t, err, "lstk start should succeed via image inspection fallback:\nstdout: %s\nstderr: %s", stdout, stderr)
 
 	assert.NotEmpty(t, *capturedVersion, "license request should carry a version resolved from image inspection")
@@ -100,16 +98,15 @@ func TestVersionFallsBackToImageInspectionWhenCatalogFails(t *testing.T) {
 func TestCommandFailsNicelyWhenCatalogAndLicenseBothFail(t *testing.T) {
 	requireDocker(t)
 	_ = env.Require(t, env.AuthToken)
-
-	cleanup()
-	t.Cleanup(cleanup)
+	t.Parallel()
+	daemon := startEphemeralDocker(t)
 
 	// Catalog unavailable; license rejects all requests
 	mockServer, _ := createVersionResolutionMockServer(t, "", false)
 
 	ctx := testContext(t)
 	stdout, stderr, err := runLstk(t, ctx, "",
-		env.With(env.APIEndpoint, mockServer.URL), "start")
+		envWithDockerHost(t, daemon).With(env.APIEndpoint, mockServer.URL), "start")
 	require.Error(t, err, "expected lstk start to fail when catalog is down and license check fails")
 	assert.Contains(t, stderr, "license validation failed",
 		"stdout: %s", stdout)

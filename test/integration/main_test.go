@@ -18,10 +18,7 @@ import (
 	"time"
 
 	"github.com/creack/pty"
-	"github.com/docker/docker/api/types/container"
-	"github.com/docker/docker/api/types/image"
 	"github.com/docker/docker/client"
-	"github.com/docker/go-connections/nat"
 	"github.com/localstack/lstk/test/integration/env"
 	"github.com/stretchr/testify/require"
 	"github.com/zalando/go-keyring"
@@ -169,65 +166,6 @@ const (
 	containerName = "localstack-aws"
 	testImage     = "alpine:latest"
 )
-
-// startTestContainer starts the test container with no port bindings by default.
-// Pass hostPort to bind 4566/tcp to a specific host port (e.g. to test that lstk status
-// uses the actual bound port rather than the port from config).
-func startTestContainer(t *testing.T, ctx context.Context, hostPort ...string) {
-	t.Helper()
-
-	reader, err := dockerClient.ImagePull(ctx, testImage, image.PullOptions{})
-	require.NoError(t, err, "failed to pull test image")
-	_, _ = io.Copy(io.Discard, reader)
-	_ = reader.Close()
-
-	cfg := &container.Config{
-		Image: testImage,
-		Cmd:   []string{"sleep", "infinity"},
-	}
-	var hostCfg *container.HostConfig
-	if len(hostPort) > 0 {
-		const containerPort = nat.Port("4566/tcp")
-		cfg.ExposedPorts = nat.PortSet{containerPort: struct{}{}}
-		hostCfg = &container.HostConfig{
-			PortBindings: nat.PortMap{
-				// 127.0.0.2 avoids conflicting with the mock HTTP server on 127.0.0.1:hostPort.
-				containerPort: []nat.PortBinding{{HostIP: "127.0.0.2", HostPort: hostPort[0]}},
-			},
-		}
-	}
-
-	resp, err := dockerClient.ContainerCreate(ctx, cfg, hostCfg, nil, nil, containerName)
-	require.NoError(t, err, "failed to create test container")
-	err = dockerClient.ContainerStart(ctx, resp.ID, container.StartOptions{})
-	require.NoError(t, err, "failed to start test container")
-}
-
-// Use this to simulate a LocalStack container started outside lstk.
-func startExternalContainer(t *testing.T, ctx context.Context, imgName, name, hostPort string) {
-	t.Helper()
-
-	const containerPort = nat.Port("4566/tcp")
-	resp, err := dockerClient.ContainerCreate(ctx,
-		&container.Config{
-			Image:        imgName,
-			Cmd:          []string{"sleep", "infinity"},
-			ExposedPorts: nat.PortSet{containerPort: struct{}{}},
-		},
-		&container.HostConfig{
-			PortBindings: nat.PortMap{
-				containerPort: []nat.PortBinding{{HostPort: hostPort}},
-			},
-		},
-		nil, nil, name,
-	)
-	require.NoError(t, err, "failed to create external container")
-	err = dockerClient.ContainerStart(ctx, resp.ID, container.StartOptions{})
-	require.NoError(t, err, "failed to start external container")
-	t.Cleanup(func() {
-		_ = dockerClient.ContainerRemove(context.Background(), name, container.RemoveOptions{Force: true})
-	})
-}
 
 func testContext(t *testing.T) context.Context {
 	t.Helper()

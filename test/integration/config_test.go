@@ -51,9 +51,8 @@ func TestConfigFileCreatedOnStartup(t *testing.T) {
 func TestConfigFlagEnvVarsPassedToContainer(t *testing.T) {
 	requireDocker(t)
 	_ = env.Require(t, env.AuthToken)
-
-	cleanup()
-	t.Cleanup(cleanup)
+	t.Parallel()
+	daemon := startEphemeralDocker(t, localstackProImage)
 
 	mockServer := createMockLicenseServer(true)
 	defer mockServer.Close()
@@ -72,11 +71,11 @@ IAM_SOFT_MODE = "1"
 	require.NoError(t, os.WriteFile(configFile, []byte(configContent), 0644))
 
 	ctx := testContext(t)
-	_, stderr, err := runLstk(t, ctx, "", env.With(env.APIEndpoint, mockServer.URL), "--config", configFile, "start")
+	_, stderr, err := runLstk(t, ctx, "", envWithDockerHost(t, daemon).With(env.APIEndpoint, mockServer.URL), "--config", configFile, "start")
 	require.NoError(t, err, "lstk start failed: %s", stderr)
 	requireExitCode(t, 0, err)
 
-	inspect, err := dockerClient.ContainerInspect(ctx, containerName)
+	inspect, err := daemon.Client.ContainerInspect(ctx, containerName)
 	require.NoError(t, err, "failed to inspect container")
 	assert.Contains(t, inspect.Config.Env, "IAM_SOFT_MODE=1")
 }

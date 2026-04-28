@@ -22,17 +22,39 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-const dindImage = "docker:dind"
+const (
+	dindImage          = "docker:dind"
+	localstackProImage = "localstack/localstack-pro:latest"
+	snowflakeImage     = "localstack/snowflake:latest"
+)
 
 // testDaemon is a per-test ephemeral Docker daemon (Docker-in-Docker).
 // Each test gets its own kernel namespaces (network, mount, pid), so port
 // bindings, container names, and docker state are fully isolated. lstk
 // subprocesses point at the daemon via env.DockerHost.
 type testDaemon struct {
-	Host   string         // tcp://127.0.0.1:<port>, suitable for DOCKER_HOST
-	Port   int            // host-side port that maps to the daemon's 2375
-	Client *client.Client // for direct introspection from the test process
+	Host    string         // tcp://127.0.0.1:<port>, suitable for DOCKER_HOST
+	Port    int            // host-side port that maps to the daemon's 2375
+	Client  *client.Client // for direct introspection from the test process
+	Ports   map[int]int    // nested-container-port → host-side port mapping
 }
+
+// hostPortFor returns the host port that maps onto the dind container's
+// nested-container port. Tests use this when constructing URLs that need to
+// reach LocalStack inside dind from the test process (e.g. AWS SDK endpoints,
+// HTTP health checks).
+func (d *testDaemon) hostPortFor(nestedPort int) int {
+	if p, ok := d.Ports[nestedPort]; ok {
+		return p
+	}
+	return nestedPort
+}
+
+// forwardedPorts are the nested-container ports that startEphemeralDocker
+// publishes through the dind container so the test process can reach them.
+// Covers the LocalStack main port, HTTPS gateway, alternative-port tests, and
+// the lstk service-port range used by the gateway.
+var forwardedPorts = []int{4566, 443, 4567}
 
 // startEphemeralDocker boots a docker:dind container on the host's daemon
 // (the one TestMain connected to), waits for the inner daemon to accept
@@ -50,21 +72,36 @@ func startEphemeralDocker(t *testing.T, preload ...string) *testDaemon {
 	port, err := freeTCPPort()
 	require.NoError(t, err, "failed to allocate free port for dind")
 
+	// Allocate one host port per nested-container port we want to forward.
+	hostPorts := make(map[int]int, len(forwardedPorts))
+	exposed := nat.PortSet{"2375/tcp": struct{}{}}
+	bindings := nat.PortMap{
+		"2375/tcp": []nat.PortBinding{{HostIP: "127.0.0.1", HostPort: strconv.Itoa(port)}},
+	}
+	for _, np := range forwardedPorts {
+		hp, err := freeTCPPort()
+		require.NoError(t, err, "failed to allocate forwarded port for %d", np)
+		hostPorts[np] = hp
+		key := nat.Port(strconv.Itoa(np) + "/tcp")
+		exposed[key] = struct{}{}
+		bindings[key] = []nat.PortBinding{{HostIP: "127.0.0.1", HostPort: strconv.Itoa(hp)}}
+	}
+
 	name := "lstk-dind-" + randomID(t)
 
+	// /var/lib/docker is on disk (not tmpfs) because preloading large images
+	// like localstack-pro (~2GB) into 4+ parallel dinds would otherwise blow
+	// past CI runner RAM.
 	resp, err := dockerClient.ContainerCreate(ctx,
 		&container.Config{
 			Image:        dindImage,
 			Cmd:          []string{"dockerd", "--host=tcp://0.0.0.0:2375", "--tls=false"},
 			Env:          []string{"DOCKER_TLS_CERTDIR="},
-			ExposedPorts: nat.PortSet{"2375/tcp": struct{}{}},
+			ExposedPorts: exposed,
 		},
 		&container.HostConfig{
-			Privileged: true,
-			PortBindings: nat.PortMap{
-				"2375/tcp": []nat.PortBinding{{HostIP: "127.0.0.1", HostPort: strconv.Itoa(port)}},
-			},
-			Tmpfs: map[string]string{"/var/lib/docker": ""}, // ephemeral, faster teardown
+			Privileged:   true,
+			PortBindings: bindings,
 		},
 		nil, nil, name,
 	)
@@ -91,7 +128,7 @@ func startEphemeralDocker(t *testing.T, preload ...string) *testDaemon {
 		return err == nil
 	}, 30*time.Second, 200*time.Millisecond, "dind daemon should accept connections")
 
-	d := &testDaemon{Host: host, Port: port, Client: inner}
+	d := &testDaemon{Host: host, Port: port, Client: inner, Ports: hostPorts}
 
 	// Always preload alpine — used by every stub container helper.
 	loadCachedImage(t, d, testImage)
@@ -250,17 +287,46 @@ func startStubInDind(t *testing.T, daemon *testDaemon, name string, hostPort ...
 	require.NoError(t, daemon.Client.ContainerStart(ctx, resp.ID, container.StartOptions{}))
 }
 
-// envWithDockerHost returns a process environment with DOCKER_HOST pointing at
-// the given daemon, suitable for chaining .With() calls before passing to runLstk.
+// dindEnv bundles the per-test isolation handles for dind-driven tests.
+type dindEnv struct {
+	BaseEnv env.Environ // DOCKER_HOST, LSTK_BIND_ALL, HOME, LSTK_KEYRING set
+	Home    string      // per-test HOME for the lstk subprocess
+}
+
+// envWithDockerHostFull returns a dindEnv ready to pass to runLstk and to
+// reference for filesystem isolation (keyring file, config dir, etc.).
 //
-// HOME is also pointed at a fresh tempdir so the lstk subprocess never reads
-// the developer's real ~/.config/lstk/config.toml (default aws config gets
-// auto-created in the tempdir on first run).
+// LSTK_BIND_ALL=1 makes lstk publish nested-container ports on 0.0.0.0 instead
+// of 127.0.0.1; otherwise host port forwarding through dind can't reach them.
+// LSTK_KEYRING=file forces the file-based keyring so each test can write/read
+// auth tokens under its per-test HOME.
+func envWithDockerHostFull(t *testing.T, daemon *testDaemon) dindEnv {
+	t.Helper()
+	home := t.TempDir()
+	be := env.Environ(os.Environ()).
+		With(env.Key("DOCKER_HOST"), daemon.Host).
+		With(env.Key("LSTK_BIND_ALL"), "1").
+		With(env.Keyring, "file").
+		With(env.Home, home)
+	return dindEnv{BaseEnv: be, Home: home}
+}
+
+// envWithDockerHost is the simple form of envWithDockerHostFull for tests that
+// don't need to access the per-test HOME directly.
 func envWithDockerHost(t *testing.T, daemon *testDaemon) env.Environ {
 	t.Helper()
-	return env.Environ(os.Environ()).
-		With(env.Key("DOCKER_HOST"), daemon.Host).
-		With(env.Home, t.TempDir())
+	return envWithDockerHostFull(t, daemon).BaseEnv
+}
+
+// writeFileKeyringToken writes an auth token into the file keyring layout
+// under the given HOME, matching what GetAuthTokenFromKeyring/SetAuthToken
+// expect when LSTK_KEYRING=file is set.
+func writeFileKeyringToken(home, token string) error {
+	dir := filepath.Join(home, ".config", "lstk")
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		return err
+	}
+	return os.WriteFile(filepath.Join(dir, authTokenFile), []byte(token), 0600)
 }
 
 // startExternalInDind simulates a LocalStack container started outside lstk,

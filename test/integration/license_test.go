@@ -1,7 +1,6 @@
 package integration_test
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -10,7 +9,6 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/docker/docker/api/types/container"
 	"github.com/localstack/lstk/test/integration/env"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -19,13 +17,11 @@ import (
 func TestLicenseValidationSuccess(t *testing.T) {
 	requireDocker(t)
 	authToken := env.Require(t, env.AuthToken)
-
-	cleanupLicense()
-	t.Cleanup(cleanupLicense)
+	t.Parallel()
+	daemon := startEphemeralDocker(t, localstackProImage)
 
 	validationErrors := make(chan error, 1)
 
-	// Mock platform API that returns success
 	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/v1/license/request" && r.Method == http.MethodPost {
 			var req map[string]interface{}
@@ -33,22 +29,18 @@ func TestLicenseValidationSuccess(t *testing.T) {
 				http.Error(w, "invalid request", http.StatusBadRequest)
 				return
 			}
-
-			// Validate with safe type assertions
 			product, ok := req["product"].(map[string]interface{})
 			if !ok || product["name"] != "localstack-pro" {
 				validationErrors <- fmt.Errorf("invalid product field")
 				http.Error(w, "invalid product", http.StatusBadRequest)
 				return
 			}
-
 			credentials, ok := req["credentials"].(map[string]interface{})
 			if !ok || credentials["token"] != authToken {
 				validationErrors <- fmt.Errorf("invalid credentials field")
 				http.Error(w, "invalid credentials", http.StatusBadRequest)
 				return
 			}
-
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusOK)
 			_, _ = w.Write([]byte(`{"license_type":"pro"}`))
@@ -59,9 +51,8 @@ func TestLicenseValidationSuccess(t *testing.T) {
 	defer mockServer.Close()
 
 	ctx := testContext(t)
-	_, stderr, err := runLstk(t, ctx, "", env.With(env.APIEndpoint, mockServer.URL), "start")
+	_, stderr, err := runLstk(t, ctx, "", envWithDockerHost(t, daemon).With(env.APIEndpoint, mockServer.URL), "start")
 
-	// Check for validation errors from handler
 	select {
 	case validationErr := <-validationErrors:
 		t.Fatalf("request validation failed: %v", validationErr)
@@ -71,65 +62,56 @@ func TestLicenseValidationSuccess(t *testing.T) {
 	require.NoError(t, err, "lstk start failed: %s", stderr)
 	requireExitCode(t, 0, err)
 
-	inspect, err := dockerClient.ContainerInspect(ctx, containerName)
+	inspect, err := daemon.Client.ContainerInspect(ctx, containerName)
 	require.NoError(t, err, "failed to inspect container")
 	assert.True(t, inspect.State.Running, "container should be running")
 }
 
 func TestLicenseValidationFailure(t *testing.T) {
 	requireDocker(t)
-	cleanupLicense()
-	t.Cleanup(cleanupLicense)
+	t.Parallel()
+	daemon := startEphemeralDocker(t)
 
 	mockServer := createMockLicenseServer(false)
 	defer mockServer.Close()
 
 	ctx := testContext(t)
-	_, stderr, err := runLstk(t, ctx, "", env.With(env.APIEndpoint, mockServer.URL).With(env.AuthToken, "test-token-for-license-validation"), "start")
+	_, stderr, err := runLstk(t, ctx, "", envWithDockerHost(t, daemon).With(env.APIEndpoint, mockServer.URL).With(env.AuthToken, "test-token-for-license-validation"), "start")
 	require.Error(t, err, "expected lstk start to fail with forbidden license")
 	requireExitCode(t, 1, err)
 	assert.Contains(t, stderr, "license validation failed")
 	assert.Contains(t, stderr, "invalid, inactive, or expired")
 
-	_, err = dockerClient.ContainerInspect(ctx, containerName)
+	_, err = daemon.Client.ContainerInspect(ctx, containerName)
 	assert.Error(t, err, "container should not exist after license failure")
 }
 
-func licenseFilePath(t *testing.T) string {
-	t.Helper()
-	cacheDir, err := os.UserCacheDir()
-	require.NoError(t, err)
-	return filepath.Join(cacheDir, "lstk", "license.json")
-}
-
-func cleanupLicense() {
-	ctx := context.Background()
-	_ = dockerClient.ContainerRemove(ctx, containerName, container.RemoveOptions{Force: true})
-	if cacheDir, err := os.UserCacheDir(); err == nil {
-		_ = os.Remove(filepath.Join(cacheDir, "lstk", "license.json"))
-	}
+// licenseFilePath returns the license cache path as the lstk subprocess would
+// resolve it given a per-test HOME.
+func licenseFilePath(home string) string {
+	return filepath.Join(home, ".cache", "lstk", "license.json")
 }
 
 func TestLicenseCacheAndMount(t *testing.T) {
 	requireDocker(t)
 	env.Require(t, env.AuthToken)
-
-	cleanupLicense()
-	t.Cleanup(cleanupLicense)
+	t.Parallel()
+	daemon := startEphemeralDocker(t, localstackProImage)
+	te := envWithDockerHostFull(t, daemon)
 
 	licenseBody := `{"license":"test-license-data"}`
 	mockServer := createMockLicenseServerWithBody(licenseBody)
 	defer mockServer.Close()
 
 	ctx := testContext(t)
-	_, stderr, err := runLstk(t, ctx, "", env.With(env.APIEndpoint, mockServer.URL), "start")
+	_, stderr, err := runLstk(t, ctx, "", te.BaseEnv.With(env.APIEndpoint, mockServer.URL), "start")
 	require.NoError(t, err, "lstk start failed: %s", stderr)
 
-	data, err := os.ReadFile(licenseFilePath(t))
+	data, err := os.ReadFile(licenseFilePath(te.Home))
 	require.NoError(t, err, "license cache file should exist after successful start")
 	assert.Equal(t, licenseBody, string(data))
 
-	inspect, err := dockerClient.ContainerInspect(ctx, containerName)
+	inspect, err := daemon.Client.ContainerInspect(ctx, containerName)
 	require.NoError(t, err, "failed to inspect container")
 
 	var mounted bool

@@ -220,9 +220,18 @@ func (d *DockerRuntime) PullImage(ctx context.Context, imageName string, progres
 }
 
 func (d *DockerRuntime) Start(ctx context.Context, config ContainerConfig) (string, error) {
+	// LSTK_BIND_ALL is a test-only escape hatch: integration tests run lstk
+	// inside a Docker-in-Docker daemon and need nested ports reachable on the
+	// dind container's external interface (so the host can hit them through
+	// dind's port mapping). Production keeps the safer 127.0.0.1 default.
+	hostIP := "127.0.0.1"
+	if os.Getenv("LSTK_BIND_ALL") == "1" {
+		hostIP = "0.0.0.0"
+	}
+
 	containerPort := nat.Port(config.ContainerPort)
 	exposedPorts := nat.PortSet{containerPort: struct{}{}}
-	portBindings := nat.PortMap{containerPort: []nat.PortBinding{{HostIP: "127.0.0.1", HostPort: config.Port}}}
+	portBindings := nat.PortMap{containerPort: []nat.PortBinding{{HostIP: hostIP, HostPort: config.Port}}}
 
 	for _, ep := range config.ExtraPorts {
 		proto := ep.Protocol
@@ -231,7 +240,7 @@ func (d *DockerRuntime) Start(ctx context.Context, config ContainerConfig) (stri
 		}
 		p := nat.Port(ep.ContainerPort + "/" + proto)
 		exposedPorts[p] = struct{}{}
-		portBindings[p] = []nat.PortBinding{{HostIP: "127.0.0.1", HostPort: ep.HostPort}}
+		portBindings[p] = []nat.PortBinding{{HostIP: hostIP, HostPort: ep.HostPort}}
 	}
 
 	var binds []string
