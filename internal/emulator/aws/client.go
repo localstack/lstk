@@ -9,6 +9,8 @@ import (
 	"sort"
 	"strings"
 
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+
 	"github.com/localstack/lstk/internal/emulator"
 )
 
@@ -16,8 +18,17 @@ type Client struct {
 	http *http.Client
 }
 
-func NewClient(httpClient *http.Client) *Client {
-	return &Client{http: httpClient}
+func NewClient() *Client {
+	return &Client{
+		http: &http.Client{
+			Transport: otelhttp.NewTransport(
+				http.DefaultTransport,
+				otelhttp.WithSpanNameFormatter(func(_ string, r *http.Request) string {
+					return "aws " + r.Method + " " + r.URL.Path
+				}),
+			),
+		},
+	}
 }
 
 type healthResponse struct {

@@ -1,0 +1,19 @@
+name: Require release label
+
+on:
+  pull_request:
+    types: [opened, labeled, unlabeled, synchronize, reopened]
+
+jobs:
+  check-label:
+    name: Require release label
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check for semver label
+        env:
+          LABELS: ${{ toJson(github.event.pull_request.labels.*.name) }}
+        run: |
+          if ! echo "${LABELS}" | jq -e 'any(. == "semver: patch" or . == "semver: minor" or . == "semver: major")' > /dev/null; then
+            echo "::error::PR must have a release label: 'semver: patch', 'semver: minor', or 'semver: major'"
+            exit 1
+          fi

@@ -25,9 +25,9 @@ type PortMapping struct {
 type ContainerConfig struct {
 	Image         string
 	Name          string
-	EmulatorType  string // e.g., "aws", "snowflake" — used for telemetry
+	EmulatorType  string   // e.g., "aws", "snowflake" — used for telemetry
 	Port          string
-	ContainerPort string // internal port the emulator listens on inside the container (e.g. "4566/tcp")
+	ContainerPort string   // internal port the emulator listens on inside the container (e.g. "4566/tcp")
 	HealthPath    string
 	Env           []string // e.g., ["KEY=value", "FOO=bar"]
 	Tag           string
@@ -41,6 +41,12 @@ type PullProgress struct {
 	Status  string
 	Current int64
 	Total   int64
+}
+
+type RunningContainer struct {
+	Name      string
+	Image     string // full image with tag, e.g. "localstack/localstack-pro:3.5.0"
+	BoundPort string // host port bound to the queried container port
 }
 
 // Runtime abstracts container runtime operations (Docker, Podman, Kubernetes, etc.)
@@ -58,5 +64,6 @@ type Runtime interface {
 	GetImageVersion(ctx context.Context, imageName string) (string, error)
 	// GetBoundPort returns the host port bound to the given container port (e.g. "4566/tcp").
 	GetBoundPort(ctx context.Context, containerName string, containerPort string) (string, error)
+	FindRunningByImage(ctx context.Context, imageRepos []string, containerPort string) (*RunningContainer, error)
 	SocketPath() string
 }

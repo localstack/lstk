@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -13,11 +14,14 @@ import (
 	"testing"
 
 	"github.com/docker/docker/api/types/container"
+	"github.com/docker/docker/api/types/image"
 	"github.com/docker/go-connections/nat"
 	"github.com/localstack/lstk/test/integration/env"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+const snowflakeContainerName = "localstack-snowflake"
 
 func TestStartCommandSucceedsWithValidToken(t *testing.T) {
 	requireDocker(t)
@@ -98,6 +102,7 @@ func TestStartCommandFailsWhenPortInUse(t *testing.T) {
 	cleanup()
 	t.Cleanup(cleanup)
 
+	// Simulates port in use by non-LocalStack process (/_localstack/info will fail)
 	ln, err := net.Listen("tcp", ":4566")
 	require.NoError(t, err, "failed to bind port 4566 for test")
 	defer func() { _ = ln.Close() }()
@@ -107,13 +112,97 @@ func TestStartCommandFailsWhenPortInUse(t *testing.T) {
 	require.Error(t, err, "expected lstk start to fail when port is in use")
 	requireExitCode(t, 1, err)
 	assert.Contains(t, stdout, "Port 4566 already in use")
-	assert.Contains(t, stdout, "LocalStack may already be running.")
-	assert.Contains(t, stdout, "lstk stop")
+	assert.Contains(t, stdout, "Free the port or configure a different one.")
+	assert.Contains(t, stdout, "Use another port in the configuration:")
 
 	// Both lstk_lifecycle (start_error) and lstk_command events should be emitted.
 	byName := collectTelemetryByName(t, events, 2)
 	assert.Contains(t, byName, "lstk_lifecycle")
 	assert.Contains(t, byName, "lstk_command")
+}
+
+func TestStartCommandAttachesToExternalContainer(t *testing.T) {
+	requireDocker(t)
+	cleanup()
+	t.Cleanup(cleanup)
+
+	ctx := testContext(t)
+
+	const fakeImage = "localstack/localstack-pro:test-fake"
+	require.NoError(t, dockerClient.ImageTag(ctx, testImage, fakeImage))
+	t.Cleanup(func() {
+		_, _ = dockerClient.ImageRemove(context.Background(), fakeImage, image.RemoveOptions{})
+	})
+
+	// Start a container with a different name to simulate an externally-managed instance.
+	startExternalContainer(t, ctx, fakeImage, "localstack-external", "4566")
+
+	analyticsSrv, events := mockAnalyticsServer(t)
+	stdout, stderr, err := runLstk(t, ctx, "", env.With(env.AuthToken, "fake-token").With(env.AnalyticsEndpoint, analyticsSrv.URL), "start")
+	require.NoError(t, err, "lstk start should succeed when external container is running: %s", stderr)
+	requireExitCode(t, 0, err)
+	assert.Contains(t, stdout, "already running")
+	assertCommandTelemetry(t, events, "start", 0)
+}
+
+func TestStartCommandAttachesWhenLocalStackRespondingOnPort(t *testing.T) {
+	requireDocker(t)
+	cleanup()
+	t.Cleanup(cleanup)
+
+	// Serve a mock /_localstack/info on port 4566 so lstk can identify the running version.
+	ln, err := net.Listen("tcp", ":4566")
+	require.NoError(t, err, "failed to bind port 4566 for test")
+	srv := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/_localstack/info" {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"version":"3.4.0","edition":"pro"}`))
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	srv.Listener = ln
+	srv.Start()
+	defer srv.Close()
+
+	stdout, stderr, err := runLstk(t, testContext(t), "", env.With(env.AuthToken, "fake-token"), "start")
+	require.NoError(t, err, "lstk start should succeed when LocalStack is already running: %s", stderr)
+	requireExitCode(t, 0, err)
+	assert.Contains(t, stdout, "3.4.0")
+	assert.Contains(t, stdout, "already running")
+}
+
+func TestStartCommandFailsWhenLocalStackRunningOnDifferentPort(t *testing.T) {
+	requireDocker(t)
+	cleanup()
+	t.Cleanup(cleanup)
+
+	ctx := testContext(t)
+
+	// Tag the test image as a LocalStack pro image to simulate an instance running.
+	const fakeImage = "localstack/localstack-pro:test-fake"
+	require.NoError(t, dockerClient.ImageTag(ctx, testImage, fakeImage))
+	t.Cleanup(func() {
+		_, _ = dockerClient.ImageRemove(context.Background(), fakeImage, image.RemoveOptions{})
+	})
+
+	// Start it on another port
+	startExternalContainer(t, ctx, fakeImage, "localstack-external", "4566")
+
+	configContent := `
+[[containers]]
+type = "aws"
+port = "4567"
+`
+	configFile := filepath.Join(t.TempDir(), "config.toml")
+	require.NoError(t, os.WriteFile(configFile, []byte(configContent), 0644))
+
+	analyticsSrv, events := mockAnalyticsServer(t)
+	stdout, _, err := runLstk(t, ctx, "", env.With(env.AuthToken, "fake-token").With(env.AnalyticsEndpoint, analyticsSrv.URL), "--config", configFile, "start")
+	require.Error(t, err, "expected lstk start to fail when LS is already running on a different port")
+	requireExitCode(t, 1, err)
+	assert.Contains(t, stdout, "already running")
+	assertCommandTelemetry(t, events, "start", 1)
 }
 
 func TestStartCommandSucceedsWithNonDefaultPort(t *testing.T) {
@@ -256,6 +345,67 @@ func TestStartCommandPassesCIAndLocalStackEnvVars(t *testing.T) {
 	assert.NotEmpty(t, envVars["LOCALSTACK_AUTH_TOKEN"])
 }
 
+func TestStartCommandForwardsPersistenceEnvFromHost(t *testing.T) {
+	requireDocker(t)
+	_ = env.Require(t, env.AuthToken)
+
+	cleanup()
+	t.Cleanup(cleanup)
+
+	mockServer := createMockLicenseServer(true)
+	defer mockServer.Close()
+
+	ctx := testContext(t)
+	_, stderr, err := runLstk(t, ctx, "", env.With(env.APIEndpoint, mockServer.URL).
+		With(env.Persistence, "1"),
+		"start")
+	require.NoError(t, err, "lstk start failed: %s", stderr)
+	requireExitCode(t, 0, err)
+
+	inspect, err := dockerClient.ContainerInspect(ctx, containerName)
+	require.NoError(t, err, "failed to inspect container")
+	require.True(t, inspect.State.Running)
+
+	envVars := containerEnvToMap(inspect.Config.Env)
+	assert.Equal(t, "1", envVars["LOCALSTACK_PERSISTENCE"])
+}
+
+func TestStartCommandSetsPersistenceEnvFromConfig(t *testing.T) {
+	requireDocker(t)
+	_ = env.Require(t, env.AuthToken)
+
+	cleanup()
+	t.Cleanup(cleanup)
+
+	mockServer := createMockLicenseServer(true)
+	defer mockServer.Close()
+
+	configContent := `
+[env.persistence]
+PERSISTENCE = "1"
+
+[[containers]]
+type = "aws"
+tag = "latest"
+port = "4566"
+env = ["persistence"]
+`
+	configFile := filepath.Join(t.TempDir(), "config.toml")
+	require.NoError(t, os.WriteFile(configFile, []byte(configContent), 0644))
+
+	ctx := testContext(t)
+	_, stderr, err := runLstk(t, ctx, "", env.With(env.APIEndpoint, mockServer.URL), "--config", configFile, "start")
+	require.NoError(t, err, "lstk start failed: %s", stderr)
+	requireExitCode(t, 0, err)
+
+	inspect, err := dockerClient.ContainerInspect(ctx, containerName)
+	require.NoError(t, err, "failed to inspect container")
+	require.True(t, inspect.State.Running)
+
+	envVars := containerEnvToMap(inspect.Config.Env)
+	assert.Equal(t, "1", envVars["PERSISTENCE"])
+}
+
 // hasBindTarget checks if any bind mount targets the given container path.
 func hasBindTarget(binds []string, containerPath string) bool {
 	for _, b := range binds {
@@ -292,4 +442,74 @@ func cleanup() {
 	_ = dockerClient.ContainerStop(ctx, containerName, container.StopOptions{})
 	_ = dockerClient.ContainerRemove(ctx, containerName, container.RemoveOptions{Force: true})
 	_ = DeleteAuthTokenFromKeyring()
+}
+
+func cleanupSnowflake() {
+	ctx := context.Background()
+	_ = dockerClient.ContainerStop(ctx, snowflakeContainerName, container.StopOptions{})
+	_ = dockerClient.ContainerRemove(ctx, snowflakeContainerName, container.RemoveOptions{Force: true})
+}
+
+func writeSnowflakeConfig(t *testing.T, hostPort string) string {
+	t.Helper()
+	content := fmt.Sprintf(`
+[[containers]]
+type = "snowflake"
+tag  = "latest"
+port = %q
+`, hostPort)
+	configFile := filepath.Join(t.TempDir(), "config.toml")
+	require.NoError(t, os.WriteFile(configFile, []byte(content), 0644))
+	return configFile
+}
+
+func TestStartCommandForSnowflakeSkipsLicenseValidation(t *testing.T) {
+	requireDocker(t)
+	_ = env.Require(t, env.AuthToken)
+
+	cleanup()
+	cleanupSnowflake()
+	t.Cleanup(cleanup)
+	t.Cleanup(cleanupSnowflake)
+
+	// Mock server that rejects all license requests — this would cause lstk start to fail for AWS.
+	mockServer := createMockLicenseServer(false)
+	defer mockServer.Close()
+
+	ctx := testContext(t)
+	_, stderr, err := runLstk(t, ctx, "", env.With(env.APIEndpoint, mockServer.URL), "--config", writeSnowflakeConfig(t, "4566"), "start")
+	require.NoError(t, err, "lstk start should succeed for snowflake even when the license server rejects the request: %s", stderr)
+	requireExitCode(t, 0, err)
+}
+
+func TestStartCommandSucceedsForSnowflake(t *testing.T) {
+	requireDocker(t)
+	_ = env.Require(t, env.AuthToken)
+
+	cleanup()
+	cleanupSnowflake()
+	t.Cleanup(cleanup)
+	t.Cleanup(cleanupSnowflake)
+
+	mockServer := createMockLicenseServer(true)
+	defer mockServer.Close()
+
+	const hostPort = "4566"
+	configFile := writeSnowflakeConfig(t, hostPort)
+
+	ctx := testContext(t)
+	_, stderr, err := runLstk(t, ctx, "", env.With(env.APIEndpoint, mockServer.URL), "--config", configFile, "start")
+	require.NoError(t, err, "lstk start failed: %s", stderr)
+	requireExitCode(t, 0, err)
+
+	inspect, err := dockerClient.ContainerInspect(ctx, snowflakeContainerName)
+	require.NoError(t, err, "failed to inspect snowflake container")
+	require.True(t, inspect.State.Running, "snowflake container should be running")
+	assert.Contains(t, inspect.Config.Image, "localstack/snowflake",
+		"expected localstack/snowflake image, got %s", inspect.Config.Image)
+
+	resp, err := http.Get(fmt.Sprintf("http://localhost:%s/_localstack/health", hostPort))
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = resp.Body.Close() })
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
 }

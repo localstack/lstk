@@ -10,6 +10,8 @@ import (
 	"net/url"
 	"time"
 
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+
 	"github.com/localstack/lstk/internal/log"
 	"github.com/localstack/lstk/internal/version"
 )
@@ -114,9 +116,17 @@ type PlatformClient struct {
 
 func NewPlatformClient(apiEndpoint string, logger log.Logger) *PlatformClient {
 	return &PlatformClient{
-		baseURL:    apiEndpoint,
-		httpClient: &http.Client{Timeout: 30 * time.Second},
-		logger:     logger,
+		baseURL: apiEndpoint,
+		httpClient: &http.Client{
+			Timeout:   30 * time.Second,
+			Transport: otelhttp.NewTransport(
+				http.DefaultTransport,
+				otelhttp.WithSpanNameFormatter(func(_ string, r *http.Request) string {
+					return "platform " + r.Method + " " + r.URL.Path
+				}),
+			),
+		},
+		logger: logger,
 	}
 }
 

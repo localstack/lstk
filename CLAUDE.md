@@ -53,7 +53,7 @@ When no config file exists, lstk creates one at `$HOME/.config/lstk/config.toml`
 Use `lstk config path` to print the resolved config file path currently in use.
 When adding a new command that depends on configuration, wire config initialization explicitly in that command (`PreRunE: initConfig`). Keep side-effect-free commands (e.g., `version`, `config path`) without config initialization.
 
-Created automatically on first run with defaults. Supports emulator types (aws, snowflake, azure) - currently only aws is implemented.
+Created automatically on first run with defaults. Supports emulator types: `aws` and `snowflake`.
 
 # Emulator Setup Commands
 
@@ -65,6 +65,7 @@ The deprecated `lstk config profile` command still works but points users to `ls
 
 Environment variables:
 - `LOCALSTACK_AUTH_TOKEN` - Auth token (skips browser login if set)
+- `LSTK_OTEL=1` - Enables OpenTelemetry trace export (disabled by default); when enabled, standard `OTEL_EXPORTER_OTLP_*` env vars are respected by the SDK. Requires an OTLP-compatible backend to receive and visualize telemetry — for local development, `make otel` starts one (UI at http://localhost:16686).
 
 # Code Style
 

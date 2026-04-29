@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -16,20 +17,30 @@ import (
 
 	"github.com/containerd/errdefs"
 	"github.com/docker/docker/api/types/container"
+	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/api/types/image"
 	"github.com/docker/docker/client"
 	"github.com/docker/docker/pkg/stdcopy"
 	"github.com/docker/go-connections/nat"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+
 	"github.com/localstack/lstk/internal/output"
 )
 
-// DockerRuntime implements Runtime using the Docker API.
 type DockerRuntime struct {
 	client *client.Client
 }
 
 func NewDockerRuntime(dockerHost string) (*DockerRuntime, error) {
-	opts := []client.Opt{client.FromEnv, client.WithAPIVersionNegotiation()}
+	opts := []client.Opt{
+		client.FromEnv,
+		client.WithAPIVersionNegotiation(),
+		client.WithTraceOptions(
+			otelhttp.WithSpanNameFormatter(func(_ string, r *http.Request) string {
+				return "docker " + r.Method + " " + r.URL.Path
+			}),
+		),
+	}
 
 	// When DOCKER_HOST is not set, the Docker SDK defaults to /var/run/docker.sock.
 	// If that socket doesn't exist, probe known alternative locations (e.g. Colima).
@@ -46,20 +57,24 @@ func NewDockerRuntime(dockerHost string) (*DockerRuntime, error) {
 	return &DockerRuntime{client: cli}, nil
 }
 
+func vmSocketPaths(home string) []string {
+	return []string{
+		filepath.Join(home, ".docker", "run", "docker.sock"),
+		filepath.Join(home, ".colima", "default", "docker.sock"),
+		filepath.Join(home, ".colima", "docker.sock"),
+		filepath.Join(home, ".orbstack", "run", "docker.sock"),
+		filepath.Join(home, ".lima", "docker", "sock", "docker.sock"),
+	}
+}
+
 func findDockerSocket() string {
-	// Lima VM: Docker socket is natively available at the standard path.
-	// Lima sets LIMA_INSTANCE inside the VM.
+	// Lima sets LIMA_INSTANCE inside the VM; the socket is at the standard path natively.
 	if os.Getenv("LIMA_INSTANCE") != "" {
 		return "/var/run/docker.sock"
 	}
 
 	home, _ := os.UserHomeDir()
-	return probeSocket(
-		filepath.Join(home, ".colima", "default", "docker.sock"),
-		filepath.Join(home, ".colima", "docker.sock"),
-		filepath.Join(home, ".orbstack", "run", "docker.sock"),
-		filepath.Join(home, ".lima", "docker", "sock", "docker.sock"),
-	)
+	return probeSocket(vmSocketPaths(home)...)
 }
 
 func probeSocket(candidates ...string) string {
@@ -71,21 +86,15 @@ func probeSocket(candidates ...string) string {
 	return ""
 }
 
-// isVM reports whether the Docker daemon is running inside a VM (e.g., Colima, OrbStack).
+// isVM reports whether the Docker daemon is running inside a VM (e.g., Docker Desktop, Colima, OrbStack, Lima).
 // In these cases the socket is remapped inside the VM and the container sees it at
 // /var/run/docker.sock even if the CLI connects via a user-scoped socket path.
 func (d *DockerRuntime) isVM() bool {
 	host := d.client.DaemonHost()
 	if strings.HasPrefix(host, "unix://") {
 		socketPath := strings.TrimPrefix(host, "unix://")
-		// Check for known VM-based Docker socket locations
 		home, _ := os.UserHomeDir()
-		vmSockets := []string{
-			filepath.Join(home, ".colima", "default", "docker.sock"),
-			filepath.Join(home, ".colima", "docker.sock"),
-			filepath.Join(home, ".orbstack", "run", "docker.sock"),
-		}
-		for _, vmSock := range vmSockets {
+		for _, vmSock := range vmSocketPaths(home) {
 			if socketPath == vmSock {
 				return true
 			}
@@ -261,7 +270,12 @@ func (d *DockerRuntime) Stop(ctx context.Context, containerName string) error {
 	if err := d.client.ContainerStop(ctx, containerName, container.StopOptions{}); err != nil {
 		return err
 	}
-	return d.client.ContainerRemove(ctx, containerName, container.RemoveOptions{})
+	err := d.client.ContainerRemove(ctx, containerName, container.RemoveOptions{})
+	// Ignore conflict and not-found: container is gone, which is the goal.
+	if err != nil && !errdefs.IsConflict(err) && !errdefs.IsNotFound(err) {
+		return err
+	}
+	return nil
 }
 
 func (d *DockerRuntime) Remove(ctx context.Context, containerName string) error {
@@ -358,6 +372,53 @@ func (d *DockerRuntime) GetBoundPort(ctx context.Context, containerName string, 
 		return "", fmt.Errorf("no binding found for port %s on container %s", containerPort, containerName)
 	}
 	return bindings[0].HostPort, nil
+}
+
+func (d *DockerRuntime) FindRunningByImage(ctx context.Context, imageRepos []string, containerPort string) (*RunningContainer, error) {
+	list, err := d.client.ContainerList(ctx, container.ListOptions{
+		Filters: filters.NewArgs(filters.Arg("status", "running")),
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	portStr, proto, found := strings.Cut(containerPort, "/")
+	if !found {
+		proto = "tcp"
+	}
+	privatePort, err := strconv.ParseUint(portStr, 10, 16)
+	if err != nil {
+		return nil, fmt.Errorf("invalid container port %q: %w", containerPort, err)
+	}
+
+	for _, c := range list {
+		if !matchesAnyImageRepo(c.Image, imageRepos) {
+			continue
+		}
+		for _, p := range c.Ports {
+			if p.PrivatePort == uint16(privatePort) && p.Type == proto {
+				name := ""
+				if len(c.Names) > 0 {
+					name = strings.TrimPrefix(c.Names[0], "/")
+				}
+				return &RunningContainer{
+					Name:      name,
+					Image:     c.Image,
+					BoundPort: strconv.Itoa(int(p.PublicPort)),
+				}, nil
+			}
+		}
+	}
+	return nil, nil
+}
+
+func matchesAnyImageRepo(image string, repos []string) bool {
+	for _, repo := range repos {
+		if image == repo || strings.HasPrefix(image, repo+":") {
+			return true
+		}
+	}
+	return false
 }
 
 func (d *DockerRuntime) GetImageVersion(ctx context.Context, imageName string) (string, error) {

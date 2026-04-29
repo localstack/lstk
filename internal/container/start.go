@@ -149,17 +149,17 @@ func Start(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts Start
 		binds = append(binds, runtime.BindMount{HostPath: volumeDir, ContainerPath: "/var/lib/localstack"})
 
 		containers[i] = runtime.ContainerConfig{
-			Image:         image,
-			Name:          containerName,
-			EmulatorType:  string(c.Type),
-			Port:          c.Port,
-			ContainerPort: containerPort,
-			HealthPath:    healthPath,
-			Env:           env,
-			Tag:           c.Tag,
-			ProductName:   productName,
-			Binds:         binds,
-			ExtraPorts:    servicePortRange(),
+			Image:              image,
+			Name:               containerName,
+			EmulatorType:       string(c.Type),
+			Port:               c.Port,
+			ContainerPort:      containerPort,
+			HealthPath:         healthPath,
+			Env:                env,
+			Tag:                c.Tag,
+			ProductName: productName,
+			Binds:       binds,
+			ExtraPorts:         servicePortRange(),
 		}
 	}
 
@@ -235,22 +235,25 @@ func runPostStartSetups(ctx context.Context, sink output.Sink, containers []conf
 			if err := setup(ctx, sink, interactive, resolvedHost); err != nil {
 				return err
 			}
-			emitPostStartPointers(sink, resolvedHost, webAppURL)
+			emitPostStartPointers(sink, resolvedHost, webAppURL, true)
 		}
 	}
 	return nil
 }
 
-func emitPostStartPointers(sink output.Sink, resolvedHost, webAppURL string) {
+
+func emitPostStartPointers(sink output.Sink, resolvedHost, webAppURL string, showTip bool) {
 	sink.Emit(output.MessageEvent{Severity: output.SeveritySecondary, Text: fmt.Sprintf("• Endpoint: %s", resolvedHost)})
 	if webAppURL != "" {
 		sink.Emit(output.MessageEvent{Severity: output.SeveritySecondary, Text: fmt.Sprintf("• Web app: %s", strings.TrimRight(webAppURL, "/"))})
 	}
-	tips := []string{
-		"> Tip: View emulator logs: lstk logs --follow",
-		"> Tip: View deployed resources: lstk status",
+	if showTip {
+		tips := []string{
+			"> Tip: View emulator logs: lstk logs --follow",
+			"> Tip: View deployed resources: lstk status",
+		}
+		output.EmitSecondary(sink, tips[rand.IntN(len(tips))])
 	}
-	sink.Emit(output.MessageEvent{Severity: output.SeveritySecondary, Text: tips[rand.IntN(len(tips))]})
 }
 
 func pullImages(ctx context.Context, rt runtime.Runtime, sink output.Sink, tel *telemetry.Client, containers []runtime.ContainerConfig) (map[string]bool, error) {
@@ -291,6 +294,10 @@ func pullImages(ctx context.Context, rt runtime.Runtime, sink output.Sink, tel *
 func tryPrePullLicenseValidation(ctx context.Context, sink output.Sink, opts StartOptions, tel *telemetry.Client, containers []runtime.ContainerConfig, token, licenseFilePath string) ([]runtime.ContainerConfig, error) {
 	var needsPostPull []runtime.ContainerConfig
 	for _, c := range containers {
+		if c.EmulatorType == string(config.EmulatorSnowflake) {
+			continue
+		}
+
 		if c.Tag != "" && c.Tag != "latest" {
 			if err := validateLicense(ctx, sink, opts, tel, c, token, licenseFilePath); err != nil {
 				return nil, err
@@ -319,6 +326,10 @@ func tryPrePullLicenseValidation(ctx context.Context, sink output.Sink, opts Sta
 // Fallback path: inspects each pulled image for its version, then validates the license.
 func validateLicensesFromImages(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts StartOptions, tel *telemetry.Client, containers []runtime.ContainerConfig, token, licenseFilePath string) error {
 	for _, c := range containers {
+		if c.EmulatorType == string(config.EmulatorSnowflake) {
+			continue
+		}
+
 		v, err := rt.GetImageVersion(ctx, c.Image)
 		if err != nil {
 			return fmt.Errorf("could not resolve version from image %s: %w", c.Image, err)
@@ -369,30 +380,85 @@ func selectContainersToStart(ctx context.Context, rt runtime.Runtime, sink outpu
 			if !dnsOK {
 				sink.Emit(output.MessageEvent{Severity: output.SeverityNote, Text: endpoint.DNSRebindNote})
 			}
-			emitPostStartPointers(sink, resolvedHost, webAppURL)
+			emitPostStartPointers(sink, resolvedHost, webAppURL, c.EmulatorType == string(config.EmulatorAWS))
 			continue
 		}
-		if err := ports.CheckAvailable(c.Port); err != nil {
+
+		imageRepo, _, _ := strings.Cut(c.Image, ":")
+		found, err := rt.FindRunningByImage(ctx, []string{imageRepo, "localstack/localstack"}, c.ContainerPort)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan for running containers: %w", err)
+		}
+		if found != nil {
+			if found.BoundPort != c.Port {
+				output.EmitError(sink, output.ErrorEvent{
+					Title:   fmt.Sprintf("LocalStack is already running on port %s", found.BoundPort),
+					Summary: fmt.Sprintf("Config expects port %s. Only one instance can run at a time.", c.Port),
+					Actions: []output.ErrorAction{
+						{Label: "Stop existing emulator:", Value: "lstk stop"},
+					},
+				})
+				emitEmulatorStartError(ctx, tel, c, telemetry.ErrCodePortConflict, fmt.Sprintf("running on port %s, configured port %s", found.BoundPort, c.Port))
+				return nil, output.NewSilentError(fmt.Errorf("LocalStack already running on port %s", found.BoundPort))
+			}
+			output.EmitInfo(sink, "LocalStack is already running")
+			continue
+		}
+
+		if _, err := ports.CheckAvailable(c.Port); err != nil {
+			if info, infoErr := fetchLocalStackInfo(ctx, c.Port); infoErr == nil {
+				emitLocalStackAlreadyRunningWarning(sink, c.Port, info.Version, c.Tag)
+				continue
+			}
 			emitPortInUseError(sink, c.Port)
 			emitEmulatorStartError(ctx, tel, c, telemetry.ErrCodePortConflict, err.Error())
 			return nil, output.NewSilentError(err)
 		}
+
+		// Check extra ports required by this emulator (443 for HTTPS, 4510-4559 for
+		// the service port range). These are singletons: if any is taken, another
+		// LocalStack instance is likely running and we cannot start a new one.
+		extraSpecs := make([]string, len(c.ExtraPorts))
+		for i, ep := range c.ExtraPorts {
+			extraSpecs[i] = ep.HostPort
+		}
+		if conflictPort, err := ports.CheckAvailable(extraSpecs...); err != nil {
+			output.EmitError(sink, output.ErrorEvent{
+				Title:   fmt.Sprintf("Port %s is already in use", conflictPort),
+				Summary: "LocalStack requires this port. Free it before starting.",
+			})
+			emitEmulatorStartError(ctx, tel, c, telemetry.ErrCodePortConflict, err.Error())
+			return nil, output.NewSilentError(err)
+		}
+
 		filtered = append(filtered, c)
 	}
 	return filtered, nil
 }
 
-func emitPortInUseError(sink output.Sink, port string) {
-	actions := []output.ErrorAction{
-		{Label: "Stop existing emulator:", Value: "lstk stop"},
+func emitLocalStackAlreadyRunningWarning(sink output.Sink, port, runningVersion, configTag string) {
+	if configTag == "" {
+		configTag = "latest"
 	}
+	if runningVersion != configTag {
+		output.EmitWarning(sink, fmt.Sprintf(
+			"LocalStack %s is already running on port %s (config specifies %s) — using the running instance",
+			runningVersion, port, configTag,
+		))
+	} else {
+		output.EmitInfo(sink, fmt.Sprintf("LocalStack %s is already running on port %s", runningVersion, port))
+	}
+}
+
+func emitPortInUseError(sink output.Sink, port string) {
+	actions := []output.ErrorAction{}
 	configPath, pathErr := config.ConfigFilePath()
 	if pathErr == nil {
 		actions = append(actions, output.ErrorAction{Label: "Use another port in the configuration:", Value: configPath})
 	}
 	sink.Emit(output.ErrorEvent{
 		Title:   fmt.Sprintf("Port %s already in use", port),
-		Summary: "LocalStack may already be running.",
+		Summary: "Free the port or configure a different one.",
 		Actions: actions,
 	})
 }
@@ -487,7 +553,8 @@ func awaitStartup(ctx context.Context, rt runtime.Runtime, sink output.Sink, con
 func filterHostEnv(envList []string) []string {
 	var out []string
 	for _, e := range envList {
-		if strings.HasPrefix(e, "CI=") || (strings.HasPrefix(e, "LOCALSTACK_") && !strings.HasPrefix(e, "LOCALSTACK_AUTH_TOKEN=")) {
+		if strings.HasPrefix(e, "CI=") ||
+			(strings.HasPrefix(e, "LOCALSTACK_") && !strings.HasPrefix(e, "LOCALSTACK_AUTH_TOKEN=")) {
 			out = append(out, e)
 		}
 	}

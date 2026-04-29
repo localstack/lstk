@@ -203,6 +203,50 @@ func startTestContainer(t *testing.T, ctx context.Context, hostPort ...string) {
 	require.NoError(t, err, "failed to start test container")
 }
 
+// Use this to simulate a LocalStack container started outside lstk.
+func startExternalContainer(t *testing.T, ctx context.Context, imgName, name, hostPort string) {
+	t.Helper()
+
+	const containerPort = nat.Port("4566/tcp")
+	resp, err := dockerClient.ContainerCreate(ctx,
+		&container.Config{
+			Image:        imgName,
+			Cmd:          []string{"sleep", "infinity"},
+			ExposedPorts: nat.PortSet{containerPort: struct{}{}},
+		},
+		&container.HostConfig{
+			PortBindings: nat.PortMap{
+				containerPort: []nat.PortBinding{{HostPort: hostPort}},
+			},
+		},
+		nil, nil, name,
+	)
+	require.NoError(t, err, "failed to create external container")
+	err = dockerClient.ContainerStart(ctx, resp.ID, container.StartOptions{})
+	require.NoError(t, err, "failed to start external container")
+	t.Cleanup(func() {
+		_ = dockerClient.ContainerStop(context.Background(), name, container.StopOptions{})
+		_ = dockerClient.ContainerRemove(context.Background(), name, container.RemoveOptions{Force: true})
+	})
+}
+
+func startTestSnowflakeContainer(t *testing.T, ctx context.Context) {
+	t.Helper()
+
+	reader, err := dockerClient.ImagePull(ctx, testImage, image.PullOptions{})
+	require.NoError(t, err, "failed to pull test image")
+	_, _ = io.Copy(io.Discard, reader)
+	_ = reader.Close()
+
+	resp, err := dockerClient.ContainerCreate(ctx, &container.Config{
+		Image: testImage,
+		Cmd:   []string{"sleep", "infinity"},
+	}, nil, nil, nil, snowflakeContainerName)
+	require.NoError(t, err, "failed to create snowflake test container")
+	err = dockerClient.ContainerStart(ctx, resp.ID, container.StartOptions{})
+	require.NoError(t, err, "failed to start snowflake test container")
+}
+
 func testContext(t *testing.T) context.Context {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
