@@ -65,7 +65,7 @@ func TestParseDestination(t *testing.T) {
 				return
 			}
 			require.NoError(t, err)
-			assert.Equal(t, snapshot.LocalDestination{Path: tc.wantPath}, got)
+			assert.Equal(t, tc.wantPath, got)
 		})
 	}
 }

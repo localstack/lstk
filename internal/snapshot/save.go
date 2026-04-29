@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"os"
 
 	"github.com/localstack/lstk/internal/config"
 	"github.com/localstack/lstk/internal/container"
@@ -12,7 +13,7 @@ import (
 )
 
 // Save exports the emulator's state via exporter and writes it to dest.
-func Save(ctx context.Context, rt runtime.Runtime, containers []config.ContainerConfig, exporter StateExporter, dest Destination, sink output.Sink) error {
+func Save(ctx context.Context, rt runtime.Runtime, containers []config.ContainerConfig, exporter StateExporter, dest string, sink output.Sink) error {
 	if err := rt.IsHealthy(ctx); err != nil {
 		rt.EmitUnhealthyError(sink, err)
 		return output.NewSilentError(fmt.Errorf("runtime not healthy: %w", err))
@@ -42,7 +43,7 @@ func Save(ctx context.Context, rt runtime.Runtime, containers []config.Container
 	}
 	defer func() { _ = body.Close() }()
 
-	w, err := dest.Writer()
+	w, err := os.Create(dest)
 	if err != nil {
 		output.EmitSpinnerStop(sink)
 		return fmt.Errorf("save to %s: %w", dest, err)
