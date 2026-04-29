@@ -7,28 +7,27 @@ import (
 	"github.com/localstack/lstk/internal/config"
 	"github.com/localstack/lstk/internal/env"
 	"github.com/localstack/lstk/internal/output"
-	"github.com/localstack/lstk/internal/telemetry"
 	"github.com/localstack/lstk/internal/ui"
 	"github.com/localstack/lstk/internal/volume"
 	"github.com/spf13/cobra"
 )
 
-func newVolumeCmd(cfg *env.Env, tel *telemetry.Client) *cobra.Command {
+func newVolumeCmd(cfg *env.Env) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "volume",
 		Short: "Manage emulator volume",
 	}
-	cmd.AddCommand(newVolumePathCmd(cfg, tel))
-	cmd.AddCommand(newVolumeClearCmd(cfg, tel))
+	cmd.AddCommand(newVolumePathCmd(cfg))
+	cmd.AddCommand(newVolumeClearCmd(cfg))
 	return cmd
 }
 
-func newVolumePathCmd(cfg *env.Env, tel *telemetry.Client) *cobra.Command {
+func newVolumePathCmd(cfg *env.Env) *cobra.Command {
 	return &cobra.Command{
 		Use:     "path",
 		Short:   "Print the volume directory path",
 		PreRunE: initConfig,
-		RunE: commandWithTelemetry("volume path", tel, func(cmd *cobra.Command, args []string) error {
+		RunE: func(cmd *cobra.Command, args []string) error {
 			appConfig, err := config.Get()
 			if err != nil {
 				return fmt.Errorf("failed to get config: %w", err)
@@ -45,11 +44,11 @@ func newVolumePathCmd(cfg *env.Env, tel *telemetry.Client) *cobra.Command {
 				}
 			}
 			return nil
-		}),
+		},
 	}
 }
 
-func newVolumeClearCmd(cfg *env.Env, tel *telemetry.Client) *cobra.Command {
+func newVolumeClearCmd(cfg *env.Env) *cobra.Command {
 	var force bool
 	var emulatorType string
 
@@ -58,7 +57,7 @@ func newVolumeClearCmd(cfg *env.Env, tel *telemetry.Client) *cobra.Command {
 		Short:   "Clear emulator volume data",
 		Long:    "Remove all data from the emulator volume directory. This resets cached state such as certificates, downloaded tools, and persistence data.",
 		PreRunE: initConfig,
-		RunE: commandWithTelemetry("volume clear", tel, func(cmd *cobra.Command, args []string) error {
+		RunE: func(cmd *cobra.Command, args []string) error {
 			appConfig, err := config.Get()
 			if err != nil {
 				return fmt.Errorf("failed to get config: %w", err)
@@ -81,7 +80,7 @@ func newVolumeClearCmd(cfg *env.Env, tel *telemetry.Client) *cobra.Command {
 			}
 
 			return ui.RunVolumeClear(cmd.Context(), containers)
-		}),
+		},
 	}
 
 	cmd.Flags().BoolVar(&force, "force", false, "Skip confirmation prompt")

@@ -19,7 +19,7 @@ func newStartCmd(cfg *env.Env, tel *telemetry.Client, logger log.Logger) *cobra.
 			if err != nil {
 				return err
 			}
-			return runStart(cmd.Context(), cmd.Flags(), rt, cfg, tel, logger)
+			return startEmulator(cmd.Context(), rt, cfg, tel, logger)
 		},
 	}
 }

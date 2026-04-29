@@ -61,7 +61,7 @@ Create `internal/<package>/<name>.go` (use an existing package if it fits, or cr
 
 In `cmd/root.go`, add the new command to `root.AddCommand(...)`.
 
-If the command constructor needs dependencies (like `*env.Env` or `*telemetry.Client`), add them as parameters matching the existing pattern.
+If the command constructor needs dependencies (like `*env.Env`), add them as parameters matching the existing pattern.
 
 ## Step 4: Add new event types (if needed)
 
@@ -96,9 +96,7 @@ Create `test/integration/<name>_test.go` with:
 
 ## Telemetry
 
-Every new command must emit an `lstk_command` telemetry event. Wrap the command's `RunE` with `commandWithTelemetry(name, tel, fn)` — this handles timing, exit code, and error message automatically.
-
-Start and stop are exceptions: they emit `lstk_lifecycle` events in addition to `lstk_command`, so they manage their own telemetry manually instead of using `commandWithTelemetry`.
+`lstk_command` telemetry is emitted automatically for every command via `instrumentCommands` in `cmd/root.go` — no per-command wiring needed. Do NOT pass `*telemetry.Client` to a new command constructor unless the command emits additional lifecycle events (like `lstk_lifecycle` for start/stop/restart) or needs to update the auth token (like login).
 
 In the corresponding integration test, add an assertion that the `lstk_command` event was emitted.
 

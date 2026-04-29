@@ -3,7 +3,6 @@ package cmd
 import (
 	"fmt"
 	"os"
-	"time"
 
 	"github.com/localstack/lstk/internal/config"
 	"github.com/localstack/lstk/internal/container"
@@ -13,7 +12,6 @@ import (
 	"github.com/localstack/lstk/internal/telemetry"
 	"github.com/localstack/lstk/internal/ui"
 	"github.com/spf13/cobra"
-	"github.com/spf13/pflag"
 )
 
 func newStopCmd(cfg *env.Env, tel *telemetry.Client) *cobra.Command {
@@ -23,7 +21,6 @@ func newStopCmd(cfg *env.Env, tel *telemetry.Client) *cobra.Command {
 		Long:    "Stop emulator and services",
 		PreRunE: initConfig,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			startTime := time.Now()
 			rt, err := runtime.NewDockerRuntime(cfg.DockerHost)
 			if err != nil {
 				return err
@@ -37,28 +34,10 @@ func newStopCmd(cfg *env.Env, tel *telemetry.Client) *cobra.Command {
 				Telemetry: tel,
 			}
 
-			var runErr error
-
 			if isInteractiveMode(cfg) {
-				runErr = ui.RunStop(cmd.Context(), rt, appConfig.Containers, stopOpts)
-			} else {
-				runErr = container.Stop(cmd.Context(), rt, output.NewPlainSink(os.Stdout), appConfig.Containers, stopOpts)
+				return ui.RunStop(cmd.Context(), rt, appConfig.Containers, stopOpts)
 			}
-
-			exitCode := 0
-			errorMsg := ""
-			if runErr != nil {
-				exitCode = 1
-				errorMsg = runErr.Error()
-			}
-
-			var flags []string
-			cmd.Flags().Visit(func(f *pflag.Flag) {
-				flags = append(flags, "--"+f.Name)
-			})
-			tel.EmitCommand(cmd.Context(), "stop", flags, time.Since(startTime).Milliseconds(), exitCode, errorMsg)
-
-			return runErr
+			return container.Stop(cmd.Context(), rt, output.NewPlainSink(os.Stdout), appConfig.Containers, stopOpts)
 		},
 	}
 }
