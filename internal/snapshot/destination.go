@@ -20,7 +20,7 @@ func ParseDestination(dest string) (Destination, error) {
 		dest = "ls-state-export"
 	} else if strings.Contains(dest, "://") {
 		return nil, fmt.Errorf("cloud destinations are not yet supported — use a file path like ./my-snapshot")
-	} else if !strings.HasPrefix(dest, ".") && !strings.HasPrefix(dest, "/") && !strings.HasPrefix(dest, "~") && !strings.Contains(dest, "/") {
+	} else if !strings.HasPrefix(dest, ".") && !strings.HasPrefix(dest, "~") && !filepath.IsAbs(dest) && filepath.Base(dest) == dest {
 		// bare name with no path separators: reserved for future cloud pod names
 		return nil, fmt.Errorf("cloud destinations are not yet supported — use a file path like ./my-snapshot")
 	}
