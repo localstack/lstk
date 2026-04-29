@@ -2,7 +2,9 @@ package integration_test
 
 import (
 	"bufio"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -13,6 +15,21 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// writeAwsConfig writes a minimal aws-only config so tests don't inherit the
+// developer's real ~/.config/lstk/config.toml (which may target a different
+// emulator / running container).
+func writeAwsConfig(t *testing.T) string {
+	t.Helper()
+	configFile := filepath.Join(t.TempDir(), "config.toml")
+	require.NoError(t, os.WriteFile(configFile, []byte(`
+[[containers]]
+type = "aws"
+tag  = "latest"
+port = "4566"
+`), 0644))
+	return configFile
+}
+
 func TestLogsExitsByDefault(t *testing.T) {
 	requireDocker(t)
 	cleanup()
@@ -21,8 +38,9 @@ func TestLogsExitsByDefault(t *testing.T) {
 	ctx := testContext(t)
 	startTestContainer(t, ctx)
 
+	configFile := writeAwsConfig(t)
 	analyticsSrv, events := mockAnalyticsServer(t)
-	_, _, err := runLstk(t, ctx, "", env.With(env.AnalyticsEndpoint, analyticsSrv.URL), "logs")
+	_, _, err := runLstk(t, ctx, "", env.With(env.AnalyticsEndpoint, analyticsSrv.URL), "--config", configFile, "logs")
 	require.NoError(t, err, "lstk logs should exit cleanly when container is running")
 	requireExitCode(t, 0, err)
 	assertCommandTelemetry(t, events, "logs", 0)
@@ -33,8 +51,9 @@ func TestLogsCommandFailsWhenNotRunning(t *testing.T) {
 	cleanup()
 	t.Cleanup(cleanup)
 
+	configFile := writeAwsConfig(t)
 	analyticsSrv, events := mockAnalyticsServer(t)
-	_, stderr, err := runLstk(t, testContext(t), "", env.With(env.AnalyticsEndpoint, analyticsSrv.URL), "logs", "--follow")
+	_, stderr, err := runLstk(t, testContext(t), "", env.With(env.AnalyticsEndpoint, analyticsSrv.URL), "--config", configFile, "logs", "--follow")
 	require.Error(t, err, "expected lstk logs --follow to fail when container not running")
 	requireExitCode(t, 1, err)
 	assert.Contains(t, stderr, "emulator is not running")
@@ -51,8 +70,9 @@ func TestLogsFollowStreamsOutput(t *testing.T) {
 
 	const marker = "lstk-logs-test-marker"
 
+	configFile := writeAwsConfig(t)
 	// Uses StdoutPipe for streaming — cannot use runLstk.
-	logsCmd := exec.CommandContext(ctx, binaryPath(), "logs", "--follow")
+	logsCmd := exec.CommandContext(ctx, binaryPath(), "--config", configFile, "logs", "--follow")
 	stdout, err := logsCmd.StdoutPipe()
 	require.NoError(t, err, "failed to get stdout pipe")
 
