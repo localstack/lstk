@@ -56,9 +56,9 @@ func TestSnapshotSaveDefaultDestination(t *testing.T) {
 
 	stdout, stderr, err := runLstk(t, ctx, dir,
 		env.With(env.LocalStackHost, lsHost(srv)),
-		"--non-interactive", "snapshot", "save",
+		"--non-interactive", "save",
 	)
-	require.NoError(t, err, "lstk snapshot save failed: %s", stderr)
+	require.NoError(t, err, "lstk save failed: %s", stderr)
 	assert.Contains(t, stdout, "Snapshot saved")
 
 	_, statErr := os.Stat(filepath.Join(dir, "ls-state-export"))
@@ -78,9 +78,9 @@ func TestSnapshotSaveCustomPath(t *testing.T) {
 
 	stdout, stderr, err := runLstk(t, ctx, dir,
 		env.With(env.LocalStackHost, lsHost(srv)),
-		"--non-interactive", "snapshot", "save", outPath,
+		"--non-interactive", "save", outPath,
 	)
-	require.NoError(t, err, "lstk snapshot save failed: %s", stderr)
+	require.NoError(t, err, "lstk save failed: %s", stderr)
 	assert.Contains(t, stdout, "Snapshot saved")
 	assert.Contains(t, stdout, outPath)
 
@@ -105,9 +105,9 @@ func TestSnapshotSaveRelativePath(t *testing.T) {
 
 	stdout, stderr, err := runLstk(t, ctx, dir,
 		env.With(env.LocalStackHost, lsHost(srv)),
-		"--non-interactive", "snapshot", "save", "./my-state",
+		"--non-interactive", "save", "./my-state",
 	)
-	require.NoError(t, err, "lstk snapshot save failed: %s", stderr)
+	require.NoError(t, err, "lstk save failed: %s", stderr)
 	assert.Contains(t, stdout, "Snapshot saved")
 
 	_, statErr := os.Stat(filepath.Join(dir, "my-state"))
@@ -128,9 +128,9 @@ func TestSnapshotSaveOverwritesExistingFile(t *testing.T) {
 
 	_, stderr, err := runLstk(t, ctx, dir,
 		env.With(env.LocalStackHost, lsHost(srv)),
-		"--non-interactive", "snapshot", "save", outPath,
+		"--non-interactive", "save", outPath,
 	)
-	require.NoError(t, err, "lstk snapshot save should overwrite: %s", stderr)
+	require.NoError(t, err, "lstk save should overwrite: %s", stderr)
 
 	data, err := os.ReadFile(outPath)
 	require.NoError(t, err)
@@ -143,7 +143,7 @@ func TestSnapshotSaveBareNameRejected(t *testing.T) {
 	ctx := testContext(t)
 	dir := t.TempDir()
 
-	_, stderr, err := runLstk(t, ctx, dir, nil, "--non-interactive", "snapshot", "save", "my-pod")
+	_, stderr, err := runLstk(t, ctx, dir, nil, "--non-interactive", "save", "my-pod")
 	requireExitCode(t, 1, err)
 	assert.Contains(t, stderr, "not yet supported")
 	assert.Contains(t, stderr, "./my-snapshot")
@@ -155,7 +155,7 @@ func TestSnapshotSaveCloudURIRejected(t *testing.T) {
 	ctx := testContext(t)
 	dir := t.TempDir()
 
-	_, stderr, err := runLstk(t, ctx, dir, nil, "--non-interactive", "snapshot", "save", "cloud://my-pod")
+	_, stderr, err := runLstk(t, ctx, dir, nil, "--non-interactive", "save", "cloud://my-pod")
 	requireExitCode(t, 1, err)
 	assert.Contains(t, stderr, "not yet supported")
 }
@@ -169,7 +169,7 @@ func TestSnapshotSaveLocalStackNotRunning(t *testing.T) {
 	// Intentionally no startTestContainer: the emulator is not running.
 
 	_, stderr, err := runLstk(t, ctx, t.TempDir(), nil,
-		"--non-interactive", "snapshot", "save",
+		"--non-interactive", "save",
 	)
 	requireExitCode(t, 1, err)
 	assert.Contains(t, stderr, "not running")
@@ -186,7 +186,7 @@ func TestSnapshotSaveInvalidParentDir(t *testing.T) {
 
 	_, stderr, err := runLstk(t, ctx, t.TempDir(),
 		env.With(env.LocalStackHost, lsHost(srv)),
-		"--non-interactive", "snapshot", "save", "/no/such/dir/state",
+		"--non-interactive", "save", "/no/such/dir/state",
 	)
 	requireExitCode(t, 1, err)
 	assert.NotEmpty(t, stderr)
@@ -204,10 +204,10 @@ func TestSnapshotSaveTelemetryEmitted(t *testing.T) {
 	analyticsSrv, events := mockAnalyticsServer(t)
 	_, stderr, err := runLstk(t, ctx, t.TempDir(),
 		env.With(env.LocalStackHost, lsHost(srv)).With(env.AnalyticsEndpoint, analyticsSrv.URL),
-		"--non-interactive", "snapshot", "save",
+		"--non-interactive", "save",
 	)
-	require.NoError(t, err, "lstk snapshot save failed: %s", stderr)
-	assertCommandTelemetry(t, events, "snapshot save", 0)
+	require.NoError(t, err, "lstk save failed: %s", stderr)
+	assertCommandTelemetry(t, events, "save", 0)
 }
 
 func TestSnapshotSaveTelemetryOnFailure(t *testing.T) {
@@ -221,10 +221,10 @@ func TestSnapshotSaveTelemetryOnFailure(t *testing.T) {
 	analyticsSrv, events := mockAnalyticsServer(t)
 	_, _, err := runLstk(t, ctx, t.TempDir(),
 		env.With(env.AnalyticsEndpoint, analyticsSrv.URL),
-		"--non-interactive", "snapshot", "save",
+		"--non-interactive", "save",
 	)
 	requireExitCode(t, 1, err)
-	assertCommandTelemetry(t, events, "snapshot save", 1)
+	assertCommandTelemetry(t, events, "save", 1)
 }
 
 func TestSnapshotSaveInteractive(t *testing.T) {
@@ -239,8 +239,8 @@ func TestSnapshotSaveInteractive(t *testing.T) {
 
 	out, err := runLstkInPTY(t, ctx,
 		env.With(env.LocalStackHost, lsHost(srv)),
-		"snapshot", "save", filepath.Join(dir, "snap"),
+		"save", filepath.Join(dir, "snap"),
 	)
-	require.NoError(t, err, "interactive lstk snapshot save failed")
+	require.NoError(t, err, "interactive lstk save failed")
 	assert.Contains(t, out, "Snapshot saved")
 }

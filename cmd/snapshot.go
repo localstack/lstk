@@ -15,26 +15,17 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func newSnapshotCmd(cfg *env.Env) *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "snapshot",
-		Short: "Manage emulator snapshots",
-	}
-	cmd.AddCommand(newSnapshotSaveCmd(cfg))
-	return cmd
-}
-
 func newSnapshotSaveCmd(cfg *env.Env) *cobra.Command {
 	return &cobra.Command{
 		Use:   "save [destination]",
-		Short: "Save a snapshot of the emulator state",
-		Long: `Save a snapshot of the running emulator's state to a local file.
+		Short: "Save emulator state to a file",
+		Long: `Save the running emulator's state to a local file.
 
 The destination must be a file path. Use a path prefix to save locally:
 
-  lstk snapshot save                  # saves to ./ls-state-export
-  lstk snapshot save ./my-snapshot    # saves to ./my-snapshot
-  lstk snapshot save /tmp/my-state    # saves to /tmp/my-state
+  lstk save                  # saves to ./ls-state-export
+  lstk save ./my-snapshot    # saves to ./my-snapshot
+  lstk save /tmp/my-state    # saves to /tmp/my-state
 
 Cloud destinations are not yet supported.`,
 		Args:    cobra.MaximumNArgs(1),
@@ -62,7 +53,7 @@ Cloud destinations are not yet supported.`,
 				return c.Type != config.EmulatorAWS
 			})
 			if !hasAWS && hasOther {
-				return fmt.Errorf("snapshot is only supported for the AWS emulator")
+				return fmt.Errorf("save is only supported for the AWS emulator")
 			}
 
 			rt, err := runtime.NewDockerRuntime(cfg.DockerHost)
