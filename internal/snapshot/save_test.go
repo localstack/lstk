@@ -53,7 +53,7 @@ var awsContainers = []config.ContainerConfig{{Type: config.EmulatorAWS}}
 
 func TestSave_Success(t *testing.T) {
 	dir := t.TempDir()
-	dest := snapshot.LocalDestination{Path: filepath.Join(dir, "snap")}
+	dest := filepath.Join(dir, "snap")
 	exporter := &fakeExporter{body: []byte("ZIP_DATA")}
 	sink, getEvents := captureEvents(t)
 
@@ -79,7 +79,7 @@ func TestSave_Success(t *testing.T) {
 		case output.MessageEvent:
 			if ev.Severity == output.SeveritySuccess {
 				succeeded = true
-				assert.Contains(t, ev.Text, dest.Path)
+				assert.Contains(t, ev.Text, dest)
 			}
 		}
 	}
@@ -96,7 +96,7 @@ func TestSave_EmulatorNotRunning(t *testing.T) {
 	mockRT.EXPECT().FindRunningByImage(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil)
 
 	dir := t.TempDir()
-	dest := snapshot.LocalDestination{Path: filepath.Join(dir, "snap")}
+	dest := filepath.Join(dir, "snap")
 	sink, getEvents := captureEvents(t)
 
 	err := snapshot.Save(context.Background(), mockRT, awsContainers, &fakeExporter{body: []byte("x")}, dest, sink)
@@ -124,7 +124,7 @@ func TestSave_UnhealthyRuntime(t *testing.T) {
 	mockRT.EXPECT().EmitUnhealthyError(gomock.Any(), gomock.Any())
 
 	dir := t.TempDir()
-	dest := snapshot.LocalDestination{Path: filepath.Join(dir, "snap")}
+	dest := filepath.Join(dir, "snap")
 	sink := output.NewPlainSink(io.Discard)
 
 	err := snapshot.Save(context.Background(), mockRT, awsContainers, &fakeExporter{}, dest, sink)
@@ -134,7 +134,7 @@ func TestSave_UnhealthyRuntime(t *testing.T) {
 
 func TestSave_ExporterError(t *testing.T) {
 	dir := t.TempDir()
-	dest := snapshot.LocalDestination{Path: filepath.Join(dir, "snap")}
+	dest := filepath.Join(dir, "snap")
 	exporter := &fakeExporter{err: fmt.Errorf("connection refused")}
 	sink := output.NewPlainSink(io.Discard)
 
@@ -147,7 +147,7 @@ func TestSave_ExporterError(t *testing.T) {
 }
 
 func TestSave_DestinationDirNotExist(t *testing.T) {
-	dest := snapshot.LocalDestination{Path: "/no/such/dir/snap"}
+	dest := "/no/such/dir/snap"
 	exporter := &fakeExporter{body: []byte("ZIP_DATA")}
 	sink := output.NewPlainSink(io.Discard)
 
@@ -161,7 +161,7 @@ func TestSave_OverwritesExistingFile(t *testing.T) {
 	path := filepath.Join(dir, "snap")
 	require.NoError(t, os.WriteFile(path, []byte("OLD"), 0600))
 
-	dest := snapshot.LocalDestination{Path: path}
+	dest := path
 	exporter := &fakeExporter{body: []byte("NEW")}
 	sink := output.NewPlainSink(io.Discard)
 
@@ -178,7 +178,7 @@ func TestSave_ContextCancelled(t *testing.T) {
 	cancel()
 
 	dir := t.TempDir()
-	dest := snapshot.LocalDestination{Path: filepath.Join(dir, "snap")}
+	dest := filepath.Join(dir, "snap")
 	exporter := &fakeExporter{err: ctx.Err()}
 
 	ctrl := gomock.NewController(t)
