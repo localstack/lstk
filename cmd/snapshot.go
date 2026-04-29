@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"slices"
 
 	"github.com/localstack/lstk/internal/config"
 	"github.com/localstack/lstk/internal/endpoint"
@@ -50,27 +51,35 @@ Cloud destinations are not yet supported.`,
 				return err
 			}
 
+			appConfig, err := config.Get()
+			if err != nil {
+				return fmt.Errorf("failed to get config: %w", err)
+			}
+
+			hasAWS := slices.ContainsFunc(appConfig.Containers, func(c config.ContainerConfig) bool {
+				return c.Type == config.EmulatorAWS
+			})
+			hasOther := slices.ContainsFunc(appConfig.Containers, func(c config.ContainerConfig) bool {
+				return c.Type != config.EmulatorAWS
+			})
+			if !hasAWS && hasOther {
+				return fmt.Errorf("snapshot is only supported for the AWS emulator")
+			}
+
 			rt, err := runtime.NewDockerRuntime(cfg.DockerHost)
 			if err != nil {
 				return err
 			}
 
-			appConfig, err := config.Get()
-			if err != nil {
-				return fmt.Errorf("failed to get config: %w", err)
-			}
-			if len(appConfig.Containers) == 0 {
-				return fmt.Errorf("no emulator configured")
-			}
-
-			c := appConfig.Containers[0]
-			host, _ := endpoint.ResolveHost(c.Port, cfg.LocalStackHost)
+			awsContainer := config.ContainerConfig{Type: config.EmulatorAWS, Port: config.DefaultAWSPort}
+			host, _ := endpoint.ResolveHost(awsContainer.Port, cfg.LocalStackHost)
 			exporter := snapshot.NewStateClient("http://" + host)
 
+			containers := []config.ContainerConfig{awsContainer}
 			if isInteractiveMode(cfg) {
-				return ui.RunSnapshotSave(cmd.Context(), rt, appConfig.Containers, exporter, dest)
+				return ui.RunSnapshotSave(cmd.Context(), rt, containers, exporter, dest)
 			}
-			return snapshot.Save(cmd.Context(), rt, appConfig.Containers, exporter, dest, output.NewPlainSinkSplit(os.Stdout, os.Stderr))
+			return snapshot.Save(cmd.Context(), rt, containers, exporter, dest, output.NewPlainSinkSplit(os.Stdout, os.Stderr))
 		}),
 	}
 }
