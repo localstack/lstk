@@ -31,13 +31,13 @@ func (f *fakeExporter) ExportState(_ context.Context) (io.ReadCloser, error) {
 	return io.NopCloser(bytes.NewReader(f.body)), nil
 }
 
-func captureEvents(t *testing.T) (output.Sink, func() []any) {
+func captureEvents(t *testing.T) (output.Sink, func() []output.Event) {
 	t.Helper()
-	var events []any
-	sink := output.SinkFunc(func(event any) {
+	var events []output.Event
+	sink := output.SinkFunc(func(event output.Event) {
 		events = append(events, event)
 	})
-	return sink, func() []any { return events }
+	return sink, func() []output.Event { return events }
 }
 
 func healthyRunningMock(t *testing.T) *runtime.MockRuntime {
