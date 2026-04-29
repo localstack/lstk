@@ -30,16 +30,16 @@ func TestParseDestination(t *testing.T) {
 			wantPath: filepath.Join(wd, "my-state"),
 		},
 		{
-			input:    "/tmp/state",
-			wantPath: "/tmp/state",
+			input:    filepath.Join(os.TempDir(), "state"),
+			wantPath: filepath.Join(os.TempDir(), "state"),
 		},
 		{
 			input:    "~/snapshots/s",
-			wantPath: filepath.Join(home, "snapshots/s"),
+			wantPath: filepath.Join(home, "snapshots", "s"),
 		},
 		{
 			input:    "subdir/state",
-			wantPath: filepath.Join(wd, "subdir/state"),
+			wantPath: filepath.Join(wd, "subdir", "state"),
 		},
 		{
 			input:   "my-pod",
