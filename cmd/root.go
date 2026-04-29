@@ -214,6 +214,9 @@ func instrumentCommands(cmd *cobra.Command, tel *telemetry.Client) {
 			}
 
 			commandName := strings.TrimPrefix(c.CommandPath(), c.Root().Name()+" ")
+			if c == c.Root() {
+				commandName = "start"
+			}
 			tel.EmitCommand(c.Context(), commandName, flags, time.Since(startTime).Milliseconds(), exitCode, errorMsg)
 
 			return runErr

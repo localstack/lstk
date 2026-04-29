@@ -104,9 +104,9 @@ func TestStartCommandSendsTelemetryEvent(t *testing.T) {
 		}
 	})
 
-	t.Run("lstk (no subcommand) emits command=lstk", func(t *testing.T) {
+	t.Run("lstk (no subcommand) emits command=start", func(t *testing.T) {
 		runCmd(t)
-		assertCommandTelemetry(t, events, "lstk", 0)
+		assertCommandTelemetry(t, events, "start", 0)
 	})
 }
 
