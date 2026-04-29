@@ -24,7 +24,7 @@ func Save(ctx context.Context, rt runtime.Runtime, containers []config.Container
 		return fmt.Errorf("checking emulator status: %w", err)
 	}
 	if !running {
-		output.EmitError(sink, output.ErrorEvent{
+		sink.Emit(output.ErrorEvent{
 			Title: "LocalStack is not running",
 			Actions: []output.ErrorAction{
 				{Label: "Start LocalStack:", Value: "lstk"},
@@ -34,33 +34,33 @@ func Save(ctx context.Context, rt runtime.Runtime, containers []config.Container
 		return output.NewSilentError(fmt.Errorf("LocalStack is not running"))
 	}
 
-	output.EmitSpinnerStart(sink, "Saving snapshot...")
+	sink.Emit(output.SpinnerStart("Saving snapshot..."))
 
 	body, err := exporter.ExportState(ctx)
 	if err != nil {
-		output.EmitSpinnerStop(sink)
+		sink.Emit(output.SpinnerStop())
 		return fmt.Errorf("export state from LocalStack: %w", err)
 	}
 	defer func() { _ = body.Close() }()
 
 	w, err := os.Create(dest)
 	if err != nil {
-		output.EmitSpinnerStop(sink)
+		sink.Emit(output.SpinnerStop())
 		return fmt.Errorf("save to %s: %w", dest, err)
 	}
 
 	if _, err := io.Copy(w, body); err != nil {
 		_ = w.Close()
-		output.EmitSpinnerStop(sink)
+		sink.Emit(output.SpinnerStop())
 		return fmt.Errorf("write snapshot: %w", err)
 	}
 
 	if err := w.Close(); err != nil {
-		output.EmitSpinnerStop(sink)
+		sink.Emit(output.SpinnerStop())
 		return fmt.Errorf("close snapshot: %w", err)
 	}
 
-	output.EmitSpinnerStop(sink)
-	output.EmitSuccess(sink, fmt.Sprintf("Snapshot saved to %s", dest))
+	sink.Emit(output.SpinnerStop())
+	sink.Emit(output.MessageEvent{Severity: output.SeveritySuccess, Text: fmt.Sprintf("Snapshot saved to %s", dest)})
 	return nil
 }

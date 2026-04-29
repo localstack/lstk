@@ -11,21 +11,20 @@ import (
 	"github.com/localstack/lstk/internal/output"
 	"github.com/localstack/lstk/internal/runtime"
 	"github.com/localstack/lstk/internal/snapshot"
-	"github.com/localstack/lstk/internal/telemetry"
 	"github.com/localstack/lstk/internal/ui"
 	"github.com/spf13/cobra"
 )
 
-func newSnapshotCmd(cfg *env.Env, tel *telemetry.Client) *cobra.Command {
+func newSnapshotCmd(cfg *env.Env) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "snapshot",
 		Short: "Manage emulator snapshots",
 	}
-	cmd.AddCommand(newSnapshotSaveCmd(cfg, tel))
+	cmd.AddCommand(newSnapshotSaveCmd(cfg))
 	return cmd
 }
 
-func newSnapshotSaveCmd(cfg *env.Env, tel *telemetry.Client) *cobra.Command {
+func newSnapshotSaveCmd(cfg *env.Env) *cobra.Command {
 	return &cobra.Command{
 		Use:   "save [destination]",
 		Short: "Save a snapshot of the emulator state",
@@ -40,7 +39,7 @@ The destination must be a file path. Use a path prefix to save locally:
 Cloud destinations are not yet supported.`,
 		Args:    cobra.MaximumNArgs(1),
 		PreRunE: initConfig,
-		RunE: commandWithTelemetry("snapshot save", tel, func(cmd *cobra.Command, args []string) error {
+		RunE: func(cmd *cobra.Command, args []string) error {
 			var destArg string
 			if len(args) > 0 {
 				destArg = args[0]
@@ -80,6 +79,6 @@ Cloud destinations are not yet supported.`,
 				return ui.RunSnapshotSave(cmd.Context(), rt, containers, exporter, dest)
 			}
 			return snapshot.Save(cmd.Context(), rt, containers, exporter, dest, output.NewPlainSinkSplit(os.Stdout, os.Stderr))
-		}),
+		},
 	}
 }
