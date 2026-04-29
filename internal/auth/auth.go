@@ -51,38 +51,38 @@ func (a *Auth) GetToken(ctx context.Context) (string, error) {
 		if errors.Is(err, context.Canceled) {
 			return "", err
 		}
-		output.EmitWarning(a.sink, "Authentication failed.")
+		a.sink.Emit(output.MessageEvent{Severity: output.SeverityWarning, Text: "Authentication failed."})
 		return "", err
 	}
 
 	if err := a.tokenStorage.SetAuthToken(token); err != nil {
-		output.EmitWarning(a.sink, fmt.Sprintf("could not store token in keyring: %v", err))
+		a.sink.Emit(output.MessageEvent{Severity: output.SeverityWarning, Text: fmt.Sprintf("could not store token in keyring: %v", err)})
 	}
 
-	output.EmitSuccess(a.sink, "Login successful.")
+	a.sink.Emit(output.MessageEvent{Severity: output.SeveritySuccess, Text: "Login successful."})
 	return token, nil
 }
 
 // Logout removes the stored auth token from the keyring
 func (a *Auth) Logout() error {
-	output.EmitSpinnerStart(a.sink, "Logging out...")
+	a.sink.Emit(output.SpinnerStart("Logging out..."))
 
 	_, err := a.tokenStorage.GetAuthToken()
 	if err != nil {
-		output.EmitSpinnerStop(a.sink)
+		a.sink.Emit(output.SpinnerStop())
 		if a.authToken != "" {
-			output.EmitNote(a.sink, "Authenticated via LOCALSTACK_AUTH_TOKEN environment variable; unset it to log out")
+			a.sink.Emit(output.MessageEvent{Severity: output.SeverityNote, Text: "Authenticated via LOCALSTACK_AUTH_TOKEN environment variable; unset it to log out"})
 			return nil
 		}
 		if !errors.Is(err, ErrTokenNotFound) {
 			return fmt.Errorf("failed to read auth token: %w", err)
 		}
-		output.EmitNote(a.sink, "Not currently logged in")
+		a.sink.Emit(output.MessageEvent{Severity: output.SeverityNote, Text: "Not currently logged in"})
 		return ErrNotLoggedIn
 	}
 
 	if err := a.tokenStorage.DeleteAuthToken(); err != nil {
-		output.EmitSpinnerStop(a.sink)
+		a.sink.Emit(output.SpinnerStop())
 		return fmt.Errorf("failed to delete auth token: %w", err)
 	}
 
@@ -90,7 +90,7 @@ func (a *Auth) Logout() error {
 		_ = os.Remove(a.licenseFilePath)
 	}
 
-	output.EmitSpinnerStop(a.sink)
-	output.EmitSuccess(a.sink, "Logged out successfully")
+	a.sink.Emit(output.SpinnerStop())
+	a.sink.Emit(output.MessageEvent{Severity: output.SeveritySuccess, Text: "Logged out successfully"})
 	return nil
 }

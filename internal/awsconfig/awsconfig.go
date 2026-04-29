@@ -189,7 +189,7 @@ func writeCredsProfile(credsPath string) error {
 }
 
 func emitMissingProfileNote(sink output.Sink) {
-	output.EmitNote(sink, "LocalStack AWS profile is incomplete. Run 'lstk setup aws'.")
+	sink.Emit(output.MessageEvent{Severity: output.SeverityNote, Text: "LocalStack AWS profile is incomplete. Run 'lstk setup aws'."})
 }
 
 // checkProfileSetup returns both the profile status (which files need writing) and presence (which files exist).
@@ -223,7 +223,7 @@ func checkProfileSetup(resolvedHost string) (profileStatus, bool, bool, error) {
 func EnsureProfile(ctx context.Context, sink output.Sink, interactive bool, resolvedHost string) error {
 	status, configOK, credsOK, err := checkProfileSetup(resolvedHost)
 	if err != nil {
-		output.EmitWarning(sink, fmt.Sprintf("could not check AWS profile: %v", err))
+		sink.Emit(output.MessageEvent{Severity: output.SeverityWarning, Text: fmt.Sprintf("could not check AWS profile: %v", err)})
 		return nil
 	}
 	if !status.anyNeeded() {
@@ -242,18 +242,18 @@ func EnsureProfile(ctx context.Context, sink output.Sink, interactive bool, reso
 // status is passed in from EnsureProfile to avoid re-checking the profile status.
 func Setup(ctx context.Context, sink output.Sink, resolvedHost string, status profileStatus) error {
 	if !status.anyNeeded() {
-		output.EmitNote(sink, "LocalStack AWS profile is already configured.")
+		sink.Emit(output.MessageEvent{Severity: output.SeverityNote, Text: "LocalStack AWS profile is already configured."})
 		return nil
 	}
 
 	configPath, credsPath, err := awsPaths()
 	if err != nil {
-		output.EmitWarning(sink, fmt.Sprintf("could not determine AWS config paths: %v", err))
+		sink.Emit(output.MessageEvent{Severity: output.SeverityWarning, Text: fmt.Sprintf("could not determine AWS config paths: %v", err)})
 		return nil
 	}
 
 	responseCh := make(chan output.InputResponse, 1)
-	output.EmitUserInputRequest(sink, output.UserInputRequestEvent{
+	sink.Emit(output.UserInputRequestEvent{
 		Prompt:     "Set up a LocalStack profile for AWS CLI and SDKs in ~/.aws?",
 		Options:    []output.InputOption{{Key: "y", Label: "Y"}, {Key: "n", Label: "n"}},
 		ResponseCh: responseCh,
@@ -265,27 +265,27 @@ func Setup(ctx context.Context, sink output.Sink, resolvedHost string, status pr
 			return nil
 		}
 		if resp.SelectedKey == "n" {
-			output.EmitNote(sink, "Skipped adding LocalStack AWS profile.")
+			sink.Emit(output.MessageEvent{Severity: output.SeverityNote, Text: "Skipped adding LocalStack AWS profile."})
 			return nil
 		}
 		if status.configNeeded {
 			if err := writeConfigProfile(configPath, resolvedHost); err != nil {
-				output.EmitWarning(sink, fmt.Sprintf("could not update ~/.aws/config: %v", err))
+				sink.Emit(output.MessageEvent{Severity: output.SeverityWarning, Text: fmt.Sprintf("could not update ~/.aws/config: %v", err)})
 				return nil
 			}
 		}
 		if status.credsNeeded {
 			if err := writeCredsProfile(credsPath); err != nil {
-				output.EmitWarning(sink, fmt.Sprintf("could not update ~/.aws/credentials: %v", err))
+				sink.Emit(output.MessageEvent{Severity: output.SeverityWarning, Text: fmt.Sprintf("could not update ~/.aws/credentials: %v", err)})
 				return nil
 			}
 		}
 		if status.configNeeded && status.credsNeeded {
-			output.EmitSuccess(sink, "Created LocalStack profile in ~/.aws")
+			sink.Emit(output.MessageEvent{Severity: output.SeveritySuccess, Text: "Created LocalStack profile in ~/.aws"})
 		} else if status.configNeeded {
-			output.EmitSuccess(sink, "Created LocalStack profile in ~/.aws/config")
+			sink.Emit(output.MessageEvent{Severity: output.SeveritySuccess, Text: "Created LocalStack profile in ~/.aws/config"})
 		} else {
-			output.EmitSuccess(sink, "Updated LocalStack credentials in ~/.aws/credentials")
+			sink.Emit(output.MessageEvent{Severity: output.SeveritySuccess, Text: "Updated LocalStack credentials in ~/.aws/credentials"})
 		}
 	case <-ctx.Done():
 		return ctx.Err()

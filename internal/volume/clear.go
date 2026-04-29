@@ -33,12 +33,12 @@ func Clear(ctx context.Context, sink output.Sink, containers []config.ContainerC
 	}
 
 	for _, t := range targets {
-		output.EmitInfo(sink, fmt.Sprintf("%s: %s (%s)", t.name, t.path, units.BytesSize(float64(t.size))))
+		sink.Emit(output.MessageEvent{Severity: output.SeverityInfo, Text: fmt.Sprintf("%s: %s (%s)", t.name, t.path, units.BytesSize(float64(t.size)))})
 	}
 
 	if !force {
 		responseCh := make(chan output.InputResponse, 1)
-		output.EmitUserInputRequest(sink, output.UserInputRequestEvent{
+		sink.Emit(output.UserInputRequestEvent{
 			Prompt: "Clear volume data? This cannot be undone",
 			Options: []output.InputOption{
 				{Key: "y", Label: "Yes"},
@@ -50,7 +50,7 @@ func Clear(ctx context.Context, sink output.Sink, containers []config.ContainerC
 		select {
 		case resp := <-responseCh:
 			if resp.Cancelled || resp.SelectedKey != "y" {
-				output.EmitNote(sink, "Cancelled")
+				sink.Emit(output.MessageEvent{Severity: output.SeverityNote, Text: "Cancelled"})
 				return nil
 			}
 		case <-ctx.Done():
@@ -64,7 +64,7 @@ func Clear(ctx context.Context, sink output.Sink, containers []config.ContainerC
 		}
 	}
 
-	output.EmitSuccess(sink, "Volume data cleared")
+	sink.Emit(output.MessageEvent{Severity: output.SeveritySuccess, Text: "Volume data cleared"})
 	return nil
 }
 

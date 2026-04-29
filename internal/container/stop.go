@@ -37,16 +37,16 @@ func Stop(ctx context.Context, rt runtime.Runtime, sink output.Sink, containers 
 
 		stopStart := time.Now()
 
-		output.EmitSpinnerStart(sink, "Stopping LocalStack...")
+		sink.Emit(output.SpinnerStart("Stopping LocalStack..."))
 		stopCtx, stopCancel := context.WithTimeout(ctx, stopTimeout)
 		if err := rt.Stop(stopCtx, name); err != nil {
 			stopCancel()
-			output.EmitSpinnerStop(sink)
+			sink.Emit(output.SpinnerStop())
 			return fmt.Errorf("failed to stop LocalStack: %w", err)
 		}
 		stopCancel()
-		output.EmitSpinnerStop(sink)
-		output.EmitSuccess(sink, "LocalStack stopped")
+		sink.Emit(output.SpinnerStop())
+		sink.Emit(output.MessageEvent{Severity: output.SeveritySuccess, Text: "LocalStack stopped"})
 
 		if opts.Telemetry != nil {
 			opts.Telemetry.EmitEmulatorLifecycleEvent(ctx, telemetry.LifecycleEvent{

@@ -40,7 +40,7 @@ func (l *loginProvider) Login(ctx context.Context) (string, error) {
 
 	authURL := buildAuthURL(l.webAppURL, authReq.ID, authReq.Code)
 
-	output.EmitAuth(l.sink, output.AuthEvent{
+	l.sink.Emit(output.AuthEvent{
 		Preamble: "Welcome to lstk, a command-line interface for LocalStack",
 		Code:     authReq.Code,
 		URL:      authURL,
@@ -48,13 +48,13 @@ func (l *loginProvider) Login(ctx context.Context) (string, error) {
 	browser.Stdout = io.Discard
 	browser.Stderr = io.Discard
 	if err := browser.OpenURL(authURL); err != nil {
-		output.EmitWarning(l.sink, fmt.Sprintf("Failed to open browser automatically. Open this URL manually to continue: %s", authURL))
+		l.sink.Emit(output.MessageEvent{Severity: output.SeverityWarning, Text: fmt.Sprintf("Failed to open browser automatically. Open this URL manually to continue: %s", authURL)})
 	}
 
-	output.EmitSpinnerStart(l.sink, "Waiting for authorization...")
+	l.sink.Emit(output.SpinnerStart("Waiting for authorization..."))
 
 	responseCh := make(chan output.InputResponse, 1)
-	output.EmitUserInputRequest(l.sink, output.UserInputRequestEvent{
+	l.sink.Emit(output.UserInputRequestEvent{
 		Prompt:     "Waiting for authorization...",
 		Options:    []output.InputOption{{Key: "any", Label: "Press any key when complete"}},
 		ResponseCh: responseCh,
@@ -62,13 +62,13 @@ func (l *loginProvider) Login(ctx context.Context) (string, error) {
 
 	select {
 	case resp := <-responseCh:
-		output.EmitSpinnerStop(l.sink)
+		l.sink.Emit(output.SpinnerStop())
 		if resp.Cancelled {
 			return "", context.Canceled
 		}
 		return l.completeAuth(ctx, authReq)
 	case <-ctx.Done():
-		output.EmitSpinnerStop(l.sink)
+		l.sink.Emit(output.SpinnerStop())
 		return "", ctx.Err()
 	}
 }
@@ -85,7 +85,7 @@ func buildAuthURL(webAppURL, authRequestID, code string) string {
 }
 
 func (l *loginProvider) completeAuth(ctx context.Context, authReq *api.AuthRequest) (string, error) {
-	output.EmitInfo(l.sink, "Checking if auth request is confirmed...")
+	l.sink.Emit(output.MessageEvent{Severity: output.SeverityInfo, Text: "Checking if auth request is confirmed..."})
 	confirmed, err := l.platformClient.CheckAuthRequestConfirmed(ctx, authReq.ID, authReq.ExchangeToken)
 	if err != nil {
 		return "", fmt.Errorf("failed to check auth request: %w", err)
@@ -93,14 +93,14 @@ func (l *loginProvider) completeAuth(ctx context.Context, authReq *api.AuthReque
 	if !confirmed {
 		return "", fmt.Errorf("auth request not confirmed - please complete the authentication in your browser")
 	}
-	output.EmitInfo(l.sink, "Auth request confirmed, exchanging for token...")
+	l.sink.Emit(output.MessageEvent{Severity: output.SeverityInfo, Text: "Auth request confirmed, exchanging for token..."})
 
 	bearerToken, err := l.platformClient.ExchangeAuthRequest(ctx, authReq.ID, authReq.ExchangeToken)
 	if err != nil {
 		return "", fmt.Errorf("failed to exchange auth request: %w", err)
 	}
 
-	output.EmitInfo(l.sink, "Fetching license token...")
+	l.sink.Emit(output.MessageEvent{Severity: output.SeverityInfo, Text: "Fetching license token..."})
 	licenseToken, err := l.platformClient.GetLicenseToken(ctx, bearerToken)
 	if err != nil {
 		return "", fmt.Errorf("failed to get license token: %w", err)

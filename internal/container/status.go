@@ -29,7 +29,7 @@ func Status(ctx context.Context, rt runtime.Runtime, containers []config.Contain
 			return fmt.Errorf("checking %s running: %w", c.Name(), err)
 		}
 		if name == "" {
-			output.EmitError(sink, output.ErrorEvent{
+			sink.Emit(output.ErrorEvent{
 				Title: fmt.Sprintf("%s is not running", c.DisplayName()),
 				Actions: []output.ErrorAction{
 					{Label: "Start LocalStack:", Value: "lstk"},
@@ -59,22 +59,22 @@ func Status(ctx context.Context, rt runtime.Runtime, containers []config.Contain
 		var rows []emulator.Resource
 		switch c.Type {
 		case config.EmulatorAWS:
-			output.EmitSpinnerStart(sink, "Fetching LocalStack status")
+			sink.Emit(output.SpinnerStart("Fetching LocalStack status"))
 			if v, err := emulatorClient.FetchVersion(ctx, host); err != nil {
-				output.EmitWarning(sink, fmt.Sprintf("Could not fetch version: %v", err))
+				sink.Emit(output.MessageEvent{Severity: output.SeverityWarning, Text: fmt.Sprintf("Could not fetch version: %v", err)})
 			} else {
 				version = v
 			}
 
 			var fetchErr error
 			rows, fetchErr = emulatorClient.FetchResources(ctx, host)
-			output.EmitSpinnerStop(sink)
+			sink.Emit(output.SpinnerStop())
 			if fetchErr != nil {
 				return fetchErr
 			}
 		}
 
-		output.EmitInstanceInfo(sink, output.InstanceInfoEvent{
+		sink.Emit(output.InstanceInfoEvent{
 			EmulatorName:  c.DisplayName(),
 			Version:       version,
 			Host:          host,
@@ -84,7 +84,7 @@ func Status(ctx context.Context, rt runtime.Runtime, containers []config.Contain
 
 		if c.Type == config.EmulatorAWS {
 			if len(rows) == 0 {
-				output.EmitNote(sink, "No resources deployed")
+				sink.Emit(output.MessageEvent{Severity: output.SeverityNote, Text: "No resources deployed"})
 				continue
 			}
 
@@ -95,8 +95,8 @@ func Status(ctx context.Context, rt runtime.Runtime, containers []config.Contain
 				services[r.Service] = struct{}{}
 			}
 
-			output.EmitResourceSummary(sink, len(rows), len(services))
-			output.EmitTable(sink, output.TableEvent{
+			sink.Emit(output.ResourceSummaryEvent{Resources: len(rows), Services: len(services)})
+			sink.Emit(output.TableEvent{
 				Headers: []string{"Service", "Resource", "Region", "Account"},
 				Rows:    tableRows,
 			})

@@ -11,7 +11,7 @@ func TestFormatEventLine(t *testing.T) {
 
 	tests := []struct {
 		name   string
-		event  any
+		event  Event
 		want   string
 		wantOK bool
 	}{
@@ -161,12 +161,6 @@ func TestFormatEventLine(t *testing.T) {
 			event:  LogLineEvent{Source: LogSourceEmulator, Line: "Docker not available", Level: LogLevelUnknown},
 			want:   "Docker not available",
 			wantOK: true,
-		},
-		{
-			name:   "unsupported event",
-			event:  struct{}{},
-			want:   "",
-			wantOK: false,
 		},
 	}
 

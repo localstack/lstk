@@ -38,7 +38,7 @@ func RunLogout(parentCtx context.Context, rt runtime.Runtime, platformClient api
 		err = a.Logout()
 		if err == nil && rt != nil {
 			if running, runningErr := container.AnyRunning(ctx, rt, containers); runningErr == nil && running {
-				output.EmitNote(sink, "LocalStack is still running in the background")
+				sink.Emit(output.MessageEvent{Severity: output.SeverityNote, Text: "LocalStack is still running in the background"})
 			}
 		}
 

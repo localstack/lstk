@@ -23,7 +23,7 @@ func TestPlainSink_EmitsMessageEventInfo(t *testing.T) {
 	var out bytes.Buffer
 	sink := NewPlainSink(&out)
 
-	Emit(sink, MessageEvent{Severity: SeverityInfo, Text: "hello"})
+	sink.Emit(MessageEvent{Severity: SeverityInfo, Text: "hello"})
 
 	assert.Equal(t, "hello\n", out.String())
 }
@@ -32,7 +32,7 @@ func TestPlainSink_EmitsMessageEventWarning(t *testing.T) {
 	var out bytes.Buffer
 	sink := NewPlainSink(&out)
 
-	Emit(sink, MessageEvent{Severity: SeverityWarning, Text: "something went wrong"})
+	sink.Emit(MessageEvent{Severity: SeverityWarning, Text: "something went wrong"})
 
 	assert.Equal(t, "> Warning: something went wrong\n", out.String())
 }
@@ -85,7 +85,7 @@ func TestPlainSink_EmitsStatusEvent(t *testing.T) {
 			var out bytes.Buffer
 			sink := NewPlainSink(&out)
 
-			Emit(sink, tt.event)
+			sink.Emit(tt.event)
 
 			assert.Equal(t, tt.expected, out.String())
 		})
@@ -96,7 +96,7 @@ func TestPlainSink_SuppressesProgressEvent(t *testing.T) {
 	var out bytes.Buffer
 	sink := NewPlainSink(&out)
 
-	Emit(sink, ProgressEvent{
+	sink.Emit(ProgressEvent{
 		Container: "localstack",
 		LayerID:   "abc123",
 		Status:    "Downloading",
@@ -111,7 +111,7 @@ func TestPlainSink_EmitsLogLineEvent(t *testing.T) {
 	var out bytes.Buffer
 	sink := NewPlainSink(&out)
 
-	Emit(sink, LogLineEvent{Source: "container", Line: "2024-01-01 hello from container"})
+	sink.Emit(LogLineEvent{Source: "container", Line: "2024-01-01 hello from container"})
 
 	assert.Equal(t, "2024-01-01 hello from container\n", out.String())
 }
@@ -121,7 +121,7 @@ func TestPlainSink_EmitsSpinnerEvent(t *testing.T) {
 		var out bytes.Buffer
 		sink := NewPlainSink(&out)
 
-		Emit(sink, SpinnerEvent{Active: true, Text: "Loading"})
+		sink.Emit(SpinnerEvent{Active: true, Text: "Loading"})
 
 		assert.Equal(t, "Loading...\n", out.String())
 	})
@@ -130,7 +130,7 @@ func TestPlainSink_EmitsSpinnerEvent(t *testing.T) {
 		var out bytes.Buffer
 		sink := NewPlainSink(&out)
 
-		Emit(sink, SpinnerEvent{Active: false})
+		sink.Emit(SpinnerEvent{Active: false})
 
 		assert.Equal(t, "", out.String())
 	})
@@ -140,7 +140,7 @@ func TestPlainSink_EmitsErrorEvent(t *testing.T) {
 	var out bytes.Buffer
 	sink := NewPlainSink(&out)
 
-	Emit(sink, ErrorEvent{
+	sink.Emit(ErrorEvent{
 		Title:   "Connection failed",
 		Summary: "Cannot connect to Docker",
 		Actions: []ErrorAction{{Label: "Start Docker:", Value: "open -a Docker"}},
@@ -155,7 +155,7 @@ func TestPlainSink_EmitsInstanceInfoEvent(t *testing.T) {
 		var out bytes.Buffer
 		sink := NewPlainSink(&out)
 
-		Emit(sink, InstanceInfoEvent{
+		sink.Emit(InstanceInfoEvent{
 			EmulatorName:  "LocalStack AWS Emulator",
 			Version:       "4.14.1",
 			Host:          "localhost.localstack.cloud:4566",
@@ -172,7 +172,7 @@ func TestPlainSink_EmitsInstanceInfoEvent(t *testing.T) {
 		var out bytes.Buffer
 		sink := NewPlainSink(&out)
 
-		Emit(sink, InstanceInfoEvent{
+		sink.Emit(InstanceInfoEvent{
 			EmulatorName: "LocalStack AWS Emulator",
 			Host:         "127.0.0.1:4566",
 		})
@@ -186,7 +186,7 @@ func TestPlainSink_EmitsInstanceInfoEvent(t *testing.T) {
 		writeErr := errors.New("write failed")
 		sink := NewPlainSink(&failingWriter{err: writeErr})
 
-		Emit(sink, InstanceInfoEvent{
+		sink.Emit(InstanceInfoEvent{
 			EmulatorName: "LocalStack AWS Emulator",
 			Host:         "127.0.0.1:4566",
 		})
@@ -200,7 +200,7 @@ func TestPlainSink_EmitsTableEvent(t *testing.T) {
 		var out bytes.Buffer
 		sink := NewPlainSink(&out)
 
-		Emit(sink, TableEvent{
+		sink.Emit(TableEvent{
 			Headers: []string{"Service", "Resource", "Region", "Account"},
 			Rows: [][]string{
 				{"Lambda", "handler", "us-east-1", "000000000000"},
@@ -221,7 +221,7 @@ func TestPlainSink_EmitsTableEvent(t *testing.T) {
 		var out bytes.Buffer
 		sink := NewPlainSink(&out)
 
-		Emit(sink, TableEvent{Headers: []string{"A"}, Rows: [][]string{}})
+		sink.Emit(TableEvent{Headers: []string{"A"}, Rows: [][]string{}})
 
 		assert.Equal(t, "", out.String())
 		assert.NoError(t, sink.Err())
@@ -231,7 +231,7 @@ func TestPlainSink_EmitsTableEvent(t *testing.T) {
 		writeErr := errors.New("write failed")
 		sink := NewPlainSink(&failingWriter{err: writeErr})
 
-		Emit(sink, TableEvent{
+		sink.Emit(TableEvent{
 			Headers: []string{"A"},
 			Rows:    [][]string{{"val"}},
 		})
@@ -257,7 +257,7 @@ func TestPlainSink_TableWidth(t *testing.T) {
 		got := formatTableWidth(tableEvent, 80)
 		var out bytes.Buffer
 		sink := NewPlainSink(&out)
-		Emit(sink, tableEvent)
+		sink.Emit(tableEvent)
 
 		// The sink output should contain the same table content (sink delegates to FormatEventLine
 		// which calls formatTable → formatTableWidth with the current terminal width).
@@ -290,7 +290,7 @@ func TestPlainSink_ErrReturnsNilOnSuccess(t *testing.T) {
 	var out bytes.Buffer
 	sink := NewPlainSink(&out)
 
-	Emit(sink, MessageEvent{Severity: SeverityInfo, Text: "hello"})
+	sink.Emit(MessageEvent{Severity: SeverityInfo, Text: "hello"})
 
 	assert.NoError(t, sink.Err())
 }
@@ -299,7 +299,7 @@ func TestPlainSink_ErrCapturesWriteError(t *testing.T) {
 	writeErr := errors.New("write failed")
 	sink := NewPlainSink(&failingWriter{err: writeErr})
 
-	Emit(sink, MessageEvent{Severity: SeverityInfo, Text: "hello"})
+	sink.Emit(MessageEvent{Severity: SeverityInfo, Text: "hello"})
 
 	assert.Equal(t, writeErr, sink.Err())
 }
@@ -308,8 +308,8 @@ func TestPlainSink_ErrStoresOnlyFirstError(t *testing.T) {
 	firstErr := errors.New("first error")
 	sink := NewPlainSink(&failingWriter{err: firstErr})
 
-	Emit(sink, MessageEvent{Severity: SeverityInfo, Text: "first"})
-	Emit(sink, MessageEvent{Severity: SeverityInfo, Text: "second"})
+	sink.Emit(MessageEvent{Severity: SeverityInfo, Text: "first"})
+	sink.Emit(MessageEvent{Severity: SeverityInfo, Text: "second"})
 
 	assert.Equal(t, firstErr, sink.Err())
 }
@@ -317,7 +317,7 @@ func TestPlainSink_ErrStoresOnlyFirstError(t *testing.T) {
 func TestPlainSink_UsesFormatterParity(t *testing.T) {
 	t.Parallel()
 
-	events := []any{
+	events := []Event{
 		MessageEvent{Severity: SeverityInfo, Text: "hello"},
 		MessageEvent{Severity: SeverityWarning, Text: "careful"},
 		MessageEvent{Severity: SeveritySuccess, Text: "done"},
@@ -352,28 +352,7 @@ func TestPlainSink_UsesFormatterParity(t *testing.T) {
 		var out bytes.Buffer
 		sink := NewPlainSink(&out)
 
-		switch e := event.(type) {
-		case MessageEvent:
-			Emit(sink, e)
-		case AuthEvent:
-			Emit(sink, e)
-		case SpinnerEvent:
-			Emit(sink, e)
-		case ErrorEvent:
-			Emit(sink, e)
-		case ContainerStatusEvent:
-			Emit(sink, e)
-		case LogLineEvent:
-			Emit(sink, e)
-		case InstanceInfoEvent:
-			Emit(sink, e)
-		case ResourceSummaryEvent:
-			Emit(sink, e)
-		case TableEvent:
-			Emit(sink, e)
-		default:
-			t.Fatalf("unsupported event type in test: %T", event)
-		}
+		sink.Emit(event)
 
 		line, ok := FormatEventLine(event)
 		if !ok {

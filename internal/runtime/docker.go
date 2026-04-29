@@ -151,7 +151,7 @@ func (d *DockerRuntime) EmitUnhealthyError(sink output.Sink, err error) {
 		// Suppress the raw error: on Windows it's a named-pipe message that users can't act on.
 		summary = ""
 	}
-	output.EmitError(sink, output.ErrorEvent{
+	sink.Emit(output.ErrorEvent{
 		Title:   "Docker is not available",
 		Summary: summary,
 		Actions: actions,

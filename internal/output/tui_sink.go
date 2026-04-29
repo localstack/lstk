@@ -13,7 +13,7 @@ func NewTUISink(sender Sender) *TUISink {
 	return &TUISink{sender: sender}
 }
 
-func (s *TUISink) emit(event any) {
+func (s *TUISink) Emit(event Event) {
 	if s == nil || s.sender == nil {
 		return
 	}

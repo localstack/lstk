@@ -28,7 +28,7 @@ func RunConfigProfile(parentCtx context.Context, containers []config.ContainerCo
 
 	return runWithTUI(parentCtx, withoutHeader(), func(ctx context.Context, sink output.Sink) error {
 		if !dnsOK {
-			output.EmitNote(sink, endpoint.DNSRebindNote)
+			sink.Emit(output.MessageEvent{Severity: output.SeverityNote, Text: endpoint.DNSRebindNote})
 		}
 		status, err := awsconfig.CheckProfileStatus(resolvedHost)
 		if err != nil {
@@ -37,4 +37,3 @@ func RunConfigProfile(parentCtx context.Context, containers []config.ContainerCo
 		return awsconfig.Setup(ctx, sink, resolvedHost, status)
 	})
 }
-

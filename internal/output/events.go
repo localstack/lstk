@@ -1,16 +1,16 @@
 // Package output defines events for the event/sink system
 //
-// MessageEvent (use via EmitInfo, EmitSuccess, EmitNote, EmitWarning):
+// MessageEvent (use via sink.Emit with a MessageEvent):
 //   - SeverityInfo: Transient status ("Connecting...", "Validating...")
 //   - SeveritySuccess: Positive outcome ("Login successful")
 //   - SeverityNote: Informational outcome ("Not currently logged in")
 //   - SeverityWarning: Cautionary message ("Token expires soon")
 //
-// SpinnerEvent (use via EmitSpinnerStart, EmitSpinnerStop):
+// SpinnerEvent (use via output.SpinnerStart/SpinnerStop constructors):
 //   - Show loading indicator during async operations
 //   - Always pair Start with Stop
 //
-// ErrorEvent (use via EmitError):
+// ErrorEvent (use via sink.Emit with an ErrorEvent):
 //   - Structured errors with title, summary, detail, and recovery actions
 //   - Use for errors that need more than a single line
 package output
@@ -76,18 +76,29 @@ type ResourceSummaryEvent struct {
 	Services  int
 }
 
-type Event interface {
-	MessageEvent | AuthEvent | SpinnerEvent | ErrorEvent | ContainerStatusEvent | ProgressEvent | UserInputRequestEvent | LogLineEvent | InstanceInfoEvent | TableEvent | ResourceSummaryEvent
-}
+// Event is a sealed marker — only event types in this package implement it,
+// so Sink.Emit rejects unknown types at compile time.
+type Event interface{ sealedEvent() }
+
+func (MessageEvent) sealedEvent()          {}
+func (SpinnerEvent) sealedEvent()          {}
+func (ErrorEvent) sealedEvent()            {}
+func (AuthEvent) sealedEvent()             {}
+func (InstanceInfoEvent) sealedEvent()     {}
+func (TableEvent) sealedEvent()            {}
+func (ResourceSummaryEvent) sealedEvent()  {}
+func (ContainerStatusEvent) sealedEvent()  {}
+func (ProgressEvent) sealedEvent()         {}
+func (UserInputRequestEvent) sealedEvent() {}
+func (LogLineEvent) sealedEvent()          {}
 
 type Sink interface {
-	// using any as the type only here; at call sites we'll have type safety from the union interface
-	emit(event any)
+	Emit(event Event)
 }
 
-type SinkFunc func(event any)
+type SinkFunc func(event Event)
 
-func (f SinkFunc) emit(event any) {
+func (f SinkFunc) Emit(event Event) {
 	if f == nil {
 		return
 	}
@@ -147,88 +158,16 @@ type LogLineEvent struct {
 	Level  LogLevel
 }
 
-// Emit sends an event to the sink with compile-time type safety via generics.
-func Emit[E Event](sink Sink, event E) {
-	if sink == nil {
-		return
-	}
-	sink.emit(event)
-}
-
-func EmitInfo(sink Sink, text string) {
-	Emit(sink, MessageEvent{Severity: SeverityInfo, Text: text})
-}
-
-func EmitSuccess(sink Sink, text string) {
-	Emit(sink, MessageEvent{Severity: SeveritySuccess, Text: text})
-}
-
-func EmitNote(sink Sink, text string) {
-	Emit(sink, MessageEvent{Severity: SeverityNote, Text: text})
-}
-
-func EmitWarning(sink Sink, text string) {
-	Emit(sink, MessageEvent{Severity: SeverityWarning, Text: text})
-}
-
-func EmitSecondary(sink Sink, text string) {
-	Emit(sink, MessageEvent{Severity: SeveritySecondary, Text: text})
-}
-
-func EmitStatus(sink Sink, phase, container, detail string) {
-	Emit(sink, ContainerStatusEvent{Phase: phase, Container: container, Detail: detail})
-}
-
-func EmitProgress(sink Sink, container, layerID, status string, current, total int64) {
-	Emit(sink, ProgressEvent{
-		Container: container,
-		LayerID:   layerID,
-		Status:    status,
-		Current:   current,
-		Total:     total,
-	})
-}
-
-func EmitUserInputRequest(sink Sink, event UserInputRequestEvent) {
-	Emit(sink, event)
-}
-
-func EmitAuth(sink Sink, event AuthEvent) {
-	Emit(sink, event)
-}
-
-func EmitLogLine(sink Sink, source, line string, level LogLevel) {
-	Emit(sink, LogLineEvent{Source: source, Line: line, Level: level})
-}
-
 const DefaultSpinnerMinDuration = 400 * time.Millisecond
 
-// EmitSpinnerStart starts spinner with default min duration (400ms)
-func EmitSpinnerStart(sink Sink, text string) {
-	Emit(sink, SpinnerEvent{Active: true, Text: text, MinDuration: DefaultSpinnerMinDuration})
+func SpinnerStart(text string) SpinnerEvent {
+	return SpinnerEvent{Active: true, Text: text, MinDuration: DefaultSpinnerMinDuration}
 }
 
-// EmitSpinnerStartWithDuration starts spinner with custom min duration (0 = no minimum)
-func EmitSpinnerStartWithDuration(sink Sink, text string, minDuration time.Duration) {
-	Emit(sink, SpinnerEvent{Active: true, Text: text, MinDuration: minDuration})
+func SpinnerStartWithDuration(text string, minDuration time.Duration) SpinnerEvent {
+	return SpinnerEvent{Active: true, Text: text, MinDuration: minDuration}
 }
 
-func EmitSpinnerStop(sink Sink) {
-	Emit(sink, SpinnerEvent{Active: false})
-}
-
-func EmitError(sink Sink, event ErrorEvent) {
-	Emit(sink, event)
-}
-
-func EmitInstanceInfo(sink Sink, event InstanceInfoEvent) {
-	Emit(sink, event)
-}
-
-func EmitTable(sink Sink, event TableEvent) {
-	Emit(sink, event)
-}
-
-func EmitResourceSummary(sink Sink, resources, services int) {
-	Emit(sink, ResourceSummaryEvent{Resources: resources, Services: services})
+func SpinnerStop() SpinnerEvent {
+	return SpinnerEvent{Active: false}
 }
