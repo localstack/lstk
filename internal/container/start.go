@@ -148,7 +148,7 @@ func Start(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts Start
 
 	// Validate licenses before pulling where possible (pinned tags always; "latest" tags via catalog API).
 	// Returns containers that still need post-pull validation (catalog unavailable).
-	postPullContainers, err := tryPrePullLicenseValidation(ctx, sink, opts, tel, containers, token, licenseFilePath)
+	postPullContainers, err := tryPrePullLicenseValidation(ctx, sink, opts, containers, token, licenseFilePath)
 	if err != nil {
 		return err
 	}
@@ -159,7 +159,7 @@ func Start(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts Start
 	}
 
 	// Catalog was unavailable for these; fall back to image inspection.
-	if err := validateLicensesFromImages(ctx, rt, sink, opts, tel, postPullContainers, token, licenseFilePath); err != nil {
+	if err := validateLicensesFromImages(ctx, rt, sink, opts, postPullContainers, token, licenseFilePath); err != nil {
 		return err
 	}
 
@@ -266,7 +266,7 @@ func pullImages(ctx context.Context, rt runtime.Runtime, sink output.Sink, tel *
 // Validates licenses before pulling where the version is known.
 // Pinned tags are validated immediately; "latest" tags are resolved via the catalog API.
 // Returns containers that couldn't be resolved (catalog unavailable) for post-pull validation.
-func tryPrePullLicenseValidation(ctx context.Context, sink output.Sink, opts StartOptions, tel *telemetry.Client, containers []runtime.ContainerConfig, token, licenseFilePath string) ([]runtime.ContainerConfig, error) {
+func tryPrePullLicenseValidation(ctx context.Context, sink output.Sink, opts StartOptions, containers []runtime.ContainerConfig, token, licenseFilePath string) ([]runtime.ContainerConfig, error) {
 	var needsPostPull []runtime.ContainerConfig
 	for _, c := range containers {
 		if c.EmulatorType == string(config.EmulatorSnowflake) {
@@ -274,7 +274,7 @@ func tryPrePullLicenseValidation(ctx context.Context, sink output.Sink, opts Sta
 		}
 
 		if c.Tag != "" && c.Tag != "latest" {
-			if err := validateLicense(ctx, sink, opts, tel, c, token, licenseFilePath); err != nil {
+			if err := validateLicense(ctx, sink, opts, c, token, licenseFilePath); err != nil {
 				return nil, err
 			}
 			continue
@@ -291,7 +291,7 @@ func tryPrePullLicenseValidation(ctx context.Context, sink output.Sink, opts Sta
 
 		cWithVersion := c
 		cWithVersion.Tag = v
-		if err := validateLicense(ctx, sink, opts, tel, cWithVersion, token, licenseFilePath); err != nil {
+		if err := validateLicense(ctx, sink, opts, cWithVersion, token, licenseFilePath); err != nil {
 			return nil, err
 		}
 	}
@@ -299,7 +299,7 @@ func tryPrePullLicenseValidation(ctx context.Context, sink output.Sink, opts Sta
 }
 
 // Fallback path: inspects each pulled image for its version, then validates the license.
-func validateLicensesFromImages(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts StartOptions, tel *telemetry.Client, containers []runtime.ContainerConfig, token, licenseFilePath string) error {
+func validateLicensesFromImages(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts StartOptions, containers []runtime.ContainerConfig, token, licenseFilePath string) error {
 	for _, c := range containers {
 		if c.EmulatorType == string(config.EmulatorSnowflake) {
 			continue
@@ -310,7 +310,7 @@ func validateLicensesFromImages(ctx context.Context, rt runtime.Runtime, sink ou
 			return fmt.Errorf("could not resolve version from image %s: %w", c.Image, err)
 		}
 		c.Tag = v
-		if err := validateLicense(ctx, sink, opts, tel, c, token, licenseFilePath); err != nil {
+		if err := validateLicense(ctx, sink, opts, c, token, licenseFilePath); err != nil {
 			return err
 		}
 	}
@@ -464,7 +464,7 @@ func emitPortInUseError(sink output.Sink, port string) {
 	})
 }
 
-func validateLicense(ctx context.Context, sink output.Sink, opts StartOptions, tel *telemetry.Client, containerConfig runtime.ContainerConfig, token, licenseFilePath string) error {
+func validateLicense(ctx context.Context, sink output.Sink, opts StartOptions, containerConfig runtime.ContainerConfig, token, licenseFilePath string) error {
 	version := containerConfig.Tag
 	sink.Emit(output.ContainerStatusEvent{Phase: "validating license", Container: containerConfig.Name})
 
@@ -490,7 +490,7 @@ func validateLicense(ctx context.Context, sink output.Sink, opts StartOptions, t
 		if errors.As(err, &licErr) && licErr.Detail != "" {
 			opts.Logger.Error("license server response (HTTP %d): %s", licErr.Status, licErr.Detail)
 		}
-		tel.EmitEmulatorLifecycleEvent(ctx, telemetry.LifecycleEvent{
+		opts.Telemetry.EmitEmulatorLifecycleEvent(ctx, telemetry.LifecycleEvent{
 			EventType: telemetry.LifecycleStartError,
 			Emulator:  containerConfig.EmulatorType,
 			Image:     containerConfig.Image,

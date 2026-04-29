@@ -71,32 +71,6 @@ func TestStop_EmitsLifecycleStopEvent(t *testing.T) {
 	assert.Equal(t, "ls-abc", env["auth_token_id"])
 }
 
-func TestStop_SkipsTelemetryWhenNil(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	mockRT := runtime.NewMockRuntime(ctrl)
-	mockRT.EXPECT().IsHealthy(gomock.Any()).Return(nil)
-	mockRT.EXPECT().IsRunning(gomock.Any(), "localstack-aws").Return(true, nil)
-	mockRT.EXPECT().Stop(gomock.Any(), "localstack-aws").Return(nil)
-
-	containers := []config.ContainerConfig{{Type: config.EmulatorAWS, Port: "4566"}}
-	sink := output.NewPlainSink(io.Discard)
-
-	err := Stop(context.Background(), mockRT, sink, containers, StopOptions{})
-	require.NoError(t, err)
-}
-
-func TestEmitEmulatorLifecycleEvent_IsNoOpWhenNil(t *testing.T) {
-	var tel *telemetry.Client
-	// Must not panic.
-	tel.EmitEmulatorLifecycleEvent(context.Background(), telemetry.LifecycleEvent{
-		EventType: telemetry.LifecycleStartError,
-		Emulator:  "aws",
-		Image:     "localstack/localstack-pro:latest",
-		ErrorCode: telemetry.ErrCodePortConflict,
-		ErrorMsg:  "port 4566 in use",
-	})
-}
-
 func TestEmitEmulatorLifecycleEvent_SendsStartErrorEvent(t *testing.T) {
 	tel, ch := newCapturingTelClient(t)
 	tel.SetAuthToken("ls-xyz")

@@ -36,9 +36,6 @@ type Client struct {
 // SetAuthToken stores the resolved auth token for inclusion in telemetry events.
 // Call this once the token is known (e.g. after keyring resolution or interactive login).
 func (c *Client) SetAuthToken(token string) {
-	if c == nil {
-		return
-	}
 	c.authToken = token
 }
 
