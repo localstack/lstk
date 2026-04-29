@@ -393,7 +393,13 @@ func selectContainersToStart(ctx context.Context, rt runtime.Runtime, sink outpu
 						{Label: "Stop existing emulator:", Value: "lstk stop"},
 					},
 				})
-				emitEmulatorStartError(ctx, tel, c, telemetry.ErrCodePortConflict, fmt.Sprintf("running on port %s, configured port %s", found.BoundPort, c.Port))
+				tel.EmitEmulatorLifecycleEvent(ctx, telemetry.LifecycleEvent{
+					EventType: telemetry.LifecycleStartError,
+					Emulator:  c.EmulatorType,
+					Image:     c.Image,
+					ErrorCode: telemetry.ErrCodePortConflict,
+					ErrorMsg:  fmt.Sprintf("running on port %s, configured port %s", found.BoundPort, c.Port),
+				})
 				return nil, output.NewSilentError(fmt.Errorf("LocalStack already running on port %s", found.BoundPort))
 			}
 			sink.Emit(output.MessageEvent{Severity: output.SeverityInfo, Text: "LocalStack is already running"})
@@ -428,7 +434,13 @@ func selectContainersToStart(ctx context.Context, rt runtime.Runtime, sink outpu
 				Title:   fmt.Sprintf("Port %s is already in use", conflictPort),
 				Summary: "LocalStack requires this port. Free it before starting.",
 			})
-			emitEmulatorStartError(ctx, tel, c, telemetry.ErrCodePortConflict, err.Error())
+			tel.EmitEmulatorLifecycleEvent(ctx, telemetry.LifecycleEvent{
+				EventType: telemetry.LifecycleStartError,
+				Emulator:  c.EmulatorType,
+				Image:     c.Image,
+				ErrorCode: telemetry.ErrCodePortConflict,
+				ErrorMsg:  err.Error(),
+			})
 			return nil, output.NewSilentError(err)
 		}
 
