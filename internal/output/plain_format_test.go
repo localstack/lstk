@@ -162,6 +162,12 @@ func TestFormatEventLine(t *testing.T) {
 			want:   "Docker not available",
 			wantOK: true,
 		},
+		{
+			name:   "auth complete event",
+			event:  AuthCompleteEvent{},
+			want:   "",
+			wantOK: false,
+		},
 	}
 
 	for _, tt := range tests {

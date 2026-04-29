@@ -159,23 +159,6 @@ func startEmulator(ctx context.Context, rt runtime.Runtime, cfg *env.Env, tel *t
 		return fmt.Errorf("failed to get config: %w", err)
 	}
 
-	interactive := isInteractiveMode(cfg)
-
-	// On first run with no token, run the auth flow before showing the start UI
-	// so the header isn't rendered with "(No license)" before authentication completes.
-	if interactive && cfg.AuthToken == "" {
-		platformClient := api.NewPlatformClient(cfg.APIEndpoint, logger)
-		if err := ui.RunLogin(ctx, version.Version(), platformClient, "", cfg.ForceFileKeyring, cfg.WebAppURL, logger); err != nil {
-			return err
-		}
-		if tokenStorage, err := auth.NewTokenStorage(cfg.ForceFileKeyring, logger); err == nil {
-			if token, err := tokenStorage.GetAuthToken(); err == nil && token != "" {
-				cfg.AuthToken = token
-				tel.SetAuthToken(token)
-			}
-		}
-	}
-
 	opts := buildStartOptions(cfg, appConfig, logger, tel, persist)
 
 	notifyOpts := update.NotifyOptions{
@@ -190,7 +173,7 @@ func startEmulator(ctx context.Context, rt runtime.Runtime, cfg *env.Env, tel *t
 		logger.Info("could not resolve friendly config path: %v", err)
 	}
 
-	if interactive {
+	if isInteractiveMode(cfg) {
 		labelCh := make(chan string, 1)
 		go func() {
 			label, ok := container.ResolveEmulatorLabel(ctx, opts.PlatformClient, appConfig.Containers, cfg.AuthToken, logger)

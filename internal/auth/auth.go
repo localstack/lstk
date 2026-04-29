@@ -60,6 +60,7 @@ func (a *Auth) GetToken(ctx context.Context) (string, error) {
 	}
 
 	a.sink.Emit(output.MessageEvent{Severity: output.SeveritySuccess, Text: "Login successful."})
+	a.sink.Emit(output.AuthCompleteEvent{})
 	return token, nil
 }
 
