@@ -149,17 +149,17 @@ func Start(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts Start
 		binds = append(binds, runtime.BindMount{HostPath: volumeDir, ContainerPath: "/var/lib/localstack"})
 
 		containers[i] = runtime.ContainerConfig{
-			Image:              image,
-			Name:               containerName,
-			EmulatorType:       string(c.Type),
-			Port:               c.Port,
-			ContainerPort:      containerPort,
-			HealthPath:         healthPath,
-			Env:                env,
-			Tag:                c.Tag,
-			ProductName: productName,
-			Binds:       binds,
-			ExtraPorts:         servicePortRange(),
+			Image:         image,
+			Name:          containerName,
+			EmulatorType:  string(c.Type),
+			Port:          c.Port,
+			ContainerPort: containerPort,
+			HealthPath:    healthPath,
+			Env:           env,
+			Tag:           c.Tag,
+			ProductName:   productName,
+			Binds:         binds,
+			ExtraPorts:    servicePortRange(),
 		}
 	}
 
@@ -240,7 +240,6 @@ func runPostStartSetups(ctx context.Context, sink output.Sink, containers []conf
 	}
 	return nil
 }
-
 
 func emitPostStartPointers(sink output.Sink, resolvedHost, webAppURL string, showTip bool) {
 	sink.Emit(output.MessageEvent{Severity: output.SeveritySecondary, Text: fmt.Sprintf("• Endpoint: %s", resolvedHost)})
@@ -465,7 +464,7 @@ func emitPortInUseError(sink output.Sink, port string) {
 
 func validateLicense(ctx context.Context, sink output.Sink, opts StartOptions, tel *telemetry.Client, containerConfig runtime.ContainerConfig, token, licenseFilePath string) error {
 	version := containerConfig.Tag
-	sink.Emit(output.ContainerStatusEvent{Phase: "validating license", Container: containerConfig.Name, Detail: version})
+	sink.Emit(output.ContainerStatusEvent{Phase: "validating license", Container: containerConfig.Name})
 
 	hostname, _ := os.Hostname()
 	licenseReq := &api.LicenseRequest{

@@ -73,6 +73,8 @@ func TestVersionResolvedViaCatalog(t *testing.T) {
 		"license request should carry the version returned by the catalog API")
 	assert.NotEqual(t, "latest", *capturedVersion,
 		"license request should not use the unresolved 'latest' tag")
+	assert.Contains(t, stdout, "LocalStack: validating license")
+	assert.NotContains(t, stdout, "validating license (4.14.0)")
 }
 
 // Verifies that when the catalog endpoint is unavailable, the version is resolved
