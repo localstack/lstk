@@ -252,7 +252,7 @@ func emitPostStartPointers(sink output.Sink, resolvedHost, webAppURL string, sho
 			"> Tip: View emulator logs: lstk logs --follow",
 			"> Tip: View deployed resources: lstk status",
 		}
-		output.EmitSecondary(sink, tips[rand.IntN(len(tips))])
+		sink.Emit(output.MessageEvent{Severity: output.SeveritySecondary, Text: tips[rand.IntN(len(tips))]})
 	}
 }
 
@@ -391,7 +391,7 @@ func selectContainersToStart(ctx context.Context, rt runtime.Runtime, sink outpu
 		}
 		if found != nil {
 			if found.BoundPort != c.Port {
-				output.EmitError(sink, output.ErrorEvent{
+				sink.Emit(output.ErrorEvent{
 					Title:   fmt.Sprintf("LocalStack is already running on port %s", found.BoundPort),
 					Summary: fmt.Sprintf("Config expects port %s. Only one instance can run at a time.", c.Port),
 					Actions: []output.ErrorAction{
@@ -401,7 +401,7 @@ func selectContainersToStart(ctx context.Context, rt runtime.Runtime, sink outpu
 				emitEmulatorStartError(ctx, tel, c, telemetry.ErrCodePortConflict, fmt.Sprintf("running on port %s, configured port %s", found.BoundPort, c.Port))
 				return nil, output.NewSilentError(fmt.Errorf("LocalStack already running on port %s", found.BoundPort))
 			}
-			output.EmitInfo(sink, "LocalStack is already running")
+			sink.Emit(output.MessageEvent{Severity: output.SeverityInfo, Text: "LocalStack is already running"})
 			continue
 		}
 
@@ -423,7 +423,7 @@ func selectContainersToStart(ctx context.Context, rt runtime.Runtime, sink outpu
 			extraSpecs[i] = ep.HostPort
 		}
 		if conflictPort, err := ports.CheckAvailable(extraSpecs...); err != nil {
-			output.EmitError(sink, output.ErrorEvent{
+			sink.Emit(output.ErrorEvent{
 				Title:   fmt.Sprintf("Port %s is already in use", conflictPort),
 				Summary: "LocalStack requires this port. Free it before starting.",
 			})
@@ -441,12 +441,12 @@ func emitLocalStackAlreadyRunningWarning(sink output.Sink, port, runningVersion,
 		configTag = "latest"
 	}
 	if runningVersion != configTag {
-		output.EmitWarning(sink, fmt.Sprintf(
+		sink.Emit(output.MessageEvent{Severity: output.SeverityWarning, Text: fmt.Sprintf(
 			"LocalStack %s is already running on port %s (config specifies %s) — using the running instance",
 			runningVersion, port, configTag,
-		))
+		)})
 	} else {
-		output.EmitInfo(sink, fmt.Sprintf("LocalStack %s is already running on port %s", runningVersion, port))
+		sink.Emit(output.MessageEvent{Severity: output.SeverityInfo, Text: fmt.Sprintf("LocalStack %s is already running on port %s", runningVersion, port)})
 	}
 }
 
