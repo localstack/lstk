@@ -52,7 +52,9 @@ func InitFromPath(path string) error {
 	return loadConfig(path)
 }
 
-func Init() error {
+// Init loads the config file, searching the standard paths. If no config file
+// exists, it creates one from the default template and returns firstRun=true.
+func Init() (firstRun bool, err error) {
 	viper.Reset()
 	setDefaults()
 	viper.SetConfigName(configName)
@@ -60,7 +62,7 @@ func Init() error {
 
 	dirs, err := configSearchDirs()
 	if err != nil {
-		return err
+		return false, err
 	}
 	for _, dir := range dirs {
 		viper.AddConfigPath(dir)
@@ -70,43 +72,43 @@ func Init() error {
 		var notFoundErr viper.ConfigFileNotFoundError
 		if !errors.As(err, &notFoundErr) {
 			if used := viper.ConfigFileUsed(); filepath.Ext(used) == ".yaml" || filepath.Ext(used) == ".yml" {
-				return fmt.Errorf("%s is from an old lstk version; lstk now uses TOML format — remove it or replace it with a config.toml file", used)
+				return false, fmt.Errorf("%s is from an old lstk version; lstk now uses TOML format — remove it or replace it with a config.toml file", used)
 			}
-			return fmt.Errorf("failed to read config file: %w", err)
+			return false, fmt.Errorf("failed to read config file: %w", err)
 		}
 
 		// No config found anywhere, create one using creation policy.
 		creationDir, err := configCreationDir()
 		if err != nil {
-			return err
+			return false, err
 		}
 
 		if err := os.MkdirAll(creationDir, 0755); err != nil {
-			return fmt.Errorf("failed to create config directory: %w", err)
+			return false, fmt.Errorf("failed to create config directory: %w", err)
 		}
 
 		configPath := filepath.Join(creationDir, configFileName)
 		f, err := os.OpenFile(configPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0644)
 		if err != nil {
 			if errors.Is(err, os.ErrExist) {
-				return loadConfig(configPath)
+				return false, loadConfig(configPath)
 			}
-			return fmt.Errorf("failed to create config file: %w", err)
+			return false, fmt.Errorf("failed to create config file: %w", err)
 		}
 		_, writeErr := f.WriteString(defaultConfigTemplate)
 		closeErr := f.Close()
 		if writeErr != nil {
 			_ = os.Remove(configPath)
-			return fmt.Errorf("failed to write config file: %w", writeErr)
+			return false, fmt.Errorf("failed to write config file: %w", writeErr)
 		}
 		if closeErr != nil {
 			_ = os.Remove(configPath)
-			return fmt.Errorf("failed to close config file: %w", closeErr)
+			return false, fmt.Errorf("failed to close config file: %w", closeErr)
 		}
 
-		return loadConfig(configPath)
+		return true, loadConfig(configPath)
 	}
-	return nil
+	return false, nil
 }
 
 func resolvedConfigPath() string {
