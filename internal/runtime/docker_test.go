@@ -2,6 +2,7 @@ package runtime
 
 import (
 	"errors"
+	"net"
 	"os"
 	"path/filepath"
 	"testing"
@@ -11,29 +12,67 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestProbeSocket_ReturnsFirstExisting(t *testing.T) {
-	dir := t.TempDir()
+// macOS caps Unix socket paths at ~104 chars; t.TempDir() under /var/folders/...
+// can exceed that, so tests that bind sockets must use /tmp.
+func shortTempDir(t *testing.T) string {
+	t.Helper()
+	dir, err := os.MkdirTemp("/tmp", "lstk-*")
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = os.RemoveAll(dir) })
+	return dir
+}
+
+func listenUnixSocket(t *testing.T, path string) {
+	t.Helper()
+	l, err := net.Listen("unix", path)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = l.Close() })
+}
+
+func TestProbeSocket_ReturnsFirstLive(t *testing.T) {
+	dir := shortTempDir(t)
 	sock1 := filepath.Join(dir, "first.sock")
 	sock2 := filepath.Join(dir, "second.sock")
 
-	require.NoError(t, os.WriteFile(sock1, nil, 0o600))
-	require.NoError(t, os.WriteFile(sock2, nil, 0o600))
+	listenUnixSocket(t, sock1)
+	listenUnixSocket(t, sock2)
 
 	assert.Equal(t, sock1, probeSocket(sock1, sock2))
 }
 
-func TestProbeSocket_SkipsMissingAndReturnsExisting(t *testing.T) {
-	dir := t.TempDir()
+func TestProbeSocket_SkipsMissingAndReturnsLive(t *testing.T) {
+	dir := shortTempDir(t)
 	missing := filepath.Join(dir, "missing.sock")
-	existing := filepath.Join(dir, "existing.sock")
+	live := filepath.Join(dir, "live.sock")
 
-	require.NoError(t, os.WriteFile(existing, nil, 0o600))
+	listenUnixSocket(t, live)
 
-	assert.Equal(t, existing, probeSocket(missing, existing))
+	assert.Equal(t, live, probeSocket(missing, live))
+}
+
+func TestProbeSocket_SkipsStaleSocketForLiveOne(t *testing.T) {
+	dir := shortTempDir(t)
+	stale := filepath.Join(dir, "stale.sock")
+	live := filepath.Join(dir, "live.sock")
+
+	require.NoError(t, os.WriteFile(stale, nil, 0o600))
+	listenUnixSocket(t, live)
+
+	assert.Equal(t, live, probeSocket(stale, live))
 }
 
 func TestProbeSocket_ReturnsEmptyWhenNoneExist(t *testing.T) {
 	assert.Equal(t, "", probeSocket("/no/such/path.sock", "/also/missing.sock"))
+}
+
+func TestProbeSocket_ReturnsEmptyWhenAllStale(t *testing.T) {
+	dir := shortTempDir(t)
+	stale1 := filepath.Join(dir, "stale1.sock")
+	stale2 := filepath.Join(dir, "stale2.sock")
+	require.NoError(t, os.WriteFile(stale1, nil, 0o600))
+	require.NoError(t, os.WriteFile(stale2, nil, 0o600))
+
+	assert.Equal(t, "", probeSocket(stale1, stale2))
 }
 
 func TestProbeSocket_ReturnsEmptyForNoCandidates(t *testing.T) {
@@ -166,11 +205,11 @@ func TestFindDockerSocket_ProbesVMSockets(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			tmpDir := t.TempDir()
-			sock := filepath.Join(tmpDir, filepath.FromSlash(tc.relPath))
+			home := shortTempDir(t)
+			sock := filepath.Join(home, filepath.FromSlash(tc.relPath))
 			require.NoError(t, os.MkdirAll(filepath.Dir(sock), 0o700))
-			require.NoError(t, os.WriteFile(sock, nil, 0o600))
-			t.Setenv("HOME", tmpDir)
+			listenUnixSocket(t, sock)
+			t.Setenv("HOME", home)
 
 			assert.Equal(t, sock, findDockerSocket())
 		})

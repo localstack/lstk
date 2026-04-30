@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/exec"
@@ -77,11 +78,20 @@ func findDockerSocket() string {
 	return probeSocket(vmSocketPaths(home)...)
 }
 
+// Dial as well as stat: a socket file may linger after its daemon is gone (e.g. a
+// stale ~/.docker/run/docker.sock from an uninstalled Docker Desktop) and would
+// otherwise shadow a live socket later in the list.
 func probeSocket(candidates ...string) string {
 	for _, sock := range candidates {
-		if _, err := os.Stat(sock); err == nil {
-			return sock
+		if _, err := os.Stat(sock); err != nil {
+			continue
 		}
+		conn, err := net.DialTimeout("unix", sock, 200*time.Millisecond)
+		if err != nil {
+			continue
+		}
+		_ = conn.Close()
+		return sock
 	}
 	return ""
 }
