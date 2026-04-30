@@ -3,9 +3,11 @@ package ui
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/localstack/lstk/internal/config"
 	"github.com/localstack/lstk/internal/container"
 	"github.com/localstack/lstk/internal/output"
 	"github.com/localstack/lstk/internal/runtime"
@@ -27,13 +29,17 @@ func (s programSender) Send(msg any) {
 // RunOptions groups the parameters for Run. Bundling them keeps the call
 // site readable as the UI entry point grows new concerns.
 type RunOptions struct {
-	Runtime       runtime.Runtime
-	Version       string
-	StartOptions  container.StartOptions
-	NotifyOptions update.NotifyOptions
-	ConfigPath    string
-	EmulatorLabel string
-	LabelCh       <-chan string
+	Runtime                runtime.Runtime
+	Version                string
+	StartOptions           container.StartOptions
+	NotifyOptions          update.NotifyOptions
+	ConfigPath             string
+	EmulatorLabel          string
+	LabelCh                <-chan string
+	NeedsEmulatorSelection bool
+	// OnEmulatorSelected is called with the user's choice when NeedsEmulatorSelection is true.
+	// It should switch the config and return the updated container configs to use for this run.
+	OnEmulatorSelected func(config.EmulatorType) ([]config.ContainerConfig, error)
 }
 
 func Run(parentCtx context.Context, runOpts RunOptions) error {
@@ -70,6 +76,17 @@ func Run(parentCtx context.Context, runOpts RunOptions) error {
 			p.Send(runDoneMsg{})
 			return
 		}
+		if runOpts.NeedsEmulatorSelection {
+			newContainers, selErr := selectEmulatorInTUI(ctx, sink, runOpts.ConfigPath, runOpts.OnEmulatorSelected)
+			if selErr != nil {
+				if errors.Is(selErr, context.Canceled) {
+					return
+				}
+				p.Send(runErrMsg{err: selErr})
+				return
+			}
+			runOpts.StartOptions.Containers = newContainers
+		}
 		err = container.Start(ctx, runOpts.Runtime, sink, runOpts.StartOptions, true)
 		if err != nil {
 			if errors.Is(err, context.Canceled) {
@@ -96,6 +113,53 @@ func Run(parentCtx context.Context, runOpts RunOptions) error {
 	}
 
 	return nil
+}
+
+func selectEmulatorInTUI(
+	ctx context.Context,
+	sink output.Sink,
+	configPath string,
+	onSelected func(config.EmulatorType) ([]config.ContainerConfig, error),
+) ([]config.ContainerConfig, error) {
+	responseCh := make(chan output.InputResponse, 1)
+	sink.Emit(output.UserInputRequestEvent{
+		Prompt: "Which emulator would you like to use?",
+		Options: []output.InputOption{
+			{Key: "a", Label: "AWS [A]"},
+			{Key: "s", Label: "Snowflake [S]"},
+		},
+		ResponseCh: responseCh,
+		Vertical:   true,
+	})
+
+	var resp output.InputResponse
+	select {
+	case resp = <-responseCh:
+	case <-ctx.Done():
+		return nil, context.Canceled
+	}
+
+	if resp.Cancelled {
+		return nil, context.Canceled
+	}
+
+	selected := config.EmulatorAWS
+	if resp.SelectedKey == "s" {
+		selected = config.EmulatorSnowflake
+	}
+
+	containers, err := onSelected(selected)
+	if err != nil {
+		return nil, err
+	}
+
+	msg := selected.DisplayName() + " emulator selected."
+	if configPath != "" {
+		msg += fmt.Sprintf(" You can change this anytime in %s.", configPath)
+	}
+	sink.Emit(output.MessageEvent{Severity: output.SeverityNote, Text: msg})
+
+	return containers, nil
 }
 
 func IsInteractive() bool {

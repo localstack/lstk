@@ -25,6 +25,12 @@ var emulatorDisplayNames = map[EmulatorType]string{
 	EmulatorAzure:     "Azure",
 }
 
+func (e EmulatorType) DisplayName() string {
+	if name, ok := emulatorDisplayNames[e]; ok {
+		return name
+	}
+	return string(e)
+}
 var emulatorHealthPaths = map[EmulatorType]string{
 	EmulatorAWS:       "/_localstack/health",
 	EmulatorSnowflake: "/_localstack/health",
