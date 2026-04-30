@@ -211,6 +211,15 @@ func runPostStartSetups(ctx context.Context, sink output.Sink, containers []conf
 	return nil
 }
 
+func emitAlreadyRunning(sink output.Sink, c runtime.ContainerConfig, localStackHost, webAppURL string) {
+	sink.Emit(output.MessageEvent{Severity: output.SeverityNote, Text: "LocalStack is already running"})
+	resolvedHost, dnsOK := endpoint.ResolveHost(c.Port, localStackHost)
+	if !dnsOK {
+		sink.Emit(output.MessageEvent{Severity: output.SeverityNote, Text: endpoint.DNSRebindNote})
+	}
+	emitPostStartPointers(sink, resolvedHost, webAppURL, c.EmulatorType == string(config.EmulatorAWS))
+}
+
 func emitPostStartPointers(sink output.Sink, resolvedHost, webAppURL string, showTip bool) {
 	sink.Emit(output.MessageEvent{Severity: output.SeveritySecondary, Text: fmt.Sprintf("• Endpoint: %s", resolvedHost)})
 	if webAppURL != "" {
@@ -370,12 +379,7 @@ func selectContainersToStart(ctx context.Context, rt runtime.Runtime, sink outpu
 			return nil, fmt.Errorf("failed to check container status: %w", err)
 		}
 		if running {
-			sink.Emit(output.MessageEvent{Severity: output.SeverityNote, Text: "LocalStack is already running"})
-			resolvedHost, dnsOK := endpoint.ResolveHost(c.Port, localStackHost)
-			if !dnsOK {
-				sink.Emit(output.MessageEvent{Severity: output.SeverityNote, Text: endpoint.DNSRebindNote})
-			}
-			emitPostStartPointers(sink, resolvedHost, webAppURL, c.EmulatorType == string(config.EmulatorAWS))
+			emitAlreadyRunning(sink, c, localStackHost, webAppURL)
 			continue
 		}
 
@@ -402,7 +406,7 @@ func selectContainersToStart(ctx context.Context, rt runtime.Runtime, sink outpu
 				})
 				return nil, output.NewSilentError(fmt.Errorf("LocalStack already running on port %s", found.BoundPort))
 			}
-			sink.Emit(output.MessageEvent{Severity: output.SeverityInfo, Text: "LocalStack is already running"})
+			emitAlreadyRunning(sink, c, localStackHost, webAppURL)
 			continue
 		}
 
