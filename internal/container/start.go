@@ -42,34 +42,6 @@ type StartOptions struct {
 	Telemetry        *telemetry.Client
 }
 
-func emitEmulatorStartError(ctx context.Context, tel *telemetry.Client, c runtime.ContainerConfig, errorCode, errorMsg string) {
-	if tel == nil {
-		return
-	}
-	tel.EmitEmulatorLifecycleEvent(ctx, telemetry.LifecycleEvent{
-		EventType: telemetry.LifecycleStartError,
-		Emulator:  c.EmulatorType,
-		Image:     c.Image,
-		ErrorCode: errorCode,
-		ErrorMsg:  errorMsg,
-	})
-}
-
-func emitEmulatorStartSuccess(ctx context.Context, tel *telemetry.Client, c runtime.ContainerConfig, containerID string, durationMS int64, pulled bool, info *telemetry.LocalStackInfo) {
-	if tel == nil {
-		return
-	}
-	tel.EmitEmulatorLifecycleEvent(ctx, telemetry.LifecycleEvent{
-		EventType:      telemetry.LifecycleStartSuccess,
-		Emulator:       c.EmulatorType,
-		Image:          c.Image,
-		ContainerID:    containerID,
-		DurationMS:     durationMS,
-		Pulled:         pulled,
-		LocalStackInfo: info,
-	})
-}
-
 func Start(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts StartOptions, interactive bool) error {
 	if err := rt.IsHealthy(ctx); err != nil {
 		rt.EmitUnhealthyError(sink, err)
@@ -87,9 +59,7 @@ func Start(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts Start
 		return err
 	}
 
-	if opts.Telemetry != nil {
-		opts.Telemetry.SetAuthToken(token)
-	}
+	opts.Telemetry.SetAuthToken(token)
 
 	if hasDuplicateContainerTypes(opts.Containers) {
 		sink.Emit(output.MessageEvent{Severity: output.SeverityWarning, Text: "Multiple emulators of the same type are defined in your config; this setup is not supported yet"})
@@ -178,7 +148,7 @@ func Start(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts Start
 
 	// Validate licenses before pulling where possible (pinned tags always; "latest" tags via catalog API).
 	// Returns containers that still need post-pull validation (catalog unavailable).
-	postPullContainers, err := tryPrePullLicenseValidation(ctx, sink, opts, tel, containers, token, licenseFilePath)
+	postPullContainers, err := tryPrePullLicenseValidation(ctx, sink, opts, containers, token, licenseFilePath)
 	if err != nil {
 		return err
 	}
@@ -189,7 +159,7 @@ func Start(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts Start
 	}
 
 	// Catalog was unavailable for these; fall back to image inspection.
-	if err := validateLicensesFromImages(ctx, rt, sink, opts, tel, postPullContainers, token, licenseFilePath); err != nil {
+	if err := validateLicensesFromImages(ctx, rt, sink, opts, postPullContainers, token, licenseFilePath); err != nil {
 		return err
 	}
 
@@ -277,7 +247,13 @@ func pullImages(ctx context.Context, rt runtime.Runtime, sink output.Sink, tel *
 				Title:   fmt.Sprintf("Failed to pull %s", c.Image),
 				Summary: err.Error(),
 			})
-			emitEmulatorStartError(ctx, tel, c, telemetry.ErrCodeImagePullFailed, err.Error())
+			tel.EmitEmulatorLifecycleEvent(ctx, telemetry.LifecycleEvent{
+				EventType: telemetry.LifecycleStartError,
+				Emulator:  c.EmulatorType,
+				Image:     c.Image,
+				ErrorCode: telemetry.ErrCodeImagePullFailed,
+				ErrorMsg:  err.Error(),
+			})
 			return nil, output.NewSilentError(fmt.Errorf("failed to pull image %s: %w", c.Image, err))
 		}
 		sink.Emit(output.SpinnerStop())
@@ -290,7 +266,7 @@ func pullImages(ctx context.Context, rt runtime.Runtime, sink output.Sink, tel *
 // Validates licenses before pulling where the version is known.
 // Pinned tags are validated immediately; "latest" tags are resolved via the catalog API.
 // Returns containers that couldn't be resolved (catalog unavailable) for post-pull validation.
-func tryPrePullLicenseValidation(ctx context.Context, sink output.Sink, opts StartOptions, tel *telemetry.Client, containers []runtime.ContainerConfig, token, licenseFilePath string) ([]runtime.ContainerConfig, error) {
+func tryPrePullLicenseValidation(ctx context.Context, sink output.Sink, opts StartOptions, containers []runtime.ContainerConfig, token, licenseFilePath string) ([]runtime.ContainerConfig, error) {
 	var needsPostPull []runtime.ContainerConfig
 	for _, c := range containers {
 		if c.EmulatorType == string(config.EmulatorSnowflake) {
@@ -298,7 +274,7 @@ func tryPrePullLicenseValidation(ctx context.Context, sink output.Sink, opts Sta
 		}
 
 		if c.Tag != "" && c.Tag != "latest" {
-			if err := validateLicense(ctx, sink, opts, tel, c, token, licenseFilePath); err != nil {
+			if err := validateLicense(ctx, sink, opts, c, token, licenseFilePath); err != nil {
 				return nil, err
 			}
 			continue
@@ -315,7 +291,7 @@ func tryPrePullLicenseValidation(ctx context.Context, sink output.Sink, opts Sta
 
 		cWithVersion := c
 		cWithVersion.Tag = v
-		if err := validateLicense(ctx, sink, opts, tel, cWithVersion, token, licenseFilePath); err != nil {
+		if err := validateLicense(ctx, sink, opts, cWithVersion, token, licenseFilePath); err != nil {
 			return nil, err
 		}
 	}
@@ -323,7 +299,7 @@ func tryPrePullLicenseValidation(ctx context.Context, sink output.Sink, opts Sta
 }
 
 // Fallback path: inspects each pulled image for its version, then validates the license.
-func validateLicensesFromImages(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts StartOptions, tel *telemetry.Client, containers []runtime.ContainerConfig, token, licenseFilePath string) error {
+func validateLicensesFromImages(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts StartOptions, containers []runtime.ContainerConfig, token, licenseFilePath string) error {
 	for _, c := range containers {
 		if c.EmulatorType == string(config.EmulatorSnowflake) {
 			continue
@@ -334,7 +310,7 @@ func validateLicensesFromImages(ctx context.Context, rt runtime.Runtime, sink ou
 			return fmt.Errorf("could not resolve version from image %s: %w", c.Image, err)
 		}
 		c.Tag = v
-		if err := validateLicense(ctx, sink, opts, tel, c, token, licenseFilePath); err != nil {
+		if err := validateLicense(ctx, sink, opts, c, token, licenseFilePath); err != nil {
 			return err
 		}
 	}
@@ -347,21 +323,41 @@ func startContainers(ctx context.Context, rt runtime.Runtime, sink output.Sink, 
 		sink.Emit(output.ContainerStatusEvent{Phase: "starting", Container: c.Name})
 		containerID, err := rt.Start(ctx, c)
 		if err != nil {
-			emitEmulatorStartError(ctx, tel, c, telemetry.ErrCodeStartFailed, err.Error())
+			tel.EmitEmulatorLifecycleEvent(ctx, telemetry.LifecycleEvent{
+				EventType: telemetry.LifecycleStartError,
+				Emulator:  c.EmulatorType,
+				Image:     c.Image,
+				ErrorCode: telemetry.ErrCodeStartFailed,
+				ErrorMsg:  err.Error(),
+			})
 			return fmt.Errorf("failed to start LocalStack: %w", err)
 		}
 
 		sink.Emit(output.ContainerStatusEvent{Phase: "waiting", Container: c.Name})
 		healthURL := fmt.Sprintf("http://localhost:%s%s", c.Port, c.HealthPath)
 		if err := awaitStartup(ctx, rt, sink, containerID, "LocalStack", healthURL); err != nil {
-			emitEmulatorStartError(ctx, tel, c, telemetry.ErrCodeStartFailed, err.Error())
+			tel.EmitEmulatorLifecycleEvent(ctx, telemetry.LifecycleEvent{
+				EventType: telemetry.LifecycleStartError,
+				Emulator:  c.EmulatorType,
+				Image:     c.Image,
+				ErrorCode: telemetry.ErrCodeStartFailed,
+				ErrorMsg:  err.Error(),
+			})
 			return err
 		}
 
 		sink.Emit(output.ContainerStatusEvent{Phase: "ready", Container: c.Name, Detail: fmt.Sprintf("containerId: %s", containerID[:12])})
 
 		lsInfo, _ := fetchLocalStackInfo(ctx, c.Port)
-		emitEmulatorStartSuccess(ctx, tel, c, containerID[:12], time.Since(startTime).Milliseconds(), pulled[c.Name], lsInfo)
+		tel.EmitEmulatorLifecycleEvent(ctx, telemetry.LifecycleEvent{
+			EventType:      telemetry.LifecycleStartSuccess,
+			Emulator:       c.EmulatorType,
+			Image:          c.Image,
+			ContainerID:    containerID[:12],
+			DurationMS:     time.Since(startTime).Milliseconds(),
+			Pulled:         pulled[c.Name],
+			LocalStackInfo: lsInfo,
+		})
 	}
 	return nil
 }
@@ -397,7 +393,13 @@ func selectContainersToStart(ctx context.Context, rt runtime.Runtime, sink outpu
 						{Label: "Stop existing emulator:", Value: "lstk stop"},
 					},
 				})
-				emitEmulatorStartError(ctx, tel, c, telemetry.ErrCodePortConflict, fmt.Sprintf("running on port %s, configured port %s", found.BoundPort, c.Port))
+				tel.EmitEmulatorLifecycleEvent(ctx, telemetry.LifecycleEvent{
+					EventType: telemetry.LifecycleStartError,
+					Emulator:  c.EmulatorType,
+					Image:     c.Image,
+					ErrorCode: telemetry.ErrCodePortConflict,
+					ErrorMsg:  fmt.Sprintf("running on port %s, configured port %s", found.BoundPort, c.Port),
+				})
 				return nil, output.NewSilentError(fmt.Errorf("LocalStack already running on port %s", found.BoundPort))
 			}
 			sink.Emit(output.MessageEvent{Severity: output.SeverityInfo, Text: "LocalStack is already running"})
@@ -410,7 +412,13 @@ func selectContainersToStart(ctx context.Context, rt runtime.Runtime, sink outpu
 				continue
 			}
 			emitPortInUseError(sink, c.Port)
-			emitEmulatorStartError(ctx, tel, c, telemetry.ErrCodePortConflict, err.Error())
+			tel.EmitEmulatorLifecycleEvent(ctx, telemetry.LifecycleEvent{
+				EventType: telemetry.LifecycleStartError,
+				Emulator:  c.EmulatorType,
+				Image:     c.Image,
+				ErrorCode: telemetry.ErrCodePortConflict,
+				ErrorMsg:  err.Error(),
+			})
 			return nil, output.NewSilentError(err)
 		}
 
@@ -426,7 +434,13 @@ func selectContainersToStart(ctx context.Context, rt runtime.Runtime, sink outpu
 				Title:   fmt.Sprintf("Port %s is already in use", conflictPort),
 				Summary: "LocalStack requires this port. Free it before starting.",
 			})
-			emitEmulatorStartError(ctx, tel, c, telemetry.ErrCodePortConflict, err.Error())
+			tel.EmitEmulatorLifecycleEvent(ctx, telemetry.LifecycleEvent{
+				EventType: telemetry.LifecycleStartError,
+				Emulator:  c.EmulatorType,
+				Image:     c.Image,
+				ErrorCode: telemetry.ErrCodePortConflict,
+				ErrorMsg:  err.Error(),
+			})
 			return nil, output.NewSilentError(err)
 		}
 
@@ -462,7 +476,7 @@ func emitPortInUseError(sink output.Sink, port string) {
 	})
 }
 
-func validateLicense(ctx context.Context, sink output.Sink, opts StartOptions, tel *telemetry.Client, containerConfig runtime.ContainerConfig, token, licenseFilePath string) error {
+func validateLicense(ctx context.Context, sink output.Sink, opts StartOptions, containerConfig runtime.ContainerConfig, token, licenseFilePath string) error {
 	version := containerConfig.Tag
 	sink.Emit(output.ContainerStatusEvent{Phase: "validating license", Container: containerConfig.Name})
 
@@ -488,7 +502,13 @@ func validateLicense(ctx context.Context, sink output.Sink, opts StartOptions, t
 		if errors.As(err, &licErr) && licErr.Detail != "" {
 			opts.Logger.Error("license server response (HTTP %d): %s", licErr.Status, licErr.Detail)
 		}
-		emitEmulatorStartError(ctx, tel, containerConfig, telemetry.ErrCodeLicenseInvalid, err.Error())
+		opts.Telemetry.EmitEmulatorLifecycleEvent(ctx, telemetry.LifecycleEvent{
+			EventType: telemetry.LifecycleStartError,
+			Emulator:  containerConfig.EmulatorType,
+			Image:     containerConfig.Image,
+			ErrorCode: telemetry.ErrCodeLicenseInvalid,
+			ErrorMsg:  err.Error(),
+		})
 		return fmt.Errorf("license validation failed for %s:%s: %w", containerConfig.ProductName, version, err)
 	}
 
