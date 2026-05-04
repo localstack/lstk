@@ -16,6 +16,7 @@ func unhealthyDockerEnv() env.Environ {
 }
 
 func TestStartShowsDockerErrorWhenUnhealthy(t *testing.T) {
+	t.Parallel()
 	if runtime.GOOS == "windows" {
 		t.Skip("Unix socket test")
 	}
@@ -28,6 +29,7 @@ func TestStartShowsDockerErrorWhenUnhealthy(t *testing.T) {
 }
 
 func TestStopShowsDockerErrorWhenUnhealthy(t *testing.T) {
+	t.Parallel()
 	if runtime.GOOS == "windows" {
 		t.Skip("Unix socket test")
 	}
@@ -40,6 +42,7 @@ func TestStopShowsDockerErrorWhenUnhealthy(t *testing.T) {
 }
 
 func TestStatusShowsDockerErrorWhenUnhealthy(t *testing.T) {
+	t.Parallel()
 	if runtime.GOOS == "windows" {
 		t.Skip("Unix socket test")
 	}
@@ -52,6 +55,7 @@ func TestStatusShowsDockerErrorWhenUnhealthy(t *testing.T) {
 }
 
 func TestLogsShowsDockerErrorWhenUnhealthy(t *testing.T) {
+	t.Parallel()
 	if runtime.GOOS == "windows" {
 		t.Skip("Unix socket test")
 	}

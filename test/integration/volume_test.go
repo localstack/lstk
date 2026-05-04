@@ -18,7 +18,9 @@ import (
 )
 
 func TestVolumePathCommand(t *testing.T) {
+	t.Parallel()
 	t.Run("prints default volume path", func(t *testing.T) {
+		t.Parallel()
 		tmpHome := t.TempDir()
 		xdgOverride := filepath.Join(tmpHome, "xdg-config-home")
 		configFile := filepath.Join(tmpHome, ".config", "lstk", "config.toml")
@@ -33,6 +35,7 @@ func TestVolumePathCommand(t *testing.T) {
 	})
 
 	t.Run("prints custom volume path from config", func(t *testing.T) {
+		t.Parallel()
 		customVolume := filepath.Join(t.TempDir(), "my-volume")
 		configContent := `
 [[containers]]
@@ -52,6 +55,7 @@ volume = "` + escapeTomlPath(customVolume) + `"
 	})
 
 	t.Run("emits telemetry", func(t *testing.T) {
+		t.Parallel()
 		tmpHome := t.TempDir()
 		xdgOverride := filepath.Join(tmpHome, "xdg-config-home")
 		configFile := filepath.Join(tmpHome, ".config", "lstk", "config.toml")
@@ -68,7 +72,9 @@ volume = "` + escapeTomlPath(customVolume) + `"
 }
 
 func TestVolumeClearCommand(t *testing.T) {
+	t.Parallel()
 	t.Run("clears volume with force flag", func(t *testing.T) {
+		t.Parallel()
 		volumeDir := t.TempDir()
 		require.NoError(t, os.MkdirAll(filepath.Join(volumeDir, "cache", "certs"), 0755))
 		require.NoError(t, os.WriteFile(filepath.Join(volumeDir, "cache", "certs", "cert.pem"), []byte("fake cert"), 0644))
@@ -101,6 +107,7 @@ volume = "` + escapeTomlPath(volumeDir) + `"
 	})
 
 	t.Run("fails without force in non-interactive mode", func(t *testing.T) {
+		t.Parallel()
 		tmpHome := t.TempDir()
 		xdgOverride := filepath.Join(tmpHome, "xdg-config-home")
 		configFile := filepath.Join(tmpHome, ".config", "lstk", "config.toml")
@@ -115,6 +122,7 @@ volume = "` + escapeTomlPath(volumeDir) + `"
 	})
 
 	t.Run("handles nonexistent volume directory", func(t *testing.T) {
+		t.Parallel()
 		volumeDir := filepath.Join(t.TempDir(), "does-not-exist")
 
 		configContent := `
@@ -135,6 +143,7 @@ volume = "` + escapeTomlPath(volumeDir) + `"
 	})
 
 	t.Run("filters by emulator type", func(t *testing.T) {
+		t.Parallel()
 		volumeDir := t.TempDir()
 		require.NoError(t, os.WriteFile(filepath.Join(volumeDir, "data.json"), []byte("{}"), 0644))
 
@@ -165,6 +174,7 @@ volume = "` + escapeTomlPath(volumeDir) + `"
 	})
 
 	t.Run("emits telemetry", func(t *testing.T) {
+		t.Parallel()
 		tmpHome := t.TempDir()
 		xdgOverride := filepath.Join(tmpHome, "xdg-config-home")
 		configFile := filepath.Join(tmpHome, ".config", "lstk", "config.toml")
@@ -180,6 +190,7 @@ volume = "` + escapeTomlPath(volumeDir) + `"
 	})
 
 	t.Run("suggests sudo when volume contains root-owned files", func(t *testing.T) {
+		t.Parallel()
 		if runtime.GOOS != "linux" {
 			t.Skip("root-owned bind-mount files only occur on Linux")
 		}
@@ -223,6 +234,7 @@ volume = "` + escapeTomlPath(volumeDir) + `"
 }
 
 func TestVolumeClearInteractive(t *testing.T) {
+	t.Parallel()
 	if runtime.GOOS == "windows" {
 		t.Skip("PTY not supported on Windows")
 	}
@@ -263,6 +275,7 @@ volume = "` + escapeTomlPath(volumeDir) + `"
 	}
 
 	t.Run("clears volume when user confirms with y", func(t *testing.T) {
+		t.Parallel()
 		volumeDir := t.TempDir()
 		require.NoError(t, os.WriteFile(filepath.Join(volumeDir, "data.json"), []byte("{}"), 0644))
 
@@ -279,6 +292,7 @@ volume = "` + escapeTomlPath(volumeDir) + `"
 	})
 
 	t.Run("cancels when user presses n", func(t *testing.T) {
+		t.Parallel()
 		volumeDir := t.TempDir()
 		require.NoError(t, os.WriteFile(filepath.Join(volumeDir, "data.json"), []byte("{}"), 0644))
 
