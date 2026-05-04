@@ -28,7 +28,7 @@ require (
 	go.opentelemetry.io/otel/sdk v1.43.0
 	go.uber.org/mock v0.6.0
 	golang.org/x/term v0.42.0
-	gopkg.in/ini.v1 v1.67.1
+	gopkg.in/ini.v1 v1.67.2
 	gotest.tools/v3 v3.5.2
 )
 
