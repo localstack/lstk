@@ -16,7 +16,7 @@ import (
 )
 
 func newRestartCmd(cfg *env.Env, tel *telemetry.Client, logger log.Logger) *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:     "restart",
 		Short:   "Restart emulator",
 		Long:    "Stop and restart emulator and services.",
@@ -32,10 +32,15 @@ func newRestartCmd(cfg *env.Env, tel *telemetry.Client, logger log.Logger) *cobr
 				return fmt.Errorf("failed to get config: %w", err)
 			}
 
+			persist, err := cmd.Flags().GetBool("persist")
+			if err != nil {
+				return err
+			}
+
 			stopOpts := container.StopOptions{
 				Telemetry: tel,
 			}
-			startOpts := buildStartOptions(cfg, appConfig, logger, tel, false)
+			startOpts := buildStartOptions(cfg, appConfig, logger, tel, persist)
 
 			if isInteractiveMode(cfg) {
 				return ui.RunRestart(cmd.Context(), rt, stopOpts, startOpts)
@@ -45,4 +50,6 @@ func newRestartCmd(cfg *env.Env, tel *telemetry.Client, logger log.Logger) *cobr
 			return container.Restart(cmd.Context(), rt, sink, stopOpts, startOpts, false)
 		},
 	}
+	cmd.Flags().Bool("persist", false, "Enable local persistence (sets LOCALSTACK_PERSISTENCE=1)")
+	return cmd
 }
