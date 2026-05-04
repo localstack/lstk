@@ -86,10 +86,6 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Ubuntu integration tests are sharded across 4 runners — they dominate
-        # wall time (~7min unsharded). macOS and Windows stay single-runner;
-        # they're already fast and Homebrew/PTY-style tests benefit less from
-        # sharding.
         include:
           - os: ubuntu-latest
             shard: 1
