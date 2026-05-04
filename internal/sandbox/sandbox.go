@@ -35,10 +35,10 @@ type CreateOptions struct {
 }
 
 type Instance struct {
-	Name     string
-	Status   string
-	Endpoint string
-	Expires  string
+	Name     string `json:"instance_name"`
+	Status   string `json:"status"`
+	Endpoint string `json:"endpoint_url"`
+	Expires  string `json:"expiry_time"`
 }
 
 type Client struct {
@@ -225,34 +225,28 @@ func (c *Client) closeBody(body io.ReadCloser) {
 }
 
 func parseInstances(body []byte) ([]Instance, error) {
-	var direct []Instance
-	if err := json.Unmarshal(body, &direct); err == nil {
-		return direct, nil
+	var items []any
+	if err := json.Unmarshal(body, &items); err == nil {
+		instances := make([]Instance, 0, len(items))
+		for _, item := range items {
+			m, ok := item.(map[string]any)
+			if !ok {
+				continue
+			}
+			instances = append(instances, instanceFromMap(m))
+		}
+		return instances, nil
 	}
 	var wrapped map[string][]map[string]any
 	if err := json.Unmarshal(body, &wrapped); err != nil {
 		return nil, err
 	}
-	var raw []map[string]any
 	for _, key := range []string{"instances", "items", "data"} {
 		if v, ok := wrapped[key]; ok {
-			raw = v
-			break
+			return instancesFromMaps(v), nil
 		}
 	}
-	if raw == nil {
-		return nil, fmt.Errorf("sandbox list response did not contain instances")
-	}
-	instances := make([]Instance, 0, len(raw))
-	for _, m := range raw {
-		instances = append(instances, Instance{
-			Name:     fieldString(m, "instance_name", "instanceName", "name", "id"),
-			Status:   fieldString(m, "status"),
-			Endpoint: fieldString(m, "endpoint_url", "endpointUrl", "endpoint"),
-			Expires:  fieldString(m, "expiry_time", "expiryTime", "expires_at", "expiresAt", "expires"),
-		})
-	}
-	return instances, nil
+	return nil, fmt.Errorf("sandbox list response did not contain instances")
 }
 
 func parseInstance(body []byte) (Instance, error) {
@@ -260,12 +254,24 @@ func parseInstance(body []byte) (Instance, error) {
 	if err := json.Unmarshal(body, &m); err != nil {
 		return Instance{}, err
 	}
+	return instanceFromMap(m), nil
+}
+
+func instancesFromMaps(maps []map[string]any) []Instance {
+	instances := make([]Instance, 0, len(maps))
+	for _, m := range maps {
+		instances = append(instances, instanceFromMap(m))
+	}
+	return instances
+}
+
+func instanceFromMap(m map[string]any) Instance {
 	return Instance{
 		Name:     fieldString(m, "instance_name", "instanceName", "name", "id"),
 		Status:   fieldString(m, "status"),
 		Endpoint: fieldString(m, "endpoint_url", "endpointUrl", "endpoint"),
 		Expires:  fieldString(m, "expiry_time", "expiryTime", "expires_at", "expiresAt", "expires"),
-	}, nil
+	}
 }
 
 func parseLogLines(body []byte) ([]string, error) {
