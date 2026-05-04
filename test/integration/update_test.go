@@ -36,7 +36,7 @@ func TestUpdateCheckCommandNonInteractive(t *testing.T) {
 	t.Parallel()
 	ctx := testContext(t)
 
-	stdout, stderr, err := runLstk(t, ctx, "", nil, "update", "--check", "--non-interactive")
+	stdout, stderr, err := runLstk(t, ctx, "", testEnvWithHome(t.TempDir(), ""), "update", "--check", "--non-interactive")
 	require.NoError(t, err, "lstk update --check --non-interactive failed: %s", stderr)
 	requireExitCode(t, 0, err)
 	assert.Contains(t, stdout, "Note:", "should show a note in non-interactive mode")

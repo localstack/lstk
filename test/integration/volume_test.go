@@ -47,7 +47,7 @@ volume = "` + escapeTomlPath(customVolume) + `"
 		configFile := filepath.Join(t.TempDir(), "config.toml")
 		require.NoError(t, os.WriteFile(configFile, []byte(configContent), 0644))
 
-		stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), os.Environ(), "--config", configFile, "volume", "path")
+		stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), testEnvWithHome(t.TempDir(), ""), "--config", configFile, "volume", "path")
 		require.NoError(t, err, stderr)
 		requireExitCode(t, 0, err)
 
@@ -90,7 +90,7 @@ volume = "` + escapeTomlPath(volumeDir) + `"
 		configFile := filepath.Join(t.TempDir(), "config.toml")
 		require.NoError(t, os.WriteFile(configFile, []byte(configContent), 0644))
 
-		stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), os.Environ(), "--config", configFile, "--non-interactive", "volume", "clear", "--force")
+		stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), testEnvWithHome(t.TempDir(), ""), "--config", configFile, "--non-interactive", "volume", "clear", "--force")
 		require.NoError(t, err, "lstk volume clear failed: %s\nstdout: %s", stderr, stdout)
 		requireExitCode(t, 0, err)
 
@@ -135,7 +135,7 @@ volume = "` + escapeTomlPath(volumeDir) + `"
 		configFile := filepath.Join(t.TempDir(), "config.toml")
 		require.NoError(t, os.WriteFile(configFile, []byte(configContent), 0644))
 
-		stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), os.Environ(), "--config", configFile, "--non-interactive", "volume", "clear", "--force")
+		stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), testEnvWithHome(t.TempDir(), ""), "--config", configFile, "--non-interactive", "volume", "clear", "--force")
 		require.NoError(t, err, "lstk volume clear failed: %s\nstdout: %s", stderr, stdout)
 		requireExitCode(t, 0, err)
 
@@ -158,13 +158,13 @@ volume = "` + escapeTomlPath(volumeDir) + `"
 		require.NoError(t, os.WriteFile(configFile, []byte(configContent), 0644))
 
 		// Wrong type should fail
-		_, stderr, err := runLstk(t, testContext(t), t.TempDir(), os.Environ(), "--config", configFile, "--non-interactive", "volume", "clear", "--force", "--type", "snowflake")
+		_, stderr, err := runLstk(t, testContext(t), t.TempDir(), testEnvWithHome(t.TempDir(), ""), "--config", configFile, "--non-interactive", "volume", "clear", "--force", "--type", "snowflake")
 		require.Error(t, err)
 		requireExitCode(t, 1, err)
 		assert.Contains(t, stderr, "not found")
 
 		// Correct type should succeed
-		stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), os.Environ(), "--config", configFile, "--non-interactive", "volume", "clear", "--force", "--type", "aws")
+		stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), testEnvWithHome(t.TempDir(), ""), "--config", configFile, "--non-interactive", "volume", "clear", "--force", "--type", "aws")
 		require.NoError(t, err, "lstk volume clear failed: %s\nstdout: %s", stderr, stdout)
 		requireExitCode(t, 0, err)
 
@@ -223,7 +223,7 @@ volume = "` + escapeTomlPath(volumeDir) + `"
 		configFile := filepath.Join(t.TempDir(), "config.toml")
 		require.NoError(t, os.WriteFile(configFile, []byte(configContent), 0644))
 
-		_, stderr, err := runLstk(t, testContext(t), t.TempDir(), os.Environ(), "--config", configFile, "--non-interactive", "volume", "clear", "--force")
+		_, stderr, err := runLstk(t, testContext(t), t.TempDir(), testEnvWithHome(t.TempDir(), ""), "--config", configFile, "--non-interactive", "volume", "clear", "--force")
 		if err == nil {
 			t.Skip("Docker is configured with user namespace remapping; root-owned files cleared without issue")
 		}
@@ -258,7 +258,7 @@ volume = "` + escapeTomlPath(volumeDir) + `"
 	startVolumeClear := func(t *testing.T, configFile string) (*os.File, *syncBuffer, chan struct{}, *exec.Cmd) {
 		t.Helper()
 		cmd := exec.CommandContext(testContext(t), binaryPath(), "--config", configFile, "volume", "clear")
-		cmd.Env = os.Environ()
+		cmd.Env = testEnvWithHome(t.TempDir(), "")
 		ptmx, err := pty.Start(cmd)
 		require.NoError(t, err, "failed to start command in PTY")
 		t.Cleanup(func() { _ = ptmx.Close() })

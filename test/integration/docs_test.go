@@ -1,7 +1,6 @@
 package integration_test
 
 import (
-	"os"
 	"path/filepath"
 	"testing"
 
@@ -13,7 +12,7 @@ func TestDocsCommandGeneratesManPages(t *testing.T) {
 	t.Parallel()
 	dir := filepath.Join(t.TempDir(), "manpages")
 
-	_, stderr, err := runLstk(t, testContext(t), "", os.Environ(), "docs", "--format", "man", "--dir", dir)
+	_, stderr, err := runLstk(t, testContext(t), "", testEnvWithHome(t.TempDir(), ""), "docs", "--format", "man", "--dir", dir)
 	require.NoError(t, err, stderr)
 	requireExitCode(t, 0, err)
 
@@ -26,7 +25,7 @@ func TestDocsCommandGeneratesMarkdown(t *testing.T) {
 	t.Parallel()
 	dir := filepath.Join(t.TempDir(), "markdown")
 
-	_, stderr, err := runLstk(t, testContext(t), "", os.Environ(), "docs", "--format", "markdown", "--dir", dir)
+	_, stderr, err := runLstk(t, testContext(t), "", testEnvWithHome(t.TempDir(), ""), "docs", "--format", "markdown", "--dir", dir)
 	require.NoError(t, err, stderr)
 	requireExitCode(t, 0, err)
 
@@ -39,14 +38,14 @@ func TestDocsCommandRejectsInvalidFormat(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 
-	_, _, err := runLstk(t, testContext(t), "", os.Environ(), "docs", "--format", "invalid", "--dir", dir)
+	_, _, err := runLstk(t, testContext(t), "", testEnvWithHome(t.TempDir(), ""), "docs", "--format", "invalid", "--dir", dir)
 	require.Error(t, err)
 	requireExitCode(t, 1, err)
 }
 
 func TestDocsCommandIsHidden(t *testing.T) {
 	t.Parallel()
-	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), os.Environ(), "--help")
+	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), testEnvWithHome(t.TempDir(), ""), "--help")
 	require.NoError(t, err, stderr)
 
 	assert.NotContains(t, stdout, "docs")
