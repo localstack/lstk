@@ -62,7 +62,7 @@ func TestLogoutCommandNotesWhenEmulatorStillRunning(t *testing.T) {
 	err := SetAuthTokenInKeyring("test-token")
 	require.NoError(t, err, "failed to store token in keyring")
 
-	stdout, stderr, err := runLstk(t, ctx, "", nil, "logout")
+	stdout, stderr, err := runLstk(t, ctx, "", testEnvWithHome(t.TempDir(), ""), "logout")
 	require.NoError(t, err, "lstk logout failed: %s", stderr)
 	requireExitCode(t, 0, err)
 	assert.Contains(t, stdout, "LocalStack is still running in the background")

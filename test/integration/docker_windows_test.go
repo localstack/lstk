@@ -18,6 +18,7 @@ func windowsDockerErrorEnv() env.Environ {
 
 // Verifies that when docker is in PATH, lstk suggests "docker desktop start".
 func TestWindowsDockerErrorShowsDockerCLICommand(t *testing.T) {
+	t.Parallel()
 	if runtime.GOOS != "windows" {
 		t.Skip("Windows-only test")
 	}
@@ -30,6 +31,7 @@ func TestWindowsDockerErrorShowsDockerCLICommand(t *testing.T) {
 
 // Verifies that the verbose Docker error message is suppressed on Windows.
 func TestWindowsDockerErrorOmitsVerboseSummary(t *testing.T) {
+	t.Parallel()
 	if runtime.GOOS != "windows" {
 		t.Skip("Windows-only test")
 	}

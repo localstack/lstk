@@ -9,7 +9,8 @@ import (
 )
 
 func TestNonInteractiveFlagBlocksLogin(t *testing.T) {
-	out, err := runLstkInPTY(t, testContext(t), nil, "login", "--non-interactive")
+	t.Parallel()
+	out, err := runLstkInPTY(t, testContext(t), testEnvWithHome(t.TempDir(), ""), "login", "--non-interactive")
 	require.Error(t, err, "expected login --non-interactive to fail")
 	requireExitCode(t, 1, err)
 	assert.Contains(t, out, "login requires an interactive terminal")

@@ -62,7 +62,7 @@ func TestStopCommandStopsExternalContainer(t *testing.T) {
 
 	startExternalContainer(t, ctx, fakeImage, "localstack-external", "4566")
 
-	stdout, stderr, err := runLstk(t, ctx, "", nil, "stop")
+	stdout, stderr, err := runLstk(t, ctx, "", testEnvWithHome(t.TempDir(), ""), "stop")
 	require.NoError(t, err, "lstk stop should stop external container: %s", stderr)
 	requireExitCode(t, 0, err)
 	assert.Contains(t, stdout, "stopped")
@@ -79,14 +79,15 @@ func TestStopCommandIsIdempotent(t *testing.T) {
 	ctx := testContext(t)
 	startTestContainer(t, ctx)
 
-	_, stderr, err := runLstk(t, ctx, "", nil, "stop")
+	e := testEnvWithHome(t.TempDir(), "")
+	_, stderr, err := runLstk(t, ctx, "", e, "stop")
 	require.NoError(t, err, "first lstk stop failed: %s", stderr)
 	requireExitCode(t, 0, err)
 
 	_, err = dockerClient.ContainerInspect(ctx, containerName)
 	require.Error(t, err, "container should not exist after first stop")
 
-	_, _, err = runLstk(t, ctx, "", nil, "stop")
+	_, _, err = runLstk(t, ctx, "", e, "stop")
 	assert.Error(t, err, "second lstk stop should fail since container already removed")
 	requireExitCode(t, 1, err)
 }

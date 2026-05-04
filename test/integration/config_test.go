@@ -86,7 +86,7 @@ func TestConfigFlagOverridesConfigPath(t *testing.T) {
 	customConfig := filepath.Join(t.TempDir(), "custom.toml")
 	writeConfigFile(t, customConfig)
 
-	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), os.Environ(), "--config", customConfig, "config", "path")
+	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), testEnvWithHome(t.TempDir(), ""), "--config", customConfig, "config", "path")
 	require.NoError(t, err, stderr)
 	requireExitCode(t, 0, err)
 
@@ -180,7 +180,7 @@ future_field = "should be ignored"
 	configFile := filepath.Join(t.TempDir(), "config.toml")
 	require.NoError(t, os.WriteFile(configFile, []byte(configContent), 0644))
 
-	_, stderr, err := runLstk(t, testContext(t), t.TempDir(), os.Environ(), "--config", configFile, "config", "path")
+	_, stderr, err := runLstk(t, testContext(t), t.TempDir(), testEnvWithHome(t.TempDir(), ""), "--config", configFile, "config", "path")
 	require.NoError(t, err, stderr)
 	requireExitCode(t, 0, err)
 }
@@ -195,7 +195,7 @@ tag = "latest"
 	configFile := filepath.Join(t.TempDir(), "config.toml")
 	require.NoError(t, os.WriteFile(configFile, []byte(configContent), 0644))
 
-	_, stderr, err := runLstk(t, testContext(t), t.TempDir(), os.Environ(), "--config", configFile, "stop")
+	_, stderr, err := runLstk(t, testContext(t), t.TempDir(), testEnvWithHome(t.TempDir(), ""), "--config", configFile, "stop")
 	require.Error(t, err)
 	requireExitCode(t, 1, err)
 	assert.Contains(t, stderr, "port is required")
@@ -233,7 +233,7 @@ port = "4566"
 	configFile := filepath.Join(t.TempDir(), "config.toml")
 	require.NoError(t, os.WriteFile(configFile, []byte(configContent), 0644))
 
-	_, stderr, err := runLstk(t, testContext(t), t.TempDir(), os.Environ(), "--config", configFile, "config", "path")
+	_, stderr, err := runLstk(t, testContext(t), t.TempDir(), testEnvWithHome(t.TempDir(), ""), "--config", configFile, "config", "path")
 	require.NoError(t, err, stderr)
 	requireExitCode(t, 0, err)
 }

@@ -114,7 +114,7 @@ func TestStatusCommandWorksWithNonDefaultPort(t *testing.T) {
 	configFile := filepath.Join(t.TempDir(), "config.toml")
 	require.NoError(t, os.WriteFile(configFile, []byte(configContent), 0644))
 
-	stdout, stderr, err := runLstk(t, ctx, "", nil, "--config", configFile, "status")
+	stdout, stderr, err := runLstk(t, ctx, "", testEnvWithHome(t.TempDir(), ""), "--config", configFile, "status")
 	require.NoError(t, err, "lstk status failed: %s", stderr)
 	assert.Contains(t, stdout, "4.14.1")
 }
@@ -163,7 +163,7 @@ func TestStatusCommandForSnowflakeShowsNoResources(t *testing.T) {
 	ctx := testContext(t)
 	startTestSnowflakeContainer(t, ctx)
 
-	stdout, stderr, err := runLstk(t, ctx, "", nil, "--config", writeSnowflakeConfig(t, "4566"), "status")
+	stdout, stderr, err := runLstk(t, ctx, "", testEnvWithHome(t.TempDir(), ""), "--config", writeSnowflakeConfig(t, "4566"), "status")
 	require.NoError(t, err, "lstk status failed for snowflake: %s", stderr)
 	requireExitCode(t, 0, err)
 
