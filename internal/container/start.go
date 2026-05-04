@@ -38,6 +38,7 @@ type StartOptions struct {
 	LocalStackHost   string
 	Containers       []config.ContainerConfig
 	Env              map[string]map[string]string
+	Persist          bool
 	Logger           log.Logger
 	Telemetry        *telemetry.Client
 }
@@ -102,6 +103,10 @@ func Start(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts Start
 		)
 
 		env = append(env, hostEnv...)
+
+		if opts.Persist {
+			env = append(env, "LOCALSTACK_PERSISTENCE=1")
+		}
 
 		var binds []runtime.BindMount
 		if socketPath := rt.SocketPath(); socketPath != "" {

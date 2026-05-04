@@ -9,7 +9,7 @@ import (
 )
 
 func newStartCmd(cfg *env.Env, tel *telemetry.Client, logger log.Logger) *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:     "start",
 		Short:   "Start emulator",
 		Long:    "Start emulator and services.",
@@ -19,7 +19,13 @@ func newStartCmd(cfg *env.Env, tel *telemetry.Client, logger log.Logger) *cobra.
 			if err != nil {
 				return err
 			}
-			return startEmulator(cmd.Context(), rt, cfg, tel, logger)
+			persist, err := cmd.Flags().GetBool("persist")
+			if err != nil {
+				return err
+			}
+			return startEmulator(cmd.Context(), rt, cfg, tel, logger, persist)
 		},
 	}
+	cmd.Flags().Bool("persist", false, "Enable local persistence (sets LOCALSTACK_PERSISTENCE=1)")
+	return cmd
 }

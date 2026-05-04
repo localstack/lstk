@@ -345,6 +345,29 @@ func TestStartCommandPassesCIAndLocalStackEnvVars(t *testing.T) {
 	assert.NotEmpty(t, envVars["LOCALSTACK_AUTH_TOKEN"])
 }
 
+func TestStartCommandPersistFlagSetsPersistenceEnv(t *testing.T) {
+	requireDocker(t)
+	_ = env.Require(t, env.AuthToken)
+
+	cleanup()
+	t.Cleanup(cleanup)
+
+	mockServer := createMockLicenseServer(true)
+	defer mockServer.Close()
+
+	ctx := testContext(t)
+	_, stderr, err := runLstk(t, ctx, "", env.With(env.APIEndpoint, mockServer.URL), "start", "--persist")
+	require.NoError(t, err, "lstk start --persist failed: %s", stderr)
+	requireExitCode(t, 0, err)
+
+	inspect, err := dockerClient.ContainerInspect(ctx, containerName)
+	require.NoError(t, err, "failed to inspect container")
+	require.True(t, inspect.State.Running)
+
+	envVars := containerEnvToMap(inspect.Config.Env)
+	assert.Equal(t, "1", envVars["LOCALSTACK_PERSISTENCE"])
+}
+
 func TestStartCommandForwardsPersistenceEnvFromHost(t *testing.T) {
 	requireDocker(t)
 	_ = env.Require(t, env.AuthToken)

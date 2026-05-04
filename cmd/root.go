@@ -40,7 +40,11 @@ func NewRootCmd(cfg *env.Env, tel *telemetry.Client, logger log.Logger) *cobra.C
 			if err != nil {
 				return err
 			}
-			return startEmulator(cmd.Context(), rt, cfg, tel, logger)
+			persist, err := cmd.Flags().GetBool("persist")
+			if err != nil {
+				return err
+			}
+			return startEmulator(cmd.Context(), rt, cfg, tel, logger, persist)
 		},
 	}
 
@@ -50,6 +54,7 @@ func NewRootCmd(cfg *env.Env, tel *telemetry.Client, logger log.Logger) *cobra.C
 
 	root.PersistentFlags().String("config", "", "Path to config file")
 	root.PersistentFlags().BoolVar(&cfg.NonInteractive, "non-interactive", false, "Disable interactive mode")
+	root.Flags().Bool("persist", false, "Enable local persistence (sets LOCALSTACK_PERSISTENCE=1)")
 
 	configureHelp(root)
 
@@ -132,7 +137,7 @@ func Execute(ctx context.Context) error {
 	return nil
 }
 
-func buildStartOptions(cfg *env.Env, appConfig *config.Config, logger log.Logger, tel *telemetry.Client) container.StartOptions {
+func buildStartOptions(cfg *env.Env, appConfig *config.Config, logger log.Logger, tel *telemetry.Client, persist bool) container.StartOptions {
 	return container.StartOptions{
 		PlatformClient:   api.NewPlatformClient(cfg.APIEndpoint, logger),
 		AuthToken:        cfg.AuthToken,
@@ -141,19 +146,20 @@ func buildStartOptions(cfg *env.Env, appConfig *config.Config, logger log.Logger
 		LocalStackHost:   cfg.LocalStackHost,
 		Containers:       appConfig.Containers,
 		Env:              appConfig.Env,
+		Persist:          persist,
 		Logger:           logger,
 		Telemetry:        tel,
 	}
 }
 
-func startEmulator(ctx context.Context, rt runtime.Runtime, cfg *env.Env, tel *telemetry.Client, logger log.Logger) error {
+func startEmulator(ctx context.Context, rt runtime.Runtime, cfg *env.Env, tel *telemetry.Client, logger log.Logger, persist bool) error {
 
 	appConfig, err := config.Get()
 	if err != nil {
 		return fmt.Errorf("failed to get config: %w", err)
 	}
 
-	opts := buildStartOptions(cfg, appConfig, logger, tel)
+	opts := buildStartOptions(cfg, appConfig, logger, tel, persist)
 
 	notifyOpts := update.NotifyOptions{
 		GitHubToken:        cfg.GitHubToken,
@@ -258,7 +264,6 @@ func wrapCommandsWithTracing(cmd *cobra.Command) {
 func isInteractiveMode(cfg *env.Env) bool {
 	return !cfg.NonInteractive && ui.IsInteractive()
 }
-
 
 const maxLogSize = 1 << 20 // 1 MB
 
