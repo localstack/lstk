@@ -144,6 +144,21 @@ jobs:
           path: test-integration-results.xml
           reporter: java-junit
 
+  # Aggregator job under a stable name so branch ruleset can require a single
+  # status check regardless of how many shards the integration matrix uses.
+  test-integration-summary:
+    name: Integration Tests (ubuntu-latest)
+    runs-on: ubuntu-latest
+    needs: test-integration
+    if: always()
+    steps:
+      - name: Verify integration matrix succeeded
+        run: |
+          if [ "${{ needs.test-integration.result }}" != "success" ]; then
+            echo "test-integration matrix result: ${{ needs.test-integration.result }}"
+            exit 1
+          fi
+
   release:
     name: Build and Publish Release
     if: startsWith(github.ref, 'refs/tags/')
