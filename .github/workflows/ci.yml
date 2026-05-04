@@ -81,12 +81,26 @@ jobs:
           reporter: java-junit
 
   test-integration:
-    name: Integration Tests (${{ matrix.os }})
+    name: Integration Tests (${{ matrix.os }}${{ matrix.shard && format(' shard {0}/{1}', matrix.shard, matrix.shard_total) || '' }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        include:
+          - os: ubuntu-latest
+            shard: 1
+            shard_total: 4
+          - os: ubuntu-latest
+            shard: 2
+            shard_total: 4
+          - os: ubuntu-latest
+            shard: 3
+            shard_total: 4
+          - os: ubuntu-latest
+            shard: 4
+            shard_total: 4
+          - os: macos-latest
+          - os: windows-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
@@ -112,21 +126,38 @@ jobs:
           LOCALSTACK_AUTH_TOKEN: ${{ secrets.LOCALSTACK_AUTH_TOKEN }}
           LSTK_TEST_HOMEBREW: ${{ matrix.os == 'macos-latest' && '1' || '0' }}
           LSTK_GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SHARD_INDEX: ${{ matrix.shard }}
+          SHARD_TOTAL: ${{ matrix.shard_total }}
 
       - name: Upload test results
         uses: actions/upload-artifact@v7
         if: always()
         with:
-          name: integration-test-results-${{ matrix.os }}
+          name: integration-test-results-${{ matrix.os }}${{ matrix.shard && format('-{0}', matrix.shard) || '' }}
           path: test-integration-results.xml
 
       - name: Test report
         uses: dorny/test-reporter@v3
         if: always()
         with:
-          name: Integration Test Results (${{ matrix.os }})
+          name: Integration Test Results (${{ matrix.os }}${{ matrix.shard && format(' shard {0}/{1}', matrix.shard, matrix.shard_total) || '' }})
           path: test-integration-results.xml
           reporter: java-junit
+
+  # Aggregator job under a stable name so branch ruleset can require a single
+  # status check regardless of how many shards the integration matrix uses.
+  test-integration-summary:
+    name: Integration Tests (ubuntu-latest)
+    runs-on: ubuntu-latest
+    needs: test-integration
+    if: always()
+    steps:
+      - name: Verify integration matrix succeeded
+        run: |
+          if [ "${{ needs.test-integration.result }}" != "success" ]; then
+            echo "test-integration matrix result: ${{ needs.test-integration.result }}"
+            exit 1
+          fi
 
   release:
     name: Build and Publish Release
