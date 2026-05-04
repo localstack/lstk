@@ -12,6 +12,7 @@ import (
 )
 
 func TestSwitchEmulatorContent_NoOp_AlreadyAWS(t *testing.T) {
+	t.Parallel()
 	content := "[[containers]]\ntype = \"aws\"\nport = \"4566\"\n"
 	result, changed, err := switchEmulatorContent(content, EmulatorAWS)
 	require.NoError(t, err)
@@ -20,6 +21,7 @@ func TestSwitchEmulatorContent_NoOp_AlreadyAWS(t *testing.T) {
 }
 
 func TestSwitchEmulatorContent_NoOp_AlreadySnowflake(t *testing.T) {
+	t.Parallel()
 	content := "[[containers]]\ntype = \"snowflake\"\nport = \"4566\"\n"
 	result, changed, err := switchEmulatorContent(content, EmulatorSnowflake)
 	require.NoError(t, err)
@@ -28,6 +30,7 @@ func TestSwitchEmulatorContent_NoOp_AlreadySnowflake(t *testing.T) {
 }
 
 func TestSwitchEmulatorContent_CommentAWSAndAppendSnowflake(t *testing.T) {
+	t.Parallel()
 	content := `[[containers]]
 type = "aws"
 port = "4566"
@@ -49,6 +52,7 @@ update_skipped_version = ""
 }
 
 func TestSwitchEmulatorContent_RestoresCommentedAWS(t *testing.T) {
+	t.Parallel()
 	content := "# [[containers]]\n# type = \"aws\"\n# port = \"4566\"\n\n[[containers]]\ntype = \"snowflake\"\nport = \"4566\"\n"
 	result, changed, err := switchEmulatorContent(content, EmulatorAWS)
 	require.NoError(t, err)
@@ -61,6 +65,7 @@ func TestSwitchEmulatorContent_RestoresCommentedAWS(t *testing.T) {
 }
 
 func TestSwitchEmulatorContent_RestoresCommentedSnowflake(t *testing.T) {
+	t.Parallel()
 	content := "[[containers]]\ntype = \"aws\"\nport = \"4566\"\n\n# [[containers]]\n# type = \"snowflake\"\n# port = \"4566\"\n"
 	result, changed, err := switchEmulatorContent(content, EmulatorSnowflake)
 	require.NoError(t, err)
@@ -72,6 +77,7 @@ func TestSwitchEmulatorContent_RestoresCommentedSnowflake(t *testing.T) {
 }
 
 func TestSwitchEmulatorContent_PreservesNonContainerContent(t *testing.T) {
+	t.Parallel()
 	content := `# lstk configuration file
 
 [[containers]]
@@ -96,6 +102,7 @@ update_skipped_version = "v1.2.3"
 }
 
 func TestSwitchEmulatorContent_PreservesInlineComments(t *testing.T) {
+	t.Parallel()
 	content := "[[containers]]\ntype = \"aws\"     # Emulator type\ntag  = \"latest\"  # Docker image tag\nport = \"4566\"    # Host port\n# volume = \"\"    # persistent state\n"
 	result, changed, err := switchEmulatorContent(content, EmulatorSnowflake)
 	require.NoError(t, err)
@@ -107,6 +114,7 @@ func TestSwitchEmulatorContent_PreservesInlineComments(t *testing.T) {
 }
 
 func TestSwitchEmulatorContent_RoundTrip(t *testing.T) {
+	t.Parallel()
 	original := `[[containers]]
 type = "aws"
 port = "4566"
