@@ -59,8 +59,8 @@ func (a *Auth) GetToken(ctx context.Context) (string, error) {
 		a.sink.Emit(output.MessageEvent{Severity: output.SeverityWarning, Text: fmt.Sprintf("could not store token in keyring: %v", err)})
 	}
 
-	a.sink.Emit(output.MessageEvent{Severity: output.SeveritySuccess, Text: "Login successful."})
 	a.sink.Emit(output.AuthCompleteEvent{})
+	a.sink.Emit(output.MessageEvent{Severity: output.SeveritySuccess, Text: "Login successful."})
 	return token, nil
 }
 

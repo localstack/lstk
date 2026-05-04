@@ -498,15 +498,17 @@ func TestStartHidesHeaderUntilAuthComplete(t *testing.T) {
 		return bytes.Contains(output.Bytes(), []byte("Press any key when complete"))
 	}, 10*time.Second, 100*time.Millisecond, "auth prompt should appear")
 
-	assert.NotContains(t, output.String(), "lstk (", "header must be hidden while auth is pending")
+	assert.NotContains(t, output.String(), "lstk ", "header must be hidden while auth is pending")
 
 	// Complete auth by pressing ENTER.
 	_, err = ptmx.Write([]byte("\r"))
 	require.NoError(t, err)
 
-	// After auth completes, the header must appear.
+	// After auth completes, the header must appear. Look for the header's
+	// "lstk " prefix — the version that follows is wrapped in ANSI styling
+	// so a contiguous "lstk (" match would fail under terminal rendering.
 	require.Eventually(t, func() bool {
-		return bytes.Contains(output.Bytes(), []byte("lstk ("))
+		return bytes.Contains(output.Bytes(), []byte("lstk "))
 	}, 10*time.Second, 100*time.Millisecond, "header should appear after auth completes")
 
 	cancel()
