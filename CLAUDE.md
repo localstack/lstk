@@ -132,6 +132,23 @@ Use `lstk setup <emulator>` to set up CLI integration for an emulator type:
 
 This naming avoids AWS-specific "profile" terminology and uses a clear verb for mutation operations.
 
+The default `lstk az <args>` mode mirrors `lstk aws`: the Azure CLI has no `--endpoint-url`/`--profile`, so the only isolation knob is `AZURE_CONFIG_DIR`. Inside that isolated dir we register a custom cloud whose endpoints point at `https://azure.localhost.localstack.cloud:4566`, so `az` makes direct calls to LocalStack for Azure services (no HTTP(S) forward proxy in front of `az`). `core.instance_discovery=false` is required because `az` does not recognise the LocalStack host as a real Azure cloud. Adding a new Azure service that needs its own endpoint in `az`'s cloud config means extending the map in `internal/azureconfig/azureconfig.go::BuildCloudConfig`.
+
+`lstk az start-interception`/`stop-interception` additionally offer azlocal's global pattern (the same cloud registration applied to `~/.azure` rather than the isolated dir), so existing `az` scripts run unmodified against LocalStack. This is intentionally documented as optional because it mutates global state; prefer the isolated `lstk az <args>` mode unless a script must invoke plain `az`. The interception domain logic lives in `internal/azureconfig/interception.go` and reuses the shared `registerLocalStackCloud` helper; the command wiring (subcommands under `az` plus the shared `azPreflight` checks) is in `cmd/az.go`.
+
+# Sandbox Commands
+
+Use `lstk sandbox <command>` to manage cloud-hosted LocalStack sandbox instances:
+- `lstk sandbox create <name> [--timeout 60] [-e KEY=VALUE ...]` — Create a sandbox instance. `--timeout` is in minutes (matches the API payload).
+- `lstk sandbox list` — List sandbox instances in a table.
+- `lstk sandbox describe <name>` — Print the raw JSON instance state.
+- `lstk sandbox delete <name> [--wait] [--timeout 5m]` — Delete a sandbox instance, optionally polling until deletion completes.
+- `lstk sandbox logs <name>` — Print current instance logs.
+- `lstk sandbox url <name>` — Print only the endpoint URL for scripting, e.g. `AWS_ENDPOINT_URL=$(lstk sandbox url <name>)`.
+- `lstk sandbox reset <name>` — Reset all LocalStack state by calling `/_localstack/state/reset` on the sandbox endpoint.
+
+Use positional `<name>` for the primary sandbox identifier. Hidden `--name` compatibility aliases may exist for migration from `localstack ephemeral`, but new help/docs should use positionals.
+Keep sandbox commands cloud-only for now; do not add a `--runtime` dimension unless the local/cloud sandbox lifecycle design is revisited explicitly.
 Environment variables:
 - `LOCALSTACK_AUTH_TOKEN` - Auth token (skips browser login if set)
 - `LSTK_STARTUP_TIMEOUT` - Startup readiness deadline for `lstk start` (Go duration). Zero/unset uses the per-mode default resolved in `resolveStartupTimeout` (`internal/container/start.go`): 20s interactive (deadline only shows a recoverable keep-waiting/stop prompt, re-armed by "keep waiting"), 60s non-interactive (fatal; the container is left running for inspection). Container exits are detected separately — and instantly, with the exit code — via the exit wait `runtime.Runtime.Start` registers between create and start.
