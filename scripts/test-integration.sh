@@ -28,11 +28,16 @@ fi
 RUN_FLAG=()
 if [ -n "${SHARD_TOTAL:-}" ]; then
   IDX="${SHARD_INDEX:-1}"
-  # `go test -list` enumerates top-level tests in each package; we filter to
-  # lines matching /^Test/ to drop the trailing "ok pkg" summary lines, sort
-  # for stable partitioning, and pick every N-th entry. SHARD_INDEX is
-  # 1-based for human-friendly CI labels (shard 1/4, 2/4, ...).
-  TESTS=$(go test -list '.*' ./... 2>/dev/null | awk '/^Test/' | sort \
+  # `go test -list` enumerates top-level tests in each package. Run it as a
+  # standalone step (no stderr suppression) so compile errors surface loudly
+  # under `set -e` instead of being swallowed into an empty test list. The
+  # subsequent `go test -run` reuses the compiled test binary from Go's build
+  # cache, so this isn't a duplicate compile.
+  LIST_OUTPUT=$(go test -list '.*' ./...)
+  # Filter to lines matching /^Test/ to drop the trailing "ok pkg" summary
+  # lines, sort for stable partitioning, and pick every N-th entry.
+  # SHARD_INDEX is 1-based for human-friendly CI labels (shard 1/4, 2/4, ...).
+  TESTS=$(echo "$LIST_OUTPUT" | awk '/^Test/' | sort \
     | awk -v idx="$IDX" -v total="$SHARD_TOTAL" '((NR-1) % total) + 1 == idx')
   if [ -z "$TESTS" ]; then
     echo "no tests for shard $IDX/$SHARD_TOTAL — skipping"
