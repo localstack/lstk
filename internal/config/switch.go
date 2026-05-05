@@ -7,19 +7,6 @@ import (
 	"strings"
 )
 
-const awsContainerBlock = `[[containers]]
-type = "aws"
-tag  = "latest"
-port = "4566"
-# volume = ""    # Host directory for persistent state (default: OS cache dir)
-# env = []       # Named environment profiles to apply (see [env.*] sections below)`
-
-const snowflakeContainerBlock = `[[containers]]
-type = "snowflake"
-tag  = "latest"
-port = "4566"
-# volume = ""    # Host directory for persistent state (default: OS cache dir)
-# env = []       # Named environment profiles to apply (see [env.*] sections below)`
 
 // SwitchEmulator updates the config file to activate the given emulator type.
 // Active container blocks for other types are commented out. If a previously
@@ -163,12 +150,31 @@ func detectBlockType(lines []string, isCommented bool) EmulatorType {
 }
 
 func containerBlockTemplate(t EmulatorType) string {
-	switch t {
-	case EmulatorAWS:
-		return awsContainerBlock
-	case EmulatorSnowflake:
-		return snowflakeContainerBlock
-	default:
-		return ""
+	lines := strings.Split(defaultConfigTemplate, "\n")
+	n := len(lines)
+	for i := 0; i < n; i++ {
+		if strings.TrimSpace(lines[i]) != "[[containers]]" {
+			continue
+		}
+		end := i + 1
+		for end < n {
+			t2 := strings.TrimSpace(lines[end])
+			if t2 == "" || t2 == "[[containers]]" || t2 == "# [[containers]]" {
+				break
+			}
+			end++
+		}
+		blockLines := make([]string, end-i)
+		copy(blockLines, lines[i:end])
+		for j, line := range blockLines {
+			if typeLineRe.MatchString(strings.TrimSpace(line)) {
+				blockLines[j] = typeLineRe.ReplaceAllStringFunc(line, func(string) string {
+					return `type = "` + string(t) + `"`
+				})
+				break
+			}
+		}
+		return strings.Join(blockLines, "\n")
 	}
+	return ""
 }
