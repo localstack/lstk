@@ -30,12 +30,21 @@ import (
 )
 
 func NewRootCmd(cfg *env.Env, tel *telemetry.Client, logger log.Logger) *cobra.Command {
+	var firstRun bool
 	root := &cobra.Command{
 		Use:     "lstk",
 		Short:   "LocalStack CLI",
 		Long:    "lstk is the command-line interface for LocalStack.",
-		PreRunE: initConfig,
+		PreRunE: initConfigCapturingFirstRun(&firstRun),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			emulatorStr, err := cmd.Flags().GetString("emulator")
+			if err != nil {
+				return err
+			}
+			requestedEmulator, err := config.ParseOptionalEmulatorType(emulatorStr)
+			if err != nil {
+				return err
+			}
 			rt, err := runtime.NewDockerRuntime(cfg.DockerHost)
 			if err != nil {
 				return err
@@ -44,7 +53,7 @@ func NewRootCmd(cfg *env.Env, tel *telemetry.Client, logger log.Logger) *cobra.C
 			if err != nil {
 				return err
 			}
-			return startEmulator(cmd.Context(), rt, cfg, tel, logger, persist)
+			return startEmulator(cmd.Context(), rt, cfg, tel, logger, persist, firstRun, requestedEmulator)
 		},
 	}
 
@@ -55,6 +64,7 @@ func NewRootCmd(cfg *env.Env, tel *telemetry.Client, logger log.Logger) *cobra.C
 	root.PersistentFlags().String("config", "", "Path to config file")
 	root.PersistentFlags().BoolVar(&cfg.NonInteractive, "non-interactive", false, "Disable interactive mode")
 	root.Flags().Bool("persist", false, "Enable local persistence (sets LOCALSTACK_PERSISTENCE=1)")
+	root.Flags().String("emulator", "", "Emulator to use (aws|snowflake)")
 
 	configureHelp(root)
 
@@ -152,11 +162,22 @@ func buildStartOptions(cfg *env.Env, appConfig *config.Config, logger log.Logger
 	}
 }
 
-func startEmulator(ctx context.Context, rt runtime.Runtime, cfg *env.Env, tel *telemetry.Client, logger log.Logger, persist bool) error {
-
+func startEmulator(ctx context.Context, rt runtime.Runtime, cfg *env.Env, tel *telemetry.Client, logger log.Logger, persist bool, firstRun bool, requestedEmulator *config.EmulatorType) error {
 	appConfig, err := config.Get()
 	if err != nil {
 		return fmt.Errorf("failed to get config: %w", err)
+	}
+
+	if requestedEmulator != nil {
+		if len(appConfig.Containers) == 0 || appConfig.Containers[0].Type != *requestedEmulator {
+			if err := config.SwitchEmulator(*requestedEmulator); err != nil {
+				return fmt.Errorf("failed to switch emulator: %w", err)
+			}
+			appConfig, err = config.Get()
+			if err != nil {
+				return fmt.Errorf("failed to reload config: %w", err)
+			}
+		}
 	}
 
 	opts := buildStartOptions(cfg, appConfig, logger, tel, persist)
@@ -173,28 +194,28 @@ func startEmulator(ctx context.Context, rt runtime.Runtime, cfg *env.Env, tel *t
 		logger.Info("could not resolve friendly config path: %v", err)
 	}
 
-	if isInteractiveMode(cfg) {
-		labelCh := make(chan string, 1)
-		go func() {
-			label, ok := container.ResolveEmulatorLabel(ctx, opts.PlatformClient, appConfig.Containers, cfg.AuthToken, logger)
-			if ok {
-				config.CachePlanLabel(label)
-			}
-			labelCh <- label
-		}()
+	needsEmulatorSelection := firstRun && requestedEmulator == nil && isInteractiveMode(cfg)
 
+	if isInteractiveMode(cfg) {
 		return ui.Run(ctx, ui.RunOptions{
-			Runtime:       rt,
-			Version:       version.Version(),
-			StartOptions:  opts,
-			NotifyOptions: notifyOpts,
-			ConfigPath:    configPath,
-			EmulatorLabel: config.CachedPlanLabel(),
-			LabelCh:       labelCh,
+			Runtime:                rt,
+			Version:                version.Version(),
+			StartOptions:           opts,
+			NotifyOptions:          notifyOpts,
+			ConfigPath:             configPath,
+			EmulatorLabel:          config.CachedPlanLabel(),
+			NeedsEmulatorSelection: needsEmulatorSelection,
 		})
 	}
 
 	sink := output.NewPlainSink(os.Stdout)
+	if firstRun && requestedEmulator == nil && len(appConfig.Containers) > 0 {
+		emName := appConfig.Containers[0].Type.DisplayName()
+		sink.Emit(output.MessageEvent{
+			Severity: output.SeverityNote,
+			Text:     fmt.Sprintf("Configured with default emulator %s. Pass --emulator to change.", emName),
+		})
+	}
 	update.NotifyUpdate(ctx, sink, update.NotifyOptions{GitHubToken: cfg.GitHubToken})
 	return container.Start(ctx, rt, sink, opts, false)
 }
@@ -296,5 +317,20 @@ func initConfig(cmd *cobra.Command, _ []string) error {
 	if path != "" {
 		return config.InitFromPath(path)
 	}
-	return config.Init()
+	_, err = config.Init()
+	return err
+}
+
+func initConfigCapturingFirstRun(firstRun *bool) func(*cobra.Command, []string) error {
+	return func(cmd *cobra.Command, _ []string) error {
+		path, err := cmd.Flags().GetString("config")
+		if err != nil {
+			return err
+		}
+		if path != "" {
+			return config.InitFromPath(path)
+		}
+		*firstRun, err = config.Init()
+		return err
+	}
 }
