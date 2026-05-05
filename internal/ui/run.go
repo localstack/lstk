@@ -165,11 +165,10 @@ func selectEmulatorInTUI(
 		return nil, err
 	}
 
-	msg := selected.DisplayName() + " emulator selected."
+	sink.Emit(output.MessageEvent{Severity: output.SeverityNote, Text: selected.DisplayName() + " emulator selected."})
 	if configPath != "" {
-		msg += fmt.Sprintf(" Change configuration in %s.", configPath)
+		sink.Emit(output.MessageEvent{Severity: output.SeveritySecondary, Text: "Change configuration in " + configPath + "."})
 	}
-	sink.Emit(output.MessageEvent{Severity: output.SeverityNote, Text: msg})
 
 	return newCfg.Containers, nil
 }
