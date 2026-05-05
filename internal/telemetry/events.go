@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"runtime"
 
+	"github.com/localstack/lstk/internal/config"
 	"github.com/localstack/lstk/internal/version"
 )
 
@@ -54,7 +55,7 @@ type CommandResult struct {
 type LifecycleEvent struct {
 	EventType      string          `json:"event_type"`
 	Environment    Environment     `json:"environment"`
-	Emulator       string          `json:"emulator"`
+	Emulator       config.EmulatorType `json:"emulator"`
 	Image          string          `json:"image,omitempty"`
 	ContainerID    string          `json:"container_id,omitempty"`
 	DurationMS     int64           `json:"duration_ms,omitempty"`

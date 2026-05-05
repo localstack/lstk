@@ -233,7 +233,21 @@ func TestStartCommandFailsOnEmulatorTypeMismatch(t *testing.T) {
 	assert.Contains(t, stdout, "LocalStack AWS Emulator is already running on port 4566")
 	assert.Contains(t, stdout, "Your config specifies the LocalStack Snowflake Emulator")
 	assert.Contains(t, stdout, "docker stop localstack-external-aws")
-	assertCommandTelemetry(t, events, "start", 1)
+
+	byName := collectTelemetryByName(t, events, 2)
+	cmdPayload, _ := byName["lstk_command"]["payload"].(map[string]any)
+	cmdParams, _ := cmdPayload["parameters"].(map[string]any)
+	cmdResult, _ := cmdPayload["result"].(map[string]any)
+	assert.Equal(t, "start", cmdParams["command"])
+	assert.InDelta(t, 1, cmdResult["exit_code"], 0)
+
+	lifecycle, ok := byName["lstk_lifecycle"]
+	require.True(t, ok, "expected lstk_lifecycle telemetry event")
+	lifePayload, _ := lifecycle["payload"].(map[string]any)
+	assert.Equal(t, "start_error", lifePayload["event_type"])
+	assert.Equal(t, "emulator_mismatch", lifePayload["error_code"])
+	assert.Equal(t, "snowflake", lifePayload["emulator"])
+	assert.Contains(t, lifePayload["error_msg"], "running aws on port 4566, configured snowflake")
 }
 
 func TestStartCommandSucceedsWithNonDefaultPort(t *testing.T) {

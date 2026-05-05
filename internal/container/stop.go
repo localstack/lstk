@@ -53,7 +53,7 @@ func Stop(ctx context.Context, rt runtime.Runtime, sink output.Sink, containers 
 
 		opts.Telemetry.EmitEmulatorLifecycleEvent(ctx, telemetry.LifecycleEvent{
 			EventType:      telemetry.LifecycleStop,
-			Emulator:       string(c.Type),
+			Emulator:       c.Type,
 			DurationMS:     time.Since(stopStart).Milliseconds(),
 			LocalStackInfo: lsInfo,
 		})

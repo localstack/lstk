@@ -35,8 +35,8 @@ var knownImages = []struct {
 	ProductName string
 	Default     bool
 }{
-	{EmulatorAWS, "localstack", false},
 	{EmulatorAWS, "localstack-pro", true},
+	{EmulatorAWS, "localstack", false},
 	{EmulatorSnowflake, "snowflake", true},
 }
 
@@ -54,6 +54,16 @@ func KnownImageRepos() []string {
 	repos := make([]string, len(knownImages))
 	for i, e := range knownImages {
 		repos[i] = dockerRegistry + "/" + e.ProductName
+	}
+	return repos
+}
+
+func KnownImageReposForType(t EmulatorType) []string {
+	var repos []string
+	for _, e := range knownImages {
+		if e.Type == t {
+			repos = append(repos, dockerRegistry+"/"+e.ProductName)
+		}
 	}
 	return repos
 }

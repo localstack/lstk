@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"testing"
 
+	"github.com/localstack/lstk/internal/config"
 	"github.com/localstack/lstk/internal/log"
 	"github.com/localstack/lstk/internal/output"
 	"github.com/localstack/lstk/internal/runtime"
@@ -63,14 +64,14 @@ func TestSelectContainersToStart_AttachesWhenExternalContainerOnConfiguredPort(t
 	c := runtime.ContainerConfig{
 		Image:         "localstack/localstack-pro:3.5.0",
 		Name:          "localstack-aws-3.5.0",
-		EmulatorType:  "aws",
+		EmulatorType:  config.EmulatorAWS,
 		Tag:           "3.5.0",
 		Port:          "4566",
 		ContainerPort: "4566/tcp",
 	}
 
 	mockRT.EXPECT().IsRunning(gomock.Any(), c.Name).Return(false, nil)
-	mockRT.EXPECT().FindRunningByImage(gomock.Any(), []string{"localstack/localstack", "localstack/localstack-pro", "localstack/snowflake"}, "4566/tcp").
+	mockRT.EXPECT().FindRunningByImage(gomock.Any(), []string{"localstack/localstack-pro", "localstack/localstack", "localstack/snowflake"}, "4566/tcp").
 		Return(&runtime.RunningContainer{Name: "external-container", Image: "localstack/localstack-pro:3.5.0", BoundPort: "4566"}, nil)
 
 	var out bytes.Buffer
@@ -91,14 +92,14 @@ func TestSelectContainersToStart_AttachesWhenExternalContainerVersionDiffers(t *
 	c := runtime.ContainerConfig{
 		Image:         "localstack/localstack-pro:3.4.0",
 		Name:          "localstack-aws-3.4.0",
-		EmulatorType:  "aws",
+		EmulatorType:  config.EmulatorAWS,
 		Tag:           "3.4.0",
 		Port:          "4566",
 		ContainerPort: "4566/tcp",
 	}
 
 	mockRT.EXPECT().IsRunning(gomock.Any(), c.Name).Return(false, nil)
-	mockRT.EXPECT().FindRunningByImage(gomock.Any(), []string{"localstack/localstack", "localstack/localstack-pro", "localstack/snowflake"}, "4566/tcp").
+	mockRT.EXPECT().FindRunningByImage(gomock.Any(), []string{"localstack/localstack-pro", "localstack/localstack", "localstack/snowflake"}, "4566/tcp").
 		Return(&runtime.RunningContainer{Name: "external-container", Image: "localstack/localstack-pro:3.5.0", BoundPort: "4566"}, nil)
 
 	var out bytes.Buffer
@@ -124,14 +125,14 @@ func TestSelectContainersToStart_QueuesContainerWhenNoneRunningOnPort(t *testing
 	c := runtime.ContainerConfig{
 		Image:         "localstack/localstack-pro:3.5.0",
 		Name:          "localstack-aws-3.5.0",
-		EmulatorType:  "aws",
+		EmulatorType:  config.EmulatorAWS,
 		Tag:           "3.5.0",
 		Port:          strconv.Itoa(freePort),
 		ContainerPort: "4566/tcp",
 	}
 
 	mockRT.EXPECT().IsRunning(gomock.Any(), c.Name).Return(false, nil)
-	mockRT.EXPECT().FindRunningByImage(gomock.Any(), []string{"localstack/localstack", "localstack/localstack-pro", "localstack/snowflake"}, "4566/tcp").
+	mockRT.EXPECT().FindRunningByImage(gomock.Any(), []string{"localstack/localstack-pro", "localstack/localstack", "localstack/snowflake"}, "4566/tcp").
 		Return(nil, nil)
 
 	sink := output.NewPlainSink(io.Discard)
@@ -150,14 +151,14 @@ func TestSelectContainersToStart_ErrorsOnEmulatorTypeMismatch(t *testing.T) {
 	c := runtime.ContainerConfig{
 		Image:         "localstack/snowflake:latest",
 		Name:          "localstack-snowflake",
-		EmulatorType:  "snowflake",
+		EmulatorType:  config.EmulatorSnowflake,
 		Tag:           "latest",
 		Port:          "4566",
 		ContainerPort: "4566/tcp",
 	}
 
 	mockRT.EXPECT().IsRunning(gomock.Any(), c.Name).Return(false, nil)
-	mockRT.EXPECT().FindRunningByImage(gomock.Any(), []string{"localstack/localstack", "localstack/localstack-pro", "localstack/snowflake"}, "4566/tcp").
+	mockRT.EXPECT().FindRunningByImage(gomock.Any(), []string{"localstack/localstack-pro", "localstack/localstack", "localstack/snowflake"}, "4566/tcp").
 		Return(&runtime.RunningContainer{Name: "localstack-aws", Image: "localstack/localstack-pro:latest", BoundPort: "4566"}, nil)
 
 	var out bytes.Buffer

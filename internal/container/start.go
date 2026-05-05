@@ -126,7 +126,7 @@ func Start(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts Start
 		containers[i] = runtime.ContainerConfig{
 			Image:         image,
 			Name:          containerName,
-			EmulatorType:  string(c.Type),
+			EmulatorType:  c.Type,
 			Port:          c.Port,
 			ContainerPort: containerPort,
 			HealthPath:    healthPath,
@@ -217,12 +217,12 @@ func runPostStartSetups(ctx context.Context, sink output.Sink, containers []conf
 }
 
 func emitAlreadyRunning(sink output.Sink, c runtime.ContainerConfig, localStackHost, webAppURL string) {
-	sink.Emit(output.MessageEvent{Severity: output.SeverityNote, Text: fmt.Sprintf("%s is already running", config.DisplayNameForType(config.EmulatorType(c.EmulatorType)))})
+	sink.Emit(output.MessageEvent{Severity: output.SeverityNote, Text: fmt.Sprintf("%s is already running", config.DisplayNameForType(c.EmulatorType))})
 	resolvedHost, dnsOK := endpoint.ResolveHost(c.Port, localStackHost)
 	if !dnsOK {
 		sink.Emit(output.MessageEvent{Severity: output.SeverityNote, Text: endpoint.DNSRebindNote})
 	}
-	emitPostStartPointers(sink, resolvedHost, webAppURL, c.EmulatorType == string(config.EmulatorAWS))
+	emitPostStartPointers(sink, resolvedHost, webAppURL, c.EmulatorType == config.EmulatorAWS)
 }
 
 func emitPostStartPointers(sink output.Sink, resolvedHost, webAppURL string, showTip bool) {
@@ -283,7 +283,7 @@ func pullImages(ctx context.Context, rt runtime.Runtime, sink output.Sink, tel *
 func tryPrePullLicenseValidation(ctx context.Context, sink output.Sink, opts StartOptions, containers []runtime.ContainerConfig, token, licenseFilePath string) ([]runtime.ContainerConfig, error) {
 	var needsPostPull []runtime.ContainerConfig
 	for _, c := range containers {
-		if c.EmulatorType == string(config.EmulatorSnowflake) {
+		if c.EmulatorType == config.EmulatorSnowflake {
 			continue
 		}
 
@@ -295,7 +295,7 @@ func tryPrePullLicenseValidation(ctx context.Context, sink output.Sink, opts Sta
 		}
 
 		apiCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
-		v, err := opts.PlatformClient.GetLatestCatalogVersion(apiCtx, c.EmulatorType)
+		v, err := opts.PlatformClient.GetLatestCatalogVersion(apiCtx, string(c.EmulatorType))
 		cancel()
 
 		if err != nil {
@@ -315,7 +315,7 @@ func tryPrePullLicenseValidation(ctx context.Context, sink output.Sink, opts Sta
 // Fallback path: inspects each pulled image for its version, then validates the license.
 func validateLicensesFromImages(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts StartOptions, containers []runtime.ContainerConfig, token, licenseFilePath string) error {
 	for _, c := range containers {
-		if c.EmulatorType == string(config.EmulatorSnowflake) {
+		if c.EmulatorType == config.EmulatorSnowflake {
 			continue
 		}
 
@@ -394,10 +394,10 @@ func selectContainersToStart(ctx context.Context, rt runtime.Runtime, sink outpu
 		}
 		if found != nil {
 			foundType := config.EmulatorTypeForImage(found.Image)
-			if foundType != "" && string(foundType) != c.EmulatorType {
+			if foundType != "" && foundType != c.EmulatorType {
 				sink.Emit(output.ErrorEvent{
 					Title:   fmt.Sprintf("%s is already running on port %s", config.DisplayNameForType(foundType), found.BoundPort),
-					Summary: fmt.Sprintf("Your config specifies the %s. Only one emulator can run on a port at a time.", config.DisplayNameForType(config.EmulatorType(c.EmulatorType))),
+					Summary: fmt.Sprintf("Your config specifies the %s. Only one emulator can run on a port at a time.", config.DisplayNameForType(c.EmulatorType)),
 					Actions: []output.ErrorAction{
 						{Label: "Stop the running emulator:", Value: fmt.Sprintf("docker stop %s", found.Name)},
 					},
@@ -413,7 +413,7 @@ func selectContainersToStart(ctx context.Context, rt runtime.Runtime, sink outpu
 			}
 			if found.BoundPort != c.Port {
 				sink.Emit(output.ErrorEvent{
-					Title:   fmt.Sprintf("%s is already running on port %s", config.DisplayNameForType(config.EmulatorType(c.EmulatorType)), found.BoundPort),
+					Title:   fmt.Sprintf("%s is already running on port %s", config.DisplayNameForType(c.EmulatorType), found.BoundPort),
 					Summary: fmt.Sprintf("Config expects port %s. Only one instance can run at a time.", c.Port),
 					Actions: []output.ErrorAction{
 						{Label: "Stop existing emulator:", Value: "lstk stop"},
