@@ -14,8 +14,7 @@ import (
 func TestSwitchEmulatorContent_NoOp_AlreadyAWS(t *testing.T) {
 	t.Parallel()
 	content := "[[containers]]\ntype = \"aws\"\nport = \"4566\"\n"
-	result, changed, err := switchEmulatorContent(content, EmulatorAWS)
-	require.NoError(t, err)
+	result, changed := switchEmulatorContent(content, EmulatorAWS)
 	assert.False(t, changed)
 	assert.Equal(t, content, result)
 }
@@ -23,8 +22,7 @@ func TestSwitchEmulatorContent_NoOp_AlreadyAWS(t *testing.T) {
 func TestSwitchEmulatorContent_NoOp_AlreadySnowflake(t *testing.T) {
 	t.Parallel()
 	content := "[[containers]]\ntype = \"snowflake\"\nport = \"4566\"\n"
-	result, changed, err := switchEmulatorContent(content, EmulatorSnowflake)
-	require.NoError(t, err)
+	result, changed := switchEmulatorContent(content, EmulatorSnowflake)
 	assert.False(t, changed)
 	assert.Equal(t, content, result)
 }
@@ -38,8 +36,7 @@ port = "4566"
 [cli]
 update_skipped_version = ""
 `
-	result, changed, err := switchEmulatorContent(content, EmulatorSnowflake)
-	require.NoError(t, err)
+	result, changed := switchEmulatorContent(content, EmulatorSnowflake)
 	assert.True(t, changed)
 
 	assert.Contains(t, result, "# [[containers]]")
@@ -54,8 +51,7 @@ update_skipped_version = ""
 func TestSwitchEmulatorContent_RestoresCommentedAWS(t *testing.T) {
 	t.Parallel()
 	content := "# [[containers]]\n# type = \"aws\"\n# port = \"4566\"\n\n[[containers]]\ntype = \"snowflake\"\nport = \"4566\"\n"
-	result, changed, err := switchEmulatorContent(content, EmulatorAWS)
-	require.NoError(t, err)
+	result, changed := switchEmulatorContent(content, EmulatorAWS)
 	assert.True(t, changed)
 
 	assert.Contains(t, result, "[[containers]]\ntype = \"aws\"")
@@ -67,8 +63,7 @@ func TestSwitchEmulatorContent_RestoresCommentedAWS(t *testing.T) {
 func TestSwitchEmulatorContent_RestoresCommentedSnowflake(t *testing.T) {
 	t.Parallel()
 	content := "[[containers]]\ntype = \"aws\"\nport = \"4566\"\n\n# [[containers]]\n# type = \"snowflake\"\n# port = \"4566\"\n"
-	result, changed, err := switchEmulatorContent(content, EmulatorSnowflake)
-	require.NoError(t, err)
+	result, changed := switchEmulatorContent(content, EmulatorSnowflake)
 	assert.True(t, changed)
 
 	assert.Contains(t, result, "[[containers]]\ntype = \"snowflake\"")
@@ -91,8 +86,7 @@ port = "4566"
 [cli]
 update_skipped_version = "v1.2.3"
 `
-	result, changed, err := switchEmulatorContent(content, EmulatorSnowflake)
-	require.NoError(t, err)
+	result, changed := switchEmulatorContent(content, EmulatorSnowflake)
 	assert.True(t, changed)
 
 	assert.Contains(t, result, "# lstk configuration file")
@@ -104,8 +98,7 @@ update_skipped_version = "v1.2.3"
 func TestSwitchEmulatorContent_PreservesInlineComments(t *testing.T) {
 	t.Parallel()
 	content := "[[containers]]\ntype = \"aws\"     # Emulator type\ntag  = \"latest\"  # Docker image tag\nport = \"4566\"    # Host port\n# volume = \"\"    # persistent state\n"
-	result, changed, err := switchEmulatorContent(content, EmulatorSnowflake)
-	require.NoError(t, err)
+	result, changed := switchEmulatorContent(content, EmulatorSnowflake)
 	assert.True(t, changed)
 
 	// Original inline comments should be preserved in the commented-out block
@@ -120,14 +113,12 @@ type = "aws"
 port = "4566"
 `
 	// Switch to snowflake
-	afterSnowflake, changed, err := switchEmulatorContent(original, EmulatorSnowflake)
-	require.NoError(t, err)
+	afterSnowflake, changed := switchEmulatorContent(original, EmulatorSnowflake)
 	assert.True(t, changed)
 	assert.Contains(t, afterSnowflake, `type = "snowflake"`)
 
 	// Switch back to AWS — should restore the commented block
-	afterAWS, changed, err := switchEmulatorContent(afterSnowflake, EmulatorAWS)
-	require.NoError(t, err)
+	afterAWS, changed := switchEmulatorContent(afterSnowflake, EmulatorAWS)
 	assert.True(t, changed)
 	assert.Contains(t, afterAWS, "[[containers]]\ntype = \"aws\"")
 	assert.NotContains(t, afterAWS, "\n[[containers]]\ntype = \"snowflake\"")

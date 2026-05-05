@@ -242,7 +242,7 @@ func startEmulator(ctx context.Context, rt runtime.Runtime, cfg *env.Env, tel *t
 		emName := appConfig.Containers[0].Type.DisplayName()
 		sink.Emit(output.MessageEvent{
 			Severity: output.SeverityNote,
-			Text:     fmt.Sprintf("No emulator configured; defaulting to %s. Use --emulator to change this.", emName),
+			Text:     fmt.Sprintf("Configured with default emulator %s. Pass --emulator to change.", emName),
 		})
 	}
 	update.NotifyUpdate(ctx, sink, update.NotifyOptions{GitHubToken: cfg.GitHubToken})
