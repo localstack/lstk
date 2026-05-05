@@ -43,12 +43,11 @@ func TestStopCommandFailsWhenNotRunning(t *testing.T) {
 	stdout, _, err := runLstk(t, testContext(t), "", env.With(env.AnalyticsEndpoint, analyticsSrv.URL), "stop")
 	require.Error(t, err, "expected lstk stop to fail when container not running")
 	requireExitCode(t, 1, err)
-	// Match status: e.g. "LocalStack AWS Emulator is not running".
 	assert.Contains(t, stdout, "LocalStack AWS Emulator is not running")
 	assertCommandTelemetry(t, events, "stop", 1)
 }
 
-func TestStopCommandFailsWhenSnowflakeNotRunning(t *testing.T) {
+func TestStopCommandReportsEmulatorSpecificNotRunningMessage(t *testing.T) {
 	requireDocker(t)
 	cleanupSnowflake()
 	t.Cleanup(cleanupSnowflake)
