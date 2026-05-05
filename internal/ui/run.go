@@ -167,7 +167,7 @@ func selectEmulatorInTUI(
 
 	msg := selected.DisplayName() + " emulator selected."
 	if configPath != "" {
-		msg += fmt.Sprintf(" You can change this anytime in %s.", configPath)
+		msg += fmt.Sprintf(" Change configuration in %s.", configPath)
 	}
 	sink.Emit(output.MessageEvent{Severity: output.SeverityNote, Text: msg})
 
