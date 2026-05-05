@@ -145,13 +145,15 @@ func parseContainerBlocks(lines []string) []containerBlock {
 	return blocks
 }
 
-var typeLineRe = regexp.MustCompile(`type\s*=\s*"(\w+)"`)
+var typeLineRe = regexp.MustCompile(`type\s*=\s*["'](\w+)["']`)
 
 func detectBlockType(lines []string, isCommented bool) EmulatorType {
 	for _, line := range lines {
 		effective := strings.TrimSpace(line)
 		if isCommented {
 			effective = strings.TrimSpace(strings.TrimPrefix(effective, "#"))
+		} else if strings.HasPrefix(effective, "#") {
+			continue
 		}
 		if m := typeLineRe.FindStringSubmatch(effective); m != nil {
 			return EmulatorType(strings.ToLower(m[1]))

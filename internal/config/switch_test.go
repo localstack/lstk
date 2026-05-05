@@ -106,6 +106,25 @@ func TestSwitchEmulatorContent_PreservesInlineComments(t *testing.T) {
 	assert.Contains(t, result, "# # volume = \"\"    # persistent state")
 }
 
+func TestSwitchEmulatorContent_SingleQuotedType(t *testing.T) {
+	t.Parallel()
+	content := "[[containers]]\ntype = 'aws'\nport = \"4566\"\n"
+	result, changed := switchEmulatorContent(content, EmulatorSnowflake)
+	assert.True(t, changed)
+	assert.Contains(t, result, `type = "snowflake"`)
+}
+
+func TestSwitchEmulatorContent_IgnoresCommentedTypeLine(t *testing.T) {
+	t.Parallel()
+	// A block with a commented-out type line followed by the real type line.
+	// detectBlockType must not match the commented line.
+	content := "[[containers]]\n# type = \"snowflake\"\ntype = \"aws\"\nport = \"4566\"\n"
+	result, changed := switchEmulatorContent(content, EmulatorSnowflake)
+	assert.True(t, changed)
+	assert.Contains(t, result, `type = "snowflake"`)
+	assert.NotContains(t, result, "\n[[containers]]\ntype = \"aws\"")
+}
+
 func TestSwitchEmulatorContent_RoundTrip(t *testing.T) {
 	t.Parallel()
 	original := `[[containers]]
