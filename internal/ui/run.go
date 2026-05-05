@@ -35,11 +35,7 @@ type RunOptions struct {
 	NotifyOptions          update.NotifyOptions
 	ConfigPath             string
 	EmulatorLabel          string
-	LabelCh                <-chan string
 	NeedsEmulatorSelection bool
-	// OnEmulatorSelected is called with the user's choice when NeedsEmulatorSelection is true.
-	// It should switch the config and return the updated container configs to use for this run.
-	OnEmulatorSelected func(config.EmulatorType) ([]config.ContainerConfig, error)
 }
 
 func Run(parentCtx context.Context, runOpts RunOptions) error {
@@ -56,28 +52,33 @@ func Run(parentCtx context.Context, runOpts RunOptions) error {
 	p := tea.NewProgram(app)
 	runErrCh := make(chan error, 1)
 
-	if runOpts.LabelCh != nil {
-		go func() {
-			select {
-			case label, ok := <-runOpts.LabelCh:
-				if ok && label != "" {
-					p.Send(headerLabelMsg{label: label})
-				}
-			case <-ctx.Done():
+	labelCh := make(chan string, 1)
+	go func() {
+		select {
+		case label := <-labelCh:
+			if label != "" {
+				p.Send(headerLabelMsg{label: label})
 			}
-		}()
-	}
+		case <-ctx.Done():
+		}
+	}()
 
 	go func() {
 		var err error
 		defer func() { runErrCh <- err }()
 		sink := output.NewTUISink(programSender{p: p})
+		// Start label resolution immediately when no emulator selection is needed, so
+		// headerLabelMsg always arrives even if NotifyUpdate returns early (update case).
+		// When emulator selection is needed, resolution starts after the user picks.
+		if !runOpts.NeedsEmulatorSelection {
+			go resolveAndCacheLabel(ctx, runOpts.StartOptions, labelCh)
+		}
 		if update.NotifyUpdate(ctx, sink, runOpts.NotifyOptions) {
 			p.Send(runDoneMsg{})
 			return
 		}
 		if runOpts.NeedsEmulatorSelection {
-			newContainers, selErr := selectEmulatorInTUI(ctx, sink, runOpts.ConfigPath, runOpts.OnEmulatorSelected)
+			newContainers, selErr := selectEmulatorInTUI(ctx, sink, runOpts.ConfigPath)
 			if selErr != nil {
 				if errors.Is(selErr, context.Canceled) {
 					return
@@ -86,6 +87,7 @@ func Run(parentCtx context.Context, runOpts RunOptions) error {
 				return
 			}
 			runOpts.StartOptions.Containers = newContainers
+			go resolveAndCacheLabel(ctx, runOpts.StartOptions, labelCh)
 		}
 		err = container.Start(ctx, runOpts.Runtime, sink, runOpts.StartOptions, true)
 		if err != nil {
@@ -115,11 +117,18 @@ func Run(parentCtx context.Context, runOpts RunOptions) error {
 	return nil
 }
 
+func resolveAndCacheLabel(ctx context.Context, opts container.StartOptions, labelCh chan<- string) {
+	label, ok := container.ResolveEmulatorLabel(ctx, opts.PlatformClient, opts.Containers, opts.AuthToken, opts.Logger)
+	if ok {
+		config.CachePlanLabel(label)
+	}
+	labelCh <- label
+}
+
 func selectEmulatorInTUI(
 	ctx context.Context,
 	sink output.Sink,
 	configPath string,
-	onSelected func(config.EmulatorType) ([]config.ContainerConfig, error),
 ) ([]config.ContainerConfig, error) {
 	responseCh := make(chan output.InputResponse, 1)
 	sink.Emit(output.UserInputRequestEvent{
@@ -148,7 +157,10 @@ func selectEmulatorInTUI(
 		selected = config.EmulatorSnowflake
 	}
 
-	containers, err := onSelected(selected)
+	if err := config.SwitchEmulator(selected); err != nil {
+		return nil, fmt.Errorf("failed to switch emulator: %w", err)
+	}
+	newCfg, err := config.Get()
 	if err != nil {
 		return nil, err
 	}
@@ -159,7 +171,7 @@ func selectEmulatorInTUI(
 	}
 	sink.Emit(output.MessageEvent{Severity: output.SeverityNote, Text: msg})
 
-	return containers, nil
+	return newCfg.Containers, nil
 }
 
 func IsInteractive() bool {

@@ -197,17 +197,6 @@ func startEmulator(ctx context.Context, rt runtime.Runtime, cfg *env.Env, tel *t
 	needsEmulatorSelection := firstRun && requestedEmulator == nil && isInteractiveMode(cfg)
 
 	if isInteractiveMode(cfg) {
-		labelCh := make(chan string, 1)
-		if !needsEmulatorSelection {
-			go func() {
-				label, ok := container.ResolveEmulatorLabel(ctx, opts.PlatformClient, appConfig.Containers, cfg.AuthToken, logger)
-				if ok {
-					config.CachePlanLabel(label)
-				}
-				labelCh <- label
-			}()
-		}
-
 		return ui.Run(ctx, ui.RunOptions{
 			Runtime:                rt,
 			Version:                version.Version(),
@@ -215,25 +204,7 @@ func startEmulator(ctx context.Context, rt runtime.Runtime, cfg *env.Env, tel *t
 			NotifyOptions:          notifyOpts,
 			ConfigPath:             configPath,
 			EmulatorLabel:          config.CachedPlanLabel(),
-			LabelCh:                labelCh,
 			NeedsEmulatorSelection: needsEmulatorSelection,
-			OnEmulatorSelected: func(emType config.EmulatorType) ([]config.ContainerConfig, error) {
-				if err := config.SwitchEmulator(emType); err != nil {
-					return nil, fmt.Errorf("failed to switch emulator: %w", err)
-				}
-				newCfg, err := config.Get()
-				if err != nil {
-					return nil, err
-				}
-				go func() {
-					label, ok := container.ResolveEmulatorLabel(ctx, opts.PlatformClient, newCfg.Containers, cfg.AuthToken, logger)
-					if ok {
-						config.CachePlanLabel(label)
-					}
-					labelCh <- label
-				}()
-				return newCfg.Containers, nil
-			},
 		})
 	}
 
