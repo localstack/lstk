@@ -149,6 +149,8 @@ func detectBlockType(lines []string, isCommented bool) EmulatorType {
 	return ""
 }
 
+// containerBlockTemplate returns the [[containers]] block from default_config.toml
+// with the type field replaced by t, used when appending a fresh block to a config file.
 func containerBlockTemplate(t EmulatorType) string {
 	lines := strings.Split(defaultConfigTemplate, "\n")
 	n := len(lines)
@@ -158,8 +160,8 @@ func containerBlockTemplate(t EmulatorType) string {
 		}
 		end := i + 1
 		for end < n {
-			t2 := strings.TrimSpace(lines[end])
-			if t2 == "" || t2 == "[[containers]]" || t2 == "# [[containers]]" {
+			candidate := strings.TrimSpace(lines[end])
+			if candidate == "" || candidate == "[[containers]]" || candidate == "# [[containers]]" {
 				break
 			}
 			end++
