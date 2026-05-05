@@ -41,7 +41,9 @@ func Run(parentCtx context.Context, runOpts RunOptions) error {
 	defer cancel()
 
 	var appOpts []AppOption
-	if runOpts.EmulatorLabel == "" {
+	if runOpts.StartOptions.AuthToken == "" {
+		appOpts = append(appOpts, withHeaderAfterAuth())
+	} else if runOpts.EmulatorLabel == "" {
 		appOpts = append(appOpts, withHeaderLoading())
 	}
 	app := NewApp(runOpts.Version, runOpts.EmulatorLabel, runOpts.ConfigPath, cancel, appOpts...)

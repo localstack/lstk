@@ -1,18 +1,24 @@
 package integration_test
 
 import (
+	"bytes"
 	"context"
 	"crypto/tls"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/creack/pty"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/image"
 	"github.com/docker/go-connections/nat"
@@ -458,6 +464,55 @@ func containerEnvToMap(envList []string) map[string]string {
 		m[k] = v
 	}
 	return m
+}
+
+func TestStartHidesHeaderUntilAuthComplete(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("PTY not supported on Windows")
+	}
+	requireDocker(t)
+
+	cleanup()
+	t.Cleanup(cleanup)
+
+	mockServer := createMockAPIServer(t, "test-license-token", true)
+	defer mockServer.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, binaryPath(), "start")
+	cmd.Env = env.Without(env.AuthToken).With(env.APIEndpoint, mockServer.URL)
+
+	ptmx, err := pty.Start(cmd)
+	require.NoError(t, err, "failed to start command in PTY")
+	defer func() { _ = ptmx.Close() }()
+
+	output := &syncBuffer{}
+	go func() {
+		_, _ = io.Copy(output, ptmx)
+	}()
+
+	// Wait for the login prompt — header must not be visible yet.
+	require.Eventually(t, func() bool {
+		return bytes.Contains(output.Bytes(), []byte("Press any key when complete"))
+	}, 10*time.Second, 100*time.Millisecond, "auth prompt should appear")
+
+	assert.NotContains(t, output.String(), "lstk ", "header must be hidden while auth is pending")
+
+	// Complete auth by pressing ENTER.
+	_, err = ptmx.Write([]byte("\r"))
+	require.NoError(t, err)
+
+	// After auth completes, the header must appear. Look for the header's
+	// "lstk " prefix — the version that follows is wrapped in ANSI styling
+	// so a contiguous "lstk (" match would fail under terminal rendering.
+	require.Eventually(t, func() bool {
+		return bytes.Contains(output.Bytes(), []byte("lstk "))
+	}, 10*time.Second, 100*time.Millisecond, "header should appear after auth completes")
+
+	cancel()
+	_ = cmd.Wait()
 }
 
 func cleanup() {

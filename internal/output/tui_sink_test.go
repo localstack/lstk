@@ -23,12 +23,14 @@ func TestTUISinkForwardsEvents(t *testing.T) {
 	sink.Emit(MessageEvent{Severity: SeverityWarning, Text: "careful"})
 	sink.Emit(ContainerStatusEvent{Phase: "starting", Container: "localstack"})
 	sink.Emit(ProgressEvent{LayerID: "abc", Status: "Downloading", Current: 1, Total: 2})
+	sink.Emit(AuthCompleteEvent{})
 
 	want := []any{
 		MessageEvent{Severity: SeverityInfo, Text: "hello"},
 		MessageEvent{Severity: SeverityWarning, Text: "careful"},
 		ContainerStatusEvent{Phase: "starting", Container: "localstack"},
 		ProgressEvent{LayerID: "abc", Status: "Downloading", Current: 1, Total: 2},
+		AuthCompleteEvent{},
 	}
 	if !reflect.DeepEqual(sender.msgs, want) {
 		t.Fatalf("unexpected msgs: got=%#v want=%#v", sender.msgs, want)

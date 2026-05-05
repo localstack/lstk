@@ -21,10 +21,10 @@ type MessageSeverity int
 
 const (
 	SeverityInfo      MessageSeverity = iota
-	SeveritySuccess                          // positive outcome
-	SeverityNote                             // informational
-	SeverityWarning                          // cautionary
-	SeveritySecondary                        // subdued/decorative text
+	SeveritySuccess                   // positive outcome
+	SeverityNote                      // informational
+	SeverityWarning                   // cautionary
+	SeveritySecondary                 // subdued/decorative text
 )
 
 type MessageEvent struct {
@@ -76,6 +76,8 @@ type ResourceSummaryEvent struct {
 	Services  int
 }
 
+type AuthCompleteEvent struct{}
+
 // Event is a sealed marker — only event types in this package implement it,
 // so Sink.Emit rejects unknown types at compile time.
 type Event interface{ sealedEvent() }
@@ -84,6 +86,7 @@ func (MessageEvent) sealedEvent()          {}
 func (SpinnerEvent) sealedEvent()          {}
 func (ErrorEvent) sealedEvent()            {}
 func (AuthEvent) sealedEvent()             {}
+func (AuthCompleteEvent) sealedEvent()     {}
 func (InstanceInfoEvent) sealedEvent()     {}
 func (TableEvent) sealedEvent()            {}
 func (ResourceSummaryEvent) sealedEvent()  {}

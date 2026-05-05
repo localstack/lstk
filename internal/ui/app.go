@@ -44,21 +44,22 @@ type styledLine struct {
 }
 
 type App struct {
-	header        components.Header
-	inputPrompt   components.InputPrompt
-	spinner       components.Spinner
-	pullProgress  components.PullProgress
-	errorDisplay  components.ErrorDisplay
-	lines         []styledLine
-	bufferedLines []styledLine // lines waiting for spinner to finish
-	width         int
-	cancel        func()
-	pendingInput  *output.UserInputRequestEvent
-	err           error
-	quitting      bool
-	hideHeader    bool
-	headerLoading bool
-	headerFrame   int
+	header           components.Header
+	inputPrompt      components.InputPrompt
+	spinner          components.Spinner
+	pullProgress     components.PullProgress
+	errorDisplay     components.ErrorDisplay
+	lines            []styledLine
+	bufferedLines    []styledLine // lines waiting for spinner to finish
+	width            int
+	cancel           func()
+	pendingInput     *output.UserInputRequestEvent
+	err              error
+	quitting         bool
+	hideHeader       bool
+	showHeaderOnAuth bool
+	headerLoading    bool
+	headerFrame      int
 }
 
 type AppOption func(*App)
@@ -69,6 +70,18 @@ func withoutHeader() AppOption {
 
 func withHeaderLoading() AppOption {
 	return func(a *App) { a.headerLoading = true }
+}
+
+// withHeaderAfterAuth hides the header during the in-line login flow.
+// When AuthCompleteEvent arrives the TUI clears its scroll buffer and reveals
+// the header — so the start UI begins fresh under the header instead of the
+// header popping in above existing auth output (layout shift).
+func withHeaderAfterAuth() AppOption {
+	return func(a *App) {
+		a.hideHeader = true
+		a.showHeaderOnAuth = true
+		a.headerLoading = true
+	}
 }
 
 func NewApp(version, emulatorName, configPath string, cancel func(), opts ...AppOption) App {
@@ -145,6 +158,17 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.header = a.header.SetEmulatorName(msg.label)
 		if a.quitting {
 			return a, tea.Quit
+		}
+		return a, nil
+	case output.AuthCompleteEvent:
+		if a.showHeaderOnAuth {
+			a.hideHeader = false
+			a.showHeaderOnAuth = false
+			// Drop auth-flow lines so the header doesn't pop in above existing
+			// content (layout shift). Post-auth feedback like "Login successful"
+			// is emitted after AuthCompleteEvent and lands under the header.
+			a.lines = a.lines[:0]
+			a.bufferedLines = a.bufferedLines[:0]
 		}
 		return a, nil
 	case output.UserInputRequestEvent:

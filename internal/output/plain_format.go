@@ -34,6 +34,8 @@ func FormatEventLine(event Event) (string, bool) {
 		return formatTable(e)
 	case ResourceSummaryEvent:
 		return formatResourceSummary(e), true
+	case AuthCompleteEvent:
+		return "", false
 	default:
 		return "", false
 	}
