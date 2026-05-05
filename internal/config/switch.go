@@ -36,10 +36,7 @@ func SwitchEmulator(to EmulatorType) error {
 		return fmt.Errorf("failed to read config file: %w", err)
 	}
 
-	updated, changed, err := switchEmulatorContent(string(data), to)
-	if err != nil {
-		return err
-	}
+	updated, changed := switchEmulatorContent(string(data), to)
 	if !changed {
 		return nil
 	}
@@ -50,12 +47,12 @@ func SwitchEmulator(to EmulatorType) error {
 	return loadConfig(path)
 }
 
-func switchEmulatorContent(content string, to EmulatorType) (updated string, changed bool, err error) {
+func switchEmulatorContent(content string, to EmulatorType) (updated string, changed bool) {
 	lines := strings.Split(content, "\n")
 	blocks := parseContainerBlocks(lines)
 
 	if isEmulatorAlreadyActive(blocks, to) {
-		return content, false, nil
+		return content, false
 	}
 
 	newLines := make([]string, len(lines))
@@ -88,7 +85,7 @@ func switchEmulatorContent(content string, to EmulatorType) (updated string, cha
 		result = strings.TrimRight(result, "\n") + "\n\n" + tmpl + "\n"
 	}
 
-	return result, true, nil
+	return result, true
 }
 
 func isEmulatorAlreadyActive(blocks []containerBlock, to EmulatorType) bool {
