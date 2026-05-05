@@ -25,6 +25,17 @@ var emulatorDisplayNames = map[EmulatorType]string{
 	EmulatorAzure:     "Azure",
 }
 
+func ParseOptionalEmulatorType(s string) (*EmulatorType, error) {
+	if s == "" {
+		return nil, nil
+	}
+	emType, err := ParseEmulatorType(s)
+	if err != nil {
+		return nil, err
+	}
+	return &emType, nil
+}
+
 func ParseEmulatorType(s string) (EmulatorType, error) {
 	switch EmulatorType(strings.ToLower(s)) {
 	case EmulatorAWS:
