@@ -29,21 +29,11 @@ func ParseOptionalEmulatorType(s string) (*EmulatorType, error) {
 	if s == "" {
 		return nil, nil
 	}
-	emType, err := ParseEmulatorType(s)
-	if err != nil {
-		return nil, err
-	}
-	return &emType, nil
-}
-
-func ParseEmulatorType(s string) (EmulatorType, error) {
-	switch EmulatorType(strings.ToLower(s)) {
-	case EmulatorAWS:
-		return EmulatorAWS, nil
-	case EmulatorSnowflake:
-		return EmulatorSnowflake, nil
+	switch emType := EmulatorType(strings.ToLower(s)); emType {
+	case EmulatorAWS, EmulatorSnowflake:
+		return &emType, nil
 	default:
-		return "", fmt.Errorf("unsupported emulator %q: must be 'aws' or 'snowflake'", s)
+		return nil, fmt.Errorf("unsupported emulator %q: must be 'aws' or 'snowflake'", s)
 	}
 }
 
