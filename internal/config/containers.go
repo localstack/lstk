@@ -25,6 +25,17 @@ var emulatorDisplayNames = map[EmulatorType]string{
 	EmulatorAzure:     "Azure",
 }
 
+func ParseEmulatorType(s string) (EmulatorType, error) {
+	switch EmulatorType(strings.ToLower(s)) {
+	case EmulatorAWS:
+		return EmulatorAWS, nil
+	case EmulatorSnowflake:
+		return EmulatorSnowflake, nil
+	default:
+		return "", fmt.Errorf("unsupported emulator %q: must be 'aws' or 'snowflake'", s)
+	}
+}
+
 func (e EmulatorType) DisplayName() string {
 	if name, ok := emulatorDisplayNames[e]; ok {
 		return name
