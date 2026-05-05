@@ -91,3 +91,44 @@ func TestValidate_NegativePort(t *testing.T) {
 	err := c.Validate()
 	assert.ErrorContains(t, err, "out of range")
 }
+
+func TestParseEmulatorType(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		input   string
+		want    EmulatorType
+		wantErr bool
+	}{
+		{"aws", EmulatorAWS, false},
+		{"AWS", EmulatorAWS, false},
+		{"snowflake", EmulatorSnowflake, false},
+		{"Snowflake", EmulatorSnowflake, false},
+		{"azure", "", true},
+		{"unknown", "", true},
+		{"", "", true},
+	}
+	for _, tc := range cases {
+		got, err := ParseEmulatorType(tc.input)
+		if tc.wantErr {
+			assert.Error(t, err, "input=%q", tc.input)
+		} else {
+			assert.NoError(t, err, "input=%q", tc.input)
+			assert.Equal(t, tc.want, got, "input=%q", tc.input)
+		}
+	}
+}
+
+func TestParseOptionalEmulatorType(t *testing.T) {
+	t.Parallel()
+
+	got, err := ParseOptionalEmulatorType("")
+	assert.NoError(t, err)
+	assert.Nil(t, got)
+
+	got, err = ParseOptionalEmulatorType("aws")
+	assert.NoError(t, err)
+	assert.Equal(t, EmulatorAWS, *got)
+
+	_, err = ParseOptionalEmulatorType("unknown")
+	assert.Error(t, err)
+}

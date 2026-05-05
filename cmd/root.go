@@ -37,7 +37,11 @@ func NewRootCmd(cfg *env.Env, tel *telemetry.Client, logger log.Logger) *cobra.C
 		Long:    "lstk is the command-line interface for LocalStack.",
 		PreRunE: initConfigCapturingFirstRun(&firstRun),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			emulator, err := cmd.Flags().GetString("emulator")
+			emulatorStr, err := cmd.Flags().GetString("emulator")
+			if err != nil {
+				return err
+			}
+			requestedEmulator, err := config.ParseOptionalEmulatorType(emulatorStr)
 			if err != nil {
 				return err
 			}
@@ -49,7 +53,7 @@ func NewRootCmd(cfg *env.Env, tel *telemetry.Client, logger log.Logger) *cobra.C
 			if err != nil {
 				return err
 			}
-			return startEmulator(cmd.Context(), rt, cfg, tel, logger, persist, firstRun, emulator)
+			return startEmulator(cmd.Context(), rt, cfg, tel, logger, persist, firstRun, requestedEmulator)
 		},
 	}
 
@@ -158,19 +162,15 @@ func buildStartOptions(cfg *env.Env, appConfig *config.Config, logger log.Logger
 	}
 }
 
-func startEmulator(ctx context.Context, rt runtime.Runtime, cfg *env.Env, tel *telemetry.Client, logger log.Logger, persist bool, firstRun bool, requestedEmulator string) error {
+func startEmulator(ctx context.Context, rt runtime.Runtime, cfg *env.Env, tel *telemetry.Client, logger log.Logger, persist bool, firstRun bool, requestedEmulator *config.EmulatorType) error {
 	appConfig, err := config.Get()
 	if err != nil {
 		return fmt.Errorf("failed to get config: %w", err)
 	}
 
-	if requestedEmulator != "" {
-		emType, err := config.ParseEmulatorType(requestedEmulator)
-		if err != nil {
-			return err
-		}
-		if len(appConfig.Containers) == 0 || appConfig.Containers[0].Type != emType {
-			if err := config.SwitchEmulator(emType); err != nil {
+	if requestedEmulator != nil {
+		if len(appConfig.Containers) == 0 || appConfig.Containers[0].Type != *requestedEmulator {
+			if err := config.SwitchEmulator(*requestedEmulator); err != nil {
 				return fmt.Errorf("failed to switch emulator: %w", err)
 			}
 			appConfig, err = config.Get()
@@ -194,7 +194,7 @@ func startEmulator(ctx context.Context, rt runtime.Runtime, cfg *env.Env, tel *t
 		logger.Info("could not resolve friendly config path: %v", err)
 	}
 
-	needsEmulatorSelection := firstRun && requestedEmulator == "" && isInteractiveMode(cfg)
+	needsEmulatorSelection := firstRun && requestedEmulator == nil && isInteractiveMode(cfg)
 
 	if isInteractiveMode(cfg) {
 		labelCh := make(chan string, 1)
@@ -238,7 +238,7 @@ func startEmulator(ctx context.Context, rt runtime.Runtime, cfg *env.Env, tel *t
 	}
 
 	sink := output.NewPlainSink(os.Stdout)
-	if firstRun && requestedEmulator == "" && len(appConfig.Containers) > 0 {
+	if firstRun && requestedEmulator == nil && len(appConfig.Containers) > 0 {
 		emName := appConfig.Containers[0].Type.DisplayName()
 		sink.Emit(output.MessageEvent{
 			Severity: output.SeverityNote,
