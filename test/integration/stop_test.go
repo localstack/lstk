@@ -40,11 +40,26 @@ func TestStopCommandFailsWhenNotRunning(t *testing.T) {
 	t.Cleanup(cleanup)
 
 	analyticsSrv, events := mockAnalyticsServer(t)
-	_, stderr, err := runLstk(t, testContext(t), "", env.With(env.AnalyticsEndpoint, analyticsSrv.URL), "stop")
+	stdout, _, err := runLstk(t, testContext(t), "", env.With(env.AnalyticsEndpoint, analyticsSrv.URL), "stop")
 	require.Error(t, err, "expected lstk stop to fail when container not running")
 	requireExitCode(t, 1, err)
-	assert.Contains(t, stderr, "is not running")
+	// Match status: e.g. "LocalStack AWS Emulator is not running".
+	assert.Contains(t, stdout, "LocalStack AWS Emulator is not running")
 	assertCommandTelemetry(t, events, "stop", 1)
+}
+
+func TestStopCommandFailsWhenSnowflakeNotRunning(t *testing.T) {
+	requireDocker(t)
+	cleanupSnowflake()
+	t.Cleanup(cleanupSnowflake)
+
+	configFile := writeSnowflakeConfig(t, "4566")
+
+	stdout, _, err := runLstk(t, testContext(t), "", testEnvWithHome(t.TempDir(), ""), "--config", configFile, "stop")
+	require.Error(t, err, "expected lstk stop to fail when snowflake container not running")
+	requireExitCode(t, 1, err)
+	assert.Contains(t, stdout, "LocalStack Snowflake Emulator is not running",
+		"stop should match status's emulator-specific message")
 }
 
 func TestStopCommandStopsExternalContainer(t *testing.T) {

@@ -73,10 +73,11 @@ const (
 
 // Error codes for start_error lifecycle events.
 const (
-	ErrCodePortConflict    = "port_conflict"
-	ErrCodeImagePullFailed = "image_pull_failed"
-	ErrCodeLicenseInvalid  = "license_invalid"
-	ErrCodeStartFailed     = "start_failed"
+	ErrCodePortConflict      = "port_conflict"
+	ErrCodeImagePullFailed   = "image_pull_failed"
+	ErrCodeLicenseInvalid    = "license_invalid"
+	ErrCodeStartFailed       = "start_failed"
+	ErrCodeEmulatorMismatch  = "emulator_mismatch"
 )
 
 // ToMap converts a telemetry event struct to a map[string]any for use with Emit.

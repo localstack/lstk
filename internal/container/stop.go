@@ -29,7 +29,10 @@ func Stop(ctx context.Context, rt runtime.Runtime, sink output.Sink, containers 
 			return err
 		}
 		if name == "" {
-			return fmt.Errorf("LocalStack is not running")
+			sink.Emit(output.ErrorEvent{
+				Title: fmt.Sprintf("%s is not running", c.DisplayName()),
+			})
+			return output.NewSilentError(fmt.Errorf("%s is not running", c.Name()))
 		}
 
 		// Fetch localstack info before stopping so it can be included in telemetry.
@@ -46,7 +49,7 @@ func Stop(ctx context.Context, rt runtime.Runtime, sink output.Sink, containers 
 		}
 		stopCancel()
 		sink.Emit(output.SpinnerStop())
-		sink.Emit(output.MessageEvent{Severity: output.SeveritySuccess, Text: "LocalStack stopped"})
+		sink.Emit(output.MessageEvent{Severity: output.SeveritySuccess, Text: fmt.Sprintf("%s stopped", c.DisplayName())})
 
 		opts.Telemetry.EmitEmulatorLifecycleEvent(ctx, telemetry.LifecycleEvent{
 			EventType:      telemetry.LifecycleStop,

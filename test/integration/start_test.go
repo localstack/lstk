@@ -205,6 +205,37 @@ port = "4567"
 	assertCommandTelemetry(t, events, "start", 1)
 }
 
+func TestStartCommandFailsOnEmulatorTypeMismatch(t *testing.T) {
+	requireDocker(t)
+	cleanup()
+	cleanupSnowflake()
+	t.Cleanup(cleanup)
+	t.Cleanup(cleanupSnowflake)
+
+	ctx := testContext(t)
+
+	// Tag the test image as a LocalStack pro image to simulate AWS LocalStack running.
+	const fakeImage = "localstack/localstack-pro:test-fake"
+	require.NoError(t, dockerClient.ImageTag(ctx, testImage, fakeImage))
+	t.Cleanup(func() {
+		_, _ = dockerClient.ImageRemove(context.Background(), fakeImage, image.RemoveOptions{})
+	})
+
+	startExternalContainer(t, ctx, fakeImage, "localstack-external-aws", "4566")
+
+	// Start lstk with a Snowflake config on the same port — expect a clear mismatch error.
+	configFile := writeSnowflakeConfig(t, "4566")
+
+	analyticsSrv, events := mockAnalyticsServer(t)
+	stdout, _, err := runLstk(t, ctx, "", env.With(env.AuthToken, "fake-token").With(env.AnalyticsEndpoint, analyticsSrv.URL), "--config", configFile, "start")
+	require.Error(t, err, "lstk start should fail on emulator type mismatch")
+	requireExitCode(t, 1, err)
+	assert.Contains(t, stdout, "LocalStack AWS Emulator is already running on port 4566")
+	assert.Contains(t, stdout, "Your config specifies the LocalStack Snowflake Emulator")
+	assert.Contains(t, stdout, "docker stop localstack-external-aws")
+	assertCommandTelemetry(t, events, "start", 1)
+}
+
 func TestStartCommandSucceedsWithNonDefaultPort(t *testing.T) {
 	requireDocker(t)
 	_ = env.Require(t, env.AuthToken)

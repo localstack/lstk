@@ -65,5 +65,5 @@ func TestLogoutCommandNotesWhenEmulatorStillRunning(t *testing.T) {
 	stdout, stderr, err := runLstk(t, ctx, "", testEnvWithHome(t.TempDir(), ""), "logout")
 	require.NoError(t, err, "lstk logout failed: %s", stderr)
 	requireExitCode(t, 0, err)
-	assert.Contains(t, stdout, "LocalStack is still running in the background")
+	assert.Contains(t, stdout, "LocalStack AWS Emulator is still running in the background")
 }
