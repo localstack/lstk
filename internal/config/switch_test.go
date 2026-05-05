@@ -11,69 +11,60 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestSwitchEmulatorContent_NoOp_AlreadyAWS(t *testing.T) {
+func TestSwitchEmulatorContent(t *testing.T) {
 	t.Parallel()
-	content := "[[containers]]\ntype = \"aws\"\nport = \"4566\"\n"
-	result, changed := switchEmulatorContent(content, EmulatorAWS)
-	assert.False(t, changed)
-	assert.Equal(t, content, result)
-}
-
-func TestSwitchEmulatorContent_NoOp_AlreadySnowflake(t *testing.T) {
-	t.Parallel()
-	content := "[[containers]]\ntype = \"snowflake\"\nport = \"4566\"\n"
-	result, changed := switchEmulatorContent(content, EmulatorSnowflake)
-	assert.False(t, changed)
-	assert.Equal(t, content, result)
-}
-
-func TestSwitchEmulatorContent_CommentAWSAndAppendSnowflake(t *testing.T) {
-	t.Parallel()
-	content := `[[containers]]
+	cases := []struct {
+		name        string
+		content     string
+		to          EmulatorType
+		wantChanged bool
+		contains    []string
+		notContains []string
+	}{
+		{
+			name:        "no-op when already aws",
+			content:     "[[containers]]\ntype = \"aws\"\nport = \"4566\"\n",
+			to:          EmulatorAWS,
+			wantChanged: false,
+		},
+		{
+			name:        "no-op when already snowflake",
+			content:     "[[containers]]\ntype = \"snowflake\"\nport = \"4566\"\n",
+			to:          EmulatorSnowflake,
+			wantChanged: false,
+		},
+		{
+			name: "comments aws block and appends snowflake",
+			content: `[[containers]]
 type = "aws"
 port = "4566"
 
 [cli]
 update_skipped_version = ""
-`
-	result, changed := switchEmulatorContent(content, EmulatorSnowflake)
-	assert.True(t, changed)
-
-	assert.Contains(t, result, "# [[containers]]")
-	assert.Contains(t, result, `# type = "aws"`)
-	assert.Contains(t, result, `# port = "4566"`)
-	assert.Contains(t, result, `type = "snowflake"`)
-	assert.Contains(t, result, "[cli]")
-	// aws block should not appear as active
-	assert.NotContains(t, result, "\n[[containers]]\ntype = \"aws\"")
-}
-
-func TestSwitchEmulatorContent_RestoresCommentedAWS(t *testing.T) {
-	t.Parallel()
-	content := "# [[containers]]\n# type = \"aws\"\n# port = \"4566\"\n\n[[containers]]\ntype = \"snowflake\"\nport = \"4566\"\n"
-	result, changed := switchEmulatorContent(content, EmulatorAWS)
-	assert.True(t, changed)
-
-	assert.Contains(t, result, "[[containers]]\ntype = \"aws\"")
-	assert.Contains(t, result, "# [[containers]]")
-	assert.Contains(t, result, `# type = "snowflake"`)
-	assert.NotContains(t, result, "\n[[containers]]\ntype = \"snowflake\"")
-}
-
-func TestSwitchEmulatorContent_RestoresCommentedSnowflake(t *testing.T) {
-	t.Parallel()
-	content := "[[containers]]\ntype = \"aws\"\nport = \"4566\"\n\n# [[containers]]\n# type = \"snowflake\"\n# port = \"4566\"\n"
-	result, changed := switchEmulatorContent(content, EmulatorSnowflake)
-	assert.True(t, changed)
-
-	assert.Contains(t, result, "[[containers]]\ntype = \"snowflake\"")
-	assert.Contains(t, result, "# [[containers]]")
-	assert.Contains(t, result, `# type = "aws"`)
-}
-
-func TestSwitchEmulatorContent_PreservesNonContainerContent(t *testing.T) {
-	t.Parallel()
-	content := `# lstk configuration file
+`,
+			to:          EmulatorSnowflake,
+			wantChanged: true,
+			contains:    []string{"# [[containers]]", `# type = "aws"`, `# port = "4566"`, `type = "snowflake"`, "[cli]"},
+			notContains: []string{"[[containers]]\ntype = \"aws\""},
+		},
+		{
+			name:        "restores commented aws block",
+			content:     "# [[containers]]\n# type = \"aws\"\n# port = \"4566\"\n\n[[containers]]\ntype = \"snowflake\"\nport = \"4566\"\n",
+			to:          EmulatorAWS,
+			wantChanged: true,
+			contains:    []string{"[[containers]]\ntype = \"aws\"", "# [[containers]]", `# type = "snowflake"`},
+			notContains: []string{"[[containers]]\ntype = \"snowflake\""},
+		},
+		{
+			name:        "restores commented snowflake block",
+			content:     "[[containers]]\ntype = \"aws\"\nport = \"4566\"\n\n# [[containers]]\n# type = \"snowflake\"\n# port = \"4566\"\n",
+			to:          EmulatorSnowflake,
+			wantChanged: true,
+			contains:    []string{"[[containers]]\ntype = \"snowflake\"", "# [[containers]]", `# type = "aws"`},
+		},
+		{
+			name: "preserves non-container content",
+			content: `# lstk configuration file
 
 [[containers]]
 type = "aws"
@@ -85,44 +76,53 @@ port = "4566"
 
 [cli]
 update_skipped_version = "v1.2.3"
-`
-	result, changed := switchEmulatorContent(content, EmulatorSnowflake)
-	assert.True(t, changed)
+`,
+			to:          EmulatorSnowflake,
+			wantChanged: true,
+			contains:    []string{"# lstk configuration file", `update_skipped_version = "v1.2.3"`, "# [env.debug]", `type = "snowflake"`},
+		},
+		{
+			// Original inline comments should be preserved in the commented-out block
+			name:        "preserves inline comments when commenting out block",
+			content:     "[[containers]]\ntype = \"aws\"     # Emulator type\ntag  = \"latest\"  # Docker image tag\nport = \"4566\"    # Host port\n# volume = \"\"    # persistent state\n",
+			to:          EmulatorSnowflake,
+			wantChanged: true,
+			contains:    []string{"# type = \"aws\"     # Emulator type", "# # volume = \"\"    # persistent state"},
+		},
+		{
+			name:        "single-quoted type is recognized",
+			content:     "[[containers]]\ntype = 'aws'\nport = \"4566\"\n",
+			to:          EmulatorSnowflake,
+			wantChanged: true,
+			contains:    []string{`type = "snowflake"`},
+		},
+		{
+			// detectBlockType must not match a commented-out type line inside an active block
+			name:        "commented type line within active block is ignored",
+			content:     "[[containers]]\n# type = \"snowflake\"\ntype = \"aws\"\nport = \"4566\"\n",
+			to:          EmulatorSnowflake,
+			wantChanged: true,
+			contains:    []string{`type = "snowflake"`},
+			notContains: []string{"[[containers]]\ntype = \"aws\""},
+		},
+	}
 
-	assert.Contains(t, result, "# lstk configuration file")
-	assert.Contains(t, result, `update_skipped_version = "v1.2.3"`)
-	assert.Contains(t, result, "# [env.debug]")
-	assert.Contains(t, result, `type = "snowflake"`)
-}
-
-func TestSwitchEmulatorContent_PreservesInlineComments(t *testing.T) {
-	t.Parallel()
-	content := "[[containers]]\ntype = \"aws\"     # Emulator type\ntag  = \"latest\"  # Docker image tag\nport = \"4566\"    # Host port\n# volume = \"\"    # persistent state\n"
-	result, changed := switchEmulatorContent(content, EmulatorSnowflake)
-	assert.True(t, changed)
-
-	// Original inline comments should be preserved in the commented-out block
-	assert.Contains(t, result, "# type = \"aws\"     # Emulator type")
-	assert.Contains(t, result, "# # volume = \"\"    # persistent state")
-}
-
-func TestSwitchEmulatorContent_SingleQuotedType(t *testing.T) {
-	t.Parallel()
-	content := "[[containers]]\ntype = 'aws'\nport = \"4566\"\n"
-	result, changed := switchEmulatorContent(content, EmulatorSnowflake)
-	assert.True(t, changed)
-	assert.Contains(t, result, `type = "snowflake"`)
-}
-
-func TestSwitchEmulatorContent_IgnoresCommentedTypeLine(t *testing.T) {
-	t.Parallel()
-	// A block with a commented-out type line followed by the real type line.
-	// detectBlockType must not match the commented line.
-	content := "[[containers]]\n# type = \"snowflake\"\ntype = \"aws\"\nport = \"4566\"\n"
-	result, changed := switchEmulatorContent(content, EmulatorSnowflake)
-	assert.True(t, changed)
-	assert.Contains(t, result, `type = "snowflake"`)
-	assert.NotContains(t, result, "\n[[containers]]\ntype = \"aws\"")
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			result, changed := switchEmulatorContent(tc.content, tc.to)
+			assert.Equal(t, tc.wantChanged, changed)
+			if !tc.wantChanged {
+				assert.Equal(t, tc.content, result)
+			}
+			for _, s := range tc.contains {
+				assert.Contains(t, result, s)
+			}
+			for _, s := range tc.notContains {
+				assert.NotContains(t, result, s)
+			}
+		})
+	}
 }
 
 func TestSwitchEmulatorContent_RoundTrip(t *testing.T) {
