@@ -165,7 +165,7 @@ func startEmulator(ctx context.Context, rt runtime.Runtime, cfg *env.Env, tel *t
 	}
 
 	if requestedEmulator != "" {
-		emType, err := parseEmulatorType(requestedEmulator)
+		emType, err := config.ParseEmulatorType(requestedEmulator)
 		if err != nil {
 			return err
 		}
@@ -247,17 +247,6 @@ func startEmulator(ctx context.Context, rt runtime.Runtime, cfg *env.Env, tel *t
 	}
 	update.NotifyUpdate(ctx, sink, update.NotifyOptions{GitHubToken: cfg.GitHubToken})
 	return container.Start(ctx, rt, sink, opts, false)
-}
-
-func parseEmulatorType(s string) (config.EmulatorType, error) {
-	switch config.EmulatorType(strings.ToLower(s)) {
-	case config.EmulatorAWS:
-		return config.EmulatorAWS, nil
-	case config.EmulatorSnowflake:
-		return config.EmulatorSnowflake, nil
-	default:
-		return "", fmt.Errorf("unsupported emulator %q: must be 'aws' or 'snowflake'", s)
-	}
 }
 
 // instrumentCommands walks the Cobra command tree and wraps every RunE with telemetry emission.
