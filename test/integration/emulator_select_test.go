@@ -37,7 +37,8 @@ port = "4566"
 	ctx := testContext(t)
 	// The process will fail at container.Start (no Docker / no real auth), but the
 	// config switch happens earlier so the file should already be updated.
-	_, _, _ = runLstk(t, ctx, "", e.With(env.AuthToken, "test-token"), "--emulator", "snowflake", "--non-interactive")
+	_, _, runErr := runLstk(t, ctx, "", e.With(env.AuthToken, "test-token"), "--emulator", "snowflake", "--non-interactive")
+	assert.Error(t, runErr, "expected failure: no Docker available")
 
 	got, err := os.ReadFile(configPath)
 	require.NoError(t, err, "config file should still exist after the run")
@@ -98,6 +99,7 @@ func TestFirstRunNonInteractiveEmitsDefaultEmulatorNote(t *testing.T) {
 	require.NoFileExists(t, configPath)
 
 	// Process fails at container.Start (no Docker), but the note is emitted before that.
-	stdout, _, _ := runLstk(t, testContext(t), "", e.With(env.AuthToken, "test-token"), "--non-interactive")
-	assert.Contains(t, stdout, "defaulting to AWS", "non-interactive first run should note the default emulator")
+	stdout, _, runErr := runLstk(t, testContext(t), "", e.With(env.AuthToken, "test-token"), "--non-interactive")
+	assert.Error(t, runErr, "expected failure: no Docker available")
+	assert.Contains(t, stdout, "Configured with default emulator", "non-interactive first run should note the default emulator")
 }
