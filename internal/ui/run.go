@@ -134,8 +134,8 @@ func selectEmulatorInTUI(
 	sink.Emit(output.UserInputRequestEvent{
 		Prompt: "Which emulator would you like to use?",
 		Options: []output.InputOption{
-			{Key: "a", Label: "AWS [A]"},
-			{Key: "s", Label: "Snowflake [S]"},
+			{Key: "a", Label: "AWS"},
+			{Key: "s", Label: "Snowflake"},
 		},
 		ResponseCh: responseCh,
 		Vertical:   true,
