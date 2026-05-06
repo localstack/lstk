@@ -38,22 +38,51 @@ func TestEmitPostStartPointers_WithWebApp(t *testing.T) {
 	var out bytes.Buffer
 	sink := output.NewPlainSink(&out)
 
-	emitPostStartPointers(sink, "localhost.localstack.cloud:4566", "https://app.localstack.cloud/", true)
+	emitPostStartPointers(sink, config.EmulatorAWS, "localhost.localstack.cloud:4566", "https://app.localstack.cloud/")
 
 	got := out.String()
 	assert.Contains(t, got, "• Endpoint: localhost.localstack.cloud:4566\n")
 	assert.Contains(t, got, "• Web app: https://app.localstack.cloud\n")
 	assert.Contains(t, got, "> Tip:")
+	assert.NotContains(t, got, "• Snowflake endpoint:",
+		"AWS path must not show the snowflake-prefixed endpoint")
 }
 
 func TestEmitPostStartPointers_WithoutWebApp(t *testing.T) {
 	var out bytes.Buffer
 	sink := output.NewPlainSink(&out)
 
-	emitPostStartPointers(sink, "127.0.0.1:4566", "", true)
+	emitPostStartPointers(sink, config.EmulatorAWS, "127.0.0.1:4566", "")
 
 	got := out.String()
 	assert.Contains(t, got, "• Endpoint: 127.0.0.1:4566\n")
+	assert.Contains(t, got, "> Tip:")
+}
+
+func TestEmitPostStartPointers_Snowflake_ReplacesEndpointWithSnowflakeEndpoint(t *testing.T) {
+	var out bytes.Buffer
+	sink := output.NewPlainSink(&out)
+
+	emitPostStartPointers(sink, config.EmulatorSnowflake, "localhost.localstack.cloud:4566", "https://app.localstack.cloud/")
+
+	got := out.String()
+	assert.Contains(t, got, "• Snowflake endpoint: http://snowflake.localhost.localstack.cloud:4566\n")
+	assert.NotContains(t, got, "• Endpoint: localhost.localstack.cloud:4566",
+		"Snowflake should not show the bare endpoint — clients connect via the snowflake-prefixed host")
+	assert.Contains(t, got, "• Web app: https://app.localstack.cloud\n")
+	assert.Contains(t, got, "> Tip:")
+}
+
+func TestEmitPostStartPointers_Snowflake_FallsBackToBareEndpointForIPHost(t *testing.T) {
+	var out bytes.Buffer
+	sink := output.NewPlainSink(&out)
+
+	emitPostStartPointers(sink, config.EmulatorSnowflake, "127.0.0.1:4566", "")
+
+	got := out.String()
+	assert.Contains(t, got, "• Endpoint: 127.0.0.1:4566\n",
+		"falls back to bare endpoint when snowflake.<host> would be invalid")
+	assert.NotContains(t, got, "• Snowflake endpoint:")
 	assert.Contains(t, got, "> Tip:")
 }
 
@@ -175,11 +204,11 @@ func TestSelectContainersToStart_ErrorsOnEmulatorTypeMismatch(t *testing.T) {
 	assert.Contains(t, got, "docker stop localstack-aws")
 }
 
-func TestEmitPostStartPointers_NoTip(t *testing.T) {
+func TestEmitPostStartPointers_UnknownEmulator_NoTip(t *testing.T) {
 	var out bytes.Buffer
 	sink := output.NewPlainSink(&out)
 
-	emitPostStartPointers(sink, "localhost.localstack.cloud:4566", "https://app.localstack.cloud/", false)
+	emitPostStartPointers(sink, config.EmulatorType("other"), "localhost.localstack.cloud:4566", "https://app.localstack.cloud/")
 
 	got := out.String()
 	assert.Contains(t, got, "• Endpoint: localhost.localstack.cloud:4566\n")
