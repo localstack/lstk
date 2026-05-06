@@ -2,7 +2,9 @@ package integration_test
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -176,6 +178,36 @@ func TestStatusCommandForSnowflakeShowsNoResources(t *testing.T) {
 	assert.NotContains(t, stdout, "No resources deployed")
 }
 
+func TestStatusCommandForSnowflakeShowsVersion(t *testing.T) {
+	requireDocker(t)
+	_ = env.Require(t, env.AuthToken)
+
+	cleanup()
+	cleanupSnowflake()
+	t.Cleanup(cleanup)
+	t.Cleanup(cleanupSnowflake)
+
+	mockServer := createMockLicenseServer(true)
+	defer mockServer.Close()
+
+	const hostPort = "4566"
+	configFile := writeSnowflakeConfig(t, hostPort)
+
+	ctx := testContext(t)
+	_, stderr, err := runLstk(t, ctx, "", env.With(env.APIEndpoint, mockServer.URL), "--config", configFile, "start")
+	require.NoError(t, err, "lstk start failed: %s", stderr)
+	requireExitCode(t, 0, err)
+
+	expectedVersion := fetchSnowflakeVersion(t, hostPort)
+
+	stdout, stderr, err := runLstk(t, ctx, "", testEnvWithHome(t.TempDir(), ""), "--config", configFile, "status")
+	require.NoError(t, err, "lstk status failed: %s", stderr)
+	requireExitCode(t, 0, err)
+
+	assert.Contains(t, stdout, "VERSION: "+expectedVersion,
+		"snowflake status should display the version reported by /_localstack/health")
+}
+
 func TestStatusCommandShowsNoResourcesWhenEmpty(t *testing.T) {
 	requireDocker(t)
 	cleanup()
@@ -203,4 +235,19 @@ func TestStatusCommandShowsNoResourcesWhenEmpty(t *testing.T) {
 	require.NoError(t, err, "lstk status failed: %s", stderr)
 	requireExitCode(t, 0, err)
 	assert.Contains(t, stdout, "No resources deployed")
+}
+
+func fetchSnowflakeVersion(t *testing.T, hostPort string) string {
+	t.Helper()
+	resp, err := http.Get(fmt.Sprintf("http://localhost:%s/_localstack/health", hostPort))
+	require.NoError(t, err, "failed to fetch snowflake health")
+	t.Cleanup(func() { _ = resp.Body.Close() })
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err, "failed to read snowflake health body")
+	var h struct {
+		Version string `json:"version"`
+	}
+	require.NoError(t, json.Unmarshal(body, &h), "failed to decode snowflake health: %s", body)
+	require.NotEmpty(t, h.Version, "snowflake health response missing version field")
+	return h.Version
 }

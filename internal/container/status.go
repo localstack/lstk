@@ -15,7 +15,7 @@ import (
 
 const statusTimeout = 10 * time.Second
 
-func Status(ctx context.Context, rt runtime.Runtime, containers []config.ContainerConfig, localStackHost string, emulatorClient emulator.Client, sink output.Sink) error {
+func Status(ctx context.Context, rt runtime.Runtime, containers []config.ContainerConfig, localStackHost string, clients map[config.EmulatorType]emulator.Client, sink output.Sink) error {
 	if err := rt.IsHealthy(ctx); err != nil {
 		rt.EmitUnhealthyError(sink, err)
 		return output.NewSilentError(fmt.Errorf("runtime not healthy: %w", err))
@@ -63,17 +63,16 @@ func Status(ctx context.Context, rt runtime.Runtime, containers []config.Contain
 
 		var version string
 		var rows []emulator.Resource
-		switch c.Type {
-		case config.EmulatorAWS:
+		if client, ok := clients[c.Type]; ok {
 			sink.Emit(output.SpinnerStart("Fetching LocalStack status"))
-			if v, err := emulatorClient.FetchVersion(ctx, host); err != nil {
+			if v, err := client.FetchVersion(ctx, host); err != nil {
 				sink.Emit(output.MessageEvent{Severity: output.SeverityWarning, Text: fmt.Sprintf("Could not fetch version: %v", err)})
 			} else {
 				version = v
 			}
 
 			var fetchErr error
-			rows, fetchErr = emulatorClient.FetchResources(ctx, host)
+			rows, fetchErr = client.FetchResources(ctx, host)
 			sink.Emit(output.SpinnerStop())
 			if fetchErr != nil {
 				return fetchErr
