@@ -100,6 +100,7 @@ func Start(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts Start
 			"LOCALSTACK_AUTH_TOKEN="+token,
 			"GATEWAY_LISTEN=:4566,:443",
 			"MAIN_CONTAINER_NAME="+containerName,
+			"LOCALSTACK_HOST="+endpoint.Hostname+":"+c.Port,
 		)
 
 		env = append(env, hostEnv...)

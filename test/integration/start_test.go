@@ -278,6 +278,12 @@ port = "4567"
 	ctx := testContext(t)
 	_, stderr, err := runLstk(t, ctx, "", env.With(env.APIEndpoint, mockServer.URL), "--config", configFile, "start")
 	require.NoError(t, err, "lstk start failed: %s", stderr)
+
+	inspect, err := dockerClient.ContainerInspect(ctx, containerName)
+	require.NoError(t, err, "failed to inspect container")
+	envVars := containerEnvToMap(inspect.Config.Env)
+	assert.Equal(t, "localhost.localstack.cloud:4567", envVars["LOCALSTACK_HOST"],
+		"LOCALSTACK_HOST must reflect configured host port so LocalStack accepts requests on it")
 }
 
 func TestStartCommandSetsUpContainerCorrectly(t *testing.T) {
@@ -302,6 +308,7 @@ func TestStartCommandSetsUpContainerCorrectly(t *testing.T) {
 		envVars := containerEnvToMap(inspect.Config.Env)
 		assert.Equal(t, ":4566,:443", envVars["GATEWAY_LISTEN"])
 		assert.Equal(t, containerName, envVars["MAIN_CONTAINER_NAME"])
+		assert.Equal(t, "localhost.localstack.cloud:4566", envVars["LOCALSTACK_HOST"])
 		assert.NotEmpty(t, envVars["LOCALSTACK_AUTH_TOKEN"])
 	})
 
