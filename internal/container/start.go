@@ -19,6 +19,7 @@ import (
 	"github.com/localstack/lstk/internal/auth"
 	"github.com/localstack/lstk/internal/awsconfig"
 	"github.com/localstack/lstk/internal/config"
+	"github.com/localstack/lstk/internal/emulator/snowflake"
 	"github.com/localstack/lstk/internal/endpoint"
 	"github.com/localstack/lstk/internal/log"
 	"github.com/localstack/lstk/internal/output"
@@ -202,16 +203,17 @@ func runPostStartSetups(ctx context.Context, sink output.Sink, containers []conf
 		}
 	}
 	for _, t := range uniqueEmulatorTypes {
+		c := firstByType[t]
+		resolvedHost, dnsOK := endpoint.ResolveHost(c.Port, localStackHost)
+		if !dnsOK {
+			sink.Emit(output.MessageEvent{Severity: output.SeverityNote, Text: endpoint.DNSRebindNote})
+		}
 		if setup, ok := setups[t]; ok {
-			resolvedHost, dnsOK := endpoint.ResolveHost(firstByType[t].Port, localStackHost)
-			if !dnsOK {
-				sink.Emit(output.MessageEvent{Severity: output.SeverityNote, Text: endpoint.DNSRebindNote})
-			}
 			if err := setup(ctx, sink, interactive, resolvedHost); err != nil {
 				return err
 			}
-			emitPostStartPointers(sink, resolvedHost, webAppURL, true)
 		}
+		emitPostStartPointers(sink, t, resolvedHost, webAppURL)
 	}
 	return nil
 }
@@ -222,21 +224,37 @@ func emitAlreadyRunning(sink output.Sink, c runtime.ContainerConfig, localStackH
 	if !dnsOK {
 		sink.Emit(output.MessageEvent{Severity: output.SeverityNote, Text: endpoint.DNSRebindNote})
 	}
-	emitPostStartPointers(sink, resolvedHost, webAppURL, c.EmulatorType == config.EmulatorAWS)
+	emitPostStartPointers(sink, c.EmulatorType, resolvedHost, webAppURL)
 }
 
-func emitPostStartPointers(sink output.Sink, resolvedHost, webAppURL string, showTip bool) {
-	sink.Emit(output.MessageEvent{Severity: output.SeveritySecondary, Text: fmt.Sprintf("• Endpoint: %s", resolvedHost)})
+func emitPostStartPointers(sink output.Sink, emulatorType config.EmulatorType, resolvedHost, webAppURL string) {
+	if sfHost := snowflake.Endpoint(resolvedHost); emulatorType == config.EmulatorSnowflake && sfHost != "" {
+		sink.Emit(output.MessageEvent{Severity: output.SeveritySecondary, Text: fmt.Sprintf("• Snowflake endpoint: %s", sfHost)})
+	} else {
+		sink.Emit(output.MessageEvent{Severity: output.SeveritySecondary, Text: fmt.Sprintf("• Endpoint: %s", resolvedHost)})
+	}
 	if webAppURL != "" {
 		sink.Emit(output.MessageEvent{Severity: output.SeveritySecondary, Text: fmt.Sprintf("• Web app: %s", strings.TrimRight(webAppURL, "/"))})
 	}
-	if showTip {
-		tips := []string{
+	if tips := tipsForType(emulatorType); len(tips) > 0 {
+		sink.Emit(output.MessageEvent{Severity: output.SeveritySecondary, Text: tips[rand.IntN(len(tips))]})
+	}
+}
+
+func tipsForType(t config.EmulatorType) []string {
+	switch t {
+	case config.EmulatorAWS:
+		return []string{
 			"> Tip: View emulator logs: lstk logs --follow",
 			"> Tip: View deployed resources: lstk status",
 		}
-		sink.Emit(output.MessageEvent{Severity: output.SeveritySecondary, Text: tips[rand.IntN(len(tips))]})
+	case config.EmulatorSnowflake:
+		return []string{
+			"> Tip: View emulator logs: lstk logs --follow",
+			"> Tip: Check emulator status: lstk status",
+		}
 	}
+	return nil
 }
 
 func pullImages(ctx context.Context, rt runtime.Runtime, sink output.Sink, tel *telemetry.Client, containers []runtime.ContainerConfig) (map[string]bool, error) {

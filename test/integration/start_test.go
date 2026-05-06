@@ -621,7 +621,7 @@ func TestStartCommandSucceedsForSnowflake(t *testing.T) {
 	configFile := writeSnowflakeConfig(t, hostPort)
 
 	ctx := testContext(t)
-	_, stderr, err := runLstk(t, ctx, "", env.With(env.APIEndpoint, mockServer.URL), "--config", configFile, "start")
+	stdout, stderr, err := runLstk(t, ctx, "", env.With(env.APIEndpoint, mockServer.URL), "--config", configFile, "start")
 	require.NoError(t, err, "lstk start failed: %s", stderr)
 	requireExitCode(t, 0, err)
 
@@ -635,4 +635,11 @@ func TestStartCommandSucceedsForSnowflake(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = resp.Body.Close() })
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
+
+	assert.Contains(t, stdout, "• Snowflake endpoint: http://snowflake.",
+		"snowflake start should print the snowflake-prefixed endpoint hint")
+	assert.NotContains(t, stdout, "• Endpoint: localhost.localstack.cloud",
+		"snowflake start should not print the bare AWS-style endpoint line")
+	assert.Contains(t, stdout, "> Tip:",
+		"snowflake start should print a tip line like AWS does")
 }
