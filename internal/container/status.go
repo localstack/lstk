@@ -7,6 +7,7 @@ import (
 
 	"github.com/localstack/lstk/internal/config"
 	"github.com/localstack/lstk/internal/emulator"
+	"github.com/localstack/lstk/internal/emulator/snowflake"
 	"github.com/localstack/lstk/internal/endpoint"
 	"github.com/localstack/lstk/internal/output"
 	"github.com/localstack/lstk/internal/runtime"
@@ -49,6 +50,11 @@ func Status(ctx context.Context, rt runtime.Runtime, containers []config.Contain
 			}
 		}
 		host, _ := endpoint.ResolveHost(port, localStackHost)
+		if c.Type == config.EmulatorSnowflake {
+			if h := snowflake.Hostname(host); h != "" {
+				host = h
+			}
+		}
 
 		var uptime time.Duration
 		if startedAt, err := rt.ContainerStartedAt(ctx, name); err == nil {

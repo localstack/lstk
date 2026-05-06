@@ -169,6 +169,8 @@ func TestStatusCommandForSnowflakeShowsNoResources(t *testing.T) {
 
 	assert.Contains(t, stdout, "Snowflake")
 	assert.Contains(t, stdout, "running")
+	assert.Contains(t, stdout, "snowflake.localhost.localstack.cloud:4566",
+		"snowflake status should display the snowflake-routed host clients use to connect")
 	// Snowflake does not expose AWS resources — no resource table or empty-state message.
 	assert.NotContains(t, stdout, "SERVICE")
 	assert.NotContains(t, stdout, "No resources deployed")

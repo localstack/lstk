@@ -229,8 +229,8 @@ func emitAlreadyRunning(sink output.Sink, c runtime.ContainerConfig, localStackH
 }
 
 func emitPostStartPointers(sink output.Sink, emulatorType config.EmulatorType, resolvedHost, webAppURL string) {
-	if sfHost := snowflake.Endpoint(resolvedHost); emulatorType == config.EmulatorSnowflake && sfHost != "" {
-		sink.Emit(output.MessageEvent{Severity: output.SeveritySecondary, Text: fmt.Sprintf("• Snowflake endpoint: %s", sfHost)})
+	if sfHost := snowflake.Hostname(resolvedHost); emulatorType == config.EmulatorSnowflake && sfHost != "" {
+		sink.Emit(output.MessageEvent{Severity: output.SeveritySecondary, Text: fmt.Sprintf("• Snowflake endpoint: http://%s", sfHost)})
 	} else {
 		sink.Emit(output.MessageEvent{Severity: output.SeveritySecondary, Text: fmt.Sprintf("• Endpoint: %s", resolvedHost)})
 	}
