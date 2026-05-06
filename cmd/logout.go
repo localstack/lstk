@@ -52,8 +52,8 @@ func newLogoutCmd(cfg *env.Env, logger log.Logger) *cobra.Command {
 			}
 
 			if rt != nil {
-				if running, err := container.AnyRunning(cmd.Context(), rt, appConfig.Containers); err == nil && running {
-					sink.Emit(output.MessageEvent{Severity: output.SeverityNote, Text: "LocalStack is still running in the background"})
+				if running, err := container.RunningEmulators(cmd.Context(), rt, appConfig.Containers); err == nil && len(running) > 0 {
+					sink.Emit(output.MessageEvent{Severity: output.SeverityNote, Text: container.StillRunningMessage(running)})
 				}
 			}
 			return nil

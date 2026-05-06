@@ -40,11 +40,57 @@ func TestStopCommandFailsWhenNotRunning(t *testing.T) {
 	t.Cleanup(cleanup)
 
 	analyticsSrv, events := mockAnalyticsServer(t)
-	_, stderr, err := runLstk(t, testContext(t), "", env.With(env.AnalyticsEndpoint, analyticsSrv.URL), "stop")
+	stdout, _, err := runLstk(t, testContext(t), "", env.With(env.AnalyticsEndpoint, analyticsSrv.URL), "stop")
 	require.Error(t, err, "expected lstk stop to fail when container not running")
 	requireExitCode(t, 1, err)
-	assert.Contains(t, stderr, "is not running")
+	assert.Contains(t, stdout, "LocalStack AWS Emulator is not running")
 	assertCommandTelemetry(t, events, "stop", 1)
+}
+
+func TestStopCommandReportsEmulatorSpecificNotRunningMessage(t *testing.T) {
+	requireDocker(t)
+	cleanupSnowflake()
+	t.Cleanup(cleanupSnowflake)
+
+	configFile := writeSnowflakeConfig(t, "4566")
+
+	analyticsSrv, events := mockAnalyticsServer(t)
+	e := env.Environ(testEnvWithHome(t.TempDir(), "")).With(env.AnalyticsEndpoint, analyticsSrv.URL)
+	stdout, _, err := runLstk(t, testContext(t), "", e, "--config", configFile, "stop")
+	require.Error(t, err, "expected lstk stop to fail when snowflake container not running")
+	requireExitCode(t, 1, err)
+	assert.Contains(t, stdout, "LocalStack Snowflake Emulator is not running",
+		"stop should match status's emulator-specific message")
+	assertCommandTelemetry(t, events, "stop", 1)
+}
+
+func TestStopCommandIgnoresForeignEmulatorOnPort(t *testing.T) {
+	requireDocker(t)
+	cleanup()
+	cleanupSnowflake()
+	t.Cleanup(cleanup)
+	t.Cleanup(cleanupSnowflake)
+
+	ctx := testContext(t)
+
+	// AWS image running on 4566 while config targets snowflake.
+	const fakeImage = "localstack/localstack-pro:test-fake"
+	require.NoError(t, dockerClient.ImageTag(ctx, testImage, fakeImage))
+	t.Cleanup(func() {
+		_, _ = dockerClient.ImageRemove(context.Background(), fakeImage, image.RemoveOptions{})
+	})
+	startExternalContainer(t, ctx, fakeImage, "localstack-external-aws", "4566")
+
+	configFile := writeSnowflakeConfig(t, "4566")
+
+	stdout, _, err := runLstk(t, testContext(t), "", testEnvWithHome(t.TempDir(), ""), "--config", configFile, "stop")
+	require.Error(t, err, "lstk stop should not match foreign emulator on configured port")
+	requireExitCode(t, 1, err)
+	assert.Contains(t, stdout, "LocalStack Snowflake Emulator is not running")
+	assert.NotContains(t, stdout, "stopped", "should not have stopped the AWS container")
+
+	_, inspectErr := dockerClient.ContainerInspect(ctx, "localstack-external-aws")
+	assert.NoError(t, inspectErr, "AWS container should still exist after snowflake-targeted stop")
 }
 
 func TestStopCommandStopsExternalContainer(t *testing.T) {

@@ -25,14 +25,55 @@ var emulatorDisplayNames = map[EmulatorType]string{
 	EmulatorAzure:     "Azure",
 }
 
-var emulatorImages = map[EmulatorType]string{
-	EmulatorAWS:       "localstack-pro",
-	EmulatorSnowflake: "snowflake",
-}
-
 var emulatorHealthPaths = map[EmulatorType]string{
 	EmulatorAWS:       "/_localstack/health",
 	EmulatorSnowflake: "/_localstack/health",
+}
+
+var knownImages = []struct {
+	Type        EmulatorType
+	ProductName string
+	Default     bool
+}{
+	{EmulatorAWS, "localstack-pro", true},
+	{EmulatorAWS, "localstack", false},
+	{EmulatorSnowflake, "snowflake", true},
+}
+
+func EmulatorTypeForImage(image string) EmulatorType {
+	repo, _, _ := strings.Cut(image, ":")
+	for _, e := range knownImages {
+		if dockerRegistry+"/"+e.ProductName == repo {
+			return e.Type
+		}
+	}
+	return ""
+}
+
+func KnownImageRepos() []string {
+	repos := make([]string, len(knownImages))
+	for i, e := range knownImages {
+		repos[i] = dockerRegistry + "/" + e.ProductName
+	}
+	return repos
+}
+
+func KnownImageReposForType(t EmulatorType) []string {
+	var repos []string
+	for _, e := range knownImages {
+		if e.Type == t {
+			repos = append(repos, dockerRegistry+"/"+e.ProductName)
+		}
+	}
+	return repos
+}
+
+func DisplayNameForType(t EmulatorType) string {
+	name, ok := emulatorDisplayNames[t]
+	if !ok {
+		return fmt.Sprintf("LocalStack %s Emulator", t)
+	}
+	return fmt.Sprintf("LocalStack %s Emulator", name)
 }
 
 type ContainerConfig struct {
@@ -127,18 +168,14 @@ func (c *ContainerConfig) ContainerPort() (string, error) {
 }
 
 func (c *ContainerConfig) DisplayName() string {
-	name, ok := emulatorDisplayNames[c.Type]
-	if !ok {
-		return fmt.Sprintf("LocalStack %s Emulator", c.Type)
-	}
-	return fmt.Sprintf("LocalStack %s Emulator", name)
+	return DisplayNameForType(c.Type)
 }
 
 func (c *ContainerConfig) ProductName() (string, error) {
-	productName, ok := emulatorImages[c.Type]
-	if !ok {
-		return "", fmt.Errorf("%s emulator not supported yet by lstk", c.Type)
+	for _, e := range knownImages {
+		if e.Default && e.Type == c.Type {
+			return e.ProductName, nil
+		}
 	}
-	return productName, nil
+	return "", fmt.Errorf("%s emulator not supported yet by lstk", c.Type)
 }
-

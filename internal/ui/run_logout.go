@@ -37,8 +37,8 @@ func RunLogout(parentCtx context.Context, rt runtime.Runtime, platformClient api
 		a := auth.New(sink, platformClient, tokenStorage, authToken, "", false, licenseFilePath)
 		err = a.Logout()
 		if err == nil && rt != nil {
-			if running, runningErr := container.AnyRunning(ctx, rt, containers); runningErr == nil && running {
-				sink.Emit(output.MessageEvent{Severity: output.SeverityNote, Text: "LocalStack is still running in the background"})
+			if running, runningErr := container.RunningEmulators(ctx, rt, containers); runningErr == nil && len(running) > 0 {
+				sink.Emit(output.MessageEvent{Severity: output.SeverityNote, Text: container.StillRunningMessage(running)})
 			}
 		}
 

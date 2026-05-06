@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"runtime"
 
+	"github.com/localstack/lstk/internal/config"
 	"github.com/localstack/lstk/internal/version"
 )
 
@@ -32,9 +33,9 @@ type LocalStackInfo struct {
 
 // CommandEvent is the payload for an lstk_command telemetry event.
 type CommandEvent struct {
-	Environment Environment      `json:"environment"`
+	Environment Environment       `json:"environment"`
 	Parameters  CommandParameters `json:"parameters"`
-	Result      CommandResult    `json:"result"`
+	Result      CommandResult     `json:"result"`
 }
 
 // CommandParameters holds the command name and set flags.
@@ -52,16 +53,16 @@ type CommandResult struct {
 
 // LifecycleEvent is the payload for an lstk_lifecycle telemetry event.
 type LifecycleEvent struct {
-	EventType      string          `json:"event_type"`
-	Environment    Environment     `json:"environment"`
-	Emulator       string          `json:"emulator"`
-	Image          string          `json:"image,omitempty"`
-	ContainerID    string          `json:"container_id,omitempty"`
-	DurationMS     int64           `json:"duration_ms,omitempty"`
-	Pulled         bool            `json:"pulled,omitempty"`
-	LocalStackInfo *LocalStackInfo `json:"localstack_info,omitempty"`
-	ErrorCode      string          `json:"error_code,omitempty"`
-	ErrorMsg       string          `json:"error_msg,omitempty"`
+	EventType      string              `json:"event_type"`
+	Environment    Environment         `json:"environment"`
+	Emulator       config.EmulatorType `json:"emulator"`
+	Image          string              `json:"image,omitempty"`
+	ContainerID    string              `json:"container_id,omitempty"`
+	DurationMS     int64               `json:"duration_ms,omitempty"`
+	Pulled         bool                `json:"pulled,omitempty"`
+	LocalStackInfo *LocalStackInfo     `json:"localstack_info,omitempty"`
+	ErrorCode      string              `json:"error_code,omitempty"`
+	ErrorMsg       string              `json:"error_msg,omitempty"`
 }
 
 // Lifecycle event type constants.
@@ -73,10 +74,11 @@ const (
 
 // Error codes for start_error lifecycle events.
 const (
-	ErrCodePortConflict    = "port_conflict"
-	ErrCodeImagePullFailed = "image_pull_failed"
-	ErrCodeLicenseInvalid  = "license_invalid"
-	ErrCodeStartFailed     = "start_failed"
+	ErrCodePortConflict     = "port_conflict"
+	ErrCodeImagePullFailed  = "image_pull_failed"
+	ErrCodeLicenseInvalid   = "license_invalid"
+	ErrCodeStartFailed      = "start_failed"
+	ErrCodeEmulatorMismatch = "emulator_mismatch"
 )
 
 // ToMap converts a telemetry event struct to a map[string]any for use with Emit.

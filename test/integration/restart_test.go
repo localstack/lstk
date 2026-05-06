@@ -77,9 +77,9 @@ func TestRestartCommandFailsWhenNotRunning(t *testing.T) {
 	t.Cleanup(cleanup)
 
 	analyticsSrv, events := mockAnalyticsServer(t)
-	_, stderr, err := runLstk(t, testContext(t), "", env.With(env.AnalyticsEndpoint, analyticsSrv.URL), "restart")
+	stdout, _, err := runLstk(t, testContext(t), "", env.With(env.AnalyticsEndpoint, analyticsSrv.URL), "restart")
 	require.Error(t, err, "expected lstk restart to fail when emulator is not running")
 	requireExitCode(t, 1, err)
-	assert.Contains(t, stderr, "is not running")
+	assert.Contains(t, stdout, "LocalStack AWS Emulator is not running")
 	assertCommandTelemetry(t, events, "restart", 1)
 }
