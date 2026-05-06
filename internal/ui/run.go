@@ -157,15 +157,15 @@ func selectEmulatorInTUI(
 		selected = config.EmulatorSnowflake
 	}
 
-	if err := config.SwitchEmulator(selected); err != nil {
-		return nil, fmt.Errorf("failed to switch emulator: %w", err)
+	if err := config.SetEmulatorType(selected); err != nil {
+		return nil, fmt.Errorf("failed to set emulator type: %w", err)
 	}
 	newCfg, err := config.Get()
 	if err != nil {
 		return nil, err
 	}
 
-	sink.Emit(output.MessageEvent{Severity: output.SeverityNote, Text: selected.DisplayName() + " emulator selected."})
+	sink.Emit(output.MessageEvent{Severity: output.SeveritySuccess, Text: selected.DisplayName() + " emulator selected."})
 	if configPath != "" {
 		sink.Emit(output.MessageEvent{Severity: output.SeveritySecondary, Text: "Change configuration in " + configPath + "."})
 	}

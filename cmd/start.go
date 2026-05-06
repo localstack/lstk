@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"github.com/localstack/lstk/internal/config"
 	"github.com/localstack/lstk/internal/env"
 	"github.com/localstack/lstk/internal/log"
 	"github.com/localstack/lstk/internal/runtime"
@@ -17,14 +16,6 @@ func newStartCmd(cfg *env.Env, tel *telemetry.Client, logger log.Logger) *cobra.
 		Long:    "Start emulator and services.",
 		PreRunE: initConfigCapturingFirstRun(&firstRun),
 		RunE: func(c *cobra.Command, args []string) error {
-			emulatorStr, err := c.Flags().GetString("emulator")
-			if err != nil {
-				return err
-			}
-			requestedEmulator, err := config.ParseOptionalEmulatorType(emulatorStr)
-			if err != nil {
-				return err
-			}
 			rt, err := runtime.NewDockerRuntime(cfg.DockerHost)
 			if err != nil {
 				return err
@@ -33,10 +24,9 @@ func newStartCmd(cfg *env.Env, tel *telemetry.Client, logger log.Logger) *cobra.
 			if err != nil {
 				return err
 			}
-			return startEmulator(c.Context(), rt, cfg, tel, logger, persist, firstRun, requestedEmulator)
+			return startEmulator(c.Context(), rt, cfg, tel, logger, persist, firstRun)
 		},
 	}
 	cmd.Flags().Bool("persist", false, "Enable local persistence (sets LOCALSTACK_PERSISTENCE=1)")
-	cmd.Flags().String("emulator", "", "Emulator to use (aws|snowflake)")
 	return cmd
 }

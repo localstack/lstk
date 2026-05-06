@@ -17,35 +17,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestEmulatorFlagSwitchesConfigToSnowflake(t *testing.T) {
-	t.Parallel()
-	// config.SwitchEmulator writes the file before container.Start is called,
-	// so we can verify the switch even when the process ultimately fails (no Docker).
-	tmpHome := t.TempDir()
-	require.NoError(t, os.MkdirAll(filepath.Join(tmpHome, ".config"), 0755))
-	e := env.Environ(testEnvWithHome(tmpHome, tmpHome)).With(env.DisableEvents, "1")
-
-	configDir := filepath.Join(tmpHome, ".config", "lstk")
-	require.NoError(t, os.MkdirAll(configDir, 0755))
-	configPath := filepath.Join(configDir, "config.toml")
-	require.NoError(t, os.WriteFile(configPath, []byte(`[[containers]]
-type = "aws"
-tag  = "latest"
-port = "4566"
-`), 0644))
-
-	ctx := testContext(t)
-	// The process will fail at container.Start (no Docker / no real auth), but the
-	// config switch happens earlier so the file should already be updated.
-	_, _, runErr := runLstk(t, ctx, "", e.With(env.AuthToken, "test-token"), "--emulator", "snowflake", "--non-interactive")
-	assert.Error(t, runErr, "expected failure: no Docker available")
-
-	got, err := os.ReadFile(configPath)
-	require.NoError(t, err, "config file should still exist after the run")
-	assert.Contains(t, string(got), `type = "snowflake"`, "config should be switched to snowflake")
-	assert.NotContains(t, string(got), "\n[[containers]]\ntype = \"aws\"", "original aws block should be commented out")
-}
-
 func TestFirstRunShowsEmulatorSelectionPrompt(t *testing.T) {
 	t.Parallel()
 	if runtime.GOOS == "windows" {
