@@ -170,7 +170,7 @@ func TestSelectContainersToStart_ErrorsOnEmulatorTypeMismatch(t *testing.T) {
 	assert.True(t, output.IsSilent(err), "error should be silent since it was already emitted")
 	assert.Empty(t, result)
 	got := out.String()
-	assert.Contains(t, got, "LocalStack AWS Emulator is already running on port 4566")
+	assert.Contains(t, got, "LocalStack AWS Emulator is running on port 4566")
 	assert.Contains(t, got, "Your config specifies the LocalStack Snowflake Emulator")
 	assert.Contains(t, got, "docker stop localstack-aws")
 }

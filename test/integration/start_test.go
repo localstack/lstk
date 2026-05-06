@@ -230,7 +230,7 @@ func TestStartCommandFailsOnEmulatorTypeMismatch(t *testing.T) {
 	stdout, _, err := runLstk(t, ctx, "", env.With(env.AuthToken, "fake-token").With(env.AnalyticsEndpoint, analyticsSrv.URL), "--config", configFile, "start")
 	require.Error(t, err, "lstk start should fail on emulator type mismatch")
 	requireExitCode(t, 1, err)
-	assert.Contains(t, stdout, "LocalStack AWS Emulator is already running on port 4566")
+	assert.Contains(t, stdout, "LocalStack AWS Emulator is running on port 4566")
 	assert.Contains(t, stdout, "Your config specifies the LocalStack Snowflake Emulator")
 	assert.Contains(t, stdout, "docker stop localstack-external-aws")
 

@@ -396,7 +396,7 @@ func selectContainersToStart(ctx context.Context, rt runtime.Runtime, sink outpu
 			foundType := config.EmulatorTypeForImage(found.Image)
 			if foundType != "" && foundType != c.EmulatorType {
 				sink.Emit(output.ErrorEvent{
-					Title:   fmt.Sprintf("%s is already running on port %s", config.DisplayNameForType(foundType), found.BoundPort),
+					Title:   fmt.Sprintf("%s is running on port %s", config.DisplayNameForType(foundType), found.BoundPort),
 					Summary: fmt.Sprintf("Your config specifies the %s. Only one emulator can run on a port at a time.", config.DisplayNameForType(c.EmulatorType)),
 					Actions: []output.ErrorAction{
 						{Label: "Stop the running emulator:", Value: fmt.Sprintf("docker stop %s", found.Name)},
