@@ -6,7 +6,9 @@ import (
 
 	"github.com/localstack/lstk/internal/config"
 	"github.com/localstack/lstk/internal/container"
+	"github.com/localstack/lstk/internal/emulator"
 	"github.com/localstack/lstk/internal/emulator/aws"
+	"github.com/localstack/lstk/internal/emulator/snowflake"
 	"github.com/localstack/lstk/internal/env"
 	"github.com/localstack/lstk/internal/output"
 	"github.com/localstack/lstk/internal/runtime"
@@ -30,12 +32,15 @@ func newStatusCmd(cfg *env.Env) *cobra.Command {
 				return fmt.Errorf("failed to get config: %w", err)
 			}
 
-			awsClient := aws.NewClient()
+			clients := map[config.EmulatorType]emulator.Client{
+				config.EmulatorAWS:       aws.NewClient(),
+				config.EmulatorSnowflake: snowflake.NewClient(),
+			}
 
 			if isInteractiveMode(cfg) {
-				return ui.RunStatus(cmd.Context(), rt, appCfg.Containers, cfg.LocalStackHost, awsClient)
+				return ui.RunStatus(cmd.Context(), rt, appCfg.Containers, cfg.LocalStackHost, clients)
 			}
-			return container.Status(cmd.Context(), rt, appCfg.Containers, cfg.LocalStackHost, awsClient, output.NewPlainSink(os.Stdout))
+			return container.Status(cmd.Context(), rt, appCfg.Containers, cfg.LocalStackHost, clients, output.NewPlainSink(os.Stdout))
 		},
 	}
 }
