@@ -21,3 +21,5 @@ jobs:
         uses: linear/linear-release-action@v0
         with:
           access_key: ${{ secrets.LINEAR_ACCESS_KEY }}
+          name: ${{ github.ref_name }}
+          version: ${{ github.ref_name }}
