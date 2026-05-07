@@ -3,11 +3,9 @@ package ui
 import (
 	"context"
 	"errors"
-	"fmt"
 	"os"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/localstack/lstk/internal/config"
 	"github.com/localstack/lstk/internal/container"
 	"github.com/localstack/lstk/internal/output"
 	"github.com/localstack/lstk/internal/runtime"
@@ -71,14 +69,14 @@ func Run(parentCtx context.Context, runOpts RunOptions) error {
 		// headerLabelMsg always arrives even if NotifyUpdate returns early (update case).
 		// When emulator selection is needed, resolution starts after the user picks.
 		if !runOpts.NeedsEmulatorSelection {
-			go resolveAndCacheLabel(ctx, runOpts.StartOptions, labelCh)
+			go container.ResolveAndCacheLabel(ctx, runOpts.StartOptions, labelCh)
 		}
 		if update.NotifyUpdate(ctx, sink, runOpts.NotifyOptions) {
 			p.Send(runDoneMsg{})
 			return
 		}
 		if runOpts.NeedsEmulatorSelection {
-			newContainers, selErr := selectEmulatorInTUI(ctx, sink, runOpts.ConfigPath)
+			newContainers, selErr := container.SelectEmulator(ctx, sink, runOpts.ConfigPath)
 			if selErr != nil {
 				if errors.Is(selErr, context.Canceled) {
 					return
@@ -87,7 +85,7 @@ func Run(parentCtx context.Context, runOpts RunOptions) error {
 				return
 			}
 			runOpts.StartOptions.Containers = newContainers
-			go resolveAndCacheLabel(ctx, runOpts.StartOptions, labelCh)
+			go container.ResolveAndCacheLabel(ctx, runOpts.StartOptions, labelCh)
 		}
 		err = container.Start(ctx, runOpts.Runtime, sink, runOpts.StartOptions, true)
 		if err != nil {
@@ -115,62 +113,6 @@ func Run(parentCtx context.Context, runOpts RunOptions) error {
 	}
 
 	return nil
-}
-
-func resolveAndCacheLabel(ctx context.Context, opts container.StartOptions, labelCh chan<- string) {
-	label, ok := container.ResolveEmulatorLabel(ctx, opts.PlatformClient, opts.Containers, opts.AuthToken, opts.Logger)
-	if ok {
-		config.CachePlanLabel(label)
-	}
-	labelCh <- label
-}
-
-func selectEmulatorInTUI(
-	ctx context.Context,
-	sink output.Sink,
-	configPath string,
-) ([]config.ContainerConfig, error) {
-	responseCh := make(chan output.InputResponse, 1)
-	sink.Emit(output.UserInputRequestEvent{
-		Prompt: "Which emulator would you like to use?",
-		Options: []output.InputOption{
-			{Key: "a", Label: "AWS"},
-			{Key: "s", Label: "Snowflake"},
-		},
-		ResponseCh: responseCh,
-		Vertical:   true,
-	})
-
-	var resp output.InputResponse
-	select {
-	case resp = <-responseCh:
-	case <-ctx.Done():
-		return nil, context.Canceled
-	}
-
-	if resp.Cancelled {
-		return nil, context.Canceled
-	}
-
-	selected := config.EmulatorAWS
-	if resp.SelectedKey == "s" {
-		selected = config.EmulatorSnowflake
-	}
-
-	if err := config.SetEmulatorType(selected); err != nil {
-		return nil, fmt.Errorf("failed to set emulator type: %w", err)
-	}
-	newCfg, err := config.Get()
-	if err != nil {
-		return nil, err
-	}
-
-	sink.Emit(output.MessageEvent{Severity: output.SeveritySuccess, Text: selected.DisplayName() + " emulator selected."})
-	if configPath != "" {
-		sink.Emit(output.MessageEvent{Severity: output.SeveritySecondary, Text: "Change configuration in " + configPath + "."})
-	}
-
-	return newCfg.Containers, nil
 }
 
 func IsInteractive() bool {
