@@ -369,11 +369,24 @@ func startContainers(ctx context.Context, rt runtime.Runtime, sink output.Sink, 
 		sink.Emit(output.ContainerStatusEvent{Phase: "waiting", Container: c.Name})
 		healthURL := fmt.Sprintf("http://localhost:%s%s", c.Port, c.HealthPath)
 		if err := awaitStartup(ctx, rt, sink, containerID, "LocalStack", healthURL); err != nil {
+			errCode := telemetry.ErrCodeStartFailed
+			var licErr *licenseNotCoveredError
+			if errors.As(err, &licErr) && c.EmulatorType == config.EmulatorSnowflake {
+				errCode = telemetry.ErrCodeLicenseInvalid
+				sink.Emit(output.ErrorEvent{
+					Title: "Your license does not include the Snowflake emulator.",
+					Actions: []output.ErrorAction{
+						{Label: "Sign up for a free trial:", Value: "https://app.localstack.cloud/sign-up"},
+						{Label: "Contact our team:", Value: "https://www.localstack.cloud/demo"},
+					},
+				})
+				err = output.NewSilentError(err)
+			}
 			tel.EmitEmulatorLifecycleEvent(ctx, telemetry.LifecycleEvent{
 				EventType: telemetry.LifecycleStartError,
 				Emulator:  c.EmulatorType,
 				Image:     c.Image,
-				ErrorCode: telemetry.ErrCodeStartFailed,
+				ErrorCode: errCode,
 				ErrorMsg:  err.Error(),
 			})
 			return err
@@ -568,6 +581,14 @@ func validateLicense(ctx context.Context, sink output.Sink, opts StartOptions, c
 	return nil
 }
 
+// licenseNotCoveredError is returned by awaitStartup when the container exits
+// because it does not include (snowflake) emulator.
+type licenseNotCoveredError struct{}
+
+func (e *licenseNotCoveredError) Error() string {
+	return "license does not include this emulator"
+}
+
 // awaitStartup polls until one of two outcomes:
 //   - Success: health endpoint returns 200 (license is valid, LocalStack is ready)
 //   - Failure: container stops running (e.g., license activation failed), returns error with container logs
@@ -583,6 +604,9 @@ func awaitStartup(ctx context.Context, rt runtime.Runtime, sink output.Sink, con
 		}
 		if !running {
 			logs, logsErr := rt.Logs(ctx, containerID, 20)
+			if logsErr == nil && strings.Contains(logs, "not covered by your license") {
+				return &licenseNotCoveredError{}
+			}
 			if logsErr != nil || logs == "" {
 				return fmt.Errorf("%s exited unexpectedly", name)
 			}

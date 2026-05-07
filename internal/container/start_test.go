@@ -252,3 +252,49 @@ func TestFilterHostEnv(t *testing.T) {
 	assert.NotContains(t, got, "HOME=/home/user")
 	assert.NotContains(t, got, "CI_PIPELINE=foo", "only exact CI= must be forwarded, not CI_*")
 }
+
+func TestStartContainers_SnowflakeLicenseError(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockRT := runtime.NewMockRuntime(ctrl)
+
+	c := runtime.ContainerConfig{
+		Image:         "localstack/snowflake:latest",
+		Name:          "localstack-snowflake",
+		EmulatorType:  config.EmulatorSnowflake,
+		Tag:           "latest",
+		Port:          "4566",
+		ContainerPort: "4566/tcp",
+		HealthPath:    "/_localstack/health",
+	}
+	const containerID = "abc123"
+	licenseLog := "⚠️ The Snowflake emulator is currently not covered by your license. ❄️"
+	mockRT.EXPECT().Start(gomock.Any(), c).Return(containerID, nil)
+	mockRT.EXPECT().IsRunning(gomock.Any(), containerID).Return(false, nil)
+	mockRT.EXPECT().Logs(gomock.Any(), containerID, 20).Return(licenseLog, nil)
+
+	tel, capturedEvents := newCapturingTelClient(t)
+
+	var out bytes.Buffer
+	sink := output.NewPlainSink(&out)
+
+	err := startContainers(context.Background(), mockRT, sink, tel, []runtime.ContainerConfig{c}, map[string]bool{})
+	tel.Close()
+
+	require.Error(t, err)
+	assert.True(t, output.IsSilent(err), "error should be silent since ErrorEvent was already emitted")
+	got := out.String()
+	assert.Contains(t, got, "Your license does not include the Snowflake emulator.")
+	assert.Contains(t, got, "https://app.localstack.cloud/sign-up")
+	assert.Contains(t, got, "https://www.localstack.cloud/demo")
+
+	select {
+	case ev := <-capturedEvents:
+		payload, ok := ev["payload"].(map[string]any)
+		require.True(t, ok, "telemetry event should have a payload map")
+		assert.Equal(t, telemetry.LifecycleStartError, payload["event_type"])
+		assert.Equal(t, telemetry.ErrCodeLicenseInvalid, payload["error_code"])
+		assert.Equal(t, "snowflake", payload["emulator"])
+	default:
+		t.Fatal("no telemetry event received")
+	}
+}
