@@ -54,6 +54,20 @@ func TestFirstRunShowsEmulatorSelectionPrompt(t *testing.T) {
 		return bytes.Contains(out.Bytes(), []byte("Which emulator would you like to use?"))
 	}, 10*time.Second, 100*time.Millisecond, "emulator selection prompt should appear on first run")
 
+	// Confirm the default-highlighted option (AWS) by pressing Enter.
+	_, err = ptmx.Write([]byte("\r"))
+	require.NoError(t, err)
+
+	require.Eventually(t, func() bool {
+		return bytes.Contains(out.Bytes(), []byte("AWS emulator selected."))
+	}, 10*time.Second, 100*time.Millisecond, "selection confirmation should appear after pressing Enter")
+
+	// SetEmulatorType writes the config before emitting the confirmation message,
+	// so the file is guaranteed to exist and contain the selection by this point.
+	configData, err := os.ReadFile(configPath)
+	require.NoError(t, err)
+	assert.Contains(t, string(configData), `type = "aws"`)
+
 	cancel()
 	<-outputCh
 }
