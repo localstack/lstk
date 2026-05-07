@@ -25,7 +25,7 @@ func Status(ctx context.Context, rt runtime.Runtime, containers []config.Contain
 	defer cancel()
 
 	for _, c := range containers {
-		name, err := resolveRunningContainerName(ctx, rt, c)
+		name, err := ResolveRunningContainerName(ctx, rt, c)
 		if err != nil {
 			return fmt.Errorf("checking %s running: %w", c.Name(), err)
 		}

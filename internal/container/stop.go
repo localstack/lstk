@@ -24,7 +24,7 @@ func Stop(ctx context.Context, rt runtime.Runtime, sink output.Sink, containers 
 
 	const stopTimeout = 30 * time.Second
 	for _, c := range containers {
-		name, err := resolveRunningContainerName(ctx, rt, c)
+		name, err := ResolveRunningContainerName(ctx, rt, c)
 		if err != nil {
 			return err
 		}

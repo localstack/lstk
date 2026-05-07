@@ -1,12 +1,14 @@
 package integration_test
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
 	"testing"
 
+	"github.com/docker/docker/api/types/image"
 	"github.com/localstack/lstk/test/integration/env"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -273,6 +275,29 @@ func TestAWSCommandHintsSetupCommandWhenProfileMissing(t *testing.T) {
 	stdout, _, err := runLstk(t, ctx, t.TempDir(), e, "aws", "s3", "ls")
 	require.NoError(t, err)
 	assert.Contains(t, stdout, "lstk setup aws")
+}
+
+func TestAWSCommandWorksWithExternalContainer(t *testing.T) {
+	requireDocker(t)
+	cleanup()
+	t.Cleanup(cleanup)
+
+	ctx := testContext(t)
+
+	const fakeImage = "localstack/localstack-pro:test-fake"
+	require.NoError(t, dockerClient.ImageTag(ctx, testImage, fakeImage))
+	t.Cleanup(func() {
+		_, _ = dockerClient.ImageRemove(context.Background(), fakeImage, image.RemoveOptions{})
+	})
+
+	startExternalContainer(t, ctx, fakeImage, "localstack-main", "4566")
+
+	fakeDir := writeFakeAWS(t)
+	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).With(env.Home, t.TempDir())
+
+	stdout, stderr, err := runLstk(t, ctx, t.TempDir(), e, "aws", "s3", "ls")
+	require.NoError(t, err, "lstk aws should work with externally-named container: %s", stderr)
+	assert.Contains(t, stdout, "ENDPOINT:http://")
 }
 
 func TestAWSCommandSuppressesHintWhenProfileExists(t *testing.T) {
