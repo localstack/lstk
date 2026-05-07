@@ -284,7 +284,8 @@ func TestStartContainers_SnowflakeLicenseError(t *testing.T) {
 	assert.True(t, output.IsSilent(err), "error should be silent since ErrorEvent was already emitted")
 	got := out.String()
 	assert.Contains(t, got, "Your license does not include the Snowflake emulator.")
-	assert.Contains(t, got, "https://www.localstack.cloud/pricing?tab=snowflake")
+	assert.Contains(t, got, "https://app.localstack.cloud/sign-up")
+	assert.Contains(t, got, "https://www.localstack.cloud/demo")
 
 	select {
 	case ev := <-capturedEvents:

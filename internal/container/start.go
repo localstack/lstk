@@ -376,7 +376,8 @@ func startContainers(ctx context.Context, rt runtime.Runtime, sink output.Sink, 
 				sink.Emit(output.ErrorEvent{
 					Title: "Your license does not include the Snowflake emulator.",
 					Actions: []output.ErrorAction{
-						{Label: "Start a free Snowflake trial:", Value: "https://www.localstack.cloud/pricing?tab=snowflake"},
+						{Label: "Sign up for a free trial:", Value: "https://app.localstack.cloud/sign-up"},
+						{Label: "Contact our team:", Value: "https://www.localstack.cloud/demo"},
 					},
 				})
 				err = output.NewSilentError(err)
