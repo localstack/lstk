@@ -4,8 +4,6 @@ import (
 	"fmt"
 	"strings"
 	"time"
-
-	"github.com/localstack/lstk/internal/ui/styles"
 )
 
 // FormatEventLine converts an output event into a single display line.
@@ -120,13 +118,13 @@ func formatAuthEvent(e AuthEvent) string {
 func formatMessageEvent(e MessageEvent) string {
 	switch e.Severity {
 	case SeveritySuccess:
-		return styles.Success.Render(SuccessMarker()) + " " + e.Text
+		return SuccessMarker() + " " + e.Text
 	case SeverityNote:
-		return styles.Secondary.Render(">") + " " + styles.Note.Render("Note:") + " " + e.Text
+		return "> Note: " + e.Text
 	case SeverityWarning:
-		return styles.Secondary.Render(">") + " " + styles.Warning.Render("Warning:") + " " + e.Text
+		return "> Warning: " + e.Text
 	case SeveritySecondary:
-		return styles.SecondaryMessage.Render(e.Text)
+		return e.Text
 	default:
 		return e.Text
 	}

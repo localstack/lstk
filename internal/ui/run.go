@@ -98,6 +98,13 @@ func Run(parentCtx context.Context, runOpts RunOptions) error {
 	return nil
 }
 
+func RunMessage(parentCtx context.Context, event output.MessageEvent) error {
+	return runWithTUI(parentCtx, withoutHeader(), func(ctx context.Context, sink output.Sink) error {
+		sink.Emit(event)
+		return nil
+	})
+}
+
 func IsInteractive() bool {
 	return term.IsTerminal(int(os.Stdout.Fd())) && term.IsTerminal(int(os.Stdin.Fd()))
 }

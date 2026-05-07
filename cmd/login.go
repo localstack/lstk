@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"fmt"
-	"os"
 
 	"github.com/localstack/lstk/internal/api"
 	"github.com/localstack/lstk/internal/auth"
@@ -29,14 +28,11 @@ func newLoginCmd(cfg *env.Env, tel *telemetry.Client, logger log.Logger) *cobra.
 			if err != nil {
 				return fmt.Errorf("failed to initialize token storage: %w", err)
 			}
-			sink := output.NewPlainSink(os.Stdout)
 			if cfg.AuthToken != "" {
-				sink.Emit(output.MessageEvent{Severity: output.SeverityNote, Text: "You're already logged in"})
-				return nil
+				return ui.RunMessage(cmd.Context(), output.MessageEvent{Severity: output.SeverityNote, Text: "You're already logged in"})
 			}
 			if token, err := tokenStorage.GetAuthToken(); err == nil && token != "" {
-				sink.Emit(output.MessageEvent{Severity: output.SeverityNote, Text: "You're already logged in"})
-				return nil
+				return ui.RunMessage(cmd.Context(), output.MessageEvent{Severity: output.SeverityNote, Text: "You're already logged in"})
 			}
 			platformClient := api.NewPlatformClient(cfg.APIEndpoint, logger)
 			if err := ui.RunLogin(cmd.Context(), version.Version(), platformClient, cfg.AuthToken, cfg.ForceFileKeyring, cfg.WebAppURL, logger); err != nil {
