@@ -28,10 +28,8 @@ func newLoginCmd(cfg *env.Env, tel *telemetry.Client, logger log.Logger) *cobra.
 			if err != nil {
 				return fmt.Errorf("failed to initialize token storage: %w", err)
 			}
-			if cfg.AuthToken != "" {
-				return ui.RunMessage(cmd.Context(), output.MessageEvent{Severity: output.SeverityNote, Text: "You're already logged in"})
-			}
-			if token, err := tokenStorage.GetAuthToken(); err == nil && token != "" {
+			storedToken, _ := tokenStorage.GetAuthToken()
+			if cfg.AuthToken != "" || storedToken != "" {
 				return ui.RunMessage(cmd.Context(), output.MessageEvent{Severity: output.SeverityNote, Text: "You're already logged in"})
 			}
 			platformClient := api.NewPlatformClient(cfg.APIEndpoint, logger)
