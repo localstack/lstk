@@ -23,7 +23,7 @@ func StillRunningMessage(running []config.ContainerConfig) string {
 func RunningEmulators(ctx context.Context, rt runtime.Runtime, containers []config.ContainerConfig) ([]config.ContainerConfig, error) {
 	var running []config.ContainerConfig
 	for _, c := range containers {
-		name, err := resolveRunningContainerName(ctx, rt, c)
+		name, err := ResolveRunningContainerName(ctx, rt, c)
 		if err != nil {
 			return nil, err
 		}
@@ -34,7 +34,7 @@ func RunningEmulators(ctx context.Context, rt runtime.Runtime, containers []conf
 	return running, nil
 }
 
-func resolveRunningContainerName(ctx context.Context, rt runtime.Runtime, c config.ContainerConfig) (string, error) {
+func ResolveRunningContainerName(ctx context.Context, rt runtime.Runtime, c config.ContainerConfig) (string, error) {
 	running, err := rt.IsRunning(ctx, c.Name())
 	if err != nil {
 		return "", fmt.Errorf("checking %s running: %w", c.Name(), err)

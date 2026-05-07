@@ -8,6 +8,7 @@ import (
 	"github.com/localstack/lstk/internal/awscli"
 	"github.com/localstack/lstk/internal/awsconfig"
 	"github.com/localstack/lstk/internal/config"
+	"github.com/localstack/lstk/internal/container"
 	"github.com/localstack/lstk/internal/endpoint"
 	"github.com/localstack/lstk/internal/env"
 	"github.com/localstack/lstk/internal/output"
@@ -60,11 +61,11 @@ Examples:
 				return output.NewSilentError(fmt.Errorf("runtime not healthy: %w", err))
 			}
 
-			running, err := rt.IsRunning(cmd.Context(), awsContainer.Name())
+			runningName, err := container.ResolveRunningContainerName(cmd.Context(), rt, awsContainer)
 			if err != nil {
 				return fmt.Errorf("checking emulator status: %w", err)
 			}
-			if !running {
+			if runningName == "" {
 				sink.Emit(output.ErrorEvent{
 					Title: fmt.Sprintf("%s is not running", awsContainer.DisplayName()),
 					Actions: []output.ErrorAction{
