@@ -220,7 +220,7 @@ func runPostStartSetups(ctx context.Context, sink output.Sink, containers []conf
 }
 
 func emitAlreadyRunning(sink output.Sink, c runtime.ContainerConfig, localStackHost, webAppURL string) {
-	sink.Emit(output.MessageEvent{Severity: output.SeverityNote, Text: fmt.Sprintf("%s is already running", config.DisplayNameForType(c.EmulatorType))})
+	sink.Emit(output.MessageEvent{Severity: output.SeverityNote, Text: fmt.Sprintf("%s is already running", c.EmulatorType.DisplayName())})
 	resolvedHost, dnsOK := endpoint.ResolveHost(c.Port, localStackHost)
 	if !dnsOK {
 		sink.Emit(output.MessageEvent{Severity: output.SeverityNote, Text: endpoint.DNSRebindNote})
@@ -415,8 +415,8 @@ func selectContainersToStart(ctx context.Context, rt runtime.Runtime, sink outpu
 			foundType := config.EmulatorTypeForImage(found.Image)
 			if foundType != "" && foundType != c.EmulatorType {
 				sink.Emit(output.ErrorEvent{
-					Title:   fmt.Sprintf("%s is running on port %s", config.DisplayNameForType(foundType), found.BoundPort),
-					Summary: fmt.Sprintf("Your config specifies the %s. Only one emulator can run on a port at a time.", config.DisplayNameForType(c.EmulatorType)),
+					Title:   fmt.Sprintf("%s is running on port %s", foundType.DisplayName(), found.BoundPort),
+					Summary: fmt.Sprintf("Your config specifies the %s. Only one emulator can run on a port at a time.", c.EmulatorType.DisplayName()),
 					Actions: []output.ErrorAction{
 						{Label: "Stop the running emulator:", Value: fmt.Sprintf("docker stop %s", found.Name)},
 					},
@@ -428,11 +428,11 @@ func selectContainersToStart(ctx context.Context, rt runtime.Runtime, sink outpu
 					ErrorCode: telemetry.ErrCodeEmulatorMismatch,
 					ErrorMsg:  fmt.Sprintf("running %s on port %s, configured %s", foundType, found.BoundPort, c.EmulatorType),
 				})
-				return nil, output.NewSilentError(fmt.Errorf("%s is already running on port %s", config.DisplayNameForType(foundType), found.BoundPort))
+				return nil, output.NewSilentError(fmt.Errorf("%s is already running on port %s", foundType.DisplayName(), found.BoundPort))
 			}
 			if found.BoundPort != c.Port {
 				sink.Emit(output.ErrorEvent{
-					Title:   fmt.Sprintf("%s is already running on port %s", config.DisplayNameForType(c.EmulatorType), found.BoundPort),
+					Title:   fmt.Sprintf("%s is already running on port %s", c.EmulatorType.DisplayName(), found.BoundPort),
 					Summary: fmt.Sprintf("Config expects port %s. Only one instance can run at a time.", c.Port),
 					Actions: []output.ErrorAction{
 						{Label: "Stop existing emulator:", Value: "lstk stop"},

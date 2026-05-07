@@ -27,13 +27,13 @@ func (s programSender) Send(msg any) {
 // RunOptions groups the parameters for Run. Bundling them keeps the call
 // site readable as the UI entry point grows new concerns.
 type RunOptions struct {
-	Runtime       runtime.Runtime
-	Version       string
-	StartOptions  container.StartOptions
-	NotifyOptions update.NotifyOptions
-	ConfigPath    string
-	EmulatorLabel string
-	LabelCh       <-chan string
+	Runtime                runtime.Runtime
+	Version                string
+	StartOptions           container.StartOptions
+	NotifyOptions          update.NotifyOptions
+	ConfigPath             string
+	EmulatorLabel          string
+	NeedsEmulatorSelection bool
 }
 
 func Run(parentCtx context.Context, runOpts RunOptions) error {
@@ -50,25 +50,42 @@ func Run(parentCtx context.Context, runOpts RunOptions) error {
 	p := tea.NewProgram(app)
 	runErrCh := make(chan error, 1)
 
-	if runOpts.LabelCh != nil {
-		go func() {
-			select {
-			case label, ok := <-runOpts.LabelCh:
-				if ok && label != "" {
-					p.Send(headerLabelMsg{label: label})
-				}
-			case <-ctx.Done():
+	labelCh := make(chan string, 1)
+	go func() {
+		select {
+		case label := <-labelCh:
+			if label != "" {
+				p.Send(headerLabelMsg{label: label})
 			}
-		}()
-	}
+		case <-ctx.Done():
+		}
+	}()
 
 	go func() {
 		var err error
 		defer func() { runErrCh <- err }()
 		sink := output.NewTUISink(programSender{p: p})
+		// Start label resolution immediately when no emulator selection is needed, so
+		// headerLabelMsg always arrives even if NotifyUpdate returns early (update case).
+		// When emulator selection is needed, resolution starts after the user picks.
+		if !runOpts.NeedsEmulatorSelection {
+			go container.ResolveAndCacheLabel(ctx, runOpts.StartOptions, labelCh)
+		}
 		if update.NotifyUpdate(ctx, sink, runOpts.NotifyOptions) {
 			p.Send(runDoneMsg{})
 			return
+		}
+		if runOpts.NeedsEmulatorSelection {
+			newContainers, selErr := container.SelectEmulator(ctx, sink, runOpts.ConfigPath)
+			if selErr != nil {
+				if errors.Is(selErr, context.Canceled) {
+					return
+				}
+				p.Send(runErrMsg{err: selErr})
+				return
+			}
+			runOpts.StartOptions.Containers = newContainers
+			go container.ResolveAndCacheLabel(ctx, runOpts.StartOptions, labelCh)
 		}
 		err = container.Start(ctx, runOpts.Runtime, sink, runOpts.StartOptions, true)
 		if err != nil {

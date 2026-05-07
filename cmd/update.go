@@ -17,7 +17,7 @@ func newUpdateCmd(cfg *env.Env) *cobra.Command {
 		Use:     "update",
 		Short:   "Update lstk to the latest version",
 		Long:    "Check for and apply updates to the lstk CLI. Respects the original installation method (Homebrew, npm, or direct binary).",
-		PreRunE: initConfig,
+		PreRunE: initConfig(nil),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if isInteractiveMode(cfg) {
 				return ui.RunUpdate(cmd.Context(), checkOnly, cfg.GitHubToken)

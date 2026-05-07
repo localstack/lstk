@@ -25,6 +25,24 @@ var emulatorDisplayNames = map[EmulatorType]string{
 	EmulatorAzure:     "Azure",
 }
 
+// SelectableEmulatorTypes lists the emulator types available for interactive selection,
+// in the order they should be presented. The selection key for each type is its first character.
+var SelectableEmulatorTypes = []EmulatorType{EmulatorAWS, EmulatorSnowflake}
+
+func (e EmulatorType) SelectionKey() string {
+	return string(e)[0:1]
+}
+
+func (e EmulatorType) ShortName() string {
+	if name, ok := emulatorDisplayNames[e]; ok {
+		return name
+	}
+	return string(e)
+}
+
+func (e EmulatorType) DisplayName() string {
+	return fmt.Sprintf("LocalStack %s Emulator", e.ShortName())
+}
 var emulatorHealthPaths = map[EmulatorType]string{
 	EmulatorAWS:       "/_localstack/health",
 	EmulatorSnowflake: "/_localstack/health",
@@ -68,13 +86,6 @@ func KnownImageReposForType(t EmulatorType) []string {
 	return repos
 }
 
-func DisplayNameForType(t EmulatorType) string {
-	name, ok := emulatorDisplayNames[t]
-	if !ok {
-		return fmt.Sprintf("LocalStack %s Emulator", t)
-	}
-	return fmt.Sprintf("LocalStack %s Emulator", name)
-}
 
 type ContainerConfig struct {
 	Type   EmulatorType `mapstructure:"type"`
@@ -168,7 +179,7 @@ func (c *ContainerConfig) ContainerPort() (string, error) {
 }
 
 func (c *ContainerConfig) DisplayName() string {
-	return DisplayNameForType(c.Type)
+	return c.Type.DisplayName()
 }
 
 func (c *ContainerConfig) ProductName() (string, error) {

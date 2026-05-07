@@ -19,7 +19,7 @@ func newStopCmd(cfg *env.Env, tel *telemetry.Client) *cobra.Command {
 		Use:     "stop",
 		Short:   "Stop emulator",
 		Long:    "Stop emulator and services",
-		PreRunE: initConfig,
+		PreRunE: initConfig(nil),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			rt, err := runtime.NewDockerRuntime(cfg.DockerHost)
 			if err != nil {

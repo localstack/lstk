@@ -23,7 +23,7 @@ func newConfigProfileCmd(cfg *env.Env) *cobra.Command {
 	return &cobra.Command{
 		Use:     "profile",
 		Short:   "Deprecated: use 'lstk setup aws' instead",
-		PreRunE: initConfig,
+		PreRunE: initConfig(nil),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			appConfig, err := config.Get()
 			if err != nil {

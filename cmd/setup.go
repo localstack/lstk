@@ -24,7 +24,7 @@ func newSetupAWSCmd(cfg *env.Env) *cobra.Command {
 		Use:     "aws",
 		Short:   "Set up the LocalStack AWS profile",
 		Long:    "Set up the LocalStack AWS profile in ~/.aws/config and ~/.aws/credentials for use with AWS CLI and SDKs.",
-		PreRunE: initConfig,
+		PreRunE: initConfig(nil),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			appConfig, err := config.Get()
 			if err != nil {

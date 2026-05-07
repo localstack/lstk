@@ -11,6 +11,14 @@ import (
 	"github.com/localstack/lstk/internal/log"
 )
 
+func ResolveAndCacheLabel(ctx context.Context, opts StartOptions, labelCh chan<- string) {
+	label, ok := ResolveEmulatorLabel(ctx, opts.PlatformClient, opts.Containers, opts.AuthToken, opts.Logger)
+	if ok {
+		config.CachePlanLabel(label)
+	}
+	labelCh <- label
+}
+
 const NoLicenseLabel = "LocalStack (No license)"
 
 // ResolveEmulatorLabel tries to fetch the plan name from the license API

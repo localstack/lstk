@@ -96,7 +96,7 @@ Environment variables:
 - Reuse `FormatEventLine(event Event)` for all line-oriented rendering so plain and TUI output stay consistent.
 - Select output mode at the command boundary in `cmd/`: interactive TTY runs Bubble Tea, non-interactive mode uses `output.NewPlainSink(...)`.
 - Keep non-TTY mode non-interactive (no stdin prompts or input waits).
-- Domain packages must not import Bubble Tea or UI packages.
+- Domain packages (`internal/` minus `internal/ui/`) must not import Bubble Tea or UI packages. A useful test: domain code should work unchanged if `internal/ui/` were swapped for a different frontend.
 - Any feature/workflow package that produces user-visible progress should accept an `output.Sink` dependency and emit events through `internal/output`.
 - Do not pass UI callbacks like `onProgress func(...)` through domain layers; prefer typed output events.
 - Event payloads should be domain facts (phase/status/progress), not pre-rendered UI strings.
@@ -118,9 +118,11 @@ Domain code must never read from stdin or wait for user input directly. Instead:
    - `SelectedKey`: which option was selected
    - `Cancelled`: true if user cancelled (e.g., Ctrl+C)
 
-3. The TUI (`internal/ui/app.go`) handles these events by showing the prompt and sending the response when the user interacts.
+3. The TUI (`internal/ui/app.go`) handles these events by showing the prompt and sending the response when the user interacts. `internal/ui/` is responsible only for the interaction itself — it does not contain the logic that acts on the response.
 
-4. In non-interactive mode, commands requiring user input should fail early with a helpful error (e.g., "set LOCALSTACK_AUTH_TOKEN or run in interactive mode").
+4. The logic executed in response to the user's choice (e.g., writing config, starting a container) belongs in a domain package alongside the rest of the feature, not in `internal/ui/`.
+
+5. In non-interactive mode, commands requiring user input should fail early with a helpful error (e.g., "set LOCALSTACK_AUTH_TOKEN or run in interactive mode").
 
 Example flow in auth login:
 ```go

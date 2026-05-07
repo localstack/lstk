@@ -30,11 +30,12 @@ import (
 )
 
 func NewRootCmd(cfg *env.Env, tel *telemetry.Client, logger log.Logger) *cobra.Command {
+	var firstRun bool
 	root := &cobra.Command{
 		Use:     "lstk",
 		Short:   "LocalStack CLI",
 		Long:    "lstk is the command-line interface for LocalStack.",
-		PreRunE: initConfig,
+		PreRunE: initConfig(&firstRun),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			rt, err := runtime.NewDockerRuntime(cfg.DockerHost)
 			if err != nil {
@@ -44,7 +45,7 @@ func NewRootCmd(cfg *env.Env, tel *telemetry.Client, logger log.Logger) *cobra.C
 			if err != nil {
 				return err
 			}
-			return startEmulator(cmd.Context(), rt, cfg, tel, logger, persist)
+			return startEmulator(cmd.Context(), rt, cfg, tel, logger, persist, firstRun)
 		},
 	}
 
@@ -152,8 +153,7 @@ func buildStartOptions(cfg *env.Env, appConfig *config.Config, logger log.Logger
 	}
 }
 
-func startEmulator(ctx context.Context, rt runtime.Runtime, cfg *env.Env, tel *telemetry.Client, logger log.Logger, persist bool) error {
-
+func startEmulator(ctx context.Context, rt runtime.Runtime, cfg *env.Env, tel *telemetry.Client, logger log.Logger, persist bool, firstRun bool) error {
 	appConfig, err := config.Get()
 	if err != nil {
 		return fmt.Errorf("failed to get config: %w", err)
@@ -174,27 +174,25 @@ func startEmulator(ctx context.Context, rt runtime.Runtime, cfg *env.Env, tel *t
 	}
 
 	if isInteractiveMode(cfg) {
-		labelCh := make(chan string, 1)
-		go func() {
-			label, ok := container.ResolveEmulatorLabel(ctx, opts.PlatformClient, appConfig.Containers, cfg.AuthToken, logger)
-			if ok {
-				config.CachePlanLabel(label)
-			}
-			labelCh <- label
-		}()
-
 		return ui.Run(ctx, ui.RunOptions{
-			Runtime:       rt,
-			Version:       version.Version(),
-			StartOptions:  opts,
-			NotifyOptions: notifyOpts,
-			ConfigPath:    configPath,
-			EmulatorLabel: config.CachedPlanLabel(),
-			LabelCh:       labelCh,
+			Runtime:                rt,
+			Version:                version.Version(),
+			StartOptions:           opts,
+			NotifyOptions:          notifyOpts,
+			ConfigPath:             configPath,
+			EmulatorLabel:          config.CachedPlanLabel(),
+			NeedsEmulatorSelection: firstRun,
 		})
 	}
 
 	sink := output.NewPlainSink(os.Stdout)
+	if firstRun && len(appConfig.Containers) > 0 {
+		emName := appConfig.Containers[0].Type.ShortName()
+		sink.Emit(output.MessageEvent{
+			Severity: output.SeverityNote,
+			Text:     fmt.Sprintf("Configured with default emulator %s.", emName),
+		})
+	}
 	update.NotifyUpdate(ctx, sink, update.NotifyOptions{GitHubToken: cfg.GitHubToken})
 	return container.Start(ctx, rt, sink, opts, false)
 }
@@ -288,13 +286,19 @@ func newLogger() (log.Logger, func(), error) {
 	return log.New(f), func() { _ = f.Close() }, nil
 }
 
-func initConfig(cmd *cobra.Command, _ []string) error {
-	path, err := cmd.Flags().GetString("config")
-	if err != nil {
+func initConfig(firstRun *bool) func(*cobra.Command, []string) error {
+	return func(cmd *cobra.Command, _ []string) error {
+		path, err := cmd.Flags().GetString("config")
+		if err != nil {
+			return err
+		}
+		if path != "" {
+			return config.InitFromPath(path)
+		}
+		isFirstRun, err := config.Init()
+		if firstRun != nil {
+			*firstRun = isFirstRun
+		}
 		return err
 	}
-	if path != "" {
-		return config.InitFromPath(path)
-	}
-	return config.Init()
 }

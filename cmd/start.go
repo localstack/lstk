@@ -9,21 +9,22 @@ import (
 )
 
 func newStartCmd(cfg *env.Env, tel *telemetry.Client, logger log.Logger) *cobra.Command {
+	var firstRun bool
 	cmd := &cobra.Command{
 		Use:     "start",
 		Short:   "Start emulator",
 		Long:    "Start emulator and services.",
-		PreRunE: initConfig,
-		RunE: func(cmd *cobra.Command, args []string) error {
+		PreRunE: initConfig(&firstRun),
+		RunE: func(c *cobra.Command, args []string) error {
 			rt, err := runtime.NewDockerRuntime(cfg.DockerHost)
 			if err != nil {
 				return err
 			}
-			persist, err := cmd.Flags().GetBool("persist")
+			persist, err := c.Flags().GetBool("persist")
 			if err != nil {
 				return err
 			}
-			return startEmulator(cmd.Context(), rt, cfg, tel, logger, persist)
+			return startEmulator(c.Context(), rt, cfg, tel, logger, persist, firstRun)
 		},
 	}
 	cmd.Flags().Bool("persist", false, "Enable local persistence (sets LOCALSTACK_PERSISTENCE=1)")
