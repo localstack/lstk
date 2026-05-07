@@ -6,6 +6,7 @@ updates:
       interval: "daily"
       time: "09:00"
       timezone: "Etc/UTC"
+    versioning-strategy: increase-if-necessary
     open-pull-requests-limit: 10
     labels:
       - "semver: patch"
