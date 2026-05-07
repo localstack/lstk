@@ -91,24 +91,24 @@ func ToMap(v any) map[string]any {
 
 // GetEnvironment returns the common environment payload for telemetry events,
 // using the auth token set via SetAuthToken.
-func (c *Client) GetEnvironment() Environment {
-	env := Environment{
+func (c *Client) GetEnvironment(ctx context.Context) Environment {
+	c.machineIDOnce.Do(func() {
+		c.machineID = LoadOrCreateMachineID(ctx)
+	})
+	return Environment{
 		LstkVersion: version.Version(),
 		AuthTokenID: c.authToken,
 		OS:          runtime.GOOS,
 		Arch:        runtime.GOARCH,
+		MachineID:   c.machineID,
 	}
-	if c.machineID != "" {
-		env.MachineID = c.machineID
-	}
-	return env
 }
 
 // EmitCommand emits an lstk_command telemetry event. The Environment block is
 // populated automatically from the client state.
 func (c *Client) EmitCommand(ctx context.Context, command string, flags []string, durationMS int64, exitCode int, errorMsg string) {
 	c.Emit(ctx, "lstk_command", ToMap(CommandEvent{
-		Environment: c.GetEnvironment(),
+		Environment: c.GetEnvironment(ctx),
 		Parameters:  CommandParameters{Command: command, Flags: flags},
 		Result: CommandResult{
 			DurationMS: durationMS,
@@ -122,6 +122,6 @@ func (c *Client) EmitCommand(ctx context.Context, command string, flags []string
 // Environment field is populated automatically from the client state; any
 // value set by the caller is overwritten.
 func (c *Client) EmitEmulatorLifecycleEvent(ctx context.Context, event LifecycleEvent) {
-	event.Environment = c.GetEnvironment()
+	event.Environment = c.GetEnvironment(ctx)
 	c.Emit(ctx, "lstk_lifecycle", ToMap(event))
 }

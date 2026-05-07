@@ -4,12 +4,15 @@ import (
 	"context"
 	"crypto/md5"
 	"encoding/hex"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
 
 	dockerclient "github.com/docker/docker/client"
 	"github.com/google/uuid"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+
 	"github.com/localstack/lstk/internal/config"
 )
 
@@ -22,8 +25,8 @@ const (
 // trying in order: Docker daemon ID, /etc/machine-id, then a persisted random UUID.
 // Prefixes (dkr_, sys_, gen_) indicate origin, matching the Python implementation
 // in localstack-core so IDs can be correlated across tools.
-func LoadOrCreateMachineID() string {
-	if id := dockerDaemonID(); id != "" {
+func LoadOrCreateMachineID(ctx context.Context) string {
+	if id := dockerDaemonID(ctx); id != "" {
 		return "dkr_" + anonymize(id)
 	}
 	if id := systemMachineID(); id != "" {
@@ -37,13 +40,21 @@ func anonymize(physicalID string) string {
 	return hex.EncodeToString(h[:])[:12]
 }
 
-func dockerDaemonID() string {
-	c, err := dockerclient.NewClientWithOpts(dockerclient.FromEnv, dockerclient.WithAPIVersionNegotiation())
+func dockerDaemonID(ctx context.Context) string {
+	c, err := dockerclient.NewClientWithOpts(
+		dockerclient.FromEnv,
+		dockerclient.WithAPIVersionNegotiation(),
+		dockerclient.WithTraceOptions(
+			otelhttp.WithSpanNameFormatter(func(_ string, r *http.Request) string {
+				return "docker " + r.Method + " " + r.URL.Path
+			}),
+		),
+	)
 	if err != nil {
 		return ""
 	}
 	defer func() { _ = c.Close() }()
-	info, err := c.Info(context.Background())
+	info, err := c.Info(ctx)
 	if err != nil {
 		return ""
 	}
