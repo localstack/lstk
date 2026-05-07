@@ -25,6 +25,14 @@ var emulatorDisplayNames = map[EmulatorType]string{
 	EmulatorAzure:     "Azure",
 }
 
+// SelectableEmulatorTypes lists the emulator types available for interactive selection,
+// in the order they should be presented. The selection key for each type is its first character.
+var SelectableEmulatorTypes = []EmulatorType{EmulatorAWS, EmulatorSnowflake}
+
+func (e EmulatorType) SelectionKey() string {
+	return string(e)[0:1]
+}
+
 func (e EmulatorType) ShortName() string {
 	if name, ok := emulatorDisplayNames[e]; ok {
 		return name

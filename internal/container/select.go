@@ -13,13 +13,15 @@ func SelectEmulator(
 	sink output.Sink,
 	configPath string,
 ) ([]config.ContainerConfig, error) {
+	options := make([]output.InputOption, len(config.SelectableEmulatorTypes))
+	for i, t := range config.SelectableEmulatorTypes {
+		options[i] = output.InputOption{Key: t.SelectionKey(), Label: t.ShortName()}
+	}
+
 	responseCh := make(chan output.InputResponse, 1)
 	sink.Emit(output.UserInputRequestEvent{
-		Prompt: "Which emulator would you like to use?",
-		Options: []output.InputOption{
-			{Key: "a", Label: "AWS"},
-			{Key: "s", Label: "Snowflake"},
-		},
+		Prompt:     "Which emulator would you like to use?",
+		Options:    options,
 		ResponseCh: responseCh,
 		Vertical:   true,
 	})
@@ -35,9 +37,12 @@ func SelectEmulator(
 		return nil, context.Canceled
 	}
 
-	selected := config.EmulatorAWS
-	if resp.SelectedKey == "s" {
-		selected = config.EmulatorSnowflake
+	selected := config.SelectableEmulatorTypes[0]
+	for _, t := range config.SelectableEmulatorTypes {
+		if t.SelectionKey() == resp.SelectedKey {
+			selected = t
+			break
+		}
 	}
 
 	if err := config.SetEmulatorType(selected); err != nil {
