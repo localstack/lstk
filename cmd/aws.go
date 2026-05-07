@@ -33,7 +33,7 @@ Examples:
   lstk aws sqs list-queues
   lstk aws s3 mb s3://my-bucket`,
 		DisableFlagParsing: true,
-		PreRunE:            initConfig,
+		PreRunE:            initConfig(nil),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			rt, err := runtime.NewDockerRuntime(cfg.DockerHost)
 			if err != nil {

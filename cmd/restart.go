@@ -20,7 +20,7 @@ func newRestartCmd(cfg *env.Env, tel *telemetry.Client, logger log.Logger) *cobr
 		Use:     "restart",
 		Short:   "Restart emulator",
 		Long:    "Stop and restart emulator and services.",
-		PreRunE: initConfig,
+		PreRunE: initConfig(nil),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			rt, err := runtime.NewDockerRuntime(cfg.DockerHost)
 			if err != nil {

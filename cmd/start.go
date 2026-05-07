@@ -14,7 +14,7 @@ func newStartCmd(cfg *env.Env, tel *telemetry.Client, logger log.Logger) *cobra.
 		Use:     "start",
 		Short:   "Start emulator",
 		Long:    "Start emulator and services.",
-		PreRunE: initConfigCapturingFirstRun(&firstRun),
+		PreRunE: initConfig(&firstRun),
 		RunE: func(c *cobra.Command, args []string) error {
 			rt, err := runtime.NewDockerRuntime(cfg.DockerHost)
 			if err != nil {

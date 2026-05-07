@@ -35,7 +35,7 @@ func NewRootCmd(cfg *env.Env, tel *telemetry.Client, logger log.Logger) *cobra.C
 		Use:     "lstk",
 		Short:   "LocalStack CLI",
 		Long:    "lstk is the command-line interface for LocalStack.",
-		PreRunE: initConfigCapturingFirstRun(&firstRun),
+		PreRunE: initConfig(&firstRun),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			rt, err := runtime.NewDockerRuntime(cfg.DockerHost)
 			if err != nil {
@@ -286,19 +286,7 @@ func newLogger() (log.Logger, func(), error) {
 	return log.New(f), func() { _ = f.Close() }, nil
 }
 
-func initConfig(cmd *cobra.Command, _ []string) error {
-	path, err := cmd.Flags().GetString("config")
-	if err != nil {
-		return err
-	}
-	if path != "" {
-		return config.InitFromPath(path)
-	}
-	_, err = config.Init()
-	return err
-}
-
-func initConfigCapturingFirstRun(firstRun *bool) func(*cobra.Command, []string) error {
+func initConfig(firstRun *bool) func(*cobra.Command, []string) error {
 	return func(cmd *cobra.Command, _ []string) error {
 		path, err := cmd.Flags().GetString("config")
 		if err != nil {
@@ -307,7 +295,10 @@ func initConfigCapturingFirstRun(firstRun *bool) func(*cobra.Command, []string) 
 		if path != "" {
 			return config.InitFromPath(path)
 		}
-		*firstRun, err = config.Init()
+		isFirstRun, err := config.Init()
+		if firstRun != nil {
+			*firstRun = isFirstRun
+		}
 		return err
 	}
 }
