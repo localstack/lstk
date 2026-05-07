@@ -25,11 +25,15 @@ var emulatorDisplayNames = map[EmulatorType]string{
 	EmulatorAzure:     "Azure",
 }
 
-func (e EmulatorType) DisplayName() string {
+func (e EmulatorType) ShortName() string {
 	if name, ok := emulatorDisplayNames[e]; ok {
 		return name
 	}
 	return string(e)
+}
+
+func (e EmulatorType) DisplayName() string {
+	return fmt.Sprintf("LocalStack %s Emulator", e.ShortName())
 }
 var emulatorHealthPaths = map[EmulatorType]string{
 	EmulatorAWS:       "/_localstack/health",
@@ -74,13 +78,6 @@ func KnownImageReposForType(t EmulatorType) []string {
 	return repos
 }
 
-func DisplayNameForType(t EmulatorType) string {
-	name, ok := emulatorDisplayNames[t]
-	if !ok {
-		return fmt.Sprintf("LocalStack %s Emulator", t)
-	}
-	return fmt.Sprintf("LocalStack %s Emulator", name)
-}
 
 type ContainerConfig struct {
 	Type   EmulatorType `mapstructure:"type"`
@@ -174,7 +171,7 @@ func (c *ContainerConfig) ContainerPort() (string, error) {
 }
 
 func (c *ContainerConfig) DisplayName() string {
-	return DisplayNameForType(c.Type)
+	return c.Type.DisplayName()
 }
 
 func (c *ContainerConfig) ProductName() (string, error) {

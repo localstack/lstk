@@ -48,7 +48,7 @@ func SelectEmulator(
 		return nil, err
 	}
 
-	sink.Emit(output.MessageEvent{Severity: output.SeveritySuccess, Text: selected.DisplayName() + " emulator selected."})
+	sink.Emit(output.MessageEvent{Severity: output.SeveritySuccess, Text: selected.ShortName() + " emulator selected."})
 	if configPath != "" {
 		sink.Emit(output.MessageEvent{Severity: output.SeveritySecondary, Text: "Change configuration in " + configPath + "."})
 	}

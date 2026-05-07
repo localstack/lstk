@@ -187,7 +187,7 @@ func startEmulator(ctx context.Context, rt runtime.Runtime, cfg *env.Env, tel *t
 
 	sink := output.NewPlainSink(os.Stdout)
 	if firstRun && len(appConfig.Containers) > 0 {
-		emName := appConfig.Containers[0].Type.DisplayName()
+		emName := appConfig.Containers[0].Type.ShortName()
 		sink.Emit(output.MessageEvent{
 			Severity: output.SeverityNote,
 			Text:     fmt.Sprintf("Configured with default emulator %s.", emName),
