@@ -52,6 +52,7 @@ func healthyRunningMock(t *testing.T) *runtime.MockRuntime {
 var awsContainers = []config.ContainerConfig{{Type: config.EmulatorAWS}}
 
 func TestSave_Success(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	dest := filepath.Join(dir, "snap")
 	exporter := &fakeExporter{body: []byte("ZIP_DATA")}
@@ -89,6 +90,7 @@ func TestSave_Success(t *testing.T) {
 }
 
 func TestSave_EmulatorNotRunning(t *testing.T) {
+	t.Parallel()
 	ctrl := gomock.NewController(t)
 	mockRT := runtime.NewMockRuntime(ctrl)
 	mockRT.EXPECT().IsHealthy(gomock.Any()).Return(nil)
@@ -118,6 +120,7 @@ func TestSave_EmulatorNotRunning(t *testing.T) {
 }
 
 func TestSave_UnhealthyRuntime(t *testing.T) {
+	t.Parallel()
 	ctrl := gomock.NewController(t)
 	mockRT := runtime.NewMockRuntime(ctrl)
 	mockRT.EXPECT().IsHealthy(gomock.Any()).Return(fmt.Errorf("docker unavailable"))
@@ -133,6 +136,7 @@ func TestSave_UnhealthyRuntime(t *testing.T) {
 }
 
 func TestSave_ExporterError(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	dest := filepath.Join(dir, "snap")
 	exporter := &fakeExporter{err: fmt.Errorf("connection refused")}
@@ -147,6 +151,7 @@ func TestSave_ExporterError(t *testing.T) {
 }
 
 func TestSave_DestinationDirNotExist(t *testing.T) {
+	t.Parallel()
 	dest := "/no/such/dir/snap"
 	exporter := &fakeExporter{body: []byte("ZIP_DATA")}
 	sink := output.NewPlainSink(io.Discard)
@@ -157,6 +162,7 @@ func TestSave_DestinationDirNotExist(t *testing.T) {
 }
 
 func TestSave_OverwritesExistingFile(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	path := filepath.Join(dir, "snap")
 	require.NoError(t, os.WriteFile(path, []byte("OLD"), 0600))
@@ -174,6 +180,7 @@ func TestSave_OverwritesExistingFile(t *testing.T) {
 }
 
 func TestSave_ContextCancelled(t *testing.T) {
+	t.Parallel()
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 

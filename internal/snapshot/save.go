@@ -19,11 +19,11 @@ func Save(ctx context.Context, rt runtime.Runtime, containers []config.Container
 		return output.NewSilentError(fmt.Errorf("runtime not healthy: %w", err))
 	}
 
-	running, err := container.AnyRunning(ctx, rt, containers)
+	runningContainers, err := container.RunningEmulators(ctx, rt, containers)
 	if err != nil {
 		return fmt.Errorf("checking emulator status: %w", err)
 	}
-	if !running {
+	if len(runningContainers) == 0 {
 		sink.Emit(output.ErrorEvent{
 			Title: "LocalStack is not running",
 			Actions: []output.ErrorAction{

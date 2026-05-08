@@ -38,7 +38,7 @@ The destination must be a file path. Use a path prefix to save locally:
 
 Cloud destinations are not yet supported.`,
 		Args:    cobra.MaximumNArgs(1),
-		PreRunE: initConfig,
+		PreRunE: initConfig(nil),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			var destArg string
 			if len(args) > 0 {

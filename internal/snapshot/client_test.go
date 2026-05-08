@@ -14,6 +14,7 @@ import (
 )
 
 func TestStateClient_ExportState_OK(t *testing.T) {
+	t.Parallel()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, "/_localstack/pods/state", r.URL.Path)
 		assert.Equal(t, http.MethodGet, r.Method)
@@ -33,6 +34,7 @@ func TestStateClient_ExportState_OK(t *testing.T) {
 }
 
 func TestStateClient_ExportState_ServerError(t *testing.T) {
+	t.Parallel()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 	}))
@@ -45,6 +47,7 @@ func TestStateClient_ExportState_ServerError(t *testing.T) {
 }
 
 func TestStateClient_ExportState_NotFound(t *testing.T) {
+	t.Parallel()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
 	}))
@@ -57,6 +60,7 @@ func TestStateClient_ExportState_NotFound(t *testing.T) {
 }
 
 func TestStateClient_ExportState_ConnectionRefused(t *testing.T) {
+	t.Parallel()
 	// Bind then immediately close to get a port that refuses connections.
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
 	addr := srv.URL
@@ -69,6 +73,7 @@ func TestStateClient_ExportState_ConnectionRefused(t *testing.T) {
 }
 
 func TestStateClient_ExportState_ContextCancelled(t *testing.T) {
+	t.Parallel()
 	started := make(chan struct{})
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		close(started)
@@ -94,6 +99,7 @@ func TestStateClient_ExportState_ContextCancelled(t *testing.T) {
 }
 
 func TestStateClient_ExportState_LargeBody(t *testing.T) {
+	t.Parallel()
 	const size = 1 << 20 // 1 MB
 	payload := strings.Repeat("X", size)
 

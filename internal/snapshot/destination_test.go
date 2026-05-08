@@ -11,6 +11,7 @@ import (
 )
 
 func TestParseDestination(t *testing.T) {
+	t.Parallel()
 	wd, err := os.Getwd()
 	require.NoError(t, err)
 	home, err := os.UserHomeDir()
@@ -57,6 +58,7 @@ func TestParseDestination(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.input, func(t *testing.T) {
+			t.Parallel()
 			got, err := snapshot.ParseDestination(tc.input)
 			if tc.wantErr != "" {
 				require.Error(t, err)
