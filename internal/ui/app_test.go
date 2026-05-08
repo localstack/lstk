@@ -265,6 +265,45 @@ func TestAppErrorEventStopsSpinner(t *testing.T) {
 	}
 }
 
+func TestAppErrorEventHidesLoadingHeader(t *testing.T) {
+	t.Parallel()
+
+	// When Docker is unavailable, the unhealthy ErrorEvent arrives before the
+	// label resolves, freezing the header dots mid-animation. Hiding the header
+	// in that window keeps the error the only thing on screen.
+	app := NewApp("dev", "", "", nil, withHeaderLoading())
+	if app.hideHeader {
+		t.Fatal("expected header to be visible while loading")
+	}
+
+	model, _ := app.Update(output.ErrorEvent{Title: "Docker is not available"})
+	app = model.(App)
+
+	if !app.hideHeader {
+		t.Fatal("expected header to be hidden after early ErrorEvent")
+	}
+	if app.headerLoading {
+		t.Fatal("expected headerLoading to be cleared after early ErrorEvent")
+	}
+}
+
+func TestAppErrorEventKeepsHeaderAfterLabelResolved(t *testing.T) {
+	t.Parallel()
+
+	// Once the label has resolved, the header is meaningful (e.g. "LocalStack
+	// Ultimate") and should stay visible even if a later error occurs.
+	app := NewApp("dev", "", "", nil, withHeaderLoading())
+	model, _ := app.Update(headerLabelMsg{label: "LocalStack Ultimate"})
+	app = model.(App)
+
+	model, _ = app.Update(output.ErrorEvent{Title: "Something went wrong"})
+	app = model.(App)
+
+	if app.hideHeader {
+		t.Fatal("expected header to remain visible after label resolved")
+	}
+}
+
 func TestAppSilentErrorDoesNotOverwriteErrorDisplay(t *testing.T) {
 	t.Parallel()
 
