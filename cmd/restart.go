@@ -50,6 +50,6 @@ func newRestartCmd(cfg *env.Env, tel *telemetry.Client, logger log.Logger) *cobr
 			return container.Restart(cmd.Context(), rt, sink, stopOpts, startOpts, false)
 		},
 	}
-	cmd.Flags().Bool("persist", false, "Enable local persistence (sets LOCALSTACK_PERSISTENCE=1)")
+	cmd.Flags().Bool("persist", false, "Persist emulator state across restarts")
 	return cmd
 }

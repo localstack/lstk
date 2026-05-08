@@ -27,6 +27,6 @@ func newStartCmd(cfg *env.Env, tel *telemetry.Client, logger log.Logger) *cobra.
 			return startEmulator(c.Context(), rt, cfg, tel, logger, persist, firstRun)
 		},
 	}
-	cmd.Flags().Bool("persist", false, "Enable local persistence (sets LOCALSTACK_PERSISTENCE=1)")
+	cmd.Flags().Bool("persist", false, "Persist emulator state across restarts")
 	return cmd
 }
