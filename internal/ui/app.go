@@ -204,6 +204,10 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return a, nil
 	case output.ErrorEvent:
+		if a.headerLoading {
+			a.hideHeader = true
+			a.headerLoading = false
+		}
 		a.errorDisplay = a.errorDisplay.Show(msg)
 		a.spinner, _ = a.spinner.Stop()
 		return a, nil
