@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"time"
 
 	"github.com/localstack/lstk/internal/awscli"
 	"github.com/localstack/lstk/internal/awsconfig"
@@ -85,7 +86,7 @@ Examples:
 
 			stdout, stderr := io.Writer(os.Stdout), io.Writer(os.Stderr)
 			if terminal.IsTerminal(os.Stderr) {
-				s := terminal.NewSpinner(os.Stderr, "Loading...")
+				s := terminal.NewSpinner(os.Stderr, "Service loading...", 4*time.Second)
 				s.Start()
 				defer s.Stop()
 				stdout = &terminal.StopOnWriteWriter{W: os.Stdout, Spinner: s}

@@ -300,6 +300,68 @@ func TestAWSCommandWorksWithExternalContainer(t *testing.T) {
 	assert.Contains(t, stdout, "ENDPOINT:http://")
 }
 
+// writeSlowFakeAWS creates a fake `aws` script that sleeps for the given duration
+// before printing, so the spinner has time to render in PTY-based tests.
+func writeSlowFakeAWS(t *testing.T, sleepSeconds int) string {
+	t.Helper()
+	dir := t.TempDir()
+
+	if runtime.GOOS == "windows" {
+		t.Skip("fake aws script not supported on Windows")
+	}
+
+	script := fmt.Sprintf(`#!/bin/sh
+sleep %d
+echo "ENDPOINT:$2"
+shift 2
+echo "ARGS:$@"
+`, sleepSeconds)
+	path := filepath.Join(dir, "aws")
+	require.NoError(t, os.WriteFile(path, []byte(script), 0755))
+	return dir
+}
+
+func TestAWSCommandShowsSpinnerForSlowOperation(t *testing.T) {
+	requireDocker(t)
+	cleanup()
+	t.Cleanup(cleanup)
+	ctx := testContext(t)
+	// A running emulator is required: without it, `lstk aws` exits before reaching the spinner.
+	startTestContainer(t, ctx)
+
+	fakeDir := writeSlowFakeAWS(t, 5)
+	homeDir := t.TempDir()
+	writeAWSProfile(t, homeDir)
+	// /bin and /usr/bin are needed so the fake script can invoke `sleep`.
+	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir+":/bin:/usr/bin").With(env.Home, homeDir)
+
+	out, err := runLstkInPTY(t, ctx, e, "aws", "s3", "ls")
+	require.NoError(t, err, "lstk aws failed: %s", out)
+
+	assert.Contains(t, out, "Service loading")
+	assert.Contains(t, out, "ARGS:--profile localstack s3 ls")
+}
+
+func TestAWSCommandSuppressesSpinnerForFastOperation(t *testing.T) {
+	requireDocker(t)
+	cleanup()
+	t.Cleanup(cleanup)
+	ctx := testContext(t)
+	// A running emulator is required: without it, `lstk aws` exits before reaching the spinner.
+	startTestContainer(t, ctx)
+
+	fakeDir := writeFakeAWS(t)
+	homeDir := t.TempDir()
+	writeAWSProfile(t, homeDir)
+	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).With(env.Home, homeDir)
+
+	out, err := runLstkInPTY(t, ctx, e, "aws", "s3", "ls")
+	require.NoError(t, err, "lstk aws failed: %s", out)
+
+	assert.NotContains(t, out, "Service loading")
+	assert.Contains(t, out, "ARGS:--profile localstack s3 ls")
+}
+
 func TestAWSCommandSuppressesHintWhenProfileExists(t *testing.T) {
 	requireDocker(t)
 	cleanup()

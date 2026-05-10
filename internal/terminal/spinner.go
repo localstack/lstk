@@ -22,16 +22,21 @@ const (
 type Spinner struct {
 	out      io.Writer
 	label    string
+	delay    time.Duration
 	stop     chan struct{}
 	done     chan struct{}
 	mu       sync.Mutex
 	stopOnce sync.Once
 }
 
-func NewSpinner(out io.Writer, label string) *Spinner {
+// NewSpinner returns a spinner that, when started, waits for delay before
+// rendering its first frame. A zero delay renders immediately. If Stop is
+// called before the delay elapses, no output is written.
+func NewSpinner(out io.Writer, label string, delay time.Duration) *Spinner {
 	return &Spinner{
 		out:   out,
 		label: label,
+		delay: delay,
 		stop:  make(chan struct{}),
 		done:  make(chan struct{}),
 	}
@@ -40,6 +45,17 @@ func NewSpinner(out io.Writer, label string) *Spinner {
 func (s *Spinner) Start() {
 	go func() {
 		defer close(s.done)
+
+		if s.delay > 0 {
+			timer := time.NewTimer(s.delay)
+			select {
+			case <-s.stop:
+				timer.Stop()
+				return
+			case <-timer.C:
+			}
+		}
+
 		tick := time.NewTicker(100 * time.Millisecond)
 		defer tick.Stop()
 
