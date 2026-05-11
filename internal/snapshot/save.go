@@ -55,6 +55,7 @@ func Save(ctx context.Context, rt runtime.Runtime, containers []config.Container
 
 	if _, err := io.Copy(w, body); err != nil {
 		_ = w.Close()
+		_ = os.Remove(dest)
 		return fmt.Errorf("write snapshot: %w", err)
 	}
 
