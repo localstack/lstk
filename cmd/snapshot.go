@@ -6,6 +6,7 @@ import (
 	"slices"
 
 	"github.com/localstack/lstk/internal/config"
+	"github.com/localstack/lstk/internal/emulator/aws"
 	"github.com/localstack/lstk/internal/endpoint"
 	"github.com/localstack/lstk/internal/env"
 	"github.com/localstack/lstk/internal/output"
@@ -72,12 +73,12 @@ Cloud destinations are not yet supported.`,
 				awsContainer = appConfig.Containers[awsIdx]
 			}
 			host, _ := endpoint.ResolveHost(cmd.Context(), awsContainer.Port, cfg.LocalStackHost)
-			exporter := snapshot.NewStateClient("http://" + host)
+			exporter := aws.NewClient()
 
 			if isInteractiveMode(cfg) {
-				return ui.RunSnapshotSave(cmd.Context(), rt, []config.ContainerConfig{awsContainer}, exporter, dest)
+				return ui.RunSnapshotSave(cmd.Context(), rt, []config.ContainerConfig{awsContainer}, exporter, host, dest)
 			}
-			return snapshot.Save(cmd.Context(), rt, []config.ContainerConfig{awsContainer}, exporter, dest, output.NewPlainSinkSplit(os.Stdout, os.Stderr))
+			return snapshot.Save(cmd.Context(), rt, []config.ContainerConfig{awsContainer}, exporter, host, dest, output.NewPlainSinkSplit(os.Stdout, os.Stderr))
 		},
 	}
 }

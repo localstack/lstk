@@ -9,8 +9,8 @@ import (
 	"github.com/localstack/lstk/internal/snapshot"
 )
 
-func RunSnapshotSave(parentCtx context.Context, rt runtime.Runtime, containers []config.ContainerConfig, exporter snapshot.StateExporter, dest string) error {
+func RunSnapshotSave(parentCtx context.Context, rt runtime.Runtime, containers []config.ContainerConfig, exporter snapshot.StateExporter, host, dest string) error {
 	return runWithTUI(parentCtx, withoutHeader(), func(ctx context.Context, sink output.Sink) error {
-		return snapshot.Save(ctx, rt, containers, exporter, dest, sink)
+		return snapshot.Save(ctx, rt, containers, exporter, host, dest, sink)
 	})
 }

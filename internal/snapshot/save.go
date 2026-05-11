@@ -13,7 +13,7 @@ import (
 )
 
 // Save exports the emulator's state via exporter and writes it to dest.
-func Save(ctx context.Context, rt runtime.Runtime, containers []config.ContainerConfig, exporter StateExporter, dest string, sink output.Sink) (retErr error) {
+func Save(ctx context.Context, rt runtime.Runtime, containers []config.ContainerConfig, exporter StateExporter, host, dest string, sink output.Sink) (retErr error) {
 	if err := rt.IsHealthy(ctx); err != nil {
 		rt.EmitUnhealthyError(sink, err)
 		return output.NewSilentError(fmt.Errorf("runtime not healthy: %w", err))
@@ -42,7 +42,7 @@ func Save(ctx context.Context, rt runtime.Runtime, containers []config.Container
 		}
 	}()
 
-	body, err := exporter.ExportState(ctx)
+	body, err := exporter.ExportState(ctx, host)
 	if err != nil {
 		return fmt.Errorf("export state from LocalStack: %w", err)
 	}

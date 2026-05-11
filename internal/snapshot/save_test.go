@@ -24,7 +24,7 @@ type fakeExporter struct {
 	err  error
 }
 
-func (f *fakeExporter) ExportState(_ context.Context) (io.ReadCloser, error) {
+func (f *fakeExporter) ExportState(_ context.Context, _ string) (io.ReadCloser, error) {
 	if f.err != nil {
 		return nil, f.err
 	}
@@ -58,7 +58,7 @@ func TestSave_Success(t *testing.T) {
 	exporter := &fakeExporter{body: []byte("ZIP_DATA")}
 	sink, getEvents := captureEvents(t)
 
-	err := snapshot.Save(context.Background(), healthyRunningMock(t), awsContainers, exporter, dest, sink)
+	err := snapshot.Save(context.Background(), healthyRunningMock(t), awsContainers, exporter, "", dest, sink)
 	require.NoError(t, err)
 
 	data, err := os.ReadFile(filepath.Join(dir, "snap"))
@@ -101,7 +101,7 @@ func TestSave_EmulatorNotRunning(t *testing.T) {
 	dest := filepath.Join(dir, "snap")
 	sink, getEvents := captureEvents(t)
 
-	err := snapshot.Save(context.Background(), mockRT, awsContainers, &fakeExporter{body: []byte("x")}, dest, sink)
+	err := snapshot.Save(context.Background(), mockRT, awsContainers, &fakeExporter{body: []byte("x")}, "", dest, sink)
 	require.Error(t, err)
 	assert.True(t, output.IsSilent(err))
 
@@ -130,7 +130,7 @@ func TestSave_UnhealthyRuntime(t *testing.T) {
 	dest := filepath.Join(dir, "snap")
 	sink := output.NewPlainSink(io.Discard)
 
-	err := snapshot.Save(context.Background(), mockRT, awsContainers, &fakeExporter{}, dest, sink)
+	err := snapshot.Save(context.Background(), mockRT, awsContainers, &fakeExporter{}, "", dest, sink)
 	require.Error(t, err)
 	assert.True(t, output.IsSilent(err))
 }
@@ -142,7 +142,7 @@ func TestSave_ExporterError(t *testing.T) {
 	exporter := &fakeExporter{err: fmt.Errorf("connection refused")}
 	sink := output.NewPlainSink(io.Discard)
 
-	err := snapshot.Save(context.Background(), healthyRunningMock(t), awsContainers, exporter, dest, sink)
+	err := snapshot.Save(context.Background(), healthyRunningMock(t), awsContainers, exporter, "", dest, sink)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "connection refused")
 
@@ -156,7 +156,7 @@ func TestSave_DestinationDirNotExist(t *testing.T) {
 	exporter := &fakeExporter{body: []byte("ZIP_DATA")}
 	sink := output.NewPlainSink(io.Discard)
 
-	err := snapshot.Save(context.Background(), healthyRunningMock(t), awsContainers, exporter, dest, sink)
+	err := snapshot.Save(context.Background(), healthyRunningMock(t), awsContainers, exporter, "", dest, sink)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "save to")
 }
@@ -171,7 +171,7 @@ func TestSave_OverwritesExistingFile(t *testing.T) {
 	exporter := &fakeExporter{body: []byte("NEW")}
 	sink := output.NewPlainSink(io.Discard)
 
-	err := snapshot.Save(context.Background(), healthyRunningMock(t), awsContainers, exporter, dest, sink)
+	err := snapshot.Save(context.Background(), healthyRunningMock(t), awsContainers, exporter, "", dest, sink)
 	require.NoError(t, err)
 
 	data, err := os.ReadFile(path)
@@ -195,6 +195,6 @@ func TestSave_ContextCancelled(t *testing.T) {
 
 	sink := output.NewPlainSink(io.Discard)
 
-	err := snapshot.Save(ctx, mockRT, awsContainers, exporter, dest, sink)
+	err := snapshot.Save(ctx, mockRT, awsContainers, exporter, "", dest, sink)
 	require.Error(t, err)
 }

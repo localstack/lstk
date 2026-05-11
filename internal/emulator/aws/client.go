@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"sort"
 	"strings"
@@ -130,4 +131,23 @@ func (c *Client) FetchResources(ctx context.Context, host string) ([]emulator.Re
 	})
 
 	return rows, nil
+}
+
+// ExportState calls GET /_localstack/pods/state; caller must close the returned body.
+func (c *Client) ExportState(ctx context.Context, host string) (io.ReadCloser, error) {
+	url := fmt.Sprintf("http://%s/_localstack/pods/state", host)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("create request: %w", err)
+	}
+
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("connect to LocalStack: %w", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		_ = resp.Body.Close()
+		return nil, fmt.Errorf("LocalStack returned status %d", resp.StatusCode)
+	}
+	return resp.Body, nil
 }
