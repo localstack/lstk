@@ -85,8 +85,6 @@ func NewRootCmd(cfg *env.Env, tel *telemetry.Client, logger log.Logger) *cobra.C
 
 func Execute(ctx context.Context) error {
 	cfg := env.Init()
-	tel := telemetry.New(cfg.AnalyticsEndpoint, cfg.DisableEvents)
-	defer tel.Close()
 
 	logger, cleanup, err := newLogger()
 	if err != nil {
@@ -109,6 +107,10 @@ func Execute(ctx context.Context) error {
 			logger.Error("failed to shut down tracing: %v", err)
 		}
 	}()
+
+	tel := telemetry.New(cfg.AnalyticsEndpoint, cfg.DisableEvents)
+	defer tel.Close()
+
 	logger.Info("lstk %s starting", version.Version())
 
 	// Resolve auth token for telemetry: keyring first, then env var.

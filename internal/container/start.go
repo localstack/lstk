@@ -205,7 +205,7 @@ func runPostStartSetups(ctx context.Context, sink output.Sink, containers []conf
 	}
 	for _, t := range uniqueEmulatorTypes {
 		c := firstByType[t]
-		resolvedHost, dnsOK := endpoint.ResolveHost(c.Port, localStackHost)
+		resolvedHost, dnsOK := endpoint.ResolveHost(ctx, c.Port, localStackHost)
 		if !dnsOK {
 			sink.Emit(output.MessageEvent{Severity: output.SeverityNote, Text: endpoint.DNSRebindNote})
 		}
@@ -219,9 +219,9 @@ func runPostStartSetups(ctx context.Context, sink output.Sink, containers []conf
 	return nil
 }
 
-func emitAlreadyRunning(sink output.Sink, c runtime.ContainerConfig, localStackHost, webAppURL string) {
+func emitAlreadyRunning(ctx context.Context, sink output.Sink, c runtime.ContainerConfig, localStackHost, webAppURL string) {
 	sink.Emit(output.MessageEvent{Severity: output.SeverityNote, Text: fmt.Sprintf("%s is already running", c.EmulatorType.DisplayName())})
-	resolvedHost, dnsOK := endpoint.ResolveHost(c.Port, localStackHost)
+	resolvedHost, dnsOK := endpoint.ResolveHost(ctx, c.Port, localStackHost)
 	if !dnsOK {
 		sink.Emit(output.MessageEvent{Severity: output.SeverityNote, Text: endpoint.DNSRebindNote})
 	}
@@ -416,7 +416,7 @@ func selectContainersToStart(ctx context.Context, rt runtime.Runtime, sink outpu
 			return nil, fmt.Errorf("failed to check container status: %w", err)
 		}
 		if running {
-			emitAlreadyRunning(sink, c, localStackHost, webAppURL)
+			emitAlreadyRunning(ctx, sink, c, localStackHost, webAppURL)
 			continue
 		}
 
@@ -460,7 +460,7 @@ func selectContainersToStart(ctx context.Context, rt runtime.Runtime, sink outpu
 				})
 				return nil, output.NewSilentError(fmt.Errorf("LocalStack already running on port %s", found.BoundPort))
 			}
-			emitAlreadyRunning(sink, c, localStackHost, webAppURL)
+			emitAlreadyRunning(ctx, sink, c, localStackHost, webAppURL)
 			continue
 		}
 

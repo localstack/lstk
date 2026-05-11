@@ -24,7 +24,7 @@ func RunConfigProfile(parentCtx context.Context, containers []config.ContainerCo
 		return fmt.Errorf("no aws emulator configured")
 	}
 
-	resolvedHost, dnsOK := endpoint.ResolveHost(awsContainer.Port, localStackHost)
+	resolvedHost, dnsOK := endpoint.ResolveHost(parentCtx, awsContainer.Port, localStackHost)
 
 	return runWithTUI(parentCtx, withoutHeader(), func(ctx context.Context, sink output.Sink) error {
 		if !dnsOK {

@@ -1,6 +1,8 @@
 package integration_test
 
 import (
+	"bytes"
+	"compress/gzip"
 	"context"
 	"encoding/json"
 	"io"
@@ -9,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"runtime"
+	"sync"
 	"testing"
 	"time"
 
@@ -230,6 +233,78 @@ func assertCommandTelemetry(t *testing.T, events <-chan map[string]any, command 
 	assert.Equal(t, command, params["command"])
 	result, _ := payload["result"].(map[string]any)
 	assert.InDelta(t, exitCode, result["exit_code"], 0)
+}
+
+// TestOtelTelemetrySpanIsExported verifies that the span created for the
+// analytics POST request reaches the OTLP collector.
+func TestOtelTelemetrySpanIsExported(t *testing.T) {
+	requireDocker(t)
+	cleanup()
+	t.Cleanup(cleanup)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	startTestContainer(t, ctx)
+
+	analyticsSrv, _ := mockAnalyticsServer(t)
+	otlpSrv, otlpBodies := mockOTLPCollector(t)
+
+	cmd := exec.CommandContext(ctx, binaryPath(), "start")
+	cmd.Env = env.Environ(testEnvWithHome(t.TempDir(), "")).
+		With(env.AuthToken, "fake-token").
+		With(env.AnalyticsEndpoint, analyticsSrv.URL).
+		With(env.Otel, "1").
+		With(env.OtelEndpoint, otlpSrv.URL)
+	out, err := cmd.CombinedOutput()
+	require.NoError(t, err, "lstk start failed: %s", out)
+
+	deadline := time.After(5 * time.Second)
+	for {
+		select {
+		case body := <-otlpBodies:
+			// otlptracehttp serializes spans as protobuf; UTF-8 strings appear
+			// inline in the wire format, so a substring search is sufficient.
+			if bytes.Contains(body, []byte("telemetry POST")) {
+				return
+			}
+		case <-deadline:
+			t.Fatal("timed out waiting for telemetry span in OTLP export — likely tel.Close() ran after tracing shutdown")
+		}
+	}
+}
+
+// mockOTLPCollector returns a test server that accepts OTLP/HTTP trace exports
+// and forwards each (decompressed) request body to the returned channel.
+func mockOTLPCollector(t *testing.T) (*httptest.Server, <-chan []byte) {
+	t.Helper()
+	bodies := make(chan []byte, 16)
+	var once sync.Once
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var reader io.Reader = r.Body
+		if r.Header.Get("Content-Encoding") == "gzip" {
+			gz, err := gzip.NewReader(r.Body)
+			if err != nil {
+				w.WriteHeader(http.StatusBadRequest)
+				return
+			}
+			defer func() { _ = gz.Close() }()
+			reader = gz
+		}
+		body, err := io.ReadAll(reader)
+		if err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		select {
+		case bodies <- body:
+		default:
+			once.Do(func() { t.Logf("OTLP body channel full, dropping payload of %d bytes", len(body)) })
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(srv.Close)
+	return srv, bodies
 }
 
 // collects events until count distinct event names have been received or the deadline expires.

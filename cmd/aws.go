@@ -77,9 +77,9 @@ Examples:
 				return output.NewSilentError(fmt.Errorf("%s is not running", awsContainer.Name()))
 			}
 
-			host, _ := endpoint.ResolveHost(awsContainer.Port, cfg.LocalStackHost)
+			host, _ := endpoint.ResolveHost(cmd.Context(), awsContainer.Port, cfg.LocalStackHost)
 
-			profileExists, _ := awsconfig.ProfileExists()
+			profileExists, _ := awsconfig.ProfileExists(cmd.Context())
 			if !profileExists {
 				sink.Emit(output.MessageEvent{Severity: output.SeverityNote, Text: "No AWS profile found, run 'lstk setup aws'"})
 			}

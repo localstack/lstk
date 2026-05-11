@@ -12,6 +12,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+
 	"github.com/localstack/lstk/internal/version"
 )
 
@@ -28,9 +30,10 @@ type Client struct {
 	httpClient *http.Client
 	endpoint   string
 
-	events    chan eventBody
-	done      chan struct{}
-	closeOnce sync.Once
+	events        chan eventBody
+	done          chan struct{}
+	closeOnce     sync.Once
+	machineIDOnce sync.Once
 }
 
 // SetAuthToken stores the resolved auth token for inclusion in telemetry events.
@@ -46,11 +49,16 @@ func New(endpoint string, disabled bool) *Client {
 	c := &Client{
 		enabled:   true,
 		sessionID: uuid.NewString(),
-		machineID: LoadOrCreateMachineID(),
 		// http.Client has no default timeout (zero means none). Without one, a
 		// slow or unreachable endpoint would block the worker goroutine.
 		httpClient: &http.Client{
 			Timeout: 3 * time.Second,
+			Transport: otelhttp.NewTransport(
+				http.DefaultTransport,
+				otelhttp.WithSpanNameFormatter(func(_ string, r *http.Request) string {
+					return "telemetry " + r.Method + " " + r.URL.Path
+				}),
+			),
 		},
 		endpoint: endpoint,
 		events:   make(chan eventBody, 64),

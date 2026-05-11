@@ -9,13 +9,22 @@ import (
 	"os/exec"
 	"strings"
 
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+
 	"github.com/localstack/lstk/internal/awsconfig"
 	"github.com/localstack/lstk/internal/output"
 )
 
 func Exec(ctx context.Context, endpointURL string, useProfile bool, stdout, stderr io.Writer, args []string) error {
+	ctx, span := otel.Tracer("github.com/localstack/lstk/internal/awscli").Start(ctx, "aws cli")
+	defer span.End()
+
 	awsBin, err := exec.LookPath("aws")
 	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
 		return fmt.Errorf("aws CLI not found in PATH — install it from https://aws.amazon.com/cli/")
 	}
 
@@ -30,6 +39,11 @@ func Exec(ctx context.Context, endpointURL string, useProfile bool, stdout, stde
 	}
 	cmdArgs = append(cmdArgs, args...)
 
+	span.SetAttributes(
+		attribute.StringSlice("aws.args", args),
+		attribute.Bool("aws.use_profile", useProfile),
+	)
+
 	cmd := exec.CommandContext(ctx, awsBin, cmdArgs...)
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = stdout
@@ -41,8 +55,12 @@ func Exec(ctx context.Context, endpointURL string, useProfile bool, stdout, stde
 	if err := cmd.Run(); err != nil {
 		var exitErr *exec.ExitError
 		if errors.As(err, &exitErr) {
+			span.SetAttributes(attribute.Int("aws.exit_code", exitErr.ExitCode()))
+			span.SetStatus(codes.Error, "aws cli exited non-zero")
 			return output.NewSilentError(err)
 		}
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
 		return err
 	}
 	return nil
