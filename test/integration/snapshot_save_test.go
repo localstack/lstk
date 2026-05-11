@@ -178,7 +178,7 @@ func TestSnapshotSaveLocalStackNotRunning(t *testing.T) {
 	ctx := testContext(t)
 	// Intentionally no startTestContainer: the emulator is not running.
 
-	_, stderr, err := runLstk(t, ctx, t.TempDir(), nil,
+	_, stderr, err := runLstk(t, ctx, t.TempDir(), testEnvWithHome(t.TempDir(), ""),
 		"--non-interactive", "snapshot", "save",
 	)
 	requireExitCode(t, 1, err)
