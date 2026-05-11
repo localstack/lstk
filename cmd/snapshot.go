@@ -55,13 +55,10 @@ Cloud destinations are not yet supported.`,
 				return fmt.Errorf("failed to get config: %w", err)
 			}
 
-			hasAWS := slices.ContainsFunc(appConfig.Containers, func(c config.ContainerConfig) bool {
+			awsIdx := slices.IndexFunc(appConfig.Containers, func(c config.ContainerConfig) bool {
 				return c.Type == config.EmulatorAWS
 			})
-			hasOther := slices.ContainsFunc(appConfig.Containers, func(c config.ContainerConfig) bool {
-				return c.Type != config.EmulatorAWS
-			})
-			if !hasAWS && hasOther {
+			if awsIdx < 0 && len(appConfig.Containers) > 0 {
 				return fmt.Errorf("snapshot is only supported for the AWS emulator")
 			}
 
@@ -71,14 +68,16 @@ Cloud destinations are not yet supported.`,
 			}
 
 			awsContainer := config.ContainerConfig{Type: config.EmulatorAWS, Port: config.DefaultAWSPort}
-			host, _ := endpoint.ResolveHost(awsContainer.Port, cfg.LocalStackHost)
+			if awsIdx >= 0 {
+				awsContainer = appConfig.Containers[awsIdx]
+			}
+			host, _ := endpoint.ResolveHost(cmd.Context(), awsContainer.Port, cfg.LocalStackHost)
 			exporter := snapshot.NewStateClient("http://" + host)
 
-			containers := []config.ContainerConfig{awsContainer}
 			if isInteractiveMode(cfg) {
-				return ui.RunSnapshotSave(cmd.Context(), rt, containers, exporter, dest)
+				return ui.RunSnapshotSave(cmd.Context(), rt, []config.ContainerConfig{awsContainer}, exporter, dest)
 			}
-			return snapshot.Save(cmd.Context(), rt, containers, exporter, dest, output.NewPlainSinkSplit(os.Stdout, os.Stderr))
+			return snapshot.Save(cmd.Context(), rt, []config.ContainerConfig{awsContainer}, exporter, dest, output.NewPlainSinkSplit(os.Stdout, os.Stderr))
 		},
 	}
 }

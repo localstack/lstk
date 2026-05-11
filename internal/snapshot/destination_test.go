@@ -3,6 +3,7 @@ package snapshot_test
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/localstack/lstk/internal/snapshot"
@@ -17,11 +18,13 @@ func TestParseDestination(t *testing.T) {
 	home, err := os.UserHomeDir()
 	require.NoError(t, err)
 
-	tests := []struct {
+	type testCase struct {
 		input    string
 		wantPath string
 		wantErr  string
-	}{
+	}
+
+	tests := []testCase{
 		{
 			input:    "",
 			wantPath: filepath.Join(wd, "ls-state-export"),
@@ -33,6 +36,10 @@ func TestParseDestination(t *testing.T) {
 		{
 			input:    filepath.Join(os.TempDir(), "state"),
 			wantPath: filepath.Join(os.TempDir(), "state"),
+		},
+		{
+			input:    "~",
+			wantPath: home,
 		},
 		{
 			input:    "~/snapshots/s",
@@ -54,6 +61,14 @@ func TestParseDestination(t *testing.T) {
 			input:   "s3://bucket/key",
 			wantErr: "cloud destinations are not yet supported",
 		},
+	}
+
+	if runtime.GOOS == "windows" {
+		tests = append(tests,
+			testCase{input: `~\snapshots\s`, wantPath: filepath.Join(home, "snapshots", "s")},
+			testCase{input: `C:\Users\user\snap`, wantPath: `C:\Users\user\snap`},
+			testCase{input: `C:/Users/user/snap`, wantPath: `C:\Users\user\snap`},
+		)
 	}
 
 	for _, tc := range tests {

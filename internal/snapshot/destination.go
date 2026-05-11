@@ -18,12 +18,12 @@ func ParseDestination(dest string) (string, error) {
 		// bare name with no path separators: reserved for future cloud pod names
 		return "", fmt.Errorf("cloud destinations are not yet supported — use a file path like ./my-snapshot")
 	}
-	if strings.HasPrefix(dest, "~") {
+	if dest == "~" || strings.HasPrefix(dest, "~/") || strings.HasPrefix(dest, `~\`) {
 		home, err := os.UserHomeDir()
 		if err != nil {
 			return "", fmt.Errorf("resolve home directory: %w", err)
 		}
-		dest = home + dest[1:]
+		dest = filepath.Join(home, strings.TrimLeft(dest[1:], `/\`))
 	}
 	abs, err := filepath.Abs(dest)
 	if err != nil {

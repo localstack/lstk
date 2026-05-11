@@ -13,7 +13,7 @@ import (
 )
 
 // Save exports the emulator's state via exporter and writes it to dest.
-func Save(ctx context.Context, rt runtime.Runtime, containers []config.ContainerConfig, exporter StateExporter, dest string, sink output.Sink) error {
+func Save(ctx context.Context, rt runtime.Runtime, containers []config.ContainerConfig, exporter StateExporter, dest string, sink output.Sink) (retErr error) {
 	if err := rt.IsHealthy(ctx); err != nil {
 		rt.EmitUnhealthyError(sink, err)
 		return output.NewSilentError(fmt.Errorf("runtime not healthy: %w", err))
@@ -35,32 +35,28 @@ func Save(ctx context.Context, rt runtime.Runtime, containers []config.Container
 	}
 
 	sink.Emit(output.SpinnerStart("Saving snapshot..."))
+	defer func() {
+		sink.Emit(output.SpinnerStop())
+		if retErr == nil {
+			sink.Emit(output.MessageEvent{Severity: output.SeveritySuccess, Text: fmt.Sprintf("Snapshot saved to %s", dest)})
+		}
+	}()
 
 	body, err := exporter.ExportState(ctx)
 	if err != nil {
-		sink.Emit(output.SpinnerStop())
 		return fmt.Errorf("export state from LocalStack: %w", err)
 	}
 	defer func() { _ = body.Close() }()
 
 	w, err := os.Create(dest)
 	if err != nil {
-		sink.Emit(output.SpinnerStop())
 		return fmt.Errorf("save to %s: %w", dest, err)
 	}
 
 	if _, err := io.Copy(w, body); err != nil {
 		_ = w.Close()
-		sink.Emit(output.SpinnerStop())
 		return fmt.Errorf("write snapshot: %w", err)
 	}
 
-	if err := w.Close(); err != nil {
-		sink.Emit(output.SpinnerStop())
-		return fmt.Errorf("close snapshot: %w", err)
-	}
-
-	sink.Emit(output.SpinnerStop())
-	sink.Emit(output.MessageEvent{Severity: output.SeveritySuccess, Text: fmt.Sprintf("Snapshot saved to %s", dest)})
-	return nil
+	return w.Close()
 }
