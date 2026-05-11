@@ -1,6 +1,7 @@
 package awsconfig
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
@@ -50,7 +51,7 @@ func TestProfileExists(t *testing.T) {
 			dir := t.TempDir()
 			t.Setenv("HOME", dir)
 			tc.setup(t, dir)
-			ok, err := ProfileExists()
+			ok, err := ProfileExists(context.Background())
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -71,7 +72,7 @@ func TestWriteProfile(t *testing.T) {
 			name:  "creates files when absent",
 			setup: func(t *testing.T, dir string) {},
 			check: func(t *testing.T, dir string) {
-				ok, err := ProfileExists()
+				ok, err := ProfileExists(context.Background())
 				if err != nil {
 					t.Fatal(err)
 				}

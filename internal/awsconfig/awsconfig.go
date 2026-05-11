@@ -9,6 +9,8 @@ import (
 	"os"
 	"path/filepath"
 
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
 	"gopkg.in/ini.v1"
 
 	"github.com/localstack/lstk/internal/endpoint"
@@ -138,7 +140,10 @@ func credsNeedWrite(path string) (bool, error) {
 
 // ProfileExists reports whether the localstack profile section is present in both
 // ~/.aws/config and ~/.aws/credentials.
-func ProfileExists() (bool, error) {
+func ProfileExists(ctx context.Context) (bool, error) {
+	_, span := otel.Tracer("github.com/localstack/lstk/internal/awsconfig").Start(ctx, "awsconfig.ProfileExists")
+	defer span.End()
+
 	configPath, credsPath, err := awsPaths()
 	if err != nil {
 		return false, err
@@ -151,6 +156,7 @@ func ProfileExists() (bool, error) {
 	if err != nil {
 		return false, err
 	}
+	span.SetAttributes(attribute.Bool("awsconfig.profile_exists", configOK && credsOK))
 	return configOK && credsOK, nil
 }
 
