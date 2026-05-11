@@ -5,11 +5,23 @@ import (
 	"path/filepath"
 	"runtime"
 	"testing"
+	"time"
 
 	"github.com/localstack/lstk/internal/snapshot"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func TestParseDestinationDefault(t *testing.T) {
+	t.Parallel()
+	wd, err := os.Getwd()
+	require.NoError(t, err)
+
+	now := time.Date(2026, 5, 11, 21, 4, 32, 0, time.UTC)
+	got, err := snapshot.ParseDestination("", now)
+	require.NoError(t, err)
+	assert.Equal(t, filepath.Join(wd, "snapshot-2026-05-11T21-04-32"), got)
+}
 
 func TestParseDestination(t *testing.T) {
 	t.Parallel()
@@ -18,6 +30,8 @@ func TestParseDestination(t *testing.T) {
 	home, err := os.UserHomeDir()
 	require.NoError(t, err)
 
+	now := time.Date(2026, 5, 11, 21, 4, 32, 0, time.UTC)
+
 	type testCase struct {
 		input    string
 		wantPath string
@@ -25,10 +39,6 @@ func TestParseDestination(t *testing.T) {
 	}
 
 	tests := []testCase{
-		{
-			input:    "",
-			wantPath: filepath.Join(wd, "ls-state-export"),
-		},
 		{
 			input:    "./my-state",
 			wantPath: filepath.Join(wd, "my-state"),
@@ -74,7 +84,7 @@ func TestParseDestination(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.input, func(t *testing.T) {
 			t.Parallel()
-			got, err := snapshot.ParseDestination(tc.input)
+			got, err := snapshot.ParseDestination(tc.input, now)
 			if tc.wantErr != "" {
 				require.Error(t, err)
 				assert.Contains(t, err.Error(), tc.wantErr)

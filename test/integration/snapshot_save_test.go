@@ -61,8 +61,16 @@ func TestSnapshotSaveDefaultDestination(t *testing.T) {
 	require.NoError(t, err, "lstk snapshot save failed: %s", stderr)
 	assert.Contains(t, stdout, "Snapshot saved")
 
-	_, statErr := os.Stat(filepath.Join(dir, "ls-state-export"))
-	assert.NoError(t, statErr, "default output file should exist")
+	entries, readErr := os.ReadDir(dir)
+	require.NoError(t, readErr)
+	var found bool
+	for _, e := range entries {
+		if strings.HasPrefix(e.Name(), "snapshot-") {
+			found = true
+			break
+		}
+	}
+	assert.True(t, found, "default snapshot file (snapshot-*) should exist in %s", dir)
 }
 
 func TestSnapshotSaveCustomPath(t *testing.T) {

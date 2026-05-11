@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"slices"
+	"time"
 
 	"github.com/localstack/lstk/internal/config"
 	"github.com/localstack/lstk/internal/emulator/aws"
@@ -33,7 +34,7 @@ func newSnapshotSaveCmd(cfg *env.Env) *cobra.Command {
 
 The destination must be a file path. Use a path prefix to save locally:
 
-  lstk snapshot save                  # saves to ./ls-state-export
+  lstk snapshot save                  # saves to ./snapshot-2026-05-11T21-04-32
   lstk snapshot save ./my-snapshot    # saves to ./my-snapshot
   lstk snapshot save /tmp/my-state    # saves to /tmp/my-state
 
@@ -46,7 +47,7 @@ Cloud destinations are not yet supported.`,
 				destArg = args[0]
 			}
 
-			dest, err := snapshot.ParseDestination(destArg)
+			dest, err := snapshot.ParseDestination(destArg, time.Now())
 			if err != nil {
 				return err
 			}

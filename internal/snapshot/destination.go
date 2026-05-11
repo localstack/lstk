@@ -5,13 +5,15 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 // ParseDestination resolves the user-supplied path to an absolute local path,
-// or returns an error for cloud/bare names.
-func ParseDestination(dest string) (string, error) {
+// or returns an error for cloud/bare names. When dest is empty, a default name
+// based on now (UTC) is used, e.g. "snapshot-2026-05-11T21-04-32".
+func ParseDestination(dest string, now time.Time) (string, error) {
 	if dest == "" {
-		dest = "ls-state-export"
+		dest = "./" + now.UTC().Format("snapshot-2006-01-02T15-04-05")
 	} else if strings.Contains(dest, "://") {
 		return "", fmt.Errorf("cloud destinations are not yet supported — use a file path like ./my-snapshot")
 	} else if !strings.HasPrefix(dest, ".") && !strings.HasPrefix(dest, "~") && !filepath.IsAbs(dest) && filepath.Base(dest) == dest {
