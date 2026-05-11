@@ -5,7 +5,7 @@
 # GitHub: https://github.com/jaegertracing/jaeger
 #
 # Usage:
-#   docker compose -f otel/jaeger/docker-compose.yaml up -d
+#   docker compose -f docker-compose.tracing.yaml up -d
 #
 # Traces are persisted in the jaeger-data Docker volume via Badger embedded storage.
 # The volume is mounted at /tmp so UID 10001 (the Jaeger process user) can write to it.
