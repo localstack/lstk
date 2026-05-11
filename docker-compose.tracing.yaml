@@ -1,17 +1,37 @@
-# Starts Jaeger for local trace collection and visualization.
+# Starts Jaeger v2 (all-in-one) for local trace collection and visualization.
 # UI:        http://localhost:16686
-# OTLP HTTP: http://localhost:4318   (used by lstk)
 # OTLP gRPC: localhost:4317
+# OTLP HTTP: http://localhost:4318
+# GitHub: https://github.com/jaegertracing/jaeger
 #
 # Usage:
-#   docker compose -f docker-compose.tracing.yaml up -d
+#   docker compose -f otel/jaeger/docker-compose.yaml up -d
+#
+# Traces are persisted in the jaeger-data Docker volume via Badger embedded storage.
+# The volume is mounted at /tmp so UID 10001 (the Jaeger process user) can write to it.
+# Badger data is stored at /tmp/badger inside the volume.
+
+name: jaeger-standalone
 
 services:
   jaeger:
-    image: jaegertracing/all-in-one:latest
-    environment:
-      COLLECTOR_OTLP_ENABLED: "true"
+    image: jaegertracing/jaeger:latest
+    container_name: jaeger
+    restart: unless-stopped
+    command:
+      - --set=extensions.jaeger_storage.backends.badger_store.badger.ephemeral=false
+      - --set=extensions.jaeger_storage.backends.badger_store.badger.directories.keys=/tmp/badger
+      - --set=extensions.jaeger_storage.backends.badger_store.badger.directories.values=/tmp/badger
+      - --set=extensions.jaeger_storage.backends.badger_store.badger.ttl.spans=168h
+      - --set=extensions.jaeger_query.storage.traces=badger_store
+      - --set=exporters.jaeger_storage_exporter.trace_storage=badger_store
     ports:
       - "4317:4317"    # OTLP gRPC
       - "4318:4318"    # OTLP HTTP
       - "16686:16686"  # UI
+    volumes:
+      - jaeger-data:/tmp
+
+volumes:
+  jaeger-data:
+    name: jaeger-data
