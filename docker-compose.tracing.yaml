@@ -1,7 +1,7 @@
 # Starts Jaeger v2 (all-in-one) for local trace collection and visualization.
 # UI:        http://localhost:16686
 # OTLP gRPC: localhost:4317
-# OTLP HTTP: http://localhost:4318
+# OTLP HTTP: http://localhost:4318   (used by lstk)
 # GitHub: https://github.com/jaegertracing/jaeger
 #
 # Usage:
