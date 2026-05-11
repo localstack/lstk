@@ -82,7 +82,7 @@ func TestSnapshotSaveCustomPath(t *testing.T) {
 	startTestContainer(t, ctx)
 	srv := mockStateServer(t)
 	dir := t.TempDir()
-	outPath := filepath.Join(dir, "my-snap")
+	outPath := filepath.Join(dir, "my-snap.zip")
 
 	stdout, stderr, err := runLstk(t, ctx, dir,
 		env.With(env.LocalStackHost, lsHost(srv)),
@@ -118,7 +118,7 @@ func TestSnapshotSaveRelativePath(t *testing.T) {
 	require.NoError(t, err, "lstk snapshot save failed: %s", stderr)
 	assert.Contains(t, stdout, "Snapshot saved")
 
-	_, statErr := os.Stat(filepath.Join(dir, "my-state"))
+	_, statErr := os.Stat(filepath.Join(dir, "my-state.zip"))
 	assert.NoError(t, statErr, "relative output file should exist")
 }
 
@@ -131,7 +131,7 @@ func TestSnapshotSaveOverwritesExistingFile(t *testing.T) {
 	startTestContainer(t, ctx)
 	srv := mockStateServer(t)
 	dir := t.TempDir()
-	outPath := filepath.Join(dir, "snap")
+	outPath := filepath.Join(dir, "snap.zip")
 	require.NoError(t, os.WriteFile(outPath, []byte("OLD"), 0600))
 
 	_, stderr, err := runLstk(t, ctx, dir,
