@@ -48,7 +48,7 @@ func drainEvent(t *testing.T, tel *Client, ch <-chan map[string]any) map[string]
 func TestGetEnvironment_PopulatesAllFields(t *testing.T) {
 	c := New("http://localhost", false)
 	c.SetAuthToken("ls-abc123")
-	env := c.GetEnvironment()
+	env := c.GetEnvironment(context.Background())
 
 	assert.Equal(t, version.Version(), env.LstkVersion)
 	assert.Equal(t, "ls-abc123", env.AuthTokenID)
@@ -59,7 +59,7 @@ func TestGetEnvironment_PopulatesAllFields(t *testing.T) {
 
 func TestGetEnvironment_OmitsAuthTokenWhenEmpty(t *testing.T) {
 	c := New("http://localhost", false)
-	env := c.GetEnvironment()
+	env := c.GetEnvironment(context.Background())
 	assert.Empty(t, env.AuthTokenID)
 }
 
