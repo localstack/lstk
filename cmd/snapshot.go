@@ -30,13 +30,13 @@ func newSnapshotSaveCmd(cfg *env.Env) *cobra.Command {
 	return &cobra.Command{
 		Use:   "save [destination]",
 		Short: "Save a snapshot of the emulator state",
-		Long: `Save a snapshot of the running emulator's state to a local file.
+		Long: `Save a snapshot of the running emulator's state.
 
-The destination must be a file path. Use a path prefix to save locally:
+Pass [destination] as an absolute or relative path for the exported file:
 
-  lstk snapshot save                  # saves to ./snapshot-2026-05-11T21-04-32
-  lstk snapshot save ./my-snapshot    # saves to ./my-snapshot
-  lstk snapshot save /tmp/my-state    # saves to /tmp/my-state
+  lstk snapshot save                    # saves to ./snapshot-<YYYY-MM-DDTHH-mm-ss>.zip
+  lstk snapshot save ./my-snapshot.zip  # saves to ./my-snapshot.zip
+  lstk snapshot save /tmp/my-state      # saves to /tmp/my-state.zip
 
 Cloud destinations are not yet supported.`,
 		Args:    cobra.MaximumNArgs(1),

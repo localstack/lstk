@@ -1,12 +1,15 @@
 package snapshot
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
 )
+
+var ErrCloudNotSupported = errors.New("cloud destinations are not yet supported — use a file path like ./my-snapshot.zip")
 
 // ParseDestination resolves the user-supplied path to an absolute local path,
 // or returns an error for cloud/bare names. When dest is empty, a default name
@@ -16,10 +19,10 @@ func ParseDestination(dest string, now time.Time) (string, error) {
 	if dest == "" {
 		dest = "./" + now.UTC().Format("snapshot-2006-01-02T15-04-05")
 	} else if strings.Contains(dest, "://") {
-		return "", fmt.Errorf("cloud destinations are not yet supported — use a file path like ./my-snapshot.zip")
+		return "", ErrCloudNotSupported
 	} else if !strings.HasPrefix(dest, ".") && !strings.HasPrefix(dest, "~") && !filepath.IsAbs(dest) && filepath.Base(dest) == dest {
 		// bare name with no path separators: reserved for future cloud pod names
-		return "", fmt.Errorf("cloud destinations are not yet supported — use a file path like ./my-snapshot.zip")
+		return "", ErrCloudNotSupported
 	}
 	if dest == "~" || strings.HasPrefix(dest, "~/") || strings.HasPrefix(dest, `~\`) {
 		home, err := os.UserHomeDir()

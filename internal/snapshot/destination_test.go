@@ -79,17 +79,14 @@ func TestParseDestination(t *testing.T) {
 		},
 		{
 			input:        "my-pod",
-			wantErr:      "cloud destinations are not yet supported",
 			wantCloudErr: true,
 		},
 		{
 			input:        "cloud://my-pod",
-			wantErr:      "cloud destinations are not yet supported",
 			wantCloudErr: true,
 		},
 		{
 			input:        "s3://bucket/key",
-			wantErr:      "cloud destinations are not yet supported",
 			wantCloudErr: true,
 		},
 	}
@@ -109,9 +106,10 @@ func TestParseDestination(t *testing.T) {
 			if tc.wantErr != "" {
 				require.Error(t, err)
 				assert.Contains(t, err.Error(), tc.wantErr)
-				if tc.wantCloudErr {
-					assert.Contains(t, err.Error(), "./my-snapshot.zip")
-				}
+				return
+			}
+			if tc.wantCloudErr {
+				require.ErrorIs(t, err, snapshot.ErrCloudNotSupported)
 				return
 			}
 			require.NoError(t, err)
