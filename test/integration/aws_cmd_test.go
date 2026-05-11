@@ -338,7 +338,7 @@ func TestAWSCommandShowsSpinnerForSlowOperation(t *testing.T) {
 	out, err := runLstkInPTY(t, ctx, e, "aws", "s3", "ls")
 	require.NoError(t, err, "lstk aws failed: %s", out)
 
-	assert.Contains(t, out, "Service loading")
+	assert.Contains(t, out, "Loading service")
 	assert.Contains(t, out, "ARGS:--profile localstack s3 ls")
 }
 
@@ -358,7 +358,7 @@ func TestAWSCommandSuppressesSpinnerForFastOperation(t *testing.T) {
 	out, err := runLstkInPTY(t, ctx, e, "aws", "s3", "ls")
 	require.NoError(t, err, "lstk aws failed: %s", out)
 
-	assert.NotContains(t, out, "Service loading")
+	assert.NotContains(t, out, "Loading service")
 	assert.Contains(t, out, "ARGS:--profile localstack s3 ls")
 }
 
