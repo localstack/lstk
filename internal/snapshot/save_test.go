@@ -18,19 +18,6 @@ import (
 	"go.uber.org/mock/gomock"
 )
 
-// fakeExporter implements StateExporter for tests.
-type fakeExporter struct {
-	body []byte
-	err  error
-}
-
-func (f *fakeExporter) ExportState(_ context.Context, _ string) (io.ReadCloser, error) {
-	if f.err != nil {
-		return nil, f.err
-	}
-	return io.NopCloser(bytes.NewReader(f.body)), nil
-}
-
 func captureEvents(t *testing.T) (output.Sink, func() []output.Event) {
 	t.Helper()
 	var events []output.Event
@@ -49,13 +36,29 @@ func healthyRunningMock(t *testing.T) *runtime.MockRuntime {
 	return mockRT
 }
 
+func mockExporterReturning(t *testing.T, body []byte) *MockStateExporter {
+	t.Helper()
+	ctrl := gomock.NewController(t)
+	m := NewMockStateExporter(ctrl)
+	m.EXPECT().ExportState(gomock.Any(), gomock.Any()).Return(io.NopCloser(bytes.NewReader(body)), nil)
+	return m
+}
+
+func mockExporterReturningError(t *testing.T, err error) *MockStateExporter {
+	t.Helper()
+	ctrl := gomock.NewController(t)
+	m := NewMockStateExporter(ctrl)
+	m.EXPECT().ExportState(gomock.Any(), gomock.Any()).Return(nil, err)
+	return m
+}
+
 var awsContainers = []config.ContainerConfig{{Type: config.EmulatorAWS}}
 
 func TestSave_Success(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	dest := filepath.Join(dir, "snap")
-	exporter := &fakeExporter{body: []byte("ZIP_DATA")}
+	exporter := mockExporterReturning(t, []byte("ZIP_DATA"))
 	sink, getEvents := captureEvents(t)
 
 	err := snapshot.Save(context.Background(), healthyRunningMock(t), awsContainers, exporter, "", dest, sink)
@@ -97,11 +100,13 @@ func TestSave_EmulatorNotRunning(t *testing.T) {
 	mockRT.EXPECT().IsRunning(gomock.Any(), "localstack-aws").Return(false, nil)
 	mockRT.EXPECT().FindRunningByImage(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil)
 
+	exporter := NewMockStateExporter(ctrl)
+
 	dir := t.TempDir()
 	dest := filepath.Join(dir, "snap")
 	sink, getEvents := captureEvents(t)
 
-	err := snapshot.Save(context.Background(), mockRT, awsContainers, &fakeExporter{body: []byte("x")}, "", dest, sink)
+	err := snapshot.Save(context.Background(), mockRT, awsContainers, exporter, "", dest, sink)
 	require.Error(t, err)
 	assert.True(t, output.IsSilent(err))
 
@@ -126,11 +131,13 @@ func TestSave_UnhealthyRuntime(t *testing.T) {
 	mockRT.EXPECT().IsHealthy(gomock.Any()).Return(fmt.Errorf("docker unavailable"))
 	mockRT.EXPECT().EmitUnhealthyError(gomock.Any(), gomock.Any())
 
+	exporter := NewMockStateExporter(ctrl)
+
 	dir := t.TempDir()
 	dest := filepath.Join(dir, "snap")
 	sink := output.NewPlainSink(io.Discard)
 
-	err := snapshot.Save(context.Background(), mockRT, awsContainers, &fakeExporter{}, "", dest, sink)
+	err := snapshot.Save(context.Background(), mockRT, awsContainers, exporter, "", dest, sink)
 	require.Error(t, err)
 	assert.True(t, output.IsSilent(err))
 }
@@ -139,7 +146,7 @@ func TestSave_ExporterError(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	dest := filepath.Join(dir, "snap")
-	exporter := &fakeExporter{err: fmt.Errorf("connection refused")}
+	exporter := mockExporterReturningError(t, fmt.Errorf("connection refused"))
 	sink := output.NewPlainSink(io.Discard)
 
 	err := snapshot.Save(context.Background(), healthyRunningMock(t), awsContainers, exporter, "", dest, sink)
@@ -153,7 +160,7 @@ func TestSave_ExporterError(t *testing.T) {
 func TestSave_DestinationDirNotExist(t *testing.T) {
 	t.Parallel()
 	dest := "/no/such/dir/snap"
-	exporter := &fakeExporter{body: []byte("ZIP_DATA")}
+	exporter := mockExporterReturning(t, []byte("ZIP_DATA"))
 	sink := output.NewPlainSink(io.Discard)
 
 	err := snapshot.Save(context.Background(), healthyRunningMock(t), awsContainers, exporter, "", dest, sink)
@@ -168,7 +175,7 @@ func TestSave_OverwritesExistingFile(t *testing.T) {
 	require.NoError(t, os.WriteFile(path, []byte("OLD"), 0600))
 
 	dest := path
-	exporter := &fakeExporter{body: []byte("NEW")}
+	exporter := mockExporterReturning(t, []byte("NEW"))
 	sink := output.NewPlainSink(io.Discard)
 
 	err := snapshot.Save(context.Background(), healthyRunningMock(t), awsContainers, exporter, "", dest, sink)
@@ -186,7 +193,7 @@ func TestSave_ContextCancelled(t *testing.T) {
 
 	dir := t.TempDir()
 	dest := filepath.Join(dir, "snap")
-	exporter := &fakeExporter{err: ctx.Err()}
+	exporter := mockExporterReturningError(t, ctx.Err())
 
 	ctrl := gomock.NewController(t)
 	mockRT := runtime.NewMockRuntime(ctrl)
