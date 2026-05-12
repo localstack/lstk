@@ -12,7 +12,6 @@ import (
 	"github.com/localstack/lstk/internal/runtime"
 )
 
-// Save exports the emulator's state via exporter and writes it to dest.
 func Save(ctx context.Context, rt runtime.Runtime, containers []config.ContainerConfig, exporter StateExporter, host, dest string, sink output.Sink) (retErr error) {
 	if err := rt.IsHealthy(ctx); err != nil {
 		rt.EmitUnhealthyError(sink, err)

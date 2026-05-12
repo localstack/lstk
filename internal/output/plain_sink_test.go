@@ -286,32 +286,6 @@ func TestPlainSink_TableWidth(t *testing.T) {
 	})
 }
 
-func TestPlainSinkSplit_RoutesErrorEventToErrOut(t *testing.T) {
-	var out, errOut bytes.Buffer
-	sink := NewPlainSinkSplit(&out, &errOut)
-
-	sink.Emit(ErrorEvent{Title: "Something failed"})
-
-	assert.Empty(t, out.String(), "ErrorEvent should not go to out")
-	assert.Contains(t, errOut.String(), "Something failed")
-}
-
-func TestPlainSinkSplit_RoutesOtherEventsToOut(t *testing.T) {
-	var out, errOut bytes.Buffer
-	sink := NewPlainSinkSplit(&out, &errOut)
-
-	sink.Emit(MessageEvent{Severity: SeverityInfo, Text: "hello"})
-
-	assert.Contains(t, out.String(), "hello")
-	assert.Empty(t, errOut.String(), "MessageEvent should not go to errOut")
-}
-
-func TestPlainSinkSplit_NilWritersFallback(t *testing.T) {
-	// nil writers should not panic (fallback to os.Stdout/os.Stderr)
-	sink := NewPlainSinkSplit(nil, nil)
-	assert.NotNil(t, sink)
-}
-
 func TestPlainSink_ErrReturnsNilOnSuccess(t *testing.T) {
 	var out bytes.Buffer
 	sink := NewPlainSink(&out)

@@ -31,8 +31,8 @@ func ParseDestination(dest string, now time.Time) (string, error) {
 			strings.HasPrefix(lower, "cloud:"):
 			return "", ErrRemoteNotSupported
 		case strings.Contains(lower, "://"):
-			scheme := dest[:strings.Index(lower, "://")+3]
-			return "", fmt.Errorf("%w: %q", ErrUnknownScheme, scheme)
+			scheme, _, _ := strings.Cut(dest, "://")
+			return "", fmt.Errorf("%w: %q", ErrUnknownScheme, scheme+"://")
 		}
 	}
 
