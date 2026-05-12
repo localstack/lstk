@@ -296,9 +296,14 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, nil
 	case output.InstanceInfoEvent:
 		if line, ok := output.FormatEventLine(msg); ok {
-			line = strings.Replace(line, output.SuccessMarker(), styles.Success.Render(output.SuccessMarker()), 1)
-			for _, part := range strings.Split(line, "\n") {
-				a.addLine(styledLine{text: part})
+			parts := strings.Split(line, "\n")
+			for i, part := range parts {
+				if i == 0 {
+					part = strings.Replace(part, output.SuccessMarker(), styles.Success.Render(output.SuccessMarker()), 1)
+					a.addLine(styledLine{text: part})
+				} else {
+					a.addLine(styledLine{text: part, secondary: true})
+				}
 			}
 		}
 		return a, nil
