@@ -1,7 +1,6 @@
 package snapshot_test
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -40,15 +39,20 @@ func mockExporterReturning(t *testing.T, body []byte) *MockStateExporter {
 	t.Helper()
 	ctrl := gomock.NewController(t)
 	m := NewMockStateExporter(ctrl)
-	m.EXPECT().ExportState(gomock.Any(), gomock.Any()).Return(io.NopCloser(bytes.NewReader(body)), nil)
+	m.EXPECT().ExportState(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, _ string, dst io.Writer) error {
+			_, err := dst.Write(body)
+			return err
+		},
+	)
 	return m
 }
 
-func mockExporterReturningError(t *testing.T, err error) *MockStateExporter {
+func mockExporterReturningError(t *testing.T, exportErr error) *MockStateExporter {
 	t.Helper()
 	ctrl := gomock.NewController(t)
 	m := NewMockStateExporter(ctrl)
-	m.EXPECT().ExportState(gomock.Any(), gomock.Any()).Return(nil, err)
+	m.EXPECT().ExportState(gomock.Any(), gomock.Any(), gomock.Any()).Return(exportErr)
 	return m
 }
 
@@ -160,7 +164,8 @@ func TestSave_ExporterError(t *testing.T) {
 func TestSave_DestinationDirNotExist(t *testing.T) {
 	t.Parallel()
 	dest := "/no/such/dir/snap"
-	exporter := mockExporterReturning(t, []byte("ZIP_DATA"))
+	ctrl := gomock.NewController(t)
+	exporter := NewMockStateExporter(ctrl)
 	sink := output.NewPlainSink(io.Discard)
 
 	err := snapshot.Save(context.Background(), healthyRunningMock(t), awsContainers, exporter, "", dest, sink)

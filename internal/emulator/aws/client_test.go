@@ -1,6 +1,7 @@
 package aws
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -122,14 +123,11 @@ func TestExportState(t *testing.T) {
 		}))
 		defer srv.Close()
 
+		var buf bytes.Buffer
 		c := NewClient()
-		body, err := c.ExportState(context.Background(), srv.Listener.Addr().String())
+		err := c.ExportState(context.Background(), srv.Listener.Addr().String(), &buf)
 		require.NoError(t, err)
-		defer func() { _ = body.Close() }()
-
-		data, err := io.ReadAll(body)
-		require.NoError(t, err)
-		assert.Equal(t, "ZIP_DATA", string(data))
+		assert.Equal(t, "ZIP_DATA", buf.String())
 	})
 
 	t.Run("returns error on 500", func(t *testing.T) {
@@ -140,7 +138,7 @@ func TestExportState(t *testing.T) {
 		defer srv.Close()
 
 		c := NewClient()
-		_, err := c.ExportState(context.Background(), srv.Listener.Addr().String())
+		err := c.ExportState(context.Background(), srv.Listener.Addr().String(), io.Discard)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "500")
 	})
@@ -153,7 +151,7 @@ func TestExportState(t *testing.T) {
 		defer srv.Close()
 
 		c := NewClient()
-		_, err := c.ExportState(context.Background(), srv.Listener.Addr().String())
+		err := c.ExportState(context.Background(), srv.Listener.Addr().String(), io.Discard)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "404")
 	})
@@ -165,7 +163,7 @@ func TestExportState(t *testing.T) {
 		srv.Close()
 
 		c := NewClient()
-		_, err := c.ExportState(context.Background(), addr)
+		err := c.ExportState(context.Background(), addr, io.Discard)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "connect to LocalStack")
 	})
@@ -184,8 +182,7 @@ func TestExportState(t *testing.T) {
 
 		errCh := make(chan error, 1)
 		go func() {
-			_, err := c.ExportState(ctx, srv.Listener.Addr().String())
-			errCh <- err
+			errCh <- c.ExportState(ctx, srv.Listener.Addr().String(), io.Discard)
 		}()
 
 		<-started
@@ -206,14 +203,11 @@ func TestExportState(t *testing.T) {
 		}))
 		defer srv.Close()
 
+		var buf bytes.Buffer
 		c := NewClient()
-		body, err := c.ExportState(context.Background(), srv.Listener.Addr().String())
+		err := c.ExportState(context.Background(), srv.Listener.Addr().String(), &buf)
 		require.NoError(t, err)
-		defer func() { _ = body.Close() }()
-
-		data, err := io.ReadAll(body)
-		require.NoError(t, err)
-		assert.Equal(t, size, len(data))
+		assert.Equal(t, size, buf.Len())
 	})
 }
 

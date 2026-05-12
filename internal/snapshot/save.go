@@ -16,7 +16,7 @@ import (
 
 // StateExporter retrieves state from the running LocalStack instance.
 type StateExporter interface {
-	ExportState(ctx context.Context, host string) (io.ReadCloser, error)
+	ExportState(ctx context.Context, host string, dst io.Writer) error
 }
 
 func Save(ctx context.Context, rt runtime.Runtime, containers []config.ContainerConfig, exporter StateExporter, host, dest string, sink output.Sink) (retErr error) {
@@ -48,21 +48,15 @@ func Save(ctx context.Context, rt runtime.Runtime, containers []config.Container
 		}
 	}()
 
-	body, err := exporter.ExportState(ctx, host)
-	if err != nil {
-		return fmt.Errorf("export state from LocalStack: %w", err)
-	}
-	defer func() { _ = body.Close() }()
-
 	w, err := os.Create(dest)
 	if err != nil {
 		return fmt.Errorf("save to %s: %w", dest, err)
 	}
 
-	if _, err := io.Copy(w, body); err != nil {
+	if err := exporter.ExportState(ctx, host, w); err != nil {
 		_ = w.Close()
 		_ = os.Remove(dest)
-		return fmt.Errorf("write snapshot: %w", err)
+		return fmt.Errorf("export state from LocalStack: %w", err)
 	}
 
 	return w.Close()
