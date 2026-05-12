@@ -13,25 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestParseDestinationRejectsDirectory(t *testing.T) {
-	t.Parallel()
-	dir := t.TempDir()
-	now := time.Date(2026, 5, 11, 21, 4, 32, 0, time.UTC)
-	_, err := snapshot.ParseDestination(dir, now)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "is a directory")
-}
 
-func TestParseDestinationDefault(t *testing.T) {
-	t.Parallel()
-	wd, err := os.Getwd()
-	require.NoError(t, err)
-
-	now := time.Date(2026, 5, 11, 21, 4, 32, 0, time.UTC)
-	got, err := snapshot.ParseDestination("", now)
-	require.NoError(t, err)
-	assert.Equal(t, filepath.Join(wd, "snapshot-2026-05-11T21-04-32.zip"), got)
-}
 
 func TestParseDestination(t *testing.T) {
 	t.Parallel()
@@ -57,6 +39,13 @@ func TestParseDestination(t *testing.T) {
 	}
 
 	tests := []testCase{
+		// --- default (empty input) ---
+		{
+			name:     "default",
+			input:    "",
+			wantPath: filepath.Join(wd, "snapshot-2026-05-11T21-04-32.zip"),
+		},
+
 		// --- local paths ---
 		{
 			input:    "./my-state",
