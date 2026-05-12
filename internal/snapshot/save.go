@@ -1,5 +1,7 @@
 package snapshot
 
+//go:generate mockgen -source=save.go -destination=mock_state_exporter_test.go -package=snapshot_test
+
 import (
 	"context"
 	"fmt"
@@ -11,6 +13,11 @@ import (
 	"github.com/localstack/lstk/internal/output"
 	"github.com/localstack/lstk/internal/runtime"
 )
+
+// StateExporter retrieves state from the running LocalStack instance.
+type StateExporter interface {
+	ExportState(ctx context.Context, host string) (io.ReadCloser, error)
+}
 
 func Save(ctx context.Context, rt runtime.Runtime, containers []config.ContainerConfig, exporter StateExporter, host, dest string, sink output.Sink) (retErr error) {
 	if err := rt.IsHealthy(ctx); err != nil {
