@@ -63,6 +63,20 @@ Use `lstk setup <emulator>` to set up CLI integration for an emulator type:
 This naming avoids AWS-specific "profile" terminology and uses a clear verb for mutation operations.
 The deprecated `lstk config profile` command still works but points users to `lstk setup aws`.
 
+# Sandbox Commands
+
+Use `lstk sandbox <command>` to manage cloud-hosted LocalStack sandbox instances:
+- `lstk sandbox create <name> [--timeout 60] [-e KEY=VALUE ...]` — Create a sandbox instance. `--timeout` is in minutes (matches the API payload).
+- `lstk sandbox list` — List sandbox instances in a table.
+- `lstk sandbox describe <name>` — Print the raw JSON instance state.
+- `lstk sandbox delete <name> [--wait] [--timeout 5m]` — Delete a sandbox instance, optionally polling until deletion completes.
+- `lstk sandbox logs <name>` — Print current instance logs.
+- `lstk sandbox url <name>` — Print only the endpoint URL for scripting, e.g. `AWS_ENDPOINT_URL=$(lstk sandbox url <name>)`.
+- `lstk sandbox reset <name>` — Reset all LocalStack state by calling `/_localstack/state/reset` on the sandbox endpoint.
+
+Use positional `<name>` for the primary sandbox identifier. Hidden `--name` compatibility aliases may exist for migration from `localstack ephemeral`, but new help/docs should use positionals.
+Keep sandbox commands cloud-only for now; do not add a `--runtime` dimension unless the local/cloud sandbox lifecycle design is revisited explicitly.
+
 Environment variables:
 - `LOCALSTACK_AUTH_TOKEN` - Auth token (skips browser login if set)
 - `LSTK_OTEL=1` - Enables OpenTelemetry trace export (disabled by default); when enabled, standard `OTEL_EXPORTER_OTLP_*` env vars are respected by the SDK. Requires an OTLP-compatible backend to receive and visualize telemetry — for local development, `make otel` starts one (UI at http://localhost:16686).
