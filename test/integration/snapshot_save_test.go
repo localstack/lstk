@@ -145,29 +145,22 @@ func TestSnapshotSaveOverwritesExistingFile(t *testing.T) {
 	assert.NotEqual(t, "OLD", string(data), "file should have been overwritten")
 }
 
-// TestSnapshotSaveBareNameRejected does not require Docker: destination
-// parsing fails before the runtime is ever touched.
-func TestSnapshotSaveBareNameRejected(t *testing.T) {
+func TestSnapshotSaveRemoteRejected(t *testing.T) {
 	t.Parallel()
-	ctx := testContext(t)
-	dir := t.TempDir()
+	for _, dest := range []string{
+		"s3://my-bucket/my-snap",
+		"oras://registry/my-snap",
+		"cloud://my-pod",
+	} {
+		t.Run(dest, func(t *testing.T) {
+			t.Parallel()
+			ctx := testContext(t)
 
-	_, stderr, err := runLstk(t, ctx, dir, testEnvWithHome(t.TempDir(), ""), "--non-interactive", "snapshot", "save", "my-pod")
-	requireExitCode(t, 1, err)
-	assert.Contains(t, stderr, "not yet supported")
-	assert.Contains(t, stderr, "./my-snapshot")
-}
-
-// TestSnapshotSaveCloudURIRejected does not require Docker: destination
-// parsing fails before the runtime is ever touched.
-func TestSnapshotSaveCloudURIRejected(t *testing.T) {
-	t.Parallel()
-	ctx := testContext(t)
-	dir := t.TempDir()
-
-	_, stderr, err := runLstk(t, ctx, dir, testEnvWithHome(t.TempDir(), ""), "--non-interactive", "snapshot", "save", "cloud://my-pod")
-	requireExitCode(t, 1, err)
-	assert.Contains(t, stderr, "not yet supported")
+			_, stderr, err := runLstk(t, ctx, t.TempDir(), testEnvWithHome(t.TempDir(), ""), "--non-interactive", "snapshot", "save", dest)
+			requireExitCode(t, 1, err)
+			assert.Contains(t, stderr, "not yet supported")
+		})
+	}
 }
 
 func TestSnapshotSaveLocalStackNotRunning(t *testing.T) {
