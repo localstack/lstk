@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/docker/docker/api/types/container"
+	"github.com/moby/moby/client"
 	"github.com/localstack/lstk/test/integration/env"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -84,11 +84,11 @@ func TestLogsFollowStreamsOutput(t *testing.T) {
 	time.Sleep(500 * time.Millisecond)
 
 	// Write to /proc/1/fd/1 (PID 1's stdout) so the line appears in docker logs.
-	execResp, err := dockerClient.ContainerExecCreate(ctx, containerName, container.ExecOptions{
+	execResp, err := dockerClient.ExecCreate(ctx, containerName, client.ExecCreateOptions{
 		Cmd: []string{"sh", "-c", "echo " + marker + " >/proc/1/fd/1"},
 	})
 	require.NoError(t, err, "failed to create exec")
-	err = dockerClient.ContainerExecStart(ctx, execResp.ID, container.ExecStartOptions{Detach: true})
+	_, err = dockerClient.ExecStart(ctx, execResp.ID, client.ExecStartOptions{Detach: true})
 	require.NoError(t, err, "failed to start exec")
 
 	// Scan lines in a goroutine because reading from the pipe blocks until lstk logs exits, which it never does on its own.

@@ -17,11 +17,12 @@ import (
 	"testing"
 	"time"
 
+	"net/netip"
+
 	"github.com/creack/pty"
-	"github.com/docker/docker/api/types/container"
-	"github.com/docker/docker/api/types/image"
-	"github.com/docker/docker/client"
-	"github.com/docker/go-connections/nat"
+	"github.com/moby/moby/api/types/container"
+	"github.com/moby/moby/api/types/network"
+	"github.com/moby/moby/client"
 	"github.com/localstack/lstk/test/integration/env"
 	"github.com/stretchr/testify/require"
 	"github.com/zalando/go-keyring"
@@ -89,9 +90,9 @@ func configDir() string {
 
 func TestMain(m *testing.M) {
 	var err error
-	dockerClient, err = client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
+	dockerClient, err = client.New(client.FromEnv)
 	if err == nil {
-		_, err = dockerClient.Ping(context.Background())
+		_, err = dockerClient.Ping(context.Background(), client.PingOptions{})
 		dockerAvailable = err == nil
 	}
 
@@ -176,7 +177,7 @@ const (
 func startTestContainer(t *testing.T, ctx context.Context, hostPort ...string) {
 	t.Helper()
 
-	reader, err := dockerClient.ImagePull(ctx, testImage, image.PullOptions{})
+	reader, err := dockerClient.ImagePull(ctx, testImage, client.ImagePullOptions{})
 	require.NoError(t, err, "failed to pull test image")
 	_, _ = io.Copy(io.Discard, reader)
 	_ = reader.Close()
@@ -187,19 +188,23 @@ func startTestContainer(t *testing.T, ctx context.Context, hostPort ...string) {
 	}
 	var hostCfg *container.HostConfig
 	if len(hostPort) > 0 {
-		const containerPort = nat.Port("4566/tcp")
-		cfg.ExposedPorts = nat.PortSet{containerPort: struct{}{}}
+		containerPort := network.MustParsePort("4566/tcp")
+		cfg.ExposedPorts = network.PortSet{containerPort: struct{}{}}
 		hostCfg = &container.HostConfig{
-			PortBindings: nat.PortMap{
+			PortBindings: network.PortMap{
 				// 127.0.0.2 avoids conflicting with the mock HTTP server on 127.0.0.1:hostPort.
-				containerPort: []nat.PortBinding{{HostIP: "127.0.0.2", HostPort: hostPort[0]}},
+				containerPort: []network.PortBinding{{HostIP: netip.MustParseAddr("127.0.0.2"), HostPort: hostPort[0]}},
 			},
 		}
 	}
 
-	resp, err := dockerClient.ContainerCreate(ctx, cfg, hostCfg, nil, nil, containerName)
+	resp, err := dockerClient.ContainerCreate(ctx, client.ContainerCreateOptions{
+		Config:     cfg,
+		HostConfig: hostCfg,
+		Name:       containerName,
+	})
 	require.NoError(t, err, "failed to create test container")
-	err = dockerClient.ContainerStart(ctx, resp.ID, container.StartOptions{})
+	_, err = dockerClient.ContainerStart(ctx, resp.ID, client.ContainerStartOptions{})
 	require.NoError(t, err, "failed to start test container")
 }
 
@@ -207,42 +212,45 @@ func startTestContainer(t *testing.T, ctx context.Context, hostPort ...string) {
 func startExternalContainer(t *testing.T, ctx context.Context, imgName, name, hostPort string) {
 	t.Helper()
 
-	const containerPort = nat.Port("4566/tcp")
-	resp, err := dockerClient.ContainerCreate(ctx,
-		&container.Config{
+	containerPort := network.MustParsePort("4566/tcp")
+	resp, err := dockerClient.ContainerCreate(ctx, client.ContainerCreateOptions{
+		Config: &container.Config{
 			Image:        imgName,
 			Cmd:          []string{"sleep", "infinity"},
-			ExposedPorts: nat.PortSet{containerPort: struct{}{}},
+			ExposedPorts: network.PortSet{containerPort: struct{}{}},
 		},
-		&container.HostConfig{
-			PortBindings: nat.PortMap{
-				containerPort: []nat.PortBinding{{HostPort: hostPort}},
+		HostConfig: &container.HostConfig{
+			PortBindings: network.PortMap{
+				containerPort: []network.PortBinding{{HostPort: hostPort}},
 			},
 		},
-		nil, nil, name,
-	)
+		Name: name,
+	})
 	require.NoError(t, err, "failed to create external container")
-	err = dockerClient.ContainerStart(ctx, resp.ID, container.StartOptions{})
+	_, err = dockerClient.ContainerStart(ctx, resp.ID, client.ContainerStartOptions{})
 	require.NoError(t, err, "failed to start external container")
 	t.Cleanup(func() {
-		_ = dockerClient.ContainerRemove(context.Background(), name, container.RemoveOptions{Force: true})
+		_, _ = dockerClient.ContainerRemove(context.Background(), name, client.ContainerRemoveOptions{Force: true})
 	})
 }
 
 func startTestSnowflakeContainer(t *testing.T, ctx context.Context) {
 	t.Helper()
 
-	reader, err := dockerClient.ImagePull(ctx, testImage, image.PullOptions{})
+	reader, err := dockerClient.ImagePull(ctx, testImage, client.ImagePullOptions{})
 	require.NoError(t, err, "failed to pull test image")
 	_, _ = io.Copy(io.Discard, reader)
 	_ = reader.Close()
 
-	resp, err := dockerClient.ContainerCreate(ctx, &container.Config{
-		Image: testImage,
-		Cmd:   []string{"sleep", "infinity"},
-	}, nil, nil, nil, snowflakeContainerName)
+	resp, err := dockerClient.ContainerCreate(ctx, client.ContainerCreateOptions{
+		Config: &container.Config{
+			Image: testImage,
+			Cmd:   []string{"sleep", "infinity"},
+		},
+		Name: snowflakeContainerName,
+	})
 	require.NoError(t, err, "failed to create snowflake test container")
-	err = dockerClient.ContainerStart(ctx, resp.ID, container.StartOptions{})
+	_, err = dockerClient.ContainerStart(ctx, resp.ID, client.ContainerStartOptions{})
 	require.NoError(t, err, "failed to start snowflake test container")
 }
 

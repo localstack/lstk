@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/docker/docker/client"
+	"github.com/moby/moby/client"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -81,21 +81,21 @@ func TestProbeSocket_ReturnsEmptyForNoCandidates(t *testing.T) {
 
 func TestSocketPath_ExtractsUnixPath(t *testing.T) {
 	t.Run("standard socket returns daemon path", func(t *testing.T) {
-		cli, err := client.NewClientWithOpts(client.WithHost("unix:///var/run/docker.sock"))
+		cli, err := client.New(client.WithHost("unix:///var/run/docker.sock"))
 		require.NoError(t, err)
 		rt := &DockerRuntime{client: cli}
 		assert.Equal(t, "/var/run/docker.sock", rt.SocketPath())
 	})
 
 	t.Run("non-standard socket returns daemon path", func(t *testing.T) {
-		cli, err := client.NewClientWithOpts(client.WithHost("unix:///home/user/.colima/default/docker.sock"))
+		cli, err := client.New(client.WithHost("unix:///home/user/.colima/default/docker.sock"))
 		require.NoError(t, err)
 		rt := &DockerRuntime{client: cli}
 		assert.Equal(t, "/home/user/.colima/default/docker.sock", rt.SocketPath())
 	})
 
 	t.Run("orbstack socket returns daemon path", func(t *testing.T) {
-		cli, err := client.NewClientWithOpts(client.WithHost("unix:///Users/user/.orbstack/run/docker.sock"))
+		cli, err := client.New(client.WithHost("unix:///Users/user/.orbstack/run/docker.sock"))
 		require.NoError(t, err)
 		rt := &DockerRuntime{client: cli}
 		assert.Equal(t, "/Users/user/.orbstack/run/docker.sock", rt.SocketPath())
@@ -103,7 +103,7 @@ func TestSocketPath_ExtractsUnixPath(t *testing.T) {
 }
 
 func TestSocketPath_ReturnsEmptyForTCPHost(t *testing.T) {
-	cli, err := client.NewClientWithOpts(client.WithHost("tcp://192.168.1.100:2375"))
+	cli, err := client.New(client.WithHost("tcp://192.168.1.100:2375"))
 	require.NoError(t, err)
 	rt := &DockerRuntime{client: cli}
 
@@ -143,7 +143,7 @@ func TestSocketPath_VMDetection(t *testing.T) {
 			require.NoError(t, os.WriteFile(sock, nil, 0o600))
 			t.Cleanup(func() { require.NoError(t, os.Remove(sock)) })
 
-			cli, err := client.NewClientWithOpts(client.WithHost("unix://" + sock))
+			cli, err := client.New(client.WithHost("unix://" + sock))
 			require.NoError(t, err)
 			rt := &DockerRuntime{client: cli}
 			assert.Equal(t, "/var/run/docker.sock", rt.SocketPath())
@@ -156,7 +156,7 @@ func TestSocketPath_VMDetection(t *testing.T) {
 		require.NoError(t, os.WriteFile(rootlessSock, nil, 0o600))
 		t.Cleanup(func() { require.NoError(t, os.Remove(rootlessSock)) })
 
-		cli, err := client.NewClientWithOpts(client.WithHost("unix://" + rootlessSock))
+		cli, err := client.New(client.WithHost("unix://" + rootlessSock))
 		require.NoError(t, err)
 		rt := &DockerRuntime{client: cli}
 		assert.Equal(t, rootlessSock, rt.SocketPath())

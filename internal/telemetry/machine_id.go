@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	dockerclient "github.com/docker/docker/client"
+	dockerclient "github.com/moby/moby/client"
 	"github.com/google/uuid"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 
@@ -41,9 +41,8 @@ func anonymize(physicalID string) string {
 }
 
 func dockerDaemonID(ctx context.Context) string {
-	c, err := dockerclient.NewClientWithOpts(
+	c, err := dockerclient.New(
 		dockerclient.FromEnv,
-		dockerclient.WithAPIVersionNegotiation(),
 		dockerclient.WithTraceOptions(
 			otelhttp.WithSpanNameFormatter(func(_ string, r *http.Request) string {
 				return "docker " + r.Method + " " + r.URL.Path
@@ -54,11 +53,11 @@ func dockerDaemonID(ctx context.Context) string {
 		return ""
 	}
 	defer func() { _ = c.Close() }()
-	info, err := c.Info(ctx)
+	resp, err := c.Info(ctx, dockerclient.InfoOptions{})
 	if err != nil {
 		return ""
 	}
-	return info.ID
+	return resp.Info.ID
 }
 
 func systemMachineID() string {

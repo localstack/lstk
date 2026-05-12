@@ -16,13 +16,13 @@ import (
 	"strings"
 	"time"
 
+	"net/netip"
+
 	"github.com/containerd/errdefs"
-	"github.com/docker/docker/api/types/container"
-	"github.com/docker/docker/api/types/filters"
-	"github.com/docker/docker/api/types/image"
-	"github.com/docker/docker/client"
-	"github.com/docker/docker/pkg/stdcopy"
-	"github.com/docker/go-connections/nat"
+	"github.com/moby/moby/api/pkg/stdcopy"
+	"github.com/moby/moby/api/types/container"
+	"github.com/moby/moby/api/types/network"
+	"github.com/moby/moby/client"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 
 	"github.com/localstack/lstk/internal/output"
@@ -35,7 +35,6 @@ type DockerRuntime struct {
 func NewDockerRuntime(dockerHost string) (*DockerRuntime, error) {
 	opts := []client.Opt{
 		client.FromEnv,
-		client.WithAPIVersionNegotiation(),
 		client.WithTraceOptions(
 			otelhttp.WithSpanNameFormatter(func(_ string, r *http.Request) string {
 				return "docker " + r.Method + " " + r.URL.Path
@@ -51,7 +50,7 @@ func NewDockerRuntime(dockerHost string) (*DockerRuntime, error) {
 		}
 	}
 
-	cli, err := client.NewClientWithOpts(opts...)
+	cli, err := client.New(opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -139,7 +138,7 @@ func socketPathFromHost(host string) string {
 }
 
 func (d *DockerRuntime) IsHealthy(ctx context.Context) error {
-	_, err := d.client.Ping(ctx)
+	_, err := d.client.Ping(ctx, client.PingOptions{})
 	if err != nil {
 		return fmt.Errorf("cannot connect to Docker daemon: %w", err)
 	}
@@ -182,7 +181,7 @@ func windowsDockerStartCommand(getenv func(string) string, lookPath func(string)
 }
 
 func (d *DockerRuntime) PullImage(ctx context.Context, imageName string, progress chan<- PullProgress) error {
-	reader, err := d.client.ImagePull(ctx, imageName, image.PullOptions{})
+	reader, err := d.client.ImagePull(ctx, imageName, client.ImagePullOptions{})
 	if err != nil {
 		return err
 	}
@@ -230,18 +229,26 @@ func (d *DockerRuntime) PullImage(ctx context.Context, imageName string, progres
 }
 
 func (d *DockerRuntime) Start(ctx context.Context, config ContainerConfig) (string, error) {
-	containerPort := nat.Port(config.ContainerPort)
-	exposedPorts := nat.PortSet{containerPort: struct{}{}}
-	portBindings := nat.PortMap{containerPort: []nat.PortBinding{{HostIP: "127.0.0.1", HostPort: config.Port}}}
+	loopback := netip.MustParseAddr("127.0.0.1")
+
+	containerPort, err := network.ParsePort(config.ContainerPort)
+	if err != nil {
+		return "", fmt.Errorf("invalid container port %q: %w", config.ContainerPort, err)
+	}
+	exposedPorts := network.PortSet{containerPort: struct{}{}}
+	portBindings := network.PortMap{containerPort: []network.PortBinding{{HostIP: loopback, HostPort: config.Port}}}
 
 	for _, ep := range config.ExtraPorts {
 		proto := ep.Protocol
 		if proto == "" {
 			proto = "tcp"
 		}
-		p := nat.Port(ep.ContainerPort + "/" + proto)
+		p, err := network.ParsePort(ep.ContainerPort + "/" + proto)
+		if err != nil {
+			return "", fmt.Errorf("invalid extra port %q: %w", ep.ContainerPort, err)
+		}
 		exposedPorts[p] = struct{}{}
-		portBindings[p] = []nat.PortBinding{{HostIP: "127.0.0.1", HostPort: ep.HostPort}}
+		portBindings[p] = []network.PortBinding{{HostIP: loopback, HostPort: ep.HostPort}}
 	}
 
 	var binds []string
@@ -253,23 +260,23 @@ func (d *DockerRuntime) Start(ctx context.Context, config ContainerConfig) (stri
 		binds = append(binds, bind)
 	}
 
-	resp, err := d.client.ContainerCreate(ctx,
-		&container.Config{
+	resp, err := d.client.ContainerCreate(ctx, client.ContainerCreateOptions{
+		Config: &container.Config{
 			Image:        config.Image,
 			ExposedPorts: exposedPorts,
 			Env:          config.Env,
 		},
-		&container.HostConfig{
+		HostConfig: &container.HostConfig{
 			PortBindings: portBindings,
 			Binds:        binds,
 		},
-		nil, nil, config.Name,
-	)
+		Name: config.Name,
+	})
 	if err != nil {
 		return "", err
 	}
 
-	if err := d.client.ContainerStart(ctx, resp.ID, container.StartOptions{}); err != nil {
+	if _, err := d.client.ContainerStart(ctx, resp.ID, client.ContainerStartOptions{}); err != nil {
 		return "", err
 	}
 
@@ -277,10 +284,10 @@ func (d *DockerRuntime) Start(ctx context.Context, config ContainerConfig) (stri
 }
 
 func (d *DockerRuntime) Stop(ctx context.Context, containerName string) error {
-	if err := d.client.ContainerStop(ctx, containerName, container.StopOptions{}); err != nil {
+	if _, err := d.client.ContainerStop(ctx, containerName, client.ContainerStopOptions{}); err != nil {
 		return err
 	}
-	err := d.client.ContainerRemove(ctx, containerName, container.RemoveOptions{})
+	_, err := d.client.ContainerRemove(ctx, containerName, client.ContainerRemoveOptions{})
 	// Ignore conflict and not-found: container is gone, which is the goal.
 	if err != nil && !errdefs.IsConflict(err) && !errdefs.IsNotFound(err) {
 		return err
@@ -289,26 +296,27 @@ func (d *DockerRuntime) Stop(ctx context.Context, containerName string) error {
 }
 
 func (d *DockerRuntime) Remove(ctx context.Context, containerName string) error {
-	return d.client.ContainerRemove(ctx, containerName, container.RemoveOptions{})
+	_, err := d.client.ContainerRemove(ctx, containerName, client.ContainerRemoveOptions{})
+	return err
 }
 
 func (d *DockerRuntime) IsRunning(ctx context.Context, containerID string) (bool, error) {
-	inspect, err := d.client.ContainerInspect(ctx, containerID)
+	inspect, err := d.client.ContainerInspect(ctx, containerID, client.ContainerInspectOptions{})
 	if err != nil {
 		if errdefs.IsNotFound(err) {
 			return false, nil
 		}
 		return false, err
 	}
-	return inspect.State.Running, nil
+	return inspect.Container.State.Running, nil
 }
 
 func (d *DockerRuntime) ContainerStartedAt(ctx context.Context, containerName string) (time.Time, error) {
-	inspect, err := d.client.ContainerInspect(ctx, containerName)
+	inspect, err := d.client.ContainerInspect(ctx, containerName, client.ContainerInspectOptions{})
 	if err != nil {
 		return time.Time{}, fmt.Errorf("failed to inspect container: %w", err)
 	}
-	t, err := time.Parse(time.RFC3339Nano, inspect.State.StartedAt)
+	t, err := time.Parse(time.RFC3339Nano, inspect.Container.State.StartedAt)
 	if err != nil {
 		return time.Time{}, fmt.Errorf("failed to parse container start time: %w", err)
 	}
@@ -316,7 +324,7 @@ func (d *DockerRuntime) ContainerStartedAt(ctx context.Context, containerName st
 }
 
 func (d *DockerRuntime) Logs(ctx context.Context, containerID string, tail int) (string, error) {
-	options := container.LogsOptions{
+	options := client.ContainerLogsOptions{
 		ShowStdout: true,
 		ShowStderr: true,
 		Tail:       "50",
@@ -344,7 +352,7 @@ func (d *DockerRuntime) Logs(ctx context.Context, containerID string, tail int) 
 }
 
 func (d *DockerRuntime) StreamLogs(ctx context.Context, containerID string, out io.Writer, follow bool) error {
-	reader, err := d.client.ContainerLogs(ctx, containerID, container.LogsOptions{
+	reader, err := d.client.ContainerLogs(ctx, containerID, client.ContainerLogsOptions{
 		ShowStdout: true,
 		ShowStderr: true,
 		Follow:     follow,
@@ -373,11 +381,15 @@ func (d *DockerRuntime) StreamLogs(ctx context.Context, containerID string, out 
 }
 
 func (d *DockerRuntime) GetBoundPort(ctx context.Context, containerName string, containerPort string) (string, error) {
-	inspect, err := d.client.ContainerInspect(ctx, containerName)
+	inspect, err := d.client.ContainerInspect(ctx, containerName, client.ContainerInspectOptions{})
 	if err != nil {
 		return "", fmt.Errorf("failed to inspect container: %w", err)
 	}
-	bindings, ok := inspect.NetworkSettings.Ports[nat.Port(containerPort)]
+	port, err := network.ParsePort(containerPort)
+	if err != nil {
+		return "", fmt.Errorf("invalid container port %q: %w", containerPort, err)
+	}
+	bindings, ok := inspect.Container.NetworkSettings.Ports[port]
 	if !ok || len(bindings) == 0 {
 		return "", fmt.Errorf("no binding found for port %s on container %s", containerPort, containerName)
 	}
@@ -385,8 +397,8 @@ func (d *DockerRuntime) GetBoundPort(ctx context.Context, containerName string, 
 }
 
 func (d *DockerRuntime) FindRunningByImage(ctx context.Context, imageRepos []string, containerPort string) (*RunningContainer, error) {
-	list, err := d.client.ContainerList(ctx, container.ListOptions{
-		Filters: filters.NewArgs(filters.Arg("status", "running")),
+	list, err := d.client.ContainerList(ctx, client.ContainerListOptions{
+		Filters: make(client.Filters).Add("status", "running"),
 	})
 	if err != nil {
 		return nil, err
@@ -401,7 +413,7 @@ func (d *DockerRuntime) FindRunningByImage(ctx context.Context, imageRepos []str
 		return nil, fmt.Errorf("invalid container port %q: %w", containerPort, err)
 	}
 
-	for _, c := range list {
+	for _, c := range list.Items {
 		if !matchesAnyImageRepo(c.Image, imageRepos) {
 			continue
 		}

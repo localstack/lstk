@@ -7,6 +7,7 @@ import (
 	"runtime"
 	"testing"
 
+	"github.com/moby/moby/client"
 	"github.com/localstack/lstk/test/integration/env"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -76,9 +77,9 @@ IAM_SOFT_MODE = "1"
 	require.NoError(t, err, "lstk start failed: %s", stderr)
 	requireExitCode(t, 0, err)
 
-	inspect, err := dockerClient.ContainerInspect(ctx, containerName)
+	inspect, err := dockerClient.ContainerInspect(ctx, containerName, client.ContainerInspectOptions{})
 	require.NoError(t, err, "failed to inspect container")
-	assert.Contains(t, inspect.Config.Env, "IAM_SOFT_MODE=1")
+	assert.Contains(t, inspect.Container.Config.Env, "IAM_SOFT_MODE=1")
 }
 
 func TestConfigFlagOverridesConfigPath(t *testing.T) {
