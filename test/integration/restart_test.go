@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/localstack/lstk/test/integration/env"
+	"github.com/moby/moby/client"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -29,9 +30,9 @@ func TestRestartCommandSucceeds(t *testing.T) {
 	assert.Contains(t, stdout, "stopped")
 	assert.Contains(t, stdout, "LocalStack")
 
-	inspect, err := dockerClient.ContainerInspect(ctx, containerName)
+	inspect, err := dockerClient.ContainerInspect(ctx, containerName, client.ContainerInspectOptions{})
 	require.NoError(t, err, "failed to inspect container after restart")
-	assert.True(t, inspect.State.Running, "container should be running after restart")
+	assert.True(t, inspect.Container.State.Running, "container should be running after restart")
 
 	// Both lstk_lifecycle (stop + start) and lstk_command events should be emitted.
 	byName := collectTelemetryByName(t, events, 2)
@@ -63,11 +64,11 @@ func TestRestartCommandPersistFlagSetsPersistenceEnv(t *testing.T) {
 	require.NoError(t, err, "lstk restart --persist failed: %s", stderr)
 	requireExitCode(t, 0, err)
 
-	inspect, err := dockerClient.ContainerInspect(ctx, containerName)
+	inspect, err := dockerClient.ContainerInspect(ctx, containerName, client.ContainerInspectOptions{})
 	require.NoError(t, err, "failed to inspect container after restart")
-	require.True(t, inspect.State.Running)
+	require.True(t, inspect.Container.State.Running)
 
-	envVars := containerEnvToMap(inspect.Config.Env)
+	envVars := containerEnvToMap(inspect.Container.Config.Env)
 	assert.Equal(t, "1", envVars["LOCALSTACK_PERSISTENCE"])
 }
 

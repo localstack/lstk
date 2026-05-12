@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/docker/docker/api/types/image"
+	"github.com/moby/moby/client"
 	"github.com/localstack/lstk/test/integration/env"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -86,11 +86,13 @@ func TestLogoutCommandReportsBothEmulatorsWhenMultipleRunning(t *testing.T) {
 
 	const fakeAWSImage = "localstack/localstack-pro:test-fake"
 	const fakeSnowflakeImage = "localstack/snowflake:test-fake"
-	require.NoError(t, dockerClient.ImageTag(ctx, testImage, fakeAWSImage))
-	require.NoError(t, dockerClient.ImageTag(ctx, testImage, fakeSnowflakeImage))
+	_, err := dockerClient.ImageTag(ctx, client.ImageTagOptions{Source: testImage, Target: fakeAWSImage})
+	require.NoError(t, err)
+	_, err = dockerClient.ImageTag(ctx, client.ImageTagOptions{Source: testImage, Target: fakeSnowflakeImage})
+	require.NoError(t, err)
 	t.Cleanup(func() {
-		_, _ = dockerClient.ImageRemove(context.Background(), fakeAWSImage, image.RemoveOptions{})
-		_, _ = dockerClient.ImageRemove(context.Background(), fakeSnowflakeImage, image.RemoveOptions{})
+		_, _ = dockerClient.ImageRemove(context.Background(), fakeAWSImage, client.ImageRemoveOptions{})
+		_, _ = dockerClient.ImageRemove(context.Background(), fakeSnowflakeImage, client.ImageRemoveOptions{})
 	})
 	startExternalContainer(t, ctx, fakeAWSImage, "localstack-external-aws", "4566")
 	startExternalContainer(t, ctx, fakeSnowflakeImage, "localstack-external-snowflake", "4567")
@@ -130,9 +132,10 @@ func TestLogoutCommandDoesNotReportForeignEmulatorAsRunning(t *testing.T) {
 
 	// AWS image running on 4566 while config targets snowflake.
 	const fakeImage = "localstack/localstack-pro:test-fake"
-	require.NoError(t, dockerClient.ImageTag(ctx, testImage, fakeImage))
+	_, err := dockerClient.ImageTag(ctx, client.ImageTagOptions{Source: testImage, Target: fakeImage})
+	require.NoError(t, err)
 	t.Cleanup(func() {
-		_, _ = dockerClient.ImageRemove(context.Background(), fakeImage, image.RemoveOptions{})
+		_, _ = dockerClient.ImageRemove(context.Background(), fakeImage, client.ImageRemoveOptions{})
 	})
 	startExternalContainer(t, ctx, fakeImage, "localstack-external-aws", "4566")
 

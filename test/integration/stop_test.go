@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/docker/docker/api/types/image"
+	"github.com/moby/moby/client"
 	"github.com/localstack/lstk/test/integration/env"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -25,7 +25,7 @@ func TestStopCommandSucceeds(t *testing.T) {
 	assert.Contains(t, stdout, "Stopping", "should show stopping message")
 	assert.Contains(t, stdout, "stopped", "should show stopped message")
 
-	_, err = dockerClient.ContainerInspect(ctx, containerName)
+	_, err = dockerClient.ContainerInspect(ctx, containerName, client.ContainerInspectOptions{})
 	assert.Error(t, err, "container should not exist after stop")
 
 	// Both lstk_lifecycle (stop) and lstk_command events should be emitted.
@@ -75,9 +75,9 @@ func TestStopCommandIgnoresForeignEmulatorOnPort(t *testing.T) {
 
 	// AWS image running on 4566 while config targets snowflake.
 	const fakeImage = "localstack/localstack-pro:test-fake"
-	require.NoError(t, dockerClient.ImageTag(ctx, testImage, fakeImage))
+	_, err := dockerClient.ImageTag(ctx, client.ImageTagOptions{Source: testImage, Target: fakeImage}); require.NoError(t, err)
 	t.Cleanup(func() {
-		_, _ = dockerClient.ImageRemove(context.Background(), fakeImage, image.RemoveOptions{})
+		_, _ = dockerClient.ImageRemove(context.Background(), fakeImage, client.ImageRemoveOptions{})
 	})
 	startExternalContainer(t, ctx, fakeImage, "localstack-external-aws", "4566")
 
@@ -89,7 +89,7 @@ func TestStopCommandIgnoresForeignEmulatorOnPort(t *testing.T) {
 	assert.Contains(t, stdout, "LocalStack Snowflake Emulator is not running")
 	assert.NotContains(t, stdout, "stopped", "should not have stopped the AWS container")
 
-	_, inspectErr := dockerClient.ContainerInspect(ctx, "localstack-external-aws")
+	_, inspectErr := dockerClient.ContainerInspect(ctx, "localstack-external-aws", client.ContainerInspectOptions{})
 	assert.NoError(t, inspectErr, "AWS container should still exist after snowflake-targeted stop")
 }
 
@@ -101,9 +101,9 @@ func TestStopCommandStopsExternalContainer(t *testing.T) {
 	ctx := testContext(t)
 
 	const fakeImage = "localstack/localstack-pro:test-fake"
-	require.NoError(t, dockerClient.ImageTag(ctx, testImage, fakeImage))
+	_, err := dockerClient.ImageTag(ctx, client.ImageTagOptions{Source: testImage, Target: fakeImage}); require.NoError(t, err)
 	t.Cleanup(func() {
-		_, _ = dockerClient.ImageRemove(context.Background(), fakeImage, image.RemoveOptions{})
+		_, _ = dockerClient.ImageRemove(context.Background(), fakeImage, client.ImageRemoveOptions{})
 	})
 
 	startExternalContainer(t, ctx, fakeImage, "localstack-external", "4566")
@@ -113,7 +113,7 @@ func TestStopCommandStopsExternalContainer(t *testing.T) {
 	requireExitCode(t, 0, err)
 	assert.Contains(t, stdout, "stopped")
 
-	_, err = dockerClient.ContainerInspect(ctx, "localstack-external")
+	_, err = dockerClient.ContainerInspect(ctx, "localstack-external", client.ContainerInspectOptions{})
 	assert.Error(t, err, "external container should be gone after lstk stop")
 }
 
@@ -130,7 +130,7 @@ func TestStopCommandIsIdempotent(t *testing.T) {
 	require.NoError(t, err, "first lstk stop failed: %s", stderr)
 	requireExitCode(t, 0, err)
 
-	_, err = dockerClient.ContainerInspect(ctx, containerName)
+	_, err = dockerClient.ContainerInspect(ctx, containerName, client.ContainerInspectOptions{})
 	require.Error(t, err, "container should not exist after first stop")
 
 	_, _, err = runLstk(t, ctx, "", e, "stop")

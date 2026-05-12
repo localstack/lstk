@@ -19,10 +19,9 @@ import (
 	"time"
 
 	"github.com/creack/pty"
-	"github.com/docker/docker/api/types/container"
-	"github.com/docker/docker/api/types/image"
-	"github.com/docker/go-connections/nat"
 	"github.com/localstack/lstk/test/integration/env"
+	"github.com/moby/moby/api/types/network"
+	"github.com/moby/moby/client"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -44,9 +43,9 @@ func TestStartCommandSucceedsWithValidToken(t *testing.T) {
 	require.NoError(t, err, "lstk start failed: %s", stderr)
 	requireExitCode(t, 0, err)
 
-	inspect, err := dockerClient.ContainerInspect(ctx, containerName)
+	inspect, err := dockerClient.ContainerInspect(ctx, containerName, client.ContainerInspectOptions{})
 	require.NoError(t, err, "failed to inspect container")
-	assert.True(t, inspect.State.Running, "container should be running")
+	assert.True(t, inspect.Container.State.Running, "container should be running")
 }
 
 func TestStartCommandSucceedsWithKeyringToken(t *testing.T) {
@@ -68,9 +67,9 @@ func TestStartCommandSucceedsWithKeyringToken(t *testing.T) {
 	require.NoError(t, err, "lstk start failed: %s", stderr)
 	requireExitCode(t, 0, err)
 
-	inspect, err := dockerClient.ContainerInspect(ctx, containerName)
+	inspect, err := dockerClient.ContainerInspect(ctx, containerName, client.ContainerInspectOptions{})
 	require.NoError(t, err, "failed to inspect container")
-	assert.True(t, inspect.State.Running, "container should be running")
+	assert.True(t, inspect.Container.State.Running, "container should be running")
 }
 
 func TestStartCommandFailsWithInvalidToken(t *testing.T) {
@@ -135,9 +134,10 @@ func TestStartCommandAttachesToExternalContainer(t *testing.T) {
 	ctx := testContext(t)
 
 	const fakeImage = "localstack/localstack-pro:test-fake"
-	require.NoError(t, dockerClient.ImageTag(ctx, testImage, fakeImage))
+	_, err := dockerClient.ImageTag(ctx, client.ImageTagOptions{Source: testImage, Target: fakeImage})
+	require.NoError(t, err)
 	t.Cleanup(func() {
-		_, _ = dockerClient.ImageRemove(context.Background(), fakeImage, image.RemoveOptions{})
+		_, _ = dockerClient.ImageRemove(context.Background(), fakeImage, client.ImageRemoveOptions{})
 	})
 
 	// Start a container with a different name to simulate an externally-managed instance.
@@ -187,9 +187,10 @@ func TestStartCommandFailsWhenLocalStackRunningOnDifferentPort(t *testing.T) {
 
 	// Tag the test image as a LocalStack pro image to simulate an instance running.
 	const fakeImage = "localstack/localstack-pro:test-fake"
-	require.NoError(t, dockerClient.ImageTag(ctx, testImage, fakeImage))
+	_, err := dockerClient.ImageTag(ctx, client.ImageTagOptions{Source: testImage, Target: fakeImage})
+	require.NoError(t, err)
 	t.Cleanup(func() {
-		_, _ = dockerClient.ImageRemove(context.Background(), fakeImage, image.RemoveOptions{})
+		_, _ = dockerClient.ImageRemove(context.Background(), fakeImage, client.ImageRemoveOptions{})
 	})
 
 	// Start it on another port
@@ -222,9 +223,10 @@ func TestStartCommandFailsOnEmulatorTypeMismatch(t *testing.T) {
 
 	// Tag the test image as a LocalStack pro image to simulate AWS LocalStack running.
 	const fakeImage = "localstack/localstack-pro:test-fake"
-	require.NoError(t, dockerClient.ImageTag(ctx, testImage, fakeImage))
+	_, err := dockerClient.ImageTag(ctx, client.ImageTagOptions{Source: testImage, Target: fakeImage})
+	require.NoError(t, err)
 	t.Cleanup(func() {
-		_, _ = dockerClient.ImageRemove(context.Background(), fakeImage, image.RemoveOptions{})
+		_, _ = dockerClient.ImageRemove(context.Background(), fakeImage, client.ImageRemoveOptions{})
 	})
 
 	startExternalContainer(t, ctx, fakeImage, "localstack-external-aws", "4566")
@@ -279,9 +281,9 @@ port = "4567"
 	_, stderr, err := runLstk(t, ctx, "", env.With(env.APIEndpoint, mockServer.URL), "--config", configFile, "start")
 	require.NoError(t, err, "lstk start failed: %s", stderr)
 
-	inspect, err := dockerClient.ContainerInspect(ctx, containerName)
+	inspect, err := dockerClient.ContainerInspect(ctx, containerName, client.ContainerInspectOptions{})
 	require.NoError(t, err, "failed to inspect container")
-	envVars := containerEnvToMap(inspect.Config.Env)
+	envVars := containerEnvToMap(inspect.Container.Config.Env)
 	assert.Equal(t, "localhost.localstack.cloud:4567", envVars["LOCALSTACK_HOST"],
 		"LOCALSTACK_HOST must reflect configured host port so LocalStack accepts requests on it")
 }
@@ -300,12 +302,12 @@ func TestStartCommandSetsUpContainerCorrectly(t *testing.T) {
 	_, stderr, err := runLstk(t, ctx, "", env.With(env.APIEndpoint, mockServer.URL), "start")
 	require.NoError(t, err, "lstk start failed: %s", stderr)
 
-	inspect, err := dockerClient.ContainerInspect(ctx, containerName)
+	inspect, err := dockerClient.ContainerInspect(ctx, containerName, client.ContainerInspectOptions{})
 	require.NoError(t, err, "failed to inspect container")
-	require.True(t, inspect.State.Running)
+	require.True(t, inspect.Container.State.Running)
 
 	t.Run("environment variables", func(t *testing.T) {
-		envVars := containerEnvToMap(inspect.Config.Env)
+		envVars := containerEnvToMap(inspect.Container.Config.Env)
 		assert.Equal(t, ":4566,:443", envVars["GATEWAY_LISTEN"])
 		assert.Equal(t, containerName, envVars["MAIN_CONTAINER_NAME"])
 		assert.Equal(t, "localhost.localstack.cloud:4566", envVars["LOCALSTACK_HOST"])
@@ -317,19 +319,19 @@ func TestStartCommandSetsUpContainerCorrectly(t *testing.T) {
 			t.Skip("Docker daemon is not reachable via unix socket")
 		}
 
-		assert.True(t, hasBindTarget(inspect.HostConfig.Binds, "/var/run/docker.sock"),
-			"expected Docker socket bind mount to /var/run/docker.sock, got: %v", inspect.HostConfig.Binds)
-		assert.True(t, hasBindSource(inspect.HostConfig.Binds, "/var/run/docker.sock"),
-			"expected Docker socket bind mount from /var/run/docker.sock, got: %v", inspect.HostConfig.Binds)
+		assert.True(t, hasBindTarget(inspect.Container.HostConfig.Binds, "/var/run/docker.sock"),
+			"expected Docker socket bind mount to /var/run/docker.sock, got: %v", inspect.Container.HostConfig.Binds)
+		assert.True(t, hasBindSource(inspect.Container.HostConfig.Binds, "/var/run/docker.sock"),
+			"expected Docker socket bind mount from /var/run/docker.sock, got: %v", inspect.Container.HostConfig.Binds)
 
-		envVars := containerEnvToMap(inspect.Config.Env)
+		envVars := containerEnvToMap(inspect.Container.Config.Env)
 		assert.Equal(t, "unix:///var/run/docker.sock", envVars["DOCKER_HOST"])
 	})
 
 	t.Run("service port range", func(t *testing.T) {
 		for p := 4510; p <= 4559; p++ {
-			port := nat.Port(fmt.Sprintf("%d/tcp", p))
-			bindings := inspect.HostConfig.PortBindings[port]
+			port := network.MustParsePort(fmt.Sprintf("%d/tcp", p))
+			bindings := inspect.Container.HostConfig.PortBindings[port]
 			if assert.NotEmpty(t, bindings, "port %d/tcp should be bound", p) {
 				assert.Equal(t, strconv.Itoa(p), bindings[0].HostPort)
 			}
@@ -337,20 +339,20 @@ func TestStartCommandSetsUpContainerCorrectly(t *testing.T) {
 	})
 
 	t.Run("main port", func(t *testing.T) {
-		mainBindings := inspect.HostConfig.PortBindings[nat.Port("4566/tcp")]
+		mainBindings := inspect.Container.HostConfig.PortBindings[network.MustParsePort("4566/tcp")]
 		require.NotEmpty(t, mainBindings, "port 4566/tcp should be bound")
 		assert.Equal(t, "4566", mainBindings[0].HostPort)
 	})
 
 	t.Run("https port", func(t *testing.T) {
-		httpsBindings := inspect.HostConfig.PortBindings[nat.Port("443/tcp")]
+		httpsBindings := inspect.Container.HostConfig.PortBindings[network.MustParsePort("443/tcp")]
 		require.NotEmpty(t, httpsBindings, "port 443/tcp should be bound")
 		assert.Equal(t, "443", httpsBindings[0].HostPort)
 	})
 
 	t.Run("volume mount", func(t *testing.T) {
-		assert.True(t, hasBindTarget(inspect.HostConfig.Binds, "/var/lib/localstack"),
-			"expected volume bind mount to /var/lib/localstack, got: %v", inspect.HostConfig.Binds)
+		assert.True(t, hasBindTarget(inspect.Container.HostConfig.Binds, "/var/lib/localstack"),
+			"expected volume bind mount to /var/lib/localstack, got: %v", inspect.Container.HostConfig.Binds)
 	})
 
 	t.Run("http health endpoint", func(t *testing.T) {
@@ -393,11 +395,11 @@ func TestStartCommandPassesCIAndLocalStackEnvVars(t *testing.T) {
 	require.NoError(t, err, "lstk start failed: %s", stderr)
 	requireExitCode(t, 0, err)
 
-	inspect, err := dockerClient.ContainerInspect(ctx, containerName)
+	inspect, err := dockerClient.ContainerInspect(ctx, containerName, client.ContainerInspectOptions{})
 	require.NoError(t, err, "failed to inspect container")
-	require.True(t, inspect.State.Running)
+	require.True(t, inspect.Container.State.Running)
 
-	envVars := containerEnvToMap(inspect.Config.Env)
+	envVars := containerEnvToMap(inspect.Container.Config.Env)
 	assert.Equal(t, "true", envVars["CI"])
 	assert.Equal(t, "1", envVars["LOCALSTACK_DISABLE_EVENTS"])
 	assert.NotEmpty(t, envVars["LOCALSTACK_AUTH_TOKEN"])
@@ -418,11 +420,11 @@ func TestStartCommandPersistFlagSetsPersistenceEnv(t *testing.T) {
 	require.NoError(t, err, "lstk start --persist failed: %s", stderr)
 	requireExitCode(t, 0, err)
 
-	inspect, err := dockerClient.ContainerInspect(ctx, containerName)
+	inspect, err := dockerClient.ContainerInspect(ctx, containerName, client.ContainerInspectOptions{})
 	require.NoError(t, err, "failed to inspect container")
-	require.True(t, inspect.State.Running)
+	require.True(t, inspect.Container.State.Running)
 
-	envVars := containerEnvToMap(inspect.Config.Env)
+	envVars := containerEnvToMap(inspect.Container.Config.Env)
 	assert.Equal(t, "1", envVars["LOCALSTACK_PERSISTENCE"])
 }
 
@@ -443,11 +445,11 @@ func TestStartCommandForwardsPersistenceEnvFromHost(t *testing.T) {
 	require.NoError(t, err, "lstk start failed: %s", stderr)
 	requireExitCode(t, 0, err)
 
-	inspect, err := dockerClient.ContainerInspect(ctx, containerName)
+	inspect, err := dockerClient.ContainerInspect(ctx, containerName, client.ContainerInspectOptions{})
 	require.NoError(t, err, "failed to inspect container")
-	require.True(t, inspect.State.Running)
+	require.True(t, inspect.Container.State.Running)
 
-	envVars := containerEnvToMap(inspect.Config.Env)
+	envVars := containerEnvToMap(inspect.Container.Config.Env)
 	assert.Equal(t, "1", envVars["LOCALSTACK_PERSISTENCE"])
 }
 
@@ -479,11 +481,11 @@ env = ["persistence"]
 	require.NoError(t, err, "lstk start failed: %s", stderr)
 	requireExitCode(t, 0, err)
 
-	inspect, err := dockerClient.ContainerInspect(ctx, containerName)
+	inspect, err := dockerClient.ContainerInspect(ctx, containerName, client.ContainerInspectOptions{})
 	require.NoError(t, err, "failed to inspect container")
-	require.True(t, inspect.State.Running)
+	require.True(t, inspect.Container.State.Running)
 
-	envVars := containerEnvToMap(inspect.Config.Env)
+	envVars := containerEnvToMap(inspect.Container.Config.Env)
 	assert.Equal(t, "1", envVars["PERSISTENCE"])
 }
 
@@ -571,13 +573,13 @@ func cleanup() {
 	ctx := context.Background()
 	// ContainerRemove with Force already SIGKILLs the container; an explicit
 	// ContainerStop first would add the default 10s SIGTERM grace period.
-	_ = dockerClient.ContainerRemove(ctx, containerName, container.RemoveOptions{Force: true})
+	_, _ = dockerClient.ContainerRemove(ctx, containerName, client.ContainerRemoveOptions{Force: true})
 	_ = DeleteAuthTokenFromKeyring()
 }
 
 func cleanupSnowflake() {
 	ctx := context.Background()
-	_ = dockerClient.ContainerRemove(ctx, snowflakeContainerName, container.RemoveOptions{Force: true})
+	_, _ = dockerClient.ContainerRemove(ctx, snowflakeContainerName, client.ContainerRemoveOptions{Force: true})
 }
 
 func writeSnowflakeConfig(t *testing.T, hostPort string) string {
@@ -632,11 +634,11 @@ func TestStartCommandSucceedsForSnowflake(t *testing.T) {
 	require.NoError(t, err, "lstk start failed: %s", stderr)
 	requireExitCode(t, 0, err)
 
-	inspect, err := dockerClient.ContainerInspect(ctx, snowflakeContainerName)
+	inspect, err := dockerClient.ContainerInspect(ctx, snowflakeContainerName, client.ContainerInspectOptions{})
 	require.NoError(t, err, "failed to inspect snowflake container")
-	require.True(t, inspect.State.Running, "snowflake container should be running")
-	assert.Contains(t, inspect.Config.Image, "localstack/snowflake",
-		"expected localstack/snowflake image, got %s", inspect.Config.Image)
+	require.True(t, inspect.Container.State.Running, "snowflake container should be running")
+	assert.Contains(t, inspect.Container.Config.Image, "localstack/snowflake",
+		"expected localstack/snowflake image, got %s", inspect.Container.Config.Image)
 
 	resp, err := http.Get(fmt.Sprintf("http://localhost:%s/_localstack/health", hostPort))
 	require.NoError(t, err)

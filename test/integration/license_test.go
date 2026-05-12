@@ -10,7 +10,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/docker/docker/api/types/container"
+	"github.com/moby/moby/client"
 	"github.com/localstack/lstk/test/integration/env"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -71,9 +71,9 @@ func TestLicenseValidationSuccess(t *testing.T) {
 	require.NoError(t, err, "lstk start failed: %s", stderr)
 	requireExitCode(t, 0, err)
 
-	inspect, err := dockerClient.ContainerInspect(ctx, containerName)
+	inspect, err := dockerClient.ContainerInspect(ctx, containerName, client.ContainerInspectOptions{})
 	require.NoError(t, err, "failed to inspect container")
-	assert.True(t, inspect.State.Running, "container should be running")
+	assert.True(t, inspect.Container.State.Running, "container should be running")
 }
 
 func TestLicenseValidationFailure(t *testing.T) {
@@ -91,7 +91,7 @@ func TestLicenseValidationFailure(t *testing.T) {
 	assert.Contains(t, stderr, "license validation failed")
 	assert.Contains(t, stderr, "invalid, inactive, or expired")
 
-	_, err = dockerClient.ContainerInspect(ctx, containerName)
+	_, err = dockerClient.ContainerInspect(ctx, containerName, client.ContainerInspectOptions{})
 	assert.Error(t, err, "container should not exist after license failure")
 }
 
@@ -104,7 +104,7 @@ func licenseFilePath(t *testing.T) string {
 
 func cleanupLicense() {
 	ctx := context.Background()
-	_ = dockerClient.ContainerRemove(ctx, containerName, container.RemoveOptions{Force: true})
+	_, _ = dockerClient.ContainerRemove(ctx, containerName, client.ContainerRemoveOptions{Force: true})
 	if cacheDir, err := os.UserCacheDir(); err == nil {
 		_ = os.Remove(filepath.Join(cacheDir, "lstk", "license.json"))
 	}
@@ -129,11 +129,11 @@ func TestLicenseCacheAndMount(t *testing.T) {
 	require.NoError(t, err, "license cache file should exist after successful start")
 	assert.Equal(t, licenseBody, string(data))
 
-	inspect, err := dockerClient.ContainerInspect(ctx, containerName)
+	inspect, err := dockerClient.ContainerInspect(ctx, containerName, client.ContainerInspectOptions{})
 	require.NoError(t, err, "failed to inspect container")
 
 	var mounted bool
-	for _, m := range inspect.Mounts {
+	for _, m := range inspect.Container.Mounts {
 		if m.Destination == "/etc/localstack/conf.d/license.json" {
 			mounted = true
 			break

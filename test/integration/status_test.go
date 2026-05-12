@@ -18,7 +18,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/sqs"
-	"github.com/docker/docker/api/types/image"
+	"github.com/moby/moby/client"
 	"github.com/localstack/lstk/test/integration/env"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -129,9 +129,10 @@ func TestStatusCommandWorksWithExternalContainer(t *testing.T) {
 	ctx := testContext(t)
 
 	const fakeImage = "localstack/localstack-pro:test-fake"
-	require.NoError(t, dockerClient.ImageTag(ctx, testImage, fakeImage))
+	_, err := dockerClient.ImageTag(ctx, client.ImageTagOptions{Source: testImage, Target: fakeImage})
+	require.NoError(t, err)
 	t.Cleanup(func() {
-		_, _ = dockerClient.ImageRemove(context.Background(), fakeImage, image.RemoveOptions{})
+		_, _ = dockerClient.ImageRemove(context.Background(), fakeImage, client.ImageRemoveOptions{})
 	})
 
 	startExternalContainer(t, ctx, fakeImage, "localstack-external", "4566")
