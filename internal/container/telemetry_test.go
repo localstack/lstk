@@ -68,7 +68,7 @@ func TestStop_EmitsLifecycleStopEvent(t *testing.T) {
 	assert.Equal(t, "aws", payload["emulator"])
 
 	env := payload["environment"].(map[string]any)
-	assert.Equal(t, "ls-abc", env["auth_token_id"])
+	assert.Equal(t, telemetry.FingerprintToken("ls-abc"), env["auth_token_id"])
 }
 
 func TestEmitEmulatorLifecycleEvent_SendsStartErrorEvent(t *testing.T) {

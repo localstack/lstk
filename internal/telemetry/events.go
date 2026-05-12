@@ -89,15 +89,16 @@ func ToMap(v any) map[string]any {
 	return m
 }
 
-// GetEnvironment returns the common environment payload for telemetry events,
-// using the auth token set via SetAuthToken.
+// GetEnvironment returns the common environment payload for telemetry events.
+// AuthTokenID is a one-way fingerprint of the token registered via
+// SetAuthToken, not the token itself.
 func (c *Client) GetEnvironment(ctx context.Context) Environment {
 	c.machineIDOnce.Do(func() {
 		c.machineID = LoadOrCreateMachineID(ctx)
 	})
 	return Environment{
 		LstkVersion: version.Version(),
-		AuthTokenID: c.authToken,
+		AuthTokenID: c.authTokenID,
 		OS:          runtime.GOOS,
 		Arch:        runtime.GOARCH,
 		MachineID:   c.machineID,

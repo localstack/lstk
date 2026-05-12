@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"runtime"
+	"strings"
 	"testing"
 	"time"
 
@@ -51,7 +52,7 @@ func TestGetEnvironment_PopulatesAllFields(t *testing.T) {
 	env := c.GetEnvironment(context.Background())
 
 	assert.Equal(t, version.Version(), env.LstkVersion)
-	assert.Equal(t, "ls-abc123", env.AuthTokenID)
+	assert.Equal(t, FingerprintToken("ls-abc123"), env.AuthTokenID)
 	assert.Equal(t, runtime.GOOS, env.OS)
 	assert.Equal(t, runtime.GOARCH, env.Arch)
 	assert.NotEmpty(t, env.MachineID)
@@ -61,6 +62,15 @@ func TestGetEnvironment_OmitsAuthTokenWhenEmpty(t *testing.T) {
 	c := New("http://localhost", false)
 	env := c.GetEnvironment(context.Background())
 	assert.Empty(t, env.AuthTokenID)
+}
+
+func TestFingerprintToken_IsStableAndIrreversible(t *testing.T) {
+	assert.Empty(t, FingerprintToken(""))
+
+	fp := FingerprintToken("ls-secret-token")
+	assert.Len(t, fp, 16)
+	assert.Equal(t, fp, FingerprintToken("ls-secret-token"), "fingerprint must be deterministic")
+	assert.NotEqual(t, fp, FingerprintToken("ls-secret-token2"), "different inputs must yield different fingerprints")
 }
 
 func TestEmitCommand_SendsCorrectEventNameAndStructure(t *testing.T) {
@@ -85,7 +95,7 @@ func TestEmitCommand_SendsCorrectEventNameAndStructure(t *testing.T) {
 	env, ok := payload["environment"].(map[string]any)
 	require.True(t, ok)
 	assert.Equal(t, version.Version(), env["lstk_version"])
-	assert.Equal(t, "ls-token", env["auth_token_id"])
+	assert.Equal(t, FingerprintToken("ls-token"), env["auth_token_id"])
 
 	params, ok := payload["parameters"].(map[string]any)
 	require.True(t, ok)
@@ -96,6 +106,19 @@ func TestEmitCommand_SendsCorrectEventNameAndStructure(t *testing.T) {
 	require.True(t, ok)
 	assert.InDelta(t, 1200, result["duration_ms"], 1)
 	assert.InDelta(t, 0, result["exit_code"], 0)
+}
+
+func TestEmitCommand_NeverSerializesRawAuthToken(t *testing.T) {
+	tel, ch := captureEvents(t)
+
+	const rawToken = "ls-super-secret-do-not-leak"
+	tel.SetAuthToken(rawToken)
+	tel.EmitCommand(context.Background(), "status", nil, 0, 0, "")
+
+	got := drainEvent(t, tel, ch)
+	serialized, err := json.Marshal(got)
+	require.NoError(t, err)
+	assert.False(t, strings.Contains(string(serialized), rawToken), "raw auth token must not appear in telemetry payload")
 }
 
 func TestEmitCommand_IncludesErrorMsgOnFailure(t *testing.T) {

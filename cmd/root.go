@@ -114,7 +114,7 @@ func Execute(ctx context.Context) error {
 
 	logger.Info("lstk %s starting", version.Version())
 
-	// Resolve auth token for telemetry: keyring first, then env var.
+	// Resolve auth token for telemetry correlation: keyring first, then env var.
 	resolvedToken := cfg.AuthToken
 	if tokenStorage, err := auth.NewTokenStorage(cfg.ForceFileKeyring, logger); err == nil {
 		if token, err := tokenStorage.GetAuthToken(); err == nil && token != "" {

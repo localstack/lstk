@@ -3,6 +3,8 @@ package telemetry
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -22,10 +24,10 @@ func userAgent() string {
 }
 
 type Client struct {
-	enabled   bool
-	sessionID string
-	machineID string
-	authToken string
+	enabled     bool
+	sessionID   string
+	machineID   string
+	authTokenID string
 
 	httpClient *http.Client
 	endpoint   string
@@ -36,10 +38,20 @@ type Client struct {
 	machineIDOnce sync.Once
 }
 
-// SetAuthToken stores the resolved auth token for inclusion in telemetry events.
-// Call this once the token is known (e.g. after keyring resolution or interactive login).
+// SetAuthToken stores a one-way fingerprint of the auth token for telemetry
+// correlation. The raw token is not retained.
 func (c *Client) SetAuthToken(token string) {
-	c.authToken = token
+	c.authTokenID = FingerprintToken(token)
+}
+
+// FingerprintToken returns a 16-character lowercase hex prefix of the token's
+// SHA-256 digest. Empty input yields empty output.
+func FingerprintToken(token string) string {
+	if token == "" {
+		return ""
+	}
+	sum := sha256.Sum256([]byte(token))
+	return hex.EncodeToString(sum[:])[:16]
 }
 
 func New(endpoint string, disabled bool) *Client {
