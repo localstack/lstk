@@ -20,6 +20,20 @@ import (
 	"github.com/spf13/cobra"
 )
 
+const snapshotSaveCanonical = "snapshot save"
+
+const snapshotSaveLong = `Save a snapshot of the running emulator's state.
+
+Pass [destination] as an absolute or relative path for the exported file:
+
+  lstk snapshot save                    # saves to ./snapshot-<YYYY-MM-DDTHH-mm-ss>-<hex>.zip
+  lstk snapshot save ./my-snapshot.zip  # saves to ./my-snapshot.zip
+  lstk snapshot save /tmp/my-state      # saves to /tmp/my-state.zip
+
+To save to a remote pod on the LocalStack platform, use the pod: prefix:
+
+  lstk snapshot save pod:my-baseline    # saves as a named pod on the platform`
+
 func newSnapshotCmd(cfg *env.Env, tel *telemetry.Client, logger log.Logger) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "snapshot",
@@ -124,48 +138,54 @@ func resolveSnapshotDeps(ctx context.Context, cfg *env.Env) (rt runtime.Runtime,
 
 func newSnapshotSaveCmd(cfg *env.Env) *cobra.Command {
 	return &cobra.Command{
-		Use:   "save [destination]",
-		Short: "Save a snapshot of the emulator state",
-		Long: `Save a snapshot of the running emulator's state.
-
-Pass [destination] as an absolute or relative path for the exported file:
-
-  lstk snapshot save                    # saves to ./snapshot-<YYYY-MM-DDTHH-mm-ss>-<hex>.zip
-  lstk snapshot save ./my-snapshot.zip  # saves to ./my-snapshot.zip
-  lstk snapshot save /tmp/my-state      # saves to /tmp/my-state.zip
-
-To save to a remote pod on the LocalStack platform, use the pod: prefix:
-
-  lstk snapshot save pod:my-baseline    # saves as a named pod on the platform`,
+		Use:     "save [destination]",
+		Short:   "Save a snapshot of the emulator state",
+		Long:    snapshotSaveLong,
 		Args:    cobra.MaximumNArgs(1),
 		PreRunE: initConfig(nil),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			var destArg string
-			if len(args) > 0 {
-				destArg = args[0]
-			}
+		RunE:    runSnapshotSave(cfg),
+	}
+}
 
-			home, _ := os.UserHomeDir()
-			dest, err := snapshot.ParseDestination(destArg, home, time.Now())
-			if err != nil {
-				return err
-			}
+func newSaveCmd(cfg *env.Env) *cobra.Command {
+	return &cobra.Command{
+		Use:         "save [destination]",
+		Short:       "Save a snapshot of the emulator state",
+		Long:        snapshotSaveLong,
+		Args:        cobra.MaximumNArgs(1),
+		PreRunE:     initConfig(nil),
+		RunE:        runSnapshotSave(cfg),
+		Annotations: map[string]string{canonicalCommandAnnotation: snapshotSaveCanonical},
+	}
+}
 
-			rt, client, host, containers, _, err := resolveSnapshotDeps(cmd.Context(), cfg)
-			if err != nil {
-				return err
-			}
+func runSnapshotSave(cfg *env.Env) func(*cobra.Command, []string) error {
+	return func(cmd *cobra.Command, args []string) error {
+		var destArg string
+		if len(args) > 0 {
+			destArg = args[0]
+		}
 
-			if isInteractiveMode(cfg) {
-				return ui.RunSnapshotSave(cmd.Context(), rt, containers, client, host, dest, cfg.AuthToken)
-			}
-			sink := output.NewPlainSink(os.Stdout)
-			switch dest.Kind {
-			case snapshot.KindPod:
-				return snapshot.SavePod(cmd.Context(), rt, containers, client, host, dest.Value, cfg.AuthToken, sink)
-			default:
-				return snapshot.SaveLocal(cmd.Context(), rt, containers, client, host, dest.Value, sink)
-			}
-		},
+		home, _ := os.UserHomeDir()
+		dest, err := snapshot.ParseDestination(destArg, home, time.Now())
+		if err != nil {
+			return err
+		}
+
+		rt, client, host, containers, _, err := resolveSnapshotDeps(cmd.Context(), cfg)
+		if err != nil {
+			return err
+		}
+
+		if isInteractiveMode(cfg) {
+			return ui.RunSnapshotSave(cmd.Context(), rt, containers, client, host, dest, cfg.AuthToken)
+		}
+		sink := output.NewPlainSink(os.Stdout)
+		switch dest.Kind {
+		case snapshot.KindPod:
+			return snapshot.SavePod(cmd.Context(), rt, containers, client, host, dest.Value, cfg.AuthToken, sink)
+		default:
+			return snapshot.SaveLocal(cmd.Context(), rt, containers, client, host, dest.Value, sink)
+		}
 	}
 }
