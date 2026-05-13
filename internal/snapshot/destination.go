@@ -17,6 +17,22 @@ var (
 	ErrUnknownScheme = errors.New("unrecognized destination scheme")
 )
 
+// displayPath shortens abs for human-readable output:
+// under cwd → ./rel, under home → ~/rel, otherwise unchanged.
+func displayPath(abs, cwd, home string) string {
+	if cwd != "" {
+		if rel, err := filepath.Rel(cwd, abs); err == nil && !strings.HasPrefix(rel, "..") {
+			return "./" + filepath.ToSlash(rel)
+		}
+	}
+	if home != "" {
+		if rel, err := filepath.Rel(home, abs); err == nil && !strings.HasPrefix(rel, "..") {
+			return "~/" + filepath.ToSlash(rel)
+		}
+	}
+	return abs
+}
+
 // ParseDestination resolves the user-supplied path to an absolute local path.
 // When dest is empty, a default name based on now (UTC) is used, e.g.
 // "snapshot-2026-05-11T21-04-32-a3f.zip", saved in the current working directory.

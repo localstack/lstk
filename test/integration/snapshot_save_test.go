@@ -90,7 +90,7 @@ func TestSnapshotSaveCustomPath(t *testing.T) {
 	)
 	require.NoError(t, err, "lstk snapshot save failed: %s", stderr)
 	assert.Contains(t, stdout, "Snapshot saved")
-	assert.Contains(t, stdout, outPath)
+	assert.Contains(t, stdout, "./my-snap.zip")
 
 	data, err := os.ReadFile(outPath)
 	require.NoError(t, err, "output file should exist")

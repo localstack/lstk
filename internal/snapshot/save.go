@@ -44,7 +44,9 @@ func Save(ctx context.Context, rt runtime.Runtime, containers []config.Container
 	defer func() {
 		sink.Emit(output.SpinnerStop())
 		if retErr == nil {
-			sink.Emit(output.MessageEvent{Severity: output.SeveritySuccess, Text: fmt.Sprintf("Snapshot saved to %s", dest)})
+			cwd, _ := os.Getwd()
+			home, _ := os.UserHomeDir()
+			sink.Emit(output.MessageEvent{Severity: output.SeveritySuccess, Text: fmt.Sprintf("Snapshot saved to %s", displayPath(dest, cwd, home))})
 		}
 	}()
 

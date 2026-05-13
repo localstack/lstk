@@ -16,6 +16,72 @@ import (
 
 
 
+func TestDisplayPath(t *testing.T) {
+	t.Parallel()
+
+	base := t.TempDir()
+	cwd := filepath.Join(base, "projects", "lstk")
+	home := filepath.Join(base, "home")
+
+	tests := []struct {
+		name string
+		abs  string
+		cwd  string
+		home string
+		want string
+	}{
+		{
+			name: "under cwd",
+			abs:  filepath.Join(cwd, "snap.zip"),
+			cwd:  cwd, home: home,
+			want: "./snap.zip",
+		},
+		{
+			name: "under cwd subdir",
+			abs:  filepath.Join(cwd, "exports", "snap.zip"),
+			cwd:  cwd, home: home,
+			want: "./exports/snap.zip",
+		},
+		{
+			name: "under home but not cwd",
+			abs:  filepath.Join(home, "snap.zip"),
+			cwd:  cwd, home: home,
+			want: "~/snap.zip",
+		},
+		{
+			name: "under home subdir",
+			abs:  filepath.Join(home, "downloads", "snap.zip"),
+			cwd:  cwd, home: home,
+			want: "~/downloads/snap.zip",
+		},
+		{
+			name: "unrelated to both",
+			abs:  filepath.Join(base, "other", "snap.zip"),
+			cwd:  cwd, home: home,
+			want: filepath.Join(base, "other", "snap.zip"),
+		},
+		{
+			name: "empty cwd falls back to home",
+			abs:  filepath.Join(home, "snap.zip"),
+			cwd:  "", home: home,
+			want: "~/snap.zip",
+		},
+		{
+			name: "empty cwd and home returns absolute",
+			abs:  filepath.Join(base, "snap.zip"),
+			cwd:  "", home: "",
+			want: filepath.Join(base, "snap.zip"),
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			assert.Equal(t, tc.want, snapshot.DisplayPath(tc.abs, tc.cwd, tc.home))
+		})
+	}
+}
+
 func TestParseDestination(t *testing.T) {
 	t.Parallel()
 	wd, err := os.Getwd()
