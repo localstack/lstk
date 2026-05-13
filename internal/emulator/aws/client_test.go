@@ -1,10 +1,13 @@
 package aws
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -104,6 +107,107 @@ func TestFetchResources(t *testing.T) {
 		c := NewClient()
 		_, err := c.FetchResources(context.Background(), server.Listener.Addr().String())
 		require.Error(t, err)
+	})
+}
+
+func TestExportState(t *testing.T) {
+	t.Parallel()
+
+	t.Run("streams body on 200", func(t *testing.T) {
+		t.Parallel()
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			assert.Equal(t, "/_localstack/pods/state", r.URL.Path)
+			assert.Equal(t, http.MethodGet, r.Method)
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte("ZIP_DATA"))
+		}))
+		defer srv.Close()
+
+		var buf bytes.Buffer
+		c := NewClient()
+		err := c.ExportState(context.Background(), srv.Listener.Addr().String(), &buf)
+		require.NoError(t, err)
+		assert.Equal(t, "ZIP_DATA", buf.String())
+	})
+
+	t.Run("returns error on 500", func(t *testing.T) {
+		t.Parallel()
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusInternalServerError)
+		}))
+		defer srv.Close()
+
+		c := NewClient()
+		err := c.ExportState(context.Background(), srv.Listener.Addr().String(), io.Discard)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "500")
+	})
+
+	t.Run("returns error on 404", func(t *testing.T) {
+		t.Parallel()
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusNotFound)
+		}))
+		defer srv.Close()
+
+		c := NewClient()
+		err := c.ExportState(context.Background(), srv.Listener.Addr().String(), io.Discard)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "404")
+	})
+
+	t.Run("returns error on connection refused", func(t *testing.T) {
+		t.Parallel()
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {}))
+		addr := srv.Listener.Addr().String()
+		srv.Close()
+
+		c := NewClient()
+		err := c.ExportState(context.Background(), addr, io.Discard)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "connect to LocalStack")
+	})
+
+	t.Run("returns error on context cancellation", func(t *testing.T) {
+		t.Parallel()
+		started := make(chan struct{})
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			close(started)
+			<-r.Context().Done()
+		}))
+		defer srv.Close()
+
+		ctx, cancel := context.WithCancel(context.Background())
+		c := NewClient()
+
+		errCh := make(chan error, 1)
+		go func() {
+			errCh <- c.ExportState(ctx, srv.Listener.Addr().String(), io.Discard)
+		}()
+
+		<-started
+		cancel()
+
+		err := <-errCh
+		require.Error(t, err)
+	})
+
+	t.Run("handles large body", func(t *testing.T) {
+		t.Parallel()
+		const size = 1 << 20 // 1 MB
+		payload := strings.Repeat("X", size)
+
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(payload))
+		}))
+		defer srv.Close()
+
+		var buf bytes.Buffer
+		c := NewClient()
+		err := c.ExportState(context.Background(), srv.Listener.Addr().String(), &buf)
+		require.NoError(t, err)
+		assert.Equal(t, size, buf.Len())
 	})
 }
 
