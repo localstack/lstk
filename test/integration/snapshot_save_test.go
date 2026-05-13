@@ -230,6 +230,38 @@ func TestSnapshotSaveTelemetryOnFailure(t *testing.T) {
 	assertCommandTelemetry(t, events, "snapshot save", 1)
 }
 
+func TestSaveAliasMatchesSnapshotSave(t *testing.T) {
+	requireDocker(t)
+	cleanup()
+	t.Cleanup(cleanup)
+
+	ctx := testContext(t)
+	startTestContainer(t, ctx)
+	srv := mockStateServer(t)
+	dir := t.TempDir()
+	outPath := filepath.Join(dir, "alias.zip")
+
+	analyticsSrv, events := mockAnalyticsServer(t)
+	stdout, stderr, err := runLstk(t, ctx, dir,
+		env.Environ(testEnvWithHome(t.TempDir(), "")).With(env.LocalStackHost, lsHost(srv)).With(env.AnalyticsEndpoint, analyticsSrv.URL),
+		"--non-interactive", "save", outPath,
+	)
+	require.NoError(t, err, "lstk save failed: %s", stderr)
+	assert.Contains(t, stdout, "Snapshot saved")
+
+	data, err := os.ReadFile(outPath)
+	require.NoError(t, err, "output file should exist")
+	assert.True(t, len(data) > 0, "output file should be non-empty")
+
+	r, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
+	require.NoError(t, err, "output file should be a valid ZIP")
+	assert.NotEmpty(t, r.File)
+
+	// Alias must emit telemetry under the canonical name so usage isn't
+	// split across "save" and "snapshot save" labels.
+	assertCommandTelemetry(t, events, "snapshot save", 0)
+}
+
 func TestSnapshotSaveInteractive(t *testing.T) {
 	requireDocker(t)
 	cleanup()
