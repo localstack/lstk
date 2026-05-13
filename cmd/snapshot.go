@@ -56,7 +56,7 @@ Cloud destinations are not yet supported.`,
 				return fmt.Errorf("failed to get config: %w", err)
 			}
 
-			awsContainer := config.ContainerConfig{Type: config.EmulatorAWS, Port: config.DefaultAWSPort}
+			var awsContainer config.ContainerConfig
 			var found bool
 			for _, c := range appConfig.Containers {
 				if c.Type == config.EmulatorAWS {
