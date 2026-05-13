@@ -3,6 +3,7 @@ package endpoint
 import (
 	"context"
 	"net"
+	"net/url"
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -42,4 +43,29 @@ func ResolveHost(ctx context.Context, port, override string) (host string, dnsOK
 	}
 	span.SetAttributes(attribute.Bool("endpoint.dns.ok", false))
 	return "127.0.0.1:" + port, false
+}
+
+// DeriveS3Endpoint returns a virtual-hosted-style S3 endpoint URL derived from
+// the given LocalStack base endpoint. It swaps a bare localhost/127.0.0.1 for
+// the wildcard-resolving Hostname so that virtual-hosted-style bucket
+// addressing (<bucket>.s3.<host>) actually resolves, then prepends "s3." as a
+// subdomain. Returns "" when baseURL is unparseable or has no host.
+func DeriveS3Endpoint(baseURL string) string {
+	u, err := url.Parse(baseURL)
+	if err != nil || u == nil || u.Host == "" {
+		return ""
+	}
+	host := u.Hostname()
+	if host == "localhost" || host == "127.0.0.1" {
+		host = Hostname
+	}
+	scheme := u.Scheme
+	if scheme == "" {
+		scheme = "http"
+	}
+	out := scheme + "://s3." + host
+	if port := u.Port(); port != "" {
+		out += ":" + port
+	}
+	return out
 }
