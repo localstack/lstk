@@ -244,7 +244,7 @@ func emitPostStartPointers(sink output.Sink, emulatorType config.EmulatorType, r
 	} else {
 		sink.Emit(output.MessageEvent{Severity: output.SeveritySecondary, Text: fmt.Sprintf("• Endpoint: %s", resolvedHost)})
 	}
-	if persist {
+	if persist && emulatorType == config.EmulatorAWS {
 		sink.Emit(output.MessageEvent{Severity: output.SeveritySecondary, Text: "• Persistence: Enabled"})
 	}
 	if webAppURL != "" {

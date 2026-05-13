@@ -86,6 +86,17 @@ func TestEmitPostStartPointers_Snowflake_ReplacesEndpointWithSnowflakeEndpoint(t
 	assert.Contains(t, got, "> Tip:")
 }
 
+func TestEmitPostStartPointers_Snowflake_OmitsPersistenceBullet(t *testing.T) {
+	var out bytes.Buffer
+	sink := output.NewPlainSink(&out)
+
+	emitPostStartPointers(sink, config.EmulatorSnowflake, "localhost.localstack.cloud:4566", "", true)
+
+	got := out.String()
+	assert.NotContains(t, got, "• Persistence:",
+		"snowflake does not support persistence; the bullet must be suppressed even when --persist is set")
+}
+
 func TestEmitPostStartPointers_Snowflake_FallsBackToBareEndpointForIPHost(t *testing.T) {
 	var out bytes.Buffer
 	sink := output.NewPlainSink(&out)
