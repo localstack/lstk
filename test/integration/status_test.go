@@ -205,7 +205,7 @@ func TestStatusCommandForSnowflakeShowsVersion(t *testing.T) {
 	require.NoError(t, err, "lstk status failed: %s", stderr)
 	requireExitCode(t, 0, err)
 
-	assert.Contains(t, stdout, "VERSION: "+expectedVersion,
+	assert.Contains(t, stdout, "• Version: "+expectedVersion,
 		"snowflake status should display the version reported by /_localstack/health")
 }
 

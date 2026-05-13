@@ -153,24 +153,23 @@ func formatErrorEvent(e ErrorEvent) string {
 
 func formatInstanceInfo(e InstanceInfoEvent) string {
 	var sb strings.Builder
-	sb.WriteString(SuccessMarker() + " " + e.EmulatorName + " is running (" + e.Host + ")")
-	var meta []string
-	if e.Uptime > 0 {
-		meta = append(meta, "UPTIME: "+formatUptime(e.Uptime))
+	sb.WriteString(SuccessMarker() + " " + e.EmulatorName + " is running")
+	if e.Host != "" {
+		sb.WriteString("\n• Endpoint: " + e.Host)
 	}
 	if e.ContainerName != "" {
-		meta = append(meta, "CONTAINER: "+e.ContainerName)
+		sb.WriteString("\n• Container: " + e.ContainerName)
 	}
 	if e.Version != "" {
-		meta = append(meta, "VERSION: "+e.Version)
+		sb.WriteString("\n• Version: " + e.Version)
 	}
-	if len(meta) > 0 {
-		sb.WriteString("\n  " + strings.Join(meta, " · "))
+	if e.Uptime > 0 {
+		sb.WriteString("\n• Uptime: " + FormatUptime(e.Uptime))
 	}
 	return sb.String()
 }
 
-func formatUptime(d time.Duration) string {
+func FormatUptime(d time.Duration) string {
 	d = d.Round(time.Second)
 	h := int(d.Hours())
 	m := int(d.Minutes()) % 60
