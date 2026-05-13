@@ -64,6 +64,7 @@ type InstanceInfoEvent struct {
 	Host          string
 	ContainerName string
 	Uptime        time.Duration
+	Persistence   bool
 }
 
 type TableEvent struct {

@@ -85,6 +85,7 @@ func Status(ctx context.Context, rt runtime.Runtime, containers []config.Contain
 			Host:          host,
 			ContainerName: name,
 			Uptime:        uptime,
+			Persistence:   isPersistenceEnabled(ctx, rt, name),
 		})
 
 		if c.Type == config.EmulatorAWS {

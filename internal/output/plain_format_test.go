@@ -119,8 +119,9 @@ func TestFormatEventLine(t *testing.T) {
 				Host:          "localhost.localstack.cloud:4566",
 				ContainerName: "localstack-aws",
 				Uptime:        4*time.Minute + 23*time.Second,
+				Persistence:   true,
 			},
-			want:   SuccessMarker() + " LocalStack AWS Emulator is running\n• Endpoint: localhost.localstack.cloud:4566\n• Container: localstack-aws\n• Version: 4.14.1\n• Uptime: 4m 23s",
+			want:   SuccessMarker() + " LocalStack AWS Emulator is running\n• Endpoint: localhost.localstack.cloud:4566\n• Persistence: Enabled\n• Container: localstack-aws\n• Version: 4.14.1\n• Uptime: 4m 23s",
 			wantOK: true,
 		},
 		{
@@ -130,6 +131,17 @@ func TestFormatEventLine(t *testing.T) {
 				Host:         "127.0.0.1:4566",
 			},
 			want:   SuccessMarker() + " LocalStack AWS Emulator is running\n• Endpoint: 127.0.0.1:4566",
+			wantOK: true,
+		},
+		{
+			name: "instance info omits persistence when disabled",
+			event: InstanceInfoEvent{
+				EmulatorName:  "LocalStack AWS Emulator",
+				Host:          "127.0.0.1:4566",
+				ContainerName: "localstack-aws",
+				Persistence:   false,
+			},
+			want:   SuccessMarker() + " LocalStack AWS Emulator is running\n• Endpoint: 127.0.0.1:4566\n• Container: localstack-aws",
 			wantOK: true,
 		},
 		{
