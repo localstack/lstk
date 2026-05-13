@@ -33,7 +33,7 @@ func newSnapshotSaveCmd(cfg *env.Env) *cobra.Command {
 
 Pass [destination] as an absolute or relative path for the exported file:
 
-  lstk snapshot save                    # saves to ./snapshot-<YYYY-MM-DDTHH-mm-ss>.zip
+  lstk snapshot save                    # saves to ./snapshot-<YYYY-MM-DDTHH-mm-ss>-<hex>.zip
   lstk snapshot save ./my-snapshot.zip  # saves to ./my-snapshot.zip
   lstk snapshot save /tmp/my-state      # saves to /tmp/my-state.zip
 

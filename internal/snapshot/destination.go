@@ -1,6 +1,7 @@
 package snapshot
 
 import (
+	"crypto/rand"
 	"errors"
 	"fmt"
 	"os"
@@ -18,11 +19,13 @@ var (
 
 // ParseDestination resolves the user-supplied path to an absolute local path.
 // When dest is empty, a default name based on now (UTC) is used, e.g.
-// "snapshot-2026-05-11T21-04-32.zip", saved in the current working directory.
+// "snapshot-2026-05-11T21-04-32-a3f.zip", saved in the current working directory.
 // The returned path always has a .zip extension.
 func ParseDestination(dest string, now time.Time) (string, error) {
 	if dest == "" {
-		dest = "./" + now.UTC().Format("snapshot-2006-01-02T15-04-05")
+		b := make([]byte, 2)
+		_, _ = rand.Read(b)
+		dest = "./" + now.UTC().Format("snapshot-2006-01-02T15-04-05") + "-" + fmt.Sprintf("%x", b)[:3]
 	} else {
 		lower := strings.ToLower(dest)
 		switch {

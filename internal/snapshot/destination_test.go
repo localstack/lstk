@@ -3,6 +3,7 @@ package snapshot_test
 import (
 	"os"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strings"
 	"testing"
@@ -30,20 +31,21 @@ func TestParseDestination(t *testing.T) {
 	require.NoError(t, os.Mkdir(subDir, 0o755))
 
 	type testCase struct {
-		name          string // optional; uses input when empty
-		input         string
-		wantPath      string
-		wantErr       string
-		wantRemoteErr bool
-		wantSchemeErr bool
+		name           string // optional; uses input when empty
+		input          string
+		wantPath       string
+		wantPathRegexp string // used instead of wantPath when the result contains a random component
+		wantErr        string
+		wantRemoteErr  bool
+		wantSchemeErr  bool
 	}
 
 	tests := []testCase{
 		// --- default (empty input) ---
 		{
-			name:     "default",
-			input:    "",
-			wantPath: filepath.Join(wd, "snapshot-2026-05-11T21-04-32.zip"),
+			name:           "default",
+			input:          "",
+			wantPathRegexp: regexp.QuoteMeta(filepath.Join(wd, "snapshot-2026-05-11T21-04-32-")) + `[0-9a-f]{3}\.zip`,
 		},
 
 		// --- local paths ---
@@ -178,7 +180,11 @@ func TestParseDestination(t *testing.T) {
 				return
 			}
 			require.NoError(t, err)
-			assert.Equal(t, tc.wantPath, got)
+			if tc.wantPathRegexp != "" {
+				assert.Regexp(t, tc.wantPathRegexp, got)
+			} else {
+				assert.Equal(t, tc.wantPath, got)
+			}
 		})
 	}
 }
