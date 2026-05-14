@@ -450,7 +450,7 @@ func TestStartCommandForwardsPersistenceEnvFromHost(t *testing.T) {
 	defer mockServer.Close()
 
 	ctx := testContext(t)
-	_, stderr, err := runLstk(t, ctx, "", env.With(env.APIEndpoint, mockServer.URL).
+	stdout, stderr, err := runLstk(t, ctx, "", env.With(env.APIEndpoint, mockServer.URL).
 		With(env.Persistence, "1"),
 		"start")
 	require.NoError(t, err, "lstk start failed: %s", stderr)
@@ -462,6 +462,9 @@ func TestStartCommandForwardsPersistenceEnvFromHost(t *testing.T) {
 
 	envVars := containerEnvToMap(inspect.Container.Config.Env)
 	assert.Equal(t, "1", envVars["LOCALSTACK_PERSISTENCE"])
+
+	assert.Contains(t, stdout, "• Persistence: Enabled",
+		"lstk start should surface persistence state when LOCALSTACK_PERSISTENCE=1 is set in the shell")
 }
 
 func TestStartCommandSetsPersistenceEnvFromConfig(t *testing.T) {
@@ -476,7 +479,7 @@ func TestStartCommandSetsPersistenceEnvFromConfig(t *testing.T) {
 
 	configContent := `
 [env.persistence]
-PERSISTENCE = "1"
+LOCALSTACK_PERSISTENCE = "1"
 
 [[containers]]
 type = "aws"
@@ -488,7 +491,7 @@ env = ["persistence"]
 	require.NoError(t, os.WriteFile(configFile, []byte(configContent), 0644))
 
 	ctx := testContext(t)
-	_, stderr, err := runLstk(t, ctx, "", env.With(env.APIEndpoint, mockServer.URL), "--config", configFile, "start")
+	stdout, stderr, err := runLstk(t, ctx, "", env.With(env.APIEndpoint, mockServer.URL), "--config", configFile, "start")
 	require.NoError(t, err, "lstk start failed: %s", stderr)
 	requireExitCode(t, 0, err)
 
@@ -497,7 +500,10 @@ env = ["persistence"]
 	require.True(t, inspect.Container.State.Running)
 
 	envVars := containerEnvToMap(inspect.Container.Config.Env)
-	assert.Equal(t, "1", envVars["PERSISTENCE"])
+	assert.Equal(t, "1", envVars["LOCALSTACK_PERSISTENCE"])
+
+	assert.Contains(t, stdout, "• Persistence: Enabled",
+		"lstk start should surface persistence state when LOCALSTACK_PERSISTENCE=1 is set in the config profile")
 }
 
 // hasBindTarget checks if any bind mount targets the given container path.

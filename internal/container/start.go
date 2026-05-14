@@ -192,10 +192,10 @@ func Start(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts Start
 	setups := map[config.EmulatorType]postStartSetupFunc{
 		config.EmulatorAWS: awsconfig.EnsureProfile,
 	}
-	return runPostStartSetups(ctx, sink, opts.Containers, interactive, opts.LocalStackHost, opts.WebAppURL, opts.Persist, setups)
+	return runPostStartSetups(ctx, rt, sink, opts.Containers, interactive, opts.LocalStackHost, opts.WebAppURL, setups)
 }
 
-func runPostStartSetups(ctx context.Context, sink output.Sink, containers []config.ContainerConfig, interactive bool, localStackHost, webAppURL string, persist bool, setups map[config.EmulatorType]postStartSetupFunc) error {
+func runPostStartSetups(ctx context.Context, rt runtime.Runtime, sink output.Sink, containers []config.ContainerConfig, interactive bool, localStackHost, webAppURL string, setups map[config.EmulatorType]postStartSetupFunc) error {
 	// build ordered list of unique types, keeping the first container config for each
 	firstByType := map[config.EmulatorType]config.ContainerConfig{}
 	var uniqueEmulatorTypes []config.EmulatorType
@@ -216,7 +216,7 @@ func runPostStartSetups(ctx context.Context, sink output.Sink, containers []conf
 				return err
 			}
 		}
-		emitPostStartPointers(sink, t, resolvedHost, webAppURL, persist)
+		emitPostStartPointers(sink, t, resolvedHost, webAppURL, isPersistenceEnabled(ctx, rt, c.Name()))
 	}
 	return nil
 }

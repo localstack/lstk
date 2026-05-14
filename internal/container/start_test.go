@@ -72,6 +72,39 @@ func TestEmitPostStartPointers_WithPersist(t *testing.T) {
 		"persistence bullet must sit between the endpoint and web app lines")
 }
 
+func TestRunPostStartSetups_EmitsPersistenceFromContainerEnv(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockRT := runtime.NewMockRuntime(ctrl)
+
+	cfg := config.ContainerConfig{Type: config.EmulatorAWS, Tag: "latest", Port: "4566"}
+	mockRT.EXPECT().ContainerEnv(gomock.Any(), cfg.Name()).Return([]string{"LOCALSTACK_PERSISTENCE=1"}, nil)
+
+	var out bytes.Buffer
+	sink := output.NewPlainSink(&out)
+
+	err := runPostStartSetups(context.Background(), mockRT, sink, []config.ContainerConfig{cfg}, false, "", "", nil)
+	require.NoError(t, err)
+
+	assert.Contains(t, out.String(), "• Persistence: Enabled",
+		"persistence bullet must be emitted whenever the container env carries LOCALSTACK_PERSISTENCE=1, regardless of how it got there")
+}
+
+func TestRunPostStartSetups_OmitsPersistenceWhenContainerEnvLacksFlag(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockRT := runtime.NewMockRuntime(ctrl)
+
+	cfg := config.ContainerConfig{Type: config.EmulatorAWS, Tag: "latest", Port: "4566"}
+	mockRT.EXPECT().ContainerEnv(gomock.Any(), cfg.Name()).Return([]string{"OTHER=1"}, nil)
+
+	var out bytes.Buffer
+	sink := output.NewPlainSink(&out)
+
+	err := runPostStartSetups(context.Background(), mockRT, sink, []config.ContainerConfig{cfg}, false, "", "", nil)
+	require.NoError(t, err)
+
+	assert.NotContains(t, out.String(), "• Persistence:")
+}
+
 func TestEmitPostStartPointers_Snowflake_ReplacesEndpointWithSnowflakeEndpoint(t *testing.T) {
 	var out bytes.Buffer
 	sink := output.NewPlainSink(&out)
