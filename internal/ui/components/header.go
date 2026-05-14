@@ -52,11 +52,11 @@ func (h Header) View() string {
 	))
 
 	lines := []string{
-		"lstk " + styles.Secondary.Render("("+h.version+")"),
-		styles.Secondary.Render(h.emulatorName),
+		"lstk " + styles.SecondaryMessage.Render("("+h.version+")"),
+		styles.SecondaryMessage.Render(h.emulatorName),
 	}
 	if h.configPath != "" {
-		lines = append(lines, styles.Secondary.Render(h.configPath))
+		lines = append(lines, styles.SecondaryMessage.Render(h.configPath))
 	}
 	text := lipgloss.JoinVertical(lipgloss.Left, lines...)
 
