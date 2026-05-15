@@ -133,6 +133,25 @@ func (c *Client) FetchResources(ctx context.Context, host string) ([]emulator.Re
 	return rows, nil
 }
 
+func (c *Client) ResetState(ctx context.Context, host string) error {
+	url := fmt.Sprintf("http://%s/_localstack/state/reset", host)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, nil)
+	if err != nil {
+		return fmt.Errorf("create request: %w", err)
+	}
+
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return fmt.Errorf("connect to LocalStack: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("LocalStack returned status %d", resp.StatusCode)
+	}
+	return nil
+}
+
 func (c *Client) ExportState(ctx context.Context, host string, dst io.Writer) error {
 	url := fmt.Sprintf("http://%s/_localstack/pods/state", host)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
