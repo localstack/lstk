@@ -33,8 +33,8 @@ type ContainerConfig struct {
 	Env           []string // e.g., ["KEY=value", "FOO=bar"]
 	Tag           string
 	ProductName   string
-	Binds         []BindMount
-	ExtraPorts    []PortMapping
+	Binds      []BindMount
+	ExtraPorts []PortMapping
 }
 
 type PullProgress struct {

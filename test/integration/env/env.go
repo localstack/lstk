@@ -20,6 +20,7 @@ const (
 	Persistence       Key = "LOCALSTACK_PERSISTENCE"
 	Otel              Key = "LSTK_OTEL"
 	OtelEndpoint      Key = "OTEL_EXPORTER_OTLP_ENDPOINT"
+	DockerFlags       Key = "DOCKER_FLAGS"
 )
 
 func Get(key Key) string {

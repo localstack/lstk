@@ -41,6 +41,7 @@ type StartOptions struct {
 	LocalStackHost   string
 	Containers       []config.ContainerConfig
 	Env              map[string]map[string]string
+	DockerFlags      string // from DOCKER_FLAGS env var; merged with per-container docker_flags from config
 	Persist          bool
 	Logger           log.Logger
 	Telemetry        *telemetry.Client
@@ -127,6 +128,17 @@ func Start(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts Start
 		}
 		binds = append(binds, runtime.BindMount{HostPath: volumeDir, ContainerPath: "/var/lib/localstack"})
 
+		allFlags := strings.TrimSpace(opts.DockerFlags + " " + c.DockerFlags)
+		var extra ParsedFlags
+		if allFlags != "" {
+			extra, err = ParseDockerFlags(allFlags)
+			if err != nil {
+				return fmt.Errorf("invalid docker flags: %w", err)
+			}
+		}
+		env = append(env, extra.Env...)
+		binds = append(binds, extra.Binds...)
+
 		containers[i] = runtime.ContainerConfig{
 			Image:         image,
 			Name:          containerName,
@@ -137,8 +149,8 @@ func Start(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts Start
 			Env:           env,
 			Tag:           c.Tag,
 			ProductName:   productName,
-			Binds:         binds,
-			ExtraPorts:    servicePortRange(),
+			Binds:      binds,
+			ExtraPorts: servicePortRange(),
 		}
 	}
 

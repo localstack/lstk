@@ -150,6 +150,7 @@ func buildStartOptions(cfg *env.Env, appConfig *config.Config, logger log.Logger
 		LocalStackHost:   cfg.LocalStackHost,
 		Containers:       appConfig.Containers,
 		Env:              appConfig.Env,
+		DockerFlags:      cfg.DockerFlags,
 		Persist:          persist,
 		Logger:           logger,
 		Telemetry:        tel,

@@ -506,6 +506,116 @@ env = ["persistence"]
 		"lstk start should surface persistence state when LOCALSTACK_PERSISTENCE=1 is set in the config profile")
 }
 
+func TestStartCommandDockerFlagsEnvVar(t *testing.T) {
+	requireDocker(t)
+	_ = env.Require(t, env.AuthToken)
+
+	cleanup()
+	t.Cleanup(cleanup)
+
+	mockServer := createMockLicenseServer(true)
+	defer mockServer.Close()
+
+	ctx := testContext(t)
+	_, stderr, err := runLstk(t, ctx, "",
+		env.Environ(testEnvWithHome(t.TempDir(), "")).With(env.APIEndpoint, mockServer.URL).With(env.DockerFlags, "-e SERVICES=s3,sqs"),
+		"start")
+	require.NoError(t, err, "lstk start failed: %s", stderr)
+
+	inspect, err := dockerClient.ContainerInspect(ctx, containerName, client.ContainerInspectOptions{})
+	require.NoError(t, err, "failed to inspect container")
+	envVars := containerEnvToMap(inspect.Container.Config.Env)
+	assert.Equal(t, "s3,sqs", envVars["SERVICES"],
+		"SERVICES env var from DOCKER_FLAGS must be passed to the container")
+}
+
+func TestStartCommandDockerFlagsConfigToml(t *testing.T) {
+	requireDocker(t)
+	_ = env.Require(t, env.AuthToken)
+
+	cleanup()
+	t.Cleanup(cleanup)
+
+	mockServer := createMockLicenseServer(true)
+	defer mockServer.Close()
+
+	configContent := `[[containers]]
+type = "aws"
+port = "4566"
+docker_flags = "-e SERVICES=s3,sqs"
+`
+	configFile := filepath.Join(t.TempDir(), "config.toml")
+	require.NoError(t, os.WriteFile(configFile, []byte(configContent), 0644))
+
+	ctx := testContext(t)
+	_, stderr, err := runLstk(t, ctx, "",
+		env.Environ(testEnvWithHome(t.TempDir(), "")).With(env.APIEndpoint, mockServer.URL),
+		"--config", configFile, "start")
+	require.NoError(t, err, "lstk start failed: %s", stderr)
+
+	inspect, err := dockerClient.ContainerInspect(ctx, containerName, client.ContainerInspectOptions{})
+	require.NoError(t, err, "failed to inspect container")
+	envVars := containerEnvToMap(inspect.Container.Config.Env)
+	assert.Equal(t, "s3,sqs", envVars["SERVICES"],
+		"SERVICES env var from docker_flags in config.toml must be passed to the container")
+}
+
+func TestStartCommandDockerFlagsVolumeMount(t *testing.T) {
+	requireDocker(t)
+	_ = env.Require(t, env.AuthToken)
+
+	cleanup()
+	t.Cleanup(cleanup)
+
+	mockServer := createMockLicenseServer(true)
+	defer mockServer.Close()
+
+	tmpDir := t.TempDir()
+	ctx := testContext(t)
+	_, stderr, err := runLstk(t, ctx, "",
+		env.Environ(testEnvWithHome(t.TempDir(), "")).With(env.APIEndpoint, mockServer.URL).With(env.DockerFlags, "-v "+tmpDir+":/extra-mount"),
+		"start")
+	require.NoError(t, err, "lstk start failed: %s", stderr)
+
+	inspect, err := dockerClient.ContainerInspect(ctx, containerName, client.ContainerInspectOptions{})
+	require.NoError(t, err, "failed to inspect container")
+	assert.True(t, hasBindTarget(inspect.Container.HostConfig.Binds, "/extra-mount"),
+		"volume from DOCKER_FLAGS must be mounted in the container; got: %v", inspect.Container.HostConfig.Binds)
+	assert.True(t, hasBindSource(inspect.Container.HostConfig.Binds, tmpDir),
+		"volume source from DOCKER_FLAGS must match; got: %v", inspect.Container.HostConfig.Binds)
+}
+
+func TestStartCommandDockerFlagsMergeEnvAndConfig(t *testing.T) {
+	requireDocker(t)
+	_ = env.Require(t, env.AuthToken)
+
+	cleanup()
+	t.Cleanup(cleanup)
+
+	mockServer := createMockLicenseServer(true)
+	defer mockServer.Close()
+
+	configContent := `[[containers]]
+type = "aws"
+port = "4566"
+docker_flags = "-e ENFORCE_IAM=1"
+`
+	configFile := filepath.Join(t.TempDir(), "config.toml")
+	require.NoError(t, os.WriteFile(configFile, []byte(configContent), 0644))
+
+	ctx := testContext(t)
+	_, stderr, err := runLstk(t, ctx, "",
+		env.Environ(testEnvWithHome(t.TempDir(), "")).With(env.APIEndpoint, mockServer.URL).With(env.DockerFlags, "-e SERVICES=s3"),
+		"--config", configFile, "start")
+	require.NoError(t, err, "lstk start failed: %s", stderr)
+
+	inspect, err := dockerClient.ContainerInspect(ctx, containerName, client.ContainerInspectOptions{})
+	require.NoError(t, err, "failed to inspect container")
+	envVars := containerEnvToMap(inspect.Container.Config.Env)
+	assert.Equal(t, "s3", envVars["SERVICES"], "SERVICES from DOCKER_FLAGS env var must be present")
+	assert.Equal(t, "1", envVars["ENFORCE_IAM"], "ENFORCE_IAM from docker_flags config must be present")
+}
+
 // hasBindTarget checks if any bind mount targets the given container path.
 func hasBindTarget(binds []string, containerPath string) bool {
 	for _, b := range binds {

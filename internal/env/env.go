@@ -11,6 +11,7 @@ type Env struct {
 	AuthToken      string
 	LocalStackHost string
 	DockerHost     string
+	DockerFlags    string
 	DisableEvents  bool
 	TracesEnabled  bool
 
@@ -38,6 +39,7 @@ func Init() *Env {
 		AuthToken:         os.Getenv("LOCALSTACK_AUTH_TOKEN"),
 		LocalStackHost:    os.Getenv("LOCALSTACK_HOST"),
 		DockerHost:        os.Getenv("DOCKER_HOST"),
+		DockerFlags:       os.Getenv("DOCKER_FLAGS"),
 		DisableEvents:     os.Getenv("LOCALSTACK_DISABLE_EVENTS") == "1",
 		TracesEnabled:     viper.GetBool("otel"),
 		APIEndpoint:       viper.GetString("api_endpoint"),
