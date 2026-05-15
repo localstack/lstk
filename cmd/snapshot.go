@@ -16,6 +16,18 @@ import (
 	"github.com/spf13/cobra"
 )
 
+const snapshotSaveCanonical = "snapshot save"
+
+const snapshotSaveLong = `Save a snapshot of the running emulator's state.
+
+Pass [destination] as an absolute or relative path for the exported file:
+
+  lstk snapshot save                    # saves to ./snapshot-<YYYY-MM-DDTHH-mm-ss>-<hex>.zip
+  lstk snapshot save ./my-snapshot.zip  # saves to ./my-snapshot.zip
+  lstk snapshot save /tmp/my-state      # saves to /tmp/my-state.zip
+
+Cloud destinations are not yet supported.`
+
 func newSnapshotCmd(cfg *env.Env) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "snapshot",
@@ -27,59 +39,67 @@ func newSnapshotCmd(cfg *env.Env) *cobra.Command {
 
 func newSnapshotSaveCmd(cfg *env.Env) *cobra.Command {
 	return &cobra.Command{
-		Use:   "save [destination]",
-		Short: "Save a snapshot of the emulator state",
-		Long: `Save a snapshot of the running emulator's state.
-
-Pass [destination] as an absolute or relative path for the exported file:
-
-  lstk snapshot save                    # saves to ./snapshot-<YYYY-MM-DDTHH-mm-ss>-<hex>.zip
-  lstk snapshot save ./my-snapshot.zip  # saves to ./my-snapshot.zip
-  lstk snapshot save /tmp/my-state      # saves to /tmp/my-state.zip
-
-Cloud destinations are not yet supported.`,
+		Use:     "save [destination]",
+		Short:   "Save a snapshot of the emulator state",
+		Long:    snapshotSaveLong,
 		Args:    cobra.MaximumNArgs(1),
 		PreRunE: initConfig(nil),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			var destArg string
-			if len(args) > 0 {
-				destArg = args[0]
-			}
+		RunE:    runSnapshotSave(cfg),
+	}
+}
 
-			dest, err := snapshot.ParseDestination(destArg, time.Now())
-			if err != nil {
-				return err
-			}
+func newSaveCmd(cfg *env.Env) *cobra.Command {
+	return &cobra.Command{
+		Use:         "save [destination]",
+		Short:       "Save a snapshot of the emulator state",
+		Long:        snapshotSaveLong,
+		Args:        cobra.MaximumNArgs(1),
+		PreRunE:     initConfig(nil),
+		RunE:        runSnapshotSave(cfg),
+		Annotations: map[string]string{canonicalCommandAnnotation: snapshotSaveCanonical},
+	}
+}
 
-			appConfig, err := config.Get()
-			if err != nil {
-				return fmt.Errorf("failed to get config: %w", err)
-			}
+func runSnapshotSave(cfg *env.Env) func(*cobra.Command, []string) error {
+	return func(cmd *cobra.Command, args []string) error {
+		var destArg string
+		if len(args) > 0 {
+			destArg = args[0]
+		}
 
-			var awsContainer config.ContainerConfig
-			var found bool
-			for _, c := range appConfig.Containers {
-				if c.Type == config.EmulatorAWS {
-					awsContainer = c
-					found = true
-					break
-				}
-			}
-			if !found {
-				return fmt.Errorf("snapshot is only supported for the AWS emulator")
-			}
+		dest, err := snapshot.ParseDestination(destArg, time.Now())
+		if err != nil {
+			return err
+		}
 
-			rt, err := runtime.NewDockerRuntime(cfg.DockerHost)
-			if err != nil {
-				return err
-			}
-			host, _ := endpoint.ResolveHost(cmd.Context(), awsContainer.Port, cfg.LocalStackHost)
-			exporter := aws.NewClient()
+		appConfig, err := config.Get()
+		if err != nil {
+			return fmt.Errorf("failed to get config: %w", err)
+		}
 
-			if isInteractiveMode(cfg) {
-				return ui.RunSnapshotSave(cmd.Context(), rt, []config.ContainerConfig{awsContainer}, exporter, host, dest)
+		var awsContainer config.ContainerConfig
+		var found bool
+		for _, c := range appConfig.Containers {
+			if c.Type == config.EmulatorAWS {
+				awsContainer = c
+				found = true
+				break
 			}
-			return snapshot.Save(cmd.Context(), rt, []config.ContainerConfig{awsContainer}, exporter, host, dest, output.NewPlainSink(os.Stdout))
-		},
+		}
+		if !found {
+			return fmt.Errorf("snapshot is only supported for the AWS emulator")
+		}
+
+		rt, err := runtime.NewDockerRuntime(cfg.DockerHost)
+		if err != nil {
+			return err
+		}
+		host, _ := endpoint.ResolveHost(cmd.Context(), awsContainer.Port, cfg.LocalStackHost)
+		exporter := aws.NewClient()
+
+		if isInteractiveMode(cfg) {
+			return ui.RunSnapshotSave(cmd.Context(), rt, []config.ContainerConfig{awsContainer}, exporter, host, dest)
+		}
+		return snapshot.Save(cmd.Context(), rt, []config.ContainerConfig{awsContainer}, exporter, host, dest, output.NewPlainSink(os.Stdout))
 	}
 }
