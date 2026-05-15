@@ -38,7 +38,7 @@ func TestEmitPostStartPointers_WithWebApp(t *testing.T) {
 	var out bytes.Buffer
 	sink := output.NewPlainSink(&out)
 
-	emitPostStartPointers(sink, config.EmulatorAWS, "localhost.localstack.cloud:4566", "https://app.localstack.cloud/")
+	emitPostStartPointers(sink, config.EmulatorAWS, "localhost.localstack.cloud:4566", "https://app.localstack.cloud/", false)
 
 	got := out.String()
 	assert.Contains(t, got, "• Endpoint: localhost.localstack.cloud:4566\n")
@@ -46,24 +46,70 @@ func TestEmitPostStartPointers_WithWebApp(t *testing.T) {
 	assert.Contains(t, got, "> Tip:")
 	assert.NotContains(t, got, "• Snowflake endpoint:",
 		"AWS path must not show the snowflake-prefixed endpoint")
+	assert.NotContains(t, got, "• Persistence:",
+		"persistence bullet must be omitted when persist is false")
 }
 
 func TestEmitPostStartPointers_WithoutWebApp(t *testing.T) {
 	var out bytes.Buffer
 	sink := output.NewPlainSink(&out)
 
-	emitPostStartPointers(sink, config.EmulatorAWS, "127.0.0.1:4566", "")
+	emitPostStartPointers(sink, config.EmulatorAWS, "127.0.0.1:4566", "", false)
 
 	got := out.String()
 	assert.Contains(t, got, "• Endpoint: 127.0.0.1:4566\n")
 	assert.Contains(t, got, "> Tip:")
 }
 
+func TestEmitPostStartPointers_WithPersist(t *testing.T) {
+	var out bytes.Buffer
+	sink := output.NewPlainSink(&out)
+
+	emitPostStartPointers(sink, config.EmulatorAWS, "127.0.0.1:4566", "https://app.localstack.cloud/", true)
+
+	got := out.String()
+	assert.Contains(t, got, "• Endpoint: 127.0.0.1:4566\n• Persistence: Enabled\n• Web app: https://app.localstack.cloud\n",
+		"persistence bullet must sit between the endpoint and web app lines")
+}
+
+func TestRunPostStartSetups_EmitsPersistenceFromContainerEnv(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockRT := runtime.NewMockRuntime(ctrl)
+
+	cfg := config.ContainerConfig{Type: config.EmulatorAWS, Tag: "latest", Port: "4566"}
+	mockRT.EXPECT().ContainerEnv(gomock.Any(), cfg.Name()).Return([]string{"LOCALSTACK_PERSISTENCE=1"}, nil)
+
+	var out bytes.Buffer
+	sink := output.NewPlainSink(&out)
+
+	err := runPostStartSetups(context.Background(), mockRT, sink, []config.ContainerConfig{cfg}, false, "", "", nil)
+	require.NoError(t, err)
+
+	assert.Contains(t, out.String(), "• Persistence: Enabled",
+		"persistence bullet must be emitted whenever the container env carries LOCALSTACK_PERSISTENCE=1, regardless of how it got there")
+}
+
+func TestRunPostStartSetups_OmitsPersistenceWhenContainerEnvLacksFlag(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockRT := runtime.NewMockRuntime(ctrl)
+
+	cfg := config.ContainerConfig{Type: config.EmulatorAWS, Tag: "latest", Port: "4566"}
+	mockRT.EXPECT().ContainerEnv(gomock.Any(), cfg.Name()).Return([]string{"OTHER=1"}, nil)
+
+	var out bytes.Buffer
+	sink := output.NewPlainSink(&out)
+
+	err := runPostStartSetups(context.Background(), mockRT, sink, []config.ContainerConfig{cfg}, false, "", "", nil)
+	require.NoError(t, err)
+
+	assert.NotContains(t, out.String(), "• Persistence:")
+}
+
 func TestEmitPostStartPointers_Snowflake_ReplacesEndpointWithSnowflakeEndpoint(t *testing.T) {
 	var out bytes.Buffer
 	sink := output.NewPlainSink(&out)
 
-	emitPostStartPointers(sink, config.EmulatorSnowflake, "localhost.localstack.cloud:4566", "https://app.localstack.cloud/")
+	emitPostStartPointers(sink, config.EmulatorSnowflake, "localhost.localstack.cloud:4566", "https://app.localstack.cloud/", false)
 
 	got := out.String()
 	assert.Contains(t, got, "• Snowflake endpoint: http://snowflake.localhost.localstack.cloud:4566\n")
@@ -73,11 +119,22 @@ func TestEmitPostStartPointers_Snowflake_ReplacesEndpointWithSnowflakeEndpoint(t
 	assert.Contains(t, got, "> Tip:")
 }
 
+func TestEmitPostStartPointers_Snowflake_OmitsPersistenceBullet(t *testing.T) {
+	var out bytes.Buffer
+	sink := output.NewPlainSink(&out)
+
+	emitPostStartPointers(sink, config.EmulatorSnowflake, "localhost.localstack.cloud:4566", "", true)
+
+	got := out.String()
+	assert.NotContains(t, got, "• Persistence:",
+		"snowflake does not support persistence; the bullet must be suppressed even when --persist is set")
+}
+
 func TestEmitPostStartPointers_Snowflake_FallsBackToBareEndpointForIPHost(t *testing.T) {
 	var out bytes.Buffer
 	sink := output.NewPlainSink(&out)
 
-	emitPostStartPointers(sink, config.EmulatorSnowflake, "127.0.0.1:4566", "")
+	emitPostStartPointers(sink, config.EmulatorSnowflake, "127.0.0.1:4566", "", false)
 
 	got := out.String()
 	assert.Contains(t, got, "• Endpoint: 127.0.0.1:4566\n",
@@ -102,6 +159,7 @@ func TestSelectContainersToStart_AttachesWhenExternalContainerOnConfiguredPort(t
 	mockRT.EXPECT().IsRunning(gomock.Any(), c.Name).Return(false, nil)
 	mockRT.EXPECT().FindRunningByImage(gomock.Any(), []string{"localstack/localstack-pro", "localstack/localstack", "localstack/snowflake"}, "4566/tcp").
 		Return(&runtime.RunningContainer{Name: "external-container", Image: "localstack/localstack-pro:3.5.0", BoundPort: "4566"}, nil)
+	mockRT.EXPECT().ContainerEnv(gomock.Any(), "external-container").Return(nil, nil)
 
 	var out bytes.Buffer
 	sink := output.NewPlainSink(&out)
@@ -130,6 +188,7 @@ func TestSelectContainersToStart_AttachesWhenExternalContainerVersionDiffers(t *
 	mockRT.EXPECT().IsRunning(gomock.Any(), c.Name).Return(false, nil)
 	mockRT.EXPECT().FindRunningByImage(gomock.Any(), []string{"localstack/localstack-pro", "localstack/localstack", "localstack/snowflake"}, "4566/tcp").
 		Return(&runtime.RunningContainer{Name: "external-container", Image: "localstack/localstack-pro:3.5.0", BoundPort: "4566"}, nil)
+	mockRT.EXPECT().ContainerEnv(gomock.Any(), "external-container").Return(nil, nil)
 
 	var out bytes.Buffer
 	sink := output.NewPlainSink(&out)
@@ -208,7 +267,7 @@ func TestEmitPostStartPointers_UnknownEmulator_NoTip(t *testing.T) {
 	var out bytes.Buffer
 	sink := output.NewPlainSink(&out)
 
-	emitPostStartPointers(sink, config.EmulatorType("other"), "localhost.localstack.cloud:4566", "https://app.localstack.cloud/")
+	emitPostStartPointers(sink, config.EmulatorType("other"), "localhost.localstack.cloud:4566", "https://app.localstack.cloud/", false)
 
 	got := out.String()
 	assert.Contains(t, got, "• Endpoint: localhost.localstack.cloud:4566\n")

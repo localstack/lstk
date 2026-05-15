@@ -157,6 +157,9 @@ func formatInstanceInfo(e InstanceInfoEvent) string {
 	if e.Host != "" {
 		sb.WriteString("\n• Endpoint: " + e.Host)
 	}
+	if e.Persistence {
+		sb.WriteString("\n• Persistence: Enabled")
+	}
 	if e.ContainerName != "" {
 		sb.WriteString("\n• Container: " + e.ContainerName)
 	}

@@ -28,6 +28,8 @@ import (
 	"github.com/localstack/lstk/internal/telemetry"
 )
 
+const envPersistenceEnabled = "LOCALSTACK_PERSISTENCE=1"
+
 type postStartSetupFunc func(ctx context.Context, sink output.Sink, interactive bool, resolvedHost string) error
 
 // StartOptions groups the user-provided options for starting an emulator.
@@ -107,7 +109,7 @@ func Start(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts Start
 		env = append(env, hostEnv...)
 
 		if opts.Persist {
-			env = append(env, "LOCALSTACK_PERSISTENCE=1")
+			env = append(env, envPersistenceEnabled)
 		}
 
 		var binds []runtime.BindMount
@@ -190,10 +192,10 @@ func Start(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts Start
 	setups := map[config.EmulatorType]postStartSetupFunc{
 		config.EmulatorAWS: awsconfig.EnsureProfile,
 	}
-	return runPostStartSetups(ctx, sink, opts.Containers, interactive, opts.LocalStackHost, opts.WebAppURL, setups)
+	return runPostStartSetups(ctx, rt, sink, opts.Containers, interactive, opts.LocalStackHost, opts.WebAppURL, setups)
 }
 
-func runPostStartSetups(ctx context.Context, sink output.Sink, containers []config.ContainerConfig, interactive bool, localStackHost, webAppURL string, setups map[config.EmulatorType]postStartSetupFunc) error {
+func runPostStartSetups(ctx context.Context, rt runtime.Runtime, sink output.Sink, containers []config.ContainerConfig, interactive bool, localStackHost, webAppURL string, setups map[config.EmulatorType]postStartSetupFunc) error {
 	// build ordered list of unique types, keeping the first container config for each
 	firstByType := map[config.EmulatorType]config.ContainerConfig{}
 	var uniqueEmulatorTypes []config.EmulatorType
@@ -214,25 +216,36 @@ func runPostStartSetups(ctx context.Context, sink output.Sink, containers []conf
 				return err
 			}
 		}
-		emitPostStartPointers(sink, t, resolvedHost, webAppURL)
+		emitPostStartPointers(sink, t, resolvedHost, webAppURL, isPersistenceEnabled(ctx, rt, c.Name()))
 	}
 	return nil
 }
 
-func emitAlreadyRunning(ctx context.Context, sink output.Sink, c runtime.ContainerConfig, localStackHost, webAppURL string) {
+func emitAlreadyRunning(ctx context.Context, sink output.Sink, c runtime.ContainerConfig, localStackHost, webAppURL string, persist bool) {
 	sink.Emit(output.MessageEvent{Severity: output.SeverityNote, Text: fmt.Sprintf("%s is already running", c.EmulatorType.DisplayName())})
 	resolvedHost, dnsOK := endpoint.ResolveHost(ctx, c.Port, localStackHost)
 	if !dnsOK {
 		sink.Emit(output.MessageEvent{Severity: output.SeverityNote, Text: endpoint.DNSRebindNote})
 	}
-	emitPostStartPointers(sink, c.EmulatorType, resolvedHost, webAppURL)
+	emitPostStartPointers(sink, c.EmulatorType, resolvedHost, webAppURL, persist)
 }
 
-func emitPostStartPointers(sink output.Sink, emulatorType config.EmulatorType, resolvedHost, webAppURL string) {
+func isPersistenceEnabled(ctx context.Context, rt runtime.Runtime, containerName string) bool {
+	env, err := rt.ContainerEnv(ctx, containerName)
+	if err != nil {
+		return false
+	}
+	return slices.Contains(env, envPersistenceEnabled)
+}
+
+func emitPostStartPointers(sink output.Sink, emulatorType config.EmulatorType, resolvedHost, webAppURL string, persist bool) {
 	if sfHost := snowflake.Hostname(resolvedHost); emulatorType == config.EmulatorSnowflake && sfHost != "" {
 		sink.Emit(output.MessageEvent{Severity: output.SeveritySecondary, Text: fmt.Sprintf("• Snowflake endpoint: http://%s", sfHost)})
 	} else {
 		sink.Emit(output.MessageEvent{Severity: output.SeveritySecondary, Text: fmt.Sprintf("• Endpoint: %s", resolvedHost)})
+	}
+	if persist && emulatorType == config.EmulatorAWS {
+		sink.Emit(output.MessageEvent{Severity: output.SeveritySecondary, Text: "• Persistence: Enabled"})
 	}
 	if webAppURL != "" {
 		sink.Emit(output.MessageEvent{Severity: output.SeveritySecondary, Text: fmt.Sprintf("• Web app: %s", strings.TrimRight(webAppURL, "/"))})
@@ -416,7 +429,7 @@ func selectContainersToStart(ctx context.Context, rt runtime.Runtime, sink outpu
 			return nil, fmt.Errorf("failed to check container status: %w", err)
 		}
 		if running {
-			emitAlreadyRunning(ctx, sink, c, localStackHost, webAppURL)
+			emitAlreadyRunning(ctx, sink, c, localStackHost, webAppURL, isPersistenceEnabled(ctx, rt, c.Name))
 			continue
 		}
 
@@ -460,7 +473,7 @@ func selectContainersToStart(ctx context.Context, rt runtime.Runtime, sink outpu
 				})
 				return nil, output.NewSilentError(fmt.Errorf("LocalStack already running on port %s", found.BoundPort))
 			}
-			emitAlreadyRunning(ctx, sink, c, localStackHost, webAppURL)
+			emitAlreadyRunning(ctx, sink, c, localStackHost, webAppURL, isPersistenceEnabled(ctx, rt, found.Name))
 			continue
 		}
 

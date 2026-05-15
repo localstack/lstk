@@ -60,6 +60,7 @@ type Runtime interface {
 	Remove(ctx context.Context, containerName string) error
 	IsRunning(ctx context.Context, containerID string) (bool, error)
 	ContainerStartedAt(ctx context.Context, containerName string) (time.Time, error)
+	ContainerEnv(ctx context.Context, containerName string) ([]string, error)
 	Logs(ctx context.Context, containerID string, tail int) (string, error)
 	StreamLogs(ctx context.Context, containerID string, out io.Writer, follow bool) error
 	GetImageVersion(ctx context.Context, imageName string) (string, error)

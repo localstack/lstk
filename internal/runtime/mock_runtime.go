@@ -58,6 +58,21 @@ func (mr *MockRuntimeMockRecorder) FindRunningByImage(ctx, imageRepos, container
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FindRunningByImage", reflect.TypeOf((*MockRuntime)(nil).FindRunningByImage), ctx, imageRepos, containerPort)
 }
 
+// ContainerEnv mocks base method.
+func (m *MockRuntime) ContainerEnv(ctx context.Context, containerName string) ([]string, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ContainerEnv", ctx, containerName)
+	ret0, _ := ret[0].([]string)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ContainerEnv indicates an expected call of ContainerEnv.
+func (mr *MockRuntimeMockRecorder) ContainerEnv(ctx, containerName any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ContainerEnv", reflect.TypeOf((*MockRuntime)(nil).ContainerEnv), ctx, containerName)
+}
+
 // ContainerStartedAt mocks base method.
 func (m *MockRuntime) ContainerStartedAt(ctx context.Context, containerName string) (time.Time, error) {
 	m.ctrl.T.Helper()

@@ -323,6 +323,17 @@ func (d *DockerRuntime) ContainerStartedAt(ctx context.Context, containerName st
 	return t, nil
 }
 
+func (d *DockerRuntime) ContainerEnv(ctx context.Context, containerName string) ([]string, error) {
+	inspect, err := d.client.ContainerInspect(ctx, containerName, client.ContainerInspectOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to inspect container: %w", err)
+	}
+	if inspect.Container.Config == nil {
+		return nil, nil
+	}
+	return inspect.Container.Config.Env, nil
+}
+
 func (d *DockerRuntime) Logs(ctx context.Context, containerID string, tail int) (string, error) {
 	options := client.ContainerLogsOptions{
 		ShowStdout: true,
