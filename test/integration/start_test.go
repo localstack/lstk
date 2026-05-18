@@ -518,7 +518,7 @@ func TestStartCommandDockerFlagsEnvVar(t *testing.T) {
 
 	ctx := testContext(t)
 	_, stderr, err := runLstk(t, ctx, "",
-		env.Environ(testEnvWithHome(t.TempDir(), "")).With(env.APIEndpoint, mockServer.URL).With(env.DockerFlags, "-e SERVICES=s3,sqs"),
+		env.Environ(testEnvWithHome(tempHome(t), "")).With(env.APIEndpoint, mockServer.URL).With(env.DockerFlags, "-e SERVICES=s3,sqs"),
 		"start")
 	require.NoError(t, err, "lstk start failed: %s", stderr)
 
@@ -549,7 +549,7 @@ docker_flags = "-e SERVICES=s3,sqs"
 
 	ctx := testContext(t)
 	_, stderr, err := runLstk(t, ctx, "",
-		env.Environ(testEnvWithHome(t.TempDir(), "")).With(env.APIEndpoint, mockServer.URL),
+		env.Environ(testEnvWithHome(tempHome(t), "")).With(env.APIEndpoint, mockServer.URL),
 		"--config", configFile, "start")
 	require.NoError(t, err, "lstk start failed: %s", stderr)
 
@@ -573,7 +573,7 @@ func TestStartCommandDockerFlagsVolumeMount(t *testing.T) {
 	tmpDir := t.TempDir()
 	ctx := testContext(t)
 	_, stderr, err := runLstk(t, ctx, "",
-		env.Environ(testEnvWithHome(t.TempDir(), "")).With(env.APIEndpoint, mockServer.URL).With(env.DockerFlags, "-v "+tmpDir+":/extra-mount"),
+		env.Environ(testEnvWithHome(tempHome(t), "")).With(env.APIEndpoint, mockServer.URL).With(env.DockerFlags, "-v "+tmpDir+":/extra-mount"),
 		"start")
 	require.NoError(t, err, "lstk start failed: %s", stderr)
 
@@ -605,7 +605,7 @@ docker_flags = "-e ENFORCE_IAM=1"
 
 	ctx := testContext(t)
 	_, stderr, err := runLstk(t, ctx, "",
-		env.Environ(testEnvWithHome(t.TempDir(), "")).With(env.APIEndpoint, mockServer.URL).With(env.DockerFlags, "-e SERVICES=s3"),
+		env.Environ(testEnvWithHome(tempHome(t), "")).With(env.APIEndpoint, mockServer.URL).With(env.DockerFlags, "-e SERVICES=s3"),
 		"--config", configFile, "start")
 	require.NoError(t, err, "lstk start failed: %s", stderr)
 
@@ -614,6 +614,21 @@ docker_flags = "-e ENFORCE_IAM=1"
 	envVars := containerEnvToMap(inspect.Container.Config.Env)
 	assert.Equal(t, "s3", envVars["SERVICES"], "SERVICES from DOCKER_FLAGS env var must be present")
 	assert.Equal(t, "1", envVars["ENFORCE_IAM"], "ENFORCE_IAM from docker_flags config must be present")
+}
+
+// tempHome creates a temp HOME dir and registers a Docker-based
+// cleanup to remove root-owned files the emulator writes to the volume dir
+// before Go's TempDir removal runs (LIFO order).
+func tempHome(t *testing.T) string {
+	t.Helper()
+	tmpHome := t.TempDir()
+	t.Cleanup(func() {
+		volumeDir := filepath.Join(tmpHome, ".cache", "lstk", "volume")
+		if _, err := os.Stat(volumeDir); err == nil {
+			_ = exec.Command("docker", "run", "--rm", "-v", volumeDir+":/d", "alpine", "sh", "-c", "rm -rf /d/*").Run()
+		}
+	})
+	return tmpHome
 }
 
 // hasBindTarget checks if any bind mount targets the given container path.
