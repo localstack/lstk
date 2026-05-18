@@ -178,18 +178,18 @@ func TestParseDestination(t *testing.T) {
 			wantRemoteErr: true,
 		},
 
-		// --- remote: cloud ---
+		// --- remote: pod ---
 		{
-			input:         "cloud:my-pod",
+			input:         "pod:my-pod",
 			wantRemoteErr: true,
 		},
 		{
-			input:         "Cloud:my-pod",
+			input:         "Pod:my-pod",
 			wantRemoteErr: true,
 		},
 		{
-			// cloud: prefix also catches cloud://
-			input:         "cloud://my-pod",
+			// pod: prefix also catches pod://
+			input:         "pod://my-pod",
 			wantRemoteErr: true,
 		},
 

@@ -11,7 +11,7 @@ import (
 )
 
 var (
-	// ErrRemoteNotSupported is returned for known remote schemes (s3://, oras://, cloud:).
+	// ErrRemoteNotSupported is returned for known remote schemes (s3://, oras://, pod:).
 	ErrRemoteNotSupported = errors.New("remote destinations are not yet supported — coming soon")
 	// ErrUnknownScheme is returned for unrecognized URL schemes.
 	ErrUnknownScheme = errors.New("unrecognized destination scheme")
@@ -47,7 +47,7 @@ func ParseDestination(dest string, now time.Time) (string, error) {
 		switch {
 		case strings.HasPrefix(lower, "s3://"),
 			strings.HasPrefix(lower, "oras://"),
-			strings.HasPrefix(lower, "cloud:"):
+			strings.HasPrefix(lower, "pod:"):
 			return "", ErrRemoteNotSupported
 		case strings.Contains(lower, "://"):
 			scheme, _, _ := strings.Cut(dest, "://")

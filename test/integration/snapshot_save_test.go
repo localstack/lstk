@@ -150,7 +150,7 @@ func TestSnapshotSaveRemoteRejected(t *testing.T) {
 	for _, dest := range []string{
 		"s3://my-bucket/my-snap",
 		"oras://registry/my-snap",
-		"cloud://my-pod",
+		"pod://my-pod",
 	} {
 		t.Run(dest, func(t *testing.T) {
 			t.Parallel()
