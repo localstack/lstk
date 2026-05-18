@@ -75,6 +75,7 @@ func ParseDockerFlags(flags string) (ParsedFlags, error) {
 	return result, nil
 }
 
+// parseBindMount parses a HOST:CONTAINER[:ro] volume spec into a BindMount.
 func parseBindMount(spec string) (runtime.BindMount, error) {
 	parts := strings.SplitN(spec, ":", 3)
 	if len(parts) < 2 {

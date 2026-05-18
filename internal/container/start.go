@@ -128,7 +128,14 @@ func Start(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts Start
 		}
 		binds = append(binds, runtime.BindMount{HostPath: volumeDir, ContainerPath: "/var/lib/localstack"})
 
-		allFlags := strings.TrimSpace(opts.DockerFlags + " " + c.DockerFlags)
+		var flagParts []string
+		if opts.DockerFlags != "" {
+			flagParts = append(flagParts, opts.DockerFlags)
+		}
+		if c.DockerFlags != "" {
+			flagParts = append(flagParts, c.DockerFlags)
+		}
+		allFlags := strings.Join(flagParts, " ")
 		var extra ParsedFlags
 		if allFlags != "" {
 			extra, err = ParseDockerFlags(allFlags)
