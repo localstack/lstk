@@ -150,7 +150,6 @@ func TestSnapshotSaveRemoteRejected(t *testing.T) {
 	for _, dest := range []string{
 		"s3://my-bucket/my-snap",
 		"oras://registry/my-snap",
-		"pod://my-pod",
 	} {
 		t.Run(dest, func(t *testing.T) {
 			t.Parallel()
@@ -159,6 +158,115 @@ func TestSnapshotSaveRemoteRejected(t *testing.T) {
 			_, stderr, err := runLstk(t, ctx, t.TempDir(), testEnvWithHome(t.TempDir(), ""), "--non-interactive", "snapshot", "save", dest)
 			requireExitCode(t, 1, err)
 			assert.Contains(t, stderr, "not yet supported")
+		})
+	}
+}
+
+// mockPodSaveServer returns a test server that handles POST /_localstack/pods/{name}
+// and responds with a streaming completion event. respondOK controls whether the
+// completion event reports success or a server-side error.
+func mockPodSaveServer(t *testing.T, respondOK bool) *httptest.Server {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, "/_localstack/pods/") && r.Method == http.MethodPost {
+			w.Header().Set("Content-Type", "application/x-ndjson")
+			w.WriteHeader(http.StatusOK)
+			if respondOK {
+				_, _ = w.Write([]byte(`{"event":"completion","status":"ok","operation":"save","info":{"name":"my-baseline","version":1,"remote":"platform","services":["dynamodb","s3"],"size":1048576}}` + "\n"))
+			} else {
+				_, _ = w.Write([]byte(`{"event":"completion","status":"error","message":"platform error"}` + "\n"))
+			}
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+func TestSnapshotSavePodSuccess(t *testing.T) {
+	requireDocker(t)
+	cleanup()
+	t.Cleanup(cleanup)
+
+	ctx := testContext(t)
+	startTestContainer(t, ctx)
+	srv := mockPodSaveServer(t, true)
+
+	stdout, stderr, err := runLstk(t, ctx, t.TempDir(),
+		env.Environ(testEnvWithHome(t.TempDir(), "")).
+			With(env.LocalStackHost, lsHost(srv)).
+			With(env.AuthToken, "test-token"),
+		"--non-interactive", "snapshot", "save", "pod:my-baseline",
+	)
+	require.NoError(t, err, "lstk snapshot save pod:my-baseline failed: %s", stderr)
+	assert.Contains(t, stdout, "Snapshot saved")
+	assert.Contains(t, stdout, "my-baseline")
+	assert.Contains(t, stdout, "Version: 1")
+	assert.Contains(t, stdout, "dynamodb, s3")
+}
+
+func TestSnapshotSavePodServerError(t *testing.T) {
+	requireDocker(t)
+	cleanup()
+	t.Cleanup(cleanup)
+
+	ctx := testContext(t)
+	startTestContainer(t, ctx)
+	srv := mockPodSaveServer(t, false)
+
+	_, stderr, err := runLstk(t, ctx, t.TempDir(),
+		env.Environ(testEnvWithHome(t.TempDir(), "")).
+			With(env.LocalStackHost, lsHost(srv)).
+			With(env.AuthToken, "test-token"),
+		"--non-interactive", "snapshot", "save", "pod:my-baseline",
+	)
+	requireExitCode(t, 1, err)
+	assert.Contains(t, stderr, "platform error")
+}
+
+func TestSnapshotSavePodNoAuthToken(t *testing.T) {
+	t.Parallel()
+	ctx := testContext(t)
+
+	_, stderr, err := runLstk(t, ctx, t.TempDir(),
+		env.Environ(testEnvWithHome(t.TempDir(), "")).Without(env.AuthToken),
+		"--non-interactive", "snapshot", "save", "pod:my-baseline",
+	)
+	requireExitCode(t, 1, err)
+	assert.Contains(t, stderr, "authentication")
+}
+
+func TestSnapshotSavePodLocalStackNotRunning(t *testing.T) {
+	requireDocker(t)
+	cleanup()
+	t.Cleanup(cleanup)
+
+	ctx := testContext(t)
+	// Intentionally no startTestContainer: the emulator is not running.
+
+	stdout, _, err := runLstk(t, ctx, t.TempDir(),
+		env.Environ(testEnvWithHome(t.TempDir(), "")).With(env.AuthToken, "test-token"),
+		"--non-interactive", "snapshot", "save", "pod:my-baseline",
+	)
+	requireExitCode(t, 1, err)
+	assert.Contains(t, stdout, "not running")
+}
+
+func TestSnapshotSavePodInvalidName(t *testing.T) {
+	t.Parallel()
+	for _, dest := range []string{
+		"pod:",
+		"pod:-invalid",
+		"pod:my_pod",
+	} {
+		t.Run(dest, func(t *testing.T) {
+			t.Parallel()
+			ctx := testContext(t)
+
+			_, stderr, err := runLstk(t, ctx, t.TempDir(), testEnvWithHome(t.TempDir(), ""), "--non-interactive", "snapshot", "save", dest)
+			requireExitCode(t, 1, err)
+			assert.Contains(t, stderr, "invalid pod name")
 		})
 	}
 }

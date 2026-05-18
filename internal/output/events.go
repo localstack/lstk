@@ -77,6 +77,13 @@ type ResourceSummaryEvent struct {
 	Services  int
 }
 
+type PodSnapshotSavedEvent struct {
+	PodName  string
+	Version  int
+	Services []string
+	Size     int64
+}
+
 type AuthCompleteEvent struct{}
 
 // Event is a sealed marker — only event types in this package implement it,
@@ -91,6 +98,7 @@ func (AuthCompleteEvent) sealedEvent()     {}
 func (InstanceInfoEvent) sealedEvent()     {}
 func (TableEvent) sealedEvent()            {}
 func (ResourceSummaryEvent) sealedEvent()  {}
+func (PodSnapshotSavedEvent) sealedEvent() {}
 func (ContainerStatusEvent) sealedEvent()  {}
 func (ProgressEvent) sealedEvent()         {}
 func (UserInputRequestEvent) sealedEvent() {}

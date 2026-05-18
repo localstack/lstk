@@ -99,7 +99,9 @@ func TestParseDestination(t *testing.T) {
 	type testCase struct {
 		name           string // optional; uses input when empty
 		input          string
+		wantKind       snapshot.DestinationKind
 		wantPath       string
+		wantPodName    string
 		wantPathRegexp string // used instead of wantPath when the result contains a random component
 		wantErr        string
 		wantRemoteErr  bool
@@ -111,16 +113,19 @@ func TestParseDestination(t *testing.T) {
 		{
 			name:           "default",
 			input:          "",
+			wantKind:       snapshot.KindLocal,
 			wantPathRegexp: regexp.QuoteMeta(filepath.Join(wd, "snapshot-2026-05-11T21-04-32-")) + `[0-9a-f]{3}\.zip`,
 		},
 
 		// --- local paths ---
 		{
 			input:    "./my-state",
+			wantKind: snapshot.KindLocal,
 			wantPath: filepath.Join(wd, "my-state.zip"),
 		},
 		{
 			input:    filepath.Join(os.TempDir(), "state"),
+			wantKind: snapshot.KindLocal,
 			wantPath: filepath.Join(os.TempDir(), "state.zip"),
 		},
 		{
@@ -130,24 +135,29 @@ func TestParseDestination(t *testing.T) {
 		{
 			// parent (~/) always exists
 			input:    "~/my-state",
+			wantKind: snapshot.KindLocal,
 			wantPath: filepath.Join(home, "my-state.zip"),
 		},
 		{
 			name:     "relative path with existing subdir",
 			input:    filepath.Join(subDir, "state"),
+			wantKind: snapshot.KindLocal,
 			wantPath: filepath.Join(subDir, "state.zip"),
 		},
 		{
-			// bare name: treated as relative to CWD
+			// bare name: treated as relative to CWD, not a pod
 			input:    "my-pod",
+			wantKind: snapshot.KindLocal,
 			wantPath: filepath.Join(wd, "my-pod.zip"),
 		},
 		{
 			input:    "./checkpoint.zip",
+			wantKind: snapshot.KindLocal,
 			wantPath: filepath.Join(wd, "checkpoint.zip"),
 		},
 		{
 			input:    "./already.ZIP",
+			wantKind: snapshot.KindLocal,
 			wantPath: filepath.Join(wd, "already.ZIP"),
 		},
 
@@ -178,19 +188,50 @@ func TestParseDestination(t *testing.T) {
 			wantRemoteErr: true,
 		},
 
-		// --- remote: pod ---
+		// --- pod destinations ---
 		{
-			input:         "pod:my-pod",
-			wantRemoteErr: true,
+			input:       "pod:my-baseline",
+			wantKind:    snapshot.KindPod,
+			wantPodName: "my-baseline",
 		},
 		{
-			input:         "Pod:my-pod",
-			wantRemoteErr: true,
+			input:       "Pod:my-baseline",
+			wantKind:    snapshot.KindPod,
+			wantPodName: "my-baseline",
 		},
 		{
-			// pod: prefix also catches pod://
-			input:         "pod://my-pod",
-			wantRemoteErr: true,
+			// pod:// is also accepted
+			input:       "pod://my-baseline",
+			wantKind:    snapshot.KindPod,
+			wantPodName: "my-baseline",
+		},
+		{
+			input:       "pod:abc123",
+			wantKind:    snapshot.KindPod,
+			wantPodName: "abc123",
+		},
+		{
+			input:       "pod:my-long-pod-name-123",
+			wantKind:    snapshot.KindPod,
+			wantPodName: "my-long-pod-name-123",
+		},
+		{
+			// empty pod name
+			name:    "pod: empty name",
+			input:   "pod:",
+			wantErr: "invalid pod name",
+		},
+		{
+			// pod name starting with hyphen
+			name:    "pod: leading hyphen",
+			input:   "pod:-invalid",
+			wantErr: "invalid pod name",
+		},
+		{
+			// pod name with invalid characters
+			name:    "pod: underscore invalid",
+			input:   "pod:my_pod",
+			wantErr: "invalid pod name",
 		},
 
 		// --- unknown schemes ---
@@ -209,16 +250,19 @@ func TestParseDestination(t *testing.T) {
 		tests = append(tests,
 			testCase{
 				input:    `~\my-state`,
+				wantKind: snapshot.KindLocal,
 				wantPath: filepath.Join(home, "my-state.zip"),
 			},
 			testCase{
 				name:     "windows abs backslash",
 				input:    filepath.Join(tmpParent, "snap"),
+				wantKind: snapshot.KindLocal,
 				wantPath: filepath.Join(tmpParent, "snap.zip"),
 			},
 			testCase{
 				name:     "windows abs forward-slash",
 				input:    strings.ReplaceAll(filepath.Join(tmpParent, "snap"), `\`, `/`),
+				wantKind: snapshot.KindLocal,
 				wantPath: filepath.Join(tmpParent, "snap.zip"),
 			},
 		)
@@ -246,10 +290,13 @@ func TestParseDestination(t *testing.T) {
 				return
 			}
 			require.NoError(t, err)
-			if tc.wantPathRegexp != "" {
-				assert.Regexp(t, tc.wantPathRegexp, got)
+			assert.Equal(t, tc.wantKind, got.Kind)
+			if tc.wantPodName != "" {
+				assert.Equal(t, tc.wantPodName, got.Value)
+			} else if tc.wantPathRegexp != "" {
+				assert.Regexp(t, tc.wantPathRegexp, got.Value)
 			} else {
-				assert.Equal(t, tc.wantPath, got)
+				assert.Equal(t, tc.wantPath, got.Value)
 			}
 		})
 	}

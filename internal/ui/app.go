@@ -307,6 +307,19 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 		return a, nil
+	case output.PodSnapshotSavedEvent:
+		if line, ok := output.FormatEventLine(msg); ok {
+			parts := strings.Split(line, "\n")
+			for i, part := range parts {
+				if i == 0 {
+					part = strings.Replace(part, output.SuccessMarker(), styles.Success.Render(output.SuccessMarker()), 1)
+					a.addLine(styledLine{text: part})
+				} else {
+					a.addLine(styledLine{text: part, secondary: true})
+				}
+			}
+		}
+		return a, nil
 	default:
 		if e, ok := msg.(output.Event); ok {
 			if line, ok := output.FormatEventLine(e); ok {

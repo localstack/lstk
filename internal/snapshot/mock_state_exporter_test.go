@@ -14,6 +14,7 @@ import (
 	io "io"
 	reflect "reflect"
 
+	snapshot "github.com/localstack/lstk/internal/snapshot"
 	gomock "go.uber.org/mock/gomock"
 )
 
@@ -53,4 +54,43 @@ func (m *MockStateExporter) ExportState(ctx context.Context, host string, dst io
 func (mr *MockStateExporterMockRecorder) ExportState(ctx, host, dst any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ExportState", reflect.TypeOf((*MockStateExporter)(nil).ExportState), ctx, host, dst)
+}
+
+// MockPodSaver is a mock of PodSaver interface.
+type MockPodSaver struct {
+	ctrl     *gomock.Controller
+	recorder *MockPodSaverMockRecorder
+	isgomock struct{}
+}
+
+// MockPodSaverMockRecorder is the mock recorder for MockPodSaver.
+type MockPodSaverMockRecorder struct {
+	mock *MockPodSaver
+}
+
+// NewMockPodSaver creates a new mock instance.
+func NewMockPodSaver(ctrl *gomock.Controller) *MockPodSaver {
+	mock := &MockPodSaver{ctrl: ctrl}
+	mock.recorder = &MockPodSaverMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockPodSaver) EXPECT() *MockPodSaverMockRecorder {
+	return m.recorder
+}
+
+// SavePodSnapshot mocks base method.
+func (m *MockPodSaver) SavePodSnapshot(ctx context.Context, host, podName, authToken string) (snapshot.PodSaveResult, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SavePodSnapshot", ctx, host, podName, authToken)
+	ret0, _ := ret[0].(snapshot.PodSaveResult)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// SavePodSnapshot indicates an expected call of SavePodSnapshot.
+func (mr *MockPodSaverMockRecorder) SavePodSnapshot(ctx, host, podName, authToken any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SavePodSnapshot", reflect.TypeOf((*MockPodSaver)(nil).SavePodSnapshot), ctx, host, podName, authToken)
 }

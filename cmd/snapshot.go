@@ -37,7 +37,9 @@ Pass [destination] as an absolute or relative path for the exported file:
   lstk snapshot save ./my-snapshot.zip  # saves to ./my-snapshot.zip
   lstk snapshot save /tmp/my-state      # saves to /tmp/my-state.zip
 
-Cloud destinations are not yet supported.`,
+To save to a remote pod on the LocalStack platform, use the pod: prefix:
+
+  lstk snapshot save pod:my-baseline    # saves as a named pod on the platform`,
 		Args:    cobra.MaximumNArgs(1),
 		PreRunE: initConfig(nil),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -74,12 +76,20 @@ Cloud destinations are not yet supported.`,
 				return err
 			}
 			host, _ := endpoint.ResolveHost(cmd.Context(), awsContainer.Port, cfg.LocalStackHost)
-			exporter := aws.NewClient()
+			client := aws.NewClient()
+			containers := []config.ContainerConfig{awsContainer}
 
 			if isInteractiveMode(cfg) {
-				return ui.RunSnapshotSave(cmd.Context(), rt, []config.ContainerConfig{awsContainer}, exporter, host, dest)
+				if dest.Kind == snapshot.KindPod {
+					return ui.RunSnapshotSavePod(cmd.Context(), rt, containers, client, host, dest.Value, cfg.AuthToken)
+				}
+				return ui.RunSnapshotSaveLocal(cmd.Context(), rt, containers, client, host, dest.Value)
 			}
-			return snapshot.Save(cmd.Context(), rt, []config.ContainerConfig{awsContainer}, exporter, host, dest, output.NewPlainSink(os.Stdout))
+			sink := output.NewPlainSink(os.Stdout)
+			if dest.Kind == snapshot.KindPod {
+				return snapshot.SavePod(cmd.Context(), rt, containers, client, host, dest.Value, cfg.AuthToken, sink)
+			}
+			return snapshot.SaveLocal(cmd.Context(), rt, containers, client, host, dest.Value, sink)
 		},
 	}
 }
