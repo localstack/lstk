@@ -59,6 +59,7 @@ Created automatically on first run with defaults. Supports emulator types: `aws`
 
 Use `lstk setup <emulator>` to set up CLI integration for an emulator type:
 - `lstk setup aws` — Sets up AWS CLI profile in `~/.aws/config` and `~/.aws/credentials`
+- `lstk setup azure` — Registers and activates the LocalStack custom cloud in `az`, disables instance discovery, and logs in with dummy service-principal credentials. Requires the `az` CLI and a running Azure emulator.
 
 This naming avoids AWS-specific "profile" terminology and uses a clear verb for mutation operations.
 The deprecated `lstk config profile` command still works but points users to `lstk setup aws`.
