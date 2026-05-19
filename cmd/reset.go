@@ -36,14 +36,16 @@ instead, stop the emulator and run "lstk volume clear".`,
 				return fmt.Errorf("failed to get config: %w", err)
 			}
 
-			var awsContainer *config.ContainerConfig
-			for i, c := range appConfig.Containers {
+			var awsContainer config.ContainerConfig
+			var found bool
+			for _, c := range appConfig.Containers {
 				if c.Type == config.EmulatorAWS {
-					awsContainer = &appConfig.Containers[i]
+					awsContainer = c
+					found = true
 					break
 				}
 			}
-			if awsContainer == nil {
+			if !found {
 				return errors.New("reset is only supported for the AWS emulator")
 			}
 
@@ -59,12 +61,10 @@ instead, stop the emulator and run "lstk volume clear".`,
 			host, _ := endpoint.ResolveHost(cmd.Context(), awsContainer.Port, cfg.LocalStackHost)
 			resetter := aws.NewClient()
 
-			containers := []config.ContainerConfig{*awsContainer}
-
 			if interactive {
-				return ui.RunReset(cmd.Context(), rt, containers, resetter, host, force)
+				return ui.RunReset(cmd.Context(), rt, []config.ContainerConfig{awsContainer}, resetter, host, force)
 			}
-			return reset.Reset(cmd.Context(), rt, containers, resetter, host, force, output.NewPlainSink(os.Stdout))
+			return reset.Reset(cmd.Context(), rt, []config.ContainerConfig{awsContainer}, resetter, host, force, output.NewPlainSink(os.Stdout))
 		},
 	}
 
