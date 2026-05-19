@@ -31,7 +31,7 @@ func setDefaults() {
 		{
 			"type": "aws",
 			"tag":  "latest",
-			"port": DefaultAWSPort,
+			"port": DefaultPort,
 		},
 	})
 }

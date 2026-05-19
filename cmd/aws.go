@@ -47,7 +47,7 @@ Examples:
 				return fmt.Errorf("failed to get config: %w", err)
 			}
 
-			awsContainer := config.ContainerConfig{Type: config.EmulatorAWS, Port: config.DefaultAWSPort}
+			awsContainer := config.ContainerConfig{Type: config.EmulatorAWS, Port: config.DefaultPort}
 			for _, c := range appCfg.Containers {
 				if c.Type == config.EmulatorAWS {
 					awsContainer = c

@@ -83,13 +83,20 @@ To see which config file is currently in use:
 lstk config path
 ```
 
-You can also configure AWS CLI integration:
+You can also configure cloud CLI integration:
 
 ```bash
-lstk setup aws
+lstk setup aws    # localstack profile in ~/.aws/
+lstk setup azure  # isolated Azure CLI config for `lstk az` (requires the Azure CLI)
 ```
 
-This sets up a `localstack` profile in `~/.aws/config` and `~/.aws/credentials`.
+After `lstk setup azure`, run Azure CLI commands against LocalStack with `lstk az`:
+
+```bash
+lstk az group list
+```
+
+`lstk setup azure` registers a custom Azure cloud — pointing at LocalStack's endpoints — inside an isolated `AZURE_CONFIG_DIR`, so your global `~/.azure` keeps pointing at real Azure.
 
 You can also point `lstk` at a specific config file for any command:
 
@@ -195,6 +202,12 @@ lstk config path
 
 # Set up AWS CLI profile integration
 lstk setup aws
+
+# Set up Azure CLI integration (isolated config for `lstk az`)
+lstk setup azure
+
+# Run Azure CLI commands against LocalStack
+lstk az group list
 
 ```
 
