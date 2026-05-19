@@ -19,8 +19,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// mockResetServer returns a test server that responds to POST /_localstack/state/reset
-// with the given status code. The returned counter is incremented on each matching call.
+// mockResetServer returns a test server that records POST /_localstack/state/reset calls and replies with status.
 func mockResetServer(t *testing.T, status int) (*httptest.Server, *atomic.Int32) {
 	t.Helper()
 	var calls atomic.Int32
@@ -60,6 +59,8 @@ func TestResetFailsWithoutForceInNonInteractive(t *testing.T) {
 	t.Cleanup(cleanup)
 
 	ctx := testContext(t)
+	// Container required: the --force check runs after container discovery,
+	// so without a running emulator the test would fail at "not running" first.
 	startTestContainer(t, ctx)
 	srv, calls := mockResetServer(t, http.StatusOK)
 
@@ -141,7 +142,7 @@ func TestResetTelemetryOnFailure(t *testing.T) {
 	assertCommandTelemetry(t, events, "reset", 1)
 }
 
-func TestResetInteractiveConfirmYes(t *testing.T) {
+func TestResetInteractive(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("PTY not supported on Windows")
 	}
@@ -150,60 +151,51 @@ func TestResetInteractiveConfirmYes(t *testing.T) {
 	t.Cleanup(cleanup)
 
 	startTestContainer(t, testContext(t))
-	srv, calls := mockResetServer(t, http.StatusOK)
 
-	ptmx, out, outputCh, cmd := startResetInPTY(t, srv)
-	_, err := ptmx.Write([]byte("y"))
-	require.NoError(t, err)
-	require.NoError(t, cmd.Wait())
-	<-outputCh
+	startReset := func(t *testing.T, srv *httptest.Server) (*os.File, *syncBuffer, chan struct{}, *exec.Cmd) {
+		t.Helper()
+		binPath, err := filepath.Abs(binaryPath())
+		require.NoError(t, err)
 
-	assert.Contains(t, out.String(), "Emulator state reset")
-	assert.Equal(t, int32(1), calls.Load(), "reset endpoint should be called after confirmation")
-}
+		cmd := exec.CommandContext(testContext(t), binPath, "reset")
+		cmd.Env = env.Environ(testEnvWithHome(t.TempDir(), "")).With(env.LocalStackHost, lsHost(srv))
+		ptmx, err := pty.Start(cmd)
+		require.NoError(t, err, "failed to start command in PTY")
+		t.Cleanup(func() { _ = ptmx.Close() })
 
-func TestResetInteractiveCancelWithN(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("PTY not supported on Windows")
+		out := &syncBuffer{}
+		outputCh := make(chan struct{})
+		go func() {
+			_, _ = io.Copy(out, ptmx)
+			close(outputCh)
+		}()
+		require.Eventually(t, func() bool {
+			return bytes.Contains(out.Bytes(), []byte("Reset emulator state?"))
+		}, 10*time.Second, 100*time.Millisecond, "confirmation prompt should appear")
+		return ptmx, out, outputCh, cmd
 	}
-	requireDocker(t)
-	cleanup()
-	t.Cleanup(cleanup)
 
-	startTestContainer(t, testContext(t))
-	srv, calls := mockResetServer(t, http.StatusOK)
+	t.Run("confirms with y", func(t *testing.T) {
+		srv, calls := mockResetServer(t, http.StatusOK)
+		ptmx, out, outputCh, cmd := startReset(t, srv)
+		_, err := ptmx.Write([]byte("y"))
+		require.NoError(t, err)
+		require.NoError(t, cmd.Wait())
+		<-outputCh
 
-	ptmx, out, outputCh, cmd := startResetInPTY(t, srv)
-	_, err := ptmx.Write([]byte("n"))
-	require.NoError(t, err)
-	require.NoError(t, cmd.Wait())
-	<-outputCh
+		assert.Contains(t, out.String(), "Emulator state reset")
+		assert.Equal(t, int32(1), calls.Load(), "reset endpoint should be called after confirmation")
+	})
 
-	assert.Contains(t, out.String(), "Cancelled")
-	assert.Equal(t, int32(0), calls.Load(), "reset endpoint must not be called when user cancels")
-}
+	t.Run("cancels with n", func(t *testing.T) {
+		srv, calls := mockResetServer(t, http.StatusOK)
+		ptmx, out, outputCh, cmd := startReset(t, srv)
+		_, err := ptmx.Write([]byte("n"))
+		require.NoError(t, err)
+		require.NoError(t, cmd.Wait())
+		<-outputCh
 
-// startResetInPTY launches `lstk reset` in a PTY pointed at the given mock server
-// and waits for the confirmation prompt to appear.
-func startResetInPTY(t *testing.T, srv *httptest.Server) (*os.File, *syncBuffer, chan struct{}, *exec.Cmd) {
-	t.Helper()
-	binPath, err := filepath.Abs(binaryPath())
-	require.NoError(t, err)
-
-	cmd := exec.CommandContext(testContext(t), binPath, "reset")
-	cmd.Env = env.Environ(testEnvWithHome(t.TempDir(), "")).With(env.LocalStackHost, lsHost(srv))
-	ptmx, err := pty.Start(cmd)
-	require.NoError(t, err, "failed to start command in PTY")
-	t.Cleanup(func() { _ = ptmx.Close() })
-
-	out := &syncBuffer{}
-	outputCh := make(chan struct{})
-	go func() {
-		_, _ = io.Copy(out, ptmx)
-		close(outputCh)
-	}()
-	require.Eventually(t, func() bool {
-		return bytes.Contains(out.Bytes(), []byte("Reset emulator state?"))
-	}, 10*time.Second, 100*time.Millisecond, "confirmation prompt should appear")
-	return ptmx, out, outputCh, cmd
+		assert.Contains(t, out.String(), "Cancelled")
+		assert.Equal(t, int32(0), calls.Load(), "reset endpoint must not be called when user cancels")
+	})
 }
