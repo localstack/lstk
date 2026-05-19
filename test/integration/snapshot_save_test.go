@@ -237,22 +237,6 @@ func TestSnapshotSavePodNoAuthToken(t *testing.T) {
 	assert.Contains(t, stderr, "authentication")
 }
 
-func TestSnapshotSavePodLocalStackNotRunning(t *testing.T) {
-	requireDocker(t)
-	cleanup()
-	t.Cleanup(cleanup)
-
-	ctx := testContext(t)
-	// Intentionally no startTestContainer: the emulator is not running.
-
-	stdout, _, err := runLstk(t, ctx, t.TempDir(),
-		env.Environ(testEnvWithHome(t.TempDir(), "")).With(env.AuthToken, "test-token"),
-		"--non-interactive", "snapshot", "save", "pod:my-baseline",
-	)
-	requireExitCode(t, 1, err)
-	assert.Contains(t, stdout, "not running")
-}
-
 func TestSnapshotSavePodInvalidName(t *testing.T) {
 	t.Parallel()
 	for _, dest := range []string{
@@ -271,19 +255,40 @@ func TestSnapshotSavePodInvalidName(t *testing.T) {
 	}
 }
 
-func TestSnapshotSaveLocalStackNotRunning(t *testing.T) {
+func TestSnapshotSaveEmulatorNotRunning(t *testing.T) {
 	requireDocker(t)
 	cleanup()
 	t.Cleanup(cleanup)
 
-	ctx := testContext(t)
-	// Intentionally no startTestContainer: the emulator is not running.
+	tests := []struct {
+		name      string
+		args      []string
+		authToken string
+	}{
+		{
+			name: "local destination",
+			args: []string{"--non-interactive", "snapshot", "save"},
+		},
+		{
+			name:      "pod destination",
+			args:      []string{"--non-interactive", "snapshot", "save", "pod:my-baseline"},
+			authToken: "test-token",
+		},
+	}
 
-	stdout, _, err := runLstk(t, ctx, t.TempDir(), testEnvWithHome(t.TempDir(), ""),
-		"--non-interactive", "snapshot", "save",
-	)
-	requireExitCode(t, 1, err)
-	assert.Contains(t, stdout, "not running")
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			// Intentionally no startTestContainer: the emulator is not running.
+			ctx := testContext(t)
+			e := env.Environ(testEnvWithHome(t.TempDir(), ""))
+			if tc.authToken != "" {
+				e = e.With(env.AuthToken, tc.authToken)
+			}
+			stdout, _, err := runLstk(t, ctx, t.TempDir(), e, tc.args...)
+			requireExitCode(t, 1, err)
+			assert.Contains(t, stdout, "not running")
+		})
+	}
 }
 
 func TestSnapshotSaveInvalidParentDir(t *testing.T) {
