@@ -4,8 +4,10 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
+	"time"
 )
 
 type EmulatorType string
@@ -110,7 +112,43 @@ func (c *ContainerConfig) VolumeDir() (string, error) {
 	return filepath.Join(cacheDir, "lstk", "volume", c.Name()), nil
 }
 
+// zeroPaddedMonthTagRe matches calendar-versioned tags where the month is zero-padded
+// (e.g. "2026.04", "2026.04.1-amd64"), which the license API does not accept.
+var zeroPaddedMonthTagRe = regexp.MustCompile(`^(\d{4}\.)0([1-9].*)$`)
+
+// validTagRe mirrors Docker's tag format rules: alphanumerics, dots, hyphens, underscores;
+// must not start with a dot or hyphen; max 128 characters.
+var validTagRe = regexp.MustCompile(`^[a-zA-Z0-9_][a-zA-Z0-9._-]*$`)
+
+// prevMonthExample returns the previous calendar month as a tag example, e.g. "2026.4".
+func prevMonthExample() string {
+	y, m, _ := time.Now().Date()
+	m--
+	if m == 0 {
+		m, y = 12, y-1
+	}
+	return fmt.Sprintf("%d.%d", y, int(m))
+}
+
+func validateTag(tag string) error {
+	if tag == "" {
+		return nil
+	}
+	if len(tag) > 128 || !validTagRe.MatchString(tag) {
+		return fmt.Errorf("tag %q is not supported — try a tag like %q or \"latest\" in your config file", tag, prevMonthExample())
+	}
+	m := zeroPaddedMonthTagRe.FindStringSubmatch(tag)
+	if m == nil {
+		return nil
+	}
+	suggested := m[1] + m[2]
+	return fmt.Errorf("tag %q is not supported — try %q or \"latest\" in your config file", tag, suggested)
+}
+
 func (c *ContainerConfig) Validate() error {
+	if err := validateTag(c.Tag); err != nil {
+		return err
+	}
 	if c.Port == "" {
 		return fmt.Errorf("port is required for %s emulator", c.Type)
 	}

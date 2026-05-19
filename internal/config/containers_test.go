@@ -2,6 +2,7 @@ package config
 
 import (
 	"sort"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -47,6 +48,60 @@ func TestResolvedEnv_EmptyWhenNoEnvRefs(t *testing.T) {
 	resolved, err := c.ResolvedEnv(map[string]map[string]string{})
 	require.NoError(t, err)
 	assert.Empty(t, resolved)
+}
+
+func TestValidate_ZeroPaddedMonthTag_IsRejected(t *testing.T) {
+	cases := []struct {
+		tag       string
+		suggested string
+	}{
+		{"2026.04", "2026.4"},
+		{"2026.04.1", "2026.4.1"},
+		{"2026.04.0-amd64", "2026.4.0-amd64"},
+		{"2026.01", "2026.1"},
+		{"2026.09.2", "2026.9.2"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.tag, func(t *testing.T) {
+			c := &ContainerConfig{Type: EmulatorAWS, Port: "4566", Tag: tc.tag}
+			err := c.Validate()
+			assert.ErrorContains(t, err, "not supported")
+			assert.ErrorContains(t, err, tc.suggested)
+		})
+	}
+}
+
+func TestValidate_InvalidDockerTag_IsRejected(t *testing.T) {
+	for _, tag := range []string{
+		"my tag",   // space
+		"2026.4!",  // special char
+		".hidden",  // starts with dot
+		"-beta",    // starts with hyphen
+		"tag@sha",  // @ not allowed
+		"foo:bar",  // colon not allowed
+		strings.Repeat("a", 129), // too long
+	} {
+		t.Run(tag, func(t *testing.T) {
+			c := &ContainerConfig{Type: EmulatorAWS, Port: "4566", Tag: tag}
+			err := c.Validate()
+			assert.ErrorContains(t, err, "not supported")
+		})
+	}
+}
+
+func TestValidate_ValidTagFormats_AreAccepted(t *testing.T) {
+	for _, tag := range []string{
+		"", "latest", "stable",
+		"2026.4", "2026.4.1", "2026.4.0", "2026.4.0-amd64", "2026.4.0-arm64",
+		"2026.5.0.dev188",
+		"2026.10", "2026.11.2",
+		"3.8.0", "3.7.4",
+	} {
+		t.Run(tag, func(t *testing.T) {
+			c := &ContainerConfig{Type: EmulatorAWS, Port: "4566", Tag: tag}
+			assert.NoError(t, c.Validate())
+		})
+	}
 }
 
 func TestValidate_ValidPort(t *testing.T) {
