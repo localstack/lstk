@@ -79,17 +79,18 @@ To save to a remote pod on the LocalStack platform, use the pod: prefix:
 			client := aws.NewClient()
 			containers := []config.ContainerConfig{awsContainer}
 
-			if isInteractiveMode(cfg) {
-				if dest.Kind == snapshot.KindPod {
+			switch dest.Kind {
+			case snapshot.KindPod:
+				if isInteractiveMode(cfg) {
 					return ui.RunSnapshotSavePod(cmd.Context(), rt, containers, client, host, dest.Value, cfg.AuthToken)
 				}
-				return ui.RunSnapshotSaveLocal(cmd.Context(), rt, containers, client, host, dest.Value)
+				return snapshot.SavePod(cmd.Context(), rt, containers, client, host, dest.Value, cfg.AuthToken, output.NewPlainSink(os.Stdout))
+			default:
+				if isInteractiveMode(cfg) {
+					return ui.RunSnapshotSaveLocal(cmd.Context(), rt, containers, client, host, dest.Value)
+				}
+				return snapshot.SaveLocal(cmd.Context(), rt, containers, client, host, dest.Value, output.NewPlainSink(os.Stdout))
 			}
-			sink := output.NewPlainSink(os.Stdout)
-			if dest.Kind == snapshot.KindPod {
-				return snapshot.SavePod(cmd.Context(), rt, containers, client, host, dest.Value, cfg.AuthToken, sink)
-			}
-			return snapshot.SaveLocal(cmd.Context(), rt, containers, client, host, dest.Value, sink)
 		},
 	}
 }
