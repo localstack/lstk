@@ -9,6 +9,17 @@ Thanks for contributing to lstk! This document covers contribution guidelines fo
 - Go 1.21+ (or latest stable)
 - Docker (for integration tests)
 - Make
+- [pre-commit](https://pre-commit.com/#install) (for secret scanning hooks)
+
+### First-time setup
+
+After cloning, install the pre-commit hooks:
+
+```bash
+pre-commit install
+```
+
+This sets up a local git hook that runs [gitleaks](https://github.com/gitleaks/gitleaks) before each commit to prevent accidentally committing secrets or credentials.
 
 ### Building
 
