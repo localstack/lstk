@@ -128,7 +128,7 @@ func TestStartSkipsAWSProfilePromptWhenAlreadyConfigured(t *testing.T) {
 	// Wait until the container is ready — that's the point at which post-start setup
 	// runs, so if the prompt were going to appear it would already be in the output.
 	require.Eventually(t, func() bool {
-		return bytes.Contains(out.Bytes(), []byte(" ready"))
+		return bytes.Contains(out.Bytes(), []byte("LocalStack is running"))
 	}, 2*time.Minute, 200*time.Millisecond, "container should become ready")
 
 	_ = cmd.Process.Kill()

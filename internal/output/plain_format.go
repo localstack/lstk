@@ -51,9 +51,9 @@ func formatStatusLine(e ContainerStatusEvent) (string, bool) {
 		return "Waiting for LocalStack to be ready...", true
 	case "ready":
 		if e.Detail != "" {
-			return fmt.Sprintf("%s LocalStack ready (%s)", SuccessMarker(), e.Detail), true
+			return fmt.Sprintf("%s LocalStack is running (%s)", SuccessMarker(), e.Detail), true
 		}
-		return SuccessMarker() + " LocalStack ready", true
+		return SuccessMarker() + " LocalStack is running", true
 	default:
 		if e.Detail != "" {
 			return fmt.Sprintf("LocalStack: %s (%s)", e.Phase, e.Detail), true

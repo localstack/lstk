@@ -366,9 +366,10 @@ func validateLicensesFromImages(ctx context.Context, rt runtime.Runtime, sink ou
 func startContainers(ctx context.Context, rt runtime.Runtime, sink output.Sink, tel *telemetry.Client, containers []runtime.ContainerConfig, pulled map[string]bool) error {
 	for _, c := range containers {
 		startTime := time.Now()
-		sink.Emit(output.ContainerStatusEvent{Phase: "starting", Container: c.Name})
+		sink.Emit(output.SpinnerStart("Starting LocalStack"))
 		containerID, err := rt.Start(ctx, c)
 		if err != nil {
+			sink.Emit(output.SpinnerStop())
 			tel.EmitEmulatorLifecycleEvent(ctx, telemetry.LifecycleEvent{
 				EventType: telemetry.LifecycleStartError,
 				Emulator:  c.EmulatorType,
@@ -379,9 +380,9 @@ func startContainers(ctx context.Context, rt runtime.Runtime, sink output.Sink, 
 			return fmt.Errorf("failed to start LocalStack: %w", err)
 		}
 
-		sink.Emit(output.ContainerStatusEvent{Phase: "waiting", Container: c.Name})
 		healthURL := fmt.Sprintf("http://localhost:%s%s", c.Port, c.HealthPath)
 		if err := awaitStartup(ctx, rt, sink, containerID, "LocalStack", healthURL); err != nil {
+			sink.Emit(output.SpinnerStop())
 			errCode := telemetry.ErrCodeStartFailed
 			var licErr *licenseNotCoveredError
 			if errors.As(err, &licErr) && c.EmulatorType == config.EmulatorSnowflake {
@@ -404,6 +405,7 @@ func startContainers(ctx context.Context, rt runtime.Runtime, sink output.Sink, 
 			})
 			return err
 		}
+		sink.Emit(output.SpinnerStop())
 
 		sink.Emit(output.ContainerStatusEvent{Phase: "ready", Container: c.Name, Detail: fmt.Sprintf("containerId: %s", containerID[:12])})
 
@@ -549,7 +551,7 @@ func emitPortInUseError(sink output.Sink, port string) {
 
 func validateLicense(ctx context.Context, sink output.Sink, opts StartOptions, containerConfig runtime.ContainerConfig, token, licenseFilePath string) error {
 	version := containerConfig.Tag
-	sink.Emit(output.ContainerStatusEvent{Phase: "validating license", Container: containerConfig.Name})
+	sink.Emit(output.SpinnerStart("Checking license"))
 
 	hostname, _ := os.Hostname()
 	licenseReq := &api.LicenseRequest{
@@ -569,6 +571,7 @@ func validateLicense(ctx context.Context, sink output.Sink, opts StartOptions, c
 
 	licenseResp, err := opts.PlatformClient.GetLicense(ctx, licenseReq)
 	if err != nil {
+		sink.Emit(output.SpinnerStop())
 		var licErr *api.LicenseError
 		if errors.As(err, &licErr) && licErr.Detail != "" {
 			opts.Logger.Error("license server response (HTTP %d): %s", licErr.Status, licErr.Detail)
@@ -582,6 +585,13 @@ func validateLicense(ctx context.Context, sink output.Sink, opts StartOptions, c
 		})
 		return fmt.Errorf("license validation failed for %s:%s: %w", containerConfig.ProductName, version, err)
 	}
+	sink.Emit(output.SpinnerStop())
+
+	validMsg := "Valid license"
+	if plan := licenseResp.PlanDisplayName(); plan != "" {
+		validMsg = fmt.Sprintf("Valid license (%s)", plan)
+	}
+	sink.Emit(output.MessageEvent{Severity: output.SeveritySuccess, Text: validMsg})
 
 	if licenseResp != nil && len(licenseResp.RawBytes) > 0 {
 		if err := os.MkdirAll(filepath.Dir(licenseFilePath), 0755); err != nil {

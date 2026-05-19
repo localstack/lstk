@@ -60,7 +60,7 @@ func TestFormatEventLine(t *testing.T) {
 		{
 			name:   "status ready with detail",
 			event:  ContainerStatusEvent{Phase: "ready", Container: "localstack-aws", Detail: "abc123"},
-			want:   SuccessMarker() + " LocalStack ready (abc123)",
+			want:   SuccessMarker() + " LocalStack is running (abc123)",
 			wantOK: true,
 		},
 		{

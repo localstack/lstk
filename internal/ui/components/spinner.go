@@ -51,6 +51,15 @@ func (s Spinner) Stop() (Spinner, tea.Cmd) {
 	})
 }
 
+// ForceStop clears the spinner immediately, ignoring the min-duration smoothing
+// that Stop applies. Use this on error or terminal paths where a soft stop would
+// leave a stale frame on the final render.
+func (s Spinner) ForceStop() Spinner {
+	s.visible = false
+	s.pendingStop = false
+	return s
+}
+
 func (s Spinner) PendingStop() bool {
 	return s.pendingStop
 }
