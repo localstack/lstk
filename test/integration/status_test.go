@@ -10,7 +10,6 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -150,9 +149,7 @@ func TestStatusCommandWorksWithExternalContainer(t *testing.T) {
 	}))
 	defer server.Close()
 
-	host := strings.TrimPrefix(server.URL, "http://")
-
-	stdout, stderr, err := runLstk(t, ctx, "", env.With(env.LocalStackHost, host), "status")
+	stdout, stderr, err := runLstk(t, ctx, "", env.With(env.LocalStackHost, lsHost(server)), "status")
 	require.NoError(t, err, "lstk status should work with external container: %s", stderr)
 	requireExitCode(t, 0, err)
 	assert.Contains(t, stdout, "3.5.0")
@@ -230,9 +227,7 @@ func TestStatusCommandShowsNoResourcesWhenEmpty(t *testing.T) {
 	}))
 	defer server.Close()
 
-	host := strings.TrimPrefix(server.URL, "http://")
-
-	stdout, stderr, err := runLstk(t, ctx, "", env.With(env.LocalStackHost, host), "status")
+	stdout, stderr, err := runLstk(t, ctx, "", env.With(env.LocalStackHost, lsHost(server)), "status")
 	require.NoError(t, err, "lstk status failed: %s", stderr)
 	requireExitCode(t, 0, err)
 	assert.Contains(t, stdout, "No resources deployed")

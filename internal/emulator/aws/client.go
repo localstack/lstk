@@ -159,9 +159,6 @@ func (c *Client) ExportState(ctx context.Context, host string, dst io.Writer) er
 	return nil
 }
 
-// SavePodSnapshot triggers LocalStack to upload its state as a named pod to the
-// LocalStack platform. The authToken is forwarded as Basic auth so the container
-// can authenticate the upload to the platform on behalf of the CLI user.
 func (c *Client) SavePodSnapshot(ctx context.Context, host, podName, authToken string) (snapshot.PodSaveResult, error) {
 	url := fmt.Sprintf("http://%s/_localstack/pods/%s", host, podName)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader([]byte("{}")))
@@ -185,6 +182,8 @@ func (c *Client) SavePodSnapshot(ctx context.Context, host, podName, authToken s
 	// The response is a newline-delimited JSON stream. We scan until we find a
 	// completion event and surface any server-side error as a Go error.
 	scanner := bufio.NewScanner(resp.Body)
+	buf := make([]byte, 1024*1024)
+	scanner.Buffer(buf, 1024*1024)
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
 		if line == "" {
