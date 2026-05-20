@@ -188,7 +188,7 @@ func TestFormatEventLine(t *testing.T) {
 				Services: []string{"dynamodb", "s3", "sqs"},
 				Size:     2621440,
 			},
-			want:   SuccessMarker() + " Snapshot saved to pod \"my-baseline\"\n• Version: 3\n• Services: dynamodb, s3, sqs\n• Size: 2.5 MB",
+			want:   SuccessMarker() + " Snapshot saved to pod:my-baseline\n• Version: 3\n• Services: dynamodb, s3, sqs\n• Size: 2.5 MB",
 			wantOK: true,
 		},
 		{
@@ -199,7 +199,7 @@ func TestFormatEventLine(t *testing.T) {
 				Services: []string{"s3", "sqs", "sns", "dynamodb", "lambda", "apigateway", "iam", "sts", "ec2", "rds", "kinesis", "firehose", "cloudwatch", "cloudformation", "route53"},
 				Size:     10485760,
 			},
-			want:   SuccessMarker() + " Snapshot saved to pod \"big-pod\"\n• Version: 1\n• Services: s3, sqs, sns, dynamodb, lambda, apigateway, iam, sts, ec2, rds, kinesis, firehose, cloudwatch, cloudformation, route53\n• Size: 10.0 MB",
+			want:   SuccessMarker() + " Snapshot saved to pod:big-pod\n• Version: 1\n• Services: s3, sqs, sns, dynamodb, lambda, apigateway, iam, sts, ec2, rds, kinesis, firehose, cloudwatch, cloudformation, route53\n• Size: 10.0 MB",
 			wantOK: true,
 		},
 		{
@@ -207,7 +207,7 @@ func TestFormatEventLine(t *testing.T) {
 			event: PodSnapshotSavedEvent{
 				PodName: "minimal-pod",
 			},
-			want:   SuccessMarker() + " Snapshot saved to pod \"minimal-pod\"",
+			want:   SuccessMarker() + " Snapshot saved to pod:minimal-pod",
 			wantOK: true,
 		},
 	}

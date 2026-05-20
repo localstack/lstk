@@ -200,7 +200,7 @@ func formatResourceSummary(e ResourceSummaryEvent) string {
 
 func formatPodSnapshotSaved(e PodSnapshotSavedEvent) string {
 	var sb strings.Builder
-	sb.WriteString(SuccessMarker() + fmt.Sprintf(" Snapshot saved to pod %q", e.PodName))
+	sb.WriteString(SuccessMarker() + fmt.Sprintf(" Snapshot saved to pod:%s", e.PodName))
 	if e.Version > 0 {
 		sb.WriteString(fmt.Sprintf("\n• Version: %d", e.Version))
 	}
