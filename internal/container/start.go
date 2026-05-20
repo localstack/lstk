@@ -557,7 +557,7 @@ func validateLicense(ctx context.Context, sink output.Sink, opts StartOptions, c
 	licenseReq := &api.LicenseRequest{
 		Product: api.ProductInfo{
 			Name:    containerConfig.ProductName,
-			Version: version,
+			Version: config.NormalizeTag(version),
 		},
 		Credentials: api.CredentialsInfo{
 			Token: token,
