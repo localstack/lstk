@@ -180,6 +180,36 @@ func TestFormatEventLine(t *testing.T) {
 			want:   "",
 			wantOK: false,
 		},
+		{
+			name: "pod snapshot saved full",
+			event: PodSnapshotSavedEvent{
+				PodName:  "my-baseline",
+				Version:  3,
+				Services: []string{"dynamodb", "s3", "sqs"},
+				Size:     2621440,
+			},
+			want:   SuccessMarker() + " Snapshot saved to pod:my-baseline\n• Version: 3\n• Services: dynamodb, s3, sqs\n• Size: 2.5 MB",
+			wantOK: true,
+		},
+		{
+			name: "pod snapshot saved many services",
+			event: PodSnapshotSavedEvent{
+				PodName:  "big-pod",
+				Version:  1,
+				Services: []string{"s3", "sqs", "sns", "dynamodb", "lambda", "apigateway", "iam", "sts", "ec2", "rds", "kinesis", "firehose", "cloudwatch", "cloudformation", "route53"},
+				Size:     10485760,
+			},
+			want:   SuccessMarker() + " Snapshot saved to pod:big-pod\n• Version: 1\n• Services: s3, sqs, sns, dynamodb, lambda, apigateway, iam, sts, ec2, rds, kinesis, firehose, cloudwatch, cloudformation, route53\n• Size: 10.0 MB",
+			wantOK: true,
+		},
+		{
+			name: "pod snapshot saved omits zero fields",
+			event: PodSnapshotSavedEvent{
+				PodName: "minimal-pod",
+			},
+			want:   SuccessMarker() + " Snapshot saved to pod:minimal-pod",
+			wantOK: true,
+		},
 	}
 
 	for _, tt := range tests {
@@ -248,4 +278,31 @@ func TestFormatTableWidth(t *testing.T) {
 			t.Error("expected truncation at narrow width")
 		}
 	})
+}
+
+func TestFormatBytes(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		input int64
+		want  string
+	}{
+		{0, "0 B"},
+		{512, "512 B"},
+		{1023, "1023 B"},
+		{1024, "1.0 KB"},
+		{1536, "1.5 KB"},
+		{1048576, "1.0 MB"},
+		{2621440, "2.5 MB"},
+		{1073741824, "1.0 GB"},
+		{2684354560, "2.5 GB"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.want, func(t *testing.T) {
+			t.Parallel()
+			got := formatBytes(tt.input)
+			if got != tt.want {
+				t.Fatalf("formatBytes(%d) = %q, want %q", tt.input, got, tt.want)
+			}
+		})
+	}
 }

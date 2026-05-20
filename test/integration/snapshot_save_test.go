@@ -150,7 +150,6 @@ func TestSnapshotSaveRemoteRejected(t *testing.T) {
 	for _, dest := range []string{
 		"s3://my-bucket/my-snap",
 		"oras://registry/my-snap",
-		"cloud://my-pod",
 	} {
 		t.Run(dest, func(t *testing.T) {
 			t.Parallel()
@@ -163,19 +162,133 @@ func TestSnapshotSaveRemoteRejected(t *testing.T) {
 	}
 }
 
-func TestSnapshotSaveLocalStackNotRunning(t *testing.T) {
+// mockPodSaveServer returns a test server that handles POST /_localstack/pods/{name}
+// and responds with a streaming completion event. respondOK controls whether the
+// completion event reports success or a server-side error.
+func mockPodSaveServer(t *testing.T, respondOK bool) *httptest.Server {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, "/_localstack/pods/") && r.Method == http.MethodPost {
+			w.Header().Set("Content-Type", "application/x-ndjson")
+			w.WriteHeader(http.StatusOK)
+			if respondOK {
+				_, _ = w.Write([]byte(`{"event":"completion","status":"ok","operation":"save","info":{"name":"my-baseline","version":1,"remote":"platform","services":["dynamodb","s3"],"size":1048576}}` + "\n"))
+			} else {
+				_, _ = w.Write([]byte(`{"event":"completion","status":"error","message":"platform error"}` + "\n"))
+			}
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+func TestSnapshotSavePodSuccess(t *testing.T) {
 	requireDocker(t)
 	cleanup()
 	t.Cleanup(cleanup)
 
 	ctx := testContext(t)
-	// Intentionally no startTestContainer: the emulator is not running.
+	startTestContainer(t, ctx)
+	srv := mockPodSaveServer(t, true)
 
-	stdout, _, err := runLstk(t, ctx, t.TempDir(), testEnvWithHome(t.TempDir(), ""),
-		"--non-interactive", "snapshot", "save",
+	stdout, stderr, err := runLstk(t, ctx, t.TempDir(),
+		env.Environ(testEnvWithHome(t.TempDir(), "")).
+			With(env.LocalStackHost, lsHost(srv)).
+			With(env.AuthToken, "test-token"),
+		"--non-interactive", "snapshot", "save", "pod:my-baseline",
+	)
+	require.NoError(t, err, "lstk snapshot save pod:my-baseline failed: %s", stderr)
+	assert.Contains(t, stdout, "Snapshot saved")
+	assert.Contains(t, stdout, "my-baseline")
+	assert.Contains(t, stdout, "Version: 1")
+	assert.Contains(t, stdout, "dynamodb, s3")
+}
+
+func TestSnapshotSavePodServerError(t *testing.T) {
+	requireDocker(t)
+	cleanup()
+	t.Cleanup(cleanup)
+
+	ctx := testContext(t)
+	startTestContainer(t, ctx)
+	srv := mockPodSaveServer(t, false)
+
+	_, stderr, err := runLstk(t, ctx, t.TempDir(),
+		env.Environ(testEnvWithHome(t.TempDir(), "")).
+			With(env.LocalStackHost, lsHost(srv)).
+			With(env.AuthToken, "test-token"),
+		"--non-interactive", "snapshot", "save", "pod:my-baseline",
 	)
 	requireExitCode(t, 1, err)
-	assert.Contains(t, stdout, "not running")
+	assert.Contains(t, stderr, "platform error")
+}
+
+func TestSnapshotSavePodNoAuthToken(t *testing.T) {
+	t.Parallel()
+	ctx := testContext(t)
+
+	_, stderr, err := runLstk(t, ctx, t.TempDir(),
+		env.Environ(testEnvWithHome(t.TempDir(), "")).Without(env.AuthToken),
+		"--non-interactive", "snapshot", "save", "pod:my-baseline",
+	)
+	requireExitCode(t, 1, err)
+	assert.Contains(t, stderr, "authentication")
+}
+
+func TestSnapshotSavePodInvalidName(t *testing.T) {
+	t.Parallel()
+	for _, dest := range []string{
+		"pod:",
+		"pod:-invalid",
+		"pod:my_pod",
+	} {
+		t.Run(dest, func(t *testing.T) {
+			t.Parallel()
+			ctx := testContext(t)
+
+			_, stderr, err := runLstk(t, ctx, t.TempDir(), testEnvWithHome(t.TempDir(), ""), "--non-interactive", "snapshot", "save", dest)
+			requireExitCode(t, 1, err)
+			assert.Contains(t, stderr, "invalid pod name")
+		})
+	}
+}
+
+func TestSnapshotSaveEmulatorNotRunning(t *testing.T) {
+	requireDocker(t)
+	cleanup()
+	t.Cleanup(cleanup)
+
+	tests := []struct {
+		name      string
+		args      []string
+		authToken string
+	}{
+		{
+			name: "local destination",
+			args: []string{"--non-interactive", "snapshot", "save"},
+		},
+		{
+			name:      "pod destination",
+			args:      []string{"--non-interactive", "snapshot", "save", "pod:my-baseline"},
+			authToken: "test-token",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			// Intentionally no startTestContainer: the emulator is not running.
+			ctx := testContext(t)
+			e := env.Environ(testEnvWithHome(t.TempDir(), ""))
+			if tc.authToken != "" {
+				e = e.With(env.AuthToken, tc.authToken)
+			}
+			stdout, _, err := runLstk(t, ctx, t.TempDir(), e, tc.args...)
+			requireExitCode(t, 1, err)
+			assert.Contains(t, stdout, "not running")
+		})
+	}
 }
 
 func TestSnapshotSaveInvalidParentDir(t *testing.T) {

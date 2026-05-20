@@ -6,6 +6,12 @@ import (
 	"time"
 )
 
+const (
+	byteKB int64 = 1024
+	byteMB       = 1024 * byteKB
+	byteGB       = 1024 * byteMB
+)
+
 // FormatEventLine converts an output event into a single display line.
 func FormatEventLine(event Event) (string, bool) {
 	switch e := event.(type) {
@@ -34,6 +40,8 @@ func FormatEventLine(event Event) (string, bool) {
 		return formatTable(e)
 	case ResourceSummaryEvent:
 		return formatResourceSummary(e), true
+	case PodSnapshotSavedEvent:
+		return formatPodSnapshotSaved(e), true
 	case AuthCompleteEvent:
 		return "", false
 	default:
@@ -188,6 +196,34 @@ func FormatUptime(d time.Duration) string {
 
 func formatResourceSummary(e ResourceSummaryEvent) string {
 	return fmt.Sprintf("~ %d resources · %d services", e.Resources, e.Services)
+}
+
+func formatPodSnapshotSaved(e PodSnapshotSavedEvent) string {
+	var sb strings.Builder
+	sb.WriteString(SuccessMarker() + fmt.Sprintf(" Snapshot saved to pod:%s", e.PodName))
+	if e.Version > 0 {
+		sb.WriteString(fmt.Sprintf("\n• Version: %d", e.Version))
+	}
+	if len(e.Services) > 0 {
+		sb.WriteString("\n• Services: " + strings.Join(e.Services, ", "))
+	}
+	if e.Size > 0 {
+		sb.WriteString("\n• Size: " + formatBytes(e.Size))
+	}
+	return sb.String()
+}
+
+func formatBytes(b int64) string {
+	switch {
+	case b >= byteGB:
+		return fmt.Sprintf("%.1f GB", float64(b)/float64(byteGB))
+	case b >= byteMB:
+		return fmt.Sprintf("%.1f MB", float64(b)/float64(byteMB))
+	case b >= byteKB:
+		return fmt.Sprintf("%.1f KB", float64(b)/float64(byteKB))
+	default:
+		return fmt.Sprintf("%d B", b)
+	}
 }
 
 func formatTable(e TableEvent) (string, bool) {
