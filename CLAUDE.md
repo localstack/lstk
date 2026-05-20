@@ -2,6 +2,16 @@
 
 lstk is LocalStack's new CLI (v2) - a Go-based command-line interface for starting and managing LocalStack instances via Docker (and more runtimes in the future).
 
+# Developer Setup
+
+After cloning, install the pre-commit hooks:
+
+```bash
+pre-commit install
+```
+
+This installs a [gitleaks](https://github.com/gitleaks/gitleaks) hook that scans staged files for secrets before each commit. Requires [pre-commit](https://pre-commit.com/#install).
+
 # Build and Test Commands
 
 ```bash
