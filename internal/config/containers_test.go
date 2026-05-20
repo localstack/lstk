@@ -54,7 +54,7 @@ func TestValidate_ZeroPaddedMonthTag_IsRejected(t *testing.T) {
 	for _, tag := range []string{"2026.04", "2026.04.1", "2026.04.0-amd64", "2026.01", "2026.09.2"} {
 		t.Run(tag, func(t *testing.T) {
 			c := &ContainerConfig{Type: EmulatorAWS, Port: "4566", Tag: tag}
-			assert.ErrorContains(t, c.Validate(), "not supported")
+			assert.ErrorContains(t, c.Validate(), "unsupported")
 		})
 	}
 }
@@ -72,7 +72,7 @@ func TestValidate_InvalidDockerTag_IsRejected(t *testing.T) {
 		t.Run(tag, func(t *testing.T) {
 			c := &ContainerConfig{Type: EmulatorAWS, Port: "4566", Tag: tag}
 			err := c.Validate()
-			assert.ErrorContains(t, err, "not supported")
+			assert.ErrorContains(t, err, "unsupported")
 		})
 	}
 }
