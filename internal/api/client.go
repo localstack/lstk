@@ -13,6 +13,7 @@ import (
 
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 
+	"github.com/localstack/lstk/internal/config"
 	"github.com/localstack/lstk/internal/log"
 	"github.com/localstack/lstk/internal/version"
 )
@@ -313,7 +314,7 @@ func (c *PlatformClient) GetLicense(ctx context.Context, licReq *LicenseRequest)
 		if strings.Contains(detail, "licensing.license.format") {
 			return nil, &LicenseError{
 				Status:  statusCode,
-				Message: "unsupported image tag — check the tag in your config file",
+				Message: config.UnsupportedTagMessage(),
 				Detail:  detail,
 			}
 		}

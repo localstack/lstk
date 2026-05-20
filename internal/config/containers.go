@@ -1,6 +1,7 @@
 package config
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -112,6 +113,15 @@ func (c *ContainerConfig) VolumeDir() (string, error) {
 	return filepath.Join(cacheDir, "lstk", "volume", c.Name()), nil
 }
 
+func UnsupportedTagMessage() string {
+	y, m, _ := time.Now().Date()
+	m--
+	if m == 0 {
+		m, y = 12, y-1
+	}
+	return fmt.Sprintf("unsupported image tag — try a tag like %q or \"latest\" in your config file", fmt.Sprintf("%d.%d", y, int(m)))
+}
+
 // zeroPaddedMonthTagRe matches calendar-versioned tags where the month is zero-padded
 // (e.g. "2026.04", "2026.04.1-amd64"), which the license API does not accept.
 var zeroPaddedMonthTagRe = regexp.MustCompile(`^(\d{4}\.)0([1-9].*)$`)
@@ -120,22 +130,12 @@ var zeroPaddedMonthTagRe = regexp.MustCompile(`^(\d{4}\.)0([1-9].*)$`)
 // must not start with a dot or hyphen; max 128 characters.
 var validTagRe = regexp.MustCompile(`^[a-zA-Z0-9_][a-zA-Z0-9._-]*$`)
 
-// prevMonthExample returns the previous calendar month as a tag example, e.g. "2026.4".
-func prevMonthExample() string {
-	y, m, _ := time.Now().Date()
-	m--
-	if m == 0 {
-		m, y = 12, y-1
-	}
-	return fmt.Sprintf("%d.%d", y, int(m))
-}
-
 func validateTag(tag string) error {
 	if tag == "" {
 		return nil
 	}
 	if len(tag) > 128 || !validTagRe.MatchString(tag) || zeroPaddedMonthTagRe.MatchString(tag) {
-		return fmt.Errorf("tag %q is not supported — try a tag like %q or \"latest\" in your config file", tag, prevMonthExample())
+		return errors.New(UnsupportedTagMessage())
 	}
 	return nil
 }
