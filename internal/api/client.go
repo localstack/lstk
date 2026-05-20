@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
@@ -309,6 +310,13 @@ func (c *PlatformClient) GetLicense(ctx context.Context, licReq *LicenseRequest)
 
 	switch statusCode {
 	case http.StatusBadRequest:
+		if strings.Contains(detail, "licensing.license.format") {
+			return nil, &LicenseError{
+				Status:  statusCode,
+				Message: "unsupported image tag — check the tag in your config file",
+				Detail:  detail,
+			}
+		}
 		return nil, &LicenseError{
 			Status:  statusCode,
 			Message: "invalid token format, missing license assignment, or missing subscription",

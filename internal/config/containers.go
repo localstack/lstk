@@ -134,15 +134,10 @@ func validateTag(tag string) error {
 	if tag == "" {
 		return nil
 	}
-	if len(tag) > 128 || !validTagRe.MatchString(tag) {
+	if len(tag) > 128 || !validTagRe.MatchString(tag) || zeroPaddedMonthTagRe.MatchString(tag) {
 		return fmt.Errorf("tag %q is not supported — try a tag like %q or \"latest\" in your config file", tag, prevMonthExample())
 	}
-	m := zeroPaddedMonthTagRe.FindStringSubmatch(tag)
-	if m == nil {
-		return nil
-	}
-	suggested := m[1] + m[2]
-	return fmt.Errorf("tag %q is not supported — try %q or \"latest\" in your config file", tag, suggested)
+	return nil
 }
 
 func (c *ContainerConfig) Validate() error {
