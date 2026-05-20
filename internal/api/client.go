@@ -13,7 +13,6 @@ import (
 
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 
-	"github.com/localstack/lstk/internal/config"
 	"github.com/localstack/lstk/internal/log"
 	"github.com/localstack/lstk/internal/version"
 )
@@ -100,10 +99,13 @@ func (r *LicenseResponse) PlanDisplayName() string {
 
 // LicenseError is returned when license validation fails.
 // Message is user-friendly; Detail contains the raw server response for debugging.
+// IsUnsupportedTag is set when the server rejects the image tag format, letting
+// callers that know the config context replace Message with a more specific suggestion.
 type LicenseError struct {
-	Status  int
-	Message string
-	Detail  string
+	Status         int
+	Message        string
+	Detail         string
+	IsUnsupportedTag bool
 }
 
 func (e *LicenseError) Error() string {
@@ -313,9 +315,10 @@ func (c *PlatformClient) GetLicense(ctx context.Context, licReq *LicenseRequest)
 	case http.StatusBadRequest:
 		if strings.Contains(detail, "licensing.license.format") {
 			return nil, &LicenseError{
-				Status:  statusCode,
-				Message: config.UnsupportedTagMessage(),
-				Detail:  detail,
+				Status:           statusCode,
+				Message:          "image tag not accepted by the license server",
+				Detail:           detail,
+				IsUnsupportedTag: true,
 			}
 		}
 		return nil, &LicenseError{

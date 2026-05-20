@@ -22,7 +22,9 @@ func TestGetLicense_BadRequest_UnsupportedTag(t *testing.T) {
 	_, err := client.GetLicense(context.Background(), &LicenseRequest{})
 
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "unsupported image tag")
+	var licErr *LicenseError
+	require.ErrorAs(t, err, &licErr)
+	assert.True(t, licErr.IsUnsupportedTag)
 }
 
 func TestGetLicense_BadRequest_InvalidToken(t *testing.T) {
