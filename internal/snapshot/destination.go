@@ -61,8 +61,11 @@ func ParseDestination(dest string, now time.Time) (Destination, error) {
 	} else {
 		lower := strings.ToLower(dest)
 		switch {
+		case strings.HasPrefix(lower, "pod://"):
+			podName := dest[len("pod://"):]
+			return Destination{}, fmt.Errorf("'%s' is not a valid reference. Aliases use a single colon. Did you mean:\npod:%s", dest, podName)
 		case strings.HasPrefix(lower, "pod:"):
-			podName := strings.TrimPrefix(dest[len("pod:"):], "//")
+			podName := dest[len("pod:"):]
 			if !validPodName.MatchString(podName) {
 				return Destination{}, fmt.Errorf("invalid pod name %q: use letters, digits, and hyphens only, starting with a letter or digit", podName)
 			}

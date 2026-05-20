@@ -200,10 +200,9 @@ func TestParseDestination(t *testing.T) {
 			wantPodName: "my-baseline",
 		},
 		{
-			// pod:// is also accepted
-			input:       "pod://my-baseline",
-			wantKind:    snapshot.KindPod,
-			wantPodName: "my-baseline",
+			name:    "pod:// rejected with did-you-mean hint",
+			input:   "pod://my-baseline",
+			wantErr: "not a valid reference. Aliases use a single colon. Did you mean:\npod:my-baseline",
 		},
 		{
 			input:       "pod:abc123",
