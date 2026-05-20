@@ -94,6 +94,9 @@ type ContainerConfig struct {
 	Volume string       `mapstructure:"volume"`
 	// Env is a list of named environment references defined in the top-level [env.*] config sections.
 	Env []string `mapstructure:"env"`
+	// DockerFlags is a raw docker-run-style flag string (e.g. "-e FOO=bar -v /tmp:/data").
+	// Supported flags: -e/--env, -v/--volume.
+	DockerFlags string `mapstructure:"docker_flags"`
 }
 
 // VolumeDir returns the host directory to mount into the container for persistence/caching.
