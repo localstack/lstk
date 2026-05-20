@@ -555,7 +555,7 @@ func validateLicense(ctx context.Context, sink output.Sink, opts StartOptions, c
 	licenseReq := &api.LicenseRequest{
 		Product: api.ProductInfo{
 			Name:    containerConfig.ProductName,
-			Version: version,
+			Version: config.NormalizeTag(version),
 		},
 		Credentials: api.CredentialsInfo{
 			Token: token,
@@ -570,8 +570,13 @@ func validateLicense(ctx context.Context, sink output.Sink, opts StartOptions, c
 	licenseResp, err := opts.PlatformClient.GetLicense(ctx, licenseReq)
 	if err != nil {
 		var licErr *api.LicenseError
-		if errors.As(err, &licErr) && licErr.Detail != "" {
-			opts.Logger.Error("license server response (HTTP %d): %s", licErr.Status, licErr.Detail)
+		if errors.As(err, &licErr) {
+			if licErr.Detail != "" {
+				opts.Logger.Error("license server response (HTTP %d): %s", licErr.Status, licErr.Detail)
+			}
+			if licErr.IsUnsupportedTag {
+				licErr.Message = config.UnsupportedTagMessage()
+			}
 		}
 		opts.Telemetry.EmitEmulatorLifecycleEvent(ctx, telemetry.LifecycleEvent{
 			EventType: telemetry.LifecycleStartError,
