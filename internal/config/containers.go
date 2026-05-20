@@ -46,6 +46,7 @@ func (e EmulatorType) ShortName() string {
 func (e EmulatorType) DisplayName() string {
 	return fmt.Sprintf("LocalStack %s Emulator", e.ShortName())
 }
+
 var emulatorHealthPaths = map[EmulatorType]string{
 	EmulatorAWS:       "/_localstack/health",
 	EmulatorSnowflake: "/_localstack/health",
@@ -89,7 +90,6 @@ func KnownImageReposForType(t EmulatorType) []string {
 	return repos
 }
 
-
 type ContainerConfig struct {
 	Type   EmulatorType `mapstructure:"type"`
 	Tag    string       `mapstructure:"tag"`
@@ -123,18 +123,25 @@ func UnsupportedTagMessage() string {
 }
 
 // zeroPaddedMonthTagRe matches calendar-versioned tags where the month is zero-padded
-// (e.g. "2026.04", "2026.04.1-amd64"), which the license API does not accept.
+// (e.g. "2026.04", "2026.04.1-amd64"). The license API does not accept zero-padded months,
+// so these tags are normalized before license validation rather than rejected.
 var zeroPaddedMonthTagRe = regexp.MustCompile(`^(\d{4}\.)0([1-9].*)$`)
 
 // validTagRe mirrors Docker's tag format rules: alphanumerics, dots, hyphens, underscores;
 // must not start with a dot or hyphen; max 128 characters.
 var validTagRe = regexp.MustCompile(`^[a-zA-Z0-9_][a-zA-Z0-9._-]*$`)
 
+// NormalizeTag strips a leading zero from the month in calendar-versioned tags so they
+// are accepted by the license API (e.g. "2026.04" → "2026.4"). Other tags pass through unchanged.
+func NormalizeTag(tag string) string {
+	return zeroPaddedMonthTagRe.ReplaceAllString(tag, "${1}${2}")
+}
+
 func validateTag(tag string) error {
 	if tag == "" {
 		return nil
 	}
-	if len(tag) > 128 || !validTagRe.MatchString(tag) || zeroPaddedMonthTagRe.MatchString(tag) {
+	if len(tag) > 128 || !validTagRe.MatchString(tag) {
 		return errors.New(UnsupportedTagMessage())
 	}
 	return nil

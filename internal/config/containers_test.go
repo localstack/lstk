@@ -50,11 +50,30 @@ func TestResolvedEnv_EmptyWhenNoEnvRefs(t *testing.T) {
 	assert.Empty(t, resolved)
 }
 
-func TestValidate_ZeroPaddedMonthTag_IsRejected(t *testing.T) {
+func TestValidate_ZeroPaddedMonthTag_IsAccepted(t *testing.T) {
 	for _, tag := range []string{"2026.04", "2026.04.1", "2026.04.0-amd64", "2026.01", "2026.09.2"} {
 		t.Run(tag, func(t *testing.T) {
 			c := &ContainerConfig{Type: EmulatorAWS, Port: "4566", Tag: tag}
-			assert.ErrorContains(t, c.Validate(), "unsupported")
+			assert.NoError(t, c.Validate())
+		})
+	}
+}
+
+func TestNormalizeTag(t *testing.T) {
+	for _, tc := range []struct {
+		input, want string
+	}{
+		{"2026.04", "2026.4"},
+		{"2026.01", "2026.1"},
+		{"2026.09.2", "2026.9.2"},
+		{"2026.04.1", "2026.4.1"},
+		{"2026.04.0-amd64", "2026.4.0-amd64"},
+		{"2026.10", "2026.10"},
+		{"latest", "latest"},
+		{"", ""},
+	} {
+		t.Run(tc.input, func(t *testing.T) {
+			assert.Equal(t, tc.want, NormalizeTag(tc.input))
 		})
 	}
 }
