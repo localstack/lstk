@@ -6,16 +6,35 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 )
 
 var (
-	// ErrRemoteNotSupported is returned for known remote schemes (s3://, oras://, cloud:).
+	// ErrRemoteNotSupported is returned for known remote schemes (s3://, oras://).
 	ErrRemoteNotSupported = errors.New("remote destinations are not yet supported — coming soon")
 	// ErrUnknownScheme is returned for unrecognized URL schemes.
 	ErrUnknownScheme = errors.New("unrecognized destination scheme")
+
+	validPodName = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9-]*$`)
 )
+
+// DestinationKind distinguishes local file paths from remote pod destinations.
+type DestinationKind int
+
+const (
+	KindLocal DestinationKind = iota
+	KindPod
+)
+
+// Destination is the parsed result of a user-supplied snapshot destination.
+// For KindLocal, Value is an absolute local file path with a .zip extension.
+// For KindPod, Value is the validated pod name (without the "pod:" prefix).
+type Destination struct {
+	Kind  DestinationKind
+	Value string
+}
 
 // displayPath shortens abs for human-readable output:
 // under cwd → ./rel, under home → ~/rel, otherwise unchanged.
@@ -33,11 +52,8 @@ func displayPath(abs, cwd, home string) string {
 	return abs
 }
 
-// ParseDestination resolves the user-supplied path to an absolute local path.
-// When dest is empty, a default name based on now (UTC) is used, e.g.
-// "snapshot-2026-05-11T21-04-32-a3f.zip", saved in the current working directory.
-// The returned path always has a .zip extension.
-func ParseDestination(dest string, now time.Time) (string, error) {
+// ParseDestination resolves a user-supplied destination to a local path (KindLocal) or validated pod name (KindPod).
+func ParseDestination(dest string, now time.Time) (Destination, error) {
 	if dest == "" {
 		b := make([]byte, 2)
 		_, _ = rand.Read(b)
@@ -45,48 +61,56 @@ func ParseDestination(dest string, now time.Time) (string, error) {
 	} else {
 		lower := strings.ToLower(dest)
 		switch {
+		case strings.HasPrefix(lower, "pod://"):
+			podName := dest[len("pod://"):]
+			return Destination{}, fmt.Errorf("'%s' is not a valid reference. Aliases use a single colon. Did you mean:\npod:%s", dest, podName)
+		case strings.HasPrefix(lower, "pod:"):
+			podName := dest[len("pod:"):]
+			if !validPodName.MatchString(podName) {
+				return Destination{}, fmt.Errorf("invalid pod name %q: use letters, digits, and hyphens only, starting with a letter or digit", podName)
+			}
+			return Destination{Kind: KindPod, Value: podName}, nil
 		case strings.HasPrefix(lower, "s3://"),
-			strings.HasPrefix(lower, "oras://"),
-			strings.HasPrefix(lower, "cloud:"):
-			return "", ErrRemoteNotSupported
+			strings.HasPrefix(lower, "oras://"):
+			return Destination{}, ErrRemoteNotSupported
 		case strings.Contains(lower, "://"):
 			scheme, _, _ := strings.Cut(dest, "://")
-			return "", fmt.Errorf("%w: %q", ErrUnknownScheme, scheme+"://")
+			return Destination{}, fmt.Errorf("%w: %q", ErrUnknownScheme, scheme+"://")
 		}
 	}
 
 	if dest == "~" || strings.HasPrefix(dest, "~/") || strings.HasPrefix(dest, `~\`) {
 		home, err := os.UserHomeDir()
 		if err != nil {
-			return "", fmt.Errorf("resolve home directory: %w", err)
+			return Destination{}, fmt.Errorf("resolve home directory: %w", err)
 		}
 		dest = filepath.Join(home, strings.TrimLeft(dest[1:], `/\`))
 	}
 
 	abs, err := filepath.Abs(dest)
 	if err != nil {
-		return "", fmt.Errorf("resolve path: %w", err)
+		return Destination{}, fmt.Errorf("resolve path: %w", err)
 	}
 
 	parent := filepath.Dir(abs)
 	parentInfo, err := os.Stat(parent)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return "", fmt.Errorf("parent directory %q does not exist — create it first", parent)
+			return Destination{}, fmt.Errorf("parent directory %q does not exist — create it first", parent)
 		}
-		return "", fmt.Errorf("check parent directory: %w", err)
+		return Destination{}, fmt.Errorf("check parent directory: %w", err)
 	}
 	if !parentInfo.IsDir() {
-		return "", fmt.Errorf("parent path %q is not a directory", parent)
+		return Destination{}, fmt.Errorf("parent path %q is not a directory", parent)
 	}
 
 	if info, err := os.Stat(abs); err == nil && info.IsDir() {
-		return "", fmt.Errorf("%q is a directory — specify a file path like ./my-snapshot", abs)
+		return Destination{}, fmt.Errorf("%q is a directory — specify a file path like ./my-snapshot", abs)
 	}
 
 	if !strings.EqualFold(filepath.Ext(abs), ".zip") {
 		abs += ".zip"
 	}
 
-	return abs, nil
+	return Destination{Kind: KindLocal, Value: abs}, nil
 }

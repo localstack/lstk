@@ -9,8 +9,20 @@ import (
 	"github.com/localstack/lstk/internal/snapshot"
 )
 
-func RunSnapshotSave(parentCtx context.Context, rt runtime.Runtime, containers []config.ContainerConfig, exporter snapshot.StateExporter, host, dest string) error {
+// SnapshotClient is satisfied by any type that can both export local state and
+// save a remote pod snapshot — aws.Client implements both today.
+type SnapshotClient interface {
+	snapshot.StateExporter
+	snapshot.PodSaver
+}
+
+func RunSnapshotSave(parentCtx context.Context, rt runtime.Runtime, containers []config.ContainerConfig, client SnapshotClient, host string, dest snapshot.Destination, authToken string) error {
 	return runWithTUI(parentCtx, withoutHeader(), func(ctx context.Context, sink output.Sink) error {
-		return snapshot.Save(ctx, rt, containers, exporter, host, dest, sink)
+		switch dest.Kind {
+		case snapshot.KindPod:
+			return snapshot.SavePod(ctx, rt, containers, client, host, dest.Value, authToken, sink)
+		default:
+			return snapshot.SaveLocal(ctx, rt, containers, client, host, dest.Value, sink)
+		}
 	})
 }

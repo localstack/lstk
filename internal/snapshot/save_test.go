@@ -65,7 +65,7 @@ func TestSave_Success(t *testing.T) {
 	exporter := mockExporterReturning(t, []byte("ZIP_DATA"))
 	sink, getEvents := captureEvents(t)
 
-	err := snapshot.Save(context.Background(), healthyRunningMock(t), awsContainers, exporter, "", dest, sink)
+	err := snapshot.SaveLocal(context.Background(), healthyRunningMock(t), awsContainers, exporter, "", dest, sink)
 	require.NoError(t, err)
 
 	data, err := os.ReadFile(filepath.Join(dir, "snap"))
@@ -110,7 +110,7 @@ func TestSave_EmulatorNotRunning(t *testing.T) {
 	dest := filepath.Join(dir, "snap")
 	sink, getEvents := captureEvents(t)
 
-	err := snapshot.Save(context.Background(), mockRT, awsContainers, exporter, "", dest, sink)
+	err := snapshot.SaveLocal(context.Background(), mockRT, awsContainers, exporter, "", dest, sink)
 	require.Error(t, err)
 	assert.True(t, output.IsSilent(err))
 
@@ -141,7 +141,7 @@ func TestSave_UnhealthyRuntime(t *testing.T) {
 	dest := filepath.Join(dir, "snap")
 	sink := output.NewPlainSink(io.Discard)
 
-	err := snapshot.Save(context.Background(), mockRT, awsContainers, exporter, "", dest, sink)
+	err := snapshot.SaveLocal(context.Background(), mockRT, awsContainers, exporter, "", dest, sink)
 	require.Error(t, err)
 	assert.True(t, output.IsSilent(err))
 }
@@ -153,7 +153,7 @@ func TestSave_ExporterError(t *testing.T) {
 	exporter := mockExporterReturningError(t, fmt.Errorf("connection refused"))
 	sink := output.NewPlainSink(io.Discard)
 
-	err := snapshot.Save(context.Background(), healthyRunningMock(t), awsContainers, exporter, "", dest, sink)
+	err := snapshot.SaveLocal(context.Background(), healthyRunningMock(t), awsContainers, exporter, "", dest, sink)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "connection refused")
 
@@ -168,7 +168,7 @@ func TestSave_DestinationDirNotExist(t *testing.T) {
 	exporter := NewMockStateExporter(ctrl)
 	sink := output.NewPlainSink(io.Discard)
 
-	err := snapshot.Save(context.Background(), healthyRunningMock(t), awsContainers, exporter, "", dest, sink)
+	err := snapshot.SaveLocal(context.Background(), healthyRunningMock(t), awsContainers, exporter, "", dest, sink)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "save to")
 }
@@ -183,7 +183,7 @@ func TestSave_OverwritesExistingFile(t *testing.T) {
 	exporter := mockExporterReturning(t, []byte("NEW"))
 	sink := output.NewPlainSink(io.Discard)
 
-	err := snapshot.Save(context.Background(), healthyRunningMock(t), awsContainers, exporter, "", dest, sink)
+	err := snapshot.SaveLocal(context.Background(), healthyRunningMock(t), awsContainers, exporter, "", dest, sink)
 	require.NoError(t, err)
 
 	data, err := os.ReadFile(path)
@@ -207,6 +207,107 @@ func TestSave_ContextCancelled(t *testing.T) {
 
 	sink := output.NewPlainSink(io.Discard)
 
-	err := snapshot.Save(ctx, mockRT, awsContainers, exporter, "", dest, sink)
+	err := snapshot.SaveLocal(ctx, mockRT, awsContainers, exporter, "", dest, sink)
 	require.Error(t, err)
 }
+
+func TestSavePod_Success(t *testing.T) {
+	t.Parallel()
+	ctrl := gomock.NewController(t)
+	saver := NewMockPodSaver(ctrl)
+	saver.EXPECT().SavePodSnapshot(gomock.Any(), gomock.Any(), "my-baseline", "test-token").Return(
+		snapshot.PodSaveResult{Version: 2, Services: []string{"dynamodb", "s3"}, Size: 1048576},
+		nil,
+	)
+
+	sink, getEvents := captureEvents(t)
+	err := snapshot.SavePod(context.Background(), healthyRunningMock(t), awsContainers, saver, "", "my-baseline", "test-token", sink)
+	require.NoError(t, err)
+
+	events := getEvents()
+	var spinnerStarted, spinnerStopped bool
+	var saved *output.PodSnapshotSavedEvent
+	for _, e := range events {
+		switch ev := e.(type) {
+		case output.SpinnerEvent:
+			if ev.Active {
+				spinnerStarted = true
+			} else {
+				spinnerStopped = true
+			}
+		case output.PodSnapshotSavedEvent:
+			saved = &ev
+		}
+	}
+	assert.True(t, spinnerStarted, "spinner should have started")
+	assert.True(t, spinnerStopped, "spinner should have stopped")
+	require.NotNil(t, saved, "PodSnapshotSavedEvent should have been emitted")
+	assert.Equal(t, "my-baseline", saved.PodName)
+	assert.Equal(t, 2, saved.Version)
+	assert.Equal(t, []string{"dynamodb", "s3"}, saved.Services)
+	assert.Equal(t, int64(1048576), saved.Size)
+}
+
+func TestSavePod_NoAuthToken(t *testing.T) {
+	t.Parallel()
+	ctrl := gomock.NewController(t)
+	saver := NewMockPodSaver(ctrl)
+
+	sink := output.NewPlainSink(io.Discard)
+	err := snapshot.SavePod(context.Background(), runtime.NewMockRuntime(ctrl), awsContainers, saver, "", "my-baseline", "", sink)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "authentication")
+}
+
+func TestSavePod_EmulatorNotRunning(t *testing.T) {
+	t.Parallel()
+	ctrl := gomock.NewController(t)
+	mockRT := runtime.NewMockRuntime(ctrl)
+	mockRT.EXPECT().IsHealthy(gomock.Any()).Return(nil)
+	mockRT.EXPECT().IsRunning(gomock.Any(), "localstack-aws").Return(false, nil)
+	mockRT.EXPECT().FindRunningByImage(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil)
+
+	saver := NewMockPodSaver(ctrl)
+	sink, getEvents := captureEvents(t)
+
+	err := snapshot.SavePod(context.Background(), mockRT, awsContainers, saver, "", "my-baseline", "test-token", sink)
+	require.Error(t, err)
+	assert.True(t, output.IsSilent(err))
+
+	var gotErrorEvent bool
+	for _, e := range getEvents() {
+		if ev, ok := e.(output.ErrorEvent); ok {
+			gotErrorEvent = true
+			assert.Contains(t, ev.Title, "not running")
+		}
+	}
+	assert.True(t, gotErrorEvent, "ErrorEvent should have been emitted")
+}
+
+func TestSavePod_UnhealthyRuntime(t *testing.T) {
+	t.Parallel()
+	ctrl := gomock.NewController(t)
+	mockRT := runtime.NewMockRuntime(ctrl)
+	mockRT.EXPECT().IsHealthy(gomock.Any()).Return(fmt.Errorf("docker unavailable"))
+	mockRT.EXPECT().EmitUnhealthyError(gomock.Any(), gomock.Any())
+
+	saver := NewMockPodSaver(ctrl)
+	sink, _ := captureEvents(t)
+
+	err := snapshot.SavePod(context.Background(), mockRT, awsContainers, saver, "", "my-baseline", "test-token", sink)
+	require.Error(t, err)
+	assert.True(t, output.IsSilent(err))
+}
+
+func TestSavePod_SaverError(t *testing.T) {
+	t.Parallel()
+	ctrl := gomock.NewController(t)
+	saver := NewMockPodSaver(ctrl)
+	saver.EXPECT().SavePodSnapshot(gomock.Any(), gomock.Any(), "my-baseline", "test-token").Return(snapshot.PodSaveResult{}, fmt.Errorf("platform unreachable"))
+
+	sink, _ := captureEvents(t)
+	err := snapshot.SavePod(context.Background(), healthyRunningMock(t), awsContainers, saver, "", "my-baseline", "test-token", sink)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "platform unreachable")
+}
+

@@ -19,7 +19,19 @@ type StateExporter interface {
 	ExportState(ctx context.Context, host string, dst io.Writer) error
 }
 
-func Save(ctx context.Context, rt runtime.Runtime, containers []config.ContainerConfig, exporter StateExporter, host, dest string, sink output.Sink) (retErr error) {
+// PodSaveResult holds the metadata returned by the platform after a successful pod save.
+type PodSaveResult struct {
+	Version  int
+	Services []string
+	Size     int64
+}
+
+// PodSaver triggers a remote pod snapshot save on the running LocalStack instance.
+type PodSaver interface {
+	SavePodSnapshot(ctx context.Context, host, podName, authToken string) (PodSaveResult, error)
+}
+
+func save(ctx context.Context, rt runtime.Runtime, containers []config.ContainerConfig, sink output.Sink, spinnerText string, onSuccess func(), do func() error) (retErr error) {
 	if err := rt.IsHealthy(ctx); err != nil {
 		rt.EmitUnhealthyError(sink, err)
 		return output.NewSilentError(fmt.Errorf("runtime not healthy: %w", err))
@@ -40,26 +52,59 @@ func Save(ctx context.Context, rt runtime.Runtime, containers []config.Container
 		return output.NewSilentError(fmt.Errorf("LocalStack is not running"))
 	}
 
-	sink.Emit(output.SpinnerStart("Saving snapshot..."))
+	sink.Emit(output.SpinnerStart(spinnerText))
 	defer func() {
 		sink.Emit(output.SpinnerStop())
 		if retErr == nil {
-			cwd, _ := os.Getwd()
-			home, _ := os.UserHomeDir()
-			sink.Emit(output.MessageEvent{Severity: output.SeveritySuccess, Text: fmt.Sprintf("Snapshot saved to %s", displayPath(dest, cwd, home))})
+			onSuccess()
 		}
 	}()
 
-	w, err := os.Create(dest)
-	if err != nil {
-		return fmt.Errorf("save to %s: %w", dest, err)
-	}
+	return do()
+}
 
-	if err := exporter.ExportState(ctx, host, w); err != nil {
-		_ = w.Close()
-		_ = os.Remove(dest)
-		return fmt.Errorf("export state from LocalStack: %w", err)
-	}
+func SaveLocal(ctx context.Context, rt runtime.Runtime, containers []config.ContainerConfig, exporter StateExporter, host, dest string, sink output.Sink) error {
+	cwd, _ := os.Getwd()
+	home, _ := os.UserHomeDir()
+	return save(ctx, rt, containers, sink,
+		"Saving snapshot...",
+		func() {
+			sink.Emit(output.MessageEvent{Severity: output.SeveritySuccess, Text: fmt.Sprintf("Snapshot saved to %s", displayPath(dest, cwd, home))})
+		},
+		func() error {
+			w, err := os.Create(dest)
+			if err != nil {
+				return fmt.Errorf("save to %s: %w", dest, err)
+			}
+			if err := exporter.ExportState(ctx, host, w); err != nil {
+				_ = w.Close()
+				_ = os.Remove(dest)
+				return fmt.Errorf("export state from LocalStack: %w", err)
+			}
+			return w.Close()
+		},
+	)
+}
 
-	return w.Close()
+func SavePod(ctx context.Context, rt runtime.Runtime, containers []config.ContainerConfig, saver PodSaver, host, podName, authToken string, sink output.Sink) error {
+	if authToken == "" {
+		return fmt.Errorf("pod snapshots require authentication — set LOCALSTACK_AUTH_TOKEN or run %q", "lstk login")
+	}
+	var result PodSaveResult
+	return save(ctx, rt, containers, sink,
+		fmt.Sprintf("Saving snapshot to pod %q...", podName),
+		func() {
+			sink.Emit(output.PodSnapshotSavedEvent{
+				PodName:  podName,
+				Version:  result.Version,
+				Services: result.Services,
+				Size:     result.Size,
+			})
+		},
+		func() error {
+			var err error
+			result, err = saver.SavePodSnapshot(ctx, host, podName, authToken)
+			return err
+		},
+	)
 }

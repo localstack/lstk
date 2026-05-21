@@ -2,7 +2,9 @@ package aws
 
 import (
 	"bufio"
+	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -10,6 +12,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/localstack/lstk/internal/snapshot"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 
 	"github.com/localstack/lstk/internal/emulator"
@@ -173,4 +176,64 @@ func (c *Client) ExportState(ctx context.Context, host string, dst io.Writer) er
 		return fmt.Errorf("stream state: %w", err)
 	}
 	return nil
+}
+
+func (c *Client) SavePodSnapshot(ctx context.Context, host, podName, authToken string) (snapshot.PodSaveResult, error) {
+	url := fmt.Sprintf("http://%s/_localstack/pods/%s", host, podName)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader([]byte("{}")))
+	if err != nil {
+		return snapshot.PodSaveResult{}, fmt.Errorf("create request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Basic "+base64.StdEncoding.EncodeToString([]byte(":"+authToken)))
+
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return snapshot.PodSaveResult{}, fmt.Errorf("connect to LocalStack: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return snapshot.PodSaveResult{}, fmt.Errorf("pod save failed (HTTP %d): %s", resp.StatusCode, strings.TrimSpace(string(body)))
+	}
+
+	// The response is a newline-delimited JSON stream. We scan until we find a
+	// completion event and surface any server-side error as a Go error.
+	scanner := bufio.NewScanner(resp.Body)
+	buf := make([]byte, 1024*1024)
+	scanner.Buffer(buf, 1024*1024)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" {
+			continue
+		}
+		var event struct {
+			Event   string `json:"event"`
+			Status  string `json:"status"`
+			Message string `json:"message"`
+			Info    struct {
+				Version  int      `json:"version"`
+				Services []string `json:"services"`
+				Size     int64    `json:"size"`
+			} `json:"info"`
+		}
+		if err := json.Unmarshal([]byte(line), &event); err != nil {
+			continue
+		}
+		if event.Event == "completion" {
+			if event.Status != "ok" {
+				return snapshot.PodSaveResult{}, fmt.Errorf("pod save failed: %s", event.Message)
+			}
+			return snapshot.PodSaveResult{
+				Version:  event.Info.Version,
+				Services: event.Info.Services,
+				Size:     event.Info.Size,
+			}, nil
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		return snapshot.PodSaveResult{}, fmt.Errorf("reading response: %w", err)
+	}
+	return snapshot.PodSaveResult{}, fmt.Errorf("pod save: server closed stream without a completion event")
 }
