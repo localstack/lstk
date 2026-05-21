@@ -211,3 +211,83 @@ func TestExportState(t *testing.T) {
 	})
 }
 
+func TestResetState(t *testing.T) {
+	t.Parallel()
+
+	t.Run("posts to state reset endpoint on 200", func(t *testing.T) {
+		t.Parallel()
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			assert.Equal(t, "/_localstack/state/reset", r.URL.Path)
+			assert.Equal(t, http.MethodPost, r.Method)
+			w.WriteHeader(http.StatusOK)
+		}))
+		defer srv.Close()
+
+		c := NewClient()
+		err := c.ResetState(context.Background(), srv.Listener.Addr().String())
+		require.NoError(t, err)
+	})
+
+	t.Run("returns error on 500", func(t *testing.T) {
+		t.Parallel()
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusInternalServerError)
+		}))
+		defer srv.Close()
+
+		c := NewClient()
+		err := c.ResetState(context.Background(), srv.Listener.Addr().String())
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "500")
+	})
+
+	t.Run("returns error on 404", func(t *testing.T) {
+		t.Parallel()
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusNotFound)
+		}))
+		defer srv.Close()
+
+		c := NewClient()
+		err := c.ResetState(context.Background(), srv.Listener.Addr().String())
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "404")
+	})
+
+	t.Run("returns error on connection refused", func(t *testing.T) {
+		t.Parallel()
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {}))
+		addr := srv.Listener.Addr().String()
+		srv.Close()
+
+		c := NewClient()
+		err := c.ResetState(context.Background(), addr)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "connect to LocalStack")
+	})
+
+	t.Run("returns error on context cancellation", func(t *testing.T) {
+		t.Parallel()
+		started := make(chan struct{})
+		srv := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+			close(started)
+			<-r.Context().Done()
+		}))
+		defer srv.Close()
+
+		ctx, cancel := context.WithCancel(context.Background())
+		c := NewClient()
+
+		errCh := make(chan error, 1)
+		go func() {
+			errCh <- c.ResetState(ctx, srv.Listener.Addr().String())
+		}()
+
+		<-started
+		cancel()
+
+		err := <-errCh
+		require.Error(t, err)
+	})
+}
+
