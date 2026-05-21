@@ -578,7 +578,7 @@ func validateLicense(ctx context.Context, sink output.Sink, opts StartOptions, c
 				opts.Logger.Error("license server response (HTTP %d): %s", licErr.Status, licErr.Detail)
 			}
 			if licErr.IsUnsupportedTag {
-				licErr.Message = config.UnsupportedTagMessage()
+				err = errors.New(config.UnsupportedTagMessage())
 			}
 		}
 		opts.Telemetry.EmitEmulatorLifecycleEvent(ctx, telemetry.LifecycleEvent{
