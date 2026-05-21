@@ -187,6 +187,9 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			a.spinner = a.spinner.Start(msg.Text, msg.MinDuration)
 			return a, a.spinner.Tick()
 		}
+		if a.pullProgress.Visible() {
+			a.pullProgress = a.pullProgress.Hide()
+		}
 		var cmd tea.Cmd
 		a.spinner, cmd = a.spinner.Stop()
 		if !a.spinner.PendingStop() {
@@ -209,7 +212,8 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			a.headerLoading = false
 		}
 		a.errorDisplay = a.errorDisplay.Show(msg)
-		a.spinner, _ = a.spinner.Stop()
+		a.spinner = a.spinner.ForceStop()
+		a.flushBufferedLines()
 		return a, nil
 	case output.MessageEvent:
 		msgCopy := msg
@@ -267,7 +271,7 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, tea.Quit
 	case runErrMsg:
 		a.err = msg.err
-		a.spinner, _ = a.spinner.Stop()
+		a.spinner = a.spinner.ForceStop()
 		a.flushBufferedLines()
 		if !output.IsSilent(msg.err) {
 			a.errorDisplay = a.errorDisplay.Show(output.ErrorEvent{Title: msg.err.Error()})
