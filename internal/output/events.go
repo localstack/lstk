@@ -84,6 +84,11 @@ type PodSnapshotSavedEvent struct {
 	Size     int64
 }
 
+type SnapshotLoadedEvent struct {
+	Source   string   // display source shown to the user (e.g. "./snap.zip" or "pod:my-baseline")
+	Services []string // services restored
+}
+
 type AuthCompleteEvent struct{}
 
 // Event is a sealed marker — only event types in this package implement it,
@@ -98,7 +103,8 @@ func (AuthCompleteEvent) sealedEvent()     {}
 func (InstanceInfoEvent) sealedEvent()     {}
 func (TableEvent) sealedEvent()            {}
 func (ResourceSummaryEvent) sealedEvent()  {}
-func (PodSnapshotSavedEvent) sealedEvent() {}
+func (PodSnapshotSavedEvent) sealedEvent()  {}
+func (SnapshotLoadedEvent) sealedEvent()    {}
 func (ContainerStatusEvent) sealedEvent()  {}
 func (ProgressEvent) sealedEvent()         {}
 func (UserInputRequestEvent) sealedEvent() {}
