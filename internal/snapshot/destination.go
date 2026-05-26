@@ -11,6 +11,9 @@ import (
 	"time"
 )
 
+// ErrHomeNotSet is returned when a destination needs "~" expansion but no home directory was provided.
+var ErrHomeNotSet = errors.New("home directory is not set")
+
 var (
 	// ErrRemoteNotSupported is returned for known remote schemes (s3://, oras://).
 	ErrRemoteNotSupported = errors.New("remote destinations are not yet supported — coming soon")
@@ -53,7 +56,8 @@ func displayPath(abs, cwd, home string) string {
 }
 
 // ParseDestination resolves a user-supplied destination to a local path (KindLocal) or validated pod name (KindPod).
-func ParseDestination(dest string, now time.Time) (Destination, error) {
+// home is used to expand a leading "~" or "~/"; pass "" to disable tilde expansion.
+func ParseDestination(dest, home string, now time.Time) (Destination, error) {
 	if dest == "" {
 		b := make([]byte, 2)
 		_, _ = rand.Read(b)
@@ -80,9 +84,8 @@ func ParseDestination(dest string, now time.Time) (Destination, error) {
 	}
 
 	if dest == "~" || strings.HasPrefix(dest, "~/") || strings.HasPrefix(dest, `~\`) {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return Destination{}, fmt.Errorf("resolve home directory: %w", err)
+		if home == "" {
+			return Destination{}, fmt.Errorf("cannot expand %q: %w", dest, ErrHomeNotSet)
 		}
 		dest = filepath.Join(home, strings.TrimLeft(dest[1:], `/\`))
 	}
