@@ -86,8 +86,9 @@ func TestParseDestination(t *testing.T) {
 	t.Parallel()
 	wd, err := os.Getwd()
 	require.NoError(t, err)
-	home, err := os.UserHomeDir()
-	require.NoError(t, err)
+	// Use a temp dir as home so the test doesn't depend on the real $HOME
+	// (e.g. under Nix's sandboxed build, $HOME is a non-existent placeholder).
+	home := t.TempDir()
 
 	now := time.Date(2026, 5, 11, 21, 4, 32, 0, time.UTC)
 
@@ -274,7 +275,7 @@ func TestParseDestination(t *testing.T) {
 		}
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-			got, err := snapshot.ParseDestination(tc.input, now)
+			got, err := snapshot.ParseDestination(tc.input, home, now)
 			if tc.wantErr != "" {
 				require.Error(t, err)
 				assert.Contains(t, err.Error(), tc.wantErr)
@@ -297,6 +298,27 @@ func TestParseDestination(t *testing.T) {
 			} else {
 				assert.Equal(t, tc.wantPath, got.Value)
 			}
+		})
+	}
+}
+
+// TestParseDestinationTildeWithoutHome covers the Nix sandbox scenario where
+// the build runs without a usable home directory. Tilde expansion must fail
+// with a clear error instead of silently using a non-existent path.
+func TestParseDestinationTildeWithoutHome(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 5, 11, 21, 4, 32, 0, time.UTC)
+
+	tests := []struct{ name, input string }{
+		{"bare tilde", "~"},
+		{"tilde slash", "~/snap"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			_, err := snapshot.ParseDestination(tc.input, "", now)
+			require.ErrorIs(t, err, snapshot.ErrHomeNotSet)
 		})
 	}
 }

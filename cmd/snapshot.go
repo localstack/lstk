@@ -48,7 +48,8 @@ To save to a remote pod on the LocalStack platform, use the pod: prefix:
 				destArg = args[0]
 			}
 
-			dest, err := snapshot.ParseDestination(destArg, time.Now())
+			home, _ := os.UserHomeDir()
+			dest, err := snapshot.ParseDestination(destArg, home, time.Now())
 			if err != nil {
 				return err
 			}
