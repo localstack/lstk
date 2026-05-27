@@ -114,6 +114,60 @@ func TestFirstRunShowsEmulatorSelectionPrompt(t *testing.T) {
 	<-outputCh
 }
 
+func TestFirstRunCanSelectAzureEmulator(t *testing.T) {
+	t.Parallel()
+	if runtime.GOOS == "windows" {
+		t.Skip("PTY not supported on Windows")
+	}
+
+	tmpHome := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(tmpHome, ".config"), 0755))
+	e := env.Environ(testEnvWithHome(tmpHome, tmpHome)).
+		With(env.DisableEvents, "1")
+
+	configPath, _, err := runLstk(t, testContext(t), "", e, "config", "path")
+	require.NoError(t, err)
+	require.NoFileExists(t, configPath)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, binaryPath(), "start")
+	cmd.Env = e
+
+	ptmx, err := pty.Start(cmd)
+	require.NoError(t, err, "failed to start lstk in PTY")
+	defer func() { _ = ptmx.Close() }()
+
+	out := &syncBuffer{}
+	outputCh := make(chan struct{})
+	go func() {
+		_, _ = io.Copy(out, ptmx)
+		close(outputCh)
+	}()
+
+	require.Eventually(t, func() bool {
+		return bytes.Contains(out.Bytes(), []byte("Which emulator would you like to use?"))
+	}, 10*time.Second, 100*time.Millisecond, "emulator selection prompt should appear on first run")
+
+	assert.Contains(t, out.String(), "Azure", "Azure should be offered as a selectable emulator")
+
+	// Press the Azure selection key ('z') instead of the default-highlighted AWS.
+	_, err = ptmx.Write([]byte("z"))
+	require.NoError(t, err)
+
+	require.Eventually(t, func() bool {
+		return bytes.Contains(out.Bytes(), []byte("Azure emulator selected."))
+	}, 10*time.Second, 100*time.Millisecond, "Azure selection confirmation should appear")
+
+	configData, err := os.ReadFile(configPath)
+	require.NoError(t, err)
+	assert.Contains(t, string(configData), `type = "azure"`)
+
+	cancel()
+	<-outputCh
+}
+
 func TestFirstRunNonInteractiveEmitsDefaultEmulatorNote(t *testing.T) {
 	t.Parallel()
 	tmpHome := t.TempDir()

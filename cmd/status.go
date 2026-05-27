@@ -8,6 +8,7 @@ import (
 	"github.com/localstack/lstk/internal/container"
 	"github.com/localstack/lstk/internal/emulator"
 	"github.com/localstack/lstk/internal/emulator/aws"
+	"github.com/localstack/lstk/internal/emulator/azure"
 	"github.com/localstack/lstk/internal/emulator/snowflake"
 	"github.com/localstack/lstk/internal/env"
 	"github.com/localstack/lstk/internal/output"
@@ -35,6 +36,7 @@ func newStatusCmd(cfg *env.Env) *cobra.Command {
 			clients := map[config.EmulatorType]emulator.Client{
 				config.EmulatorAWS:       aws.NewClient(),
 				config.EmulatorSnowflake: snowflake.NewClient(),
+				config.EmulatorAzure:     azure.NewClient(),
 			}
 
 			if isInteractiveMode(cfg) {

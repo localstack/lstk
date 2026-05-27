@@ -116,6 +116,38 @@ func TestValidate_ValidPort(t *testing.T) {
 	assert.NoError(t, c.Validate())
 }
 
+func TestAzureEmulatorResolvesStartMetadata(t *testing.T) {
+	c := &ContainerConfig{Type: EmulatorAzure, Port: "4566"}
+
+	image, err := c.Image()
+	require.NoError(t, err)
+	assert.Equal(t, "localstack/localstack-azure:latest", image)
+
+	productName, err := c.ProductName()
+	require.NoError(t, err)
+	assert.Equal(t, "localstack-azure", productName)
+
+	healthPath, err := c.HealthPath()
+	require.NoError(t, err)
+	assert.Equal(t, "/_localstack/health", healthPath)
+
+	containerPort, err := c.ContainerPort()
+	require.NoError(t, err)
+	assert.Equal(t, "4566/tcp", containerPort)
+}
+
+func TestEmulatorTypeForImage_Azure(t *testing.T) {
+	assert.Equal(t, EmulatorAzure, EmulatorTypeForImage("localstack/localstack-azure:latest"))
+}
+
+func TestSelfValidatesLicense(t *testing.T) {
+	// Snowflake and Azure containers activate their own license against the
+	// licensing server, so lstk skips its pre-flight platform license check.
+	assert.True(t, EmulatorSnowflake.SelfValidatesLicense())
+	assert.True(t, EmulatorAzure.SelfValidatesLicense())
+	assert.False(t, EmulatorAWS.SelfValidatesLicense())
+}
+
 func TestValidate_MinMaxPorts(t *testing.T) {
 	c := &ContainerConfig{Type: EmulatorAWS, Port: "1"}
 	assert.NoError(t, c.Validate())

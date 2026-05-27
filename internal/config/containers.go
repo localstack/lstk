@@ -29,10 +29,21 @@ var emulatorDisplayNames = map[EmulatorType]string{
 }
 
 // SelectableEmulatorTypes lists the emulator types available for interactive selection,
-// in the order they should be presented. The selection key for each type is its first character.
-var SelectableEmulatorTypes = []EmulatorType{EmulatorAWS, EmulatorSnowflake}
+// in the order they should be presented.
+var SelectableEmulatorTypes = []EmulatorType{EmulatorAWS, EmulatorSnowflake, EmulatorAzure}
+
+// emulatorSelectionKeys assigns each selectable type a unique single-character key.
+// "aws" and "azure" both start with 'a', so keys can't simply be the first character.
+var emulatorSelectionKeys = map[EmulatorType]string{
+	EmulatorAWS:       "a",
+	EmulatorSnowflake: "s",
+	EmulatorAzure:     "z",
+}
 
 func (e EmulatorType) SelectionKey() string {
+	if key, ok := emulatorSelectionKeys[e]; ok {
+		return key
+	}
 	return string(e)[0:1]
 }
 
@@ -47,9 +58,18 @@ func (e EmulatorType) DisplayName() string {
 	return fmt.Sprintf("LocalStack %s Emulator", e.ShortName())
 }
 
+// SelfValidatesLicense reports whether the emulator container performs its own
+// license activation on startup. For these emulators lstk skips its pre-flight
+// platform license check (the LocalStack platform API has no catalog entry for
+// them), and lets the container validate the token against the licensing server.
+func (e EmulatorType) SelfValidatesLicense() bool {
+	return e == EmulatorSnowflake || e == EmulatorAzure
+}
+
 var emulatorHealthPaths = map[EmulatorType]string{
 	EmulatorAWS:       "/_localstack/health",
 	EmulatorSnowflake: "/_localstack/health",
+	EmulatorAzure:     "/_localstack/health",
 }
 
 var knownImages = []struct {
@@ -60,6 +80,7 @@ var knownImages = []struct {
 	{EmulatorAWS, "localstack-pro", true},
 	{EmulatorAWS, "localstack", false},
 	{EmulatorSnowflake, "snowflake", true},
+	{EmulatorAzure, "localstack-azure", true},
 }
 
 func EmulatorTypeForImage(image string) EmulatorType {
@@ -211,7 +232,7 @@ func (c *ContainerConfig) HealthPath() (string, error) {
 
 func (c *ContainerConfig) ContainerPort() (string, error) {
 	switch c.Type {
-	case EmulatorAWS, EmulatorSnowflake:
+	case EmulatorAWS, EmulatorSnowflake, EmulatorAzure:
 		return DefaultAWSPort + "/tcp", nil
 	default:
 		return "", fmt.Errorf("%s emulator not supported yet by lstk", c.Type)

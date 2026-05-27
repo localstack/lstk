@@ -669,3 +669,58 @@ func TestStartCommandSucceedsForSnowflake(t *testing.T) {
 	assert.Contains(t, stdout, "> Tip:",
 		"snowflake start should print a tip line like AWS does")
 }
+
+const azureContainerName = "localstack-azure"
+
+func cleanupAzure() {
+	ctx := context.Background()
+	_, _ = dockerClient.ContainerRemove(ctx, azureContainerName, client.ContainerRemoveOptions{Force: true})
+}
+
+func writeAzureConfig(t *testing.T, hostPort string) string {
+	t.Helper()
+	content := fmt.Sprintf(`
+[[containers]]
+type = "azure"
+tag  = "latest"
+port = %q
+`, hostPort)
+	configFile := filepath.Join(t.TempDir(), "config.toml")
+	require.NoError(t, os.WriteFile(configFile, []byte(content), 0644))
+	return configFile
+}
+
+func TestStartCommandSucceedsForAzure(t *testing.T) {
+	requireDocker(t)
+	_ = env.Require(t, env.AuthToken)
+
+	cleanup()
+	cleanupAzure()
+	t.Cleanup(cleanup)
+	t.Cleanup(cleanupAzure)
+
+	mockServer := createMockLicenseServer(true)
+	defer mockServer.Close()
+
+	const hostPort = "4566"
+	configFile := writeAzureConfig(t, hostPort)
+
+	ctx := testContext(t)
+	stdout, stderr, err := runLstk(t, ctx, "", env.With(env.APIEndpoint, mockServer.URL), "--config", configFile, "start")
+	require.NoError(t, err, "lstk start failed: %s", stderr)
+	requireExitCode(t, 0, err)
+
+	inspect, err := dockerClient.ContainerInspect(ctx, azureContainerName, client.ContainerInspectOptions{})
+	require.NoError(t, err, "failed to inspect azure container")
+	require.True(t, inspect.Container.State.Running, "azure container should be running")
+	assert.Contains(t, inspect.Container.Config.Image, "localstack/localstack-azure",
+		"expected localstack/localstack-azure image, got %s", inspect.Container.Config.Image)
+
+	resp, err := http.Get(fmt.Sprintf("http://localhost:%s/_localstack/health", hostPort))
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = resp.Body.Close() })
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+
+	assert.Contains(t, stdout, "> Tip:",
+		"azure start should print a tip line like AWS does")
+}
