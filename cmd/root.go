@@ -29,6 +29,11 @@ import (
 	"github.com/spf13/pflag"
 )
 
+// canonicalCommandAnnotation, when set on a cobra.Command, overrides the
+// command path reported to telemetry and tracing. Used so root-level aliases
+// emit the same name as their canonical subcommand.
+const canonicalCommandAnnotation = "lstk.canonical"
+
 func NewRootCmd(cfg *env.Env, tel *telemetry.Client, logger log.Logger) *cobra.Command {
 	var firstRun bool
 	root := &cobra.Command{
@@ -80,6 +85,8 @@ func NewRootCmd(cfg *env.Env, tel *telemetry.Client, logger log.Logger) *cobra.C
 		newAWSCmd(cfg),
 		newSnapshotCmd(cfg, tel, logger),
 		newResetCmd(cfg),
+		newSaveCmd(cfg),
+		newLoadCmd(cfg, tel, logger),
 	)
 
 	return root
@@ -225,6 +232,9 @@ func instrumentCommands(cmd *cobra.Command, tel *telemetry.Client) {
 			if c == c.Root() {
 				commandName = "start"
 			}
+			if canonical, ok := c.Annotations[canonicalCommandAnnotation]; ok {
+				commandName = canonical
+			}
 			tel.EmitCommand(c.Context(), commandName, flags, time.Since(startTime).Milliseconds(), exitCode, errorMsg)
 
 			return runErr
@@ -242,6 +252,9 @@ func wrapCommandsWithTracing(cmd *cobra.Command) {
 	if cmd.RunE != nil {
 		original := cmd.RunE
 		spanName := strings.ReplaceAll(cmd.CommandPath(), " ", ".")
+		if canonical, ok := cmd.Annotations[canonicalCommandAnnotation]; ok {
+			spanName = strings.ReplaceAll(cmd.Root().Name()+" "+canonical, " ", ".")
+		}
 		cmd.RunE = func(c *cobra.Command, args []string) error {
 			ctx, span := otel.Tracer("github.com/localstack/lstk").Start(c.Context(), spanName)
 			defer span.End()
