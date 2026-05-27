@@ -4,6 +4,7 @@ package snapshot
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -19,6 +20,8 @@ const (
 	MergeStrategyOverwrite     = "overwrite"
 	MergeStrategyService       = "service-merge"
 )
+
+var ErrIncompatibleSnapshot = errors.New("snapshot is incompatible with the running LocalStack version")
 
 func ValidateMergeStrategy(strategy string) error {
 	switch strategy {
@@ -86,7 +89,15 @@ func load(ctx context.Context, rt runtime.Runtime, containers []config.Container
 		}
 	}()
 
-	return do()
+	err = do()
+	if errors.Is(err, ErrIncompatibleSnapshot) {
+		sink.Emit(output.ErrorEvent{
+			Title:   "Could not load snapshot",
+			Summary: "Snapshot is incompatible with the running LocalStack version",
+		})
+		return output.NewSilentError(err)
+	}
+	return err
 }
 
 func LoadLocal(ctx context.Context, rt runtime.Runtime, containers []config.ContainerConfig, client LocalLoadClient, host, src, strategy string, starter Starter, sink output.Sink) error {
