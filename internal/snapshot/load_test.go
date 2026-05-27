@@ -106,6 +106,52 @@ func TestLoadLocal_ImportError(t *testing.T) {
 	assert.Contains(t, err.Error(), "incompatible version")
 }
 
+func TestLoadLocal_IncompatibleSnapshot_StructuredError(t *testing.T) {
+	t.Parallel()
+	src := writeSnapshotFile(t, "ZIP_DATA")
+	importErr := fmt.Errorf("%w: Pod state is incompatible with the current LocalStack version", snapshot.ErrIncompatibleSnapshot)
+	client := mockLocalClientReturning(t, importErr)
+	sink, getEvents := captureEvents(t)
+
+	err := snapshot.LoadLocal(context.Background(), healthyRunningMock(t), awsContainers, client, "", src, "", nopStarter, sink)
+	require.Error(t, err)
+	assert.True(t, output.IsSilent(err), "incompatible-snapshot error should be silent so it isn't double-rendered")
+
+	var errEvent *output.ErrorEvent
+	for _, e := range getEvents() {
+		if ev, ok := e.(output.ErrorEvent); ok {
+			errEvent = &ev
+		}
+	}
+	require.NotNil(t, errEvent, "a structured ErrorEvent should have been emitted")
+	assert.Equal(t, "Could not load snapshot", errEvent.Title)
+	assert.Equal(t, "Selected snapshot version is incompatible with the running LocalStack", errEvent.Summary)
+}
+
+func TestLoadPod_IncompatibleSnapshot_StructuredError(t *testing.T) {
+	t.Parallel()
+	ctrl := gomock.NewController(t)
+	loader := NewMockPodLoader(ctrl)
+	loadErr := fmt.Errorf("%w: Pod state is incompatible with the current LocalStack version", snapshot.ErrIncompatibleSnapshot)
+	loader.EXPECT().LoadPodSnapshot(gomock.Any(), gomock.Any(), "my-baseline", "test-token", gomock.Any()).
+		Return(nil, loadErr)
+
+	sink, getEvents := captureEvents(t)
+	err := snapshot.LoadPod(context.Background(), healthyRunningMock(t), awsContainers, loader, "", "my-baseline", "test-token", "", nopStarter, sink)
+	require.Error(t, err)
+	assert.True(t, output.IsSilent(err))
+
+	var errEvent *output.ErrorEvent
+	for _, e := range getEvents() {
+		if ev, ok := e.(output.ErrorEvent); ok {
+			errEvent = &ev
+		}
+	}
+	require.NotNil(t, errEvent, "a structured ErrorEvent should have been emitted")
+	assert.Equal(t, "Could not load snapshot", errEvent.Title)
+	assert.Equal(t, "Selected snapshot version is incompatible with the running LocalStack", errEvent.Summary)
+}
+
 func TestLoadLocal_FileNotFound(t *testing.T) {
 	t.Parallel()
 	ctrl := gomock.NewController(t)

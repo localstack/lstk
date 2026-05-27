@@ -197,7 +197,7 @@ func (c *Client) ImportState(ctx context.Context, host string, src io.Reader, st
 
 	if resp.StatusCode == http.StatusUnprocessableEntity {
 		body, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("snapshot is incompatible with the running LocalStack version: %s", strings.TrimSpace(string(body)))
+		return fmt.Errorf("%w: %s", snapshot.ErrIncompatibleSnapshot, strings.TrimSpace(string(body)))
 	}
 	if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
@@ -247,7 +247,7 @@ func (c *Client) LoadPodSnapshot(ctx context.Context, host, podName, authToken, 
 
 	if resp.StatusCode == http.StatusUnprocessableEntity {
 		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("snapshot is incompatible with the running LocalStack version: %s", strings.TrimSpace(string(body)))
+		return nil, fmt.Errorf("%w: %s", snapshot.ErrIncompatibleSnapshot, strings.TrimSpace(string(body)))
 	}
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
