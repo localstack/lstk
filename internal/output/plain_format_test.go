@@ -210,6 +210,32 @@ func TestFormatEventLine(t *testing.T) {
 			want:   SuccessMarker() + " Snapshot saved to pod:minimal-pod",
 			wantOK: true,
 		},
+
+		// snapshot load events
+		{
+			name:   "snapshot loaded with services",
+			event:  SnapshotLoadedEvent{Source: "./my-baseline.zip", Services: []string{"s3", "dynamodb"}},
+			want:   SuccessMarker() + " Snapshot loaded from ./my-baseline.zip\n• Services: s3, dynamodb",
+			wantOK: true,
+		},
+		{
+			name:   "snapshot loaded no services",
+			event:  SnapshotLoadedEvent{Source: "./snap.zip"},
+			want:   SuccessMarker() + " Snapshot loaded from ./snap.zip",
+			wantOK: true,
+		},
+		{
+			name:   "pod snapshot loaded with services",
+			event:  SnapshotLoadedEvent{Source: "pod:my-baseline", Services: []string{"s3", "lambda"}},
+			want:   SuccessMarker() + " Snapshot loaded from pod:my-baseline\n• Services: s3, lambda",
+			wantOK: true,
+		},
+		{
+			name:   "pod snapshot loaded no services",
+			event:  SnapshotLoadedEvent{Source: "pod:empty-pod"},
+			want:   SuccessMarker() + " Snapshot loaded from pod:empty-pod",
+			wantOK: true,
+		},
 	}
 
 	for _, tt := range tests {

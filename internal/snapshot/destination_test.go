@@ -16,6 +16,208 @@ import (
 
 
 
+func TestParseSource(t *testing.T) {
+	t.Parallel()
+	wd, err := os.Getwd()
+	require.NoError(t, err)
+	// Use a temp dir as home so the test doesn't depend on the real $HOME
+	// (e.g. under Nix's sandboxed build, $HOME is a non-existent placeholder).
+	home := t.TempDir()
+
+	dir := t.TempDir()
+	existingZip := filepath.Join(dir, "snap.zip")
+	require.NoError(t, os.WriteFile(existingZip, []byte("data"), 0600))
+	existingBare := filepath.Join(dir, "bare") // no extension — snap.zip fallback exists
+	require.NoError(t, os.WriteFile(existingBare+".zip", []byte("data"), 0600))
+	existingNoExt := filepath.Join(dir, "noext") // no extension, no .zip counterpart either
+	require.NoError(t, os.WriteFile(existingNoExt, []byte("data"), 0600))
+
+	type testCase struct {
+		name          string
+		input         string
+		wantKind      snapshot.DestinationKind
+		wantPath      string
+		wantPodName   string
+		wantErr       string
+		wantRemoteErr bool
+		wantSchemeErr bool
+	}
+
+	tests := []testCase{
+		// --- empty ref ---
+		{
+			name:    "empty ref",
+			input:   "",
+			wantErr: "REF is required",
+		},
+
+		// --- local paths (file must exist) ---
+		{
+			name:     "explicit .zip path",
+			input:    existingZip,
+			wantKind: snapshot.KindLocal,
+			wantPath: existingZip,
+		},
+		{
+			name:     "bare name resolves to .zip fallback",
+			input:    existingBare,
+			wantKind: snapshot.KindLocal,
+			wantPath: existingBare + ".zip",
+		},
+		{
+			name:     "file without .zip extension resolves as-is",
+			input:    existingNoExt,
+			wantKind: snapshot.KindLocal,
+			wantPath: existingNoExt,
+		},
+		{
+			name:    "nonexistent file returns error",
+			input:   filepath.Join(dir, "missing.zip"),
+			wantErr: "snapshot file not found",
+		},
+		{
+			name:    "nonexistent bare name returns error",
+			input:   filepath.Join(dir, "ghost"),
+			wantErr: "snapshot file not found",
+		},
+		{
+			name:     "relative path resolved via cwd",
+			input:    ".",
+			wantKind: snapshot.KindLocal,
+			wantPath: wd,
+		},
+
+		// --- tilde expansion ---
+		{
+			name:     "tilde expands to home",
+			input:    "~/.",
+			wantKind: snapshot.KindLocal,
+			wantPath: home,
+		},
+
+		// --- pod sources ---
+		{
+			name:        "pod: prefix",
+			input:       "pod:my-baseline",
+			wantKind:    snapshot.KindPod,
+			wantPodName: "my-baseline",
+		},
+		{
+			name:        "Pod: case insensitive",
+			input:       "Pod:my-baseline",
+			wantKind:    snapshot.KindPod,
+			wantPodName: "my-baseline",
+		},
+		{
+			name:    "pod:// rejected with did-you-mean hint",
+			input:   "pod://my-baseline",
+			wantErr: "not a valid reference. Aliases use a single colon. Did you mean:\npod:my-baseline",
+		},
+		{
+			name:    "pod: empty name",
+			input:   "pod:",
+			wantErr: "invalid pod name",
+		},
+		{
+			name:    "pod: leading hyphen",
+			input:   "pod:-bad",
+			wantErr: "invalid pod name",
+		},
+
+		// --- remote schemes ---
+		{
+			name:          "s3:// not supported",
+			input:         "s3://bucket/key",
+			wantRemoteErr: true,
+		},
+		{
+			name:          "oras:// not supported",
+			input:         "oras://registry/image",
+			wantRemoteErr: true,
+		},
+		{
+			name:          "unknown scheme",
+			input:         "gcs://bucket/key",
+			wantSchemeErr: true,
+		},
+	}
+
+	if runtime.GOOS == "windows" {
+		tests = append(tests,
+			testCase{
+				name:     "windows tilde backslash",
+				input:    `~\` + filepath.Base(existingZip),
+				wantKind: snapshot.KindLocal,
+				// The resolved path won't equal existingZip (different dir), so just
+				// check it doesn't error; path matching is covered by the cross-platform cases.
+				wantErr: "snapshot file not found",
+			},
+			testCase{
+				name:     "windows abs backslash to existing zip",
+				input:    existingZip,
+				wantKind: snapshot.KindLocal,
+				wantPath: existingZip,
+			},
+			testCase{
+				name:     "windows abs forward-slash to existing zip",
+				input:    strings.ReplaceAll(existingZip, `\`, `/`),
+				wantKind: snapshot.KindLocal,
+				wantPath: existingZip,
+			},
+		)
+	}
+
+	for _, tc := range tests {
+		name := tc.input
+		if tc.name != "" {
+			name = tc.name
+		}
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			got, err := snapshot.ParseSource(tc.input, home)
+			if tc.wantErr != "" {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), tc.wantErr)
+				return
+			}
+			if tc.wantRemoteErr {
+				require.ErrorIs(t, err, snapshot.ErrRemoteNotSupported)
+				return
+			}
+			if tc.wantSchemeErr {
+				require.ErrorIs(t, err, snapshot.ErrUnknownScheme)
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, tc.wantKind, got.Kind)
+			if tc.wantPodName != "" {
+				assert.Equal(t, tc.wantPodName, got.Value)
+			} else {
+				assert.Equal(t, tc.wantPath, got.Value)
+			}
+		})
+	}
+}
+
+// TestParseSourceTildeWithoutHome covers the Nix sandbox scenario where the
+// build runs without a usable home directory. Tilde expansion must fail with a
+// clear error instead of silently using a non-existent path.
+func TestParseSourceTildeWithoutHome(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct{ name, input string }{
+		{"bare tilde", "~"},
+		{"tilde slash", "~/snap"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			_, err := snapshot.ParseSource(tc.input, "")
+			require.ErrorIs(t, err, snapshot.ErrHomeNotSet)
+		})
+	}
+}
+
 func TestDisplayPath(t *testing.T) {
 	t.Parallel()
 
