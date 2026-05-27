@@ -46,10 +46,9 @@ func (s *systemTokenStorage) GetAuthToken() (string, error) {
 	if err == nil {
 		return token, nil
 	}
-	if errors.Is(err, keyring.ErrNotFound) {
-		return "", ErrTokenNotFound
+	if !errors.Is(err, keyring.ErrNotFound) {
+		s.logger.Info("system keyring unavailable (%v), falling back to file-based storage", err)
 	}
-	s.logger.Info("system keyring unavailable (%v), falling back to file-based storage", err)
 	return s.file.GetAuthToken()
 }
 
@@ -62,11 +61,9 @@ func (s *systemTokenStorage) SetAuthToken(token string) error {
 }
 
 func (s *systemTokenStorage) DeleteAuthToken() error {
-	err := s.keyring.Delete(keyringService, keyringAuthTokenKey)
-	if err == nil || errors.Is(err, keyring.ErrNotFound) {
-		return nil
+	if err := s.keyring.Delete(keyringService, keyringAuthTokenKey); err != nil && !errors.Is(err, keyring.ErrNotFound) {
+		s.logger.Info("system keyring unavailable (%v), falling back to file-based storage", err)
 	}
-	s.logger.Info("system keyring unavailable (%v), falling back to file-based storage", err)
 	return s.file.DeleteAuthToken()
 }
 
