@@ -86,6 +86,7 @@ func NewRootCmd(cfg *env.Env, tel *telemetry.Client, logger log.Logger) *cobra.C
 		newSnapshotCmd(cfg, tel, logger),
 		newResetCmd(cfg),
 		newSaveCmd(cfg),
+		newLoadCmd(cfg, tel, logger),
 	)
 
 	return root

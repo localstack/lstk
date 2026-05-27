@@ -34,6 +34,22 @@ To save to a remote pod on the LocalStack platform, use the pod: prefix:
 
   lstk snapshot save pod:my-baseline    # saves as a named pod on the platform`
 
+const snapshotLoadCanonical = "snapshot load"
+
+const snapshotLoadLong = `Load a snapshot into the running emulator, starting it first if needed.
+
+REF identifies the snapshot to load:
+
+  lstk snapshot load my-baseline           # loads ./my-baseline or ./my-baseline.zip
+  lstk snapshot load ./checkpoint.zip      # loads from explicit path
+  lstk snapshot load pod:my-baseline       # loads from LocalStack Cloud
+
+Merge strategies control how snapshot state is combined with running state:
+
+  --merge=account-region-merge  (default) snapshot wins on (service, account, region) overlap
+  --merge=overwrite             wipe running state, then load
+  --merge=service-merge         snapshot wins per-resource; non-overlapping resources combined`
+
 func newSnapshotCmd(cfg *env.Env, tel *telemetry.Client, logger log.Logger) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "snapshot",
@@ -53,60 +69,70 @@ func buildStarter(cfg *env.Env, rt runtime.Runtime, appConfig *config.Config, lo
 
 func newSnapshotLoadCmd(cfg *env.Env, tel *telemetry.Client, logger log.Logger) *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "load REF",
-		Short: "Load a snapshot into the running emulator",
-		Long: `Load a snapshot into the running emulator, starting it first if needed.
-
-REF identifies the snapshot to load:
-
-  lstk snapshot load my-baseline           # loads ./my-baseline or ./my-baseline.zip
-  lstk snapshot load ./checkpoint.zip      # loads from explicit path
-  lstk snapshot load pod:my-baseline       # loads from LocalStack Cloud
-
-Merge strategies control how snapshot state is combined with running state:
-
-  --merge=account-region-merge  (default) snapshot wins on (service, account, region) overlap
-  --merge=overwrite             wipe running state, then load
-  --merge=service-merge         snapshot wins per-resource; non-overlapping resources combined`,
+		Use:     "load REF",
+		Short:   "Load a snapshot into the running emulator",
+		Long:    snapshotLoadLong,
 		Args:    cobra.ExactArgs(1),
 		PreRunE: initConfig(nil),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			strategy, err := cmd.Flags().GetString("merge")
-			if err != nil {
-				return err
-			}
-
-			home, _ := os.UserHomeDir()
-			src, err := snapshot.ParseSource(args[0], home)
-			if err != nil {
-				return err
-			}
-
-			if err := snapshot.ValidateMergeStrategy(strategy); err != nil {
-				return err
-			}
-
-			rt, client, host, containers, appConfig, err := resolveSnapshotDeps(cmd.Context(), cfg)
-			if err != nil {
-				return err
-			}
-
-			starter := buildStarter(cfg, rt, appConfig, logger, tel)
-
-			if isInteractiveMode(cfg) {
-				return ui.RunSnapshotLoad(cmd.Context(), rt, containers, client, host, src, cfg.AuthToken, strategy, starter)
-			}
-			sink := output.NewPlainSink(os.Stdout)
-			switch src.Kind {
-			case snapshot.KindPod:
-				return snapshot.LoadPod(cmd.Context(), rt, containers, client, host, src.Value, cfg.AuthToken, strategy, starter, sink)
-			default:
-				return snapshot.LoadLocal(cmd.Context(), rt, containers, client, host, src.Value, strategy, starter, sink)
-			}
-		},
+		RunE:    runSnapshotLoad(cfg, tel, logger),
 	}
-	cmd.Flags().String("merge", snapshot.MergeStrategyAccountRegion, "Merge strategy: overwrite, account-region-merge, service-merge")
+	addMergeFlag(cmd)
 	return cmd
+}
+
+func newLoadCmd(cfg *env.Env, tel *telemetry.Client, logger log.Logger) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:         "load REF",
+		Short:       "Load a snapshot into the running emulator",
+		Long:        snapshotLoadLong,
+		Args:        cobra.ExactArgs(1),
+		PreRunE:     initConfig(nil),
+		RunE:        runSnapshotLoad(cfg, tel, logger),
+		Annotations: map[string]string{canonicalCommandAnnotation: snapshotLoadCanonical},
+	}
+	addMergeFlag(cmd)
+	return cmd
+}
+
+func addMergeFlag(cmd *cobra.Command) {
+	cmd.Flags().String("merge", snapshot.MergeStrategyAccountRegion, "Merge strategy: overwrite, account-region-merge, service-merge")
+}
+
+func runSnapshotLoad(cfg *env.Env, tel *telemetry.Client, logger log.Logger) func(*cobra.Command, []string) error {
+	return func(cmd *cobra.Command, args []string) error {
+		strategy, err := cmd.Flags().GetString("merge")
+		if err != nil {
+			return err
+		}
+
+		home, _ := os.UserHomeDir()
+		src, err := snapshot.ParseSource(args[0], home)
+		if err != nil {
+			return err
+		}
+
+		if err := snapshot.ValidateMergeStrategy(strategy); err != nil {
+			return err
+		}
+
+		rt, client, host, containers, appConfig, err := resolveSnapshotDeps(cmd.Context(), cfg)
+		if err != nil {
+			return err
+		}
+
+		starter := buildStarter(cfg, rt, appConfig, logger, tel)
+
+		if isInteractiveMode(cfg) {
+			return ui.RunSnapshotLoad(cmd.Context(), rt, containers, client, host, src, cfg.AuthToken, strategy, starter)
+		}
+		sink := output.NewPlainSink(os.Stdout)
+		switch src.Kind {
+		case snapshot.KindPod:
+			return snapshot.LoadPod(cmd.Context(), rt, containers, client, host, src.Value, cfg.AuthToken, strategy, starter, sink)
+		default:
+			return snapshot.LoadLocal(cmd.Context(), rt, containers, client, host, src.Value, strategy, starter, sink)
+		}
+	}
 }
 
 func resolveSnapshotDeps(ctx context.Context, cfg *env.Env) (rt runtime.Runtime, client *aws.Client, host string, containers []config.ContainerConfig, appConfig *config.Config, err error) {

@@ -273,3 +273,30 @@ func TestSnapshotLoadInteractive(t *testing.T) {
 	require.NoError(t, err, "interactive lstk snapshot load failed")
 	assert.Contains(t, out, "Snapshot loaded")
 }
+
+func TestLoadAliasMatchesSnapshotLoad(t *testing.T) {
+	requireDocker(t)
+	cleanup()
+	t.Cleanup(cleanup)
+
+	ctx := testContext(t)
+	startTestContainer(t, ctx)
+	srv, _ := mockLocalLoadServer(t)
+
+	dir := t.TempDir()
+	snapPath := writeTestSnapFile(t, dir, "snap.zip")
+
+	analyticsSrv, events := mockAnalyticsServer(t)
+	stdout, stderr, err := runLstk(t, ctx, dir,
+		env.Environ(testEnvWithHome(t.TempDir(), "")).
+			With(env.LocalStackHost, lsHost(srv)).
+			With(env.AnalyticsEndpoint, analyticsSrv.URL),
+		"--non-interactive", "load", snapPath,
+	)
+	require.NoError(t, err, "lstk load failed: %s", stderr)
+	assert.Contains(t, stdout, "Snapshot loaded")
+
+	// Alias must emit telemetry under the canonical name so usage isn't
+	// split across "load" and "snapshot load" labels.
+	assertCommandTelemetry(t, events, "snapshot load", 0)
+}
