@@ -125,7 +125,7 @@ func TestLoadLocal_IncompatibleSnapshot_StructuredError(t *testing.T) {
 	}
 	require.NotNil(t, errEvent, "a structured ErrorEvent should have been emitted")
 	assert.Equal(t, "Could not load snapshot", errEvent.Title)
-	assert.Equal(t, "Selected snapshot version is incompatible with the running LocalStack", errEvent.Summary)
+	assert.Equal(t, "Snapshot is incompatible with the running LocalStack version", errEvent.Summary)
 }
 
 func TestLoadPod_IncompatibleSnapshot_StructuredError(t *testing.T) {
@@ -149,7 +149,7 @@ func TestLoadPod_IncompatibleSnapshot_StructuredError(t *testing.T) {
 	}
 	require.NotNil(t, errEvent, "a structured ErrorEvent should have been emitted")
 	assert.Equal(t, "Could not load snapshot", errEvent.Title)
-	assert.Equal(t, "Selected snapshot version is incompatible with the running LocalStack", errEvent.Summary)
+	assert.Equal(t, "Snapshot is incompatible with the running LocalStack version", errEvent.Summary)
 }
 
 func TestLoadLocal_FileNotFound(t *testing.T) {

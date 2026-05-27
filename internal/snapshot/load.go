@@ -93,7 +93,7 @@ func load(ctx context.Context, rt runtime.Runtime, containers []config.Container
 	if errors.Is(err, ErrIncompatibleSnapshot) {
 		sink.Emit(output.ErrorEvent{
 			Title:   "Could not load snapshot",
-			Summary: "Selected snapshot version is incompatible with the running LocalStack",
+			Summary: "Snapshot is incompatible with the running LocalStack version",
 		})
 		return output.NewSilentError(err)
 	}
