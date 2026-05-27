@@ -66,13 +66,8 @@ func Run(parentCtx context.Context, runOpts RunOptions) error {
 		var err error
 		defer func() { runErrCh <- err }()
 		sink := output.NewTUISink(programSender{p: p})
-		// Start label resolution immediately when no emulator selection is needed, so
-		// headerLabelMsg always arrives even if NotifyUpdate returns early (update case).
-		// When emulator selection is needed, resolution starts after the user picks.
-		if !runOpts.NeedsEmulatorSelection {
-			go container.ResolveAndCacheLabel(ctx, runOpts.StartOptions, labelCh)
-		}
 		if update.NotifyUpdate(ctx, sink, runOpts.NotifyOptions) {
+			p.Send(headerLabelMsg{})
 			p.Send(runDoneMsg{})
 			return
 		}
@@ -99,9 +94,9 @@ func Run(parentCtx context.Context, runOpts RunOptions) error {
 				return
 			}
 			runOpts.StartOptions.Containers = newContainers
-			go container.ResolveAndCacheLabel(ctx, runOpts.StartOptions, labelCh)
 		}
-		err = container.Start(ctx, runOpts.Runtime, sink, runOpts.StartOptions, true)
+		var resolvedVersion string
+		resolvedVersion, err = container.Start(ctx, runOpts.Runtime, sink, runOpts.StartOptions, true)
 		if err != nil {
 			if errors.Is(err, context.Canceled) {
 				return
@@ -109,6 +104,7 @@ func Run(parentCtx context.Context, runOpts RunOptions) error {
 			p.Send(runErrMsg{err: err})
 			return
 		}
+		go container.ResolveAndCacheLabel(ctx, runOpts.StartOptions, resolvedVersion, labelCh)
 		p.Send(runDoneMsg{})
 	}()
 
