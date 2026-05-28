@@ -6,6 +6,7 @@ import (
 	"os"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/localstack/lstk/internal/auth"
 	"github.com/localstack/lstk/internal/container"
 	"github.com/localstack/lstk/internal/output"
 	"github.com/localstack/lstk/internal/runtime"
@@ -75,6 +76,19 @@ func Run(parentCtx context.Context, runOpts RunOptions) error {
 			p.Send(runDoneMsg{})
 			return
 		}
+		// Resolve the auth token before any emulator-selection prompt so the user
+		// logs in first and only configures an emulator once they're authenticated.
+		// container.Start still calls GetToken as a safety net for non-interactive
+		// callers; once the token is in opts.AuthToken (or the keyring), it returns
+		// immediately.
+		if authErr := resolveAuthToken(ctx, sink, &runOpts); authErr != nil {
+			if errors.Is(authErr, context.Canceled) {
+				return
+			}
+			err = authErr
+			p.Send(runErrMsg{err: authErr})
+			return
+		}
 		if runOpts.NeedsEmulatorSelection {
 			newContainers, selErr := container.SelectEmulator(ctx, sink, runOpts.ConfigPath)
 			if selErr != nil {
@@ -112,6 +126,23 @@ func Run(parentCtx context.Context, runOpts RunOptions) error {
 		return runErr
 	}
 
+	return nil
+}
+
+// resolveAuthToken ensures the user is authenticated before the start flow
+// continues. On success, the resolved token is written to opts.StartOptions.AuthToken
+// so container.Start short-circuits its own auth call.
+func resolveAuthToken(ctx context.Context, sink output.Sink, opts *RunOptions) error {
+	tokenStorage, err := auth.NewTokenStorage(opts.StartOptions.ForceFileKeyring, opts.StartOptions.Logger)
+	if err != nil {
+		return err
+	}
+	a := auth.New(sink, opts.StartOptions.PlatformClient, tokenStorage, opts.StartOptions.AuthToken, opts.StartOptions.WebAppURL, true, "")
+	token, err := a.GetToken(ctx)
+	if err != nil {
+		return err
+	}
+	opts.StartOptions.AuthToken = token
 	return nil
 }
 

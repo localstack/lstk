@@ -114,6 +114,62 @@ func TestFirstRunShowsEmulatorSelectionPrompt(t *testing.T) {
 	<-outputCh
 }
 
+func TestFirstRunPromptsForLoginBeforeEmulatorSelection(t *testing.T) {
+	t.Parallel()
+	if runtime.GOOS == "windows" {
+		t.Skip("PTY not supported on Windows")
+	}
+
+	mockServer := createMockAPIServer(t, "test-license-token", true)
+	defer mockServer.Close()
+
+	tmpHome := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(tmpHome, ".config"), 0755))
+	e := env.Environ(testEnvWithHome(tmpHome, tmpHome)).
+		Without(env.AuthToken).
+		With(env.APIEndpoint, mockServer.URL).
+		With(env.DisableEvents, "1")
+
+	// No config exists so this is a first run; no token means login fires before emulator selection.
+	configPath, _, err := runLstk(t, testContext(t), "", e, "config", "path")
+	require.NoError(t, err)
+	require.NoFileExists(t, configPath)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, binaryPath(), "start")
+	cmd.Env = e
+
+	ptmx, err := pty.Start(cmd)
+	require.NoError(t, err, "failed to start lstk in PTY")
+	defer func() { _ = ptmx.Close() }()
+
+	out := &syncBuffer{}
+	outputCh := make(chan struct{})
+	go func() {
+		_, _ = io.Copy(out, ptmx)
+		close(outputCh)
+	}()
+
+	require.Eventually(t, func() bool {
+		return bytes.Contains(out.Bytes(), []byte("Press any key when complete"))
+	}, 10*time.Second, 100*time.Millisecond, "auth prompt should appear on first run when no token is set")
+
+	assert.NotContains(t, out.String(), "Which emulator would you like to use?",
+		"emulator selection prompt must not appear before auth completes")
+
+	_, err = ptmx.Write([]byte("\r"))
+	require.NoError(t, err)
+
+	require.Eventually(t, func() bool {
+		return bytes.Contains(out.Bytes(), []byte("Which emulator would you like to use?"))
+	}, 10*time.Second, 100*time.Millisecond, "emulator selection prompt should appear after auth completes")
+
+	cancel()
+	<-outputCh
+}
+
 func TestFirstRunNonInteractiveEmitsDefaultEmulatorNote(t *testing.T) {
 	t.Parallel()
 	tmpHome := t.TempDir()
