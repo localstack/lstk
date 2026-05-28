@@ -2,6 +2,7 @@ package output
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 )
@@ -56,6 +57,8 @@ func FormatEventLine(event Event) (string, bool) {
 		return formatPodSnapshotRemoved(e), true
 	case SnapshotShownEvent:
 		return formatSnapshotShown(e), true
+	case SnapshotDiffEvent:
+		return formatSnapshotDiff(e), true
 	case AuthCompleteEvent:
 		return "", false
 	case EmulatorStoppedEvent:
@@ -343,6 +346,77 @@ func formatSnapshotShown(e SnapshotShownEvent) string {
 			sb.WriteString(fmt.Sprintf("  %-*s%s", snapshotShowLabelWidth-2, r.Service, strings.Join(parts, ", ")))
 		}
 	}
+	return sb.String()
+}
+
+func formatSnapshotDiff(e SnapshotDiffEvent) string {
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("Dry-run results for pod:%s", e.PodName))
+
+	services := make([]string, 0, len(e.Services))
+	for svc := range e.Services {
+		services = append(services, svc)
+	}
+	sort.Strings(services)
+
+	maxWidth := 0
+	for _, svc := range services {
+		if len(svc) > maxWidth {
+			maxWidth = len(svc)
+		}
+	}
+
+	var rows []string
+	hasModifications := false
+	totalMods := 0
+	for _, svc := range services {
+		counts := e.Services[svc]
+		if counts.Additions == 0 && counts.Modifications == 0 {
+			continue
+		}
+		var row strings.Builder
+		row.WriteString(fmt.Sprintf("  %-*s", maxWidth+2, svc))
+		if counts.Additions > 0 {
+			noun := "additions"
+			if counts.Additions == 1 {
+				noun = "addition"
+			}
+			row.WriteString(fmt.Sprintf("+ %d %s", counts.Additions, noun))
+		}
+		if counts.Modifications > 0 {
+			if counts.Additions > 0 {
+				row.WriteString("   ")
+			}
+			hasModifications = true
+			totalMods += counts.Modifications
+			noun := "modifications"
+			if counts.Modifications == 1 {
+				noun = "modification"
+			}
+			row.WriteString(fmt.Sprintf("~ %d %s %s", counts.Modifications, noun, WarningMarker()))
+		}
+		rows = append(rows, row.String())
+	}
+
+	if len(rows) == 0 {
+		sb.WriteString("\n\n  No changes — pod state matches running state.")
+	} else {
+		sb.WriteString("\n")
+		for _, r := range rows {
+			sb.WriteString("\n")
+			sb.WriteString(r)
+		}
+	}
+
+	if hasModifications {
+		noun := "modifications"
+		if totalMods == 1 {
+			noun = "modification"
+		}
+		sb.WriteString(fmt.Sprintf("\n\n> Note: %d %s will be resolved using the %s strategy.", totalMods, noun, e.Strategy))
+	}
+
+	sb.WriteString("\n\n" + SuccessMarker() + " No state was modified.")
 	return sb.String()
 }
 

@@ -206,6 +206,7 @@ func newSnapshotLoadCmd(cfg *env.Env, tel *telemetry.Client, logger log.Logger) 
 	}
 	addMergeFlag(cmd)
 	addProfileFlag(cmd)
+	addDryRunFlag(cmd)
 	return cmd
 }
 
@@ -221,6 +222,7 @@ func newLoadCmd(cfg *env.Env, tel *telemetry.Client, logger log.Logger) *cobra.C
 	}
 	addMergeFlag(cmd)
 	addProfileFlag(cmd)
+	addDryRunFlag(cmd)
 	return cmd
 }
 
@@ -256,6 +258,10 @@ func resolveLoadStrategy(cmd *cobra.Command, cfg *env.Env) (string, error) {
 	return strategy, nil
 }
 
+func addDryRunFlag(cmd *cobra.Command) {
+	cmd.Flags().Bool("dry-run", false, "Preview what would change without modifying state (pod refs only)")
+}
+
 func runSnapshotLoad(cfg *env.Env, tel *telemetry.Client, logger log.Logger) func(*cobra.Command, []string) error {
 	return func(cmd *cobra.Command, args []string) error {
 		strategy, err := resolveLoadStrategy(cmd, cfg)
@@ -263,6 +269,11 @@ func runSnapshotLoad(cfg *env.Env, tel *telemetry.Client, logger log.Logger) fun
 			return err
 		}
 		profile, err := cmd.Flags().GetString("profile")
+		if err != nil {
+			return err
+		}
+
+		dryRun, err := cmd.Flags().GetBool("dry-run")
 		if err != nil {
 			return err
 		}
@@ -308,6 +319,13 @@ func runSnapshotLoad(cfg *env.Env, tel *telemetry.Client, logger log.Logger) fun
 		src, err := snapshot.ParseSource(args[0], home)
 		if err != nil {
 			return err
+		}
+
+		if dryRun {
+			if src.Kind != snapshot.KindPod {
+				return fmt.Errorf("--dry-run is only supported for pod refs — use the \"pod:\" prefix (e.g. pod:my-baseline --dry-run)")
+			}
+			return execDiff(cmd, cfg, src.Value, strategy)
 		}
 
 		rt, client, host, containers, appConfig, err := resolveSnapshotDeps(cmd.Context(), cfg)
@@ -381,6 +399,19 @@ func runSnapshotRemove(cfg *env.Env) func(*cobra.Command, []string) error {
 		}
 		return ui.RunSnapshotRemove(cmd.Context(), rt, containers, client, host, args[0], cwd, home, cfg.AuthToken, force)
 	}
+}
+
+func execDiff(cmd *cobra.Command, cfg *env.Env, podName, strategy string) error {
+	rt, client, host, containers, _, err := resolveSnapshotDeps(cmd.Context(), cfg)
+	if err != nil {
+		return err
+	}
+
+	if isInteractiveMode(cfg) {
+		return ui.RunSnapshotDiff(cmd.Context(), rt, containers, client, host, podName, cfg.AuthToken, strategy)
+	}
+	sink := output.NewPlainSink(os.Stdout)
+	return snapshot.DiffPod(cmd.Context(), rt, containers, client, host, podName, cfg.AuthToken, strategy, sink)
 }
 
 func resolveSnapshotDeps(ctx context.Context, cfg *env.Env) (rt runtime.Runtime, client *aws.Client, host string, containers []config.ContainerConfig, appConfig *config.Config, err error) {

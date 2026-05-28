@@ -282,6 +282,49 @@ func (c *Client) LoadPodSnapshot(ctx context.Context, host, podName, authToken, 
 	return c.doPodLoad(ctx, host, podName, authToken, strategy, []byte("{}"))
 }
 
+func (c *Client) DiffPodSnapshot(ctx context.Context, host, podName, authToken string) (snapshot.DiffResult, error) {
+	url := fmt.Sprintf("http://%s/_localstack/pods/%s/diff", host, podName)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("create request: %w", err)
+	}
+	req.Header.Set("Authorization", "Basic "+base64.StdEncoding.EncodeToString([]byte(":"+authToken)))
+
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("connect to LocalStack: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("diff failed (HTTP %d): %s", resp.StatusCode, strings.TrimSpace(string(body)))
+	}
+
+	var raw map[string][]struct {
+		OperationType string `json:"operation_type"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&raw); err != nil {
+		return nil, fmt.Errorf("parse diff response: %w", err)
+	}
+
+	result := make(snapshot.DiffResult, len(raw))
+	for svc, ops := range raw {
+		var counts snapshot.ServiceDiffCounts
+		for _, op := range ops {
+			switch op.OperationType {
+			case "ADDITION":
+				counts.Additions++
+			case "MODIFICATION":
+				counts.Modifications++
+			// DELETION is intentionally omitted: the diff endpoint does not currently return deletions.
+			}
+		}
+		result[svc] = counts
+	}
+	return result, nil
+}
+
 func (c *Client) SavePodSnapshot(ctx context.Context, host, podName, authToken string) (snapshot.PodSaveResult, error) {
 	return c.doPodSave(ctx, host, podName, authToken, []byte("{}"))
 }

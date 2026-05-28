@@ -193,6 +193,17 @@ type MultipleInstallsEvent struct {
 
 type AuthCompleteEvent struct{}
 
+type SnapshotDiffServiceResult struct {
+	Additions     int
+	Modifications int
+}
+
+type SnapshotDiffEvent struct {
+	PodName  string
+	Strategy string
+	Services map[string]SnapshotDiffServiceResult
+}
+
 // Event is a sealed marker — only event types in this package implement it,
 // so Sink.Emit rejects unknown types at compile time.
 type Event interface{ sealedEvent() }
@@ -209,6 +220,7 @@ func (PodSnapshotSavedEvent) sealedEvent()    {}
 func (RemoteSnapshotSavedEvent) sealedEvent() {}
 func (DeferredEvent) sealedEvent()            {}
 func (SnapshotLoadedEvent) sealedEvent()      {}
+func (SnapshotDiffEvent) sealedEvent()        {}
 func (PodSnapshotRemovedEvent) sealedEvent()  {}
 func (SnapshotShownEvent) sealedEvent()       {}
 func (EmulatorStoppedEvent) sealedEvent()     {}
