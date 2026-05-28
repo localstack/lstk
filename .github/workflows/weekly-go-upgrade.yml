@@ -44,5 +44,7 @@ jobs:
 
             - Updates the `toolchain` directive to the latest released Go version.
             - Runs `go mod tidy` to keep module files consistent.
-          labels: dependencies
+          labels: |
+            dependencies
+            semver: patch
           token: ${{ secrets.PRO_ACCESS_TOKEN }}
