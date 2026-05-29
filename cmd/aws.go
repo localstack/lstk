@@ -37,6 +37,8 @@ Examples:
 		DisableFlagParsing: true,
 		PreRunE:            initConfig(nil),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			args, nonInteractive := stripNonInteractiveFlag(args)
+
 			rt, err := runtime.NewDockerRuntime(cfg.DockerHost)
 			if err != nil {
 				return err
@@ -85,7 +87,7 @@ Examples:
 			}
 
 			stdout, stderr := io.Writer(os.Stdout), io.Writer(os.Stderr)
-			if terminal.IsTerminal(os.Stderr) {
+			if !nonInteractive && terminal.IsTerminal(os.Stderr) {
 				s := terminal.NewSpinner(os.Stderr, "Loading service...", 4*time.Second)
 				s.Start()
 				defer s.Stop()
@@ -96,4 +98,21 @@ Examples:
 			return awscli.Exec(cmd.Context(), "http://"+host, profileExists, stdout, stderr, args)
 		},
 	}
+}
+
+// stripNonInteractiveFlag pulls lstk's --non-interactive flag out of the AWS CLI
+// passthrough args and reports whether it was set. The aws command uses
+// DisableFlagParsing, so Cobra never parses the flag here — left in place it would
+// be forwarded to the aws binary and rejected as an unknown option.
+func stripNonInteractiveFlag(args []string) ([]string, bool) {
+	out := make([]string, 0, len(args))
+	nonInteractive := false
+	for _, a := range args {
+		if a == "--non-interactive" {
+			nonInteractive = true
+			continue
+		}
+		out = append(out, a)
+	}
+	return out, nonInteractive
 }
