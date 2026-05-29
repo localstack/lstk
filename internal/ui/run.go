@@ -7,6 +7,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/localstack/lstk/internal/auth"
+	"github.com/localstack/lstk/internal/config"
 	"github.com/localstack/lstk/internal/container"
 	"github.com/localstack/lstk/internal/output"
 	"github.com/localstack/lstk/internal/runtime"
@@ -104,7 +105,13 @@ func Run(parentCtx context.Context, runOpts RunOptions) error {
 			p.Send(runErrMsg{err: err})
 			return
 		}
-		go container.ResolveAndCacheLabel(ctx, runOpts.StartOptions, resolvedVersion, labelCh)
+		// Empty resolvedVersion means the container was already running and Start
+		// returned early — use the cached label rather than re-resolving.
+		if resolvedVersion == "" {
+			go func() { labelCh <- config.CachedPlanLabel() }()
+		} else {
+			go container.ResolveAndCacheLabel(ctx, runOpts.StartOptions, resolvedVersion, labelCh)
+		}
 		p.Send(runDoneMsg{})
 	}()
 
