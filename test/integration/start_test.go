@@ -129,6 +129,39 @@ func TestStartCommandFailsWhenPortInUse(t *testing.T) {
 	assert.Contains(t, byName, "lstk_command")
 }
 
+func TestStartDoesNotHangWithExternalContainerAndNoCachedLabel(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("PTY not supported on Windows")
+	}
+	requireDocker(t)
+	cleanup()
+	t.Cleanup(cleanup)
+
+	ctx := testContext(t)
+
+	const fakeImage = "localstack/localstack-pro:test-fake"
+	_, err := dockerClient.ImageTag(ctx, client.ImageTagOptions{Source: testImage, Target: fakeImage})
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		_, _ = dockerClient.ImageRemove(context.Background(), fakeImage, client.ImageRemoveOptions{})
+	})
+
+	startExternalContainer(t, ctx, fakeImage, "localstack-external", "4566")
+
+	// Fresh HOME = no cached plan_label. --config prevents firstRun=true, which would
+	// trigger emulator selection and block on keyboard input.
+	home := t.TempDir()
+	configFile := filepath.Join(home, "config.toml")
+	require.NoError(t, os.WriteFile(configFile, []byte("[[containers]]\ntype = \"aws\"\ntag = \"latest\"\nport = \"4566\"\n"), 0644))
+
+	stdout, err := runLstkInPTY(t, ctx,
+		env.With(env.AuthToken, "fake-token").With(env.Home, home),
+		"start", "--config", configFile,
+	)
+	require.NoError(t, err, "lstk start hung: TUI did not exit when external container was running and no plan label was cached")
+	assert.Contains(t, stdout, "already running")
+}
+
 func TestStartCommandAttachesToExternalContainer(t *testing.T) {
 	requireDocker(t)
 	cleanup()

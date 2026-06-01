@@ -11,7 +11,7 @@ import (
 	"time"
 )
 
-// ErrHomeNotSet is returned when a destination needs "~" expansion but no home directory was provided.
+// ErrHomeNotSet is returned when a path needs "~" expansion but no home directory was provided.
 var ErrHomeNotSet = errors.New("home directory is not set")
 
 var (
@@ -53,6 +53,67 @@ func displayPath(abs, cwd, home string) string {
 		}
 	}
 	return abs
+}
+
+// ParseSource resolves a user-supplied source REF for loading a snapshot.
+// Unlike ParseDestination it never auto-generates a name: REF is required.
+// For local paths, the file must exist; if no extension is given, .zip is tried as a fallback.
+// home is used to expand a leading "~" or "~/"; pass "" to disable tilde expansion.
+func ParseSource(ref, home string) (Destination, error) {
+	if ref == "" {
+		return Destination{}, fmt.Errorf("REF is required for snapshot load")
+	}
+
+	lower := strings.ToLower(ref)
+	switch {
+	case strings.HasPrefix(lower, "pod://"):
+		podName := ref[len("pod://"):]
+		return Destination{}, fmt.Errorf("'%s' is not a valid reference. Aliases use a single colon. Did you mean:\npod:%s", ref, podName)
+	case strings.HasPrefix(lower, "pod:"):
+		podName := ref[len("pod:"):]
+		if !validPodName.MatchString(podName) {
+			return Destination{}, fmt.Errorf("invalid pod name %q: use letters, digits, and hyphens only, starting with a letter or digit", podName)
+		}
+		return Destination{Kind: KindPod, Value: podName}, nil
+	case strings.HasPrefix(lower, "s3://"),
+		strings.HasPrefix(lower, "oras://"):
+		return Destination{}, ErrRemoteNotSupported
+	case strings.Contains(lower, "://"):
+		scheme, _, _ := strings.Cut(ref, "://")
+		return Destination{}, fmt.Errorf("%w: %q", ErrUnknownScheme, scheme+"://")
+	}
+
+	if ref == "~" || strings.HasPrefix(ref, "~/") || strings.HasPrefix(ref, `~\`) {
+		if home == "" {
+			return Destination{}, fmt.Errorf("cannot expand %q: %w", ref, ErrHomeNotSet)
+		}
+		ref = filepath.Join(home, strings.TrimLeft(ref[1:], `/\`))
+	}
+
+	abs, err := filepath.Abs(ref)
+	if err != nil {
+		return Destination{}, fmt.Errorf("resolve path: %w", err)
+	}
+
+	// Try the path as-is first, then with .zip appended as a fallback for bare
+	// names (e.g. "my-snapshot" → "my-snapshot.zip" since that is what save produces).
+	resolved, err := resolveSourcePath(abs)
+	if err != nil {
+		return Destination{}, err
+	}
+	return Destination{Kind: KindLocal, Value: resolved}, nil
+}
+
+// resolveSourcePath returns the first existing path among: abs as-is, then abs+".zip".
+func resolveSourcePath(abs string) (string, error) {
+	if _, err := os.Stat(abs); err == nil {
+		return abs, nil
+	}
+	withZip := abs + ".zip"
+	if _, err := os.Stat(withZip); err == nil {
+		return withZip, nil
+	}
+	return "", fmt.Errorf("snapshot file not found: %q (also tried %q)", abs, withZip)
 }
 
 // ParseDestination resolves a user-supplied destination to a local path (KindLocal) or validated pod name (KindPod).

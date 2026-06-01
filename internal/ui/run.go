@@ -6,6 +6,8 @@ import (
 	"os"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/localstack/lstk/internal/auth"
+	"github.com/localstack/lstk/internal/config"
 	"github.com/localstack/lstk/internal/container"
 	"github.com/localstack/lstk/internal/output"
 	"github.com/localstack/lstk/internal/runtime"
@@ -54,9 +56,7 @@ func Run(parentCtx context.Context, runOpts RunOptions) error {
 	go func() {
 		select {
 		case label := <-labelCh:
-			if label != "" {
-				p.Send(headerLabelMsg{label: label})
-			}
+			p.Send(headerLabelMsg{label: label})
 		case <-ctx.Done():
 		}
 	}()
@@ -65,14 +65,22 @@ func Run(parentCtx context.Context, runOpts RunOptions) error {
 		var err error
 		defer func() { runErrCh <- err }()
 		sink := output.NewTUISink(programSender{p: p})
-		// Start label resolution immediately when no emulator selection is needed, so
-		// headerLabelMsg always arrives even if NotifyUpdate returns early (update case).
-		// When emulator selection is needed, resolution starts after the user picks.
-		if !runOpts.NeedsEmulatorSelection {
-			go container.ResolveAndCacheLabel(ctx, runOpts.StartOptions, labelCh)
-		}
 		if update.NotifyUpdate(ctx, sink, runOpts.NotifyOptions) {
+			p.Send(headerLabelMsg{})
 			p.Send(runDoneMsg{})
+			return
+		}
+		// Resolve the auth token before any emulator-selection prompt so the user
+		// logs in first and only configures an emulator once they're authenticated.
+		// container.Start still calls GetToken as a safety net for non-interactive
+		// callers; once the token is in opts.AuthToken (or the keyring), it returns
+		// immediately.
+		if authErr := resolveAuthToken(ctx, sink, &runOpts); authErr != nil {
+			if errors.Is(authErr, context.Canceled) {
+				return
+			}
+			err = authErr
+			p.Send(runErrMsg{err: authErr})
 			return
 		}
 		if runOpts.NeedsEmulatorSelection {
@@ -85,15 +93,22 @@ func Run(parentCtx context.Context, runOpts RunOptions) error {
 				return
 			}
 			runOpts.StartOptions.Containers = newContainers
-			go container.ResolveAndCacheLabel(ctx, runOpts.StartOptions, labelCh)
 		}
-		err = container.Start(ctx, runOpts.Runtime, sink, runOpts.StartOptions, true)
+		var resolvedVersion string
+		resolvedVersion, err = container.Start(ctx, runOpts.Runtime, sink, runOpts.StartOptions, true)
 		if err != nil {
 			if errors.Is(err, context.Canceled) {
 				return
 			}
 			p.Send(runErrMsg{err: err})
 			return
+		}
+		// Empty resolvedVersion means the container was already running and Start
+		// returned early — use the cached label rather than re-resolving.
+		if resolvedVersion == "" {
+			go func() { labelCh <- config.CachedPlanLabel() }()
+		} else {
+			go container.ResolveAndCacheLabel(ctx, runOpts.StartOptions, resolvedVersion, labelCh)
 		}
 		p.Send(runDoneMsg{})
 	}()
@@ -112,6 +127,23 @@ func Run(parentCtx context.Context, runOpts RunOptions) error {
 		return runErr
 	}
 
+	return nil
+}
+
+// resolveAuthToken ensures the user is authenticated before the start flow
+// continues. On success, the resolved token is written to opts.StartOptions.AuthToken
+// so container.Start short-circuits its own auth call.
+func resolveAuthToken(ctx context.Context, sink output.Sink, opts *RunOptions) error {
+	tokenStorage, err := auth.NewTokenStorage(opts.StartOptions.ForceFileKeyring, opts.StartOptions.Logger)
+	if err != nil {
+		return err
+	}
+	a := auth.New(sink, opts.StartOptions.PlatformClient, tokenStorage, opts.StartOptions.AuthToken, opts.StartOptions.WebAppURL, true, "")
+	token, err := a.GetToken(ctx)
+	if err != nil {
+		return err
+	}
+	opts.StartOptions.AuthToken = token
 	return nil
 }
 

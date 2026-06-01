@@ -178,6 +178,121 @@ func (c *Client) ExportState(ctx context.Context, host string, dst io.Writer) er
 	return nil
 }
 
+func (c *Client) ImportState(ctx context.Context, host string, src io.Reader, strategy string) error {
+	url := fmt.Sprintf("http://%s/_localstack/pods", host)
+	if strategy != "" {
+		url += "?merge=" + strategy
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, src)
+	if err != nil {
+		return fmt.Errorf("create request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/octet-stream")
+
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return fmt.Errorf("connect to LocalStack: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode == http.StatusUnprocessableEntity {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("%w: %s", snapshot.ErrIncompatibleSnapshot, strings.TrimSpace(string(body)))
+	}
+	if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("LocalStack returned status %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+	}
+
+	scanner := bufio.NewScanner(resp.Body)
+	buf := make([]byte, 1024*1024)
+	scanner.Buffer(buf, 1024*1024)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" {
+			continue
+		}
+		var event struct {
+			Service string `json:"service"`
+			Status  string `json:"status"`
+			Message string `json:"message"`
+		}
+		if err := json.Unmarshal([]byte(line), &event); err != nil {
+			continue
+		}
+		if event.Status == "error" && event.Message != "" {
+			return fmt.Errorf("load failed for service %s: %s", event.Service, event.Message)
+		}
+	}
+	return scanner.Err()
+}
+
+func (c *Client) LoadPodSnapshot(ctx context.Context, host, podName, authToken, strategy string) ([]string, error) {
+	url := fmt.Sprintf("http://%s/_localstack/pods/%s", host, podName)
+	if strategy != "" {
+		url += "?merge=" + strategy
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPut, url, bytes.NewReader([]byte("{}")))
+	if err != nil {
+		return nil, fmt.Errorf("create request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Basic "+base64.StdEncoding.EncodeToString([]byte(":"+authToken)))
+
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("connect to LocalStack: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode == http.StatusUnprocessableEntity {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("%w: %s", snapshot.ErrIncompatibleSnapshot, strings.TrimSpace(string(body)))
+	}
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("pod load failed (HTTP %d): %s", resp.StatusCode, strings.TrimSpace(string(body)))
+	}
+
+	var services []string
+	scanner := bufio.NewScanner(resp.Body)
+	buf := make([]byte, 1024*1024)
+	scanner.Buffer(buf, 1024*1024)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" {
+			continue
+		}
+		var event struct {
+			Event   string `json:"event"`
+			Service string `json:"service"`
+			Status  string `json:"status"`
+			Message string `json:"message"`
+		}
+		if err := json.Unmarshal([]byte(line), &event); err != nil {
+			continue
+		}
+		switch event.Event {
+		case "service":
+			switch event.Status {
+			case "ok":
+				services = append(services, event.Service)
+			case "error":
+				return nil, fmt.Errorf("load failed for service %s: %s", event.Service, event.Message)
+			}
+		case "completion":
+			if event.Status != "ok" {
+				return nil, fmt.Errorf("pod load failed: %s", event.Message)
+			}
+			return services, nil
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		return nil, fmt.Errorf("reading response: %w", err)
+	}
+	return services, nil
+}
+
 func (c *Client) SavePodSnapshot(ctx context.Context, host, podName, authToken string) (snapshot.PodSaveResult, error) {
 	url := fmt.Sprintf("http://%s/_localstack/pods/%s", host, podName)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader([]byte("{}")))

@@ -2,10 +2,11 @@ package integration_test
 
 import (
 	"encoding/json"
-	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -14,22 +15,13 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// returns a mock server for catalog and license endpoints.
-// Empty catalogVersion → 503. The returned *string captures the product version from license requests.
-func createVersionResolutionMockServer(t *testing.T, catalogVersion string, licenseSuccess bool) (*httptest.Server, *string) {
+// returns a mock license server that captures the product version from license requests.
+// licenseSuccess controls whether the server returns 200 or 403.
+func createLicenseMockServer(t *testing.T, licenseSuccess bool) (*httptest.Server, *string) {
 	t.Helper()
 	capturedVersion := new(string)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
-		case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/v1/license/catalog/"):
-			if catalogVersion == "" {
-				w.WriteHeader(http.StatusServiceUnavailable)
-				return
-			}
-			parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
-			emulatorType := parts[len(parts)-2]
-			w.Header().Set("Content-Type", "application/json")
-			_, _ = fmt.Fprintf(w, `{"emulator_type":%q,"version":%q}`, emulatorType, catalogVersion)
 		case r.Method == http.MethodPost && r.URL.Path == "/v1/license/request":
 			body, _ := io.ReadAll(r.Body)
 			var req struct {
@@ -54,65 +46,72 @@ func createVersionResolutionMockServer(t *testing.T, catalogVersion string, lice
 	return srv, capturedVersion
 }
 
-// Verifies that when the catalog API returns a version, the license request uses
-// that version (not "latest"), allowing license validation to happen before pulling the image.
-func TestVersionResolvedViaCatalog(t *testing.T) {
+// Verifies that when "latest" is configured, the version is resolved by inspecting
+// the pulled image and the license request carries that resolved version (not "latest").
+func TestVersionResolvedViaImageInspection(t *testing.T) {
 	requireDocker(t)
 	_ = env.Require(t, env.AuthToken)
 
 	cleanup()
 	t.Cleanup(cleanup)
 
-	mockServer, capturedVersion := createVersionResolutionMockServer(t, "4.14.0", true)
+	mockServer, capturedVersion := createLicenseMockServer(t, true)
 
 	ctx := testContext(t)
 	stdout, stderr, err := runLstk(t, ctx, "", env.With(env.APIEndpoint, mockServer.URL), "start")
 	require.NoError(t, err, "lstk start failed:\nstdout: %s\nstderr: %s", stdout, stderr)
 
-	assert.Equal(t, "4.14.0", *capturedVersion,
-		"license request should carry the version returned by the catalog API")
-	assert.NotEqual(t, "latest", *capturedVersion,
-		"license request should not use the unresolved 'latest' tag")
-	assert.Contains(t, stdout, "Checking license")
-	assert.NotContains(t, stdout, "(4.14.0)")
-}
-
-// Verifies that when the catalog endpoint is unavailable, the version is resolved
-// by inspecting the pulled image and used for licensing.
-func TestVersionFallsBackToImageInspectionWhenCatalogFails(t *testing.T) {
-	requireDocker(t)
-	_ = env.Require(t, env.AuthToken)
-
-	cleanup()
-	t.Cleanup(cleanup)
-
-	// Catalog returns 503; license accepts all requests
-	mockServer, capturedVersion := createVersionResolutionMockServer(t, "", true)
-
-	ctx := testContext(t)
-	stdout, stderr, err := runLstk(t, ctx, "", env.With(env.APIEndpoint, mockServer.URL), "start")
-	require.NoError(t, err, "lstk start should succeed via image inspection fallback:\nstdout: %s\nstderr: %s", stdout, stderr)
-
 	assert.NotEmpty(t, *capturedVersion, "license request should carry a version resolved from image inspection")
 	assert.NotEqual(t, "latest", *capturedVersion, "resolved version should not be the unresolved 'latest' tag")
+	assert.Contains(t, stdout, "Checking license")
+
+	semverLike := strings.Contains(*capturedVersion, ".") || strings.Contains(*capturedVersion, "-")
+	assert.True(t, semverLike, "resolved version %q should look like a real version", *capturedVersion)
 }
 
-// Verifies that when both the catalog endpoint is unavailable and the license
-// validation fails in the image inspection fallback path, the command exits with a clear error.
-func TestCommandFailsNicelyWhenCatalogAndLicenseBothFail(t *testing.T) {
+// Verifies that when the license check fails after image inspection, the command
+// exits with a clear error message.
+func TestCommandFailsNicelyWhenLicenseCheckFails(t *testing.T) {
 	requireDocker(t)
 	_ = env.Require(t, env.AuthToken)
 
 	cleanup()
 	t.Cleanup(cleanup)
 
-	// Catalog unavailable; license rejects all requests
-	mockServer, _ := createVersionResolutionMockServer(t, "", false)
+	mockServer, _ := createLicenseMockServer(t, false)
 
 	ctx := testContext(t)
 	stdout, stderr, err := runLstk(t, ctx, "",
 		env.With(env.APIEndpoint, mockServer.URL), "start")
-	require.Error(t, err, "expected lstk start to fail when catalog is down and license check fails")
+	require.Error(t, err, "expected lstk start to fail when license check fails")
 	assert.Contains(t, stderr, "license validation failed",
 		"stdout: %s", stdout)
+}
+
+// Verifies that pinned tags are validated before pulling (fail-fast path).
+func TestPinnedTagValidatedPrePull(t *testing.T) {
+	requireDocker(t)
+	_ = env.Require(t, env.AuthToken)
+
+	cleanup()
+	t.Cleanup(cleanup)
+
+	// License rejects all requests — with a pinned tag, failure should happen before any pull
+	mockServer, capturedVersion := createLicenseMockServer(t, false)
+
+	configFile := filepath.Join(t.TempDir(), "config.toml")
+	require.NoError(t, os.WriteFile(configFile, []byte(`
+[[containers]]
+type = "aws"
+tag  = "4.0.0"
+port = "4566"
+`), 0644))
+
+	ctx := testContext(t)
+	stdout, stderr, err := runLstk(t, ctx, "",
+		env.With(env.APIEndpoint, mockServer.URL), "--config", configFile, "start")
+	require.Error(t, err, "expected lstk start to fail when license check fails")
+	assert.Contains(t, stderr, "license validation failed",
+		"stdout: %s", stdout)
+	assert.Equal(t, "4.0.0", *capturedVersion, "pinned tag should be sent directly to the license API without image inspection")
 }

@@ -42,6 +42,8 @@ func FormatEventLine(event Event) (string, bool) {
 		return formatResourceSummary(e), true
 	case PodSnapshotSavedEvent:
 		return formatPodSnapshotSaved(e), true
+	case SnapshotLoadedEvent:
+		return formatSnapshotLoaded(e), true
 	case AuthCompleteEvent:
 		return "", false
 	default:
@@ -196,6 +198,15 @@ func FormatUptime(d time.Duration) string {
 
 func formatResourceSummary(e ResourceSummaryEvent) string {
 	return fmt.Sprintf("~ %d resources · %d services", e.Resources, e.Services)
+}
+
+func formatSnapshotLoaded(e SnapshotLoadedEvent) string {
+	var sb strings.Builder
+	sb.WriteString(SuccessMarker() + fmt.Sprintf(" Snapshot loaded from %s", e.Source))
+	if len(e.Services) > 0 {
+		sb.WriteString("\n• Services: " + strings.Join(e.Services, ", "))
+	}
+	return sb.String()
 }
 
 func formatPodSnapshotSaved(e PodSnapshotSavedEvent) string {

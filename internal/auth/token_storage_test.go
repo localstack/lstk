@@ -32,17 +32,32 @@ func TestSystemTokenStorage_GetReturnsTokenFromKeyring(t *testing.T) {
 	assert.Equal(t, "system-token", token)
 }
 
-func TestSystemTokenStorage_GetReturnsErrTokenNotFoundWhenKeyringEmpty(t *testing.T) {
+func TestSystemTokenStorage_GetReturnsErrTokenNotFoundWhenKeyringAndFileEmpty(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	kr := NewMockkeyringer(ctrl)
 	file := NewMockAuthTokenStorage(ctrl)
 
 	kr.EXPECT().Get(keyringService, keyringAuthTokenKey).Return("", keyring.ErrNotFound)
+	file.EXPECT().GetAuthToken().Return("", ErrTokenNotFound)
 
 	token, err := newTestStorage(t, kr, file).GetAuthToken()
 
 	assert.Empty(t, token)
 	assert.ErrorIs(t, err, ErrTokenNotFound)
+}
+
+func TestSystemTokenStorage_GetReturnsFileTokenWhenKeyringEmpty(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	kr := NewMockkeyringer(ctrl)
+	file := NewMockAuthTokenStorage(ctrl)
+
+	kr.EXPECT().Get(keyringService, keyringAuthTokenKey).Return("", keyring.ErrNotFound)
+	file.EXPECT().GetAuthToken().Return("file-token", nil)
+
+	token, err := newTestStorage(t, kr, file).GetAuthToken()
+
+	assert.NoError(t, err)
+	assert.Equal(t, "file-token", token)
 }
 
 func TestSystemTokenStorage_GetFallsBackToFileWhenKeyringUnavailable(t *testing.T) {
@@ -84,24 +99,26 @@ func TestSystemTokenStorage_SetFallsBackToFileWhenKeyringUnavailable(t *testing.
 	assert.NoError(t, err)
 }
 
-func TestSystemTokenStorage_DeleteRemovesFromKeyring(t *testing.T) {
+func TestSystemTokenStorage_DeleteRemovesFromKeyringAndFile(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	kr := NewMockkeyringer(ctrl)
 	file := NewMockAuthTokenStorage(ctrl)
 
 	kr.EXPECT().Delete(keyringService, keyringAuthTokenKey).Return(nil)
+	file.EXPECT().DeleteAuthToken().Return(nil)
 
 	err := newTestStorage(t, kr, file).DeleteAuthToken()
 
 	assert.NoError(t, err)
 }
 
-func TestSystemTokenStorage_DeleteSucceedsWhenKeyringTokenMissing(t *testing.T) {
+func TestSystemTokenStorage_DeleteClearsFileWhenKeyringTokenMissing(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	kr := NewMockkeyringer(ctrl)
 	file := NewMockAuthTokenStorage(ctrl)
 
 	kr.EXPECT().Delete(keyringService, keyringAuthTokenKey).Return(keyring.ErrNotFound)
+	file.EXPECT().DeleteAuthToken().Return(nil)
 
 	err := newTestStorage(t, kr, file).DeleteAuthToken()
 

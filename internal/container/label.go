@@ -11,8 +11,11 @@ import (
 	"github.com/localstack/lstk/internal/log"
 )
 
-func ResolveAndCacheLabel(ctx context.Context, opts StartOptions, labelCh chan<- string) {
-	label, ok := ResolveEmulatorLabel(ctx, opts.PlatformClient, opts.Containers, opts.AuthToken, opts.Logger)
+// ResolveAndCacheLabel resolves the plan label using the version returned by Start
+// and caches it for subsequent runs. resolvedVersion is the version extracted from
+// image inspection; it may be empty if Start returned early (e.g. already running).
+func ResolveAndCacheLabel(ctx context.Context, opts StartOptions, resolvedVersion string, labelCh chan<- string) {
+	label, ok := ResolveEmulatorLabel(ctx, opts.PlatformClient, opts.Containers, opts.AuthToken, resolvedVersion, opts.Logger)
 	if ok {
 		config.CachePlanLabel(label)
 	}
@@ -25,7 +28,8 @@ const NoLicenseLabel = "LocalStack (No license)"
 // to build a label like "LocalStack Ultimate". Falls back to
 // NoLicenseLabel when the plan cannot be determined. The returned bool
 // is true only when a real plan was resolved (i.e. the result is worth caching).
-func ResolveEmulatorLabel(ctx context.Context, client api.PlatformAPI, containers []config.ContainerConfig, token string, logger log.Logger) (string, bool) {
+// resolvedVersion is the version from post-pull image inspection for "latest" containers.
+func ResolveEmulatorLabel(ctx context.Context, client api.PlatformAPI, containers []config.ContainerConfig, token, resolvedVersion string, logger log.Logger) (string, bool) {
 	if len(containers) == 0 || token == "" {
 		return NoLicenseLabel, false
 	}
@@ -42,14 +46,10 @@ func ResolveEmulatorLabel(ctx context.Context, client api.PlatformAPI, container
 		if c.Type.SelfValidatesLicense() {
 			return "LocalStack", false
 		}
-		apiCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
-		v, err := client.GetLatestCatalogVersion(apiCtx, string(c.Type))
-		cancel()
-		if err != nil {
-			logger.Info("could not resolve catalog version for header: %v", err)
+		if resolvedVersion == "" {
 			return NoLicenseLabel, false
 		}
-		tag = v
+		tag = resolvedVersion
 	}
 
 	hostname, _ := os.Hostname()
