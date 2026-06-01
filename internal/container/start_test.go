@@ -157,7 +157,7 @@ func TestSelectContainersToStart_AttachesWhenExternalContainerOnConfiguredPort(t
 	}
 
 	mockRT.EXPECT().IsRunning(gomock.Any(), c.Name).Return(false, nil)
-	mockRT.EXPECT().FindRunningByImage(gomock.Any(), []string{"localstack/localstack-pro", "localstack/localstack", "localstack/snowflake"}, "4566/tcp").
+	mockRT.EXPECT().FindRunningByImage(gomock.Any(), []string{"localstack/localstack-pro", "localstack/localstack", "localstack/snowflake", "localstack/localstack-azure"}, "4566/tcp").
 		Return(&runtime.RunningContainer{Name: "external-container", Image: "localstack/localstack-pro:3.5.0", BoundPort: "4566"}, nil)
 	mockRT.EXPECT().ContainerEnv(gomock.Any(), "external-container").Return(nil, nil)
 
@@ -186,7 +186,7 @@ func TestSelectContainersToStart_AttachesWhenExternalContainerVersionDiffers(t *
 	}
 
 	mockRT.EXPECT().IsRunning(gomock.Any(), c.Name).Return(false, nil)
-	mockRT.EXPECT().FindRunningByImage(gomock.Any(), []string{"localstack/localstack-pro", "localstack/localstack", "localstack/snowflake"}, "4566/tcp").
+	mockRT.EXPECT().FindRunningByImage(gomock.Any(), []string{"localstack/localstack-pro", "localstack/localstack", "localstack/snowflake", "localstack/localstack-azure"}, "4566/tcp").
 		Return(&runtime.RunningContainer{Name: "external-container", Image: "localstack/localstack-pro:3.5.0", BoundPort: "4566"}, nil)
 	mockRT.EXPECT().ContainerEnv(gomock.Any(), "external-container").Return(nil, nil)
 
@@ -220,7 +220,7 @@ func TestSelectContainersToStart_QueuesContainerWhenNoneRunningOnPort(t *testing
 	}
 
 	mockRT.EXPECT().IsRunning(gomock.Any(), c.Name).Return(false, nil)
-	mockRT.EXPECT().FindRunningByImage(gomock.Any(), []string{"localstack/localstack-pro", "localstack/localstack", "localstack/snowflake"}, "4566/tcp").
+	mockRT.EXPECT().FindRunningByImage(gomock.Any(), []string{"localstack/localstack-pro", "localstack/localstack", "localstack/snowflake", "localstack/localstack-azure"}, "4566/tcp").
 		Return(nil, nil)
 
 	sink := output.NewPlainSink(io.Discard)
@@ -246,7 +246,7 @@ func TestSelectContainersToStart_ErrorsOnEmulatorTypeMismatch(t *testing.T) {
 	}
 
 	mockRT.EXPECT().IsRunning(gomock.Any(), c.Name).Return(false, nil)
-	mockRT.EXPECT().FindRunningByImage(gomock.Any(), []string{"localstack/localstack-pro", "localstack/localstack", "localstack/snowflake"}, "4566/tcp").
+	mockRT.EXPECT().FindRunningByImage(gomock.Any(), []string{"localstack/localstack-pro", "localstack/localstack", "localstack/snowflake", "localstack/localstack-azure"}, "4566/tcp").
 		Return(&runtime.RunningContainer{Name: "localstack-aws", Image: "localstack/localstack-pro:latest", BoundPort: "4566"}, nil)
 
 	var out bytes.Buffer
@@ -261,6 +261,20 @@ func TestSelectContainersToStart_ErrorsOnEmulatorTypeMismatch(t *testing.T) {
 	assert.Contains(t, got, "LocalStack AWS Emulator is running on port 4566")
 	assert.Contains(t, got, "Your config specifies the LocalStack Snowflake Emulator")
 	assert.Contains(t, got, "docker stop localstack-aws")
+}
+
+func TestEmitPostStartPointers_Azure(t *testing.T) {
+	var out bytes.Buffer
+	sink := output.NewPlainSink(&out)
+
+	emitPostStartPointers(sink, config.EmulatorAzure, "localhost.localstack.cloud:4566", "https://app.localstack.cloud/", false)
+
+	got := out.String()
+	assert.Contains(t, got, "• Endpoint: localhost.localstack.cloud:4566\n")
+	assert.Contains(t, got, "• Web app: https://app.localstack.cloud\n")
+	assert.Contains(t, got, "> Tip:")
+	assert.NotContains(t, got, "• Snowflake endpoint:",
+		"Azure must not show the snowflake-prefixed endpoint")
 }
 
 func TestEmitPostStartPointers_UnknownEmulator_NoTip(t *testing.T) {
@@ -353,6 +367,52 @@ func TestStartContainers_SnowflakeLicenseError(t *testing.T) {
 		assert.Equal(t, telemetry.LifecycleStartError, payload["event_type"])
 		assert.Equal(t, telemetry.ErrCodeLicenseInvalid, payload["error_code"])
 		assert.Equal(t, "snowflake", payload["emulator"])
+	default:
+		t.Fatal("no telemetry event received")
+	}
+}
+
+func TestStartContainers_AzureLicenseError(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockRT := runtime.NewMockRuntime(ctrl)
+
+	c := runtime.ContainerConfig{
+		Image:         "localstack/localstack-azure:latest",
+		Name:          "localstack-azure",
+		EmulatorType:  config.EmulatorAzure,
+		Tag:           "latest",
+		Port:          "4566",
+		ContainerPort: "4566/tcp",
+		HealthPath:    "/_localstack/health",
+	}
+	const containerID = "abc123"
+	licenseLog := "The Azure emulator is currently not covered by your license."
+	mockRT.EXPECT().Start(gomock.Any(), c).Return(containerID, nil)
+	mockRT.EXPECT().IsRunning(gomock.Any(), containerID).Return(false, nil)
+	mockRT.EXPECT().Logs(gomock.Any(), containerID, 20).Return(licenseLog, nil)
+
+	tel, capturedEvents := newCapturingTelClient(t)
+
+	var out bytes.Buffer
+	sink := output.NewPlainSink(&out)
+
+	err := startContainers(context.Background(), mockRT, sink, tel, []runtime.ContainerConfig{c}, map[string]bool{})
+	tel.Close()
+
+	require.Error(t, err)
+	assert.True(t, output.IsSilent(err), "error should be silent since ErrorEvent was already emitted")
+	got := out.String()
+	assert.Contains(t, got, "Your license does not include the Azure emulator.")
+	assert.Contains(t, got, "https://app.localstack.cloud/sign-up")
+	assert.Contains(t, got, "https://www.localstack.cloud/demo")
+
+	select {
+	case ev := <-capturedEvents:
+		payload, ok := ev["payload"].(map[string]any)
+		require.True(t, ok, "telemetry event should have a payload map")
+		assert.Equal(t, telemetry.LifecycleStartError, payload["event_type"])
+		assert.Equal(t, telemetry.ErrCodeLicenseInvalid, payload["error_code"])
+		assert.Equal(t, "azure", payload["emulator"])
 	default:
 		t.Fatal("no telemetry event received")
 	}

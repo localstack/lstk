@@ -43,7 +43,7 @@ func ResolveEmulatorLabel(ctx context.Context, client api.PlatformAPI, container
 
 	tag := c.Tag
 	if tag == "" || tag == "latest" {
-		if c.Type == config.EmulatorSnowflake {
+		if c.Type.SelfValidatesLicense() {
 			return "LocalStack", false
 		}
 		if resolvedVersion == "" {

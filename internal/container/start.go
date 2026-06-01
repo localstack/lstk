@@ -278,6 +278,11 @@ func tipsForType(t config.EmulatorType) []string {
 			"> Tip: View emulator logs: lstk logs --follow",
 			"> Tip: Check emulator status: lstk status",
 		}
+	case config.EmulatorAzure:
+		return []string{
+			"> Tip: View emulator logs: lstk logs --follow",
+			"> Tip: Check emulator status: lstk status",
+		}
 	}
 	return nil
 }
@@ -325,7 +330,7 @@ func pullImages(ctx context.Context, rt runtime.Runtime, sink output.Sink, tel *
 func tryPrePullLicenseValidation(ctx context.Context, sink output.Sink, opts StartOptions, containers []runtime.ContainerConfig, token, licenseFilePath string) ([]runtime.ContainerConfig, error) {
 	var needsPostPull []runtime.ContainerConfig
 	for _, c := range containers {
-		if c.EmulatorType == config.EmulatorSnowflake {
+		if c.EmulatorType.SelfValidatesLicense() {
 			continue
 		}
 
@@ -346,7 +351,7 @@ func tryPrePullLicenseValidation(ctx context.Context, sink output.Sink, opts Sta
 func validateLicensesFromImages(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts StartOptions, containers []runtime.ContainerConfig, token, licenseFilePath string) (string, error) {
 	var firstVersion string
 	for _, c := range containers {
-		if c.EmulatorType == config.EmulatorSnowflake {
+		if c.EmulatorType.SelfValidatesLicense() {
 			continue
 		}
 
@@ -387,10 +392,10 @@ func startContainers(ctx context.Context, rt runtime.Runtime, sink output.Sink, 
 			sink.Emit(output.SpinnerStop())
 			errCode := telemetry.ErrCodeStartFailed
 			var licErr *licenseNotCoveredError
-			if errors.As(err, &licErr) && c.EmulatorType == config.EmulatorSnowflake {
+			if errors.As(err, &licErr) && c.EmulatorType.SelfValidatesLicense() {
 				errCode = telemetry.ErrCodeLicenseInvalid
 				sink.Emit(output.ErrorEvent{
-					Title: "Your license does not include the Snowflake emulator.",
+					Title: fmt.Sprintf("Your license does not include the %s emulator.", c.EmulatorType.ShortName()),
 					Actions: []output.ErrorAction{
 						{Label: "Sign up for a free trial:", Value: "https://app.localstack.cloud/sign-up"},
 						{Label: "Contact our team:", Value: "https://www.localstack.cloud/demo"},
@@ -612,7 +617,7 @@ func validateLicense(ctx context.Context, sink output.Sink, opts StartOptions, c
 }
 
 // licenseNotCoveredError is returned by awaitStartup when the container exits
-// because it does not include (snowflake) emulator.
+// because the license does not include the emulator (Snowflake or Azure).
 type licenseNotCoveredError struct{}
 
 func (e *licenseNotCoveredError) Error() string {
