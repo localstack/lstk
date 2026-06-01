@@ -757,3 +757,23 @@ func TestStartCommandSucceedsForAzure(t *testing.T) {
 	assert.Contains(t, stdout, "> Tip:",
 		"azure start should print a tip line like AWS does")
 }
+
+func TestStartCommandForAzureSkipsLicenseValidation(t *testing.T) {
+	requireDocker(t)
+	_ = env.Require(t, env.AuthToken)
+
+	cleanup()
+	cleanupAzure()
+	t.Cleanup(cleanup)
+	t.Cleanup(cleanupAzure)
+
+	// Mock server that rejects all license requests — this would cause lstk start to fail for AWS.
+	// Azure activates its own license against the licensing server, so lstk must skip the pre-flight check.
+	mockServer := createMockLicenseServer(false)
+	defer mockServer.Close()
+
+	ctx := testContext(t)
+	_, stderr, err := runLstk(t, ctx, "", env.With(env.APIEndpoint, mockServer.URL), "--config", writeAzureConfig(t, "4566"), "start")
+	require.NoError(t, err, "lstk start should succeed for azure even when the license server rejects the request: %s", stderr)
+	requireExitCode(t, 0, err)
+}
