@@ -56,9 +56,7 @@ func Run(parentCtx context.Context, runOpts RunOptions) error {
 	go func() {
 		select {
 		case label := <-labelCh:
-			if label != "" {
-				p.Send(headerLabelMsg{label: label})
-			}
+			p.Send(headerLabelMsg{label: label})
 		case <-ctx.Done():
 		}
 	}()
