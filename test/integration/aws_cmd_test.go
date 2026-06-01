@@ -342,6 +342,28 @@ func TestAWSCommandShowsSpinnerForSlowOperation(t *testing.T) {
 	assert.Contains(t, out, "ARGS:--profile localstack s3 ls")
 }
 
+func TestAWSCommandSuppressesSpinnerInNonInteractiveMode(t *testing.T) {
+	requireDocker(t)
+	cleanup()
+	t.Cleanup(cleanup)
+	ctx := testContext(t)
+	// A running emulator is required: without it, `lstk aws` exits before reaching the spinner.
+	startTestContainer(t, ctx)
+
+	// A slow operation would normally render the spinner in a PTY; --non-interactive
+	// must suppress it so captured streams carry no ANSI control codes.
+	fakeDir := writeSlowFakeAWS(t, 5)
+	homeDir := t.TempDir()
+	writeAWSProfile(t, homeDir)
+	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir+":/bin:/usr/bin").With(env.Home, homeDir)
+
+	out, err := runLstkInPTY(t, ctx, e, "--non-interactive", "aws", "s3", "ls")
+	require.NoError(t, err, "lstk aws failed: %s", out)
+
+	assert.NotContains(t, out, "Loading service")
+	assert.Contains(t, out, "ARGS:--profile localstack s3 ls")
+}
+
 func TestAWSCommandSuppressesSpinnerForFastOperation(t *testing.T) {
 	requireDocker(t)
 	cleanup()
