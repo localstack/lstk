@@ -205,7 +205,8 @@ func startEmulator(ctx context.Context, rt runtime.Runtime, cfg *env.Env, tel *t
 		})
 	}
 	update.NotifyUpdate(ctx, sink, update.NotifyOptions{GitHubToken: cfg.GitHubToken})
-	return container.Start(ctx, rt, sink, opts, false)
+	_, err = container.Start(ctx, rt, sink, opts, false)
+	return err
 }
 
 // instrumentCommands walks the Cobra command tree and wraps every RunE with telemetry emission.

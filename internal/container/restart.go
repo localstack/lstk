@@ -11,5 +11,6 @@ func Restart(ctx context.Context, rt runtime.Runtime, sink output.Sink, stopOpts
 	if err := Stop(ctx, rt, sink, startOpts.Containers, stopOpts); err != nil {
 		return err
 	}
-	return Start(ctx, rt, sink, startOpts, interactive)
+	_, err := Start(ctx, rt, sink, startOpts, interactive)
+	return err
 }

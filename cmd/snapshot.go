@@ -63,7 +63,8 @@ func newSnapshotCmd(cfg *env.Env, tel *telemetry.Client, logger log.Logger) *cob
 func buildStarter(cfg *env.Env, rt runtime.Runtime, appConfig *config.Config, logger log.Logger, tel *telemetry.Client) snapshot.Starter {
 	return func(ctx context.Context, sink output.Sink) error {
 		opts := buildStartOptions(cfg, appConfig, logger, tel, false)
-		return container.Start(ctx, rt, sink, opts, false)
+		_, err := container.Start(ctx, rt, sink, opts, false)
+		return err
 	}
 }
 
