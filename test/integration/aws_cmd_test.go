@@ -69,6 +69,31 @@ func TestAWSCommandInjectsEndpointAndArgs(t *testing.T) {
 	assertCommandTelemetry(t, events, "aws", 0)
 }
 
+func TestAWSCommandStripsGlobalFlagsFromPassthrough(t *testing.T) {
+	requireDocker(t)
+	cleanup()
+	t.Cleanup(cleanup)
+	ctx := testContext(t)
+	startTestContainer(t, ctx)
+
+	fakeDir := writeFakeAWS(t)
+	homeDir := t.TempDir()
+	writeAWSProfile(t, homeDir)
+
+	// --config must resolve to this file, not be forwarded to the aws binary.
+	configPath := filepath.Join(t.TempDir(), "config.toml")
+	require.NoError(t, os.WriteFile(configPath, []byte("# lstk test config\n"), 0600))
+
+	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).With(env.Home, homeDir)
+
+	stdout, stderr, err := runLstk(t, ctx, t.TempDir(), e, "--config", configPath, "--non-interactive", "aws", "s3", "ls")
+	require.NoError(t, err, "lstk aws failed: %s", stderr)
+
+	assert.Contains(t, stdout, "ARGS:--profile localstack s3 ls")
+	assert.NotContains(t, stdout, "--config")
+	assert.NotContains(t, stdout, "--non-interactive")
+}
+
 func TestAWSCommandInjectsCredentials(t *testing.T) {
 	requireDocker(t)
 	cleanup()

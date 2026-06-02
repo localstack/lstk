@@ -19,6 +19,9 @@ import (
 )
 
 func newAWSCmd(cfg *env.Env) *cobra.Command {
+	// DisableFlagParsing means Cobra won't strip lstk's own flags; PreRunE does
+	// that and stashes the remaining args here for RunE to forward to aws.
+	var passthrough []string
 	return &cobra.Command{
 		Use:   "aws [args...]",
 		Short: "Run AWS CLI commands against LocalStack",
@@ -35,10 +38,21 @@ Examples:
   lstk aws sqs list-queues
   lstk aws s3 mb s3://my-bucket`,
 		DisableFlagParsing: true,
-		PreRunE:            initConfig(nil),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			args, nonInteractive := stripNonInteractiveFlag(args)
-
+		PreRunE: func(cmd *cobra.Command, args []string) error {
+			var gf globalFlags
+			passthrough, gf = stripGlobalFlags(args)
+			if gf.nonInteractive {
+				cfg.NonInteractive = true
+			}
+			if gf.configPath != "" {
+				// initConfig reads the "config" flag, so feed the value back to it.
+				if err := cmd.Flags().Set("config", gf.configPath); err != nil {
+					return err
+				}
+			}
+			return initConfig(nil)(cmd, args)
+		},
+		RunE: func(cmd *cobra.Command, _ []string) error {
 			rt, err := runtime.NewDockerRuntime(cfg.DockerHost)
 			if err != nil {
 				return err
@@ -87,7 +101,7 @@ Examples:
 			}
 
 			stdout, stderr := io.Writer(os.Stdout), io.Writer(os.Stderr)
-			if !nonInteractive && terminal.IsTerminal(os.Stderr) {
+			if !cfg.NonInteractive && terminal.IsTerminal(os.Stderr) {
 				s := terminal.NewSpinner(os.Stderr, "Loading service...", 4*time.Second)
 				s.Start()
 				defer s.Stop()
@@ -95,24 +109,7 @@ Examples:
 				stderr = &terminal.StopOnWriteWriter{W: os.Stderr, Spinner: s}
 			}
 
-			return awscli.Exec(cmd.Context(), "http://"+host, profileExists, stdout, stderr, args)
+			return awscli.Exec(cmd.Context(), "http://"+host, profileExists, stdout, stderr, passthrough)
 		},
 	}
-}
-
-// stripNonInteractiveFlag pulls lstk's --non-interactive flag out of the AWS CLI
-// passthrough args and reports whether it was set. The aws command uses
-// DisableFlagParsing, so Cobra never parses the flag here — left in place it would
-// be forwarded to the aws binary and rejected as an unknown option.
-func stripNonInteractiveFlag(args []string) ([]string, bool) {
-	out := make([]string, 0, len(args))
-	nonInteractive := false
-	for _, a := range args {
-		if a == "--non-interactive" {
-			nonInteractive = true
-			continue
-		}
-		out = append(out, a)
-	}
-	return out, nonInteractive
 }
