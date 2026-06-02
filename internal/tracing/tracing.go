@@ -13,6 +13,7 @@ package tracing
 import (
 	"context"
 	stdruntime "runtime"
+	"strings"
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -56,4 +57,28 @@ func Init(ctx context.Context, logger log.Logger) func(context.Context) error {
 	))
 
 	return tp.Shutdown
+}
+
+// SubprocessEnv returns env entries (TRACEPARENT, TRACESTATE) carrying the span
+// context from ctx, or nil when tracing is disabled or no span is active.
+func SubprocessEnv(ctx context.Context) []string {
+	carrier := propagation.MapCarrier{}
+	otel.GetTextMapPropagator().Inject(ctx, carrier)
+	var env []string
+	for _, k := range carrier.Keys() {
+		env = append(env, strings.ToUpper(k)+"="+carrier.Get(k))
+	}
+	return env
+}
+
+// ContextWithRemoteParent extracts a span context from the TRACEPARENT and
+// TRACESTATE environment variables — the inverse of SubprocessEnv.
+func ContextWithRemoteParent(ctx context.Context, getenv func(string) string) context.Context {
+	carrier := propagation.MapCarrier{}
+	for _, k := range []string{"traceparent", "tracestate"} {
+		if v := getenv(strings.ToUpper(k)); v != "" {
+			carrier.Set(k, v)
+		}
+	}
+	return otel.GetTextMapPropagator().Extract(ctx, carrier)
 }

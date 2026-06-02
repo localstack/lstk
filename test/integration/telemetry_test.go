@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"runtime"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -64,7 +65,8 @@ func TestStartCommandSendsTelemetryEvent(t *testing.T) {
 	runCmd := func(t *testing.T, args ...string) {
 		t.Helper()
 		cmd := exec.CommandContext(ctx, binaryPath(), args...)
-		cmd.Env = env.With(env.AuthToken, "fake-token").
+		cmd.Env = env.Environ(testEnvWithHome(t.TempDir(), "")).
+			With(env.AuthToken, "fake-token").
 			With(env.AnalyticsEndpoint, analyticsSrv.URL)
 		out, err := cmd.CombinedOutput()
 		require.NoError(t, err, "lstk %v failed: %s", args, out)
@@ -123,7 +125,8 @@ func TestStopCommandSendsTelemetryEvents(t *testing.T) {
 
 	analyticsSrv, events := mockAnalyticsServer(t)
 
-	_, stderr, err := runLstk(t, ctx, "", env.With(env.AuthToken, "fake-token").
+	_, stderr, err := runLstk(t, ctx, "", env.Environ(testEnvWithHome(t.TempDir(), "")).
+		With(env.AuthToken, "fake-token").
 		With(env.AnalyticsEndpoint, analyticsSrv.URL), "stop")
 	require.NoError(t, err, "lstk stop failed: %s", stderr)
 	requireExitCode(t, 0, err)
@@ -169,7 +172,8 @@ func TestStartCommandSucceedsWhenAnalyticsEndpointUnreachable(t *testing.T) {
 	startTestContainer(t, ctx)
 
 	cmd := exec.CommandContext(ctx, binaryPath(), "start")
-	cmd.Env = env.With(env.AuthToken, "fake-token").
+	cmd.Env = env.Environ(testEnvWithHome(t.TempDir(), "")).
+		With(env.AuthToken, "fake-token").
 		With(env.AnalyticsEndpoint, "http://127.0.0.1:1")
 	out, err := cmd.CombinedOutput()
 
@@ -190,7 +194,8 @@ func TestStartCommandDoesNotSendTelemetryWhenDisabled(t *testing.T) {
 	analyticsSrv, events := mockAnalyticsServer(t)
 
 	cmd := exec.CommandContext(ctx, binaryPath(), "start")
-	cmd.Env = env.With(env.AuthToken, "fake-token").
+	cmd.Env = env.Environ(testEnvWithHome(t.TempDir(), "")).
+		With(env.AuthToken, "fake-token").
 		With(env.AnalyticsEndpoint, analyticsSrv.URL).
 		With(env.DisableEvents, "1")
 	out, err := cmd.CombinedOutput()
@@ -235,41 +240,148 @@ func assertCommandTelemetry(t *testing.T, events <-chan map[string]any, command 
 	assert.InDelta(t, exitCode, result["exit_code"], 0)
 }
 
-// TestOtelTelemetrySpanIsExported verifies that the span created for the
-// analytics POST request reaches the OTLP collector.
-func TestOtelTelemetrySpanIsExported(t *testing.T) {
+// Regression test for FLC-648: a slow analytics endpoint must not add to
+// command latency since the flush happens in a detached subprocess.
+func TestStartCommand_DoesNotBlockOnSlowAnalyticsEndpoint(t *testing.T) {
 	requireDocker(t)
 	cleanup()
 	t.Cleanup(cleanup)
+
+	const endpointDelay = 3 * time.Second
+	const maxParentDuration = endpointDelay / 3 // generous: anything <1s proves the point
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
 	startTestContainer(t, ctx)
 
-	analyticsSrv, _ := mockAnalyticsServer(t)
-	otlpSrv, otlpBodies := mockOTLPCollector(t)
+	received := make(chan map[string]any, 4)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		var req struct {
+			Events []map[string]any `json:"events"`
+		}
+		if err := json.Unmarshal(body, &req); err == nil {
+			for _, ev := range req.Events {
+				received <- ev
+			}
+		}
+		time.Sleep(endpointDelay)
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(srv.Close)
 
 	cmd := exec.CommandContext(ctx, binaryPath(), "start")
 	cmd.Env = env.Environ(testEnvWithHome(t.TempDir(), "")).
 		With(env.AuthToken, "fake-token").
+		With(env.AnalyticsEndpoint, srv.URL)
+
+	start := time.Now()
+	out, err := cmd.CombinedOutput()
+	parentDuration := time.Since(start)
+
+	require.NoError(t, err, "lstk start failed: %s", out)
+	require.Less(t, parentDuration, maxParentDuration,
+		"parent process took %v, expected <%v — subprocess flush should not block parent", parentDuration, maxParentDuration)
+
+	// The detached subprocess should still deliver the event.
+	select {
+	case <-received:
+	case <-time.After(endpointDelay + 5*time.Second):
+		t.Fatal("subprocess flusher never delivered the telemetry event")
+	}
+}
+
+// Verifies the detached flush path without Docker, so it also covers the
+// platform-specific detach flags on Windows CI.
+func TestCommandTelemetryIsDeliveredByDetachedFlusher(t *testing.T) {
+	t.Parallel()
+
+	ctx := testContext(t)
+	analyticsSrv, events := mockAnalyticsServer(t)
+
+	// Dead DOCKER_HOST: start fails fast without Docker but still emits telemetry.
+	_, _, err := runLstk(t, ctx, "", env.Environ(testEnvWithHome(t.TempDir(), "")).
+		With(env.AuthToken, "fake-token").
+		With(env.AnalyticsEndpoint, analyticsSrv.URL).
+		With(env.Key("DOCKER_HOST"), "tcp://127.0.0.1:1"), "start")
+	require.Error(t, err)
+	requireExitCode(t, 1, err)
+
+	assertCommandTelemetry(t, events, "start", 1)
+}
+
+// Pipes events into the hidden __flush-telemetry subcommand and verifies they
+// are POSTed without the subcommand emitting telemetry about itself.
+func TestFlushTelemetrySubcommandDoesNotSpawnRecursively(t *testing.T) {
+	t.Parallel()
+
+	ctx := testContext(t)
+	analyticsSrv, events := mockAnalyticsServer(t)
+
+	input := `{"name":"first_event","metadata":{"client_time":"2026-06-02 00:00:00.000000","session_id":"s1"},"payload":{"k":"v1"}}
+{"name":"second_event","metadata":{"client_time":"2026-06-02 00:00:00.000000","session_id":"s1"},"payload":{"k":"v2"}}
+`
+
+	cmd := exec.CommandContext(ctx, binaryPath(), "__flush-telemetry", "--endpoint", analyticsSrv.URL)
+	// Route the subprocess's own telemetry at the mock too, so a recursive event would be observable.
+	cmd.Env = env.Environ(testEnvWithHome(t.TempDir(), "")).
+		With(env.AnalyticsEndpoint, analyticsSrv.URL)
+	cmd.Stdin = strings.NewReader(input)
+	out, err := cmd.CombinedOutput()
+	require.NoError(t, err, "__flush-telemetry failed: %s", out)
+
+	got := map[string]bool{}
+	for i := 0; i < 2; i++ {
+		select {
+		case ev := <-events:
+			got[ev["name"].(string)] = true
+		default:
+			t.Fatalf("expected 2 flushed events, got %d: %v", i, got)
+		}
+	}
+	assert.True(t, got["first_event"] && got["second_event"], "expected both piped events, got: %v", got)
+
+	// No further events may arrive: that would mean the flusher emitted telemetry about itself.
+	select {
+	case ev := <-events:
+		t.Fatalf("unexpected extra telemetry event from flusher: %v", ev)
+	case <-time.After(2 * time.Second):
+	}
+}
+
+// Verifies the detached flusher exports its spans to the OTLP collector via the
+// propagated TRACEPARENT; trace-ID equality is covered in internal/tracing.
+func TestOtelFlushSpansJoinCommandTrace(t *testing.T) {
+	t.Parallel()
+
+	ctx := testContext(t)
+	analyticsSrv, _ := mockAnalyticsServer(t)
+	otlpSrv, otlpBodies := mockOTLPCollector(t)
+
+	// Dead DOCKER_HOST: start fails fast without Docker but still emits telemetry.
+	_, _, err := runLstk(t, ctx, "", env.Environ(testEnvWithHome(t.TempDir(), "")).
+		With(env.AuthToken, "fake-token").
 		With(env.AnalyticsEndpoint, analyticsSrv.URL).
 		With(env.Otel, "1").
-		With(env.OtelEndpoint, otlpSrv.URL)
-	out, err := cmd.CombinedOutput()
-	require.NoError(t, err, "lstk start failed: %s", out)
+		With(env.OtelEndpoint, otlpSrv.URL).
+		With(env.Key("DOCKER_HOST"), "tcp://127.0.0.1:1"), "start")
+	require.Error(t, err)
+	requireExitCode(t, 1, err)
 
-	deadline := time.After(5 * time.Second)
+	// The flusher subprocess exports after the parent exits; allow for its
+	// startup, the POST, and the batcher flush on shutdown.
+	deadline := time.After(10 * time.Second)
 	for {
 		select {
 		case body := <-otlpBodies:
 			// otlptracehttp serializes spans as protobuf; UTF-8 strings appear
 			// inline in the wire format, so a substring search is sufficient.
-			if bytes.Contains(body, []byte("telemetry POST")) {
+			if bytes.Contains(body, []byte("telemetry flush")) {
 				return
 			}
 		case <-deadline:
-			t.Fatal("timed out waiting for telemetry span in OTLP export — likely tel.Close() ran after tracing shutdown")
+			t.Fatal("timed out waiting for flush span in OTLP export — TRACEPARENT propagation or subprocess tracing broken")
 		}
 	}
 }

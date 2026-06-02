@@ -93,6 +93,10 @@ func NewRootCmd(cfg *env.Env, tel *telemetry.Client, logger log.Logger) *cobra.C
 }
 
 func Execute(ctx context.Context) error {
+	if len(os.Args) > 1 && os.Args[1] == telemetry.FlushCommandName {
+		return runFlushTelemetry(ctx, os.Args[2:])
+	}
+
 	cfg := env.Init()
 
 	logger, cleanup, err := newLogger()
