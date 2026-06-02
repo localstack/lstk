@@ -15,6 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// captureEvents wires a fake analytics server behind an in-process flush.
 func captureEvents(t *testing.T) (*Client, <-chan map[string]any) {
 	t.Helper()
 	ch := make(chan map[string]any, 8)
@@ -30,7 +31,7 @@ func captureEvents(t *testing.T) (*Client, <-chan map[string]any) {
 		w.WriteHeader(http.StatusOK)
 	}))
 	t.Cleanup(srv.Close)
-	return New(srv.URL, false), ch
+	return NewWithInProcessFlush(srv.URL), ch
 }
 
 func drainEvent(t *testing.T, tel *Client, ch <-chan map[string]any) map[string]any {

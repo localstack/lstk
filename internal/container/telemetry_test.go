@@ -33,7 +33,7 @@ func newCapturingTelClient(t *testing.T) (*telemetry.Client, <-chan map[string]a
 		w.WriteHeader(http.StatusOK)
 	}))
 	t.Cleanup(srv.Close)
-	return telemetry.New(srv.URL, false), ch
+	return telemetry.NewWithInProcessFlush(srv.URL), ch
 }
 
 func TestStop_EmitsLifecycleStopEvent(t *testing.T) {
