@@ -2,9 +2,12 @@ package cmd
 
 import (
 	"fmt"
+	"os"
 
+	"github.com/localstack/lstk/internal/azureconfig"
 	"github.com/localstack/lstk/internal/config"
 	"github.com/localstack/lstk/internal/env"
+	"github.com/localstack/lstk/internal/output"
 	"github.com/localstack/lstk/internal/ui"
 	"github.com/spf13/cobra"
 )
@@ -53,16 +56,15 @@ func newSetupAzureCmd(cfg *env.Env) *cobra.Command {
 				return fmt.Errorf("failed to get config: %w", err)
 			}
 
-			if !isInteractiveMode(cfg) {
-				return fmt.Errorf("setup azure requires an interactive terminal")
-			}
-
 			configDir, err := config.ConfigDir()
 			if err != nil {
 				return fmt.Errorf("failed to resolve config directory: %w", err)
 			}
 
-			return ui.RunSetupAzure(cmd.Context(), appConfig.Containers, cfg.LocalStackHost, configDir)
+			if isInteractiveMode(cfg) {
+				return ui.RunSetupAzure(cmd.Context(), appConfig.Containers, cfg.LocalStackHost, configDir)
+			}
+			return azureconfig.RunSetup(cmd.Context(), output.NewPlainSink(os.Stdout), appConfig.Containers, cfg.LocalStackHost, configDir)
 		},
 	}
 }

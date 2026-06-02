@@ -14,6 +14,8 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 
 	"github.com/localstack/lstk/internal/azurecli"
+	"github.com/localstack/lstk/internal/config"
+	"github.com/localstack/lstk/internal/endpoint"
 	"github.com/localstack/lstk/internal/output"
 )
 
@@ -105,6 +107,37 @@ func cloudExists(ctx context.Context, azEnv []string) (bool, error) {
 		return false, err
 	}
 	return strings.TrimSpace(stdout) == CloudName, nil
+}
+
+// RunSetup derives the LocalStack Azure endpoint from the configured containers
+// and runs Setup against the isolated Azure CLI config dir under lstkConfigDir.
+// It works with any sink, so it serves both the interactive (TUI) and
+// non-interactive (plain) paths.
+func RunSetup(ctx context.Context, sink output.Sink, containers []config.ContainerConfig, localStackHost, lstkConfigDir string) error {
+	var azureContainer *config.ContainerConfig
+	for i := range containers {
+		if containers[i].Type == config.EmulatorAzure {
+			azureContainer = &containers[i]
+			break
+		}
+	}
+	if azureContainer == nil {
+		return fmt.Errorf("no azure emulator configured — run 'lstk start' and select the Azure emulator first")
+	}
+
+	resolvedHost, dnsOK := endpoint.ResolveHost(ctx, azureContainer.Port, localStackHost)
+	if !dnsOK {
+		sink.Emit(output.MessageEvent{
+			Severity: output.SeverityWarning,
+			Text: fmt.Sprintf(
+				"Could not resolve *.%s to 127.0.0.1. Azure setup requires DNS resolution because the Azure emulator serves endpoints under *.%s. Configure DNS or set LOCALSTACK_HOST.",
+				endpoint.Hostname, endpoint.Hostname,
+			),
+		})
+		return fmt.Errorf("dns resolution required for azure setup")
+	}
+
+	return Setup(ctx, sink, BuildEndpoint(resolvedHost), ConfigDir(lstkConfigDir))
 }
 
 // Setup registers the LocalStack custom cloud in an isolated AZURE_CONFIG_DIR,

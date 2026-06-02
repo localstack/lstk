@@ -61,7 +61,10 @@ func TestAzCommandErrorsWhenNotSetUp(t *testing.T) {
 	assert.Contains(t, stdout, "lstk setup azure")
 }
 
-func TestSetupAzureNonInteractiveReturnsError(t *testing.T) {
+// Non-interactive mode must not be rejected upfront (CI use case): with no
+// Azure emulator in the config, the setup logic itself runs and reports the
+// domain error instead of "requires an interactive terminal".
+func TestSetupAzureNonInteractiveRunsWithoutTerminal(t *testing.T) {
 	t.Parallel()
 
 	_, stderr, err := runLstk(t, testContext(t), "",
@@ -69,7 +72,8 @@ func TestSetupAzureNonInteractiveReturnsError(t *testing.T) {
 		"setup", "azure",
 	)
 	require.Error(t, err)
-	assert.Contains(t, stderr, "setup azure requires an interactive terminal")
+	assert.Contains(t, stderr, "no azure emulator configured")
+	assert.NotContains(t, stderr, "interactive terminal")
 }
 
 func TestAzCommandErrorsWhenEmulatorNotRunning(t *testing.T) {
@@ -161,4 +165,14 @@ func TestSetupAzureAndAzCommandSucceed(t *testing.T) {
 	require.NoError(t, err, "lstk az cloud show failed: %s", stderr2)
 	assert.Contains(t, stdout, "azure.localhost.localstack.cloud:4566",
 		"registered cloud should expose the LocalStack Azure endpoint")
+
+	// Setup must also work without a terminal (CI use case): runLstk uses
+	// pipes, so this exercises the plain-sink path end to end, updating the
+	// already-registered cloud.
+	stdoutNI, stderrNI, err := runLstk(t, ctx, workDir,
+		baseEnv.With(env.APIEndpoint, mockServer.URL),
+		"setup", "azure",
+	)
+	require.NoError(t, err, "non-interactive setup azure failed: stdout=%s stderr=%s", stdoutNI, stderrNI)
+	assert.Contains(t, stdoutNI, "Azure CLI integration ready")
 }
