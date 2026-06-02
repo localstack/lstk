@@ -97,8 +97,8 @@ Examples:
 				sink.Emit(output.ErrorEvent{
 					Title: "DNS resolution required for 'lstk az'",
 					Actions: []output.ErrorAction{
-						{Label: "Note:", Value: endpoint.DNSRebindNote},
-						{Label: "Why:", Value: "LocalStack routes Azure requests by Host header"},
+						{Label: "Note:", Value: "Could not resolve *." + endpoint.Hostname + " to 127.0.0.1."},
+						{Label: "Why:", Value: "the Azure emulator serves endpoints under *." + endpoint.Hostname + ", which the Azure CLI must be able to resolve"},
 						{Label: "Fix:", Value: "configure DNS or set LOCALSTACK_HOST"},
 					},
 				})

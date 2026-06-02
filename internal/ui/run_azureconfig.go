@@ -35,8 +35,8 @@ func RunSetupAzure(parentCtx context.Context, containers []config.ContainerConfi
 			sink.Emit(output.MessageEvent{
 				Severity: output.SeverityWarning,
 				Text: fmt.Sprintf(
-					"%s Azure setup requires DNS resolution because LocalStack routes Azure requests by Host header. Configure DNS or set LOCALSTACK_HOST.",
-					endpoint.DNSRebindNote,
+					"Could not resolve *.%s to 127.0.0.1. Azure setup requires DNS resolution because the Azure emulator serves endpoints under *.%s. Configure DNS or set LOCALSTACK_HOST.",
+					endpoint.Hostname, endpoint.Hostname,
 				),
 			})
 			return fmt.Errorf("dns resolution required for azure setup")
