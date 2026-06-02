@@ -114,6 +114,12 @@ func cloudExists(ctx context.Context, azEnv []string) (bool, error) {
 // It works with any sink, so it serves both the interactive (TUI) and
 // non-interactive (plain) paths.
 func RunSetup(ctx context.Context, sink output.Sink, containers []config.ContainerConfig, localStackHost, lstkConfigDir string) error {
+	// Check the cheapest prerequisite first: without `az` nothing else
+	// matters, and a DNS resolution error would only be noise.
+	if err := azurecli.CheckInstalled(); err != nil {
+		return err
+	}
+
 	var azureContainer *config.ContainerConfig
 	for i := range containers {
 		if containers[i].Type == config.EmulatorAzure {
@@ -127,14 +133,10 @@ func RunSetup(ctx context.Context, sink output.Sink, containers []config.Contain
 
 	resolvedHost, dnsOK := endpoint.ResolveHost(ctx, azureContainer.Port, localStackHost)
 	if !dnsOK {
-		sink.Emit(output.MessageEvent{
-			Severity: output.SeverityWarning,
-			Text: fmt.Sprintf(
-				"Could not resolve *.%s to 127.0.0.1. Azure setup requires DNS resolution because the Azure emulator serves endpoints under *.%s. Configure DNS or set LOCALSTACK_HOST.",
-				endpoint.Hostname, endpoint.Hostname,
-			),
-		})
-		return fmt.Errorf("dns resolution required for azure setup")
+		return fmt.Errorf(
+			"could not resolve *.%s to 127.0.0.1 — Azure setup requires DNS resolution because the Azure emulator serves endpoints under *.%s; configure DNS or set LOCALSTACK_HOST",
+			endpoint.Hostname, endpoint.Hostname,
+		)
 	}
 
 	return Setup(ctx, sink, BuildEndpoint(resolvedHost), ConfigDir(lstkConfigDir))
@@ -147,22 +149,18 @@ func Setup(ctx context.Context, sink output.Sink, endpointURL, azureConfigDir st
 	defer span.End()
 
 	// Bail early if `az` is missing so we don't leave a half-configured dir behind.
+	// Errors are returned without emitting them: the caller's display layer
+	// renders the returned error, so emitting too would print it twice.
 	if err := azurecli.CheckInstalled(); err != nil {
-		sink.Emit(output.MessageEvent{Severity: output.SeverityWarning, Text: err.Error()})
 		return err
 	}
 
 	if err := IsHealthy(ctx, endpointURL); err != nil {
-		sink.Emit(output.MessageEvent{
-			Severity: output.SeverityWarning,
-			Text:     fmt.Sprintf("LocalStack Azure emulator not reachable at %s. Run 'lstk' to start it before running 'lstk setup azure'.", endpointURL),
-		})
-		return fmt.Errorf("emulator not reachable at %s: %w", endpointURL, err)
+		return fmt.Errorf("LocalStack Azure emulator not reachable at %s — run 'lstk' to start it before running 'lstk setup azure': %w", endpointURL, err)
 	}
 
 	if err := os.MkdirAll(azureConfigDir, 0700); err != nil {
-		sink.Emit(output.MessageEvent{Severity: output.SeverityWarning, Text: fmt.Sprintf("could not create %s: %v", azureConfigDir, err)})
-		return err
+		return fmt.Errorf("could not create %s: %w", azureConfigDir, err)
 	}
 	azEnv := Env(azureConfigDir)
 
@@ -173,8 +171,7 @@ func Setup(ctx context.Context, sink output.Sink, endpointURL, azureConfigDir st
 
 	exists, err := cloudExists(ctx, azEnv)
 	if err != nil {
-		sink.Emit(output.MessageEvent{Severity: output.SeverityWarning, Text: fmt.Sprintf("could not list Azure clouds: %v", err)})
-		return err
+		return fmt.Errorf("could not list Azure clouds: %w", err)
 	}
 	action, verb := "register", "Registering"
 	if exists {
@@ -183,13 +180,11 @@ func Setup(ctx context.Context, sink output.Sink, endpointURL, azureConfigDir st
 	sink.Emit(output.MessageEvent{Severity: output.SeveritySecondary, Text: fmt.Sprintf("%s '%s' custom cloud...", verb, CloudName)})
 	if _, _, err := azurecli.Run(ctx, azEnv,
 		"cloud", action, "--name", CloudName, "--cloud-config", cloudConfigJSON, "--only-show-errors"); err != nil {
-		sink.Emit(output.MessageEvent{Severity: output.SeverityWarning, Text: fmt.Sprintf("could not %s '%s' cloud: %v", action, CloudName, err)})
-		return err
+		return fmt.Errorf("could not %s '%s' cloud: %w", action, CloudName, err)
 	}
 
 	if _, _, err := azurecli.Run(ctx, azEnv, "cloud", "set", "--name", CloudName, "--only-show-errors"); err != nil {
-		sink.Emit(output.MessageEvent{Severity: output.SeverityWarning, Text: fmt.Sprintf("could not activate '%s' cloud: %v", CloudName, err)})
-		return err
+		return fmt.Errorf("could not activate '%s' cloud: %w", CloudName, err)
 	}
 
 	// instance_discovery=false: `az` would otherwise try to validate the authority
@@ -197,8 +192,7 @@ func Setup(ctx context.Context, sink output.Sink, endpointURL, azureConfigDir st
 	if _, _, err := azurecli.Run(ctx, azEnv, "config", "set",
 		"core.instance_discovery=false", "core.collect_telemetry=false", "output.show_survey_link=no",
 		"--only-show-errors"); err != nil {
-		sink.Emit(output.MessageEvent{Severity: output.SeverityWarning, Text: fmt.Sprintf("could not configure Azure CLI: %v", err)})
-		return err
+		return fmt.Errorf("could not configure Azure CLI: %w", err)
 	}
 
 	sink.Emit(output.MessageEvent{Severity: output.SeveritySecondary, Text: "Logging in with dummy service-principal credentials..."})
@@ -208,8 +202,7 @@ func Setup(ctx context.Context, sink output.Sink, endpointURL, azureConfigDir st
 		"--tenant", servicePrincipalTenant,
 		"--only-show-errors",
 	); err != nil {
-		sink.Emit(output.MessageEvent{Severity: output.SeverityWarning, Text: fmt.Sprintf("could not log in to the LocalStack Azure emulator: %v", err)})
-		return err
+		return fmt.Errorf("could not log in to the LocalStack Azure emulator: %w", err)
 	}
 
 	if err := os.WriteFile(filepath.Join(azureConfigDir, setupMarkerFile), []byte("ok\n"), 0600); err != nil {

@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 
 	"github.com/creack/pty"
@@ -74,6 +75,23 @@ func TestSetupAzureNonInteractiveRunsWithoutTerminal(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, stderr, "no azure emulator configured")
 	assert.NotContains(t, stderr, "interactive terminal")
+}
+
+// When the az CLI is missing, the error must be reported exactly once —
+// not as a warning and then again as the final error.
+func TestSetupAzureReportsMissingAzCLIOnce(t *testing.T) {
+	t.Parallel()
+	workDir := azureWorkDir(t)
+
+	stdout, stderr, err := runLstk(t, testContext(t), workDir,
+		env.With(env.Home, t.TempDir()).With("PATH", t.TempDir()),
+		"setup", "azure",
+	)
+	require.Error(t, err)
+	assert.Contains(t, stderr, "az CLI not found in PATH")
+	combined := stdout + stderr
+	assert.Equal(t, 1, strings.Count(combined, "az CLI not found in PATH"),
+		"missing az CLI must be reported exactly once, got:\n%s", combined)
 }
 
 func TestAzCommandErrorsWhenEmulatorNotRunning(t *testing.T) {
