@@ -26,6 +26,16 @@ const snapshotListLong = `List Cloud Pod snapshots available on the LocalStack p
 
 By default only snapshots you created are listed. Pass --all to include all snapshots in your organisation.`
 
+const snapshotRemoveLong = `Delete a cloud snapshot from the LocalStack platform.
+
+Only cloud snapshots (pod: prefix) can be removed. This operation cannot be undone.
+
+  lstk snapshot remove pod:my-baseline    # deletes the cloud snapshot named my-baseline
+
+To skip the confirmation prompt in non-interactive mode, use --force:
+
+  lstk snapshot remove pod:my-baseline --force`
+
 const snapshotSaveLong = `Save a snapshot of the running emulator's state.
 
 Pass [destination] as an absolute or relative path for the exported file:
@@ -62,6 +72,7 @@ func newSnapshotCmd(cfg *env.Env, tel *telemetry.Client, logger log.Logger) *cob
 	cmd.AddCommand(newSnapshotSaveCmd(cfg))
 	cmd.AddCommand(newSnapshotLoadCmd(cfg, tel, logger))
 	cmd.AddCommand(newSnapshotListCmd(cfg))
+	cmd.AddCommand(newSnapshotRemoveCmd(cfg))
 	return cmd
 }
 
@@ -138,6 +149,56 @@ func runSnapshotLoad(cfg *env.Env, tel *telemetry.Client, logger log.Logger) fun
 		default:
 			return snapshot.LoadLocal(cmd.Context(), rt, containers, client, host, src.Value, strategy, starter, sink)
 		}
+	}
+}
+
+func newSnapshotRemoveCmd(cfg *env.Env) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:     "remove REF",
+		Short:   "Delete a cloud snapshot from the LocalStack platform",
+		Long:    snapshotRemoveLong,
+		Args:    cobra.ExactArgs(1),
+		PreRunE: initConfig(nil),
+		RunE:    runSnapshotRemove(cfg),
+	}
+	cmd.Flags().Bool("force", false, "Skip confirmation prompt")
+	return cmd
+}
+
+func runSnapshotRemove(cfg *env.Env) func(*cobra.Command, []string) error {
+	return func(cmd *cobra.Command, args []string) error {
+		force, err := cmd.Flags().GetBool("force")
+		if err != nil {
+			return err
+		}
+
+		cwd, err := os.Getwd()
+		if err != nil {
+			return err
+		}
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return err
+		}
+		ref, err := snapshot.ParseRemovable(args[0], cwd, home)
+		if err != nil {
+			return err
+		}
+
+		if !isInteractiveMode(cfg) && !force {
+			return fmt.Errorf("snapshot remove requires confirmation; use --force to skip in non-interactive mode")
+		}
+
+		rt, client, host, containers, _, err := resolveSnapshotDeps(cmd.Context(), cfg)
+		if err != nil {
+			return err
+		}
+
+		if isInteractiveMode(cfg) {
+			return ui.RunSnapshotRemove(cmd.Context(), rt, containers, client, host, ref.Value, cfg.AuthToken, force)
+		}
+		sink := output.NewPlainSink(os.Stdout)
+		return snapshot.Remove(cmd.Context(), rt, containers, ref.Value, cfg.AuthToken, client, host, force, sink)
 	}
 }
 

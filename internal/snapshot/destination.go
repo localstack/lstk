@@ -39,6 +39,21 @@ type Destination struct {
 	Value string
 }
 
+// ParseRemovable parses a ref for snapshot remove. Only cloud (pod:) refs are accepted;
+// local file paths are rejected because the CLI cannot delete local files.
+// cwd and home are used to produce a human-readable path in error messages.
+func ParseRemovable(ref, cwd, home string) (Destination, error) {
+	lower := strings.ToLower(ref)
+	if !strings.HasPrefix(lower, "pod:") && !strings.Contains(lower, "://") {
+		abs, _ := filepath.Abs(ref)
+		if !strings.EqualFold(filepath.Ext(abs), ".zip") {
+			abs += ".zip"
+		}
+		return Destination{}, fmt.Errorf("'%s' resolves to a local file (%s); CLI cannot delete local files", ref, displayPath(abs, cwd, home))
+	}
+	return ParseSource(ref, home)
+}
+
 // displayPath shortens abs for human-readable output:
 // under cwd → ./rel, under home → ~/rel, otherwise unchanged.
 func displayPath(abs, cwd, home string) string {

@@ -267,6 +267,14 @@ func TestFormatEventLine(t *testing.T) {
 			want:   "~ 1 snapshot\n\n  NAME    VERSION  LAST CHANGED\n  my-pod  2        2026-01-01 00:00 UTC",
 			wantOK: true,
 		},
+
+		// snapshot remove events
+		{
+			name:   "pod snapshot removed",
+			event:  PodSnapshotRemovedEvent{PodName: "my-baseline"},
+			want:   SuccessMarker() + " Cloud snapshot 'pod:my-baseline' deleted",
+			wantOK: true,
+		},
 	}
 
 	for _, tt := range tests {

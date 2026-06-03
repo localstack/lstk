@@ -402,3 +402,29 @@ func (c *Client) SavePodSnapshot(ctx context.Context, host, podName, authToken s
 	}
 	return snapshot.PodSaveResult{}, fmt.Errorf("pod save: server closed stream without a completion event")
 }
+
+func (c *Client) RemovePodSnapshot(ctx context.Context, host, podName, authToken string) error {
+	url := fmt.Sprintf("http://%s/_localstack/pods/%s", host, podName)
+	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, url, bytes.NewReader([]byte("{}")))
+	if err != nil {
+		return fmt.Errorf("create request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Basic "+base64.StdEncoding.EncodeToString([]byte(":"+authToken)))
+
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return fmt.Errorf("connect to LocalStack: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		bodyStr := strings.TrimSpace(string(body))
+		if strings.Contains(strings.ToLower(bodyStr), "not found") {
+			return fmt.Errorf("%w: %s", snapshot.ErrPodNotFound, bodyStr)
+		}
+		return fmt.Errorf("pod remove failed (HTTP %d): %s", resp.StatusCode, bodyStr)
+	}
+	return nil
+}
