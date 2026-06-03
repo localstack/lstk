@@ -70,6 +70,14 @@ func Run(parentCtx context.Context, runOpts RunOptions) error {
 			p.Send(runDoneMsg{})
 			return
 		}
+		if healthErr := runOpts.Runtime.IsHealthy(ctx); healthErr != nil {
+			if errors.Is(healthErr, context.Canceled) {
+				return
+			}
+			runOpts.Runtime.EmitUnhealthyError(sink, healthErr)
+			p.Send(runErrMsg{err: output.NewSilentError(healthErr)})
+			return
+		}
 		// Resolve the auth token before any emulator-selection prompt so the user
 		// logs in first and only configures an emulator once they're authenticated.
 		// container.Start still calls GetToken as a safety net for non-interactive
