@@ -69,9 +69,13 @@ Created automatically on first run with defaults. Supports emulator types: `aws`
 
 Use `lstk setup <emulator>` to set up CLI integration for an emulator type:
 - `lstk setup aws` — Sets up AWS CLI profile in `~/.aws/config` and `~/.aws/credentials`
+- `lstk setup azure` — Prepares an isolated Azure CLI config dir (under the lstk config dir, via `AZURE_CONFIG_DIR`): registers a custom Azure cloud (`LocalStack`) whose endpoints point at the LocalStack Azure emulator, activates it, disables Azure CLI instance discovery and telemetry, and performs a one-time dummy service-principal login. The user's global `~/.azure` is left untouched. Requires the `az` CLI and a running Azure emulator.
+- `lstk az <args>` — Runs `az <args>` against that isolated config dir, so the Azure CLI talks to LocalStack for Azure service URLs and to the real internet for everything else (extension downloads, etc.).
 
 This naming avoids AWS-specific "profile" terminology and uses a clear verb for mutation operations.
 The deprecated `lstk config profile` command still works but points users to `lstk setup aws`.
+
+Azure CLI integration deliberately mirrors `lstk aws`, not azlocal's `start-interception` (which globally mutates `~/.azure`). The Azure CLI has no `--endpoint-url`/`--profile`, so the only isolation knob is `AZURE_CONFIG_DIR`. Inside that isolated dir we register a custom cloud whose endpoints point at `https://azure.localhost.localstack.cloud:4566`, so `az` makes direct calls to LocalStack for Azure services (no HTTP(S) forward proxy in front of `az`). `core.instance_discovery=false` is required because `az` does not recognise the LocalStack host as a real Azure cloud. Adding a new Azure service that needs its own endpoint in `az`'s cloud config means extending the map in `internal/azureconfig/azureconfig.go::BuildCloudConfig`.
 
 Environment variables:
 - `LOCALSTACK_AUTH_TOKEN` - Auth token (skips browser login if set)

@@ -84,6 +84,7 @@ func NewRootCmd(cfg *env.Env, tel *telemetry.Client, logger log.Logger) *cobra.C
 		newDocsCmd(),
 		newAWSCmd(cfg),
 		newSnapshotCmd(cfg, tel, logger),
+		newAzCmd(cfg),
 		newResetCmd(cfg),
 		newSaveCmd(cfg),
 		newLoadCmd(cfg, tel, logger),
