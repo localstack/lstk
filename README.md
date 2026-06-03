@@ -108,7 +108,7 @@ lstk --config /path/to/config.toml start
 
 ```toml
 [[containers]]
-type = "aws"     # Emulator type. Currently supported: "aws"
+type = "aws"     # Emulator type. Currently supported: "aws", "snowflake", "azure"
 tag  = "latest"  # Docker image tag, e.g. "latest", "2026.03"
 port = "4566"    # Host port the emulator will be accessible on
 # volume = ""    # Host directory for persistent state (default: OS cache dir)
