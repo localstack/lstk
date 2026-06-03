@@ -24,11 +24,9 @@ func newResetCmd(cfg *env.Env) *cobra.Command {
 		Short: "Reset emulator state",
 		Long: `Reset the running emulator's in-memory state.
 
-All resources created in the emulator (S3 buckets, Lambda functions, etc.) are
-discarded. The emulator keeps running; only its state is cleared.
+All resources created in the emulator (S3 buckets, Lambda functions, etc.) are discarded. The emulator keeps running; only its state is cleared.
 
-To wipe the on-disk volume (certificates, persistence data, cached tools)
-instead, stop the emulator and run "lstk volume clear".`,
+To wipe the on-disk volume (certificates, persistence data, cached tools) instead, stop the emulator and run "lstk volume clear".`,
 		PreRunE: initConfig(nil),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			appConfig, err := config.Get()

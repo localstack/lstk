@@ -47,6 +47,7 @@ Create `cmd/$ARGUMENTS.go` with:
   - Interactive: delegate to `ui.Run<Name>(...)` or TUI path
   - Non-interactive: call domain function with `output.NewPlainSink(os.Stdout)`
 - No business logic — only Cobra wiring, dependency creation, and output mode selection
+- `Short`/`Long` help text: write each paragraph as one unbroken line (blank line between paragraphs); never hard-wrap a sentence across source lines. The help template (`cmd/help.go`) word-wraps to the terminal width at render time, and `lstk docs` reads the raw text — manual breaks fight both. Indent example/output blocks; the wrapper leaves indented lines untouched.
 
 ## Step 2: Create the domain logic package
 

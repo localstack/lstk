@@ -24,10 +24,7 @@ func newAzCmd(cfg *env.Env) *cobra.Command {
 		Short: "Run Azure CLI commands against LocalStack",
 		Long: `Run Azure CLI commands against the LocalStack Azure emulator.
 
-Runs 'az <args>' with an isolated AZURE_CONFIG_DIR in which a custom Azure cloud
-is registered against LocalStack's endpoints, so your global ~/.azure
-configuration is left untouched and plain 'az' commands keep talking to real
-Azure.
+Runs 'az <args>' with an isolated AZURE_CONFIG_DIR in which a custom Azure cloud is registered against LocalStack's endpoints, so your global ~/.azure configuration is left untouched and plain 'az' commands keep talking to real Azure.
 
 Run 'lstk setup azure' once before using this command.
 
