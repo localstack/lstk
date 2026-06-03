@@ -11,9 +11,12 @@ import (
 func newStartCmd(cfg *env.Env, tel *telemetry.Client, logger log.Logger) *cobra.Command {
 	var firstRun bool
 	cmd := &cobra.Command{
-		Use:     "start",
-		Short:   "Start emulator",
-		Long:    "Start emulator and services.",
+		Use:   "start",
+		Short: "Start emulator",
+		Long: `Start emulator and services.
+
+Host environment variables prefixed with LOCALSTACK_ (and the CI variable) are
+forwarded to the emulator container.`,
 		PreRunE: initConfig(&firstRun),
 		RunE: func(c *cobra.Command, args []string) error {
 			rt, err := runtime.NewDockerRuntime(cfg.DockerHost)

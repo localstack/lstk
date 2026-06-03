@@ -143,6 +143,8 @@ SERVICES = "s3,sqs"
 EAGER_SERVICE_LOADING = "1"
 ```
 
+In addition, host environment variables prefixed with `LOCALSTACK_` (and the `CI` variable) are automatically forwarded to the emulator container.
+
 ## Interactive And Non-Interactive Mode
 
 `lstk` uses the TUI in an interactive terminal and plain output elsewhere. Use `--non-interactive` to force plain output even in a TTY:
