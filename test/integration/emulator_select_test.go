@@ -60,6 +60,7 @@ func TestNoEmulatorSelectionWhenConfigExists(t *testing.T) {
 }
 
 func TestFirstRunShowsEmulatorSelectionPrompt(t *testing.T) {
+	requireDocker(t)
 	t.Parallel()
 	if runtime.GOOS == "windows" {
 		t.Skip("PTY not supported on Windows")
@@ -115,6 +116,7 @@ func TestFirstRunShowsEmulatorSelectionPrompt(t *testing.T) {
 }
 
 func TestFirstRunCanSelectAzureEmulator(t *testing.T) {
+	requireDocker(t)
 	t.Parallel()
 	if runtime.GOOS == "windows" {
 		t.Skip("PTY not supported on Windows")
@@ -169,6 +171,7 @@ func TestFirstRunCanSelectAzureEmulator(t *testing.T) {
 }
 
 func TestFirstRunPromptsForLoginBeforeEmulatorSelection(t *testing.T) {
+	requireDocker(t)
 	t.Parallel()
 	if runtime.GOOS == "windows" {
 		t.Skip("PTY not supported on Windows")
@@ -239,4 +242,34 @@ func TestFirstRunNonInteractiveEmitsDefaultEmulatorNote(t *testing.T) {
 	stdout, _, runErr := runLstk(t, testContext(t), "", e.With(env.AuthToken, "test-token"), "--non-interactive")
 	assert.Error(t, runErr, "expected failure: no Docker available")
 	assert.Contains(t, stdout, "Configured with default emulator", "non-interactive first run should note the default emulator")
+}
+
+func TestFirstRunChecksDockerBeforeAuthAndSelection(t *testing.T) {
+	t.Parallel()
+	if runtime.GOOS == "windows" {
+		t.Skip("PTY/Unix socket test")
+	}
+
+	mockServer := createMockAPIServer(t, "test-license-token", true)
+	defer mockServer.Close()
+
+	tmpHome := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(tmpHome, ".config"), 0755))
+	e := env.Environ(testEnvWithHome(tmpHome, tmpHome)).
+		Without(env.AuthToken).
+		With(env.APIEndpoint, mockServer.URL).
+		With(env.DisableEvents, "1").
+		With(env.Key("DOCKER_HOST"), "unix:///var/run/docker-does-not-exist.sock")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+
+	out, err := runLstkInPTY(t, ctx, e, "start")
+	require.Error(t, err)
+	requireExitCode(t, 1, err)
+	assert.Contains(t, out, "Docker is not available")
+	assert.NotContains(t, out, "Press any key when complete",
+		"login prompt must not appear when the runtime is unavailable")
+	assert.NotContains(t, out, "Which emulator would you like to use?",
+		"emulator selection must not appear when the runtime is unavailable")
 }
