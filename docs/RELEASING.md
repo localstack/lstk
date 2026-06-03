@@ -4,8 +4,8 @@
 
 Every PR must carry exactly one release label (enforced by `Require release label`). The automated release workflow uses these labels to compute the next version bump:
 
+- `semver: patch` — anything that isn't a new feature: bug fixes, dependency bumps, internal refactors, docs, specs.
 - `semver: minor` — new user-facing feature or command (e.g. a new subcommand, support for a new emulator).
-- `semver: patch` — everything else: bug fixes, dependency bumps, internal refactors, docs, specs.
 - `semver: major` — reserved for breaking changes once lstk reaches 1.0; do not use before then.
 
 ## Release workflows
