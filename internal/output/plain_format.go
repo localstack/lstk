@@ -44,6 +44,8 @@ func FormatEventLine(event Event) (string, bool) {
 		return formatPodSnapshotSaved(e), true
 	case SnapshotLoadedEvent:
 		return formatSnapshotLoaded(e), true
+	case SnapshotListEvent:
+		return formatSnapshotList(e)
 	case AuthCompleteEvent:
 		return "", false
 	default:
@@ -235,6 +237,30 @@ func formatBytes(b int64) string {
 	default:
 		return fmt.Sprintf("%d B", b)
 	}
+}
+
+func formatSnapshotList(e SnapshotListEvent) (string, bool) {
+	if len(e.Pods) == 0 {
+		return formatMessageEvent(MessageEvent{Severity: SeverityNote, Text: "No snapshots found"}), true
+	}
+	noun := "snapshots"
+	if len(e.Pods) == 1 {
+		noun = "snapshot"
+	}
+	summary := fmt.Sprintf("~ %d %s", len(e.Pods), noun)
+	rows := make([][]string, len(e.Pods))
+	for i, p := range e.Pods {
+		lastChanged := "-"
+		if p.LastChanged != nil {
+			lastChanged = p.LastChanged.UTC().Format("2006-01-02 15:04 UTC")
+		}
+		rows[i] = []string{p.Name, fmt.Sprintf("%d", p.Version), lastChanged}
+	}
+	table := formatTableWidth(TableEvent{
+		Headers: []string{"Name", "Version", "Last Changed"},
+		Rows:    rows,
+	}, terminalWidth())
+	return summary + "\n\n" + table, true
 }
 
 func formatTable(e TableEvent) (string, bool) {

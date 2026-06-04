@@ -22,6 +22,10 @@ import (
 
 const snapshotSaveCanonical = "snapshot save"
 
+const snapshotListLong = `List Cloud Pod snapshots available on the LocalStack platform.
+
+By default only snapshots you created are listed. Pass --all to include all snapshots in your organisation.`
+
 const snapshotSaveLong = `Save a snapshot of the running emulator's state.
 
 Pass [destination] as an absolute or relative path for the exported file:
@@ -57,6 +61,7 @@ func newSnapshotCmd(cfg *env.Env, tel *telemetry.Client, logger log.Logger) *cob
 	}
 	cmd.AddCommand(newSnapshotSaveCmd(cfg))
 	cmd.AddCommand(newSnapshotLoadCmd(cfg, tel, logger))
+	cmd.AddCommand(newSnapshotListCmd(cfg))
 	return cmd
 }
 
@@ -161,6 +166,41 @@ func resolveSnapshotDeps(ctx context.Context, cfg *env.Env) (rt runtime.Runtime,
 	}
 	host, _ = endpoint.ResolveHost(ctx, awsContainer.Port, cfg.LocalStackHost)
 	return rt, aws.NewClient(), host, []config.ContainerConfig{awsContainer}, appConfig, nil
+}
+
+func newSnapshotListCmd(cfg *env.Env) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:     "list",
+		Short:   "List Cloud Pod snapshots available on the LocalStack platform",
+		Long:    snapshotListLong,
+		Args:    cobra.NoArgs,
+		PreRunE: initConfig(nil),
+		RunE:    runSnapshotList(cfg),
+	}
+	cmd.Flags().Bool("all", false, "List all snapshots in the organisation")
+	return cmd
+}
+
+func runSnapshotList(cfg *env.Env) func(*cobra.Command, []string) error {
+	return func(cmd *cobra.Command, args []string) error {
+		all, err := cmd.Flags().GetBool("all")
+		if err != nil {
+			return err
+		}
+		creator := "me"
+		if all {
+			creator = ""
+		}
+		rt, client, host, containers, _, err := resolveSnapshotDeps(cmd.Context(), cfg)
+		if err != nil {
+			return err
+		}
+		if isInteractiveMode(cfg) {
+			return ui.RunSnapshotList(cmd.Context(), rt, containers, client, host, cfg.AuthToken, creator)
+		}
+		sink := output.NewPlainSink(os.Stdout)
+		return snapshot.List(cmd.Context(), rt, containers, client, host, cfg.AuthToken, creator, sink)
+	}
 }
 
 func newSnapshotSaveCmd(cfg *env.Env) *cobra.Command {

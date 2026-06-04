@@ -84,6 +84,17 @@ type PodSnapshotSavedEvent struct {
 	Size     int64
 }
 
+// PodSnapshotEntry holds display metadata for a single Cloud Pod in a list.
+type PodSnapshotEntry struct {
+	Name        string
+	Version     int
+	LastChanged *time.Time
+}
+
+type SnapshotListEvent struct {
+	Pods []PodSnapshotEntry
+}
+
 type SnapshotLoadedEvent struct {
 	Source   string   // display source shown to the user (e.g. "./snap.zip" or "pod:my-baseline")
 	Services []string // services restored
@@ -105,6 +116,7 @@ func (TableEvent) sealedEvent()            {}
 func (ResourceSummaryEvent) sealedEvent()  {}
 func (PodSnapshotSavedEvent) sealedEvent()  {}
 func (SnapshotLoadedEvent) sealedEvent()    {}
+func (SnapshotListEvent) sealedEvent()      {}
 func (ContainerStatusEvent) sealedEvent()  {}
 func (ProgressEvent) sealedEvent()         {}
 func (UserInputRequestEvent) sealedEvent() {}
