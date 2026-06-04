@@ -143,7 +143,7 @@ SERVICES = "s3,sqs"
 EAGER_SERVICE_LOADING = "1"
 ```
 
-Host environment variables prefixed with `LOCALSTACK_` are also forwarded to the container.
+Host environment variables prefixed with `LOCALSTACK_` are also forwarded to the emulator.
 
 ## Interactive And Non-Interactive Mode
 

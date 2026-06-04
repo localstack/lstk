@@ -41,11 +41,8 @@ const helpTemplate = `{{if not .HasParent}}{{if or .Runnable .HasSubCommands}}{{
 {{end}}{{if or .Runnable .HasSubCommands}}{{.UsageString}}{{end}}{{end}}
 `
 
-func init() {
-	cobra.AddTemplateFunc("wrapText", wrapText)
-}
-
 func configureHelp(cmd *cobra.Command) {
+	cobra.AddTemplateFunc("wrapText", wrapText)
 	cmd.InitDefaultHelpFlag()
 	cmd.Flags().Lookup("help").Usage = "Show help"
 	cmd.SetUsageTemplate(usageTemplate)
