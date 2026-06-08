@@ -221,6 +221,9 @@ lstk snapshot save pod:my-baseline
 # Load a snapshot back into the running emulator
 lstk snapshot load pod:my-baseline
 
+# List cloud snapshots on the LocalStack platform (--all for the whole organization)
+lstk snapshot list
+
 # Delete a cloud snapshot (prompts for confirmation; --force to skip)
 lstk snapshot remove pod:my-baseline
 
@@ -242,6 +245,10 @@ lstk snapshot save pod:my-baseline
 
 # Load (starts the emulator first if needed)
 lstk snapshot load pod:my-baseline
+
+# List cloud snapshots — only your own by default, --all for the whole organization
+lstk snapshot list
+lstk snapshot list --all
 
 # Remove — cloud snapshots only; local files are never deleted by the CLI
 lstk snapshot remove pod:my-baseline          # prompts for confirmation

@@ -87,6 +87,7 @@ Environment variables:
 
 - `lstk snapshot save [destination]` — export state to a local `.zip` or a named cloud snapshot.
 - `lstk snapshot load REF` — restore state, starting the emulator first if needed; `--merge` controls how snapshot state combines with running state (`account-region-merge` (default), `overwrite`, `service-merge`).
+- `lstk snapshot list` — list cloud snapshots on the LocalStack platform. Lists only snapshots you created by default; pass `--all` to include every snapshot in your organization. Cloud-only; requires auth.
 - `lstk snapshot remove REF` — delete a cloud snapshot. Cloud-only; local files are never deleted by the CLI. Prompts for confirmation in interactive mode; `--force` is required to skip the prompt in non-interactive mode.
 
 A REF is parsed by helpers in `internal/snapshot/destination.go`:
