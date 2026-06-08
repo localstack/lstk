@@ -145,7 +145,7 @@ func runningNonAWSEmulator(ctx context.Context, rt runtime.Runtime) string {
 		if t == config.EmulatorAWS {
 			continue
 		}
-		others = append(others, config.ContainerConfig{Type: t, Port: config.DefaultAWSPort})
+		others = append(others, config.ContainerConfig{Type: t, Port: config.DefaultPort})
 	}
 	running, err := container.RunningEmulators(ctx, rt, others)
 	if err != nil || len(running) == 0 {
@@ -157,7 +157,7 @@ func runningNonAWSEmulator(ctx context.Context, rt runtime.Runtime) string {
 // resolveAWSContainer returns the configured AWS emulator container, falling
 // back to defaults when no matching entry exists (mirrors cmd/aws.go).
 func resolveAWSContainer() config.ContainerConfig {
-	awsContainer := config.ContainerConfig{Type: config.EmulatorAWS, Port: config.DefaultAWSPort}
+	awsContainer := config.ContainerConfig{Type: config.EmulatorAWS, Port: config.DefaultPort}
 	appCfg, err := config.Get()
 	if err != nil {
 		return awsContainer
