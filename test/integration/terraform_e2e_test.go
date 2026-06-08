@@ -28,10 +28,6 @@ import (
 // the generated override, so a successful apply proves the endpoint override
 // routed to LocalStack end-to-end.
 
-// realLocalStackImage is lstk's default AWS emulator image; it activates against
-// LOCALSTACK_AUTH_TOKEN, which CI provides as a secret.
-const realLocalStackImage = "localstack/localstack-pro:latest"
-
 func requireTerraform(t *testing.T) {
 	t.Helper()
 	if _, err := exec.LookPath("terraform"); err != nil {
@@ -115,7 +111,7 @@ func TestTerraformE2ETopLevelProject(t *testing.T) {
 	cleanup()
 	t.Cleanup(cleanup)
 	ctx := testContext(t)
-	startRealLocalStack(t, ctx, realLocalStackImage, containerName, token)
+	startRealLocalStack(t, ctx, token)
 
 	work := copySample(t, "single-bucket")
 	e := e2eEnv(t)
@@ -139,7 +135,7 @@ func TestTerraformE2ESingleProvider(t *testing.T) {
 	cleanup()
 	t.Cleanup(cleanup)
 	ctx := testContext(t)
-	startRealLocalStack(t, ctx, realLocalStackImage, containerName, token)
+	startRealLocalStack(t, ctx, token)
 
 	work := copySample(t, "single-bucket")
 	e := e2eEnv(t)
@@ -161,7 +157,7 @@ func TestTerraformE2EMultipleAliases(t *testing.T) {
 	cleanup()
 	t.Cleanup(cleanup)
 	ctx := testContext(t)
-	startRealLocalStack(t, ctx, realLocalStackImage, containerName, token)
+	startRealLocalStack(t, ctx, token)
 
 	work := copySample(t, "multiple-aliases")
 	e := e2eEnv(t)
@@ -185,7 +181,7 @@ func TestTerraformE2ESubdirectoryDiscovery(t *testing.T) {
 	cleanup()
 	t.Cleanup(cleanup)
 	ctx := testContext(t)
-	startRealLocalStack(t, ctx, realLocalStackImage, containerName, token)
+	startRealLocalStack(t, ctx, token)
 
 	// The sample has a root provider plus an aliased provider in modules/db.
 	work := copySample(t, "submodule")
@@ -214,7 +210,7 @@ func TestTerraformE2EExplicitEndpointOverridden(t *testing.T) {
 	cleanup()
 	t.Cleanup(cleanup)
 	ctx := testContext(t)
-	startRealLocalStack(t, ctx, realLocalStackImage, containerName, token)
+	startRealLocalStack(t, ctx, token)
 
 	work := copySample(t, "explicit-endpoint")
 	e := e2eEnv(t)
@@ -247,7 +243,7 @@ func TestTerraformE2EProviderVersions(t *testing.T) {
 			cleanup()
 			t.Cleanup(cleanup)
 			ctx := testContext(t)
-			startRealLocalStack(t, ctx, realLocalStackImage, containerName, token)
+			startRealLocalStack(t, ctx, token)
 
 			work := copySample(t, tc.sample)
 			e := e2eEnv(t)
@@ -270,7 +266,7 @@ func TestTerraformE2ETofu(t *testing.T) {
 	cleanup()
 	t.Cleanup(cleanup)
 	ctx := testContext(t)
-	startRealLocalStack(t, ctx, realLocalStackImage, containerName, token)
+	startRealLocalStack(t, ctx, token)
 
 	work := copySample(t, "single-bucket")
 	e := e2eEnv(t).With(env.Key("LSTK_TF_CMD"), "tofu")

@@ -2,16 +2,9 @@ package integration_test
 
 import (
 	"context"
-	"io"
-	"net/http"
-	"net/netip"
 	"testing"
-	"time"
 
 	"github.com/localstack/lstk/test/integration/env"
-	"github.com/moby/moby/api/types/container"
-	"github.com/moby/moby/api/types/network"
-	"github.com/moby/moby/client"
 	"github.com/stretchr/testify/require"
 )
 
@@ -31,61 +24,17 @@ func requireAuthToken(t *testing.T) string {
 	return token
 }
 
-// startRealLocalStack runs a real LocalStack emulator under the given image and
-// container name, with 4566 bound to 127.0.0.1 — the address lstk resolves the
-// endpoint to — so a host-side subprocess (e.g. terraform) can reach it, named
-// so lstk's discovery finds it. The auth token activates the image. It waits for
-// the health endpoint before returning. Callers are responsible for removing the
-// container (e.g. cleanup() for the AWS emulator's "localstack-aws").
-//
-// image and name vary per emulator (e.g. localstack/localstack-pro + localstack-aws
-// for AWS, localstack/localstack-azure + localstack-azure for Azure); the edge
-// port (4566) and health path are uniform across emulators.
-func startRealLocalStack(t *testing.T, ctx context.Context, image, name, token string) {
+// startRealLocalStack brings up a real LocalStack AWS emulator via `lstk start`
+// — the same path real users take — rather than driving the Docker SDK directly.
+// That gives us, for free, exactly what these e2e tests need: lstk resolves its
+// default AWS image (localstack/localstack-pro:latest), binds the edge port 4566
+// to 127.0.0.1 (the address lstk resolves the endpoint to, so a host-side
+// subprocess like terraform can reach it), names the container so lstk's own
+// discovery finds it, activates the image with the auth token, and blocks until
+// the health endpoint is ready before returning. The caller is responsible for
+// removing the container (e.g. t.Cleanup(cleanup), which removes "localstack-aws").
+func startRealLocalStack(t *testing.T, ctx context.Context, token string) {
 	t.Helper()
-
-	reader, err := dockerClient.ImagePull(ctx, image, client.ImagePullOptions{})
-	require.NoError(t, err, "failed to pull %s", image)
-	_, _ = io.Copy(io.Discard, reader)
-	_ = reader.Close()
-
-	port := network.MustParsePort("4566/tcp")
-	resp, err := dockerClient.ContainerCreate(ctx, client.ContainerCreateOptions{
-		Config: &container.Config{
-			Image:        image,
-			Env:          []string{"LOCALSTACK_AUTH_TOKEN=" + token},
-			ExposedPorts: network.PortSet{port: struct{}{}},
-		},
-		HostConfig: &container.HostConfig{
-			PortBindings: network.PortMap{
-				port: []network.PortBinding{{HostIP: netip.MustParseAddr("127.0.0.1"), HostPort: "4566"}},
-			},
-		},
-		Name: name,
-	})
-	require.NoError(t, err, "failed to create %s container", name)
-	_, err = dockerClient.ContainerStart(ctx, resp.ID, client.ContainerStartOptions{})
-	require.NoError(t, err, "failed to start %s container", name)
-
-	waitForLocalStackReady(t, ctx)
-}
-
-// waitForLocalStackReady polls the LocalStack health endpoint until it returns
-// 200 or the timeout elapses.
-func waitForLocalStackReady(t *testing.T, ctx context.Context) {
-	t.Helper()
-	const url = "http://127.0.0.1:4566/_localstack/health"
-	deadline := time.Now().Add(120 * time.Second)
-	for time.Now().Before(deadline) {
-		req, _ := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-		resp, err := http.DefaultClient.Do(req)
-		if err == nil {
-			_ = resp.Body.Close()
-			if resp.StatusCode == http.StatusOK {
-				return
-			}
-		}
-		time.Sleep(time.Second)
-	}
-	t.Fatal("LocalStack did not become ready within 120s")
+	_, stderr, err := runLstk(t, ctx, "", e2eEnv(t).With(env.AuthToken, token), "start")
+	require.NoError(t, err, "lstk start failed: %s", stderr)
 }
