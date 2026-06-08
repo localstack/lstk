@@ -47,6 +47,31 @@ func TestParseEndpointKeysReturnsSortedKeys(t *testing.T) {
 	assert.Equal(t, []string{"cognitoidp", "dynamodb", "s3", "sqs"}, keys)
 }
 
+func TestParseEndpointKeysOpenTofuRegistryHost(t *testing.T) {
+	// OpenTofu reports the AWS provider under registry.opentofu.org, not
+	// registry.terraform.io. parseEndpointKeys must match it by namespace/type
+	// regardless of the reporting registry host.
+	const tofuSchema = `{
+  "format_version": "1.0",
+  "provider_schemas": {
+    "registry.opentofu.org/hashicorp/aws": {
+      "provider": {
+        "block": {
+          "block_types": {
+            "endpoints": {
+              "block": {"attributes": {"s3": {"type": "string"}, "sqs": {"type": "string"}}}
+            }
+          }
+        }
+      }
+    }
+  }
+}`
+	keys, err := parseEndpointKeys([]byte(tofuSchema))
+	require.NoError(t, err)
+	assert.Equal(t, []string{"s3", "sqs"}, keys)
+}
+
 func TestDedupeAliasKeys(t *testing.T) {
 	// Multiple members of mutually-exclusive groups, plus standalone keys.
 	in := []string{

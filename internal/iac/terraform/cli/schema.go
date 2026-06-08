@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os/exec"
 	"sort"
+	"strings"
 )
 
 // ErrInitRequired indicates the Terraform AWS provider is not installed â€”
@@ -19,17 +20,32 @@ var ErrInitRequired = errors.New("the Terraform AWS provider is not installed â€
 // need: the AWS provider's nested `endpoints` block, whose attribute names are
 // the endpoint keys.
 type providersSchema struct {
-	ProviderSchemas map[string]struct {
-		Provider struct {
-			Block struct {
-				BlockTypes map[string]struct {
-					Block struct {
-						Attributes map[string]json.RawMessage `json:"attributes"`
-					} `json:"block"`
-				} `json:"block_types"`
-			} `json:"block"`
-		} `json:"provider"`
-	} `json:"provider_schemas"`
+	ProviderSchemas map[string]providerSchema `json:"provider_schemas"`
+}
+
+type providerSchema struct {
+	Provider struct {
+		Block struct {
+			BlockTypes map[string]struct {
+				Block struct {
+					Attributes map[string]json.RawMessage `json:"attributes"`
+				} `json:"block"`
+			} `json:"block_types"`
+		} `json:"block"`
+	} `json:"provider"`
+}
+
+// lookupAWSProvider finds the AWS provider's schema regardless of which registry
+// host reported it (registry.terraform.io for Terraform, registry.opentofu.org
+// for OpenTofu, or a private mirror). It matches the stable awsProviderType
+// suffix rather than a fixed host key.
+func lookupAWSProvider(schema providersSchema) (providerSchema, bool) {
+	for key, ps := range schema.ProviderSchemas {
+		if key == awsProviderType || strings.HasSuffix(key, "/"+awsProviderType) {
+			return ps, true
+		}
+	}
+	return providerSchema{}, false
 }
 
 // EndpointKeys returns the AWS service endpoint keys to write into the
@@ -62,7 +78,7 @@ func parseEndpointKeys(jsonOut []byte) ([]string, error) {
 		return nil, fmt.Errorf("parsing terraform provider schema: %w", err)
 	}
 
-	aws, ok := schema.ProviderSchemas[awsProviderSchemaKey]
+	aws, ok := lookupAWSProvider(schema)
 	if !ok {
 		return nil, ErrInitRequired
 	}
