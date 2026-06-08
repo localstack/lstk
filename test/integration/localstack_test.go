@@ -2,6 +2,7 @@ package integration_test
 
 import (
 	"context"
+	"os"
 	"testing"
 
 	"github.com/localstack/lstk/test/integration/env"
@@ -33,8 +34,21 @@ func requireAuthToken(t *testing.T) string {
 // discovery finds it, activates the image with the auth token, and blocks until
 // the health endpoint is ready before returning. The caller is responsible for
 // removing the container (e.g. t.Cleanup(cleanup), which removes "localstack-aws").
+//
+// lstk start bind-mounts a persistence/cache volume under $HOME/.cache that
+// LocalStack — running as root in the container — writes root-owned files into.
+// We therefore give lstk an isolated HOME created with os.MkdirTemp rather than
+// t.TempDir: t.TempDir's automatic RemoveAll runs as the non-root test user and
+// would fail the test trying to delete those root-owned files. Cleanup here is
+// best-effort instead; leftovers in a temp dir are harmless (persistence is off,
+// so the volume holds only LocalStack's cache, never test resource state).
 func startRealLocalStack(t *testing.T, ctx context.Context, token string) {
 	t.Helper()
-	_, stderr, err := runLstk(t, ctx, "", e2eEnv(t).With(env.AuthToken, token), "start")
+	home, err := os.MkdirTemp("", "lstk-e2e-home")
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = os.RemoveAll(home) })
+
+	e := env.With(env.DisableEvents, "1").With(env.Home, home).With(env.AuthToken, token)
+	_, stderr, err := runLstk(t, ctx, "", e, "start")
 	require.NoError(t, err, "lstk start failed: %s", stderr)
 }
