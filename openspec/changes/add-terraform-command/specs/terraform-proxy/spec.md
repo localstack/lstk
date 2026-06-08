@@ -24,17 +24,23 @@ The command SHALL pass through the child process's standard input, standard outp
 
 #### Scenario: Terraform binary missing
 
-- **WHEN** no `terraform` binary (nor the configured `TF_CMD`) is found on `PATH`
+- **WHEN** no `terraform` binary (nor the configured `LSTK_TF_CMD`) is found on `PATH`
 - **THEN** the command fails with a clear error explaining that Terraform must be installed and available on `PATH`
 
 ### Requirement: LocalStack must be running
 
-The command SHALL require a running LocalStack AWS emulator and SHALL resolve its endpoint automatically using lstk's container discovery and host resolution, without requiring the user to specify a host or port.
+The command SHALL require a running LocalStack **AWS** emulator and SHALL resolve its endpoint automatically using lstk's container discovery and host resolution, without requiring the user to specify a host or port. `lstk terraform` operates only against the AWS emulator; other emulator types (e.g. Snowflake, Azure) are not supported.
 
 #### Scenario: No running emulator
 
 - **WHEN** a user runs `lstk terraform plan` and no LocalStack AWS emulator is running
 - **THEN** the command fails with an error stating LocalStack is not running and suggesting how to start it (`lstk`)
+- **AND** the `terraform` binary is not invoked
+
+#### Scenario: A non-AWS emulator is running
+
+- **WHEN** a user runs `lstk terraform plan` while a non-AWS LocalStack emulator (e.g. Snowflake or Azure) is running but the AWS emulator is not
+- **THEN** the command fails with an error that specifically states `lstk terraform` requires the AWS emulator and identifies the running emulator type
 - **AND** the `terraform` binary is not invoked
 
 #### Scenario: Endpoint resolved from running emulator
@@ -50,7 +56,9 @@ The command SHALL require a running LocalStack AWS emulator and SHALL resolve it
 
 ### Requirement: Provider override file generation
 
-Before invoking `terraform` for any command that provisions or reads infrastructure, the system SHALL generate a Terraform override file (named `localstack_providers_override.tf` by default, configurable via `LS_PROVIDERS_FILE`) that, for each `aws` provider block discovered in the working directory, defines a matching `provider "aws"` block configured to target LocalStack.
+Before invoking `terraform` for any command that provisions or reads infrastructure, the system SHALL generate a Terraform override file (named `localstack_providers_override.tf` by default, configurable via `LSTK_TF_OVERRIDE_FILE_NAME`) that, for each `aws` provider block discovered in the working directory, defines a matching `provider "aws"` block configured to target LocalStack.
+
+Provider-block discovery SHALL recurse into sub-directories of the working directory, so `aws` provider blocks declared in nested modules are also represented. Hidden directories (for example `.terraform`, which holds the downloaded provider/module cache, and `.git`) SHALL be skipped. A `*.tf` file that cannot be parsed SHALL be skipped individually (logged, not fatal) rather than aborting discovery. This recursive scan does not guarantee coverage of every possible layout (e.g. remote modules), but is broader than scanning only the top-level directory.
 
 Each generated provider block SHALL set `secret_key = "test"`, the resolved `access_key` (the target account ID, see "Region and account selection"), the resolved `region`, `skip_credentials_validation = true`, `skip_metadata_api_check = true`, and an `endpoints {}` block mapping supported AWS service keys to the LocalStack endpoint. The block SHALL preserve the `alias` of the source provider block when present.
 
@@ -70,14 +78,15 @@ When the resolved host is virtual-host-capable (path style off), the `s3` endpoi
 - **WHEN** the working directory contains multiple `aws` provider blocks distinguished by `alias`
 - **THEN** the override file contains one matching `provider "aws"` block per alias, each carrying the same `alias`
 
-#### Scenario: Aliases can be skipped
+#### Scenario: Provider blocks in sub-directories are discovered
 
-- **WHEN** the `SKIP_ALIASES` environment variable lists one or more provider alias names
-- **THEN** no override block is generated for those aliases
+- **WHEN** an `aws` provider block (e.g. an aliased one) is declared in a `*.tf` file inside a sub-directory of the working directory
+- **THEN** the override file includes a matching `provider "aws"` block for it, in addition to any blocks discovered at the top level
+- **AND** provider blocks under hidden directories such as `.terraform` are not discovered
 
 #### Scenario: Override file name is configurable
 
-- **WHEN** the `LS_PROVIDERS_FILE` environment variable is set to a custom file name
+- **WHEN** the `LSTK_TF_OVERRIDE_FILE_NAME` environment variable is set to a custom file name
 - **THEN** the override file is written using that name
 
 #### Scenario: S3 endpoint host is prefixed for virtual-host addressing
@@ -103,7 +112,7 @@ The resolved region SHALL be selected with precedence: `--region` flag, then the
 
 The resolved account (provider `access_key`) SHALL be selected with precedence: `--account` flag, then the `AWS_ACCESS_KEY_ID` environment variable, then a default of `test`.
 
-The `--account` flag value SHALL be validated to be exactly 12 digits (`^\d{12}$`); a value supplied via `AWS_ACCESS_KEY_ID` SHALL be forwarded verbatim without validation.
+The `--account` flag value SHALL be validated to be exactly 12 digits (`^\d{12}$`). A value supplied via `AWS_ACCESS_KEY_ID` SHALL NOT be validated, but SHALL be passed through an access-key deactivation step: if it begins with the letter `A` (the prefix of real AWS access key ids such as `AKIA…` long-term keys and `ASIA…` temporary session keys), the leading `A` SHALL be replaced with `L` before the value is encoded into the override. This guards against a real AWS credential accidentally present in the environment being written into the generated override file or sent to LocalStack. The validated 12-digit `--account` flag value is used as-is (it cannot begin with `A`).
 
 For unproxied subcommands (`fmt`, `validate`, `version`), both flags SHALL be a no-op: they are stripped from the arguments, not forwarded to `terraform`, and have no other effect.
 
@@ -128,7 +137,7 @@ For unproxied subcommands (`fmt`, `validate`, `version`), both flags SHALL be a 
 #### Scenario: Flags before the terraform subcommand are rejected
 
 - **WHEN** a user runs `lstk --account 111111111111 terraform plan`
-- **THEN** the command fails because `--account` is not a known root flag
+- **THEN** the command fails with an error stating that `--region`/`--account` must appear after the terraform subcommand
 - **AND** the `terraform` binary is not invoked
 
 #### Scenario: Region falls back to environment then default
@@ -140,6 +149,17 @@ For unproxied subcommands (`fmt`, `validate`, `version`), both flags SHALL be a 
 
 - **WHEN** `--account` is not supplied
 - **THEN** the `access_key` is taken from `AWS_ACCESS_KEY_ID` if set, otherwise `test`
+
+#### Scenario: Real AWS access key from the environment is deactivated
+
+- **WHEN** `--account` is not supplied and `AWS_ACCESS_KEY_ID` holds a real-looking AWS access key id beginning with `A` (e.g. `AKIAIOSFODNN7EXAMPLE`)
+- **THEN** the value's leading `A` is replaced with `L` (e.g. `LKIAIOSFODNN7EXAMPLE`) before it is encoded into the override `access_key`
+- **AND** the original (live) key is never written to disk nor sent to LocalStack
+
+#### Scenario: Mock access key from the environment is unchanged
+
+- **WHEN** `--account` is not supplied and `AWS_ACCESS_KEY_ID` holds a value that does not begin with `A` (e.g. `test`)
+- **THEN** the value is used as the `access_key` unchanged
 
 #### Scenario: Flag overrides environment
 
@@ -172,17 +192,25 @@ For unproxied subcommands (`fmt`, `validate`, `version`), both flags SHALL be a 
 
 The set of AWS service endpoint keys written into the `endpoints {}` block SHALL be derived dynamically by querying the installed Terraform AWS provider schema (`terraform providers schema -json`) rather than from a hard-coded service list. The system SHALL read the endpoint attribute keys from the AWS provider's `endpoints` nested block in the schema JSON. Discovery SHALL work for the Terraform AWS provider version 4.0 and higher.
 
-The system SHALL NOT maintain a built-in fallback endpoint-key list. Each discovered endpoint key SHALL be written into the `endpoints {}` block exactly as named in the provider schema, without case transformation, and SHALL map to the single resolved LocalStack endpoint — except the `s3` key, whose host may carry an `s3.` prefix for virtual-host addressing (see "Provider override file generation").
+The system SHALL NOT maintain a built-in fallback endpoint-key list. Each endpoint key that is written SHALL appear exactly as named in the provider schema, without case transformation, and SHALL map to the single resolved LocalStack endpoint — except the `s3` key, whose host may carry an `s3.` prefix for virtual-host addressing (see "Provider override file generation"). (Mutually-exclusive aliases are reduced to one member per group, as described below.)
+
+Some endpoint keys reported by the schema are aliases for the same AWS service and are mutually exclusive: setting more than one member of such an alias group in a single `endpoints {}` block makes the provider report an "Invalid Attribute Combination" diagnostic ("Only one of the following attributes should be set …", with a stated intent to become an error in a future provider release). Because the schema JSON does NOT encode this mutual exclusivity, the system SHALL maintain a table of known alias groups and, for each group, write at most one member into the generated block (retaining one and omitting the rest). This table resolves conflicts only; it is not a fallback endpoint-key list — the keys themselves still come from the schema. Since all members of a group address the same service endpoint, retaining any single member SHALL correctly route that service to LocalStack.
 
 #### Scenario: Endpoint keys come from the provider schema
 
 - **WHEN** the override file is generated and the AWS provider is installed
-- **THEN** the endpoint keys written into the `endpoints {}` block are exactly the endpoint attribute names reported by `terraform providers schema -json` for the AWS provider
+- **THEN** the endpoint keys written into the `endpoints {}` block are the endpoint attribute names reported by `terraform providers schema -json` for the AWS provider, with mutually-exclusive aliases reduced to a single member per group
+
+#### Scenario: Mutually-exclusive endpoint aliases are de-duplicated
+
+- **WHEN** the provider schema reports multiple endpoint keys that are aliases for the same service (for example `lexmodels`, `lexmodelbuilding`, `lexmodelbuildingservice`, and `lex`; or `databrew` and `gluedatabrew`)
+- **THEN** the generated `endpoints {}` block contains at most one key from each such alias group
+- **AND** the `terraform` invocation does not raise an "Invalid Attribute Combination" diagnostic for those endpoints
 
 #### Scenario: Provider schema unavailable because terraform init has not run
 
 - **WHEN** the AWS provider schema cannot be retrieved because `terraform init` has not installed the provider (the `providers schema` query fails or reports no AWS provider)
-- **THEN** the command fails with a specific error instructing the user to run `terraform init` first
+- **THEN** the command fails with a generic error instructing the user to run `terraform init` first, phrased for end users and NOT referencing internal details such as the provider schema
 - **AND** no override file is generated and the `terraform` binary is not invoked
 
 #### Scenario: No endpoint keys discovered
@@ -202,13 +230,18 @@ The system SHALL remove any override file(s) it generated after the `terraform` 
 #### Scenario: Pre-existing override file is not clobbered
 
 - **WHEN** an override file with the target name already exists before the command runs
-- **THEN** the command fails with an error rather than overwriting or deleting a file it did not create
+- **THEN** the command fails with an error rather than overwriting or deleting it
+- **AND** the error instructs the user to remove the file or set `LSTK_TF_OVERRIDE_FILE_NAME` to a different name
+
+Because lstk keeps no persistent record of whether it created the override file, an existing file is treated as a conflict regardless of its contents — it is either authored by the user or orphaned by a previous lstk run that was interrupted before cleanup, and in both cases the user is asked to resolve it.
 
 ### Requirement: Unproxied and dry-run commands
 
-For Terraform subcommands that do not interact with provider endpoints (`fmt`, `validate`, `version`), the system SHALL invoke `terraform` directly without generating an override file. The set of unproxied subcommands SHALL be fixed and not configurable via environment variable.
+For Terraform subcommands that do not require provider endpoints (`fmt`, `validate`, `version`, `init`), the system SHALL invoke `terraform` directly without generating an override file and without requiring a running LocalStack emulator. The set of unproxied subcommands SHALL be fixed and not configurable via environment variable.
 
-When the `DRY_RUN` environment variable is enabled, the system SHALL generate the override file but SHALL NOT invoke `terraform`.
+`init` is included because the override's endpoint keys are discovered from the AWS provider schema, which does not exist until `terraform init` has installed the provider. `init` must therefore pass through to bootstrap the provider for subsequent `plan`/`apply`. `init` does not call AWS service endpoints (S3-backend support is out of scope), so it needs no override.
+
+When the `LSTK_TF_DRY_RUN` environment variable is enabled, the system SHALL generate the override file but SHALL NOT invoke `terraform`.
 
 #### Scenario: Unproxied subcommand skips override generation
 
@@ -216,19 +249,26 @@ When the `DRY_RUN` environment variable is enabled, the system SHALL generate th
 - **THEN** no override file is generated
 - **AND** `terraform fmt` is invoked directly
 
+#### Scenario: init passes through to bootstrap the provider
+
+- **WHEN** a user runs `lstk terraform init` before the AWS provider is installed
+- **THEN** no override file is generated and schema discovery is not attempted
+- **AND** `terraform init` is invoked directly so it can install the provider
+- **AND** the command does not require a running LocalStack emulator
+
 #### Scenario: Dry run generates override but does not run terraform
 
-- **WHEN** `DRY_RUN` is enabled and a user runs `lstk terraform plan`
+- **WHEN** `LSTK_TF_DRY_RUN` is enabled and a user runs `lstk terraform plan`
 - **THEN** the override file is generated and left in place for inspection
 - **AND** `terraform` is not invoked
 
 ### Requirement: Configurable Terraform binary
 
-The system SHALL invoke the binary named by the `TF_CMD` environment variable when set (for example `tofu`), defaulting to `terraform` otherwise.
+The system SHALL invoke the binary named by the `LSTK_TF_CMD` environment variable when set (for example `tofu`), defaulting to `terraform` otherwise.
 
 #### Scenario: Use OpenTofu binary
 
-- **WHEN** `TF_CMD=tofu` is set and the user runs `lstk terraform apply`
+- **WHEN** `LSTK_TF_CMD=tofu` is set and the user runs `lstk terraform apply`
 - **THEN** the `tofu` binary is invoked instead of `terraform`
 
 ### Requirement: Non-interactive streaming output

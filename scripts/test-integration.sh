@@ -54,6 +54,6 @@ fi
 # array is empty and to the array's contents otherwise.
 exec go run gotest.tools/gotestsum@latest --format testname \
   ${JUNIT_FLAG[@]+"${JUNIT_FLAG[@]}"} \
-  -- -count=1 -timeout 15m \
+  -- -count=1 -timeout 25m \
   ${RUN_FLAG[@]+"${RUN_FLAG[@]}"} \
   ./...

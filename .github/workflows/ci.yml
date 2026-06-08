@@ -119,6 +119,21 @@ jobs:
         if: matrix.os == 'macos-latest'
         run: brew install localstack/tap/lstk
 
+      # Install Terraform and OpenTofu so the `lstk terraform` end-to-end tests
+      # (terraform_e2e_test.go) run on the Docker-capable Linux shards. They
+      # skip automatically wherever the binaries are absent (macOS/Windows).
+      - name: Install Terraform
+        if: matrix.os == 'ubuntu-latest'
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
+
+      - name: Install OpenTofu
+        if: matrix.os == 'ubuntu-latest'
+        uses: opentofu/setup-opentofu@v1
+        with:
+          tofu_wrapper: false
+
       - name: Run integration tests
         run: make test-integration
         env:
