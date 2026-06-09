@@ -244,6 +244,55 @@ func TestFirstRunNonInteractiveEmitsDefaultEmulatorNote(t *testing.T) {
 	assert.Contains(t, stdout, "Configured with default emulator", "non-interactive first run should note the default emulator")
 }
 
+// A first run that fails before doing any work (no Docker) leaves no config, so
+// the next run is still a first run and shows the selector instead of defaulting.
+func TestEmulatorSelectionReappearsAfterFailedFirstRun(t *testing.T) {
+	requireDocker(t)
+	t.Parallel()
+	if runtime.GOOS == "windows" {
+		t.Skip("PTY not supported on Windows")
+	}
+
+	tmpHome := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(tmpHome, ".config"), 0755))
+	base := env.Environ(testEnvWithHome(tmpHome, tmpHome)).With(env.DisableEvents, "1")
+
+	configPath, _, err := runLstk(t, testContext(t), "", base, "config", "path")
+	require.NoError(t, err)
+	require.NoFileExists(t, configPath)
+
+	noDocker := base.With(env.Key("DOCKER_HOST"), "unix:///var/run/docker-does-not-exist.sock")
+	stdout, _, runErr := runLstk(t, testContext(t), "", noDocker, "--non-interactive")
+	require.Error(t, runErr, "first run should fail when Docker is unavailable")
+	assert.Contains(t, stdout, "Docker is not available")
+	require.NoFileExists(t, configPath, "a run that fails before doing any work must not create a config")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, binaryPath(), "start")
+	cmd.Env = base
+
+	ptmx, err := pty.Start(cmd)
+	require.NoError(t, err, "failed to start lstk in PTY")
+	defer func() { _ = ptmx.Close() }()
+
+	out := &syncBuffer{}
+	outputCh := make(chan struct{})
+	go func() {
+		_, _ = io.Copy(out, ptmx)
+		close(outputCh)
+	}()
+
+	require.Eventually(t, func() bool {
+		return bytes.Contains(out.Bytes(), []byte("Which emulator would you like to use?"))
+	}, 10*time.Second, 100*time.Millisecond,
+		"emulator selection prompt should reappear after a first run that failed before selection")
+
+	cancel()
+	<-outputCh
+}
+
 func TestFirstRunChecksDockerBeforeAuthAndSelection(t *testing.T) {
 	t.Parallel()
 	if runtime.GOOS == "windows" {

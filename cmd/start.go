@@ -16,7 +16,7 @@ func newStartCmd(cfg *env.Env, tel *telemetry.Client, logger log.Logger) *cobra.
 		Long: `Start emulator and services.
 
 Host environment variables prefixed with LOCALSTACK_ are forwarded to the emulator.`,
-		PreRunE: initConfig(&firstRun),
+		PreRunE: initConfigDeferCreate(&firstRun),
 		RunE: func(c *cobra.Command, args []string) error {
 			rt, err := runtime.NewDockerRuntime(cfg.DockerHost)
 			if err != nil {

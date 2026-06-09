@@ -40,7 +40,7 @@ func NewRootCmd(cfg *env.Env, tel *telemetry.Client, logger log.Logger) *cobra.C
 		Use:     "lstk",
 		Short:   "LocalStack CLI",
 		Long:    "lstk is the command-line interface for LocalStack.",
-		PreRunE: initConfig(&firstRun),
+		PreRunE: initConfigDeferCreate(&firstRun),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			rt, err := runtime.NewDockerRuntime(cfg.DockerHost)
 			if err != nil {
@@ -210,8 +210,13 @@ func startEmulator(ctx context.Context, rt runtime.Runtime, cfg *env.Env, tel *t
 		})
 	}
 	update.NotifyUpdate(ctx, sink, update.NotifyOptions{GitHubToken: cfg.GitHubToken})
-	_, err = container.Start(ctx, rt, sink, opts, false)
-	return err
+	if _, err = container.Start(ctx, rt, sink, opts, false); err != nil {
+		return err
+	}
+	if firstRun {
+		return config.EnsureCreated()
+	}
+	return nil
 }
 
 // instrumentCommands walks the Cobra command tree and wraps every RunE with telemetry emission.
@@ -310,6 +315,14 @@ func newLogger() (log.Logger, func(), error) {
 }
 
 func initConfig(firstRun *bool) func(*cobra.Command, []string) error {
+	return initConfigWith(firstRun, config.Init)
+}
+
+func initConfigDeferCreate(firstRun *bool) func(*cobra.Command, []string) error {
+	return initConfigWith(firstRun, config.Load)
+}
+
+func initConfigWith(firstRun *bool, load func() (bool, error)) func(*cobra.Command, []string) error {
 	return func(cmd *cobra.Command, _ []string) error {
 		path, err := cmd.Flags().GetString("config")
 		if err != nil {
@@ -318,7 +331,7 @@ func initConfig(firstRun *bool) func(*cobra.Command, []string) error {
 		if path != "" {
 			return config.InitFromPath(path)
 		}
-		isFirstRun, err := config.Init()
+		isFirstRun, err := load()
 		if firstRun != nil {
 			*firstRun = isFirstRun
 		}

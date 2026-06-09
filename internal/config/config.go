@@ -52,9 +52,8 @@ func InitFromPath(path string) error {
 	return loadConfig(path)
 }
 
-// Init loads the config file, searching the standard paths. If no config file
-// exists, it creates one from the default template and returns firstRun=true.
-func Init() (firstRun bool, err error) {
+// Load reads config.toml without creating it; Init creates on first run.
+func Load() (firstRun bool, err error) {
 	viper.Reset()
 	setDefaults()
 	viper.SetConfigName(configName)
@@ -70,45 +69,57 @@ func Init() (firstRun bool, err error) {
 
 	if err := viper.ReadInConfig(); err != nil {
 		var notFoundErr viper.ConfigFileNotFoundError
-		if !errors.As(err, &notFoundErr) {
-			if used := viper.ConfigFileUsed(); filepath.Ext(used) == ".yaml" || filepath.Ext(used) == ".yml" {
-				return false, fmt.Errorf("%s is from an old lstk version; lstk now uses TOML format — remove it or replace it with a config.toml file", used)
-			}
-			return false, fmt.Errorf("failed to read config file: %w", err)
+		if errors.As(err, &notFoundErr) {
+			return true, nil
 		}
-
-		// No config found anywhere, create one using creation policy.
-		creationDir, err := configCreationDir()
-		if err != nil {
-			return false, err
+		if used := viper.ConfigFileUsed(); filepath.Ext(used) == ".yaml" || filepath.Ext(used) == ".yml" {
+			return false, fmt.Errorf("%s is from an old lstk version; lstk now uses TOML format — remove it or replace it with a config.toml file", used)
 		}
-
-		if err := os.MkdirAll(creationDir, 0755); err != nil {
-			return false, fmt.Errorf("failed to create config directory: %w", err)
-		}
-
-		configPath := filepath.Join(creationDir, configFileName)
-		f, err := os.OpenFile(configPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0644)
-		if err != nil {
-			if errors.Is(err, os.ErrExist) {
-				return false, loadConfig(configPath)
-			}
-			return false, fmt.Errorf("failed to create config file: %w", err)
-		}
-		_, writeErr := f.WriteString(defaultConfigTemplate)
-		closeErr := f.Close()
-		if writeErr != nil {
-			_ = os.Remove(configPath)
-			return false, fmt.Errorf("failed to write config file: %w", writeErr)
-		}
-		if closeErr != nil {
-			_ = os.Remove(configPath)
-			return false, fmt.Errorf("failed to close config file: %w", closeErr)
-		}
-
-		return true, loadConfig(configPath)
+		return false, fmt.Errorf("failed to read config file: %w", err)
 	}
 	return false, nil
+}
+
+func Init() (firstRun bool, err error) {
+	firstRun, err = Load()
+	if err != nil || !firstRun {
+		return firstRun, err
+	}
+	return true, EnsureCreated()
+}
+
+func EnsureCreated() error {
+	if resolvedConfigPath() != "" {
+		return nil
+	}
+
+	creationDir, err := configCreationDir()
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(creationDir, 0755); err != nil {
+		return fmt.Errorf("failed to create config directory: %w", err)
+	}
+
+	configPath := filepath.Join(creationDir, configFileName)
+	f, err := os.OpenFile(configPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0644)
+	if err != nil {
+		if errors.Is(err, os.ErrExist) {
+			return loadConfig(configPath)
+		}
+		return fmt.Errorf("failed to create config file: %w", err)
+	}
+	_, writeErr := f.WriteString(defaultConfigTemplate)
+	closeErr := f.Close()
+	if writeErr != nil {
+		_ = os.Remove(configPath)
+		return fmt.Errorf("failed to write config file: %w", writeErr)
+	}
+	if closeErr != nil {
+		_ = os.Remove(configPath)
+		return fmt.Errorf("failed to close config file: %w", closeErr)
+	}
+	return loadConfig(configPath)
 }
 
 func resolvedConfigPath() string {
@@ -117,7 +128,11 @@ func resolvedConfigPath() string {
 
 func Set(key string, value any) error {
 	viper.Set(key, value)
-	return setInFile(viper.ConfigFileUsed(), key, value)
+	path := resolvedConfigPath()
+	if path == "" {
+		return nil // no config file yet; keep in memory only
+	}
+	return setInFile(path, key, value)
 }
 
 // setInFile inserts or updates a single "section.field" key in the TOML config
