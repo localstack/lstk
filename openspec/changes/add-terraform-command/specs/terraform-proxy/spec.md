@@ -188,6 +188,50 @@ For unproxied subcommands (`fmt`, `validate`, `version`), both flags SHALL be a 
 - **WHEN** the user's own `aws` provider block specifies a `region` or `access_key` and `--region`/`--account` (or their env fallbacks) resolve a value
 - **THEN** the generated override block's encoded `region`/`access_key` take effect over the user's values
 
+### Requirement: Working directory selection (`-chdir`)
+
+The command SHALL support Terraform's global `-chdir=DIR` option, which selects the directory Terraform operates in. Only the `-chdir=DIR` form (with `=`) SHALL be recognized by lstk; the space-separated form is not a valid Terraform spelling and SHALL be forwarded to `terraform` unchanged.
+
+When `-chdir=DIR` is present, the system SHALL compute an effective working directory by resolving `DIR` against the process working directory (an absolute `DIR` SHALL be used as-is; a relative `DIR` SHALL be joined to the process working directory). All directory-relative work — provider-schema discovery (`terraform providers schema -json`), `aws` provider-block discovery, the location the override file is written to, and its cleanup — SHALL be anchored to this effective working directory rather than the process working directory.
+
+The `-chdir=DIR` token SHALL be kept in the arguments forwarded to `terraform` so that `terraform` itself also switches into `DIR`. lstk SHALL read the value for its own directory resolution without removing it (this differs from `--region`/`--account`, which are consumed and removed).
+
+`-chdir=DIR` SHALL be recognized in leading position alongside `--region`/`--account` (Terraform requires `-chdir` to precede the subcommand). The leading-flag scan SHALL treat `-chdir=DIR` as a recognized leading token and continue scanning past it, so a `--region`/`--account` flag positioned after `-chdir` is still consumed.
+
+Before invoking `terraform`, the system SHALL validate that the effective working directory exists; if it does not, the command SHALL fail with a clear error naming the directory and SHALL NOT invoke `terraform` or generate an override.
+
+For unproxied subcommands (`fmt`, `validate`, `version`, `init`), `-chdir=DIR` requires no special handling beyond being forwarded verbatim — lstk does no directory-relative work for them, and `terraform` performs the directory switch itself.
+
+#### Scenario: Override is generated in the chdir directory
+
+- **WHEN** a user runs `lstk terraform -chdir=infra apply` and `infra/` contains an `aws` provider block
+- **THEN** the provider schema is discovered from `infra/`, the override file is written into `infra/`, and `aws` provider blocks are discovered under `infra/`
+- **AND** `terraform` is invoked with `-chdir=infra` retained in its arguments
+- **AND** the generated override file is removed from `infra/` after the run
+
+#### Scenario: chdir directory does not exist
+
+- **WHEN** a user runs `lstk terraform -chdir=missing apply` and `missing/` does not exist
+- **THEN** the command fails with a clear error identifying the missing directory
+- **AND** no override file is generated and the `terraform` binary is not invoked
+
+#### Scenario: chdir is forwarded to terraform
+
+- **WHEN** a user runs `lstk terraform -chdir=infra init`
+- **THEN** `-chdir=infra` is included in the forwarded arguments so `terraform` operates in `infra/`
+
+#### Scenario: chdir combines with leading region/account flags
+
+- **WHEN** a user runs `lstk terraform -chdir=infra --region us-west-2 apply` (or with the two leading flags in the opposite order)
+- **THEN** `--region us-west-2` is consumed and removed, `-chdir=infra` is retained and forwarded, and the effective working directory is `infra/`
+- **AND** the generated provider blocks set `region = "us-west-2"`
+
+#### Scenario: Space-separated chdir form is not interpreted by lstk
+
+- **WHEN** a user runs `lstk terraform -chdir infra apply` (no `=`)
+- **THEN** lstk does not interpret it as a working-directory change
+- **AND** the arguments are forwarded to `terraform`, which reports its own error for the unrecognized form
+
 ### Requirement: Dynamic endpoint discovery from provider schema
 
 The set of AWS service endpoint keys written into the `endpoints {}` block SHALL be derived dynamically by querying the installed Terraform AWS provider schema (`terraform providers schema -json`) rather than from a hard-coded service list. The system SHALL read the endpoint attribute keys from the AWS provider's `endpoints` nested block in the schema JSON. Discovery SHALL work for the Terraform AWS provider version 4.0 and higher.

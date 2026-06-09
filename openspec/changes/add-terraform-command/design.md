@@ -83,6 +83,23 @@ Resolution precedence:
 
 **Alternative considered:** export the values as env vars on the subprocess and omit them from the override block. Rejected — env vars sit below explicit provider-block args, so any `region`/`access_key` (including the literal `test` we'd otherwise still need for the endpoints to authenticate) in the block would silently win, making the flags appear to do nothing.
 
+### Working directory selection (`-chdir`)
+Terraform's global `-chdir=DIR` option must precede the subcommand and makes Terraform operate in `DIR` (all relative paths, including where it reads `*.tf`/`*_override.tf` and where `.terraform/` lives, become relative to `DIR`). lstk already forwards args verbatim, so `-chdir` works for **unproxied** commands with no extra code — terraform performs the switch itself and lstk touches no directory. The break is only in the **proxied** path, where lstk does three directory-relative things, all currently anchored to `os.Getwd()`: schema discovery (`EndpointKeys` runs `providers schema -json` with `cmd.Dir = workdir`), override generation + `aws`-provider-block discovery (`generateOverride`/`discoverAWSAliases` over `workdir`), and the deferred cleanup. Run with `-chdir`, these would read from and write into the wrong directory — yielding either a misleading "init required" or, worse, an override file terraform never sees, silently provisioning against real AWS.
+
+**Decision — compute an effective workdir and thread it where `os.Getwd()` is used.** The plumbing already passes `workdir` explicitly through `EndpointKeys`/`generateOverride`, so the entire fix is to derive the effective directory once and substitute it: `workdir = resolve(getwd, DIR)` when `-chdir=DIR` is present (absolute `DIR` as-is, relative `DIR` joined to getwd). The schema probe sets `cmd.Dir = workdir` directly, so it needs no `-chdir` re-injection. The real terraform run, however, executes with no `cmd.Dir`, so `-chdir=DIR` **must remain in the forwarded args** for terraform to switch — meaning lstk *reads* `-chdir` but, unlike `--region`/`--account`, does **not** strip it.
+
+**`-chdir=DIR` form only.** lstk recognizes only the `=` form, mirroring Terraform exactly (Terraform does not accept a space-separated `-chdir DIR`). A space form is forwarded untouched and terraform reports its own error — lstk does not invent a spelling Terraform rejects.
+
+**Flag-parsing interaction.** `-chdir` and lstk's `--region`/`--account` are all leading flags, but of different kinds: `-chdir` is read-and-kept, the lstk flags are read-and-removed. The leading-flag scan is extended to recognize `-chdir=DIR` and **continue past it** (rather than stopping, as it would for any other non-matching token), so `--region`/`--account` on either side of `-chdir` are still consumed. A useful property falls out: because removing the lstk flags collapses `-chdir` back toward the front, the user may write the leading flags in any order and `-chdir` still lands first in the forwarded args, satisfying Terraform's "must be first" rule:
+```
+lstk tf --region x -chdir=infra plan   ─strip ──►  -chdir=infra plan   ✓
+lstk tf -chdir=infra --region x plan   ─strip ──►  -chdir=infra plan   ✓
+```
+
+**Validate the directory up front.** Without a check, a bad `DIR` surfaces as a misleading `ErrInitRequired` from the schema probe (whose `cmd.Dir` points at a nonexistent path). lstk `os.Stat`s the effective directory before any work and fails with a clear "directory not found" error naming `DIR`, so the failure is honest rather than mislabeled.
+
+**Alternative considered — inject `-chdir` into the schema probe's args instead of setting `cmd.Dir`.** Rejected: `cmd.Dir` is already how `EndpointKeys` scopes the probe, so resolving the effective workdir and reusing the existing parameter is smaller and keeps a single source of truth for "where are we operating".
+
 ### Endpoint URL construction & S3 path style
 The base endpoint is `http://host:port` from `endpoint.ResolveHost`, overridable by `AWS_ENDPOINT_URL`. Because `S3_HOSTNAME` is dropped, every service except S3 maps to that single resolved endpoint. `s3_use_path_style` is set to `true` when the resolved host does not support virtual-host-style bucket addressing — typically `127.0.0.1`/`localhost`, where path style is required. When the resolved host is a virtual-host-capable `*.localstack.cloud` domain (e.g. `localhost.localstack.cloud`), virtual-host style works and path style is left off.
 

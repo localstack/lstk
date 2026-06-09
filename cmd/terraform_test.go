@@ -12,6 +12,7 @@ func TestStripLeadingTerraformFlags(t *testing.T) {
 		wantRemain  []string
 		wantRegion  string
 		wantAccount string
+		wantChdir   string
 		wantErr     bool
 	}{
 		{
@@ -60,11 +61,38 @@ func TestStripLeadingTerraformFlags(t *testing.T) {
 			// region stays empty because --region appears after the action
 			wantAccount: "111111111111",
 		},
+		{
+			name:       "chdir is read and kept in forwarded args",
+			args:       []string{"-chdir=infra", "plan"},
+			wantRemain: []string{"-chdir=infra", "plan"},
+			wantChdir:  "infra",
+		},
+		{
+			name:        "chdir before leading flags keeps chdir and consumes flags",
+			args:        []string{"-chdir=infra", "--region", "us-west-2", "--account=111111111111", "apply"},
+			wantRemain:  []string{"-chdir=infra", "apply"},
+			wantRegion:  "us-west-2",
+			wantAccount: "111111111111",
+			wantChdir:   "infra",
+		},
+		{
+			name:       "chdir after leading flags keeps chdir and consumes flags",
+			args:       []string{"--region", "us-west-2", "-chdir=infra", "plan"},
+			wantRemain: []string{"-chdir=infra", "plan"},
+			wantRegion: "us-west-2",
+			wantChdir:  "infra",
+		},
+		{
+			name:       "space-separated chdir form is not interpreted and is forwarded",
+			args:       []string{"-chdir", "infra", "plan"},
+			wantRemain: []string{"-chdir", "infra", "plan"},
+			// scanning stops at the unrecognized -chdir token; nothing consumed.
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			remain, region, account, err := stripLeadingTerraformFlags(tt.args)
+			remain, region, account, chdir, err := stripLeadingTerraformFlags(tt.args)
 			if tt.wantErr {
 				if err == nil {
 					t.Fatalf("expected error, got nil")
@@ -82,6 +110,9 @@ func TestStripLeadingTerraformFlags(t *testing.T) {
 			}
 			if account != tt.wantAccount {
 				t.Errorf("account = %q, want %q", account, tt.wantAccount)
+			}
+			if chdir != tt.wantChdir {
+				t.Errorf("chdir = %q, want %q", chdir, tt.wantChdir)
 			}
 		})
 	}

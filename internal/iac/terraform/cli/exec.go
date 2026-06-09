@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -25,8 +26,11 @@ import (
 //
 // endpointURL is the resolved LocalStack endpoint (http://host:port); it may be
 // empty for unproxied commands. region and account are encoded into each
-// generated provider block.
-func Run(ctx context.Context, endpointURL, region, account string, sink output.Sink, logger log.Logger, args []string) error {
+// generated provider block. chdir is terraform's -chdir=DIR value ("" when
+// absent); when set, lstk anchors all of its directory-relative work (schema
+// discovery, override generation, cleanup) to that directory rather than the
+// process working directory, mirroring the switch terraform itself makes.
+func Run(ctx context.Context, endpointURL, region, account, chdir string, sink output.Sink, logger log.Logger, args []string) error {
 	ctx, span := otel.Tracer("github.com/localstack/lstk/internal/iac/terraform/cli").Start(ctx, "terraform cli")
 	defer span.End()
 
@@ -53,6 +57,15 @@ func Run(ctx context.Context, endpointURL, region, account string, sink output.S
 	workdir, err := os.Getwd()
 	if err != nil {
 		return fmt.Errorf("resolving working directory: %w", err)
+	}
+	if chdir != "" {
+		workdir = resolveChdir(workdir, chdir)
+		if info, statErr := os.Stat(workdir); statErr != nil || !info.IsDir() {
+			sink.Emit(output.ErrorEvent{
+				Title: fmt.Sprintf("-chdir directory does not exist: %s", chdir),
+			})
+			return output.NewSilentError(fmt.Errorf("-chdir directory does not exist: %s", workdir))
+		}
 	}
 
 	endpoint := endpointURL
@@ -107,6 +120,16 @@ func Run(ctx context.Context, endpointURL, region, account string, sink output.S
 	}()
 
 	return runTerraform(ctx, span, tfBin, args)
+}
+
+// resolveChdir resolves terraform's -chdir=DIR value into an absolute-ish
+// working directory: an absolute DIR is used as-is, a relative DIR is joined to
+// the process working directory (matching how terraform interprets it).
+func resolveChdir(getwd, chdir string) string {
+	if filepath.IsAbs(chdir) {
+		return chdir
+	}
+	return filepath.Join(getwd, chdir)
 }
 
 // runTerraform executes terraform with stdio wired through to the user and

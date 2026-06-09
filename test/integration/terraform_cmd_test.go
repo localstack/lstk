@@ -335,6 +335,75 @@ func TestTerraformGeneratesAndRemovesOverride(t *testing.T) {
 	assert.NoFileExists(t, filepath.Join(workDir, tfOverrideFile))
 }
 
+// 11.4 — a proxied command run with `-chdir=DIR` anchors lstk's work to DIR.
+// A dry run proves the override is generated inside DIR (not the process working
+// dir) with schema-derived keys; a live run proves `-chdir=DIR` is forwarded to
+// terraform and the override is cleaned up afterward.
+func TestTerraformChdirAnchorsOverrideToDir(t *testing.T) {
+	requireDocker(t)
+	cleanup()
+	t.Cleanup(cleanup)
+	ctx := testContext(t)
+	startTestContainer(t, ctx)
+	fakeDir := writeFakeTerraform(t)
+
+	// Dry run leaves the override in place, so we can read it directly from the
+	// chdir dir to assert both its location and its schema-derived contents.
+	t.Run("override generated inside chdir dir", func(t *testing.T) {
+		workDir := t.TempDir()
+		infra := filepath.Join(workDir, "infra")
+		require.NoError(t, os.Mkdir(infra, 0755))
+		e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).With(env.Home, t.TempDir()).
+			With(env.Key("LSTK_TF_DRY_RUN"), "1")
+
+		_, stderr, err := runLstk(t, ctx, workDir, e, "terraform", "-chdir=infra", "plan")
+		require.NoError(t, err, "stderr: %s", stderr)
+
+		overridePath := filepath.Join(infra, tfOverrideFile)
+		require.FileExists(t, overridePath)
+		content, err := os.ReadFile(overridePath)
+		require.NoError(t, err)
+		assert.Contains(t, string(content), "s3 =") // schema-derived endpoint key
+		// Nothing was written at the top level.
+		assert.NoFileExists(t, filepath.Join(workDir, tfOverrideFile))
+	})
+
+	// A live run forwards -chdir to terraform and removes the override after.
+	t.Run("chdir forwarded and override cleaned up", func(t *testing.T) {
+		workDir := t.TempDir()
+		infra := filepath.Join(workDir, "infra")
+		require.NoError(t, os.Mkdir(infra, 0755))
+		e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).With(env.Home, t.TempDir())
+
+		stdout, stderr, err := runLstk(t, ctx, workDir, e, "terraform", "-chdir=infra", "plan")
+		require.NoError(t, err, "stderr: %s", stderr)
+
+		assert.Contains(t, stdout, "ARGS:-chdir=infra plan")
+		assert.NoFileExists(t, filepath.Join(infra, tfOverrideFile))
+		assert.NoFileExists(t, filepath.Join(workDir, tfOverrideFile))
+	})
+}
+
+// 11.5 — a `-chdir=DIR` pointing at a nonexistent directory fails with a clear
+// error before terraform is invoked or an override is generated.
+func TestTerraformChdirMissingDirFails(t *testing.T) {
+	requireDocker(t)
+	cleanup()
+	t.Cleanup(cleanup)
+	ctx := testContext(t)
+	startTestContainer(t, ctx)
+
+	fakeDir := writeFakeTerraform(t)
+	workDir := t.TempDir()
+	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).With(env.Home, t.TempDir())
+
+	stdout, _, err := runLstk(t, ctx, workDir, e, "terraform", "-chdir=does-not-exist", "plan")
+	require.Error(t, err)
+	assert.Contains(t, stdout, "does not exist")
+	assert.NotContains(t, stdout, "ARGS:")
+	assert.NoFileExists(t, filepath.Join(workDir, "does-not-exist", tfOverrideFile))
+}
+
 // 7.9 — provider schema unavailable (before init) fails with the init-required
 // message and neither invokes terraform nor generates an override.
 func TestTerraformSchemaUnavailableRequiresInit(t *testing.T) {

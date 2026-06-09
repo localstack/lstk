@@ -82,6 +82,16 @@ the tests skip wherever a prerequisite is absent, e.g. macOS/Windows).
 ## 9. Documentation
 
 - [x] 9.1 Ensure command `Long` help lists `--region`/`--account` and supported env vars, documents that LocalStack must be running, and notes that `terraform init` must have been run (so the provider schema is available)
+- [x] 9.2 Document `-chdir=DIR` support in the command `Long` help (the `-chdir=DIR` form only, anchors lstk's directory-relative work to `DIR`)
+
+## 11. Working directory selection (`-chdir`)
+
+- [x] 11.1 Add a leading-token parser for `-chdir=DIR` (the `=` form only): recognize it during the leading-flag scan alongside `--region`/`--account`, record `DIR`, and CONTINUE scanning past it (do not stop, and do not strip it — it must remain in the forwarded args). A space-separated `-chdir DIR` is not recognized and is forwarded verbatim
+- [x] 11.2 Compute the effective working directory from `DIR` (absolute used as-is; relative joined to `os.Getwd()`) and thread it in place of `os.Getwd()` through `EndpointKeys`, `generateOverride`/`discoverAWSAliases`, and the cleanup `defer`. The schema probe continues to scope via `cmd.Dir` (no `-chdir` re-injection); the real terraform run keeps `-chdir=DIR` in its args so terraform also switches
+- [x] 11.3 Validate the effective working directory exists (`os.Stat`) before any work; on failure emit an `ErrorEvent` naming the missing directory and return a silent error without invoking terraform or generating an override
+- [x] 11.4 Integration test: `lstk terraform -chdir=DIR` proxied run discovers schema from / writes the override into / cleans up `DIR`, and forwards `-chdir=DIR` to terraform (dry-run capture is sufficient to assert override location and contents)
+- [x] 11.5 Integration test: a nonexistent `-chdir` directory fails with a clear error and does not invoke terraform or generate an override
+- [x] 11.6 Unit test the parser: `-chdir=DIR` is recognized and retained while interleaved `--region`/`--account` (on either side) are still consumed and removed; the space form `-chdir DIR` is left untouched in the forwarded args
 
 ## 10. Post-review refinements
 

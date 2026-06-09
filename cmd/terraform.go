@@ -28,12 +28,13 @@ func newTerraformCmd(cfg *env.Env, logger log.Logger) *cobra.Command {
 		Use:     "terraform [args...]",
 		Aliases: []string{"tf"},
 		Short:   "Run Terraform against LocalStack",
-		Long: `Proxy Terraform commands to LocalStack, using LocalStack endpoints as 
-AWS provider overrides.
+		Long: `Proxy Terraform commands to LocalStack, using LocalStack endpoints as AWS provider overrides.
 
 lstk-specific flags (must appear before the terraform action):
   --region <region>    Deployment region (default us-east-1)
   --account <id>       Target AWS account id, 12 digits (default test)
+
+Terraform's global -chdir=DIR option is supported (the -chdir=DIR form only): lstk anchors provider-schema discovery, override-file generation, and cleanup to DIR, and forwards -chdir=DIR to terraform so it switches into DIR too.
 
 Supported environment variables:
   AWS_ENDPOINT_URL            Override the auto-resolved LocalStack endpoint
@@ -72,7 +73,7 @@ Examples:
 				return emitValidationError(sink, err)
 			}
 
-			tfArgs, regionFlag, accountFlag, err := stripLeadingTerraformFlags(passthrough)
+			tfArgs, regionFlag, accountFlag, chdir, err := stripLeadingTerraformFlags(passthrough)
 			if err != nil {
 				return emitValidationError(sink, err)
 			}
@@ -86,7 +87,7 @@ Examples:
 			// Unproxied subcommands (fmt/validate/version) never touch the
 			// endpoint, so they run without requiring a running emulator.
 			if tfcli.IsUnproxied(tfArgs) {
-				return tfcli.Run(cmd.Context(), "", region, account, sink, logger, tfArgs)
+				return tfcli.Run(cmd.Context(), "", region, account, chdir, sink, logger, tfArgs)
 			}
 
 			rt, err := runtime.NewDockerRuntime(cfg.DockerHost)
@@ -130,7 +131,7 @@ Examples:
 
 			host, _ := endpoint.ResolveHost(cmd.Context(), awsContainer.Port, cfg.LocalStackHost)
 
-			return tfcli.Run(cmd.Context(), "http://"+host, region, account, sink, logger, tfArgs)
+			return tfcli.Run(cmd.Context(), "http://"+host, region, account, chdir, sink, logger, tfArgs)
 		},
 	}
 }
@@ -203,18 +204,26 @@ func rejectPreSubcommandFlags(calledAs string) error {
 }
 
 // stripLeadingTerraformFlags extracts the lstk-specific --region/--account
-// flags, but only in leading position (between terraform/tf and the action).
-// It accepts both --flag value and --flag=value forms, stops at the first token
-// that is not one of these flags or their values (forwarding the rest verbatim),
-// and errors if a leading flag is missing its value.
-func stripLeadingTerraformFlags(args []string) (remaining []string, region, account string, err error) {
+// flags and reads terraform's global -chdir, but only in leading position
+// (between terraform/tf and the action). It accepts both --flag value and
+// --flag=value forms for the lstk flags and -chdir=DIR for chdir, stops at the
+// first token that is none of these (forwarding the rest verbatim), and errors
+// if a leading lstk flag is missing its value.
+//
+// --region/--account are consumed and removed from the returned args; -chdir is
+// read for lstk's own working-directory resolution but kept in the returned
+// args, because terraform itself must also see it to switch directories. Only
+// the -chdir=DIR form is recognized (terraform does not accept a space-separated
+// -chdir DIR); any other spelling falls through and is forwarded verbatim for
+// terraform to reject.
+func stripLeadingTerraformFlags(args []string) (remaining []string, region, account, chdir string, err error) {
 	i := 0
 	for i < len(args) {
 		arg := args[i]
 		switch {
 		case arg == "--region":
 			if i+1 >= len(args) {
-				return nil, "", "", fmt.Errorf("--region requires a value")
+				return nil, "", "", "", fmt.Errorf("--region requires a value")
 			}
 			region = args[i+1]
 			i += 2
@@ -223,18 +232,25 @@ func stripLeadingTerraformFlags(args []string) (remaining []string, region, acco
 			i++
 		case arg == "--account":
 			if i+1 >= len(args) {
-				return nil, "", "", fmt.Errorf("--account requires a value")
+				return nil, "", "", "", fmt.Errorf("--account requires a value")
 			}
 			account = args[i+1]
 			i += 2
 		case strings.HasPrefix(arg, "--account="):
 			account = strings.TrimPrefix(arg, "--account=")
 			i++
+		case strings.HasPrefix(arg, "-chdir="):
+			// Read the value but keep -chdir in the forwarded args so terraform
+			// also switches into it; continue scanning so leading --region/--account
+			// positioned after -chdir are still consumed.
+			chdir = strings.TrimPrefix(arg, "-chdir=")
+			remaining = append(remaining, arg)
+			i++
 		default:
-			return args[i:], region, account, nil
+			return append(remaining, args[i:]...), region, account, chdir, nil
 		}
 	}
-	return nil, region, account, nil
+	return remaining, region, account, chdir, nil
 }
 
 // resolveRegion applies the precedence --region flag → AWS_REGION → us-east-1.
