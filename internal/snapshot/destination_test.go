@@ -178,6 +178,16 @@ func TestParseSource(t *testing.T) {
 			input:   "pod:-bad",
 			wantErr: "invalid pod name",
 		},
+		{
+			name:    "pod: percent encoding rejected",
+			input:   "pod:staging%2Fpod",
+			wantErr: "invalid pod name",
+		},
+		{
+			name:    "pod: shell metacharacters rejected",
+			input:   "pod:a;rm",
+			wantErr: "invalid pod name",
+		},
 
 		// --- remote schemes ---
 		{
@@ -521,6 +531,21 @@ func TestParseDestination(t *testing.T) {
 			input:       "pod:ci_test-underscore",
 			wantKind:    snapshot.KindPod,
 			wantPodName: "ci_test-underscore",
+		},
+		{
+			name:    "pod: percent encoding rejected",
+			input:   "pod:staging%2Fpod",
+			wantErr: "invalid pod name",
+		},
+		{
+			name:    "pod: embedded query rejected",
+			input:   "pod:abc?fields=name",
+			wantErr: "invalid pod name",
+		},
+		{
+			name:    "pod: shell metacharacters rejected",
+			input:   "pod:a;rm",
+			wantErr: "invalid pod name",
 		},
 
 		// --- unknown schemes ---
