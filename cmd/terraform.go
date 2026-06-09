@@ -34,8 +34,6 @@ lstk-specific flags (must appear before the terraform action):
   --region <region>    Deployment region (default us-east-1)
   --account <id>       Target AWS account id, 12 digits (default test)
 
-Terraform's global -chdir=DIR option is supported (the -chdir=DIR form only): lstk anchors provider-schema discovery, override-file generation, and cleanup to DIR, and forwards -chdir=DIR to terraform so it switches into DIR too.
-
 Supported environment variables:
   AWS_ENDPOINT_URL            Override the auto-resolved LocalStack endpoint
   LSTK_TF_CMD                 Terraform binary to invoke (e.g. tofu; default terraform)
