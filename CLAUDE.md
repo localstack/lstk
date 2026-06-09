@@ -43,6 +43,7 @@ Note: Integration tests require `LOCALSTACK_AUTH_TOKEN` environment variable for
   - `ui/` - Bubble Tea views for interactive output
   - `update/` - Self-update logic: version check via GitHub API, binary/Homebrew/npm update paths, archive extraction
   - `log/` - Internal diagnostic logging (not for user-facing output — use `output/` for that)
+  - `iac/` - Wrappers for third-party infrastructure as code tools, such as Terraform.
 
 # Logging
 
