@@ -45,6 +45,9 @@ func SelectEmulator(
 		}
 	}
 
+	if err := config.EnsureCreated(); err != nil {
+		return nil, fmt.Errorf("failed to create config file: %w", err)
+	}
 	if err := config.SetEmulatorType(selected); err != nil {
 		return nil, fmt.Errorf("failed to set emulator type: %w", err)
 	}
