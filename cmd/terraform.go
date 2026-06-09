@@ -62,26 +62,26 @@ Examples:
 			return initConfig(nil)(cmd, args)
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			sink := output.NewPlainSink(os.Stdout)
+
 			// --region/--account are only meaningful in leading position after
 			// the subcommand. Cobra consumes flags placed before the subcommand
 			// during command resolution (silently dropping them), so guard
 			// against that explicitly with a clear error rather than a no-op.
 			if err := rejectPreSubcommandFlags(cmd.CalledAs()); err != nil {
-				return err
+				return emitValidationError(sink, err)
 			}
 
 			tfArgs, regionFlag, accountFlag, err := stripLeadingTerraformFlags(passthrough)
 			if err != nil {
-				return err
+				return emitValidationError(sink, err)
 			}
 
 			region := resolveRegion(regionFlag)
 			account, err := resolveAccount(accountFlag)
 			if err != nil {
-				return err
+				return emitValidationError(sink, err)
 			}
-
-			sink := output.NewPlainSink(os.Stdout)
 
 			// Unproxied subcommands (fmt/validate/version) never touch the
 			// endpoint, so they run without requiring a running emulator.
@@ -168,6 +168,14 @@ func resolveAWSContainer() config.ContainerConfig {
 		}
 	}
 	return awsContainer
+}
+
+// emitValidationError renders a command-boundary validation failure through the
+// sink (consistent with the other terraform error events) and returns a silent
+// error so the top-level handler does not print it a second time.
+func emitValidationError(sink output.Sink, err error) error {
+	sink.Emit(output.ErrorEvent{Title: err.Error()})
+	return output.NewSilentError(err)
 }
 
 // rejectPreSubcommandFlags returns an error if --region or --account appears in

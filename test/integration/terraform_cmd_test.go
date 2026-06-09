@@ -133,9 +133,9 @@ func TestTerraformMissingBinary(t *testing.T) {
 	// Empty PATH dir → no terraform binary found.
 	e := env.With(env.DisableEvents, "1").With("PATH", t.TempDir()).With(env.Home, t.TempDir())
 
-	_, stderr, err := runLstk(t, testContext(t), t.TempDir(), e, "terraform", "version")
+	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), e, "terraform", "version")
 	require.Error(t, err)
-	assert.Contains(t, stderr, "not found in PATH")
+	assert.Contains(t, stderr+stdout, "not found in PATH")
 }
 
 // 7.3 — fmt/validate/version/init run without generating an override and without
@@ -182,9 +182,9 @@ func TestTerraformMissingFlagValue(t *testing.T) {
 	fakeDir := writeFakeTerraform(t)
 	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).With(env.Home, t.TempDir())
 
-	_, stderr, err := runLstk(t, testContext(t), t.TempDir(), e, "terraform", "--region")
+	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), e, "terraform", "--region")
 	require.Error(t, err)
-	assert.Contains(t, stderr, "--region requires a value")
+	assert.Contains(t, stderr+stdout, "--region requires a value")
 }
 
 // 7.7 — positional rules. Flags after the action are forwarded verbatim (use an

@@ -34,7 +34,15 @@ func Run(ctx context.Context, endpointURL, region, account string, sink output.S
 	if err != nil {
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())
-		return fmt.Errorf("%s not found in PATH — install Terraform and ensure it is on your PATH", tfCmd())
+		installURL := "https://developer.hashicorp.com/terraform/install"
+		if tfCmd() == "tofu" {
+			installURL = "https://opentofu.org/docs/intro/install/"
+		}
+		sink.Emit(output.ErrorEvent{
+			Title:   fmt.Sprintf("%s not found in PATH", tfCmd()),
+			Actions: []output.ErrorAction{{Label: "Install it and ensure it is on your PATH:", Value: installURL}},
+		})
+		return output.NewSilentError(fmt.Errorf("%s not found in PATH", tfCmd()))
 	}
 	span.SetAttributes(attribute.StringSlice("terraform.args", args), attribute.Bool("terraform.unproxied", IsUnproxied(args)))
 
