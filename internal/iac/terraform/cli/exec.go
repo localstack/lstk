@@ -57,6 +57,13 @@ func Run(ctx context.Context, endpointURL, region, account string, sink output.S
 	if err != nil {
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())
+		if errors.Is(err, ErrInitRequired) {
+			sink.Emit(output.ErrorEvent{
+				Title:   "Terraform AWS provider is not installed",
+				Actions: []output.ErrorAction{{Label: "Initialize the project:", Value: tfCmd() + " init"}},
+			})
+			return output.NewSilentError(err)
+		}
 		return err
 	}
 	logger.Info("terraform: discovered %d endpoint keys from provider schema", len(keys))

@@ -11,10 +11,9 @@ import (
 )
 
 // ErrInitRequired indicates the Terraform AWS provider is not installed —
-// typically because `terraform init` has not been run yet. Callers surface its
-// message verbatim, so it is kept generic and end-user-friendly (no mention of
-// internals like the provider schema).
-var ErrInitRequired = errors.New("the Terraform AWS provider is not installed — run `terraform init`, then try again")
+// typically because `terraform init` has not been run yet. Detected with
+// errors.Is; the actionable next-step is carried by the error event, not here.
+var ErrInitRequired = errors.New("the Terraform AWS provider is not installed")
 
 // providersSchema is the subset of `terraform providers schema -json` output we
 // need: the AWS provider's nested `endpoints` block, whose attribute names are
