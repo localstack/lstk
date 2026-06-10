@@ -16,7 +16,7 @@ func baseOpts(workdir string) overrideOptions {
 	return overrideOptions{
 		workdir:      workdir,
 		fileName:     defaultOverrideFileName,
-		endpointURL:  "http://127.0.0.1:4566",
+		endpointURL:  "http://localhost.localstack.cloud:4566",
 		region:       "us-east-1",
 		account:      "test",
 		endpointKeys: []string{"s3", "sqs"},
@@ -47,7 +47,7 @@ func TestGenerateOverrideDefaultProvider(t *testing.T) {
 	assert.Contains(t, out, "skip_metadata_api_check = true")
 	assert.Contains(t, out, "endpoints {")
 	assert.Contains(t, out, `s3 = `)
-	assert.Contains(t, out, `sqs = "http://127.0.0.1:4566"`)
+	assert.Contains(t, out, `sqs = "http://localhost.localstack.cloud:4566"`)
 	// No .tf files → exactly one (alias-less) block.
 	assert.NotContains(t, out, "alias =")
 }
