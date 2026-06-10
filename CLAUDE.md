@@ -81,6 +81,21 @@ Environment variables:
 - `LOCALSTACK_AUTH_TOKEN` - Auth token (skips browser login if set)
 - `LSTK_OTEL=1` - Enables OpenTelemetry trace export (disabled by default); when enabled, standard `OTEL_EXPORTER_OTLP_*` env vars are respected by the SDK. Requires an OTLP-compatible backend to receive and visualize telemetry — for local development, `make otel` starts one (UI at http://localhost:16686).
 
+# Snapshots
+
+`lstk snapshot` captures and restores the running emulator's state (AWS emulator only). Domain logic lives in `internal/snapshot/`; `cmd/snapshot.go` is wiring + output-mode selection.
+
+- `lstk snapshot save [destination]` — export state to a local `.zip` or a named cloud snapshot.
+- `lstk snapshot load REF` — restore state, starting the emulator first if needed; `--merge` controls how snapshot state combines with running state (`account-region-merge` (default), `overwrite`, `service-merge`).
+- `lstk snapshot list` — list cloud snapshots on the LocalStack platform. Lists only snapshots you created by default; pass `--all` to include every snapshot in your organization. Cloud-only; requires auth.
+- `lstk snapshot remove REF` — delete a cloud snapshot. Cloud-only; local files are never deleted by the CLI. Prompts for confirmation in interactive mode; `--force` is required to skip the prompt in non-interactive mode.
+
+A REF is parsed by helpers in `internal/snapshot/destination.go`:
+- **local file** — absolute/relative path; `.zip` is appended if omitted.
+- **cloud snapshot** — `pod:` prefix (e.g. `pod:my-baseline`), stored on the LocalStack platform. Requires auth (`LOCALSTACK_AUTH_TOKEN` or `lstk login`).
+
+`ParseDestination` (save), `ParseSource` (load), and `ParseRemovable` (remove) share pod-name validation; `ParseRemovable` rejects local paths so the CLI cannot delete local files.
+
 # Code Style
 
 - Don't add comments for self-explanatory code. Only comment when the "why" isn't obvious from the code itself.

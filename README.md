@@ -49,6 +49,7 @@ Running `lstk` will automatically handle configuration setup and start LocalStac
 - **Interactive TUI** — a Bubble Tea-powered terminal UI shown in an interactive terminal for commands like `start`, `login`, `status`, etc.
 - **Plain output** for CI/CD and scripting (auto-detected in non-interactive environments or forced with `--non-interactive`)
 - **Log streaming** — tail emulator logs in real-time with `--follow`; use `--verbose` to show all logs without filtering
+- **Snapshots** — save, load, and remove emulator state as local files or named cloud snapshots (`pod:` prefix)
 - **Browser-based login** — authenticate via browser and store credentials securely in the system keyring
 - **AWS CLI profile** — optionally configure a `localstack` profile in `~/.aws/` after start
 - **Self-update** — check for and install the latest `lstk` release with `lstk update`
@@ -223,7 +224,50 @@ lstk setup azure
 # Run Azure CLI commands against LocalStack
 lstk az group list
 
+# Save emulator state to a local file
+lstk snapshot save ./my-snapshot.zip
+
+# Save emulator state as a named cloud snapshot on the LocalStack platform
+lstk snapshot save pod:my-baseline
+
+# Load a snapshot back into the running emulator
+lstk snapshot load pod:my-baseline
+
+# List cloud snapshots on the LocalStack platform (--all for the whole organization)
+lstk snapshot list
+
+# Delete a cloud snapshot (prompts for confirmation; --force to skip)
+lstk snapshot remove pod:my-baseline
+
 ```
+
+## Snapshots
+
+Snapshots capture the running emulator's state so you can restore it later.
+
+A snapshot reference is either a **local file** or a **cloud snapshot**:
+
+- **Local file** — an absolute or relative path. A `.zip` extension is added if omitted.
+- **Cloud snapshot** — a name with the `pod:` prefix (e.g. `pod:my-baseline`), stored on the LocalStack platform. Requires authentication (`LOCALSTACK_AUTH_TOKEN` or `lstk login`).
+
+```bash
+# Save (local or cloud)
+lstk snapshot save ./my-snapshot.zip
+lstk snapshot save pod:my-baseline
+
+# Load (starts the emulator first if needed)
+lstk snapshot load pod:my-baseline
+
+# List cloud snapshots — only your own by default, --all for the whole organization
+lstk snapshot list
+lstk snapshot list --all
+
+# Remove — cloud snapshots only; local files are never deleted by the CLI
+lstk snapshot remove pod:my-baseline          # prompts for confirmation
+lstk snapshot remove pod:my-baseline --force  # skip the prompt (required in non-interactive mode)
+```
+
+`lstk snapshot load` supports merge strategies via `--merge` (`account-region-merge` (default), `overwrite`, `service-merge`) to control how snapshot state combines with running state.
 
 ## Reporting bugs
 
