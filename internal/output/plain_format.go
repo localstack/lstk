@@ -46,6 +46,8 @@ func FormatEventLine(event Event) (string, bool) {
 		return formatSnapshotLoaded(e), true
 	case SnapshotListEvent:
 		return formatSnapshotList(e)
+	case PodSnapshotRemovedEvent:
+		return formatPodSnapshotRemoved(e), true
 	case AuthCompleteEvent:
 		return "", false
 	default:
@@ -224,6 +226,10 @@ func formatPodSnapshotSaved(e PodSnapshotSavedEvent) string {
 		sb.WriteString("\n• Size: " + formatBytes(e.Size))
 	}
 	return sb.String()
+}
+
+func formatPodSnapshotRemoved(e PodSnapshotRemovedEvent) string {
+	return SuccessMarker() + fmt.Sprintf(" Cloud snapshot 'pod:%s' deleted", e.PodName)
 }
 
 func formatBytes(b int64) string {

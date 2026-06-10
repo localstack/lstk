@@ -100,6 +100,10 @@ type SnapshotLoadedEvent struct {
 	Services []string // services restored
 }
 
+type PodSnapshotRemovedEvent struct {
+	PodName string
+}
+
 type AuthCompleteEvent struct{}
 
 // Event is a sealed marker — only event types in this package implement it,
@@ -114,9 +118,10 @@ func (AuthCompleteEvent) sealedEvent()     {}
 func (InstanceInfoEvent) sealedEvent()     {}
 func (TableEvent) sealedEvent()            {}
 func (ResourceSummaryEvent) sealedEvent()  {}
-func (PodSnapshotSavedEvent) sealedEvent()  {}
-func (SnapshotLoadedEvent) sealedEvent()    {}
-func (SnapshotListEvent) sealedEvent()      {}
+func (PodSnapshotSavedEvent) sealedEvent()   {}
+func (SnapshotLoadedEvent) sealedEvent()     {}
+func (SnapshotListEvent) sealedEvent()       {}
+func (PodSnapshotRemovedEvent) sealedEvent() {}
 func (ContainerStatusEvent) sealedEvent()  {}
 func (ProgressEvent) sealedEvent()         {}
 func (UserInputRequestEvent) sealedEvent() {}
