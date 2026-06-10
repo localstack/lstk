@@ -8,6 +8,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+
+	"github.com/localstack/lstk/internal/caller"
 )
 
 // pendingCap bounds in-memory events; on overflow the oldest is dropped.
@@ -18,6 +20,10 @@ type Client struct {
 	sessionID string
 	machineID string
 	authToken string
+
+	callerType      string
+	callerIdentity  string
+	detectionMethod string
 
 	endpoint string
 	flushFn  func(ctx context.Context, endpoint string, events []eventBody)
@@ -39,12 +45,19 @@ func New(endpoint string, disabled bool) *Client {
 	if disabled {
 		return &Client{enabled: false}
 	}
+	return newClient(endpoint, caller.New().Classify())
+}
+
+func newClient(endpoint string, cl caller.Classification) *Client {
 	return &Client{
-		enabled:   true,
-		sessionID: uuid.NewString(),
-		endpoint:  endpoint,
-		flushFn:   spawnDetachedFlusher,
-		pending:   make([]eventBody, 0, pendingCap),
+		enabled:         true,
+		sessionID:       uuid.NewString(),
+		callerType:      string(cl.Type),
+		callerIdentity:  cl.Identity,
+		detectionMethod: cl.Method,
+		endpoint:        endpoint,
+		flushFn:         spawnDetachedFlusher,
+		pending:         make([]eventBody, 0, pendingCap),
 	}
 }
 
@@ -75,6 +88,11 @@ func (c *Client) Emit(ctx context.Context, name string, payload map[string]any) 
 	enriched["os"] = runtime.GOOS
 	enriched["arch"] = runtime.GOARCH
 	_, enriched["is_ci"] = os.LookupEnv("CI")
+	enriched["caller_type"] = c.callerType
+	enriched["detection_method"] = c.detectionMethod
+	if c.callerIdentity != "" {
+		enriched["caller_identity"] = c.callerIdentity
+	}
 	if c.machineID != "" {
 		enriched["machine_id"] = c.machineID
 	}

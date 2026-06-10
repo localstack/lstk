@@ -15,9 +15,12 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/localstack/lstk/internal/caller"
 )
 
 func TestClose_IsIdempotent(t *testing.T) {
+	t.Parallel()
 	c := New("http://localhost", false)
 	c.Close()
 	// Second call must not panic.
@@ -25,7 +28,8 @@ func TestClose_IsIdempotent(t *testing.T) {
 }
 
 func TestEmit_EnrichesPayloadIntoPending(t *testing.T) {
-	c := New("http://localhost", false)
+	t.Parallel()
+	c := newClient("http://localhost", caller.Classification{Type: caller.TypeHuman, Method: caller.MethodTTY})
 	c.Emit(context.Background(), "cli_cmd", map[string]any{"cmd": "lstk start"})
 
 	require.Len(t, c.pending, 1)
@@ -42,9 +46,38 @@ func TestEmit_EnrichesPayloadIntoPending(t *testing.T) {
 	assert.Equal(t, runtime.GOARCH, payload["arch"])
 	_, isCI := os.LookupEnv("CI")
 	assert.Equal(t, isCI, payload["is_ci"])
+	assert.Equal(t, "human", payload["caller_type"])
+	assert.Equal(t, caller.MethodTTY, payload["detection_method"])
+	assert.NotContains(t, payload, "caller_identity")
+}
+
+func TestEmit_IncludesCallerIdentityWhenPresent(t *testing.T) {
+	t.Parallel()
+	c := newClient("http://localhost", caller.Classification{
+		Type:     caller.TypeAgent,
+		Identity: "claude-code",
+		Method:   caller.MethodAgentEnv,
+	})
+	c.Emit(context.Background(), "cli_cmd", map[string]any{"cmd": "lstk start"})
+
+	require.Len(t, c.pending, 1)
+	payload, ok := c.pending[0].Payload.(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "agent", payload["caller_type"])
+	assert.Equal(t, caller.MethodAgentEnv, payload["detection_method"])
+	assert.Equal(t, "claude-code", payload["caller_identity"])
+}
+
+func TestNew_DisabledClientHasNoClassification(t *testing.T) {
+	t.Parallel()
+	c := New("http://localhost", true)
+	assert.Empty(t, c.callerType)
+	assert.Empty(t, c.callerIdentity)
+	assert.Empty(t, c.detectionMethod)
 }
 
 func TestEmit_DropsOldestWhenFull(t *testing.T) {
+	t.Parallel()
 	c := New("http://localhost", false)
 	for i := 0; i < pendingCap+5; i++ {
 		c.Emit(context.Background(), "cli_cmd", map[string]any{"i": i})
@@ -56,12 +89,14 @@ func TestEmit_DropsOldestWhenFull(t *testing.T) {
 }
 
 func TestEmit_NoopWhenDisabled(t *testing.T) {
+	t.Parallel()
 	c := New("http://localhost", true)
 	c.Emit(context.Background(), "cli_cmd", map[string]any{"cmd": "lstk start"})
 	assert.Empty(t, c.pending)
 }
 
 func TestClose_HandsOffPendingEventsToFlusher(t *testing.T) {
+	t.Parallel()
 	var (
 		gotEPs []string
 		gotEvs [][]eventBody
@@ -87,6 +122,7 @@ func TestClose_HandsOffPendingEventsToFlusher(t *testing.T) {
 }
 
 func TestClose_SkipsSpawnWhenNoPending(t *testing.T) {
+	t.Parallel()
 	var called bool
 	c := New("http://example.test/events", false)
 	c.flushFn = func(context.Context, string, []eventBody) { called = true }
@@ -96,6 +132,7 @@ func TestClose_SkipsSpawnWhenNoPending(t *testing.T) {
 }
 
 func TestRunFlush_PostsEachEventWithCorrectPayloadAndHeaders(t *testing.T) {
+	t.Parallel()
 	type captured struct {
 		event  map[string]any
 		header http.Header

@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"testing"
 
+	"github.com/localstack/lstk/internal/caller"
 	"github.com/localstack/lstk/internal/config"
 	"github.com/localstack/lstk/internal/log"
 	"github.com/localstack/lstk/internal/output"
@@ -324,6 +325,16 @@ func TestFilterHostEnv(t *testing.T) {
 	assert.NotContains(t, got, "PATH=/usr/bin")
 	assert.NotContains(t, got, "HOME=/home/user")
 	assert.NotContains(t, got, "CI_PIPELINE=foo", "only exact CI= must be forwarded, not CI_*")
+}
+
+func TestAgentEnv(t *testing.T) {
+	assert.Equal(t, []string{"AI_AGENT=claude-code"},
+		agentEnv(caller.Classification{Type: caller.TypeAgent, Identity: "claude-code", Method: caller.MethodAgentEnv}),
+		"a detected agent is forwarded as AI_AGENT")
+	assert.Nil(t, agentEnv(caller.Classification{Type: caller.TypeHuman, Method: caller.MethodTTY}),
+		"a human start forwards no AI_AGENT")
+	assert.Nil(t, agentEnv(caller.Classification{Type: caller.TypeCI, Identity: "github-actions", Method: caller.MethodCIEnv}),
+		"CI is carried by the forwarded CI variable, not AI_AGENT")
 }
 
 func TestStartContainers_SnowflakeLicenseError(t *testing.T) {
