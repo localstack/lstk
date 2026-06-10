@@ -3,10 +3,12 @@ package api
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -108,6 +110,12 @@ type LicenseError struct {
 
 func (e *LicenseError) Error() string {
 	return fmt.Sprintf("license validation failed: %s", e.Message)
+}
+
+type CloudPod struct {
+	Name        string
+	Version     int
+	LastChanged *time.Time
 }
 
 type PlatformClient struct {
@@ -337,5 +345,53 @@ func (c *PlatformClient) GetLicense(ctx context.Context, licReq *LicenseRequest)
 			Detail:  detail,
 		}
 	}
+}
+
+func (c *PlatformClient) ListCloudPods(ctx context.Context, authToken, creator string) ([]CloudPod, error) {
+	u := c.baseURL + "/v1/cloudpods"
+	if creator != "" {
+		// "" lists all org pods; "me" filters server-side to the current user.
+		u += "?" + url.Values{"creator": {creator}}.Encode()
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+	req.Header.Set("Authorization", "Basic "+base64.StdEncoding.EncodeToString([]byte(":"+authToken)))
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list cloud pods: %w", err)
+	}
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			c.logger.Error("failed to close response body: %v", err)
+		}
+	}()
+
+	if resp.StatusCode != http.StatusOK {
+		detail, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
+		return nil, fmt.Errorf("failed to list cloud pods: status %d: %s", resp.StatusCode, strings.TrimSpace(string(detail)))
+	}
+
+	// The platform returns a bare top-level array, not an object wrapping the entries.
+	var raw []struct {
+		PodName    string `json:"pod_name"`
+		MaxVersion int    `json:"max_version"`
+		LastChange *int64 `json:"last_change"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&raw); err != nil {
+		return nil, fmt.Errorf("failed to decode cloud pods response: %w", err)
+	}
+
+	pods := make([]CloudPod, len(raw))
+	for i, p := range raw {
+		pods[i] = CloudPod{Name: p.PodName, Version: p.MaxVersion}
+		if p.LastChange != nil {
+			t := time.Unix(*p.LastChange, 0)
+			pods[i].LastChanged = &t
+		}
+	}
+	return pods, nil
 }
 

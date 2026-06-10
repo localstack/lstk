@@ -11,7 +11,6 @@ import (
 	"net/http"
 	"sort"
 	"strings"
-	"time"
 
 	"github.com/localstack/lstk/internal/snapshot"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
@@ -292,55 +291,6 @@ func (c *Client) LoadPodSnapshot(ctx context.Context, host, podName, authToken, 
 		return nil, fmt.Errorf("reading response: %w", err)
 	}
 	return services, nil
-}
-
-func (c *Client) ListPodSnapshots(ctx context.Context, host, authToken, creator string) ([]snapshot.PodSnapshot, error) {
-	u := fmt.Sprintf("http://%s/_localstack/pods", host)
-	if creator != "" {
-		u += "?creator=" + creator
-	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, bytes.NewReader([]byte("{}")))
-	if err != nil {
-		return nil, fmt.Errorf("create request: %w", err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-	if authToken != "" {
-		req.Header.Set("Authorization", "Basic "+base64.StdEncoding.EncodeToString([]byte(":"+authToken)))
-	}
-
-	resp, err := c.http.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("connect to LocalStack: %w", err)
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("list pods failed (HTTP %d): %s", resp.StatusCode, strings.TrimSpace(string(body)))
-	}
-
-	var response struct {
-		CloudPods []struct {
-			PodName    string `json:"pod_name"`
-			MaxVersion int    `json:"max_version"`
-			LastChange *int64 `json:"last_change"`
-		} `json:"cloudpods"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
-		return nil, fmt.Errorf("decode response: %w", err)
-	}
-	pods := make([]snapshot.PodSnapshot, len(response.CloudPods))
-	for i, p := range response.CloudPods {
-		pods[i] = snapshot.PodSnapshot{
-			Name:    p.PodName,
-			Version: p.MaxVersion,
-		}
-		if p.LastChange != nil {
-			t := time.Unix(*p.LastChange, 0)
-			pods[i].LastChanged = &t
-		}
-	}
-	return pods, nil
 }
 
 func (c *Client) SavePodSnapshot(ctx context.Context, host, podName, authToken string) (snapshot.PodSaveResult, error) {
