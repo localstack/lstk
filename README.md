@@ -83,6 +83,18 @@ To see which config file is currently in use:
 lstk config path
 ```
 
+### Choosing an emulator
+
+`lstk` starts the AWS emulator by default. To run the Snowflake or Azure emulator instead, either select it interactively when prompted at start, or set the `type` in your config:
+
+```toml
+[[containers]]
+type = "azure"   # or "snowflake"
+port = "4566"
+```
+
+The chosen emulator must be running before you set up or use its CLI integration below.
+
 You can also configure cloud CLI integration:
 
 ```bash
@@ -90,7 +102,7 @@ lstk setup aws    # localstack profile in ~/.aws/
 lstk setup azure  # isolated Azure CLI config for `lstk az` (requires the Azure CLI)
 ```
 
-After `lstk setup azure`, run Azure CLI commands against LocalStack with `lstk az`:
+After starting the Azure emulator and running `lstk setup azure`, run Azure CLI commands against LocalStack with `lstk az`:
 
 ```bash
 lstk az group list
@@ -116,7 +128,7 @@ port = "4566"    # Host port the emulator will be accessible on
 ```
 
 **Fields:**
-- `type`: emulator type; only `"aws"` is supported for now
+- `type`: emulator type; one of `"aws"`, `"snowflake"`, or `"azure"`
 - `tag`: Docker image tag for LocalStack (e.g. `"latest"`, `"4.14.0"`); useful for pinning a version
 - `port`: port LocalStack listens on (default `4566`)
 - `volume`: (optional) host directory for persistent emulator state (default: OS cache dir)
