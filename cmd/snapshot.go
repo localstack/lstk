@@ -180,25 +180,28 @@ func runSnapshotRemove(cfg *env.Env) func(*cobra.Command, []string) error {
 		if err != nil {
 			return err
 		}
-		ref, err := snapshot.ParseRemovable(args[0], cwd, home)
-		if err != nil {
-			return err
-		}
 
-		if !isInteractiveMode(cfg) && !force {
-			return fmt.Errorf("snapshot remove requires confirmation; use --force to skip in non-interactive mode")
+		if !isInteractiveMode(cfg) {
+			ref, err := snapshot.ParseRemovable(args[0], cwd, home)
+			if err != nil {
+				return err
+			}
+			if !force {
+				return fmt.Errorf("snapshot remove requires confirmation; use --force to skip in non-interactive mode")
+			}
+			rt, client, host, containers, _, err := resolveSnapshotDeps(cmd.Context(), cfg)
+			if err != nil {
+				return err
+			}
+			sink := output.NewPlainSink(os.Stdout)
+			return snapshot.Remove(cmd.Context(), rt, containers, ref.Value, cfg.AuthToken, client, host, force, sink)
 		}
 
 		rt, client, host, containers, _, err := resolveSnapshotDeps(cmd.Context(), cfg)
 		if err != nil {
 			return err
 		}
-
-		if isInteractiveMode(cfg) {
-			return ui.RunSnapshotRemove(cmd.Context(), rt, containers, client, host, ref.Value, cfg.AuthToken, force)
-		}
-		sink := output.NewPlainSink(os.Stdout)
-		return snapshot.Remove(cmd.Context(), rt, containers, ref.Value, cfg.AuthToken, client, host, force, sink)
+		return ui.RunSnapshotRemove(cmd.Context(), rt, containers, client, host, args[0], cwd, home, cfg.AuthToken, force)
 	}
 }
 
