@@ -6,3 +6,9 @@ manpages/
 
 .idea
 .claude/worktrees/
+
+# Terraform artifacts left behind by running the e2e sample projects by hand.
+test/integration/test-samples/**/.terraform/
+test/integration/test-samples/**/.terraform.lock.hcl
+test/integration/test-samples/**/*.tfstate
+test/integration/test-samples/**/*.tfstate.*

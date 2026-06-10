@@ -52,6 +52,7 @@ Running `lstk` will automatically handle configuration setup and start LocalStac
 - **Snapshots** — save, load, and remove emulator state as local files or named cloud snapshots (`pod:` prefix)
 - **Browser-based login** — authenticate via browser and store credentials securely in the system keyring
 - **AWS CLI profile** — optionally configure a `localstack` profile in `~/.aws/` after start
+- **Terraform integration** — proxy Terraform commands to LocalStack with automatic AWS provider endpoint configuration
 - **Self-update** — check for and install the latest `lstk` release with `lstk update`
 - **Shell completions** — bash, zsh, and fish completions included
 
@@ -179,6 +180,22 @@ lstk --non-interactive
 | `LSTK_OTEL=1` | Enables OpenTelemetry trace export (disabled by default). When enabled, standard `OTEL_EXPORTER_OTLP_*` env vars are respected by the SDK (e.g. `OTEL_EXPORTER_OTLP_ENDPOINT` defaults to `http://localhost:4318`). Requires an OTLP-compatible backend to receive and visualize telemetry — for local development, `make otel` starts one (UI at http://localhost:16686). |
 | `DOCKER_HOST` | Override the Docker daemon socket (e.g. `unix:///home/user/.colima/default/docker.sock`). When unset, lstk tries the default socket and then probes common alternatives (Colima, OrbStack). |
 
+### Terraform Integration
+
+`lstk terraform` (alias `tf`) is a proxy that runs Terraform commands against LocalStack, automatically configuring the AWS provider to use LocalStack's endpoints. This allows you to test infrastructure-as-code locally before deploying to AWS.
+
+**lstk-specific flags** (appear after the `terraform`/`tf` subcommand):
+- `--region <region>` — Deployment region (default: `us-east-1`)
+- `--account <id>` — Target AWS account ID, 12 digits (default: `test`)
+
+**Environment variables:**
+- `LSTK_TF_CMD` — Terraform binary to invoke; default is `terraform` (e.g., use `tofu` for OpenTofu)
+- `LSTK_TF_OVERRIDE_FILE_NAME` — Override file name (default: `localstack_providers_override.tf`)
+- `LSTK_TF_DRY_RUN` — Generate the override file but do not run terraform
+- `AWS_ENDPOINT_URL` — Override the auto-resolved LocalStack endpoint
+- `AWS_REGION` — Fallback for `--region` flag
+- `AWS_ACCESS_KEY_ID` — Fallback for `--account` flag
+
 ## Usage
 
 ```bash
@@ -238,6 +255,15 @@ lstk snapshot list
 
 # Delete a cloud snapshot (prompts for confirmation; --force to skip)
 lstk snapshot remove pod:my-baseline
+
+# Initialize Terraform with LocalStack
+lstk terraform init
+
+# Plan Terraform deployment in a specific region
+lstk terraform --region us-west-2 plan
+
+# Apply Terraform configuration (short form)
+lstk tf apply
 
 ```
 
