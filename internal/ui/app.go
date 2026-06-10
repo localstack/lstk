@@ -51,6 +51,7 @@ type App struct {
 	errorDisplay     components.ErrorDisplay
 	lines            []styledLine
 	bufferedLines    []styledLine // lines waiting for spinner to finish
+	deferredOutput   string       // plain-text output printed after TUI exits (e.g. long tables)
 	width            int
 	cancel           func()
 	pendingInput     *output.UserInputRequestEvent
@@ -303,6 +304,11 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			a.addSuccessLines(line)
 		}
 		return a, nil
+	case output.SnapshotListEvent:
+		if line, ok := output.FormatEventLine(msg); ok {
+			a.deferredOutput = line
+		}
+		return a, nil
 	default:
 		if e, ok := msg.(output.Event); ok {
 			if line, ok := output.FormatEventLine(e); ok {
@@ -524,4 +530,8 @@ func (a App) View() string {
 
 func (a App) Err() error {
 	return a.err
+}
+
+func (a App) DeferredOutput() string {
+	return a.deferredOutput
 }

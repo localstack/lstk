@@ -3,6 +3,7 @@ package ui
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -193,8 +194,13 @@ func runWithTUI(parentCtx context.Context, appOpts AppOption, runFn func(ctx con
 		return err
 	}
 
-	if app, ok := model.(App); ok && app.Err() != nil {
-		return output.NewSilentError(app.Err())
+	if app, ok := model.(App); ok {
+		if app.Err() != nil {
+			return output.NewSilentError(app.Err())
+		}
+		if s := app.DeferredOutput(); s != "" {
+			_, _ = fmt.Fprintln(os.Stdout, s)
+		}
 	}
 
 	runErr := <-runErrCh
