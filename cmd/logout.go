@@ -42,7 +42,10 @@ func newLogoutCmd(cfg *env.Env, logger log.Logger) *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("failed to initialize token storage: %w", err)
 			}
-			licenseFilePath, _ := config.LicenseFilePath()
+			licenseFilePath, err := config.LicenseFilePath()
+			if err != nil {
+				return fmt.Errorf("failed to resolve license file path: %w", err)
+			}
 			a := auth.New(sink, platformClient, tokenStorage, cfg.AuthToken, "", false, licenseFilePath)
 			if err := a.Logout(); err != nil {
 				if errors.Is(err, auth.ErrNotLoggedIn) {
