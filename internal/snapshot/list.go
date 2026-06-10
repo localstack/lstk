@@ -3,51 +3,29 @@ package snapshot
 import (
 	"context"
 	"fmt"
-	"time"
 
-	"github.com/localstack/lstk/internal/config"
-	"github.com/localstack/lstk/internal/container"
+	"github.com/localstack/lstk/internal/api"
 	"github.com/localstack/lstk/internal/output"
-	"github.com/localstack/lstk/internal/runtime"
 )
 
-// PodSnapshot holds metadata for a single Cloud Pod returned by the list endpoint.
-type PodSnapshot struct {
-	Name        string
-	Version     int
-	LastChanged *time.Time
+type CloudPodLister interface {
+	ListCloudPods(ctx context.Context, authToken, creator string) ([]api.CloudPod, error)
 }
 
-// PodLister retrieves available Cloud Pods from the running LocalStack instance.
-type PodLister interface {
-	ListPodSnapshots(ctx context.Context, host, authToken, creator string) ([]PodSnapshot, error)
-}
-
-// List fetches Cloud Pod snapshots from the running emulator and emits a SnapshotListEvent.
-// creator filters results server-side: "me" for the current user's pods, "" for all org pods.
-func List(ctx context.Context, rt runtime.Runtime, containers []config.ContainerConfig, lister PodLister, host, authToken, creator string, sink output.Sink) error {
-	if err := rt.IsHealthy(ctx); err != nil {
-		rt.EmitUnhealthyError(sink, err)
-		return output.NewSilentError(fmt.Errorf("runtime not healthy: %w", err))
-	}
-
-	runningContainers, err := container.RunningEmulators(ctx, rt, containers)
-	if err != nil {
-		return fmt.Errorf("checking emulator status: %w", err)
-	}
-	if len(runningContainers) == 0 {
+func List(ctx context.Context, lister CloudPodLister, authToken, creator string, sink output.Sink) error {
+	if authToken == "" {
 		sink.Emit(output.ErrorEvent{
-			Title: "LocalStack is not running",
+			Title: "Authentication required to list snapshots",
 			Actions: []output.ErrorAction{
-				{Label: "Start LocalStack:", Value: "lstk"},
-				{Label: "See help:", Value: "lstk -h"},
+				{Label: "Log in:", Value: "lstk login"},
+				{Label: "Or set a token:", Value: "export LOCALSTACK_AUTH_TOKEN=<token>"},
 			},
 		})
-		return output.NewSilentError(fmt.Errorf("LocalStack is not running"))
+		return output.NewSilentError(fmt.Errorf("authentication required: no auth token"))
 	}
 
 	sink.Emit(output.SpinnerStart("Fetching snapshots"))
-	pods, err := lister.ListPodSnapshots(ctx, host, authToken, creator)
+	pods, err := lister.ListCloudPods(ctx, authToken, creator)
 	sink.Emit(output.SpinnerStop())
 	if err != nil {
 		return fmt.Errorf("list snapshots: %w", err)
