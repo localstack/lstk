@@ -1,7 +1,5 @@
 package snapshot
 
-//go:generate mockgen -source=remove.go -destination=mock_pod_remover_test.go -package=snapshot_test
-
 import (
 	"context"
 	"errors"
