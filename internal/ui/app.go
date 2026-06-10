@@ -304,9 +304,12 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			a.addSuccessLines(line)
 		}
 		return a, nil
-	case output.SnapshotListEvent:
+	case output.DeferredEvent:
 		if line, ok := output.FormatEventLine(msg); ok {
-			a.deferredOutput = line
+			if a.deferredOutput != "" {
+				a.deferredOutput += "\n"
+			}
+			a.deferredOutput += line
 		}
 		return a, nil
 	default:
