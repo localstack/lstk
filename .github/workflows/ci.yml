@@ -134,6 +134,14 @@ jobs:
         with:
           tofu_wrapper: false
 
+      # Install the AWS CDK CLI so the `lstk cdk` end-to-end tests
+      # (cdk_e2e_test.go) run on the Docker-capable Linux shards. They skip
+      # automatically wherever cdk is absent (macOS/Windows). lstk requires
+      # CDK >= 2.177.0; the latest release satisfies that.
+      - name: Install AWS CDK
+        if: matrix.os == 'ubuntu-latest'
+        run: npm install -g aws-cdk
+
       - name: Run integration tests
         run: make test-integration
         env:

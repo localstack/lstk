@@ -3,7 +3,6 @@ package cli
 import (
 	"fmt"
 	"io/fs"
-	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -12,6 +11,7 @@ import (
 	"github.com/hashicorp/hcl/v2/hclparse"
 	"github.com/zclconf/go-cty/cty"
 
+	"github.com/localstack/lstk/internal/endpoint"
 	"github.com/localstack/lstk/internal/log"
 )
 
@@ -46,7 +46,7 @@ func generateOverride(opts overrideOptions) ([]string, error) {
 
 	aliases := discoverAWSAliases(opts.workdir, opts.logger)
 
-	pathStyle, s3Endpoint := s3Addressing(opts.endpointURL)
+	pathStyle, s3Endpoint := endpoint.S3Addressing(opts.endpointURL)
 
 	var b strings.Builder
 	b.WriteString(overrideFileMarker)
@@ -191,32 +191,3 @@ func writeProviderBlock(b *strings.Builder, p providerBlock) {
 	b.WriteString("}\n\n")
 }
 
-// s3Addressing decides S3 path-style and the S3 endpoint for the given base
-// endpoint. Virtual-host-style addressing (used by *.localstack.cloud hosts)
-// places the bucket as a subdomain of the S3 endpoint host, so the S3 endpoint
-// host carries an `s3.` prefix and path style is off. Non-domain hosts
-// (127.0.0.1/localhost) require path style and use the bare endpoint.
-func s3Addressing(endpointURL string) (pathStyle bool, s3Endpoint string) {
-	u, err := url.Parse(endpointURL)
-	if err != nil || u.Hostname() == "" {
-		// Can't parse — safest default is path style with the bare endpoint.
-		return true, endpointURL
-	}
-	if !virtualHostCapable(u.Hostname()) {
-		return true, endpointURL
-	}
-	if strings.HasPrefix(u.Hostname(), "s3.") {
-		return false, endpointURL
-	}
-	host := "s3." + u.Hostname()
-	if port := u.Port(); port != "" {
-		host += ":" + port
-	}
-	return false, u.Scheme + "://" + host
-}
-
-// TODO: in future, replace this with a more intelligent algorithm that tries to resolve whatever DNS
-// endpoint is given.
-func virtualHostCapable(host string) bool {
-	return host == "localstack.cloud" || strings.HasSuffix(host, ".localstack.cloud")
-}

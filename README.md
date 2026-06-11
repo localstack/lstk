@@ -53,6 +53,7 @@ Running `lstk` will automatically handle configuration setup and start LocalStac
 - **Browser-based login** — authenticate via browser and store credentials securely in the system keyring
 - **AWS CLI profile** — optionally configure a `localstack` profile in `~/.aws/` after start
 - **Terraform integration** — proxy Terraform commands to LocalStack with automatic AWS provider endpoint configuration
+- **CDK integration** — proxy AWS CDK commands to LocalStack with automatic endpoint configuration (requires AWS CDK >= 2.177.0)
 - **Self-update** — check for and install the latest `lstk` release with `lstk update`
 - **Shell completions** — bash, zsh, and fish completions included
 
@@ -196,6 +197,26 @@ lstk --non-interactive
 - `AWS_REGION` — Fallback for `--region` flag
 - `AWS_ACCESS_KEY_ID` — Fallback for `--account` flag
 
+### CDK Integration
+
+`lstk cdk` is a proxy that runs AWS CDK commands against LocalStack, pointing the CDK CLI at LocalStack's endpoints via environment variables (so deploys target the running emulator instead of real AWS).
+
+**Requires AWS CDK CLI version 2.177.0 or newer** on your `PATH` (lstk targets LocalStack purely through environment variables, which older CDK versions ignore).
+
+**lstk-specific flags** (appear after the `cdk` subcommand):
+- `--region <region>` — Deployment region (default: `us-east-1`)
+- `--account <id>` — Target AWS account ID, 12 digits (default: `test`)
+
+**Environment variables:**
+- `LSTK_CDK_CMD` — CDK binary to invoke (default: `cdk`)
+- `AWS_ENDPOINT_URL` — Override the auto-resolved LocalStack endpoint
+- `AWS_ENDPOINT_URL_S3` — Override the auto-derived S3 endpoint
+- `AWS_REGION` — Fallback for `--region` flag
+- `AWS_ACCESS_KEY_ID` — Fallback for `--account` flag
+
+> [!NOTE]
+> If `localhost.localstack.cloud` cannot be resolved (e.g. DNS-rebind protection) lstk falls back to `127.0.0.1`. CDK S3 asset operations (`bootstrap`, asset deploys) need virtual-host addressing and may fail on the loopback fallback — ensure `localhost.localstack.cloud` resolves, or set `AWS_ENDPOINT_URL`/`AWS_ENDPOINT_URL_S3` to a virtual-host-capable host.
+
 ## Usage
 
 ```bash
@@ -264,6 +285,13 @@ lstk terraform --region us-west-2 plan
 
 # Apply Terraform configuration (short form)
 lstk tf apply
+
+# Bootstrap and deploy an AWS CDK app against LocalStack
+lstk cdk bootstrap
+lstk cdk deploy --require-approval never
+
+# Synthesize a CDK app (offline, no running emulator needed)
+lstk cdk synth
 
 ```
 
