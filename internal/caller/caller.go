@@ -6,25 +6,40 @@ import (
 	"golang.org/x/term"
 )
 
-type Type string
-
-const (
-	TypeHuman Type = "human"
-	TypeAgent Type = "agent"
-	TypeCI    Type = "ci"
-)
-
-const (
-	MethodAgentEnv = "agent_env"
-	MethodCIEnv    = "ci_env"
-	MethodTTY      = "tty"
-	MethodNoTTY    = "no_tty"
-)
-
 type Classification struct {
-	Type     Type
-	Identity string
-	Method   string
+	AgentIdentity string
+	CIIdentity    string
+	Interactive   bool
+}
+
+func (c Classification) IsAgent() bool { return c.AgentIdentity != "" }
+
+func (c Classification) IsCI() bool { return c.CIIdentity != "" }
+
+func (c Classification) IsHuman() bool { return c.AgentIdentity == "" && c.CIIdentity == "" }
+
+func (c Classification) CallerType() string {
+	switch {
+	case c.AgentIdentity != "":
+		return "agent"
+	case c.CIIdentity != "":
+		return "ci"
+	default:
+		return "human"
+	}
+}
+
+func (c Classification) DetectionMethod() string {
+	switch {
+	case c.AgentIdentity != "":
+		return "agent_env"
+	case c.CIIdentity != "":
+		return "ci_env"
+	case c.Interactive:
+		return "tty"
+	default:
+		return "no_tty"
+	}
 }
 
 type detector struct {
@@ -90,16 +105,11 @@ func newClassifier(getenv func(string) string, isInteractive func() bool) *Class
 }
 
 func (c *Classifier) Classify() Classification {
-	if id := match(c.agentDetectors, c.getenv); id != "" {
-		return Classification{Type: TypeAgent, Identity: id, Method: MethodAgentEnv}
+	return Classification{
+		AgentIdentity: match(c.agentDetectors, c.getenv),
+		CIIdentity:    match(c.ciDetectors, c.getenv),
+		Interactive:   c.isInteractive(),
 	}
-	if id := match(c.ciDetectors, c.getenv); id != "" {
-		return Classification{Type: TypeCI, Identity: id, Method: MethodCIEnv}
-	}
-	if c.isInteractive() {
-		return Classification{Type: TypeHuman, Method: MethodTTY}
-	}
-	return Classification{Type: TypeHuman, Method: MethodNoTTY}
 }
 
 func match(detectors []detector, getenv func(string) string) string {

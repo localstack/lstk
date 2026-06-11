@@ -2,7 +2,6 @@ package telemetry
 
 import (
 	"context"
-	"os"
 	"runtime"
 	"sync"
 	"time"
@@ -21,9 +20,7 @@ type Client struct {
 	machineID string
 	authToken string
 
-	callerType      string
-	callerIdentity  string
-	detectionMethod string
+	classification caller.Classification
 
 	endpoint string
 	flushFn  func(ctx context.Context, endpoint string, events []eventBody)
@@ -50,14 +47,12 @@ func New(endpoint string, disabled bool) *Client {
 
 func newClient(endpoint string, cl caller.Classification) *Client {
 	return &Client{
-		enabled:         true,
-		sessionID:       uuid.NewString(),
-		callerType:      string(cl.Type),
-		callerIdentity:  cl.Identity,
-		detectionMethod: cl.Method,
-		endpoint:        endpoint,
-		flushFn:         spawnDetachedFlusher,
-		pending:         make([]eventBody, 0, pendingCap),
+		enabled:        true,
+		sessionID:      uuid.NewString(),
+		classification: cl,
+		endpoint:       endpoint,
+		flushFn:        spawnDetachedFlusher,
+		pending:        make([]eventBody, 0, pendingCap),
 	}
 }
 
@@ -81,17 +76,20 @@ func (c *Client) Emit(ctx context.Context, name string, payload map[string]any) 
 		return
 	}
 
-	enriched := make(map[string]any, len(payload)+5)
+	enriched := make(map[string]any, len(payload)+8)
 	for k, v := range payload {
 		enriched[k] = v
 	}
 	enriched["os"] = runtime.GOOS
 	enriched["arch"] = runtime.GOARCH
-	_, enriched["is_ci"] = os.LookupEnv("CI")
-	enriched["caller_type"] = c.callerType
-	enriched["detection_method"] = c.detectionMethod
-	if c.callerIdentity != "" {
-		enriched["caller_identity"] = c.callerIdentity
+	enriched["caller_type"] = c.classification.CallerType()
+	enriched["detection_method"] = c.classification.DetectionMethod()
+	enriched["is_ci"] = c.classification.IsCI()
+	if c.classification.AgentIdentity != "" {
+		enriched["agent_identity"] = c.classification.AgentIdentity
+	}
+	if c.classification.CIIdentity != "" {
+		enriched["ci_identity"] = c.classification.CIIdentity
 	}
 	if c.machineID != "" {
 		enriched["machine_id"] = c.machineID

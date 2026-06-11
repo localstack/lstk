@@ -44,9 +44,10 @@ func TestClassify_Agents(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			got := classifyWith(tc.env, true)
-			assert.Equal(t, TypeAgent, got.Type)
-			assert.Equal(t, tc.identity, got.Identity)
-			assert.Equal(t, MethodAgentEnv, got.Method)
+			assert.Equal(t, tc.identity, got.AgentIdentity)
+			assert.True(t, got.IsAgent())
+			assert.Equal(t, "agent", got.CallerType())
+			assert.Equal(t, "agent_env", got.DetectionMethod())
 		})
 	}
 }
@@ -54,16 +55,19 @@ func TestClassify_Agents(t *testing.T) {
 func TestClassify_CoworkBeatsClaudeCode(t *testing.T) {
 	t.Parallel()
 	got := classifyWith(map[string]string{"CLAUDE_CODE_IS_COWORK": "1", "CLAUDE_CODE": "1"}, true)
-	assert.Equal(t, TypeAgent, got.Type)
-	assert.Equal(t, "cowork", got.Identity)
+	assert.Equal(t, "cowork", got.AgentIdentity)
+	assert.True(t, got.IsAgent())
 }
 
-func TestClassify_AgentBeatsCI(t *testing.T) {
+func TestClassify_AgentAndCIAreOrthogonal(t *testing.T) {
 	t.Parallel()
 	got := classifyWith(map[string]string{"CLAUDECODE": "1", "GITHUB_ACTIONS": "true", "CI": "true"}, false)
-	assert.Equal(t, TypeAgent, got.Type)
-	assert.Equal(t, "claude-code", got.Identity)
-	assert.Equal(t, MethodAgentEnv, got.Method)
+	assert.Equal(t, "claude-code", got.AgentIdentity, "the agent is recorded")
+	assert.Equal(t, "github-actions", got.CIIdentity, "the CI host is recorded alongside the agent, not discarded")
+	assert.True(t, got.IsAgent())
+	assert.True(t, got.IsCI())
+	assert.Equal(t, "agent", got.CallerType(), "agent takes precedence for single-label segmentation")
+	assert.Equal(t, "agent_env", got.DetectionMethod())
 }
 
 func TestClassify_CISystems(t *testing.T) {
@@ -92,9 +96,11 @@ func TestClassify_CISystems(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			got := classifyWith(tc.env, false)
-			assert.Equal(t, TypeCI, got.Type)
-			assert.Equal(t, tc.identity, got.Identity)
-			assert.Equal(t, MethodCIEnv, got.Method)
+			assert.Equal(t, tc.identity, got.CIIdentity)
+			assert.True(t, got.IsCI())
+			assert.Empty(t, got.AgentIdentity)
+			assert.Equal(t, "ci", got.CallerType())
+			assert.Equal(t, "ci_env", got.DetectionMethod())
 		})
 	}
 }
@@ -102,29 +108,32 @@ func TestClassify_CISystems(t *testing.T) {
 func TestClassify_SpecificCIBeatsGenericCI(t *testing.T) {
 	t.Parallel()
 	got := classifyWith(map[string]string{"GITHUB_ACTIONS": "true", "CI": "true"}, false)
-	assert.Equal(t, TypeCI, got.Type)
-	assert.Equal(t, "github-actions", got.Identity)
+	assert.Equal(t, "github-actions", got.CIIdentity)
 }
 
 func TestClassify_HumanInteractive(t *testing.T) {
 	t.Parallel()
 	got := classifyWith(map[string]string{}, true)
-	assert.Equal(t, TypeHuman, got.Type)
-	assert.Empty(t, got.Identity)
-	assert.Equal(t, MethodTTY, got.Method)
+	assert.True(t, got.IsHuman())
+	assert.Empty(t, got.AgentIdentity)
+	assert.Empty(t, got.CIIdentity)
+	assert.Equal(t, "human", got.CallerType())
+	assert.Equal(t, "tty", got.DetectionMethod())
 }
 
 func TestClassify_HumanNonInteractive(t *testing.T) {
 	t.Parallel()
 	got := classifyWith(map[string]string{"SOME_UNRELATED_VAR": "1"}, false)
-	assert.Equal(t, TypeHuman, got.Type)
-	assert.Empty(t, got.Identity)
-	assert.Equal(t, MethodNoTTY, got.Method)
+	assert.True(t, got.IsHuman())
+	assert.Empty(t, got.AgentIdentity)
+	assert.Empty(t, got.CIIdentity)
+	assert.Equal(t, "human", got.CallerType())
+	assert.Equal(t, "no_tty", got.DetectionMethod())
 }
 
 func TestClassify_EmptyEnvValueIsNotSet(t *testing.T) {
 	t.Parallel()
 	got := classifyWith(map[string]string{"CLAUDECODE": ""}, true)
-	assert.Equal(t, TypeHuman, got.Type)
-	assert.Empty(t, got.Identity)
+	assert.True(t, got.IsHuman())
+	assert.Empty(t, got.AgentIdentity)
 }

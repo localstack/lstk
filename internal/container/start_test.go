@@ -329,12 +329,15 @@ func TestFilterHostEnv(t *testing.T) {
 
 func TestAgentEnv(t *testing.T) {
 	assert.Equal(t, []string{"AI_AGENT=claude-code"},
-		agentEnv(caller.Classification{Type: caller.TypeAgent, Identity: "claude-code", Method: caller.MethodAgentEnv}),
+		agentEnv(caller.Classification{AgentIdentity: "claude-code"}),
 		"a detected agent is forwarded as AI_AGENT")
-	assert.Nil(t, agentEnv(caller.Classification{Type: caller.TypeHuman, Method: caller.MethodTTY}),
+	assert.Nil(t, agentEnv(caller.Classification{Interactive: true}),
 		"a human start forwards no AI_AGENT")
-	assert.Nil(t, agentEnv(caller.Classification{Type: caller.TypeCI, Identity: "github-actions", Method: caller.MethodCIEnv}),
-		"CI is carried by the forwarded CI variable, not AI_AGENT")
+	assert.Nil(t, agentEnv(caller.Classification{CIIdentity: "github-actions"}),
+		"CI without an agent is carried by the forwarded CI variable, not AI_AGENT")
+	assert.Equal(t, []string{"AI_AGENT=claude-code"},
+		agentEnv(caller.Classification{AgentIdentity: "claude-code", CIIdentity: "github-actions"}),
+		"an agent running inside CI still forwards its AI_AGENT identity")
 }
 
 func TestStartContainers_SnowflakeLicenseError(t *testing.T) {

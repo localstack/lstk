@@ -7,7 +7,6 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"runtime"
 	"strings"
 	"testing"
@@ -29,7 +28,7 @@ func TestClose_IsIdempotent(t *testing.T) {
 
 func TestEmit_EnrichesPayloadIntoPending(t *testing.T) {
 	t.Parallel()
-	c := newClient("http://localhost", caller.Classification{Type: caller.TypeHuman, Method: caller.MethodTTY})
+	c := newClient("http://localhost", caller.Classification{Interactive: true})
 	c.Emit(context.Background(), "cli_cmd", map[string]any{"cmd": "lstk start"})
 
 	require.Len(t, c.pending, 1)
@@ -44,36 +43,48 @@ func TestEmit_EnrichesPayloadIntoPending(t *testing.T) {
 	assert.Equal(t, "lstk start", payload["cmd"])
 	assert.Equal(t, runtime.GOOS, payload["os"])
 	assert.Equal(t, runtime.GOARCH, payload["arch"])
-	_, isCI := os.LookupEnv("CI")
-	assert.Equal(t, isCI, payload["is_ci"])
+	assert.Equal(t, false, payload["is_ci"])
 	assert.Equal(t, "human", payload["caller_type"])
-	assert.Equal(t, caller.MethodTTY, payload["detection_method"])
-	assert.NotContains(t, payload, "caller_identity")
+	assert.Equal(t, "tty", payload["detection_method"])
+	assert.NotContains(t, payload, "agent_identity")
+	assert.NotContains(t, payload, "ci_identity")
 }
 
-func TestEmit_IncludesCallerIdentityWhenPresent(t *testing.T) {
+func TestEmit_IncludesAgentIdentityWhenPresent(t *testing.T) {
 	t.Parallel()
-	c := newClient("http://localhost", caller.Classification{
-		Type:     caller.TypeAgent,
-		Identity: "claude-code",
-		Method:   caller.MethodAgentEnv,
-	})
+	c := newClient("http://localhost", caller.Classification{AgentIdentity: "claude-code"})
 	c.Emit(context.Background(), "cli_cmd", map[string]any{"cmd": "lstk start"})
 
 	require.Len(t, c.pending, 1)
 	payload, ok := c.pending[0].Payload.(map[string]any)
 	require.True(t, ok)
 	assert.Equal(t, "agent", payload["caller_type"])
-	assert.Equal(t, caller.MethodAgentEnv, payload["detection_method"])
-	assert.Equal(t, "claude-code", payload["caller_identity"])
+	assert.Equal(t, "agent_env", payload["detection_method"])
+	assert.Equal(t, "claude-code", payload["agent_identity"])
+	assert.Equal(t, false, payload["is_ci"])
 }
 
-func TestNew_DisabledClientHasNoClassification(t *testing.T) {
+func TestEmit_AgentInCIRecordsBothAxes(t *testing.T) {
+	t.Parallel()
+	c := newClient("http://localhost", caller.Classification{
+		AgentIdentity: "github-copilot",
+		CIIdentity:    "github-actions",
+	})
+	c.Emit(context.Background(), "cli_cmd", map[string]any{"cmd": "lstk start"})
+
+	require.Len(t, c.pending, 1)
+	payload, ok := c.pending[0].Payload.(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "agent", payload["caller_type"], "agent takes precedence for segmentation")
+	assert.Equal(t, true, payload["is_ci"], "the CI signal is retained alongside the agent")
+	assert.Equal(t, "github-copilot", payload["agent_identity"])
+	assert.Equal(t, "github-actions", payload["ci_identity"])
+}
+
+func TestNew_DisabledClientIsDisabled(t *testing.T) {
 	t.Parallel()
 	c := New("http://localhost", true)
-	assert.Empty(t, c.callerType)
-	assert.Empty(t, c.callerIdentity)
-	assert.Empty(t, c.detectionMethod)
+	assert.False(t, c.enabled)
 }
 
 func TestEmit_DropsOldestWhenFull(t *testing.T) {

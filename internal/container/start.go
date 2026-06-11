@@ -688,8 +688,8 @@ func filterHostEnv(envList []string) []string {
 }
 
 func agentEnv(cl caller.Classification) []string {
-	if cl.Type == caller.TypeAgent && cl.Identity != "" {
-		return []string{"AI_AGENT=" + cl.Identity}
+	if cl.AgentIdentity != "" {
+		return []string{"AI_AGENT=" + cl.AgentIdentity}
 	}
 	return nil
 }
