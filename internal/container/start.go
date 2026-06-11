@@ -18,6 +18,7 @@ import (
 	"github.com/localstack/lstk/internal/api"
 	"github.com/localstack/lstk/internal/auth"
 	"github.com/localstack/lstk/internal/awsconfig"
+	"github.com/localstack/lstk/internal/caller"
 	"github.com/localstack/lstk/internal/config"
 	"github.com/localstack/lstk/internal/emulator/snowflake"
 	"github.com/localstack/lstk/internal/endpoint"
@@ -72,6 +73,7 @@ func Start(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts Start
 	tel := opts.Telemetry
 
 	hostEnv := filterHostEnv(os.Environ())
+	agentEnvVars := agentEnv(caller.New().Classify())
 
 	containers := make([]runtime.ContainerConfig, len(opts.Containers))
 	for i, c := range opts.Containers {
@@ -107,6 +109,7 @@ func Start(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts Start
 		)
 
 		env = append(env, hostEnv...)
+		env = append(env, agentEnvVars...)
 
 		if opts.Persist {
 			env = append(env, envPersistenceEnabled)
@@ -682,6 +685,13 @@ func filterHostEnv(envList []string) []string {
 		}
 	}
 	return out
+}
+
+func agentEnv(cl caller.Classification) []string {
+	if cl.AgentIdentity != "" {
+		return []string{"AI_AGENT=" + cl.AgentIdentity}
+	}
+	return nil
 }
 
 func hasDuplicateContainerTypes(containers []config.ContainerConfig) bool {

@@ -2,12 +2,13 @@ package telemetry
 
 import (
 	"context"
-	"os"
 	"runtime"
 	"sync"
 	"time"
 
 	"github.com/google/uuid"
+
+	"github.com/localstack/lstk/internal/caller"
 )
 
 // pendingCap bounds in-memory events; on overflow the oldest is dropped.
@@ -18,6 +19,8 @@ type Client struct {
 	sessionID string
 	machineID string
 	authToken string
+
+	classification caller.Classification
 
 	endpoint string
 	flushFn  func(ctx context.Context, endpoint string, events []eventBody)
@@ -39,12 +42,17 @@ func New(endpoint string, disabled bool) *Client {
 	if disabled {
 		return &Client{enabled: false}
 	}
+	return newClient(endpoint, caller.New().Classify())
+}
+
+func newClient(endpoint string, cl caller.Classification) *Client {
 	return &Client{
-		enabled:   true,
-		sessionID: uuid.NewString(),
-		endpoint:  endpoint,
-		flushFn:   spawnDetachedFlusher,
-		pending:   make([]eventBody, 0, pendingCap),
+		enabled:        true,
+		sessionID:      uuid.NewString(),
+		classification: cl,
+		endpoint:       endpoint,
+		flushFn:        spawnDetachedFlusher,
+		pending:        make([]eventBody, 0, pendingCap),
 	}
 }
 
@@ -68,13 +76,21 @@ func (c *Client) Emit(ctx context.Context, name string, payload map[string]any) 
 		return
 	}
 
-	enriched := make(map[string]any, len(payload)+5)
+	enriched := make(map[string]any, len(payload)+8)
 	for k, v := range payload {
 		enriched[k] = v
 	}
 	enriched["os"] = runtime.GOOS
 	enriched["arch"] = runtime.GOARCH
-	_, enriched["is_ci"] = os.LookupEnv("CI")
+	enriched["caller_type"] = c.classification.CallerType()
+	enriched["detection_method"] = c.classification.DetectionMethod()
+	enriched["is_ci"] = c.classification.IsCI()
+	if c.classification.AgentIdentity != "" {
+		enriched["agent_identity"] = c.classification.AgentIdentity
+	}
+	if c.classification.CIIdentity != "" {
+		enriched["ci_identity"] = c.classification.CIIdentity
+	}
 	if c.machineID != "" {
 		enriched["machine_id"] = c.machineID
 	}
