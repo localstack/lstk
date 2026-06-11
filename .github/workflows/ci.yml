@@ -124,7 +124,7 @@ jobs:
       # skip automatically wherever the binaries are absent (macOS/Windows).
       - name: Install Terraform
         if: matrix.os == 'ubuntu-latest'
-        uses: hashicorp/setup-terraform@v3
+        uses: hashicorp/setup-terraform@v4
         with:
           terraform_wrapper: false
 
