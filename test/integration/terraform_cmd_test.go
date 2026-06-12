@@ -135,7 +135,10 @@ func TestTerraformMissingBinary(t *testing.T) {
 
 	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), e, "terraform", "version")
 	require.Error(t, err)
-	assert.Contains(t, stderr+stdout, "not found in PATH")
+	combined := stderr + stdout
+	assert.Contains(t, combined, "not found in PATH")
+	assert.Contains(t, combined, "Install Terraform CLI:")
+	assert.Contains(t, combined, "https://developer.hashicorp.com/terraform/cli")
 }
 
 // 7.3 — fmt/validate/version/init run without generating an override and without

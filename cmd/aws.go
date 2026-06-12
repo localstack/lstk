@@ -53,6 +53,16 @@ Examples:
 			return initConfig(nil)(cmd, args)
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			sink := output.NewPlainSink(os.Stdout)
+
+			if err := awscli.CheckInstalled(); err != nil {
+				sink.Emit(output.ErrorEvent{
+					Title:   "aws CLI not found in PATH",
+					Actions: []output.ErrorAction{{Label: "Install AWS CLI:", Value: awscli.InstallURL}},
+				})
+				return output.NewSilentError(err)
+			}
+
 			rt, err := runtime.NewDockerRuntime(cfg.DockerHost)
 			if err != nil {
 				return err
@@ -70,8 +80,6 @@ Examples:
 					break
 				}
 			}
-
-			sink := output.NewPlainSink(os.Stdout)
 
 			if err := rt.IsHealthy(cmd.Context()); err != nil {
 				rt.EmitUnhealthyError(sink, err)
