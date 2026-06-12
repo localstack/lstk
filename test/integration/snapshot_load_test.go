@@ -37,6 +37,24 @@ func mockLocalLoadServer(t *testing.T) (*httptest.Server, func() bool) {
 	return srv, resetCalled.Load
 }
 
+// mockLocalLoadInvalidFileServer returns a test server whose import endpoint
+// streams the emulator's BadZipFile error event, mimicking what the emulator
+// returns when the source is not a valid snapshot archive.
+func mockLocalLoadInvalidFileServer(t *testing.T) *httptest.Server {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost && r.URL.Path == "/_localstack/pods" {
+			w.Header().Set("Content-Type", "application/x-ndjson")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"status":"error","message":"Invalid pod file: File is not a valid zip archive"}` + "\n"))
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	t.Cleanup(srv.Close)
+	return srv
+}
+
 // mockPodLoadServer returns a test server that handles PUT /_localstack/pods/{name}.
 // respondOK controls whether it emits a success or error completion event.
 func mockPodLoadServer(t *testing.T, respondOK bool) *httptest.Server {
@@ -192,6 +210,29 @@ func TestSnapshotLoadLocalLegacyZipFallback(t *testing.T) {
 	assert.Contains(t, stdout, "Snapshot loaded")
 }
 
+func TestSnapshotLoadLocalInvalidFile(t *testing.T) {
+	requireDocker(t)
+	cleanup()
+	t.Cleanup(cleanup)
+
+	ctx := testContext(t)
+	startTestContainer(t, ctx)
+	srv := mockLocalLoadInvalidFileServer(t)
+
+	dir := t.TempDir()
+	snapPath := writeTestSnapFile(t, dir, "snap.snapshot")
+
+	stdout, stderr, err := runLstk(t, ctx, dir,
+		env.Environ(testEnvWithHome(t.TempDir(), "")).With(env.LocalStackHost, lsHost(srv)),
+		"--non-interactive", "snapshot", "load", snapPath,
+	)
+	requireExitCode(t, 1, err)
+	// The user-facing error is emitted through the sink (stdout); the underlying
+	// "zip archive" detail must not leak to the user.
+	assert.Contains(t, stdout, "not a valid snapshot")
+	assert.NotContains(t, strings.ToLower(stdout+stderr), "zip")
+}
+
 func TestSnapshotLoadLocalOverwriteStrategy(t *testing.T) {
 	requireDocker(t)
 	cleanup()
@@ -211,7 +252,6 @@ func TestSnapshotLoadLocalOverwriteStrategy(t *testing.T) {
 	require.NoError(t, err, "lstk snapshot load --merge=overwrite failed: %s", stderr)
 	assert.True(t, wasReset(), "/_localstack/state/reset should have been called for overwrite strategy")
 }
-
 
 func TestSnapshotLoadPodSuccess(t *testing.T) {
 	requireDocker(t)

@@ -23,6 +23,11 @@ const (
 
 var ErrIncompatibleSnapshot = errors.New("snapshot is incompatible with the running LocalStack version")
 
+// ErrInvalidSnapshotFile indicates the source could not be read as a snapshot
+// (e.g. a non-snapshot file was passed). It deliberately hides the underlying
+// archive format from the user-facing message.
+var ErrInvalidSnapshotFile = errors.New("not a valid snapshot file")
+
 func ValidateMergeStrategy(strategy string) error {
 	switch strategy {
 	case MergeStrategyAccountRegion, MergeStrategyOverwrite, MergeStrategyService:
@@ -94,6 +99,13 @@ func load(ctx context.Context, rt runtime.Runtime, containers []config.Container
 		sink.Emit(output.ErrorEvent{
 			Title:   "Could not load snapshot",
 			Summary: "Snapshot is incompatible with the running LocalStack version",
+		})
+		return output.NewSilentError(err)
+	}
+	if errors.Is(err, ErrInvalidSnapshotFile) {
+		sink.Emit(output.ErrorEvent{
+			Title:   "Could not load snapshot",
+			Summary: "This file is not a valid snapshot",
 		})
 		return output.NewSilentError(err)
 	}
