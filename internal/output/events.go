@@ -91,7 +91,7 @@ type DeferredEvent struct {
 }
 
 type SnapshotLoadedEvent struct {
-	Source   string   // display source shown to the user (e.g. "./snap.zip" or "pod:my-baseline")
+	Source   string   // display source shown to the user (e.g. "./snap.snapshot" or "pod:my-baseline")
 	Services []string // services restored
 }
 

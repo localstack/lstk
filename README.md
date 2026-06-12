@@ -238,7 +238,7 @@ lstk setup azure
 lstk az group list
 
 # Save emulator state to a local file
-lstk snapshot save ./my-snapshot.zip
+lstk snapshot save ./my-snapshot.snapshot
 
 # Save emulator state as a named cloud snapshot on the LocalStack platform
 lstk snapshot save pod:my-baseline
@@ -269,12 +269,12 @@ Snapshots capture the running emulator's state so you can restore it later.
 
 A snapshot reference is either a **local file** or a **cloud snapshot**:
 
-- **Local file** — an absolute or relative path. A `.zip` extension is added if omitted.
+- **Local file** — an absolute or relative path. A `.snapshot` extension is added if omitted (snapshots saved as `.zip` by older lstk versions still load).
 - **Cloud snapshot** — a name with the `pod:` prefix (e.g. `pod:my-baseline`), stored on the LocalStack platform. Requires authentication (`LOCALSTACK_AUTH_TOKEN` or `lstk login`).
 
 ```bash
 # Save (local or cloud)
-lstk snapshot save ./my-snapshot.zip
+lstk snapshot save ./my-snapshot.snapshot
 lstk snapshot save pod:my-baseline
 
 # Load (starts the emulator first if needed)

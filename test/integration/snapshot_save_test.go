@@ -65,12 +65,12 @@ func TestSnapshotSaveDefaultDestination(t *testing.T) {
 	require.NoError(t, readErr)
 	var found bool
 	for _, e := range entries {
-		if strings.HasPrefix(e.Name(), "snapshot-") {
+		if strings.HasPrefix(e.Name(), "snapshot-") && strings.HasSuffix(e.Name(), ".snapshot") {
 			found = true
 			break
 		}
 	}
-	assert.True(t, found, "default snapshot file (snapshot-*) should exist in %s", dir)
+	assert.True(t, found, "default snapshot file (snapshot-*.snapshot) should exist in %s", dir)
 }
 
 func TestSnapshotSaveCustomPath(t *testing.T) {
@@ -82,7 +82,7 @@ func TestSnapshotSaveCustomPath(t *testing.T) {
 	startTestContainer(t, ctx)
 	srv := mockStateServer(t)
 	dir := t.TempDir()
-	outPath := filepath.Join(dir, "my-snap.zip")
+	outPath := filepath.Join(dir, "my-snap.snapshot")
 
 	stdout, stderr, err := runLstk(t, ctx, dir,
 		env.Environ(testEnvWithHome(t.TempDir(), "")).With(env.LocalStackHost, lsHost(srv)),
@@ -90,7 +90,7 @@ func TestSnapshotSaveCustomPath(t *testing.T) {
 	)
 	require.NoError(t, err, "lstk snapshot save failed: %s", stderr)
 	assert.Contains(t, stdout, "Snapshot saved")
-	assert.Contains(t, stdout, "./my-snap.zip")
+	assert.Contains(t, stdout, "./my-snap.snapshot")
 
 	data, err := os.ReadFile(outPath)
 	require.NoError(t, err, "output file should exist")
@@ -118,8 +118,33 @@ func TestSnapshotSaveRelativePath(t *testing.T) {
 	require.NoError(t, err, "lstk snapshot save failed: %s", stderr)
 	assert.Contains(t, stdout, "Snapshot saved")
 
-	_, statErr := os.Stat(filepath.Join(dir, "my-state.zip"))
+	_, statErr := os.Stat(filepath.Join(dir, "my-state.snapshot"))
 	assert.NoError(t, statErr, "relative output file should exist")
+}
+
+// TestSnapshotSaveForcesSnapshotExtension verifies that a user-supplied extension
+// is replaced with .snapshot rather than honored verbatim.
+func TestSnapshotSaveForcesSnapshotExtension(t *testing.T) {
+	requireDocker(t)
+	cleanup()
+	t.Cleanup(cleanup)
+
+	ctx := testContext(t)
+	startTestContainer(t, ctx)
+	srv := mockStateServer(t)
+	dir := t.TempDir()
+
+	stdout, stderr, err := runLstk(t, ctx, dir,
+		env.Environ(testEnvWithHome(t.TempDir(), "")).With(env.LocalStackHost, lsHost(srv)),
+		"--non-interactive", "snapshot", "save", "./x.zip",
+	)
+	require.NoError(t, err, "lstk snapshot save failed: %s", stderr)
+	assert.Contains(t, stdout, "./x.snapshot")
+
+	_, statErr := os.Stat(filepath.Join(dir, "x.snapshot"))
+	assert.NoError(t, statErr, "extension should be forced to .snapshot")
+	_, zipErr := os.Stat(filepath.Join(dir, "x.zip"))
+	assert.True(t, os.IsNotExist(zipErr), "the user-supplied .zip path should not be created")
 }
 
 func TestSnapshotSaveOverwritesExistingFile(t *testing.T) {
@@ -131,7 +156,7 @@ func TestSnapshotSaveOverwritesExistingFile(t *testing.T) {
 	startTestContainer(t, ctx)
 	srv := mockStateServer(t)
 	dir := t.TempDir()
-	outPath := filepath.Join(dir, "snap.zip")
+	outPath := filepath.Join(dir, "snap.snapshot")
 	require.NoError(t, os.WriteFile(outPath, []byte("OLD"), 0600))
 
 	_, stderr, err := runLstk(t, ctx, dir,
@@ -352,7 +377,7 @@ func TestSaveAliasMatchesSnapshotSave(t *testing.T) {
 	startTestContainer(t, ctx)
 	srv := mockStateServer(t)
 	dir := t.TempDir()
-	outPath := filepath.Join(dir, "alias.zip")
+	outPath := filepath.Join(dir, "alias.snapshot")
 
 	analyticsSrv, events := mockAnalyticsServer(t)
 	stdout, stderr, err := runLstk(t, ctx, dir,

@@ -25,11 +25,15 @@ func TestParseSource(t *testing.T) {
 	home := t.TempDir()
 
 	dir := t.TempDir()
-	existingZip := filepath.Join(dir, "snap.zip")
+	existingSnapshot := filepath.Join(dir, "snap.snapshot")
+	require.NoError(t, os.WriteFile(existingSnapshot, []byte("data"), 0600))
+	existingZip := filepath.Join(dir, "legacy.zip") // saved by an older lstk version
 	require.NoError(t, os.WriteFile(existingZip, []byte("data"), 0600))
-	existingBare := filepath.Join(dir, "bare") // no extension — snap.zip fallback exists
-	require.NoError(t, os.WriteFile(existingBare+".zip", []byte("data"), 0600))
-	existingNoExt := filepath.Join(dir, "noext") // no extension, no .zip counterpart either
+	existingBare := filepath.Join(dir, "bare") // no extension — .snapshot fallback exists
+	require.NoError(t, os.WriteFile(existingBare+".snapshot", []byte("data"), 0600))
+	existingLegacyBare := filepath.Join(dir, "legacybare") // only a .zip counterpart exists
+	require.NoError(t, os.WriteFile(existingLegacyBare+".zip", []byte("data"), 0600))
+	existingNoExt := filepath.Join(dir, "noext") // no extension, no fallback counterpart either
 	require.NoError(t, os.WriteFile(existingNoExt, []byte("data"), 0600))
 
 	type testCase struct {
@@ -53,26 +57,38 @@ func TestParseSource(t *testing.T) {
 
 		// --- local paths (file must exist) ---
 		{
-			name:     "explicit .zip path",
+			name:     "explicit .snapshot path",
+			input:    existingSnapshot,
+			wantKind: snapshot.KindLocal,
+			wantPath: existingSnapshot,
+		},
+		{
+			name:     "explicit legacy .zip path",
 			input:    existingZip,
 			wantKind: snapshot.KindLocal,
 			wantPath: existingZip,
 		},
 		{
-			name:     "bare name resolves to .zip fallback",
+			name:     "bare name resolves to .snapshot fallback",
 			input:    existingBare,
 			wantKind: snapshot.KindLocal,
-			wantPath: existingBare + ".zip",
+			wantPath: existingBare + ".snapshot",
 		},
 		{
-			name:     "file without .zip extension resolves as-is",
+			name:     "bare name resolves to legacy .zip fallback",
+			input:    existingLegacyBare,
+			wantKind: snapshot.KindLocal,
+			wantPath: existingLegacyBare + ".zip",
+		},
+		{
+			name:     "file without extension resolves as-is",
 			input:    existingNoExt,
 			wantKind: snapshot.KindLocal,
 			wantPath: existingNoExt,
 		},
 		{
 			name:    "nonexistent file returns error",
-			input:   filepath.Join(dir, "missing.zip"),
+			input:   filepath.Join(dir, "missing.snapshot"),
 			wantErr: "snapshot file not found",
 		},
 		{
@@ -317,19 +333,19 @@ func TestParseDestination(t *testing.T) {
 			name:           "default",
 			input:          "",
 			wantKind:       snapshot.KindLocal,
-			wantPathRegexp: regexp.QuoteMeta(filepath.Join(wd, "snapshot-2026-05-11T21-04-32-")) + `[0-9a-f]{3}\.zip`,
+			wantPathRegexp: regexp.QuoteMeta(filepath.Join(wd, "snapshot-2026-05-11T21-04-32-")) + `[0-9a-f]{3}\.snapshot`,
 		},
 
 		// --- local paths ---
 		{
 			input:    "./my-state",
 			wantKind: snapshot.KindLocal,
-			wantPath: filepath.Join(wd, "my-state.zip"),
+			wantPath: filepath.Join(wd, "my-state.snapshot"),
 		},
 		{
 			input:    filepath.Join(os.TempDir(), "state"),
 			wantKind: snapshot.KindLocal,
-			wantPath: filepath.Join(os.TempDir(), "state.zip"),
+			wantPath: filepath.Join(os.TempDir(), "state.snapshot"),
 		},
 		{
 			input:   "~",
@@ -339,29 +355,43 @@ func TestParseDestination(t *testing.T) {
 			// parent (~/) always exists
 			input:    "~/my-state",
 			wantKind: snapshot.KindLocal,
-			wantPath: filepath.Join(home, "my-state.zip"),
+			wantPath: filepath.Join(home, "my-state.snapshot"),
 		},
 		{
 			name:     "relative path with existing subdir",
 			input:    filepath.Join(subDir, "state"),
 			wantKind: snapshot.KindLocal,
-			wantPath: filepath.Join(subDir, "state.zip"),
+			wantPath: filepath.Join(subDir, "state.snapshot"),
 		},
 		{
 			// bare name: treated as relative to CWD, not a pod
 			input:    "my-pod",
 			wantKind: snapshot.KindLocal,
-			wantPath: filepath.Join(wd, "my-pod.zip"),
+			wantPath: filepath.Join(wd, "my-pod.snapshot"),
 		},
 		{
+			name:     "explicit .snapshot extension kept",
+			input:    "./checkpoint.snapshot",
+			wantKind: snapshot.KindLocal,
+			wantPath: filepath.Join(wd, "checkpoint.snapshot"),
+		},
+		{
+			name:     "uppercase .SNAPSHOT extension kept as-is",
+			input:    "./already.SNAPSHOT",
+			wantKind: snapshot.KindLocal,
+			wantPath: filepath.Join(wd, "already.SNAPSHOT"),
+		},
+		{
+			name:     "explicit .zip extension forced to .snapshot",
 			input:    "./checkpoint.zip",
 			wantKind: snapshot.KindLocal,
-			wantPath: filepath.Join(wd, "checkpoint.zip"),
+			wantPath: filepath.Join(wd, "checkpoint.snapshot"),
 		},
 		{
-			input:    "./already.ZIP",
+			name:     "other extension forced to .snapshot",
+			input:    "./backup.tar",
 			wantKind: snapshot.KindLocal,
-			wantPath: filepath.Join(wd, "already.ZIP"),
+			wantPath: filepath.Join(wd, "backup.snapshot"),
 		},
 
 		// --- parent directory does not exist ---
@@ -453,19 +483,19 @@ func TestParseDestination(t *testing.T) {
 			testCase{
 				input:    `~\my-state`,
 				wantKind: snapshot.KindLocal,
-				wantPath: filepath.Join(home, "my-state.zip"),
+				wantPath: filepath.Join(home, "my-state.snapshot"),
 			},
 			testCase{
 				name:     "windows abs backslash",
 				input:    filepath.Join(tmpParent, "snap"),
 				wantKind: snapshot.KindLocal,
-				wantPath: filepath.Join(tmpParent, "snap.zip"),
+				wantPath: filepath.Join(tmpParent, "snap.snapshot"),
 			},
 			testCase{
 				name:     "windows abs forward-slash",
 				input:    strings.ReplaceAll(filepath.Join(tmpParent, "snap"), `\`, `/`),
 				wantKind: snapshot.KindLocal,
-				wantPath: filepath.Join(tmpParent, "snap.zip"),
+				wantPath: filepath.Join(tmpParent, "snap.snapshot"),
 			},
 		)
 	}

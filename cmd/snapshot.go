@@ -41,9 +41,9 @@ const snapshotSaveLong = `Save a snapshot of the running emulator's state.
 
 Pass [destination] as an absolute or relative path for the exported file:
 
-  lstk snapshot save                    # saves to ./snapshot-<YYYY-MM-DDTHH-mm-ss>-<hex>.zip
-  lstk snapshot save ./my-snapshot.zip  # saves to ./my-snapshot.zip
-  lstk snapshot save /tmp/my-state      # saves to /tmp/my-state.zip
+  lstk snapshot save                         # saves to ./snapshot-<YYYY-MM-DDTHH-mm-ss>-<hex>.snapshot
+  lstk snapshot save ./my-snapshot.snapshot  # saves to ./my-snapshot.snapshot
+  lstk snapshot save /tmp/my-state           # saves to /tmp/my-state.snapshot
 
 To save to a remote pod on the LocalStack platform, use the pod: prefix:
 
@@ -55,9 +55,9 @@ const snapshotLoadLong = `Load a snapshot into the running emulator, starting it
 
 REF identifies the snapshot to load:
 
-  lstk snapshot load my-baseline           # loads ./my-baseline or ./my-baseline.zip
-  lstk snapshot load ./checkpoint.zip      # loads from explicit path
-  lstk snapshot load pod:my-baseline       # loads from LocalStack Cloud
+  lstk snapshot load my-baseline             # loads ./my-baseline or ./my-baseline.snapshot
+  lstk snapshot load ./checkpoint.snapshot   # loads from explicit path
+  lstk snapshot load pod:my-baseline         # loads from LocalStack Cloud
 
 Merge strategies control how snapshot state is combined with running state:
 

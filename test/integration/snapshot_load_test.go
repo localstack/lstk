@@ -120,7 +120,7 @@ func TestSnapshotLoadFileNotFound(t *testing.T) {
 
 	_, stderr, err := runLstk(t, ctx, t.TempDir(),
 		testEnvWithHome(t.TempDir(), ""),
-		"--non-interactive", "snapshot", "load", "/no/such/snapshot.zip",
+		"--non-interactive", "snapshot", "load", "/no/such/snapshot.snapshot",
 	)
 	requireExitCode(t, 1, err)
 	assert.Contains(t, stderr, "snapshot file not found")
@@ -138,7 +138,7 @@ func TestSnapshotLoadLocalSuccess(t *testing.T) {
 	srv, _ := mockLocalLoadServer(t)
 
 	dir := t.TempDir()
-	snapPath := writeTestSnapFile(t, dir, "snap.zip")
+	snapPath := writeTestSnapFile(t, dir, "snap.snapshot")
 
 	stdout, stderr, err := runLstk(t, ctx, dir,
 		env.Environ(testEnvWithHome(t.TempDir(), "")).With(env.LocalStackHost, lsHost(srv)),
@@ -158,14 +158,37 @@ func TestSnapshotLoadLocalBareNameFallback(t *testing.T) {
 	srv, _ := mockLocalLoadServer(t)
 
 	dir := t.TempDir()
-	// Create snap.zip; pass bare name "snap" — ParseSource should resolve to snap.zip.
-	writeTestSnapFile(t, dir, "snap.zip")
+	// Create snap.snapshot; pass bare name "snap" — ParseSource should resolve to snap.snapshot.
+	writeTestSnapFile(t, dir, "snap.snapshot")
 
 	stdout, stderr, err := runLstk(t, ctx, dir,
 		env.Environ(testEnvWithHome(t.TempDir(), "")).With(env.LocalStackHost, lsHost(srv)),
 		"--non-interactive", "snapshot", "load", filepath.Join(dir, "snap"),
 	)
 	require.NoError(t, err, "bare name fallback failed: %s", stderr)
+	assert.Contains(t, stdout, "Snapshot loaded")
+}
+
+// TestSnapshotLoadLocalLegacyZipFallback verifies that snapshots saved as .zip by
+// older lstk versions still load by bare name.
+func TestSnapshotLoadLocalLegacyZipFallback(t *testing.T) {
+	requireDocker(t)
+	cleanup()
+	t.Cleanup(cleanup)
+
+	ctx := testContext(t)
+	startTestContainer(t, ctx)
+	srv, _ := mockLocalLoadServer(t)
+
+	dir := t.TempDir()
+	// Only a legacy snap.zip exists; pass bare name "snap" — ParseSource should still find it.
+	writeTestSnapFile(t, dir, "snap.zip")
+
+	stdout, stderr, err := runLstk(t, ctx, dir,
+		env.Environ(testEnvWithHome(t.TempDir(), "")).With(env.LocalStackHost, lsHost(srv)),
+		"--non-interactive", "snapshot", "load", filepath.Join(dir, "snap"),
+	)
+	require.NoError(t, err, "legacy .zip fallback failed: %s", stderr)
 	assert.Contains(t, stdout, "Snapshot loaded")
 }
 
@@ -179,7 +202,7 @@ func TestSnapshotLoadLocalOverwriteStrategy(t *testing.T) {
 	srv, wasReset := mockLocalLoadServer(t)
 
 	dir := t.TempDir()
-	snapPath := writeTestSnapFile(t, dir, "snap.zip")
+	snapPath := writeTestSnapFile(t, dir, "snap.snapshot")
 
 	_, stderr, err := runLstk(t, ctx, dir,
 		env.Environ(testEnvWithHome(t.TempDir(), "")).With(env.LocalStackHost, lsHost(srv)),
@@ -241,7 +264,7 @@ func TestSnapshotLoadTelemetryEmitted(t *testing.T) {
 	srv, _ := mockLocalLoadServer(t)
 
 	dir := t.TempDir()
-	snapPath := writeTestSnapFile(t, dir, "snap.zip")
+	snapPath := writeTestSnapFile(t, dir, "snap.snapshot")
 	analyticsSrv, events := mockAnalyticsServer(t)
 
 	_, stderr, err := runLstk(t, ctx, dir,
@@ -264,7 +287,7 @@ func TestSnapshotLoadInteractive(t *testing.T) {
 	srv, _ := mockLocalLoadServer(t)
 
 	dir := t.TempDir()
-	snapPath := writeTestSnapFile(t, dir, "snap.zip")
+	snapPath := writeTestSnapFile(t, dir, "snap.snapshot")
 
 	out, err := runLstkInPTY(t, ctx,
 		env.Environ(testEnvWithHome(t.TempDir(), "")).With(env.LocalStackHost, lsHost(srv)),
@@ -284,7 +307,7 @@ func TestLoadAliasMatchesSnapshotLoad(t *testing.T) {
 	srv, _ := mockLocalLoadServer(t)
 
 	dir := t.TempDir()
-	snapPath := writeTestSnapFile(t, dir, "snap.zip")
+	snapPath := writeTestSnapFile(t, dir, "snap.snapshot")
 
 	analyticsSrv, events := mockAnalyticsServer(t)
 	stdout, stderr, err := runLstk(t, ctx, dir,

@@ -86,13 +86,13 @@ Environment variables:
 
 `lstk snapshot` captures and restores the running emulator's state (AWS emulator only). Domain logic lives in `internal/snapshot/`; `cmd/snapshot.go` is wiring + output-mode selection.
 
-- `lstk snapshot save [destination]` — export state to a local `.zip` or a named cloud snapshot.
+- `lstk snapshot save [destination]` — export state to a local `.snapshot` file or a named cloud snapshot.
 - `lstk snapshot load REF` — restore state, starting the emulator first if needed; `--merge` controls how snapshot state combines with running state (`account-region-merge` (default), `overwrite`, `service-merge`).
 - `lstk snapshot list` — list cloud snapshots on the LocalStack platform. Lists only snapshots you created by default; pass `--all` to include every snapshot in your organization. Cloud-only; requires auth.
 - `lstk snapshot remove REF` — delete a cloud snapshot. Cloud-only; local files are never deleted by the CLI. Prompts for confirmation in interactive mode; `--force` is required to skip the prompt in non-interactive mode.
 
 A REF is parsed by helpers in `internal/snapshot/destination.go`:
-- **local file** — absolute/relative path; `.zip` is appended if omitted.
+- **local file** — absolute/relative path; the `.snapshot` extension is forced (any other extension is replaced). On load, `.zip` files saved by older lstk versions are still accepted.
 - **cloud snapshot** — `pod:` prefix (e.g. `pod:my-baseline`), stored on the LocalStack platform. Requires auth (`LOCALSTACK_AUTH_TOKEN` or `lstk login`).
 
 `ParseDestination` (save), `ParseSource` (load), and `ParseRemovable` (remove) share pod-name validation; `ParseRemovable` rejects local paths so the CLI cannot delete local files.

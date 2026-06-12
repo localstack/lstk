@@ -214,14 +214,14 @@ func TestFormatEventLine(t *testing.T) {
 		// snapshot load events
 		{
 			name:   "snapshot loaded with services",
-			event:  SnapshotLoadedEvent{Source: "./my-baseline.zip", Services: []string{"s3", "dynamodb"}},
-			want:   SuccessMarker() + " Snapshot loaded from ./my-baseline.zip\n• Services: s3, dynamodb",
+			event:  SnapshotLoadedEvent{Source: "./my-baseline.snapshot", Services: []string{"s3", "dynamodb"}},
+			want:   SuccessMarker() + " Snapshot loaded from ./my-baseline.snapshot\n• Services: s3, dynamodb",
 			wantOK: true,
 		},
 		{
 			name:   "snapshot loaded no services",
-			event:  SnapshotLoadedEvent{Source: "./snap.zip"},
-			want:   SuccessMarker() + " Snapshot loaded from ./snap.zip",
+			event:  SnapshotLoadedEvent{Source: "./snap.snapshot"},
+			want:   SuccessMarker() + " Snapshot loaded from ./snap.snapshot",
 			wantOK: true,
 		},
 		{
