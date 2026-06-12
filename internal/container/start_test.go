@@ -114,7 +114,7 @@ func TestEmitAlreadyRunning_IncludesRunningVersion(t *testing.T) {
 	srv := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/_localstack/info" {
 			w.Header().Set("Content-Type", "application/json")
-			_, _ = w.Write([]byte(`{"version":"3.4.0","edition":"pro"}`))
+			_, _ = w.Write([]byte(`{"version":"2026.5.3:04ddfd3a0","edition":"pro"}`))
 			return
 		}
 		http.NotFound(w, r)
@@ -131,7 +131,9 @@ func TestEmitAlreadyRunning_IncludesRunningVersion(t *testing.T) {
 
 	emitAlreadyRunning(context.Background(), sink, runtime.ContainerConfig{EmulatorType: config.EmulatorAWS, Port: port}, "", "", false)
 
-	assert.Contains(t, out.String(), "3.4.0 is already running")
+	got := out.String()
+	assert.Contains(t, got, "2026.5.3 is already running")
+	assert.NotContains(t, got, "04ddfd3a0", "build suffix should be stripped from the version")
 }
 
 func TestEmitAlreadyRunning_FallsBackWhenVersionUnavailable(t *testing.T) {
