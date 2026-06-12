@@ -14,8 +14,10 @@ import (
 	"go.opentelemetry.io/otel/codes"
 )
 
+const InstallURL = "https://learn.microsoft.com/en-us/cli/azure/"
+
 // ErrNotInstalled is returned when the `az` binary cannot be found on PATH.
-var ErrNotInstalled = errors.New("az CLI not found in PATH — install it from https://learn.microsoft.com/cli/azure/install-azure-cli")
+var ErrNotInstalled = fmt.Errorf("az CLI not found in PATH — install it from %s", InstallURL)
 
 // CheckInstalled returns ErrNotInstalled if the `az` binary is not on PATH.
 // Callers should use this before performing setup work to avoid leaving partial state.

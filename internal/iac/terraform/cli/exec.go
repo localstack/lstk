@@ -38,13 +38,13 @@ func Run(ctx context.Context, endpointURL, region, account, chdir string, sink o
 	if err != nil {
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())
-		installURL := "https://developer.hashicorp.com/terraform/install"
+		installLabel, installURL := "Install Terraform CLI:", "https://developer.hashicorp.com/terraform/cli"
 		if tfCmd() == "tofu" {
-			installURL = "https://opentofu.org/docs/intro/install/"
+			installLabel, installURL = "Install OpenTofu CLI:", "https://opentofu.org/docs/intro/install/"
 		}
 		sink.Emit(output.ErrorEvent{
 			Title:   fmt.Sprintf("%s not found in PATH", tfCmd()),
-			Actions: []output.ErrorAction{{Label: "Install it and ensure it is on your PATH:", Value: installURL}},
+			Actions: []output.ErrorAction{{Label: installLabel, Value: installURL}},
 		})
 		return output.NewSilentError(fmt.Errorf("%s not found in PATH", tfCmd()))
 	}
