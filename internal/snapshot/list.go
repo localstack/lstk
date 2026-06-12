@@ -47,7 +47,7 @@ func List(ctx context.Context, lister CloudPodLister, authToken, creator string,
 		}
 		rows[i] = []string{p.Name, fmt.Sprintf("%d", p.Version), lastChanged}
 	}
-	sink.Emit(output.DeferredEvent{Inner: output.MessageEvent{Severity: output.SeveritySecondary, Text: fmt.Sprintf("~ %d %s", len(pods), noun)}})
+	sink.Emit(output.DeferredEvent{Inner: output.MessageEvent{Severity: output.SeveritySecondary, Text: fmt.Sprintf("~ %d %s\n", len(pods), noun)}})
 	sink.Emit(output.DeferredEvent{Inner: output.TableEvent{
 		Headers: []string{"Name", "Version", "Last Changed"},
 		Rows:    rows,
