@@ -9,10 +9,6 @@ npm install -g @localstack/lstk
 
 See [installation](#installation) below.
 
-> [!IMPORTANT]
-> This project is under active development, currently using [ZeroVer](https://0ver.org/) (`0.MINOR.PATCH`). Expect breaking changes as we march toward a stable 1.0.0 release.
-
-
 ## Prerequisites
 
 - [Docker](https://docs.docker.com/get-docker/) — required as a container engine.
