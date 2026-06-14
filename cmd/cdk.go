@@ -20,20 +20,20 @@ func newCDKCmd(cfg *env.Env, logger log.Logger) *cobra.Command {
 	return &cobra.Command{
 		Use:   "cdk [args...]",
 		Short: "Run AWS CDK against LocalStack",
-		Long: `Proxy AWS CDK commands to the real cdk CLI, so deploys target the running emulator instead of real AWS.
+		Long: `Proxy CDK commands to the running LocalStack emulator.
 
-Requires the AWS CDK CLI version 2.177.0 or newer on your PATH (lstk targets LocalStack purely through environment variables, which older CDK versions ignore). LocalStack must be running for commands that contact AWS (bootstrap, deploy, destroy, diff, …); offline commands (init, synth, ls, version, doctor) run without it.
+Requires the AWS CDK CLI version 2.177.0 or newer on your PATH.
 
 lstk-specific flags (must appear before the cdk action):
   --region <region>    Deployment region (default us-east-1)
-  --account <id>       Target AWS account id, 12 digits (default test)
+
+CDK always targets the default LocalStack account 000000000000; there is no --account flag.
 
 Supported environment variables:
   AWS_ENDPOINT_URL      Override the auto-resolved LocalStack endpoint
   AWS_ENDPOINT_URL_S3   Override the auto-derived S3 endpoint
   LSTK_CDK_CMD          CDK binary to invoke (default cdk)
   AWS_REGION            Fallback for --region
-  AWS_ACCESS_KEY_ID     Fallback for --account
 
 Examples:
   lstk cdk bootstrap
@@ -65,11 +65,16 @@ Examples:
 				return emitValidationError(sink, err)
 			}
 
-			region := resolveRegion(regionFlag)
-			account, err := resolveAccount(accountFlag)
-			if err != nil {
-				return emitValidationError(sink, err)
+			// CDK has no reliable way to target a non-default account (the
+			// account is derived by LocalStack from the access key id via an
+			// STS round-trip CDK does not honor consistently), so --account is
+			// rejected rather than silently ignored. CDK always uses the
+			// default account 000000000000.
+			if accountFlag != "" {
+				return emitValidationError(sink, fmt.Errorf("--account is not supported by lstk cdk; CDK always uses the default LocalStack account 000000000000"))
 			}
+
+			region := resolveRegion(regionFlag)
 
 			awsContainer := resolveAWSContainer()
 
@@ -78,7 +83,7 @@ Examples:
 			// inject it, so a synth-time context lookup routes to LocalStack.
 			if cdkcli.IsOffline(cdkArgs) {
 				host, _ := endpoint.ResolveHost(cmd.Context(), awsContainer.Port, cfg.LocalStackHost)
-				return cdkcli.Run(cmd.Context(), "http://"+host, region, account, sink, logger, cdkArgs)
+				return cdkcli.Run(cmd.Context(), "http://"+host, region, sink, logger, cdkArgs)
 			}
 
 			rt, err := runtime.NewDockerRuntime(cfg.DockerHost)
@@ -107,7 +112,7 @@ Examples:
 				})
 			}
 
-			return cdkcli.Run(cmd.Context(), "http://"+host, region, account, sink, logger, cdkArgs)
+			return cdkcli.Run(cmd.Context(), "http://"+host, region, sink, logger, cdkArgs)
 		},
 	}
 }

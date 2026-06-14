@@ -22,11 +22,12 @@ import (
 // at the resolved LocalStack endpoint (and strips ambient AWS config that could
 // redirect it at real AWS), then runs cdk with stdio wired through.
 //
-// endpointURL is the resolved LocalStack endpoint (http://host:port). region
-// and account are encoded into the subprocess environment as AWS_REGION and
+// endpointURL is the resolved LocalStack endpoint (http://host:port). region is
+// encoded into the subprocess environment as AWS_REGION. CDK has no account
+// selection: it always targets the default LocalStack account via a fixed mock
 // AWS_ACCESS_KEY_ID. CDK output is streamed unobstructed (no spinner); a
 // non-zero exit is wrapped as a silent error so lstk does not reprint it.
-func Run(ctx context.Context, endpointURL, region, account string, sink output.Sink, logger log.Logger, args []string) error {
+func Run(ctx context.Context, endpointURL, region string, sink output.Sink, logger log.Logger, args []string) error {
 	ctx, span := otel.Tracer("github.com/localstack/lstk/internal/iac/cdk/cli").Start(ctx, "cdk cli")
 	defer span.End()
 
@@ -72,7 +73,7 @@ func Run(ctx context.Context, endpointURL, region, account string, sink output.S
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
-	cmd.Env = BuildEnv(os.Environ(), effectiveEndpoint, s3Endpoint, region, account)
+	cmd.Env = BuildEnv(os.Environ(), effectiveEndpoint, s3Endpoint, region)
 
 	if err := cmd.Run(); err != nil {
 		var exitErr *exec.ExitError
@@ -103,13 +104,18 @@ var strippedKeys = map[string]bool{
 // AWS configuration stripped and the LocalStack-pointing values set (overriding
 // any pre-existing entries). Empty endpoint values are not set, so they never
 // clobber a meaningful inherited value with "".
-func BuildEnv(base []string, endpointURL, s3Endpoint, region, account string) []string {
+//
+// AWS_ACCESS_KEY_ID is fixed to the mock value "test" (never an account id), so
+// CDK always resolves the default LocalStack account 000000000000. This
+// unconditionally overrides any ambient AWS_ACCESS_KEY_ID — including a 12-digit
+// value that LocalStack would otherwise treat as a custom account.
+func BuildEnv(base []string, endpointURL, s3Endpoint, region string) []string {
 	// Ordered so the produced environment is deterministic. Empty-valued
 	// entries are skipped below.
 	managed := []struct{ key, value string }{
 		{"AWS_ENDPOINT_URL", endpointURL},
 		{"AWS_ENDPOINT_URL_S3", s3Endpoint},
-		{"AWS_ACCESS_KEY_ID", account},
+		{"AWS_ACCESS_KEY_ID", "test"},
 		{"AWS_SECRET_ACCESS_KEY", "test"},
 		{"AWS_REGION", region},
 		{"AWS_DEFAULT_REGION", region},

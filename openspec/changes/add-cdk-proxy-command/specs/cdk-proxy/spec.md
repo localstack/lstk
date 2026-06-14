@@ -40,32 +40,34 @@ The system SHALL require AWS CDK CLI version 2.177.0 or newer, because lstk poin
 ### Requirement: Mock credentials and AWS environment isolation
 The system SHALL provide LocalStack-compatible mock credentials to the `cdk` subprocess and SHALL strip ambient AWS configuration that could redirect CDK to real AWS. lstk SHALL NOT require, read, or inject the LocalStack auth token for CDK-to-LocalStack API calls; the auth token only activates the emulator container.
 
+CDK always operates against the default LocalStack account `000000000000`; lstk SHALL set a fixed mock `AWS_ACCESS_KEY_ID=test` and SHALL NOT derive the account from a flag or from the ambient `AWS_ACCESS_KEY_ID`.
+
 #### Scenario: Provide mock credentials and region
 - **WHEN** lstk runs a CDK command
-- **THEN** the subprocess environment contains `AWS_ACCESS_KEY_ID` (the resolved account, default `test`), `AWS_SECRET_ACCESS_KEY=test`, and the resolved region in `AWS_REGION`/`AWS_DEFAULT_REGION`
+- **THEN** the subprocess environment contains `AWS_ACCESS_KEY_ID=test`, `AWS_SECRET_ACCESS_KEY=test`, and the resolved region in `AWS_REGION`/`AWS_DEFAULT_REGION`
 
 #### Scenario: Strip ambient AWS configuration
 - **WHEN** the user's environment contains `AWS_PROFILE`, `AWS_DEFAULT_PROFILE`, `AWS_SESSION_TOKEN`, or real `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY` values
 - **THEN** lstk removes or overrides them in the subprocess environment so CDK cannot resolve credentials or a profile that point at real AWS
 
-#### Scenario: Neutralize a real access key supplied via environment
-- **WHEN** `AWS_ACCESS_KEY_ID` is used as the account source and its value looks like a real AWS key (begins with `A`, e.g. `AKIA…`/`ASIA…`)
-- **THEN** lstk deactivates it (rewrites the leading `A` to `L`) before placing it in the subprocess environment
+#### Scenario: A 12-digit AWS_ACCESS_KEY_ID does not change the account
+- **WHEN** the user's environment contains a 12-digit `AWS_ACCESS_KEY_ID` (an account id)
+- **THEN** lstk overrides it with `test` so CDK still operates against the default account `000000000000`
 
-### Requirement: Region and account selection
-The system SHALL accept lstk-specific `--region` and `--account` flags in leading position (before the CDK subcommand) and encode them into the subprocess environment, with the same parsing and precedence as `lstk terraform`.
+### Requirement: Region selection
+The system SHALL accept the lstk-specific `--region` flag in leading position (before the CDK subcommand) and encode it into the subprocess environment, with the same parsing and precedence as `lstk terraform`. The system SHALL NOT accept an `--account` flag for CDK.
 
 #### Scenario: Region precedence
 - **WHEN** `--region` is omitted
 - **THEN** lstk resolves the region from `AWS_REGION`, falling back to `us-east-1`
 
-#### Scenario: Account precedence and validation
-- **WHEN** `--account` is provided
-- **THEN** lstk validates it is exactly 12 digits, using it as `AWS_ACCESS_KEY_ID`; when omitted, lstk uses `AWS_ACCESS_KEY_ID` from the environment, falling back to `test`
+#### Scenario: Reject the --account flag
+- **WHEN** `--account` is provided to `lstk cdk` in leading position, with any value
+- **THEN** lstk fails at the command boundary with an error explaining that `--account` is not supported and that CDK always uses the default LocalStack account `000000000000`, and does not invoke `cdk`
 
 #### Scenario: Flags only in leading position
-- **WHEN** `--region`/`--account` appear after the CDK subcommand (e.g. `lstk cdk deploy --region us-west-2`)
-- **THEN** lstk forwards them to `cdk` unchanged rather than consuming them
+- **WHEN** `--region` appears after the CDK subcommand (e.g. `lstk cdk deploy --region us-west-2`)
+- **THEN** lstk forwards it to `cdk` unchanged rather than consuming it
 
 ### Requirement: Emulator gating for AWS-contacting commands
 The system SHALL require a running AWS emulator for CDK subcommands that contact AWS APIs and SHALL run a fixed set of offline subcommands without that requirement.

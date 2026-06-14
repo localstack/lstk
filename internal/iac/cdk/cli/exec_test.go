@@ -20,15 +20,26 @@ func envMap(env []string) map[string]string {
 }
 
 func TestBuildEnvSetsLocalStackValues(t *testing.T) {
-	env := envMap(BuildEnv(nil, "http://localhost.localstack.cloud:4566", "http://s3.localhost.localstack.cloud:4566", "eu-west-1", "123456789012"))
+	env := envMap(BuildEnv(nil, "http://localhost.localstack.cloud:4566", "http://s3.localhost.localstack.cloud:4566", "eu-west-1"))
 
 	assert.Equal(t, "http://localhost.localstack.cloud:4566", env["AWS_ENDPOINT_URL"])
 	assert.Equal(t, "http://s3.localhost.localstack.cloud:4566", env["AWS_ENDPOINT_URL_S3"])
-	assert.Equal(t, "123456789012", env["AWS_ACCESS_KEY_ID"])
+	assert.Equal(t, "test", env["AWS_ACCESS_KEY_ID"])
 	assert.Equal(t, "test", env["AWS_SECRET_ACCESS_KEY"])
 	assert.Equal(t, "eu-west-1", env["AWS_REGION"])
 	assert.Equal(t, "eu-west-1", env["AWS_DEFAULT_REGION"])
 	assert.Equal(t, "1", env["CDK_DISABLE_LEGACY_EXPORT_WARNING"])
+}
+
+// A 12-digit AWS_ACCESS_KEY_ID in the environment (which LocalStack would treat
+// as a custom account) is overridden with "test", so CDK always resolves the
+// default account 000000000000 — there is no env path to a non-default account.
+func TestBuildEnvForcesDefaultAccount(t *testing.T) {
+	base := []string{"AWS_ACCESS_KEY_ID=123456789012", "AWS_SECRET_ACCESS_KEY=somesecret"}
+	env := envMap(BuildEnv(base, "http://127.0.0.1:4566", "http://127.0.0.1:4566", "us-east-1"))
+
+	assert.Equal(t, "test", env["AWS_ACCESS_KEY_ID"])
+	assert.Equal(t, "test", env["AWS_SECRET_ACCESS_KEY"])
 }
 
 func TestBuildEnvStripsAmbientAWSConfig(t *testing.T) {
@@ -41,7 +52,7 @@ func TestBuildEnvStripsAmbientAWSConfig(t *testing.T) {
 		"PATH=/usr/bin",
 		"HOME=/home/user",
 	}
-	env := envMap(BuildEnv(base, "http://127.0.0.1:4566", "http://127.0.0.1:4566", "us-east-1", "test"))
+	env := envMap(BuildEnv(base, "http://127.0.0.1:4566", "http://127.0.0.1:4566", "us-east-1"))
 
 	_, hasProfile := env["AWS_PROFILE"]
 	_, hasDefaultProfile := env["AWS_DEFAULT_PROFILE"]
@@ -60,7 +71,7 @@ func TestBuildEnvStripsAmbientAWSConfig(t *testing.T) {
 }
 
 func TestBuildEnvSkipsEmptyEndpoint(t *testing.T) {
-	env := envMap(BuildEnv(nil, "", "", "us-east-1", "test"))
+	env := envMap(BuildEnv(nil, "", "", "us-east-1"))
 	_, hasEndpoint := env["AWS_ENDPOINT_URL"]
 	_, hasS3 := env["AWS_ENDPOINT_URL_S3"]
 	assert.False(t, hasEndpoint, "empty AWS_ENDPOINT_URL must not be set")

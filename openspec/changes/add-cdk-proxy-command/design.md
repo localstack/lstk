@@ -20,7 +20,7 @@ lstk runs `cdk` as an external subprocess and cannot reach into CDK's Node SDK, 
 - `lstk cdk <args>` forwards all args to the real `cdk`, streaming stdin/stdout/stderr and propagating the exit code.
 - Auto-resolve the LocalStack endpoint from the running AWS emulator — no host/port env vars needed.
 - Build a clean, LocalStack-pointed AWS environment for the subprocess (`AWS_ENDPOINT_URL`, `AWS_ENDPOINT_URL_S3`, mock creds, region) and strip ambient AWS config that could redirect CDK at real AWS.
-- Reuse the terraform command's `--region`/`--account` parsing, validation, precedence, and `DeactivateAccessKey` safeguard.
+- Reuse the terraform command's `--region` parsing, validation, and precedence. CDK does **not** support `--account`: it always operates against the default LocalStack account `000000000000`.
 - Gate AWS-contacting subcommands on a running AWS emulator (with the same AWS-specific "wrong emulator" messaging as terraform); run a fixed offline set without that requirement.
 - Fail fast and clearly when `cdk` is missing or older than 2.177.0.
 - Keep the architecture aligned with lstk conventions: cmd/ wiring only, domain logic in `internal/iac/cdk/cli/`, output via `output.Sink`, diagnostics via `log.Logger`, no direct stdout/stderr prints, no `config.Get()` in domain code.
@@ -31,16 +31,17 @@ lstk runs `cdk` as an external subprocess and cannot reach into CDK's Node SDK, 
 - Supporting `cdklocal`-specific knobs like `LAMBDA_MOUNT_CODE`, `BUCKET_MARKER_LOCAL`, `AWS_ENVAR_ALLOWLIST`, `LOCALSTACK_HOSTNAME`, `EDGE_PORT` (lstk resolves the endpoint itself).
 - A spinner / progress UI around CDK output.
 - Managing `cdk bootstrap` for the user (bootstrap is just another proxied subcommand; lstk does not run it implicitly).
-- Pulling real credentials from the ambient AWS credential chain. Account is controlled only by `--account` / `AWS_ACCESS_KEY_ID`; `secret_key` is always `test`.
+- Pulling real credentials from the ambient AWS credential chain. The account is fixed to the default LocalStack account; `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` are always `test`, and the ambient `AWS_ACCESS_KEY_ID` is never used to select a different account.
+- Per-account targeting for CDK. `--account` is intentionally unsupported (see "Why CDK has no --account").
 
 ## Decisions
 
 ### Command wiring mirrors `lstk aws` / `lstk terraform`
-`cmd/cdk.go` defines a Cobra command with `Use: "cdk [args...]"`, `DisableFlagParsing: true`, and the standard `PreRunE` that calls `stripGlobalFlags` + `initConfig(nil)`. It reuses the terraform preamble: `runtime.NewDockerRuntime`, resolve the `config.EmulatorAWS` `ContainerConfig` (via the existing `resolveAWSContainer` helper in `cmd/terraform.go`), `rt.IsHealthy`, `container.ResolveRunningContainerName`, the non-AWS-emulator-running check (`runningNonAWSEmulator`), and `endpoint.ResolveHost`. It strips and validates `--region`/`--account` at the boundary, resolves the effective region/account, builds `http://host:port`, and hands off to a new domain entry point `cdkcli.Run(...)`.
+`cmd/cdk.go` defines a Cobra command with `Use: "cdk [args...]"`, `DisableFlagParsing: true`, and the standard `PreRunE` that calls `stripGlobalFlags` + `initConfig(nil)`. It reuses the terraform preamble: `runtime.NewDockerRuntime`, resolve the `config.EmulatorAWS` `ContainerConfig` (via the existing `resolveAWSContainer` helper in `cmd/terraform.go`), `rt.IsHealthy`, `container.ResolveRunningContainerName`, the non-AWS-emulator-running check (`runningNonAWSEmulator`), and `endpoint.ResolveHost`. It strips and validates `--region` at the boundary, rejects `--account` with an actionable error, resolves the effective region, builds `http://host:port`, and hands off to a new domain entry point `cdkcli.Run(...)`.
 
 No CLI alias is added — `cdk` is already short and has no conventional shorthand (unlike terraform's `tf`).
 
-**Reuse, don't duplicate, the flag helpers.** `resolveRegion`, `resolveAccount`, `accountIDRe`, `DeactivateAccessKey`, the leading-flag stripper, `rejectPreSubcommandFlags`, and `emitValidationError` already exist for terraform. CDK needs the same `--region`/`--account` semantics, so these are shared. The terraform-specific `-chdir` handling is **not** carried over — CDK has no equivalent global directory flag, so the CDK stripper only needs to extract `--region`/`--account`. Where the existing terraform stripper is terraform-specific (it also reads `-chdir`), factor the `--region`/`--account` extraction into a form both commands call rather than copy-pasting.
+**Reuse, don't duplicate, the flag helpers.** `resolveRegion`, the leading-flag stripper, `rejectPreSubcommandFlags`, and `emitValidationError` already exist for terraform. CDK needs the same `--region` semantics, so these are shared. The shared stripper still *consumes* a leading `--account` (so the tokens cannot leak into the forwarded cdk args), but CDK rejects any non-empty account value rather than acting on it; `resolveAccount`/`accountIDRe`/`DeactivateAccessKey` remain in use by terraform only. The terraform-specific `-chdir` handling is **not** carried over — CDK has no equivalent global directory flag.
 
 **Alternative considered:** generalize `lstk aws`/`terraform`/`cdk` into one shared proxy abstraction. Rejected for now (YAGNI) — the three differ in what they do with the endpoint (CLI flag vs. override file vs. env vars). We share the discrete helpers instead of the whole command body.
 
@@ -50,8 +51,8 @@ Code lives under the existing `internal/iac/` umbrella (which already hosts `int
 import cdkcli "github.com/localstack/lstk/internal/iac/cdk/cli"
 ```
 All business logic lives here. Suggested decomposition:
-- `exec.go` — `Run(ctx, endpointURL, region, account string, sink output.Sink, logger log.Logger, args []string) error`: locate the binary via `exec.LookPath(cdkCmd())`, verify the version (see below), build the environment, then run `cdk` via `exec.CommandContext` with `os.Stdin`/stdout/stderr wired through; non-zero exit wrapped as `output.NewSilentError` (same as `awscli.Exec`). Wrap in an OpenTelemetry span like `awscli.Exec`.
-- `env.go` — `cdkCmd()` reads `LSTK_CDK_CMD` (default `cdk`); `endpointURLOverride()` reads `AWS_ENDPOINT_URL`; `s3EndpointOverride()` reads `AWS_ENDPOINT_URL_S3`. `BuildEnv(base []string, endpointURL, s3Endpoint, region, account string) []string` produces the subprocess environment (set the LocalStack values, strip ambient AWS config — see "AWS environment construction").
+- `exec.go` — `Run(ctx, endpointURL, region string, sink output.Sink, logger log.Logger, args []string) error`: locate the binary via `exec.LookPath(cdkCmd())`, verify the version (see below), build the environment, then run `cdk` via `exec.CommandContext` with `os.Stdin`/stdout/stderr wired through; non-zero exit wrapped as `output.NewSilentError` (same as `awscli.Exec`). Wrap in an OpenTelemetry span like `awscli.Exec`.
+- `env.go` — `cdkCmd()` reads `LSTK_CDK_CMD` (default `cdk`); `endpointURLOverride()` reads `AWS_ENDPOINT_URL`; `s3EndpointOverride()` reads `AWS_ENDPOINT_URL_S3`. `BuildEnv(base []string, endpointURL, s3Endpoint, region string) []string` produces the subprocess environment (hardcoding `AWS_ACCESS_KEY_ID=test`) (set the LocalStack values, strip ambient AWS config — see "AWS environment construction").
 - `version.go` — `CheckVersion(ctx, cdkBin string) error`: run `<cdkBin> --version`, parse the leading `MAJOR.MINOR.PATCH`, and return an actionable error if it is below `2.177.0` or cannot be parsed.
 - `defaults.go` — the minimum supported version constant and the fixed offline-subcommand set, with an `IsOffline(args []string) bool` helper that finds the first non-flag token (the subcommand) and looks it up. This mirrors terraform's `IsUnproxied`/`subcommand`.
 
@@ -61,7 +62,7 @@ All business logic lives here. Suggested decomposition:
 Set (overriding any existing value):
 - `AWS_ENDPOINT_URL` = resolved `http://host:port` (or `AWS_ENDPOINT_URL` override).
 - `AWS_ENDPOINT_URL_S3` = the S3 endpoint (or `AWS_ENDPOINT_URL_S3` override). Derived from the base endpoint with the same `s3.`-prefix logic terraform uses for virtual-host-capable hosts (see "S3 endpoint").
-- `AWS_ACCESS_KEY_ID` = resolved account (default `test`), `AWS_SECRET_ACCESS_KEY` = `test`.
+- `AWS_ACCESS_KEY_ID` = `test` (fixed), `AWS_SECRET_ACCESS_KEY` = `test`. A non-12-digit access key id makes LocalStack resolve the default account `000000000000`. Both are set unconditionally, overriding any ambient values (including a 12-digit `AWS_ACCESS_KEY_ID` that would otherwise select a different account).
 - `AWS_REGION` = `AWS_DEFAULT_REGION` = resolved region.
 
 Remove (so they cannot redirect CDK at real AWS or override our region):
@@ -98,13 +99,18 @@ The endpoint environment is built and applied for **every** invocation, includin
 
 **Alternative considered — gate every subcommand on a running emulator (simpler).** Rejected: requiring a running LocalStack just to `cdk synth`/`cdk init`/`cdk ls` would be a poor experience for commands that demonstrably never touch AWS, and terraform already set the precedent of a fixed offline set.
 
+### Why CDK has no `--account`
+Unlike terraform — where lstk writes the account into a provider override file the tool reads directly — lstk has no in-band way to tell CDK which account to use. The only lever is `AWS_ACCESS_KEY_ID`, and CDK does not treat it as the account: CDK resolves the account by calling STS `GetCallerIdentity` at runtime, and LocalStack then derives the account *back* from the access key id (a 12-digit key → that account; otherwise `000000000000`). That indirect chain (lstk → env → CDK → STS → LocalStack → account, with a CDK-side account cache keyed by access key in the middle) proved unreliable: the account written into `cdk.out` did not consistently track `--account`, defaulting to `000000000000` regardless. Rather than ship a flag that silently doesn't work, CDK pins the default account. `lstk cdk` therefore rejects `--account` with a clear error instead of accepting a value it cannot honor. Multi-account CDK support can be revisited if a reliable, deterministic mechanism (e.g. injecting an explicit `aws://account/region` environment argument) is designed.
+
+**Alternative considered — keep `--account` and inject `aws://<account>/<region>` for the subcommands that accept it (`bootstrap`, `deploy`).** Rejected for now: it requires per-subcommand argument rewriting and only covers commands that take an explicit environment, so it would work inconsistently across the CDK surface. Out of scope for this change; the flag is removed rather than left half-working.
+
 ### No spinner; managed subprocess
 Per the same reasoning as terraform, no spinner wraps `cdk` and stdout/stderr are **not** routed through `StopOnWriteWriter` (unlike `aws.go`). `cdk deploy`/`bootstrap` stream progress that must remain intact, and CDK prompts interactively (e.g. `--require-approval`), so `os.Stdin` is wired straight through. We run `cdk` as a managed child (`exec.CommandContext`) rather than `syscall.Exec` for consistency with the other proxies and so the OpenTelemetry span closes cleanly; there is no cleanup step to protect (no files are generated), so process replacement would also be safe, but the managed child keeps the code uniform with `awscli`/`tfcli`.
 
 ## Risks / Trade-offs
 
 - **Old CDK silently targeting real AWS** → Mitigated by the mandatory `cdk --version` >= 2.177.0 check that aborts before any command runs.
-- **Real credentials in the environment** → Mitigated by stripping `AWS_PROFILE`/`AWS_DEFAULT_PROFILE`/`AWS_SESSION_TOKEN` and overriding the key/secret with mock values; the `DeactivateAccessKey` safeguard neutralizes a real `AWS_ACCESS_KEY_ID` used as the account source.
+- **Real credentials in the environment** → Mitigated by stripping `AWS_PROFILE`/`AWS_DEFAULT_PROFILE`/`AWS_SESSION_TOKEN` and overriding the key/secret with the fixed mock value `test`. Because CDK never reads `AWS_ACCESS_KEY_ID` from the environment as an account source, no real key can leak through that path.
 - **S3 path style on the `127.0.0.1` fallback** → CDK S3 asset operations fail when DNS-rebind protection forces the loopback host (the bare CLI has no env/config lever for path style). Non-S3 services are unaffected. Mitigated by a warning pointing at the DNS fix; a self-sufficient fix is out of scope for v1 (see the S3 endpoint decision).
 - **Version-parsing fragility** → `cdk --version` output could change format. Mitigated by parsing only the leading `MAJOR.MINOR.PATCH` and failing safe (treat unparseable output as too old, with a clear error).
 - **Subcommand classification drift** → New CDK subcommands won't be in the offline set and will default to requiring the emulator (the safe direction — at worst an unnecessary "start LocalStack" prompt, never an accidental real-AWS call). The set is easy to extend.

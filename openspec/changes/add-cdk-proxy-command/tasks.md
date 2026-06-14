@@ -1,15 +1,15 @@
 ## 1. Domain package scaffolding
 
-- [x] 1.1 Create `internal/iac/cdk/cli/` package (Go `package cli`, imported as `cdkcli`) with a `Run(ctx context.Context, endpointURL, region, account string, sink output.Sink, logger log.Logger, args []string) error` entry-point signature
+- [x] 1.1 Create `internal/iac/cdk/cli/` package (Go `package cli`, imported as `cdkcli`) with a `Run(ctx context.Context, endpointURL, region string, sink output.Sink, logger log.Logger, args []string) error` entry-point signature (no `account` parameter — CDK always uses the default account)
 - [x] 1.2 Add `defaults.go`: the minimum-supported-version constant (`2.177.0`) and the fixed offline-subcommand set (`init`, `synth`/`synthesize`, `ls`/`list`, `version`, `doctor`, `acknowledge`/`ack`, `context`, `notices`) with an `IsOffline(args []string) bool` helper that resolves the first non-flag token (mirror terraform's `IsUnproxied`/`subcommand`). The set is fixed, not env-configurable
 - [x] 1.3 Add `env.go` with package-scoped env helpers: `cdkCmd()` (`LSTK_CDK_CMD`, default `cdk`), `endpointURLOverride()` (`AWS_ENDPOINT_URL`), and `s3EndpointOverride()` (`AWS_ENDPOINT_URL_S3`). Do NOT read `LOCALSTACK_HOSTNAME`/`EDGE_PORT`/`AWS_DEFAULT_REGION`
 
 ## 2. AWS environment construction
 
-- [x] 2.1 Implement `BuildEnv(base []string, endpointURL, s3Endpoint, region, account string) []string`: start from `base` (`os.Environ()`), then SET `AWS_ENDPOINT_URL`, `AWS_ENDPOINT_URL_S3`, `AWS_ACCESS_KEY_ID` (account), `AWS_SECRET_ACCESS_KEY=test`, `AWS_REGION`, and `AWS_DEFAULT_REGION` (overriding any existing values), and optionally `CDK_DISABLE_LEGACY_EXPORT_WARNING=1`
+- [x] 2.1 Implement `BuildEnv(base []string, endpointURL, s3Endpoint, region string) []string`: start from `base` (`os.Environ()`), then SET `AWS_ENDPOINT_URL`, `AWS_ENDPOINT_URL_S3`, `AWS_ACCESS_KEY_ID=test` (fixed — never an account), `AWS_SECRET_ACCESS_KEY=test`, `AWS_REGION`, and `AWS_DEFAULT_REGION` (overriding any existing values), and optionally `CDK_DISABLE_LEGACY_EXPORT_WARNING=1`
 - [x] 2.2 In `BuildEnv`, REMOVE ambient AWS config that could redirect CDK at real AWS: `AWS_PROFILE`, `AWS_DEFAULT_PROFILE`, `AWS_SESSION_TOKEN` (and ensure the mock key/secret override any real `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`)
 - [x] 2.3 Derive the S3 endpoint: reuse/extract terraform's `s3Addressing`/`virtualHostCapable` logic so a virtual-host-capable `*.localstack.cloud` host gets an `s3.`-prefixed endpoint and `127.0.0.1`/`localhost` gets the bare endpoint; let `AWS_ENDPOINT_URL_S3` override the derivation. Factor the shared helper into a location both `tfcli` and `cdkcli` can use rather than duplicating it
-- [x] 2.4 Unit-test `BuildEnv`: LocalStack values are set; `AWS_PROFILE`/`AWS_DEFAULT_PROFILE`/`AWS_SESSION_TOKEN` are stripped; a real `AWS_ACCESS_KEY_ID` in `base` is overridden; the `s3.` prefix appears for virtual-host hosts and not for `127.0.0.1`/`localhost`; `AWS_ENDPOINT_URL`/`AWS_ENDPOINT_URL_S3` overrides win
+- [x] 2.4 Unit-test `BuildEnv`: LocalStack values are set; `AWS_PROFILE`/`AWS_DEFAULT_PROFILE`/`AWS_SESSION_TOKEN` are stripped; `AWS_ACCESS_KEY_ID` is always `test` even when `base` contains a real key or a 12-digit account id (proving no account can be selected via env); the `s3.` prefix appears for virtual-host hosts and not for `127.0.0.1`/`localhost`; `AWS_ENDPOINT_URL`/`AWS_ENDPOINT_URL_S3` overrides win
 
 ## 3. Version checking
 
@@ -24,16 +24,16 @@
 - [x] 4.3 Build the subprocess environment via `BuildEnv` and run `cdk` via `exec.CommandContext` with `os.Stdin` and the passed stdout/stderr writers; wrap non-zero exit as `output.NewSilentError`; do NOT wrap output in a spinner writer
 - [x] 4.4 Add an OpenTelemetry span around execution (mirror `internal/awscli/exec.go`), recording the args and exit code
 
-## 5. Region/account flag handling (shared with terraform)
+## 5. Region flag handling (shared with terraform)
 
-- [x] 5.1 Extract the `--region`/`--account` leading-flag parsing, validation (`accountIDRe`, 12-digit), precedence (`resolveRegion`/`resolveAccount`), `DeactivateAccessKey`, `rejectPreSubcommandFlags`, and `emitValidationError` from `cmd/terraform.go` into a form both `terraform` and `cdk` call (do NOT duplicate). The CDK stripper extracts only `--region`/`--account` (no `-chdir`)
-- [x] 5.2 Resolve effective region (`--region` → `AWS_REGION` → `us-east-1`) and account (`--account` → `AWS_ACCESS_KEY_ID` → `test`, run through `DeactivateAccessKey`) at the cmd boundary and pass into `cdkcli.Run`
-- [x] 5.3 Unit-test the shared parser still behaves for terraform (regression) and for cdk: both flag forms, missing value, invalid account, env fallback, leading-only behavior (flags after the subcommand forwarded verbatim)
+- [x] 5.1 Extract the `--region`/`--account` leading-flag parsing, `rejectPreSubcommandFlags`, and `emitValidationError` from `cmd/terraform.go` into a form both `terraform` and `cdk` call (do NOT duplicate). The shared stripper still consumes a leading `--account` so it cannot leak into the forwarded cdk args; `resolveAccount`/`accountIDRe`/`DeactivateAccessKey` stay terraform-only. The CDK stripper handles no `-chdir`
+- [x] 5.2 Resolve effective region (`--region` → `AWS_REGION` → `us-east-1`) at the cmd boundary and pass into `cdkcli.Run`. Do NOT resolve an account; reject a non-empty `--account` (see 6.2)
+- [x] 5.3 Unit-test the shared parser still behaves for terraform (regression — account precedence/validation intact) and for cdk: `--region` both flag forms, missing value, env fallback, leading-only behavior (flags after the subcommand forwarded verbatim)
 
 ## 6. Command wiring
 
-- [x] 6.1 Add `cmd/cdk.go` with `newCDKCmd(cfg *env.Env, logger log.Logger)`: `Use: "cdk [args...]"`, `DisableFlagParsing: true`, `PreRunE` = `stripGlobalFlags` + `initConfig(nil)`, and `Long` help documenting `--region`/`--account`, the supported env vars, the CDK >= 2.177.0 requirement, and that LocalStack must be running for AWS-contacting commands
-- [x] 6.2 In `RunE`: reject pre-subcommand `--region`/`--account`, strip+resolve the flags, then for offline subcommands (`IsOffline`) call `cdkcli.Run` with an empty endpoint and no emulator gating
+- [x] 6.1 Add `cmd/cdk.go` with `newCDKCmd(cfg *env.Env, logger log.Logger)`: `Use: "cdk [args...]"`, `DisableFlagParsing: true`, `PreRunE` = `stripGlobalFlags` + `initConfig(nil)`, and `Long` help documenting `--region` (and that CDK always uses the default account `000000000000`, with no `--account` flag), the supported env vars, the CDK >= 2.177.0 requirement, and that LocalStack must be running for AWS-contacting commands
+- [x] 6.2 In `RunE`: reject pre-subcommand `--region`/`--account`, strip the leading flags, reject a non-empty `--account` with an actionable "not supported; CDK always uses 000000000000" error, resolve the region, then for offline subcommands (`IsOffline`) call `cdkcli.Run` with an empty endpoint and no emulator gating
 - [x] 6.3 For AWS-contacting subcommands, reuse the terraform preamble (`runtime.NewDockerRuntime`, `resolveAWSContainer`, `rt.IsHealthy`/`EmitUnhealthyError`, `container.ResolveRunningContainerName`, the `runningNonAWSEmulator` AWS-specific error, `endpoint.ResolveHost`), then call `cdkcli.Run` with `http://host:port`
 - [x] 6.4 When `endpoint.ResolveHost` returns the `127.0.0.1` DNS-rebind fallback, emit a `SeverityWarning` note that CDK S3 asset operations may not work on the loopback host and suggest ensuring `localhost.localstack.cloud` resolves (or setting `AWS_ENDPOINT_URL`/`AWS_ENDPOINT_URL_S3`)
 - [x] 6.5 Register the command in the root command alongside `newAWSCmd`/`newTerraformCmd`
@@ -43,9 +43,9 @@
 - [x] 7.1 Integration test: `lstk cdk <args>` forwards args and propagates exit code, using a stub `cdk` binary on `PATH` (that also answers `--version` with a >= 2.177.0 string) and an isolated `$HOME` via `testEnvWithHome`
 - [x] 7.2 Integration test: the stub `cdk` records its environment; assert `AWS_ENDPOINT_URL`/`AWS_ENDPOINT_URL_S3`/`AWS_REGION`/mock creds are set and `AWS_PROFILE`/`AWS_DEFAULT_PROFILE`/`AWS_SESSION_TOKEN` are stripped
 - [x] 7.3 Integration test: an AWS-contacting command (e.g. `deploy`) fails with the "not running" error and does not invoke `cdk` when no emulator is running; and fails with the AWS-specific message when a non-AWS emulator is running
-- [x] 7.4 Integration test: offline commands (`init`/`synth`/`ls`/`version`/`doctor`) run without requiring a running emulator (including with leading `--region`/`--account` present, which are stripped)
+- [x] 7.4 Integration test: offline commands (`init`/`synth`/`ls`/`version`/`doctor`) run without requiring a running emulator (including with a leading `--region` present, which is stripped)
 - [x] 7.5 Integration test: a stub `cdk` reporting a version below 2.177.0 causes a clear failure before the command runs; a missing `cdk` binary yields the install error
-- [x] 7.6 Integration test: leading `--region`/`--account` are stripped and reflected in the subprocess env; invalid `--account` fails before `cdk` is invoked; `--region`/`--account` after the subcommand are forwarded to `cdk` unchanged; `lstk --account … cdk` (before the subcommand) is rejected
+- [x] 7.6 Integration test: leading `--region` is stripped and reflected in the subprocess env (with `AWS_ACCESS_KEY_ID=test`); a leading `--account` (any value, including a valid 12-digit one) is rejected before `cdk` is invoked with the "not supported" message; a 12-digit `AWS_ACCESS_KEY_ID` in the environment still yields `AWS_ACCESS_KEY_ID=test` (account stays default); `--region` after the subcommand is forwarded to `cdk` unchanged; `lstk --account … cdk` (before the subcommand) is rejected
 - [x] 7.7 Integration test: `LSTK_CDK_CMD` causes lstk to invoke the alternative binary stub instead of `cdk`
 
 ## 8. End-to-end (real cdk + LocalStack)
@@ -60,5 +60,5 @@
 
 ## 9. Documentation
 
-- [x] 9.1 Command `Long` help: document `--region`/`--account`, the supported env vars (`LSTK_CDK_CMD`, `AWS_ENDPOINT_URL`, `AWS_ENDPOINT_URL_S3`, `AWS_REGION`, `AWS_ACCESS_KEY_ID`), the CDK >= 2.177.0 requirement, and that LocalStack must be running for AWS-contacting commands. Write `Short`/`Long` as unbroken paragraphs per the CLI help-text convention
+- [x] 9.1 Command `Long` help: document `--region` (and that CDK always uses the default account `000000000000` — no `--account`), the supported env vars (`LSTK_CDK_CMD`, `AWS_ENDPOINT_URL`, `AWS_ENDPOINT_URL_S3`, `AWS_REGION`), the CDK >= 2.177.0 requirement, and that LocalStack must be running for AWS-contacting commands. Write `Short`/`Long` as unbroken paragraphs per the CLI help-text convention
 - [x] 9.2 Add a "CDK Integration" section to `README.md` (mirroring the Terraform section) and note the new command + IaC umbrella in `CLAUDE.md`

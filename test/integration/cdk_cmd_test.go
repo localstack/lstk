@@ -85,21 +85,24 @@ func TestCDKPropagatesExitCode(t *testing.T) {
 func TestCDKInjectsCleanAWSEnv(t *testing.T) {
 	t.Parallel()
 	fakeDir := writeFakeCDK(t, "2.177.0")
+	// A 12-digit AWS_ACCESS_KEY_ID would make LocalStack resolve a custom
+	// account; lstk must override it with "test" so CDK always uses the default
+	// account 000000000000.
 	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).With(env.Home, t.TempDir()).
 		With(env.Key("AWS_PROFILE"), "my-real-profile").
 		With(env.Key("AWS_DEFAULT_PROFILE"), "other").
 		With(env.Key("AWS_SESSION_TOKEN"), "realtoken").
-		With(env.Key("AWS_ACCESS_KEY_ID"), "AKIAREALKEY")
+		With(env.Key("AWS_ACCESS_KEY_ID"), "999999999999")
 
 	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), e,
-		"cdk", "--region", "eu-west-1", "--account", "123456789012", "synth")
+		"cdk", "--region", "eu-west-1", "synth")
 	require.NoError(t, err, "stderr: %s", stderr)
 
 	assert.Contains(t, stdout, "ENV_AWS_ENDPOINT_URL=http")
 	assert.Contains(t, stdout, ":4566")
 	assert.Contains(t, stdout, "ENV_AWS_ENDPOINT_URL_S3=http")
 	assert.Contains(t, stdout, "ENV_AWS_REGION=eu-west-1")
-	assert.Contains(t, stdout, "ENV_AWS_ACCESS_KEY_ID=123456789012")
+	assert.Contains(t, stdout, "ENV_AWS_ACCESS_KEY_ID=test")
 	assert.Contains(t, stdout, "ENV_AWS_SECRET_ACCESS_KEY=test")
 	// Ambient AWS config is stripped.
 	assert.Contains(t, stdout, "ENV_AWS_PROFILE=<unset>")
@@ -107,8 +110,8 @@ func TestCDKInjectsCleanAWSEnv(t *testing.T) {
 	assert.Contains(t, stdout, "ENV_AWS_SESSION_TOKEN=<unset>")
 }
 
-// 7.4 — offline subcommands run without a running emulator, even with leading
-// --region/--account present (which are stripped from the forwarded args).
+// 7.4 — offline subcommands run without a running emulator, even with a leading
+// --region present (which is stripped from the forwarded args).
 func TestCDKOfflineCommandsNoEmulator(t *testing.T) {
 	t.Parallel()
 	for _, sub := range []string{"init", "synth", "ls", "version", "doctor"} {
@@ -119,12 +122,11 @@ func TestCDKOfflineCommandsNoEmulator(t *testing.T) {
 			e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).With(env.Home, t.TempDir())
 
 			stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), e,
-				"cdk", "--region", "us-west-2", "--account", "111111111111", sub)
+				"cdk", "--region", "us-west-2", sub)
 			require.NoError(t, err, "stderr: %s", stderr)
 
 			assert.Contains(t, stdout, "ARGS:"+sub)
 			assert.NotContains(t, stdout, "--region")
-			assert.NotContains(t, stdout, "--account")
 		})
 	}
 }
@@ -152,17 +154,24 @@ func TestCDKMissingBinary(t *testing.T) {
 	assert.Contains(t, stderr+stdout, "not found in PATH")
 }
 
-// 7.6 — invalid --account fails at the command boundary before cdk is invoked.
-func TestCDKInvalidAccountRejected(t *testing.T) {
+// 7.6 — --account is not supported for cdk and is rejected at the command
+// boundary (with any value, including a valid 12-digit one) before cdk runs.
+func TestCDKAccountRejected(t *testing.T) {
 	t.Parallel()
-	fakeDir := writeFakeCDK(t, "2.177.0")
-	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).With(env.Home, t.TempDir())
+	for _, value := range []string{"123456789012", "12345"} {
+		value := value
+		t.Run(value, func(t *testing.T) {
+			t.Parallel()
+			fakeDir := writeFakeCDK(t, "2.177.0")
+			e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).With(env.Home, t.TempDir())
 
-	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), e,
-		"cdk", "--account", "12345", "synth")
-	require.Error(t, err)
-	assert.Contains(t, stderr+stdout, "12-digit")
-	assert.NotContains(t, stdout, "ARGS:synth")
+			stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), e,
+				"cdk", "--account", value, "synth")
+			require.Error(t, err)
+			assert.Contains(t, stderr+stdout, "not supported")
+			assert.NotContains(t, stdout, "ARGS:synth")
+		})
+	}
 }
 
 // 7.6 — flags after the subcommand are forwarded to cdk unchanged.
