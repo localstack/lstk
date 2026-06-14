@@ -205,17 +205,14 @@ lstk --non-interactive
 
 **lstk-specific flags** (appear after the `cdk` subcommand):
 - `--region <region>` — Deployment region (default: `us-east-1`)
-- `--account <id>` — Target AWS account ID, 12 digits (default: `test`)
+
+CDK always targets the default LocalStack account 000000000000; there is no --account flag.
 
 **Environment variables:**
 - `LSTK_CDK_CMD` — CDK binary to invoke (default: `cdk`)
 - `AWS_ENDPOINT_URL` — Override the auto-resolved LocalStack endpoint
 - `AWS_ENDPOINT_URL_S3` — Override the auto-derived S3 endpoint
 - `AWS_REGION` — Fallback for `--region` flag
-- `AWS_ACCESS_KEY_ID` — Fallback for `--account` flag
-
-> [!NOTE]
-> If `localhost.localstack.cloud` cannot be resolved (e.g. DNS-rebind protection) lstk falls back to `127.0.0.1`. CDK S3 asset operations (`bootstrap`, asset deploys) need virtual-host addressing and may fail on the loopback fallback — ensure `localhost.localstack.cloud` resolves, or set `AWS_ENDPOINT_URL`/`AWS_ENDPOINT_URL_S3` to a virtual-host-capable host.
 
 ## Usage
 

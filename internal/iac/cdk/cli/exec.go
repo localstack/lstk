@@ -37,7 +37,7 @@ func Run(ctx context.Context, endpointURL, region string, sink output.Sink, logg
 		span.SetStatus(codes.Error, err.Error())
 		sink.Emit(output.ErrorEvent{
 			Title:   fmt.Sprintf("%s not found in PATH", cdkCmd()),
-			Actions: []output.ErrorAction{{Label: "Install the AWS CDK CLI and ensure it is on your PATH:", Value: "npm install -g aws-cdk"}},
+			Actions: []output.ErrorAction{{Label: "Install CDK CLI:", Value: "npm install -g aws-cdk"}},
 		})
 		return output.NewSilentError(fmt.Errorf("%s not found in PATH", cdkCmd()))
 	}
@@ -47,7 +47,7 @@ func Run(ctx context.Context, endpointURL, region string, sink output.Sink, logg
 		span.SetStatus(codes.Error, err.Error())
 		sink.Emit(output.ErrorEvent{
 			Title:   err.Error(),
-			Actions: []output.ErrorAction{{Label: "Upgrade the AWS CDK CLI:", Value: "npm install -g aws-cdk@latest"}},
+			Actions: []output.ErrorAction{{Label: "Upgrade CDK CLI:", Value: "npm install -g aws-cdk@latest"}},
 		})
 		return output.NewSilentError(err)
 	}
