@@ -236,7 +236,14 @@ func runPostStartSetups(ctx context.Context, rt runtime.Runtime, sink output.Sin
 }
 
 func emitAlreadyRunning(ctx context.Context, sink output.Sink, c runtime.ContainerConfig, localStackHost, webAppURL string, persist bool) {
-	sink.Emit(output.MessageEvent{Severity: output.SeverityNote, Text: fmt.Sprintf("%s is already running", c.EmulatorType.DisplayName())})
+	name := c.EmulatorType.DisplayName()
+	if info, err := fetchLocalStackInfo(ctx, c.Port); err == nil && info.Version != "" {
+		// /_localstack/info may report a build suffix (e.g. "2026.5.3:04ddfd3a0");
+		// keep only the version number.
+		version, _, _ := strings.Cut(info.Version, ":")
+		name = fmt.Sprintf("%s %s", name, version)
+	}
+	sink.Emit(output.MessageEvent{Severity: output.SeverityNote, Text: fmt.Sprintf("%s is already running", name)})
 	resolvedHost, dnsOK := endpoint.ResolveHost(ctx, c.Port, localStackHost)
 	if !dnsOK {
 		sink.Emit(output.MessageEvent{Severity: output.SeverityNote, Text: endpoint.DNSRebindNote})

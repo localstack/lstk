@@ -34,6 +34,8 @@ Examples:
 		DisableFlagParsing: true,
 		PreRunE:            initConfig(nil),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			sink := output.NewPlainSink(os.Stdout)
+
 			rt, err := runtime.NewDockerRuntime(cfg.DockerHost)
 			if err != nil {
 				return err
@@ -52,8 +54,6 @@ Examples:
 				}
 			}
 
-			sink := output.NewPlainSink(os.Stdout)
-
 			configDir, err := config.ConfigDir()
 			if err != nil {
 				return fmt.Errorf("failed to resolve config directory: %w", err)
@@ -67,6 +67,14 @@ Examples:
 					},
 				})
 				return output.NewSilentError(fmt.Errorf("azure CLI integration not set up"))
+			}
+
+			if err := azurecli.CheckInstalled(); err != nil {
+				sink.Emit(output.ErrorEvent{
+					Title:   "az CLI not found in PATH",
+					Actions: []output.ErrorAction{{Label: "Install Azure CLI:", Value: azurecli.InstallURL}},
+				})
+				return output.NewSilentError(err)
 			}
 
 			if err := rt.IsHealthy(cmd.Context()); err != nil {

@@ -6,6 +6,8 @@ import (
 	"errors"
 	"io"
 	"net"
+	"net/http"
+	"net/http/httptest"
 	"strconv"
 	"testing"
 
@@ -104,6 +106,47 @@ func TestRunPostStartSetups_OmitsPersistenceWhenContainerEnvLacksFlag(t *testing
 	require.NoError(t, err)
 
 	assert.NotContains(t, out.String(), "• Persistence:")
+}
+
+func TestEmitAlreadyRunning_IncludesRunningVersion(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	srv := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/_localstack/info" {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"version":"2026.5.3:04ddfd3a0","edition":"pro"}`))
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	srv.Listener = ln
+	srv.Start()
+	defer srv.Close()
+
+	_, port, err := net.SplitHostPort(ln.Addr().String())
+	require.NoError(t, err)
+
+	var out bytes.Buffer
+	sink := output.NewPlainSink(&out)
+
+	emitAlreadyRunning(context.Background(), sink, runtime.ContainerConfig{EmulatorType: config.EmulatorAWS, Port: port}, "", "", false)
+
+	got := out.String()
+	assert.Contains(t, got, "2026.5.3 is already running")
+	assert.NotContains(t, got, "04ddfd3a0", "build suffix should be stripped from the version")
+}
+
+func TestEmitAlreadyRunning_FallsBackWhenVersionUnavailable(t *testing.T) {
+	var out bytes.Buffer
+	sink := output.NewPlainSink(&out)
+
+	// Nothing is listening on this port, so the version lookup fails and we
+	// fall back to the bare note.
+	emitAlreadyRunning(context.Background(), sink, runtime.ContainerConfig{EmulatorType: config.EmulatorAWS, Port: "0"}, "", "", false)
+
+	got := out.String()
+	assert.Contains(t, got, "is already running")
+	assert.Contains(t, got, config.EmulatorAWS.DisplayName())
 }
 
 func TestEmitPostStartPointers_Snowflake_ReplacesEndpointWithSnowflakeEndpoint(t *testing.T) {

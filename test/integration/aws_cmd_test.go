@@ -159,17 +159,14 @@ func TestAWSCommandUsesProfileWhenAvailable(t *testing.T) {
 }
 
 func TestAWSCommandFailsWhenAWSCLINotInstalled(t *testing.T) {
-	requireDocker(t)
-	cleanup()
-	t.Cleanup(cleanup)
-	ctx := testContext(t)
-	startTestContainer(t, ctx)
+	t.Parallel()
+	e := env.With(env.DisableEvents, "1").With("PATH", t.TempDir()).With(env.Home, t.TempDir())
 
-	e := env.With(env.DisableEvents, "1").With("PATH", t.TempDir())
-
-	_, stderr, err := runLstk(t, ctx, t.TempDir(), e, "aws", "s3", "ls")
+	stdout, _, err := runLstk(t, testContext(t), t.TempDir(), e, "aws", "s3", "ls")
 	require.Error(t, err)
-	assert.Contains(t, stderr, "aws CLI not found")
+	assert.Contains(t, stdout, "aws CLI not found in PATH")
+	assert.Contains(t, stdout, "Install AWS CLI:")
+	assert.Contains(t, stdout, "https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html")
 }
 
 func TestAWSCommandUsesDefaultPortWithoutConfig(t *testing.T) {

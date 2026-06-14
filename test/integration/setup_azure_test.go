@@ -96,6 +96,7 @@ func TestSetupAzureReportsMissingAzCLIOnce(t *testing.T) {
 
 func TestAzCommandErrorsWhenEmulatorNotRunning(t *testing.T) {
 	requireDocker(t)
+	requireAzCLI(t)
 	cleanup()
 	cleanupAzure()
 	t.Cleanup(cleanup)

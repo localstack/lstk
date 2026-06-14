@@ -3,7 +3,6 @@ package awscli
 import (
 	"context"
 	"errors"
-	"fmt"
 	"io"
 	"os"
 	"os/exec"
@@ -17,6 +16,17 @@ import (
 	"github.com/localstack/lstk/internal/output"
 )
 
+const InstallURL = "https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html"
+
+var ErrNotInstalled = errors.New("aws CLI not found in PATH")
+
+func CheckInstalled() error {
+	if _, err := exec.LookPath("aws"); err != nil {
+		return ErrNotInstalled
+	}
+	return nil
+}
+
 func Exec(ctx context.Context, endpointURL string, useProfile bool, stdout, stderr io.Writer, args []string) error {
 	ctx, span := otel.Tracer("github.com/localstack/lstk/internal/awscli").Start(ctx, "aws cli")
 	defer span.End()
@@ -25,7 +35,7 @@ func Exec(ctx context.Context, endpointURL string, useProfile bool, stdout, stde
 	if err != nil {
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())
-		return fmt.Errorf("aws CLI not found in PATH — install it from https://aws.amazon.com/cli/")
+		return ErrNotInstalled
 	}
 
 	capacity := len(args) + 2
