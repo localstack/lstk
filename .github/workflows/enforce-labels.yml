@@ -11,4 +11,4 @@ jobs:
         with:
           mode: exactly
           count: 1
-          labels: "docs: needed, docs: skip"
+          labels: "docs: needed, docs: skip, docs: test"
