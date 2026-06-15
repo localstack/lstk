@@ -1,0 +1,9 @@
+{
+  "name": "lstk-cdk-lambda-asset-e2e",
+  "version": "1.0.0",
+  "private": true,
+  "dependencies": {
+    "aws-cdk-lib": "2.177.0",
+    "constructs": "^10.0.0"
+  }
+}

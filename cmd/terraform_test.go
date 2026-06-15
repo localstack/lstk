@@ -92,7 +92,7 @@ func TestStripLeadingTerraformFlags(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			remain, region, account, chdir, err := stripLeadingTerraformFlags(tt.args)
+			remain, region, account, chdir, err := stripLeadingIaCFlags(tt.args, true)
 			if tt.wantErr {
 				if err == nil {
 					t.Fatalf("expected error, got nil")

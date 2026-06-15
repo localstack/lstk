@@ -1,0 +1,7 @@
+# Artifacts produced when the e2e tests run cdk in a temp copy of this sample.
+# The sample itself is just app.js/lambda/index.js/cdk.json/package.json; these
+# are never tracked.
+node_modules/
+package-lock.json
+cdk.out/
+cdk.context.json
