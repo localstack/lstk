@@ -182,6 +182,7 @@ func NewRootCmd(cfg *env.Env, tel *telemetry.Client, logger log.Logger) *cobra.C
 		newStatusCmd(cfg),
 		newLogsCmd(cfg),
 		newSetupCmd(cfg),
+		newMCPCmd(cfg),
 		newConfigCmd(),
 		newVolumeCmd(cfg),
 		newUpdateCmd(cfg),
