@@ -24,6 +24,7 @@
 - [x] 3.3 Unit test `IsOffline`/`subcommand` (`defaults_test.go`): offline tokens (`docs`, `init`, `build`, `validate`, `local`, `pipeline`) vs AWS-contacting (`deploy`, `sync`, `package`, `delete`, `logs`, `traces`, `list`, `remote`, `publish`); flag and value-flag skipping; two-level commands resolve to their top-level token (e.g. `local generate-event` → `local` offline, `list resources` → `list` AWS-contacting).
 - [x] 3.4 Integration test with a fake `sam` binary (`test/integration/sam_cmd_test.go`, mirror `cdk_cmd_test.go`): arg forwarding, env injection (incl. `AWS_DEFAULT_REGION` and a custom `--account` reaching `AWS_ACCESS_KEY_ID`), version gate, missing-binary error, offline command runs without a running emulator. Use `testEnvWithHome(t.TempDir(), "")`; mark `t.Parallel()` where no Docker state is shared.
 - [x] 3.5 (Optional) e2e test against a real `sam` + LocalStack (`test/integration/sam_e2e_test.go`) with a minimal SAM sample under `test/integration/test-samples/iac/sam/`: `validate`/`build` offline, a `deploy` round-trip, and a `deploy` with a custom `--account` asserting resources land under that account.
+- [x] 3.6 Explicitly install the AWS SAM CLI on the Linux integration shards in `.github/workflows/ci.yml` (via `aws-actions/setup-sam@v2` with `use-installer: true`), mirroring the Terraform/CDK install steps. The `ubuntu-latest` image already ships `sam` (1.161.1), but installing it explicitly keeps the SAM e2e tests from silently losing coverage if a future runner image drops it.
 
 ## 4. Documentation
 
