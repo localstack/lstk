@@ -6,8 +6,6 @@ import (
 	"time"
 )
 
-func ptrTime(t time.Time) *time.Time { return &t }
-
 func TestFormatEventLine(t *testing.T) {
 	t.Parallel()
 
@@ -239,32 +237,29 @@ func TestFormatEventLine(t *testing.T) {
 			wantOK: true,
 		},
 
-		// snapshot list events
+		// deferred events — plain sinks render the inner event immediately
 		{
-			name: "snapshot list with pods",
-			event: SnapshotListEvent{
-				Pods: []PodSnapshotEntry{
-					{Name: "baseline-q2", Version: 3, LastChanged: ptrTime(time.Date(2026, 4, 15, 14, 32, 0, 0, time.UTC))},
-					{Name: "infra-2026-04", Version: 1, LastChanged: nil},
-				},
-			},
-			want:   "~ 2 snapshots\n\n  NAME           VERSION  LAST CHANGED\n  baseline-q2    3        2026-04-15 14:32 UTC\n  infra-2026-04  1        -",
-			wantOK: true,
-		},
-		{
-			name:   "snapshot list empty",
-			event:  SnapshotListEvent{Pods: []PodSnapshotEntry{}},
+			name:   "deferred note message",
+			event:  DeferredEvent{Inner: MessageEvent{Severity: SeverityNote, Text: "No snapshots found"}},
 			want:   "> Note: No snapshots found",
 			wantOK: true,
 		},
 		{
-			name: "snapshot list singular count",
-			event: SnapshotListEvent{
-				Pods: []PodSnapshotEntry{
-					{Name: "my-pod", Version: 2, LastChanged: ptrTime(time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC))},
+			name:   "deferred secondary message",
+			event:  DeferredEvent{Inner: MessageEvent{Severity: SeveritySecondary, Text: "~ 2 snapshots"}},
+			want:   "~ 2 snapshots",
+			wantOK: true,
+		},
+		{
+			name: "deferred table",
+			event: DeferredEvent{Inner: TableEvent{
+				Headers: []string{"Name", "Version", "Last Changed"},
+				Rows: [][]string{
+					{"baseline-q2", "3", "2026-04-15 14:32 UTC"},
+					{"infra-2026-04", "1", "-"},
 				},
-			},
-			want:   "~ 1 snapshot\n\n  NAME    VERSION  LAST CHANGED\n  my-pod  2        2026-01-01 00:00 UTC",
+			}},
+			want:   "  NAME           VERSION  LAST CHANGED\n  baseline-q2    3        2026-04-15 14:32 UTC\n  infra-2026-04  1        -",
 			wantOK: true,
 		},
 

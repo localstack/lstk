@@ -304,9 +304,12 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			a.addSuccessLines(line)
 		}
 		return a, nil
-	case output.SnapshotListEvent:
-		if line, ok := output.FormatEventLine(msg); ok {
-			a.deferredOutput = line
+	case output.DeferredEvent:
+		if styled, ok := styleDeferredEvent(msg.Inner); ok {
+			if a.deferredOutput != "" {
+				a.deferredOutput += "\n"
+			}
+			a.deferredOutput += styled
 		}
 		return a, nil
 	default:
@@ -534,4 +537,34 @@ func (a App) Err() error {
 
 func (a App) DeferredOutput() string {
 	return a.deferredOutput
+}
+
+func styleDeferredEvent(inner output.Event) (string, bool) {
+	if msg, ok := inner.(output.MessageEvent); ok && msg.Severity == output.SeverityNote {
+		return components.RenderMessage(msg), true
+	}
+
+	line, ok := output.FormatEventLine(inner)
+	if !ok {
+		return "", false
+	}
+	parts := strings.Split(line, "\n")
+	for i, p := range parts {
+		if p == "" {
+			continue
+		}
+		switch inner.(type) {
+		case output.TableEvent:
+			if i == 0 {
+				parts[i] = styles.SecondaryMessage.Render(p)
+			}
+		case output.MessageEvent:
+			parts[i] = styles.Highlight.Render(p)
+		}
+	}
+	styled := strings.Join(parts, "\n")
+	if _, isMsg := inner.(output.MessageEvent); isMsg {
+		styled = "\n" + styled
+	}
+	return styled, true
 }

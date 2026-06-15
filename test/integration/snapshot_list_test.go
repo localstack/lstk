@@ -82,6 +82,8 @@ func TestSnapshotListSuccessWithoutDocker(t *testing.T) {
 	called, creator, _ := cap.get()
 	require.True(t, called, "the platform list endpoint should have been called")
 	assert.Equal(t, "me", creator, "default list should send ?creator=me")
+	assert.Contains(t, stdout, "~ 2 snapshots")
+	assert.Contains(t, stdout, "~ 2 snapshots\n\n  NAME")
 	assert.Contains(t, stdout, "NAME")
 	assert.Contains(t, stdout, "VERSION")
 	assert.Contains(t, stdout, "LAST CHANGED")
@@ -106,6 +108,7 @@ func TestSnapshotListAllFlag(t *testing.T) {
 	called, creator, _ := cap.get()
 	require.True(t, called, "the platform list endpoint should have been called")
 	assert.Equal(t, "", creator, "--all should omit the ?creator param")
+	assert.Contains(t, stdout, "~ 1 snapshot")
 	assert.Contains(t, stdout, "org-pod")
 }
 
