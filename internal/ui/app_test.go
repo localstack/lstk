@@ -11,6 +11,8 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/exp/teatest"
 	"github.com/localstack/lstk/internal/output"
+	"github.com/localstack/lstk/internal/ui/components"
+	"github.com/localstack/lstk/internal/ui/styles"
 	"github.com/muesli/termenv"
 )
 
@@ -239,6 +241,75 @@ func TestAppMessageEventWrapsOnVisibleWidth(t *testing.T) {
 	}
 	if strings.Contains(view, "backg\nround") {
 		t.Fatalf("expected message to wrap at word boundary, got: %q", view)
+	}
+}
+
+func TestAppDeferredEventStyling(t *testing.T) {
+	// Mutates the global lipgloss color profile, so it must not run in parallel.
+	original := lipgloss.ColorProfile()
+	lipgloss.SetColorProfile(termenv.TrueColor)
+	t.Cleanup(func() { lipgloss.SetColorProfile(original) })
+
+	app := NewApp("dev", "", "", nil)
+
+	summary := output.MessageEvent{Severity: output.SeveritySecondary, Text: "~ 2 snapshots\n"}
+	table := output.TableEvent{
+		Headers: []string{"Name", "Version", "Last Changed"},
+		Rows: [][]string{
+			{"baseline-q2", "3", "2026-04-15 14:32 UTC"},
+			{"infra-2026-04", "1", "-"},
+		},
+	}
+
+	model, _ := app.Update(output.DeferredEvent{Inner: summary})
+	app = model.(App)
+	model, _ = app.Update(output.DeferredEvent{Inner: table})
+	app = model.(App)
+
+	out := app.DeferredOutput()
+
+	if !strings.HasPrefix(out, "\n") {
+		t.Fatalf("expected a blank line above the summary, got: %q", out)
+	}
+
+	wantSummary := styles.Highlight.Render("~ 2 snapshots")
+	if !strings.Contains(out, wantSummary) {
+		t.Fatalf("expected highlighted summary %q in deferred output, got: %q", wantSummary, out)
+	}
+
+	tableLine, ok := output.FormatEventLine(table)
+	if !ok {
+		t.Fatal("expected table to format")
+	}
+	header := strings.Split(tableLine, "\n")[0]
+	wantHeader := styles.SecondaryMessage.Render(header)
+	if !strings.Contains(out, wantHeader) {
+		t.Fatalf("expected gray header %q in deferred output, got: %q", wantHeader, out)
+	}
+
+	if strings.Contains(out, styles.Highlight.Render("baseline-q2")) {
+		t.Fatal("data rows should not be highlighted")
+	}
+}
+
+func TestAppDeferredNoteStyledLikeStatus(t *testing.T) {
+	// Mutates the global lipgloss color profile, so it must not run in parallel.
+	original := lipgloss.ColorProfile()
+	lipgloss.SetColorProfile(termenv.TrueColor)
+	t.Cleanup(func() { lipgloss.SetColorProfile(original) })
+
+	app := NewApp("dev", "", "", nil)
+	note := output.MessageEvent{Severity: output.SeverityNote, Text: "No snapshots found"}
+
+	model, _ := app.Update(output.DeferredEvent{Inner: note})
+	app = model.(App)
+
+	out := app.DeferredOutput()
+	if want := components.RenderMessage(note); out != want {
+		t.Fatalf("deferred note should render like status's inline note %q, got %q", want, out)
+	}
+	if strings.HasPrefix(out, "\n") {
+		t.Fatalf("note should not be padded with a leading blank line, got %q", out)
 	}
 }
 
