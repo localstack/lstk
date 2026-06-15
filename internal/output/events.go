@@ -84,15 +84,10 @@ type PodSnapshotSavedEvent struct {
 	Size     int64
 }
 
-// PodSnapshotEntry holds display metadata for a single Cloud Pod in a list.
-type PodSnapshotEntry struct {
-	Name        string
-	Version     int
-	LastChanged *time.Time
-}
-
-type SnapshotListEvent struct {
-	Pods []PodSnapshotEntry
+// DeferredEvent wraps another event so that the TUI renders it after the interface
+// exits rather than inline. Plain sinks format the inner event immediately.
+type DeferredEvent struct {
+	Inner Event
 }
 
 type SnapshotLoadedEvent struct {
@@ -119,8 +114,8 @@ func (InstanceInfoEvent) sealedEvent()     {}
 func (TableEvent) sealedEvent()            {}
 func (ResourceSummaryEvent) sealedEvent()  {}
 func (PodSnapshotSavedEvent) sealedEvent()   {}
+func (DeferredEvent) sealedEvent()           {}
 func (SnapshotLoadedEvent) sealedEvent()     {}
-func (SnapshotListEvent) sealedEvent()       {}
 func (PodSnapshotRemovedEvent) sealedEvent() {}
 func (ContainerStatusEvent) sealedEvent()  {}
 func (ProgressEvent) sealedEvent()         {}
