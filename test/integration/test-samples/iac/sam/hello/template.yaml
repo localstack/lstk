@@ -1,0 +1,18 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: lstk sam e2e hello
+
+Resources:
+  HelloFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: lstk-sam-e2e-fn
+      Handler: app.handler
+      Runtime: python3.12
+      CodeUri: ./src
+      Timeout: 30
+
+Outputs:
+  FunctionArn:
+    Description: ARN of the deployed function (its account segment proves which LocalStack account the stack landed in)
+    Value: !GetAtt HelloFunction.Arn

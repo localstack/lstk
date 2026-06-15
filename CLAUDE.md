@@ -43,7 +43,7 @@ Note: Integration tests require `LOCALSTACK_AUTH_TOKEN` environment variable for
   - `ui/` - Bubble Tea views for interactive output
   - `update/` - Self-update logic: version check via GitHub API, binary/Homebrew/npm update paths, archive extraction
   - `log/` - Internal diagnostic logging (not for user-facing output — use `output/` for that)
-  - `iac/` - Wrappers for third-party infrastructure as code tools, such as Terraform and CDK.
+  - `iac/` - Wrappers for third-party infrastructure as code tools (Terraform, AWS CDK, AWS SAM CLI).
 
 # Logging
 
@@ -81,6 +81,11 @@ Azure CLI integration deliberately mirrors `lstk aws`, not azlocal's `start-inte
 Environment variables:
 - `LOCALSTACK_AUTH_TOKEN` - Auth token (skips browser login if set)
 - `LSTK_OTEL=1` - Enables OpenTelemetry trace export (disabled by default); when enabled, standard `OTEL_EXPORTER_OTLP_*` env vars are respected by the SDK. Requires an OTLP-compatible backend to receive and visualize telemetry — for local development, `make otel` starts one (UI at http://localhost:16686).
+
+# Infrastructure as Code Commands
+
+lstk proxies third-party IaC tools at the AWS emulator so they run against LocalStack with no `*local` wrapper installed. Each command forwards its args to the real tool after configuring the environment; domain logic lives under `internal/iac/<tool>/cli/`, wiring in `cmd/<tool>.go`, with shared command-boundary helpers in `cmd/iac.go`. Siblings: `lstk terraform` (alias `tf`), `lstk cdk`, `lstk sam`.
+
 
 # Snapshots
 
