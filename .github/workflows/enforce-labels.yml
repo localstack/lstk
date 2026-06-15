@@ -12,4 +12,3 @@ jobs:
           mode: exactly
           count: 1
           labels: "docs: needed, docs: skip"
-          token: ${{ secrets.PRO_ACCESS_TOKEN }}
