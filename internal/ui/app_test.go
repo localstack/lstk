@@ -11,6 +11,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/exp/teatest"
 	"github.com/localstack/lstk/internal/output"
+	"github.com/localstack/lstk/internal/ui/components"
 	"github.com/localstack/lstk/internal/ui/styles"
 	"github.com/muesli/termenv"
 )
@@ -288,6 +289,27 @@ func TestAppDeferredEventStyling(t *testing.T) {
 
 	if strings.Contains(out, styles.Highlight.Render("baseline-q2")) {
 		t.Fatal("data rows should not be highlighted")
+	}
+}
+
+func TestAppDeferredNoteStyledLikeStatus(t *testing.T) {
+	// Mutates the global lipgloss color profile, so it must not run in parallel.
+	original := lipgloss.ColorProfile()
+	lipgloss.SetColorProfile(termenv.TrueColor)
+	t.Cleanup(func() { lipgloss.SetColorProfile(original) })
+
+	app := NewApp("dev", "", "", nil)
+	note := output.MessageEvent{Severity: output.SeverityNote, Text: "No snapshots found"}
+
+	model, _ := app.Update(output.DeferredEvent{Inner: note})
+	app = model.(App)
+
+	out := app.DeferredOutput()
+	if want := components.RenderMessage(note); out != want {
+		t.Fatalf("deferred note should render like status's inline note %q, got %q", want, out)
+	}
+	if strings.HasPrefix(out, "\n") {
+		t.Fatalf("note should not be padded with a leading blank line, got %q", out)
 	}
 }
 

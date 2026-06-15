@@ -540,6 +540,10 @@ func (a App) DeferredOutput() string {
 }
 
 func styleDeferredEvent(inner output.Event) (string, bool) {
+	if msg, ok := inner.(output.MessageEvent); ok && msg.Severity == output.SeverityNote {
+		return components.RenderMessage(msg), true
+	}
+
 	line, ok := output.FormatEventLine(inner)
 	if !ok {
 		return "", false
@@ -549,19 +553,17 @@ func styleDeferredEvent(inner output.Event) (string, bool) {
 		if p == "" {
 			continue
 		}
-		switch e := inner.(type) {
+		switch inner.(type) {
 		case output.TableEvent:
 			if i == 0 {
 				parts[i] = styles.SecondaryMessage.Render(p)
 			}
 		case output.MessageEvent:
-			if e.Severity != output.SeverityNote {
-				parts[i] = styles.Highlight.Render(p)
-			}
+			parts[i] = styles.Highlight.Render(p)
 		}
 	}
 	styled := strings.Join(parts, "\n")
-	if msg, isMsg := inner.(output.MessageEvent); isMsg && msg.Severity != output.SeverityNote {
+	if _, isMsg := inner.(output.MessageEvent); isMsg {
 		styled = "\n" + styled
 	}
 	return styled, true
