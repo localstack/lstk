@@ -162,8 +162,13 @@ func setInFile(path, key string, value any) error {
 	content := string(data)
 
 	re := regexp.MustCompile(`(?m)^\s*` + regexp.QuoteMeta(field) + `\s*=.*$`)
+	secRe := regexp.MustCompile(`(?m)^\[` + regexp.QuoteMeta(section) + `\][^\n]*$`)
 	if re.MatchString(content) {
 		content = re.ReplaceAllString(content, assignment)
+	} else if secRe.MatchString(content) {
+		content = secRe.ReplaceAllStringFunc(content, func(header string) string {
+			return header + "\n" + assignment
+		})
 	} else {
 		content = strings.TrimRight(content, "\n") + "\n\n[" + section + "]\n" + assignment + "\n"
 	}

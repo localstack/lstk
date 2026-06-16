@@ -60,6 +60,36 @@ update_skipped_version = "v1.0.0"
 	require.NoError(t, toml.Unmarshal(got, &parsed))
 }
 
+func TestSetInFileAddsSecondFieldToExistingSection(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.toml")
+	original := `# Keep this
+[[containers]]
+type = "aws"
+
+[cli]
+update_skipped_version = "v1.0.0"
+`
+	require.NoError(t, os.WriteFile(path, []byte(original), 0644))
+
+	require.NoError(t, setInFile(path, "cli.notify_cadence", "minor"))
+
+	got, err := os.ReadFile(path)
+	require.NoError(t, err)
+	result := string(got)
+
+	var parsed struct {
+		CLI struct {
+			UpdateSkippedVersion string `toml:"update_skipped_version"`
+			NotifyCadence        string `toml:"notify_cadence"`
+		} `toml:"cli"`
+	}
+	require.NoError(t, toml.Unmarshal(got, &parsed))
+	assert.Equal(t, "v1.0.0", parsed.CLI.UpdateSkippedVersion)
+	assert.Equal(t, "minor", parsed.CLI.NotifyCadence)
+
+	assert.Equal(t, 1, strings.Count(result, "[cli]"), "expected a single [cli] section header")
+}
+
 func TestSetInFilePreservesCommentsAndFormatting(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.toml")
 	original := `# lstk configuration file
