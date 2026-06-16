@@ -38,9 +38,9 @@ func TestWrapLine(t *testing.T) {
 		},
 		{
 			name:  "indented example is left untouched even when over width",
-			line:  "  lstk snapshot save     # saves to ./snapshot.zip",
+			line:  "  lstk snapshot save     # saves to ./snapshot.snapshot",
 			width: 20,
-			want:  "  lstk snapshot save     # saves to ./snapshot.zip",
+			want:  "  lstk snapshot save     # saves to ./snapshot.snapshot",
 		},
 		{
 			name:  "tab-indented line is left untouched even when over width",

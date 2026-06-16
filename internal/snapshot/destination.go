@@ -23,6 +23,20 @@ var (
 	validPodName = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9-]*$`)
 )
 
+const (
+	snapshotExt       = ".snapshot" // user-facing extension for local snapshots
+	legacySnapshotExt = ".zip"      // accepted on load for backward compatibility
+)
+
+// withSnapshotExt forces the .snapshot extension, replacing any other the user gave.
+func withSnapshotExt(path string) string {
+	ext := filepath.Ext(path)
+	if strings.EqualFold(ext, snapshotExt) {
+		return path
+	}
+	return strings.TrimSuffix(path, ext) + snapshotExt
+}
+
 // DestinationKind distinguishes local file paths from remote pod destinations.
 type DestinationKind int
 
@@ -32,7 +46,7 @@ const (
 )
 
 // Destination is the parsed result of a user-supplied snapshot destination.
-// For KindLocal, Value is an absolute local file path with a .zip extension.
+// For KindLocal, Value is an absolute local file path with a .snapshot extension.
 // For KindPod, Value is the validated pod name (without the "pod:" prefix).
 type Destination struct {
 	Kind  DestinationKind
@@ -46,9 +60,7 @@ func ParseRemovable(ref, cwd, home string) (Destination, error) {
 	lower := strings.ToLower(ref)
 	if !strings.HasPrefix(lower, "pod:") && !strings.Contains(lower, "://") {
 		abs, _ := filepath.Abs(ref)
-		if !strings.EqualFold(filepath.Ext(abs), ".zip") {
-			abs += ".zip"
-		}
+		abs = withSnapshotExt(abs)
 		return Destination{}, fmt.Errorf("'%s' resolves to a local file (%s); CLI cannot delete local files", ref, displayPath(abs, cwd, home))
 	}
 	return ParseSource(ref, home)
@@ -72,7 +84,8 @@ func displayPath(abs, cwd, home string) string {
 
 // ParseSource resolves a user-supplied source REF for loading a snapshot.
 // Unlike ParseDestination it never auto-generates a name: REF is required.
-// For local paths, the file must exist; if no extension is given, .zip is tried as a fallback.
+// For local paths, the file must exist; if no matching file is found, .snapshot and
+// then .zip (legacy) are tried as fallbacks.
 // home is used to expand a leading "~" or "~/"; pass "" to disable tilde expansion.
 func ParseSource(ref, home string) (Destination, error) {
 	if ref == "" {
@@ -110,8 +123,9 @@ func ParseSource(ref, home string) (Destination, error) {
 		return Destination{}, fmt.Errorf("resolve path: %w", err)
 	}
 
-	// Try the path as-is first, then with .zip appended as a fallback for bare
-	// names (e.g. "my-snapshot" → "my-snapshot.zip" since that is what save produces).
+	// Try the path as-is first, then with .snapshot appended as a fallback for bare
+	// names (e.g. "my-snapshot" → "my-snapshot.snapshot" since that is what save
+	// produces), and finally .zip for snapshots saved by older lstk versions.
 	resolved, err := resolveSourcePath(abs)
 	if err != nil {
 		return Destination{}, err
@@ -119,16 +133,17 @@ func ParseSource(ref, home string) (Destination, error) {
 	return Destination{Kind: KindLocal, Value: resolved}, nil
 }
 
-// resolveSourcePath returns the first existing path among: abs as-is, then abs+".zip".
+// resolveSourcePath returns the first existing path among: abs as-is, then
+// abs+".snapshot", then abs+".zip" (legacy).
 func resolveSourcePath(abs string) (string, error) {
-	if _, err := os.Stat(abs); err == nil {
-		return abs, nil
+	withSnapshot := abs + snapshotExt
+	withZip := abs + legacySnapshotExt
+	for _, candidate := range []string{abs, withSnapshot, withZip} {
+		if _, err := os.Stat(candidate); err == nil {
+			return candidate, nil
+		}
 	}
-	withZip := abs + ".zip"
-	if _, err := os.Stat(withZip); err == nil {
-		return withZip, nil
-	}
-	return "", fmt.Errorf("snapshot file not found: %q (also tried %q)", abs, withZip)
+	return "", fmt.Errorf("snapshot file not found: %q (also tried %q and %q)", abs, withSnapshot, withZip)
 }
 
 // ParseDestination resolves a user-supplied destination to a local path (KindLocal) or validated pod name (KindPod).
@@ -187,9 +202,7 @@ func ParseDestination(dest, home string, now time.Time) (Destination, error) {
 		return Destination{}, fmt.Errorf("%q is a directory — specify a file path like ./my-snapshot", abs)
 	}
 
-	if !strings.EqualFold(filepath.Ext(abs), ".zip") {
-		abs += ".zip"
-	}
+	abs = withSnapshotExt(abs)
 
 	return Destination{Kind: KindLocal, Value: abs}, nil
 }

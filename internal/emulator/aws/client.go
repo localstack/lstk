@@ -221,10 +221,22 @@ func (c *Client) ImportState(ctx context.Context, host string, src io.Reader, st
 			continue
 		}
 		if event.Status == "error" && event.Message != "" {
+			if isInvalidSnapshotFileMsg(event.Message) {
+				return snapshot.ErrInvalidSnapshotFile
+			}
 			return fmt.Errorf("load failed for service %s: %s", event.Service, event.Message)
 		}
 	}
 	return scanner.Err()
+}
+
+// isInvalidSnapshotFileMsg reports whether an emulator error message indicates
+// the source could not be read as a snapshot archive. We translate these into
+// snapshot.ErrInvalidSnapshotFile so the user-facing message never leaks the
+// underlying archive format.
+func isInvalidSnapshotFileMsg(msg string) bool {
+	m := strings.ToLower(msg)
+	return strings.Contains(m, "not a valid zip archive") || strings.Contains(m, "invalid pod file")
 }
 
 func (c *Client) LoadPodSnapshot(ctx context.Context, host, podName, authToken, strategy string) ([]string, error) {
@@ -278,10 +290,16 @@ func (c *Client) LoadPodSnapshot(ctx context.Context, host, podName, authToken, 
 			case "ok":
 				services = append(services, event.Service)
 			case "error":
+				if isInvalidSnapshotFileMsg(event.Message) {
+					return nil, snapshot.ErrInvalidSnapshotFile
+				}
 				return nil, fmt.Errorf("load failed for service %s: %s", event.Service, event.Message)
 			}
 		case "completion":
 			if event.Status != "ok" {
+				if isInvalidSnapshotFileMsg(event.Message) {
+					return nil, snapshot.ErrInvalidSnapshotFile
+				}
 				return nil, fmt.Errorf("pod load failed: %s", event.Message)
 			}
 			return services, nil
