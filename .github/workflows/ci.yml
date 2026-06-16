@@ -142,6 +142,18 @@ jobs:
         if: matrix.os == 'ubuntu-latest'
         run: npm install -g aws-cdk
 
+      # Install the AWS SAM CLI so the `lstk sam` end-to-end tests
+      # (sam_e2e_test.go) run on the Docker-capable Linux shards. They skip
+      # automatically wherever sam is absent (macOS/Windows). The ubuntu-latest
+      # image currently ships sam, but we install it explicitly so the tests
+      # don't silently lose coverage if a future image drops it. lstk requires
+      # SAM >= 1.95.0; the latest release satisfies that.
+      - name: Install AWS SAM CLI
+        if: matrix.os == 'ubuntu-latest'
+        uses: aws-actions/setup-sam@v2
+        with:
+          use-installer: true
+
       - name: Run integration tests
         run: make test-integration
         env:
