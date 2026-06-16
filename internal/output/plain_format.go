@@ -48,6 +48,8 @@ func FormatEventLine(event Event) (string, bool) {
 		return FormatEventLine(e.Inner)
 	case PodSnapshotRemovedEvent:
 		return formatPodSnapshotRemoved(e), true
+	case SnapshotShownEvent:
+		return formatSnapshotShown(e), true
 	case AuthCompleteEvent:
 		return "", false
 	default:
@@ -230,6 +232,50 @@ func formatPodSnapshotSaved(e PodSnapshotSavedEvent) string {
 
 func formatPodSnapshotRemoved(e PodSnapshotRemovedEvent) string {
 	return SuccessMarker() + fmt.Sprintf(" Cloud snapshot 'pod:%s' deleted", e.PodName)
+}
+
+// snapshotShowLabelWidth is the column at which values align in the show output.
+const snapshotShowLabelWidth = 16
+
+func formatSnapshotShown(e SnapshotShownEvent) string {
+	var sb strings.Builder
+	row := func(label, value string) {
+		if value == "" {
+			return
+		}
+		if sb.Len() > 0 {
+			sb.WriteString("\n")
+		}
+		sb.WriteString(fmt.Sprintf("%-*s%s", snapshotShowLabelWidth, label, value))
+	}
+
+	row("Name", e.Name)
+	if e.Created != nil {
+		row("Created", e.Created.UTC().Format("2006-01-02 15:04 UTC"))
+	}
+	if e.Size > 0 {
+		row("Size", formatBytes(e.Size))
+	}
+	row("LocalStack", e.LocalStackVersion)
+	row("Message", e.Message)
+
+	if len(e.Services) > 0 {
+		sb.WriteString("\n\n")
+		sb.WriteString(fmt.Sprintf("%-*s%s", snapshotShowLabelWidth, "Services", strings.Join(e.Services, ", ")))
+	}
+
+	if len(e.Resources) > 0 {
+		sb.WriteString("\n\nResources")
+		for _, r := range e.Resources {
+			parts := make([]string, len(r.Counts))
+			for i, c := range r.Counts {
+				parts[i] = fmt.Sprintf("%d %s", c.Count, c.Noun)
+			}
+			sb.WriteString("\n")
+			sb.WriteString(fmt.Sprintf("  %-*s%s", snapshotShowLabelWidth-2, r.Service, strings.Join(parts, ", ")))
+		}
+	}
+	return sb.String()
 }
 
 func formatBytes(b int64) string {
