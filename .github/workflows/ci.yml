@@ -150,7 +150,7 @@ jobs:
       # SAM >= 1.95.0; the latest release satisfies that.
       - name: Install AWS SAM CLI
         if: matrix.os == 'ubuntu-latest'
-        uses: aws-actions/setup-sam@v2
+        uses: aws-actions/setup-sam@v3
         with:
           use-installer: true
 
