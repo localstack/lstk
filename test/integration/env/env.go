@@ -22,6 +22,14 @@ const (
 	OtelEndpoint      Key = "OTEL_EXPORTER_OTLP_ENDPOINT"
 )
 
+// UnreachableAnalyticsEndpoint is a closed local port used as the default
+// analytics endpoint for every test environment, so the binary under test never
+// reports telemetry to the production analytics backend (which would pollute it,
+// e.g. with "start" events tagged as coming from CI or an AI agent). Tests that
+// exercise telemetry override it with a mock server URL via With(AnalyticsEndpoint, ...);
+// the explicit value wins because exec dedups duplicate keys to the last value.
+const UnreachableAnalyticsEndpoint = "http://127.0.0.1:1"
+
 func Get(key Key) string {
 	return os.Getenv(string(key))
 }
@@ -38,11 +46,11 @@ func Require(t testing.TB, key Key) string {
 type Environ []string
 
 func Without(keys ...Key) Environ {
-	return Environ(os.Environ()).Without(keys...)
+	return Environ(os.Environ()).With(AnalyticsEndpoint, UnreachableAnalyticsEndpoint).Without(keys...)
 }
 
 func With(key Key, value string) Environ {
-	return Environ(os.Environ()).With(key, value)
+	return Environ(os.Environ()).With(AnalyticsEndpoint, UnreachableAnalyticsEndpoint).With(key, value)
 }
 
 func (e Environ) Without(keys ...Key) Environ {
