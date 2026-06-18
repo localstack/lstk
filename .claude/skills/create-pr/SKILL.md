@@ -3,7 +3,7 @@ name: create-pr
 description: Create a GitHub pull request following lstk conventions with proper title, description, and ticket references.
 argument-hint: [base-branch]
 disable-model-invocation: true
-allowed-tools: Bash(git log *), Bash(git diff *), Bash(git branch *), Bash(git push -u origin HEAD), Bash(gh pr create *), mcp__plugin_linear_linear__get_issue
+allowed-tools: Bash(git log *), Bash(git diff *), Bash(git branch *), Bash(git push -u origin HEAD), Bash(gh pr create *), Bash(gh label list *), mcp__plugin_linear_linear__get_issue
 ---
 
 # Create Pull Request
@@ -69,15 +69,29 @@ Rules:
 - Omit Todo section if there are no follow-up items
 - Don't over-explain; the diff speaks for itself
 
-## Step 5: Commit and push
+## Step 5: Choose labels
+
+Always apply two labels, based on the size and nature of the change:
+
+1. A semver label reflecting the impact of the change:
+   - `semver: patch` — bug fixes, dependency/toolchain bumps, internal refactors, and other backward-compatible changes with no new user-facing behavior.
+   - `semver: minor` — new backward-compatible functionality (e.g. a new command or flag).
+   - `semver: major` — breaking changes to existing behavior or interfaces.
+2. A docs label reflecting whether documentation needs updating:
+   - `docs: skip` — no user-facing documentation change is required (most dependency/toolchain upgrades, internal refactors).
+   - `docs: needed` — the change adds or alters user-facing behavior that requires documentation updates.
+
+This applies to automated PRs too (dependency and toolchain upgrades), which are almost always `semver: patch` + `docs: skip`.
+
+## Step 6: Commit and push
 
 If there are uncommitted changes, commit them with a concise message. Do NOT add `Co-Authored-By: Claude` unless the user explicitly asks for it.
 
-Then push and create the PR:
+Then push and create the PR with the chosen labels:
 
 ```
 git push -u origin HEAD
-gh pr create --draft --title "<title>" --body "<body>" --base <base-branch>
+gh pr create --draft --title "<title>" --body "<body>" --base <base-branch> --label "<semver-label>" --label "<docs-label>"
 ```
 
 Return the PR URL when done.
