@@ -108,6 +108,15 @@ func Start(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts Start
 			"LOCALSTACK_HOST="+endpoint.Hostname+":"+c.Port,
 		)
 
+		// The Python Snowflake emulator routes all S3 access through a single
+		// SF_S3_ENDPOINT (defaulting to port 4566), so on a custom port internal
+		// stages (e.g. COPY INTO) fail. Set it to match the configured port unless
+		// the user already provided their own value. AWS + Snowflake multi-emulator
+		// setups are not supported by this flow yet.
+		if c.Type == config.EmulatorSnowflake && !envHasKey(resolvedEnv, "SF_S3_ENDPOINT") {
+			env = append(env, "SF_S3_ENDPOINT="+snowflake.S3Endpoint(c.Port))
+		}
+
 		env = append(env, hostEnv...)
 		env = append(env, agentEnvVars...)
 
@@ -692,6 +701,16 @@ func filterHostEnv(envList []string) []string {
 		}
 	}
 	return out
+}
+
+func envHasKey(env []string, key string) bool {
+	prefix := key + "="
+	for _, e := range env {
+		if strings.HasPrefix(e, prefix) {
+			return true
+		}
+	}
+	return false
 }
 
 func agentEnv(cl caller.Classification) []string {

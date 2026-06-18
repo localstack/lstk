@@ -703,6 +703,33 @@ func TestStartCommandSucceedsForSnowflake(t *testing.T) {
 		"snowflake start should print a tip line like AWS does")
 }
 
+func TestStartCommandSetsSnowflakeS3EndpointFromPort(t *testing.T) {
+	requireDocker(t)
+	_ = env.Require(t, env.AuthToken)
+
+	cleanup()
+	cleanupSnowflake()
+	t.Cleanup(cleanup)
+	t.Cleanup(cleanupSnowflake)
+
+	mockServer := createMockLicenseServer(true)
+	defer mockServer.Close()
+
+	const hostPort = "4599"
+	configFile := writeSnowflakeConfig(t, hostPort)
+
+	ctx := testContext(t)
+	_, stderr, err := runLstk(t, ctx, "", env.With(env.APIEndpoint, mockServer.URL), "--config", configFile, "start")
+	require.NoError(t, err, "lstk start failed: %s", stderr)
+	requireExitCode(t, 0, err)
+
+	inspect, err := dockerClient.ContainerInspect(ctx, snowflakeContainerName, client.ContainerInspectOptions{})
+	require.NoError(t, err, "failed to inspect snowflake container")
+	envVars := containerEnvToMap(inspect.Container.Config.Env)
+	assert.Equal(t, "s3.localhost.localstack.cloud:"+hostPort, envVars["SF_S3_ENDPOINT"],
+		"SF_S3_ENDPOINT should match the configured Snowflake port")
+}
+
 const azureContainerName = "localstack-azure"
 
 func cleanupAzure() {
