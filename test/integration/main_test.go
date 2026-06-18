@@ -20,10 +20,10 @@ import (
 	"net/netip"
 
 	"github.com/creack/pty"
+	"github.com/localstack/lstk/test/integration/env"
 	"github.com/moby/moby/api/types/container"
 	"github.com/moby/moby/api/types/network"
 	"github.com/moby/moby/client"
-	"github.com/localstack/lstk/test/integration/env"
 	"github.com/stretchr/testify/require"
 	"github.com/zalando/go-keyring"
 )
@@ -236,6 +236,18 @@ func startExternalContainer(t *testing.T, ctx context.Context, imgName, name, ho
 
 func startTestSnowflakeContainer(t *testing.T, ctx context.Context) {
 	t.Helper()
+	startNamedTestContainer(t, ctx, snowflakeContainerName, "snowflake")
+}
+
+func startTestAzureContainer(t *testing.T, ctx context.Context) {
+	t.Helper()
+	startNamedTestContainer(t, ctx, azureContainerName, "azure")
+}
+
+// startNamedTestContainer starts a placeholder container (sleep infinity) under
+// the given name so emulator running-detection matches it by image and port.
+func startNamedTestContainer(t *testing.T, ctx context.Context, name, label string) {
+	t.Helper()
 
 	reader, err := dockerClient.ImagePull(ctx, testImage, client.ImagePullOptions{})
 	require.NoError(t, err, "failed to pull test image")
@@ -247,11 +259,11 @@ func startTestSnowflakeContainer(t *testing.T, ctx context.Context) {
 			Image: testImage,
 			Cmd:   []string{"sleep", "infinity"},
 		},
-		Name: snowflakeContainerName,
+		Name: name,
 	})
-	require.NoError(t, err, "failed to create snowflake test container")
+	require.NoError(t, err, "failed to create %s test container", label)
 	_, err = dockerClient.ContainerStart(ctx, resp.ID, client.ContainerStartOptions{})
-	require.NoError(t, err, "failed to start snowflake test container")
+	require.NoError(t, err, "failed to start %s test container", label)
 }
 
 func testContext(t *testing.T) context.Context {

@@ -89,7 +89,7 @@ lstk proxies third-party IaC tools at the AWS emulator so they run against Local
 
 # Snapshots
 
-`lstk snapshot` captures and restores the running emulator's state (AWS emulator only). Domain logic lives in `internal/snapshot/`; `cmd/snapshot.go` is wiring + output-mode selection.
+`lstk snapshot` captures and restores the running emulator's state. For Snowflake and Azure, snapshot support is still maturing, so these commands surface a friendly heads-up that results may be incomplete. Domain logic lives in `internal/snapshot/`; `cmd/snapshot.go` is wiring + output-mode selection.
 
 - `lstk snapshot save [destination]` — export state to a local `.snapshot` file or a named cloud snapshot.
 - `lstk snapshot load REF` — restore state, starting the emulator first if needed; `--merge` controls how snapshot state combines with running state (`account-region-merge` (default), `overwrite`, `service-merge`).
