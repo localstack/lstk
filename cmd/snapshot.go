@@ -217,25 +217,27 @@ func resolveSnapshotDeps(ctx context.Context, cfg *env.Env) (rt runtime.Runtime,
 		return nil, nil, "", nil, nil, fmt.Errorf("failed to get config: %w", err)
 	}
 
-	var awsContainer config.ContainerConfig
-	var found bool
-	for _, c := range appConfig.Containers {
-		if c.Type == config.EmulatorAWS {
-			awsContainer = c
-			found = true
-			break
-		}
-	}
-	if !found {
-		return nil, nil, "", nil, nil, fmt.Errorf("snapshot is only supported for the AWS emulator")
+	if len(appConfig.Containers) == 0 {
+		return nil, nil, "", nil, nil, fmt.Errorf("no emulator is configured")
 	}
 
 	rt, err = runtime.NewDockerRuntime(cfg.DockerHost)
 	if err != nil {
 		return nil, nil, "", nil, nil, err
 	}
-	host, _ = endpoint.ResolveHost(ctx, awsContainer.Port, cfg.LocalStackHost)
-	return rt, aws.NewClient(), host, []config.ContainerConfig{awsContainer}, appConfig, nil
+
+	// Target the first running emulator when one is up, otherwise fall back to the
+	// first configured emulator (the load command relies on this to auto-start it).
+	// RunningEmulators preserves config order, so "first running" is deterministic
+	// when several emulators are configured. Running-detection errors are ignored
+	// here so the downstream save/load flows surface them with proper messaging.
+	target := appConfig.Containers[0]
+	if running, rerr := container.RunningEmulators(ctx, rt, appConfig.Containers); rerr == nil && len(running) > 0 {
+		target = running[0]
+	}
+
+	host, _ = endpoint.ResolveHost(ctx, target.Port, cfg.LocalStackHost)
+	return rt, aws.NewClient(), host, []config.ContainerConfig{target}, appConfig, nil
 }
 
 func newSnapshotListCmd(cfg *env.Env, logger log.Logger) *cobra.Command {

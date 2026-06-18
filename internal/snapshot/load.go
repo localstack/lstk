@@ -65,6 +65,8 @@ func load(ctx context.Context, rt runtime.Runtime, containers []config.Container
 		return output.NewSilentError(fmt.Errorf("runtime not healthy: %w", err))
 	}
 
+	emitExperimentalWarning(containers, sink)
+
 	runningContainers, err := container.RunningEmulators(ctx, rt, containers)
 	if err != nil {
 		return fmt.Errorf("checking emulator status: %w", err)

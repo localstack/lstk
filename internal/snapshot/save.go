@@ -52,6 +52,8 @@ func save(ctx context.Context, rt runtime.Runtime, containers []config.Container
 		return output.NewSilentError(fmt.Errorf("LocalStack is not running"))
 	}
 
+	emitExperimentalWarning(containers, sink)
+
 	sink.Emit(output.SpinnerStart(spinnerText))
 	defer func() {
 		sink.Emit(output.SpinnerStop())
