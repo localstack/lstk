@@ -109,6 +109,16 @@ func load(ctx context.Context, rt runtime.Runtime, containers []config.Container
 		})
 		return output.NewSilentError(err)
 	}
+	if errors.Is(err, ErrPodNotFound) {
+		sink.Emit(output.ErrorEvent{
+			Title:   "Could not load snapshot",
+			Summary: "Snapshot was not found on the LocalStack platform",
+			Actions: []output.ErrorAction{
+				{Label: "List your snapshots:", Value: "lstk snapshot list"},
+			},
+		})
+		return output.NewSilentError(err)
+	}
 	return err
 }
 

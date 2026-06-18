@@ -78,6 +78,24 @@ func mockPodLoadServer(t *testing.T, respondOK bool) *httptest.Server {
 	return srv
 }
 
+// mockPodNotFoundServer mimics the emulator response when the requested cloud
+// snapshot does not exist: the platform version lookup fails, so the load
+// completes with the generic "Failed to get version information" diagnostic.
+func mockPodNotFoundServer(t *testing.T) *httptest.Server {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, "/_localstack/pods/") && r.Method == http.MethodPut {
+			w.Header().Set("Content-Type", "application/x-ndjson")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"event":"completion","status":"error","message":"Failed to get version information from platform.. aborting"}` + "\n"))
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	t.Cleanup(srv.Close)
+	return srv
+}
+
 // writeTestSnapFile creates a small file usable as a local snapshot source.
 func writeTestSnapFile(t *testing.T, dir, name string) string {
 	t.Helper()
@@ -292,6 +310,32 @@ func TestSnapshotLoadPodServerError(t *testing.T) {
 	)
 	requireExitCode(t, 1, err)
 	assert.Contains(t, stderr, "platform unavailable")
+}
+
+// TestSnapshotLoadPodNotFound covers a non-existent cloud snapshot. The emulator
+// cannot fetch version information for an unknown pod and reports the generic
+// platform diagnostic; lstk must translate it into a clear "not found" message
+// rather than leaking "Failed to get version information from platform".
+func TestSnapshotLoadPodNotFound(t *testing.T) {
+	requireDocker(t)
+	cleanup()
+	t.Cleanup(cleanup)
+
+	ctx := testContext(t)
+	startTestContainer(t, ctx)
+	srv := mockPodNotFoundServer(t)
+
+	stdout, stderr, err := runLstk(t, ctx, t.TempDir(),
+		env.Environ(testEnvWithHome(t.TempDir(), "")).
+			With(env.LocalStackHost, lsHost(srv)).
+			With(env.AuthToken, "test-token"),
+		"--non-interactive", "snapshot", "load", "pod:does-not-exist",
+	)
+	requireExitCode(t, 1, err)
+	// The user-facing error is emitted through the sink (stdout); the raw
+	// platform diagnostic must not leak to the user.
+	assert.Contains(t, stdout, "not found on the LocalStack platform")
+	assert.NotContains(t, strings.ToLower(stdout+stderr), "version information")
 }
 
 func TestSnapshotLoadTelemetryEmitted(t *testing.T) {
