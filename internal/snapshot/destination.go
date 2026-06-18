@@ -20,7 +20,7 @@ var (
 	// ErrUnknownScheme is returned for unrecognized URL schemes.
 	ErrUnknownScheme = errors.New("unrecognized destination scheme")
 
-	validPodName = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9-]*$`)
+	validPodName = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_-]*$`)
 )
 
 const (
@@ -113,7 +113,7 @@ func ParseSource(ref, home string) (Destination, error) {
 	case strings.HasPrefix(lower, "pod:"):
 		podName := ref[len("pod:"):]
 		if !validPodName.MatchString(podName) {
-			return Destination{}, fmt.Errorf("invalid pod name %q: use letters, digits, and hyphens only, starting with a letter or digit", podName)
+			return Destination{}, fmt.Errorf("invalid pod name %q: use letters, digits, hyphens, and underscores only, starting with a letter or digit", podName)
 		}
 		return Destination{Kind: KindPod, Value: podName}, nil
 	case strings.HasPrefix(lower, "s3://"),
@@ -175,7 +175,7 @@ func ParseDestination(dest, home string, now time.Time) (Destination, error) {
 		case strings.HasPrefix(lower, "pod:"):
 			podName := dest[len("pod:"):]
 			if !validPodName.MatchString(podName) {
-				return Destination{}, fmt.Errorf("invalid pod name %q: use letters, digits, and hyphens only, starting with a letter or digit", podName)
+				return Destination{}, fmt.Errorf("invalid pod name %q: use letters, digits, hyphens, and underscores only, starting with a letter or digit", podName)
 			}
 			return Destination{Kind: KindPod, Value: podName}, nil
 		case strings.HasPrefix(lower, "s3://"),

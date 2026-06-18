@@ -489,10 +489,10 @@ func TestParseDestination(t *testing.T) {
 			wantErr: "invalid pod name",
 		},
 		{
-			// pod name with invalid characters
-			name:    "pod: underscore invalid",
-			input:   "pod:my_pod",
-			wantErr: "invalid pod name",
+			name:        "pod: underscore allowed",
+			input:       "pod:ci_test-underscore",
+			wantKind:    snapshot.KindPod,
+			wantPodName: "ci_test-underscore",
 		},
 
 		// --- unknown schemes ---

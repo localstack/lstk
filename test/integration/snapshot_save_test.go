@@ -267,7 +267,8 @@ func TestSnapshotSavePodInvalidName(t *testing.T) {
 	for _, dest := range []string{
 		"pod:",
 		"pod:-invalid",
-		"pod:my_pod",
+		"pod:_invalid",
+		"pod:my pod",
 	} {
 		t.Run(dest, func(t *testing.T) {
 			t.Parallel()
