@@ -239,6 +239,14 @@ func isInvalidSnapshotFileMsg(msg string) bool {
 	return strings.Contains(m, "not a valid zip archive") || strings.Contains(m, "invalid pod file")
 }
 
+// isPodNotFoundMsg reports whether an emulator error message indicates the
+// requested cloud snapshot does not exist. The emulator reports an unknown pod
+// with this generic version-lookup message rather than a distinct not-found
+// error, so we translate it into snapshot.ErrPodNotFound.
+func isPodNotFoundMsg(msg string) bool {
+	return strings.Contains(strings.ToLower(msg), "failed to get version information from platform")
+}
+
 func (c *Client) LoadPodSnapshot(ctx context.Context, host, podName, authToken, strategy string) ([]string, error) {
 	url := fmt.Sprintf("http://%s/_localstack/pods/%s", host, podName)
 	if strategy != "" {
@@ -299,6 +307,9 @@ func (c *Client) LoadPodSnapshot(ctx context.Context, host, podName, authToken, 
 			if event.Status != "ok" {
 				if isInvalidSnapshotFileMsg(event.Message) {
 					return nil, snapshot.ErrInvalidSnapshotFile
+				}
+				if isPodNotFoundMsg(event.Message) {
+					return nil, snapshot.ErrPodNotFound
 				}
 				return nil, fmt.Errorf("pod load failed: %s", event.Message)
 			}
