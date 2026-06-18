@@ -93,12 +93,18 @@ func Run(ctx context.Context, endpointURL, region, account, chdir string, sink o
 		logger.Info("terraform: using AWS_ENDPOINT_URL override %s", override)
 	}
 
+	form := endpointForm{region: region, account: account}
+	form.pathStyle, form.s3Endpoint = endpoint.S3Addressing(resolvedEndpoint)
+	form.endpointURL = resolvedEndpoint
+	form.legacy = usesLegacyEndpoints(ctx, tfBin, workdir)
+
 	// Provider blocks and remote-state data blocks require the provider schema,
 	// which only exists after init. So init emits a backend-only override.
 	includeProvider := !isInit
 	var keys []string
+	var remoteStates []remoteState
 	if includeProvider {
-		keys, err = EndpointKeys(ctx, tfBin, workdir)
+		keys, err = discoverEndpointKeys(ctx, tfBin, workdir, resolvedEndpoint, region, account, backend, form.legacy, logger)
 		if err != nil {
 			span.RecordError(err)
 			span.SetStatus(codes.Error, err.Error())
@@ -112,17 +118,8 @@ func Run(ctx context.Context, endpointURL, region, account, chdir string, sink o
 			return err
 		}
 		logger.Info("terraform: discovered %d endpoint keys from provider schema", len(keys))
-	}
-
-	var remoteStates []remoteState
-	if includeProvider {
 		remoteStates = parseRemoteStates(workdir, logger)
 	}
-
-	form := endpointForm{region: region, account: account}
-	form.pathStyle, form.s3Endpoint = endpoint.S3Addressing(resolvedEndpoint)
-	form.endpointURL = resolvedEndpoint
-	form.legacy = usesLegacyEndpoints(ctx, tfBin, workdir)
 
 	written, err := generateOverride(overrideOptions{
 		workdir:         workdir,
@@ -176,6 +173,41 @@ func Run(ctx context.Context, endpointURL, region, account, chdir string, sink o
 	}
 
 	return runTerraform(ctx, span, tfBin, args)
+}
+
+// discoverEndpointKeys probes the installed provider schema for the AWS endpoint
+// keys via `providers schema -json`. When an S3 backend is declared the probe
+// validates the backend config against what `init` cached in .terraform, so the
+// LocalStack backend redirection must be present — otherwise terraform aborts
+// with "Backend configuration block has changed" before emitting the schema. For
+// that case we write a temporary backend-only override for the duration of the
+// probe and remove it afterward, so the full override (which needs these keys for
+// its provider blocks) is still generated exactly once by the caller.
+func discoverEndpointKeys(ctx context.Context, tfBin, workdir, endpointURL, region, account string, backend *s3Backend, legacy bool, logger log.Logger) ([]string, error) {
+	if backend == nil {
+		return EndpointKeys(ctx, tfBin, workdir)
+	}
+	written, err := generateOverride(overrideOptions{
+		workdir:     workdir,
+		fileName:    overrideFileName(),
+		endpointURL: endpointURL,
+		region:      region,
+		account:     account,
+		backend:     backend,
+		legacy:      legacy,
+		logger:      logger,
+	})
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		for _, p := range written {
+			if rerr := os.Remove(p); rerr != nil && !os.IsNotExist(rerr) {
+				logger.Error("terraform: failed to remove probe override %s: %v", p, rerr)
+			}
+		}
+	}()
+	return EndpointKeys(ctx, tfBin, workdir)
 }
 
 // ResolveChdir resolves terraform's -chdir=DIR value into an absolute-ish
