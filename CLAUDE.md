@@ -106,6 +106,8 @@ A REF is parsed by helpers in `internal/snapshot/destination.go`:
 
 `ParseDestination` (save), `ParseSource` (load), `ParseRemovable` (remove), and `ParseShowable` (show) share pod-name validation; `ParseRemovable` and `ParseShowable` reject local paths (via the shared `parseCloudOnly` helper) so those cloud-only commands never touch local files.
 
+**Auto-load on start.** A `[[containers]]` block (AWS only) can set `snapshot = "pod:my-baseline"` (any load REF) to auto-load that snapshot after the emulator starts. The loader runs only when the emulator is freshly started this run (skipped when already running), mirroring v1's `AUTO_LOAD_POD`. `lstk start --snapshot REF` overrides the configured REF for one run; `lstk start --no-snapshot` skips it. Resolution lives in `resolveStartSnapshotRef`/`newSnapshotAutoLoader` in `cmd/snapshot.go`; the loader is threaded into the non-interactive start in `cmd/root.go` and into the TUI via `ui.RunOptions.PostStart`. `snapshot save` never writes back into config — the `snapshot` field is manual.
+
 # Code Style
 
 - Don't add comments for self-explanatory code. Only comment when the "why" isn't obvious from the code itself.

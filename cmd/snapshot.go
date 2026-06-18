@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"time"
@@ -80,6 +81,86 @@ func newSnapshotCmd(cfg *env.Env, tel *telemetry.Client, logger log.Logger) *cob
 	cmd.AddCommand(newSnapshotRemoveCmd(cfg))
 	cmd.AddCommand(newSnapshotShowCmd(cfg, logger))
 	return cmd
+}
+
+// addSnapshotStartFlags registers the snapshot-related flags shared by the root
+// and `start` commands. --snapshot overrides the configured REF for one run;
+// --no-snapshot skips auto-loading for one run.
+func addSnapshotStartFlags(cmd *cobra.Command) {
+	cmd.Flags().String("snapshot", "", "Snapshot REF to load after start (overrides config for this run)")
+	cmd.Flags().Bool("no-snapshot", false, "Skip auto-loading the configured snapshot for this run")
+}
+
+func snapshotFlags(cmd *cobra.Command) (snapshotFlag string, noSnapshot bool, err error) {
+	if snapshotFlag, err = cmd.Flags().GetString("snapshot"); err != nil {
+		return "", false, err
+	}
+	if noSnapshot, err = cmd.Flags().GetBool("no-snapshot"); err != nil {
+		return "", false, err
+	}
+	return snapshotFlag, noSnapshot, nil
+}
+
+// resolveStartSnapshotRef resolves the snapshot REF to auto-load on start.
+// Precedence: --no-snapshot disables it; otherwise --snapshot wins over the
+// AWS container's configured snapshot. Returns "" when nothing should be loaded.
+func resolveStartSnapshotRef(appConfig *config.Config, snapshotFlag string, noSnapshot bool) (string, error) {
+	if noSnapshot && snapshotFlag != "" {
+		return "", errors.New("--snapshot and --no-snapshot cannot be used together")
+	}
+	if noSnapshot {
+		return "", nil
+	}
+	if snapshotFlag != "" {
+		return snapshotFlag, nil
+	}
+	for _, c := range appConfig.Containers {
+		if c.Type == config.EmulatorAWS && c.Snapshot != "" {
+			return c.Snapshot, nil
+		}
+	}
+	return "", nil
+}
+
+// newSnapshotAutoLoader returns a loader that imports the given REF into the
+// running AWS emulator, or nil when ref is empty. The REF is parsed eagerly so an
+// invalid value fails before the emulator starts. The loader passes a nil Starter:
+// it is only invoked once the emulator is already up.
+func newSnapshotAutoLoader(cfg *env.Env, rt runtime.Runtime, appConfig *config.Config, ref string) (func(context.Context, output.Sink) error, error) {
+	if ref == "" {
+		return nil, nil
+	}
+
+	var awsContainer config.ContainerConfig
+	found := false
+	for _, c := range appConfig.Containers {
+		if c.Type == config.EmulatorAWS {
+			awsContainer = c
+			found = true
+			break
+		}
+	}
+	if !found {
+		return nil, fmt.Errorf("snapshot auto-load is only supported for the AWS emulator")
+	}
+
+	home, _ := os.UserHomeDir()
+	src, err := snapshot.ParseSource(ref, home)
+	if err != nil {
+		return nil, err
+	}
+
+	client := aws.NewClient()
+	containers := []config.ContainerConfig{awsContainer}
+	return func(ctx context.Context, sink output.Sink) error {
+		host, _ := endpoint.ResolveHost(ctx, awsContainer.Port, cfg.LocalStackHost)
+		switch src.Kind {
+		case snapshot.KindPod:
+			return snapshot.LoadPod(ctx, rt, containers, client, host, src.Value, cfg.AuthToken, "", nil, sink)
+		default:
+			return snapshot.LoadLocal(ctx, rt, containers, client, host, src.Value, "", nil, sink)
+		}
+	}, nil
 }
 
 func buildStarter(cfg *env.Env, rt runtime.Runtime, appConfig *config.Config, logger log.Logger, tel *telemetry.Client) snapshot.Starter {
