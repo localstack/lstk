@@ -299,7 +299,7 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.addLine(styledLine{text: style.Render(text)})
 		a.addLine(blank)
 		return a, nil
-	case output.InstanceInfoEvent, output.PodSnapshotSavedEvent:
+	case output.InstanceInfoEvent, output.PodSnapshotSavedEvent, output.SnapshotLoadedEvent:
 		if line, ok := output.FormatEventLine(msg.(output.Event)); ok {
 			a.addSuccessLines(line)
 		}

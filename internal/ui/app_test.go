@@ -219,6 +219,30 @@ func TestAppMessageEventRendering(t *testing.T) {
 	}
 }
 
+func TestAppSnapshotLoadedEventRendersGreen(t *testing.T) {
+	// Mutates the global lipgloss color profile, so it must not run in parallel.
+	original := lipgloss.ColorProfile()
+	lipgloss.SetColorProfile(termenv.TrueColor)
+	t.Cleanup(func() { lipgloss.SetColorProfile(original) })
+
+	app := NewApp("dev", "", "", nil)
+
+	model, _ := app.Update(output.SnapshotLoadedEvent{Source: "pod:my-baseline"})
+	app = model.(App)
+
+	if len(app.lines) != 1 {
+		t.Fatalf("expected 1 line, got %d", len(app.lines))
+	}
+
+	wantMarker := styles.Success.Render(output.SuccessMarker())
+	if !strings.Contains(app.lines[0].text, wantMarker) {
+		t.Fatalf("expected green success marker %q in rendered line, got: %q", wantMarker, app.lines[0].text)
+	}
+	if !strings.Contains(app.lines[0].text, "Snapshot loaded from pod:my-baseline") {
+		t.Fatalf("expected loaded message text, got: %q", app.lines[0].text)
+	}
+}
+
 func TestAppMessageEventWrapsOnVisibleWidth(t *testing.T) {
 	t.Parallel()
 
