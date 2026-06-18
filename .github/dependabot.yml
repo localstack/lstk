@@ -9,6 +9,7 @@ updates:
     open-pull-requests-limit: 10
     labels:
       - "semver: patch"
+      - "docs: skip"
 
   - package-ecosystem: "github-actions"
     directory: "/"
@@ -19,3 +20,4 @@ updates:
     open-pull-requests-limit: 10
     labels:
       - "semver: patch"
+      - "docs: skip"

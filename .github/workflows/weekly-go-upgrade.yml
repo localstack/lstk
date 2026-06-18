@@ -47,4 +47,5 @@ jobs:
           labels: |
             dependencies
             semver: patch
+            docs: skip
           token: ${{ secrets.PRO_ACCESS_TOKEN }}
