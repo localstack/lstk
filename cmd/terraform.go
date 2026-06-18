@@ -75,9 +75,21 @@ Examples:
 				return emitValidationError(sink, err)
 			}
 
-			// Unproxied subcommands (fmt/validate/version) never touch the
-			// endpoint, so they run without requiring a running emulator.
-			if tfcli.IsUnproxied(tfArgs) {
+			workdir, err := os.Getwd()
+			if err != nil {
+				return fmt.Errorf("resolving working directory: %w", err)
+			}
+			// -chdir switches terraform into another directory, so the S3-backend
+			// detection that decides whether an emulator is required must inspect
+			// that directory too (matching the resolution Run does internally).
+			if chdir != "" {
+				workdir = tfcli.ResolveChdir(workdir, chdir)
+			}
+
+			// Commands that don't need the emulator (fmt/validate/version, and
+			// init when no S3 backend is declared) run without bringing up or
+			// requiring a running emulator.
+			if !tfcli.RequiresEmulator(tfArgs, workdir, logger) {
 				return tfcli.Run(cmd.Context(), "", region, account, chdir, sink, logger, tfArgs)
 			}
 
