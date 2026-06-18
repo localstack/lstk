@@ -267,6 +267,9 @@ lstk snapshot load pod:my-baseline
 # List cloud snapshots on the LocalStack platform (--all for the whole organization)
 lstk snapshot list
 
+# Show metadata for a single cloud snapshot
+lstk snapshot show pod:my-baseline
+
 # Delete a cloud snapshot (prompts for confirmation; --force to skip)
 lstk snapshot remove pod:my-baseline
 
@@ -308,6 +311,9 @@ lstk snapshot load pod:my-baseline
 # List cloud snapshots — only your own by default, --all for the whole organization
 lstk snapshot list
 lstk snapshot list --all
+
+# Show metadata for a single cloud snapshot
+lstk snapshot show pod:my-baseline
 
 # Remove — cloud snapshots only; local files are never deleted by the CLI
 lstk snapshot remove pod:my-baseline          # prompts for confirmation

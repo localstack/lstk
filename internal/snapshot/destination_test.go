@@ -16,6 +16,35 @@ import (
 
 
 
+func TestParseShowable(t *testing.T) {
+	t.Parallel()
+	home := t.TempDir()
+	cwd, err := os.Getwd()
+	require.NoError(t, err)
+
+	t.Run("accepts pod ref", func(t *testing.T) {
+		t.Parallel()
+		dest, err := snapshot.ParseShowable("pod:my-baseline", cwd, home)
+		require.NoError(t, err)
+		assert.Equal(t, snapshot.KindPod, dest.Kind)
+		assert.Equal(t, "my-baseline", dest.Value)
+	})
+
+	t.Run("rejects local path", func(t *testing.T) {
+		t.Parallel()
+		_, err := snapshot.ParseShowable("./my-snapshot", cwd, home)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "show local snapshots")
+	})
+
+	t.Run("rejects invalid pod name", func(t *testing.T) {
+		t.Parallel()
+		_, err := snapshot.ParseShowable("pod:bad name", cwd, home)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "invalid pod name")
+	})
+}
+
 func TestParseSource(t *testing.T) {
 	t.Parallel()
 	wd, err := os.Getwd()
@@ -460,10 +489,10 @@ func TestParseDestination(t *testing.T) {
 			wantErr: "invalid pod name",
 		},
 		{
-			// pod name with invalid characters
-			name:    "pod: underscore invalid",
-			input:   "pod:my_pod",
-			wantErr: "invalid pod name",
+			name:        "pod: underscore allowed",
+			input:       "pod:ci_test-underscore",
+			wantKind:    snapshot.KindPod,
+			wantPodName: "ci_test-underscore",
 		},
 
 		// --- unknown schemes ---

@@ -27,6 +27,10 @@ const snapshotListLong = `List Cloud Pod snapshots available on the LocalStack p
 
 By default only snapshots you created are listed. Pass --all to include all snapshots in your organisation.`
 
+const snapshotShowLong = `Show metadata for a cloud snapshot on the LocalStack platform.
+
+  lstk snapshot show pod:my-baseline    # prints name, created date, size, version, services, and resource counts`
+
 const snapshotRemoveLong = `Delete a cloud snapshot from the LocalStack platform.
 
 Only cloud snapshots (pod: prefix) can be removed. This operation cannot be undone.
@@ -74,6 +78,7 @@ func newSnapshotCmd(cfg *env.Env, tel *telemetry.Client, logger log.Logger) *cob
 	cmd.AddCommand(newSnapshotLoadCmd(cfg, tel, logger))
 	cmd.AddCommand(newSnapshotListCmd(cfg, logger))
 	cmd.AddCommand(newSnapshotRemoveCmd(cfg))
+	cmd.AddCommand(newSnapshotShowCmd(cfg, logger))
 	return cmd
 }
 
@@ -262,6 +267,42 @@ func runSnapshotList(cfg *env.Env, logger log.Logger) func(*cobra.Command, []str
 		}
 		sink := output.NewPlainSink(os.Stdout)
 		return snapshot.List(cmd.Context(), client, cfg.AuthToken, creator, sink)
+	}
+}
+
+func newSnapshotShowCmd(cfg *env.Env, logger log.Logger) *cobra.Command {
+	return &cobra.Command{
+		Use:     "show REF",
+		Short:   "Show metadata for a cloud snapshot",
+		Long:    snapshotShowLong,
+		Args:    cobra.ExactArgs(1),
+		PreRunE: initConfig(nil),
+		RunE:    runSnapshotShow(cfg, logger),
+	}
+}
+
+func runSnapshotShow(cfg *env.Env, logger log.Logger) func(*cobra.Command, []string) error {
+	return func(cmd *cobra.Command, args []string) error {
+		cwd, err := os.Getwd()
+		if err != nil {
+			return err
+		}
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return err
+		}
+
+		ref, err := snapshot.ParseShowable(args[0], cwd, home)
+		if err != nil {
+			return err
+		}
+
+		client := api.NewPlatformClient(cfg.APIEndpoint, logger)
+		if isInteractiveMode(cfg) {
+			return ui.RunSnapshotShow(cmd.Context(), client, cfg.AuthToken, ref.Value)
+		}
+		sink := output.NewPlainSink(os.Stdout)
+		return snapshot.Show(cmd.Context(), client, cfg.AuthToken, ref.Value, sink)
 	}
 }
 

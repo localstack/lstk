@@ -99,28 +99,54 @@ type PodSnapshotRemovedEvent struct {
 	PodName string
 }
 
+// SnapshotResourceCount is a count of one resource kind, e.g. {Count: 3, Noun: "buckets"}.
+type SnapshotResourceCount struct {
+	Count int
+	Noun  string
+}
+
+// SnapshotResourceLine groups the resource counts of a single service.
+type SnapshotResourceLine struct {
+	Service string
+	Counts  []SnapshotResourceCount
+}
+
+// SnapshotShownEvent reports the metadata of a single cloud snapshot for the
+// `snapshot show` command. Created is nil and Resources is empty when the
+// platform has no value for them; the formatter omits those sections.
+type SnapshotShownEvent struct {
+	Name              string
+	Created           *time.Time
+	Size              int64
+	LocalStackVersion string
+	Message           string
+	Services          []string
+	Resources         []SnapshotResourceLine
+}
+
 type AuthCompleteEvent struct{}
 
 // Event is a sealed marker — only event types in this package implement it,
 // so Sink.Emit rejects unknown types at compile time.
 type Event interface{ sealedEvent() }
 
-func (MessageEvent) sealedEvent()          {}
-func (SpinnerEvent) sealedEvent()          {}
-func (ErrorEvent) sealedEvent()            {}
-func (AuthEvent) sealedEvent()             {}
-func (AuthCompleteEvent) sealedEvent()     {}
-func (InstanceInfoEvent) sealedEvent()     {}
-func (TableEvent) sealedEvent()            {}
-func (ResourceSummaryEvent) sealedEvent()  {}
+func (MessageEvent) sealedEvent()            {}
+func (SpinnerEvent) sealedEvent()            {}
+func (ErrorEvent) sealedEvent()              {}
+func (AuthEvent) sealedEvent()               {}
+func (AuthCompleteEvent) sealedEvent()       {}
+func (InstanceInfoEvent) sealedEvent()       {}
+func (TableEvent) sealedEvent()              {}
+func (ResourceSummaryEvent) sealedEvent()    {}
 func (PodSnapshotSavedEvent) sealedEvent()   {}
 func (DeferredEvent) sealedEvent()           {}
 func (SnapshotLoadedEvent) sealedEvent()     {}
 func (PodSnapshotRemovedEvent) sealedEvent() {}
-func (ContainerStatusEvent) sealedEvent()  {}
-func (ProgressEvent) sealedEvent()         {}
-func (UserInputRequestEvent) sealedEvent() {}
-func (LogLineEvent) sealedEvent()          {}
+func (SnapshotShownEvent) sealedEvent()      {}
+func (ContainerStatusEvent) sealedEvent()    {}
+func (ProgressEvent) sealedEvent()           {}
+func (UserInputRequestEvent) sealedEvent()   {}
+func (LogLineEvent) sealedEvent()            {}
 
 type Sink interface {
 	Emit(event Event)

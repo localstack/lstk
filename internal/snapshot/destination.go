@@ -20,7 +20,7 @@ var (
 	// ErrUnknownScheme is returned for unrecognized URL schemes.
 	ErrUnknownScheme = errors.New("unrecognized destination scheme")
 
-	validPodName = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9-]*$`)
+	validPodName = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_-]*$`)
 )
 
 const (
@@ -57,11 +57,24 @@ type Destination struct {
 // local file paths are rejected because the CLI cannot delete local files.
 // cwd and home are used to produce a human-readable path in error messages.
 func ParseRemovable(ref, cwd, home string) (Destination, error) {
+	return parseCloudOnly(ref, cwd, home, "delete local files")
+}
+
+// ParseShowable parses a ref for snapshot show. Only cloud (pod:) refs are accepted;
+// local file paths are rejected because show only inspects cloud snapshots.
+// cwd and home are used to produce a human-readable path in error messages.
+func ParseShowable(ref, cwd, home string) (Destination, error) {
+	return parseCloudOnly(ref, cwd, home, "show local snapshots")
+}
+
+// parseCloudOnly validates that ref is a cloud (pod:) reference, rejecting local
+// file paths with a message naming the unsupported action (e.g. "delete local files").
+func parseCloudOnly(ref, cwd, home, action string) (Destination, error) {
 	lower := strings.ToLower(ref)
 	if !strings.HasPrefix(lower, "pod:") && !strings.Contains(lower, "://") {
 		abs, _ := filepath.Abs(ref)
 		abs = withSnapshotExt(abs)
-		return Destination{}, fmt.Errorf("'%s' resolves to a local file (%s); CLI cannot delete local files", ref, displayPath(abs, cwd, home))
+		return Destination{}, fmt.Errorf("'%s' resolves to a local file (%s); CLI cannot %s", ref, displayPath(abs, cwd, home), action)
 	}
 	return ParseSource(ref, home)
 }
@@ -100,7 +113,7 @@ func ParseSource(ref, home string) (Destination, error) {
 	case strings.HasPrefix(lower, "pod:"):
 		podName := ref[len("pod:"):]
 		if !validPodName.MatchString(podName) {
-			return Destination{}, fmt.Errorf("invalid pod name %q: use letters, digits, and hyphens only, starting with a letter or digit", podName)
+			return Destination{}, fmt.Errorf("invalid pod name %q: use letters, digits, hyphens, and underscores only, starting with a letter or digit", podName)
 		}
 		return Destination{Kind: KindPod, Value: podName}, nil
 	case strings.HasPrefix(lower, "s3://"),
@@ -162,7 +175,7 @@ func ParseDestination(dest, home string, now time.Time) (Destination, error) {
 		case strings.HasPrefix(lower, "pod:"):
 			podName := dest[len("pod:"):]
 			if !validPodName.MatchString(podName) {
-				return Destination{}, fmt.Errorf("invalid pod name %q: use letters, digits, and hyphens only, starting with a letter or digit", podName)
+				return Destination{}, fmt.Errorf("invalid pod name %q: use letters, digits, hyphens, and underscores only, starting with a letter or digit", podName)
 			}
 			return Destination{Kind: KindPod, Value: podName}, nil
 		case strings.HasPrefix(lower, "s3://"),

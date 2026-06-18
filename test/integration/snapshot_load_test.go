@@ -118,7 +118,7 @@ func TestSnapshotLoadPodNoAuthToken(t *testing.T) {
 
 func TestSnapshotLoadPodInvalidName(t *testing.T) {
 	t.Parallel()
-	for _, ref := range []string{"pod:", "pod:-bad", "pod:my_pod"} {
+	for _, ref := range []string{"pod:", "pod:-bad", "pod:_bad", "pod:my pod"} {
 		t.Run(ref, func(t *testing.T) {
 			t.Parallel()
 			ctx := testContext(t)

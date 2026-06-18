@@ -95,12 +95,13 @@ lstk proxies third-party IaC tools at the AWS emulator so they run against Local
 - `lstk snapshot load REF` — restore state, starting the emulator first if needed; `--merge` controls how snapshot state combines with running state (`account-region-merge` (default), `overwrite`, `service-merge`).
 - `lstk snapshot list` — list cloud snapshots on the LocalStack platform. Lists only snapshots you created by default; pass `--all` to include every snapshot in your organization. Cloud-only; requires auth.
 - `lstk snapshot remove REF` — delete a cloud snapshot. Cloud-only; local files are never deleted by the CLI. Prompts for confirmation in interactive mode; `--force` is required to skip the prompt in non-interactive mode.
+- `lstk snapshot show REF` — show metadata for a single cloud snapshot (name, created date, size, LocalStack version, message, services, and per-service resource counts). Resource counts render only when the platform has them for that snapshot. Cloud-only; requires auth.
 
 A REF is parsed by helpers in `internal/snapshot/destination.go`:
 - **local file** — absolute/relative path; the `.snapshot` extension is forced (any other extension is replaced). On load, `.zip` files saved by older lstk versions are still accepted.
 - **cloud snapshot** — `pod:` prefix (e.g. `pod:my-baseline`), stored on the LocalStack platform. Requires auth (`LOCALSTACK_AUTH_TOKEN` or `lstk login`).
 
-`ParseDestination` (save), `ParseSource` (load), and `ParseRemovable` (remove) share pod-name validation; `ParseRemovable` rejects local paths so the CLI cannot delete local files.
+`ParseDestination` (save), `ParseSource` (load), `ParseRemovable` (remove), and `ParseShowable` (show) share pod-name validation; `ParseRemovable` and `ParseShowable` reject local paths (via the shared `parseCloudOnly` helper) so those cloud-only commands never touch local files.
 
 # Code Style
 

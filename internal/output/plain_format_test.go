@@ -1,6 +1,7 @@
 package output
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -338,6 +339,104 @@ func TestFormatTableWidth(t *testing.T) {
 			t.Error("expected truncation at narrow width")
 		}
 	})
+}
+
+func TestFormatSnapshotShown(t *testing.T) {
+	t.Parallel()
+
+	label := func(s string) string { return fmt.Sprintf("%-*s", snapshotShowLabelWidth, s) }
+	resLabel := func(s string) string { return "  " + fmt.Sprintf("%-*s", snapshotShowLabelWidth-2, s) }
+	created := time.Date(2026, 4, 15, 14, 32, 0, 0, time.UTC)
+
+	tests := []struct {
+		name  string
+		event SnapshotShownEvent
+		want  string
+	}{
+		{
+			name: "full detail with resources",
+			event: SnapshotShownEvent{
+				Name:              "my-baseline",
+				Created:           &created,
+				Size:              49597645,
+				LocalStackVersion: "2026.03",
+				Message:           "Pre-refactor baseline",
+				Services:          []string{"s3", "lambda", "dynamodb", "sqs"},
+				Resources: []SnapshotResourceLine{
+					{Service: "s3", Counts: []SnapshotResourceCount{{Count: 3, Noun: "buckets"}}},
+					{Service: "lambda", Counts: []SnapshotResourceCount{{Count: 12, Noun: "functions"}}},
+					{Service: "dynamodb", Counts: []SnapshotResourceCount{{Count: 2, Noun: "tables"}}},
+					{Service: "sqs", Counts: []SnapshotResourceCount{{Count: 5, Noun: "queues"}}},
+				},
+			},
+			want: strings.Join([]string{
+				label("Name") + "my-baseline",
+				label("Created") + "2026-04-15 14:32 UTC",
+				label("Size") + "47.3 MB",
+				label("LocalStack") + "2026.03",
+				label("Message") + "Pre-refactor baseline",
+				"",
+				label("Services") + "s3, lambda, dynamodb, sqs",
+				"",
+				"Resources",
+				resLabel("s3") + "3 buckets",
+				resLabel("lambda") + "12 functions",
+				resLabel("dynamodb") + "2 tables",
+				resLabel("sqs") + "5 queues",
+			}, "\n"),
+		},
+		{
+			name: "no resources renders services only",
+			event: SnapshotShownEvent{
+				Name:              "bare",
+				LocalStackVersion: "2026.03",
+				Services:          []string{"s3", "sqs"},
+			},
+			want: strings.Join([]string{
+				label("Name") + "bare",
+				label("LocalStack") + "2026.03",
+				"",
+				label("Services") + "s3, sqs",
+			}, "\n"),
+		},
+		{
+			name: "multiple resource kinds per service joined",
+			event: SnapshotShownEvent{
+				Name:     "multi",
+				Services: []string{"lambda"},
+				Resources: []SnapshotResourceLine{
+					{Service: "lambda", Counts: []SnapshotResourceCount{{Count: 12, Noun: "functions"}, {Count: 3, Noun: "layers"}}},
+				},
+			},
+			want: strings.Join([]string{
+				label("Name") + "multi",
+				"",
+				label("Services") + "lambda",
+				"",
+				"Resources",
+				resLabel("lambda") + "12 functions, 3 layers",
+			}, "\n"),
+		},
+		{
+			name:  "minimal omits empty fields and sections",
+			event: SnapshotShownEvent{Name: "minimal"},
+			want:  label("Name") + "minimal",
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got, ok := FormatEventLine(tt.event)
+			if !ok {
+				t.Fatalf("expected ok=true")
+			}
+			if got != tt.want {
+				t.Fatalf("expected:\n%q\ngot:\n%q", tt.want, got)
+			}
+		})
+	}
 }
 
 func TestFormatBytes(t *testing.T) {
