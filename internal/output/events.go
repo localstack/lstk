@@ -135,6 +135,25 @@ type SnapshotShownEvent struct {
 	Resources         []SnapshotResourceLine
 }
 
+// SnapshotServiceSize is the byte usage of one service in a snapshot, combining
+// its control-plane state (api_states/) and data-asset payloads (assets/).
+type SnapshotServiceSize struct {
+	Service      string `json:"service"`
+	Uncompressed int64  `json:"uncompressed_bytes"`
+	Compressed   int64  `json:"compressed_bytes"`
+}
+
+// SnapshotInspectedEvent reports the per-service size breakdown of a local
+// snapshot file for the `snapshot inspect` command. Sizes are tallied per
+// archive entry with no running emulator and no platform call; services are
+// sorted largest-first.
+type SnapshotInspectedEvent struct {
+	Path              string                `json:"path"`
+	TotalUncompressed int64                 `json:"total_uncompressed_bytes"`
+	TotalCompressed   int64                 `json:"total_compressed_bytes"`
+	Services          []SnapshotServiceSize `json:"services"`
+}
+
 type AuthCompleteEvent struct{}
 
 // Event is a sealed marker — only event types in this package implement it,
@@ -155,6 +174,7 @@ func (DeferredEvent) sealedEvent()            {}
 func (SnapshotLoadedEvent) sealedEvent()      {}
 func (PodSnapshotRemovedEvent) sealedEvent()  {}
 func (SnapshotShownEvent) sealedEvent()       {}
+func (SnapshotInspectedEvent) sealedEvent()   {}
 func (ContainerStatusEvent) sealedEvent()     {}
 func (ProgressEvent) sealedEvent()            {}
 func (UserInputRequestEvent) sealedEvent()    {}

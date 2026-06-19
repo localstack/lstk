@@ -460,6 +460,63 @@ func TestFormatSnapshotShown(t *testing.T) {
 	}
 }
 
+func TestFormatSnapshotInspected(t *testing.T) {
+	t.Parallel()
+
+	event := SnapshotInspectedEvent{
+		Path:              "./x.snapshot",
+		TotalUncompressed: 1500,
+		TotalCompressed:   1350,
+		Services: []SnapshotServiceSize{
+			{Service: "s3", Uncompressed: 1200, Compressed: 1100},
+			{Service: "dynamodb", Uncompressed: 200, Compressed: 180},
+			{Service: "iam", Uncompressed: 100, Compressed: 70},
+		},
+	}
+
+	got, ok := FormatEventLine(event)
+	if !ok {
+		t.Fatalf("expected ok=true")
+	}
+	lines := strings.Split(got, "\n")
+
+	// The whole block carries a two-space left margin; the size line sits one
+	// level under the title.
+	if want := "  ~ Snapshot analysis for x.snapshot"; lines[0] != want {
+		t.Fatalf("header = %q, want %q", lines[0], want)
+	}
+	if want := "    1.5 KB"; lines[1] != want {
+		t.Fatalf("size line = %q, want %q", lines[1], want)
+	}
+
+	idx := func(substr string) int {
+		for i, l := range lines {
+			if strings.Contains(l, substr) {
+				return i
+			}
+		}
+		return -1
+	}
+
+	// Flat per-service rows, rendered in the order given (largest-first):
+	// s3 > dynamodb > iam, all at the base margin (not nested deeper).
+	s3Idx, dynIdx, iamIdx := idx("s3"), idx("dynamodb"), idx("iam")
+	if s3Idx == -1 || dynIdx == -1 || iamIdx == -1 || s3Idx >= dynIdx || dynIdx >= iamIdx {
+		t.Fatalf("expected s3 > dynamodb > iam in order; got:\n%s", got)
+	}
+	if !strings.HasPrefix(lines[s3Idx], "  s3") || strings.HasPrefix(lines[s3Idx], "    ") {
+		t.Fatalf("expected service rows at the base left margin; got %q", lines[s3Idx])
+	}
+
+	last := lines[len(lines)-1]
+	if !strings.Contains(last, "TOTAL") || !strings.Contains(last, "100%") {
+		t.Fatalf("expected final TOTAL line with 100%%; got %q", last)
+	}
+	if !strings.Contains(got, "─") {
+		t.Fatalf("expected a separator rule; got:\n%s", got)
+	}
+}
+
 func TestFormatBytes(t *testing.T) {
 	t.Parallel()
 	tests := []struct {

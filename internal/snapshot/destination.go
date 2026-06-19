@@ -117,6 +117,18 @@ func ParseShowable(ref, cwd, home string) (Destination, error) {
 	return parseCloudOnly(ref, cwd, home, "show local snapshots")
 }
 
+// ParseInspectable parses a ref for snapshot inspect. Only local file paths are
+// accepted; cloud (pod:) refs are rejected because inspect reads the on-disk
+// archive and never contacts the platform — the inverse of ParseShowable.
+// home is used to expand a leading "~"; pass "" to disable tilde expansion.
+func ParseInspectable(ref, home string) (Destination, error) {
+	lower := strings.ToLower(ref)
+	if strings.HasPrefix(lower, "pod:") || strings.Contains(lower, "://") {
+		return Destination{}, fmt.Errorf("'%s' is a cloud snapshot; 'snapshot inspect' only reads local files. Use 'lstk snapshot show %s' to view cloud snapshot metadata", ref, ref)
+	}
+	return ParseSource(ref, home)
+}
+
 // parseCloudOnly validates that ref is a cloud (pod:) reference, rejecting local
 // file paths with a message naming the unsupported action (e.g. "delete local files").
 func parseCloudOnly(ref, cwd, home, action string) (Destination, error) {
