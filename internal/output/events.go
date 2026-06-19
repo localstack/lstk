@@ -187,6 +187,39 @@ type UpdateAppliedEvent struct {
 	Method         string
 }
 
+// InstallLocation describes one lstk executable found on PATH.
+type InstallLocation struct {
+	Path    string // location as found on PATH (what a shell would execute)
+	Method  string // install method: "homebrew", "npm", or "binary"
+	Running bool   // whether this entry is the currently running executable
+}
+
+// MultipleInstallsEvent warns that more than one distinct lstk install was
+// found on PATH. Installs are in PATH order, so the first entry is the one a
+// shell resolves when the user types "lstk".
+type MultipleInstallsEvent struct {
+	Installs []InstallLocation
+}
+
+// SnapshotServiceSize is the byte usage of one service in a snapshot, combining
+// its control-plane state (api_states/) and data-asset payloads (assets/).
+type SnapshotServiceSize struct {
+	Service      string `json:"service"`
+	Uncompressed int64  `json:"uncompressed_bytes"`
+	Compressed   int64  `json:"compressed_bytes"`
+}
+
+// SnapshotInspectedEvent reports the per-service size breakdown of a local
+// snapshot file for the `snapshot inspect` command. Sizes are tallied per
+// archive entry with no running emulator and no platform call; services are
+// sorted largest-first.
+type SnapshotInspectedEvent struct {
+	Path              string                `json:"path"`
+	TotalUncompressed int64                 `json:"total_uncompressed_bytes"`
+	TotalCompressed   int64                 `json:"total_compressed_bytes"`
+	Services          []SnapshotServiceSize `json:"services"`
+}
+
 type AuthCompleteEvent struct{}
 
 type SnapshotDiffServiceResult struct {
@@ -227,6 +260,8 @@ func (EmulatorStoppedEvent) sealedEvent()     {}
 func (EmulatorResetEvent) sealedEvent()       {}
 func (UpdateCheckedEvent) sealedEvent()       {}
 func (UpdateAppliedEvent) sealedEvent()       {}
+func (MultipleInstallsEvent) sealedEvent()    {}
+func (SnapshotInspectedEvent) sealedEvent()   {}
 func (ContainerStatusEvent) sealedEvent()     {}
 func (ProgressEvent) sealedEvent()            {}
 func (UserInputRequestEvent) sealedEvent()    {}
