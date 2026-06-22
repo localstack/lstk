@@ -17,13 +17,17 @@ import (
 
 // overrideOptions configures generation of the provider-override file.
 type overrideOptions struct {
-	workdir      string
-	fileName     string
-	endpointURL  string // effective LocalStack endpoint (after AWS_ENDPOINT_URL override)
-	region       string // resolved deployment region, encoded into every block
-	account      string // resolved access_key (target account id)
-	endpointKeys []string
-	logger       log.Logger
+	workdir         string
+	fileName        string
+	endpointURL     string // effective LocalStack endpoint (after AWS_ENDPOINT_URL override)
+	region          string // resolved deployment region, encoded into every block
+	account         string // resolved access_key (target account id)
+	endpointKeys    []string
+	includeProvider bool          // emit provider "aws" blocks and remote-state data blocks (false for init's backend-only override)
+	backend         *s3Backend    // S3 backend to redirect, or nil when none is declared
+	remoteStates    []remoteState // terraform_remote_state (s3) blocks to redirect
+	legacy          bool          // emit legacy flat backend endpoint keys instead of the endpoints {} map
+	logger          log.Logger
 }
 
 var providerBlockSchema = &hcl.BodySchema{
@@ -34,33 +38,52 @@ var aliasAttrSchema = &hcl.BodySchema{
 	Attributes: []hcl.AttributeSchema{{Name: "alias"}},
 }
 
-// generateOverride discovers the aws provider blocks in the working directory
-// and writes one matching `provider "aws"` block per alias into the override
-// file, targeting LocalStack. It returns the paths it wrote so the caller can
-// clean them up.
+// generateOverride writes the LocalStack override file and returns the paths it
+// wrote so the caller can clean them up. Depending on opts it emits any
+// combination of: one `provider "aws"` block per discovered alias (when
+// includeProvider is set), a full `terraform { backend "s3" {} }` redirection
+// (when a backend is present), and regenerated `data "terraform_remote_state"`
+// blocks. init uses a backend-only file (includeProvider false) because the
+// provider schema does not exist until init has installed the provider.
 func generateOverride(opts overrideOptions) ([]string, error) {
 	path := filepath.Join(opts.workdir, opts.fileName)
 	if err := ensureSafeToWrite(path); err != nil {
 		return nil, err
 	}
 
-	aliases := discoverAWSAliases(opts.workdir, opts.logger)
-
 	pathStyle, s3Endpoint := endpoint.S3Addressing(opts.endpointURL)
 
 	var b strings.Builder
 	b.WriteString(overrideFileMarker)
 	b.WriteString("\n\n")
-	for _, alias := range aliases {
-		writeProviderBlock(&b, providerBlock{
-			alias:        alias,
-			region:       opts.region,
-			account:      opts.account,
-			endpointURL:  opts.endpointURL,
-			s3Endpoint:   s3Endpoint,
-			pathStyle:    pathStyle,
-			endpointKeys: opts.endpointKeys,
-		})
+
+	if opts.includeProvider {
+		for _, alias := range discoverAWSAliases(opts.workdir, opts.logger) {
+			writeProviderBlock(&b, providerBlock{
+				alias:        alias,
+				region:       opts.region,
+				account:      opts.account,
+				endpointURL:  opts.endpointURL,
+				s3Endpoint:   s3Endpoint,
+				pathStyle:    pathStyle,
+				endpointKeys: opts.endpointKeys,
+			})
+		}
+	}
+
+	form := endpointForm{
+		endpointURL: opts.endpointURL,
+		s3Endpoint:  s3Endpoint,
+		pathStyle:   pathStyle,
+		legacy:      opts.legacy,
+		region:      opts.region,
+		account:     opts.account,
+	}
+	if opts.backend != nil {
+		writeBackendBlock(&b, opts.backend, form)
+	}
+	for _, rs := range opts.remoteStates {
+		writeRemoteStateBlock(&b, rs, form)
 	}
 
 	if err := os.WriteFile(path, []byte(b.String()), 0644); err != nil {

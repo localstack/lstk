@@ -14,13 +14,14 @@ import (
 
 func baseOpts(workdir string) overrideOptions {
 	return overrideOptions{
-		workdir:      workdir,
-		fileName:     defaultOverrideFileName,
-		endpointURL:  "http://localhost.localstack.cloud:4566",
-		region:       "us-east-1",
-		account:      "test",
-		endpointKeys: []string{"s3", "sqs"},
-		logger:       log.Nop(),
+		workdir:         workdir,
+		fileName:        defaultOverrideFileName,
+		endpointURL:     "http://localhost.localstack.cloud:4566",
+		region:          "us-east-1",
+		account:         "test",
+		endpointKeys:    []string{"s3", "sqs"},
+		includeProvider: true,
+		logger:          log.Nop(),
 	}
 }
 
