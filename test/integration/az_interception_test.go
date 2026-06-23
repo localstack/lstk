@@ -48,6 +48,29 @@ func TestAzStartInterceptionRoutesToSubcommand(t *testing.T) {
 	assert.NotContains(t, stdout, "not set up")
 }
 
+// stop-interception is a safe no-op when LocalStack is not the active cloud — e.g.
+// interception was never started, so the global ~/.azure still points at real Azure.
+// It must report the current cloud and exit 0 without changing anything (and without
+// needing the emulator running). Requires only the Azure CLI, not Docker.
+func TestAzStopInterceptionNoOpWhenNotIntercepting(t *testing.T) {
+	requireAzCLI(t)
+	t.Parallel()
+	workDir := azureWorkDir(t)
+	home := t.TempDir() // fresh ~/.azure: active cloud is the default AzureCloud
+
+	stdout, _, err := runLstk(t, testContext(t), workDir,
+		env.With(env.Home, home),
+		"az", "stop-interception",
+	)
+	require.NoError(t, err, "stop-interception must not fail when LocalStack is not active")
+	assert.Contains(t, stdout, "not the active Azure cloud")
+
+	// It must not have switched the active cloud to anything.
+	active, azErr := runAzRaw(t, testContext(t), env.With(env.Home, home), "cloud", "show", "--query", "name", "-o", "tsv")
+	require.NoError(t, azErr)
+	assert.Equal(t, "AzureCloud", active)
+}
+
 func TestAzStopInterceptionFailsWhenAzureCLINotInstalled(t *testing.T) {
 	t.Parallel()
 	workDir := azureWorkDir(t)
