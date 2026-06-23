@@ -181,6 +181,12 @@ func windowsDockerStartCommand(getenv func(string) string, lookPath func(string)
 }
 
 func (d *DockerRuntime) PullImage(ctx context.Context, imageName string, progress chan<- PullProgress) error {
+	// Close progress on every return path, including when ImagePull itself fails
+	// (e.g. the registry is unreachable), so callers ranging over it never block.
+	if progress != nil {
+		defer close(progress)
+	}
+
 	reader, err := d.client.ImagePull(ctx, imageName, client.ImagePullOptions{})
 	if err != nil {
 		return err
@@ -190,10 +196,6 @@ func (d *DockerRuntime) PullImage(ctx context.Context, imageName string, progres
 			log.Printf("failed to close image pull reader: %v", err)
 		}
 	}()
-
-	if progress != nil {
-		defer close(progress)
-	}
 
 	decoder := json.NewDecoder(reader)
 	for {

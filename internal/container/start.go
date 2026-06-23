@@ -338,6 +338,13 @@ func pullImages(ctx context.Context, rt runtime.Runtime, sink output.Sink, tel *
 		}()
 		if err := rt.PullImage(ctx, c.Image, progress); err != nil {
 			sink.Emit(output.SpinnerStop())
+			// The registry may be unreachable (offline, proxy, or TLS interception in
+			// enterprise networks). If the image is already available locally, fall back
+			// to it instead of failing — the image carries its own license.
+			if exists, existsErr := rt.ImageExists(ctx, c.Image); existsErr == nil && exists {
+				sink.Emit(output.MessageEvent{Severity: output.SeverityWarning, Text: fmt.Sprintf("Could not pull %s; using the local image", c.Image)})
+				continue
+			}
 			sink.Emit(output.ErrorEvent{
 				Title:   fmt.Sprintf("Failed to pull %s", c.Image),
 				Summary: err.Error(),
@@ -612,14 +619,27 @@ func validateLicense(ctx context.Context, sink output.Sink, opts StartOptions, c
 	licenseResp, err := opts.PlatformClient.GetLicense(ctx, licenseReq)
 	if err != nil {
 		sink.Emit(output.SpinnerStop())
+		// A cancelled caller context (e.g. Ctrl+C) is not an offline condition —
+		// propagate it instead of degrading. The client's own request timeout is
+		// distinct from ctx and still falls through to the offline fallback below.
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
 		var licErr *api.LicenseError
-		if errors.As(err, &licErr) {
-			if licErr.Detail != "" {
-				opts.Logger.Error("license server response (HTTP %d): %s", licErr.Status, licErr.Detail)
-			}
-			if licErr.IsUnsupportedTag {
-				err = errors.New(config.UnsupportedTagMessage())
-			}
+		if !errors.As(err, &licErr) {
+			// The license server responded with no definitive verdict — the request
+			// itself failed (offline, proxy, or TLS interception in enterprise
+			// networks). Skip the pre-flight check and let the container validate its
+			// own bundled license at startup instead of blocking the start.
+			opts.Logger.Info("license server unreachable, continuing with the image's bundled license: %v", err)
+			sink.Emit(output.MessageEvent{Severity: output.SeverityWarning, Text: "Could not reach the license server; continuing with the image's bundled license"})
+			return nil
+		}
+		if licErr.Detail != "" {
+			opts.Logger.Error("license server response (HTTP %d): %s", licErr.Status, licErr.Detail)
+		}
+		if licErr.IsUnsupportedTag {
+			err = errors.New(config.UnsupportedTagMessage())
 		}
 		opts.Telemetry.EmitEmulatorLifecycleEvent(ctx, telemetry.LifecycleEvent{
 			EventType: telemetry.LifecycleStartError,

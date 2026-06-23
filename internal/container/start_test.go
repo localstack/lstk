@@ -8,9 +8,11 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"strconv"
 	"testing"
 
+	"github.com/localstack/lstk/internal/api"
 	"github.com/localstack/lstk/internal/caller"
 	"github.com/localstack/lstk/internal/config"
 	"github.com/localstack/lstk/internal/log"
@@ -381,6 +383,141 @@ func TestAgentEnv(t *testing.T) {
 	assert.Equal(t, []string{"AI_AGENT=claude-code"},
 		agentEnv(caller.Classification{AgentIdentity: "claude-code", CIIdentity: "github-actions"}),
 		"an agent running inside CI still forwards its AI_AGENT identity")
+}
+
+func TestPullImages_FallsBackToLocalImageWhenPullFails(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockRT := runtime.NewMockRuntime(ctrl)
+
+	c := runtime.ContainerConfig{
+		Image:        "my-registry.internal/localstack-pro:latest",
+		Name:         "localstack-aws",
+		EmulatorType: config.EmulatorAWS,
+	}
+
+	mockRT.EXPECT().Remove(gomock.Any(), c.Name).Return(nil)
+	mockRT.EXPECT().PullImage(gomock.Any(), c.Image, gomock.Any()).DoAndReturn(
+		func(_ context.Context, _ string, progress chan<- runtime.PullProgress) error {
+			close(progress)
+			return errors.New("tls: failed to verify certificate")
+		})
+	mockRT.EXPECT().ImageExists(gomock.Any(), c.Image).Return(true, nil)
+
+	var out bytes.Buffer
+	sink := output.NewPlainSink(&out)
+	tel := telemetry.New("", true)
+
+	pulled, err := pullImages(context.Background(), mockRT, sink, tel, []runtime.ContainerConfig{c})
+
+	require.NoError(t, err, "a pull failure must not be fatal when the image is available locally")
+	assert.False(t, pulled[c.Name], "the image was not pulled, only found locally")
+	assert.Contains(t, out.String(), "using the local image")
+}
+
+func TestPullImages_FailsWhenPullFailsAndImageMissing(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockRT := runtime.NewMockRuntime(ctrl)
+
+	c := runtime.ContainerConfig{
+		Image:        "localstack/localstack-pro:latest",
+		Name:         "localstack-aws",
+		EmulatorType: config.EmulatorAWS,
+	}
+
+	mockRT.EXPECT().Remove(gomock.Any(), c.Name).Return(nil)
+	mockRT.EXPECT().PullImage(gomock.Any(), c.Image, gomock.Any()).DoAndReturn(
+		func(_ context.Context, _ string, progress chan<- runtime.PullProgress) error {
+			close(progress)
+			return errors.New("tls: failed to verify certificate")
+		})
+	mockRT.EXPECT().ImageExists(gomock.Any(), c.Image).Return(false, nil)
+
+	var out bytes.Buffer
+	sink := output.NewPlainSink(&out)
+	tel := telemetry.New("", true)
+
+	_, err := pullImages(context.Background(), mockRT, sink, tel, []runtime.ContainerConfig{c})
+
+	require.Error(t, err)
+	assert.True(t, output.IsSilent(err), "error should be silent since an ErrorEvent was emitted")
+	assert.Contains(t, out.String(), "Failed to pull localstack/localstack-pro:latest")
+}
+
+func TestValidateLicense_ContinuesWhenServerUnreachable(t *testing.T) {
+	// A closed port yields a transport-level failure (not an *api.LicenseError),
+	// which models an offline/proxy environment that cannot reach the license server.
+	opts := StartOptions{
+		PlatformClient: api.NewPlatformClient("http://127.0.0.1:1", log.Nop()),
+		Logger:         log.Nop(),
+		Telemetry:      telemetry.New("", true),
+	}
+	c := runtime.ContainerConfig{
+		EmulatorType: config.EmulatorAWS,
+		ProductName:  "localstack-pro",
+		Tag:          "2026.4",
+		Image:        "localstack/localstack-pro:2026.4",
+	}
+
+	var out bytes.Buffer
+	sink := output.NewPlainSink(&out)
+
+	err := validateLicense(context.Background(), sink, opts, c, "tok", filepath.Join(t.TempDir(), "license.json"))
+
+	require.NoError(t, err, "an unreachable license server must not block the start")
+	assert.Contains(t, out.String(), "Could not reach the license server")
+}
+
+func TestValidateLicense_FailsOnServerRejection(t *testing.T) {
+	// A definitive rejection (HTTP 403 -> *api.LicenseError) must remain fatal.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusForbidden)
+	}))
+	defer srv.Close()
+
+	opts := StartOptions{
+		PlatformClient: api.NewPlatformClient(srv.URL, log.Nop()),
+		Logger:         log.Nop(),
+		Telemetry:      telemetry.New("", true),
+	}
+	c := runtime.ContainerConfig{
+		EmulatorType: config.EmulatorAWS,
+		ProductName:  "localstack-pro",
+		Tag:          "2026.4",
+		Image:        "localstack/localstack-pro:2026.4",
+	}
+
+	err := validateLicense(context.Background(), output.NewPlainSink(io.Discard), opts, c, "tok", filepath.Join(t.TempDir(), "license.json"))
+
+	require.Error(t, err, "a server rejection must remain fatal")
+	assert.Contains(t, err.Error(), "license validation failed")
+}
+
+func TestValidateLicense_PropagatesContextCancellation(t *testing.T) {
+	// A cancelled caller context (Ctrl+C) must surface as cancellation, not be
+	// mistaken for an offline license server.
+	opts := StartOptions{
+		PlatformClient: api.NewPlatformClient("http://127.0.0.1:1", log.Nop()),
+		Logger:         log.Nop(),
+		Telemetry:      telemetry.New("", true),
+	}
+	c := runtime.ContainerConfig{
+		EmulatorType: config.EmulatorAWS,
+		ProductName:  "localstack-pro",
+		Tag:          "2026.4",
+		Image:        "localstack/localstack-pro:2026.4",
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	var out bytes.Buffer
+	sink := output.NewPlainSink(&out)
+
+	err := validateLicense(ctx, sink, opts, c, "tok", filepath.Join(t.TempDir(), "license.json"))
+
+	require.ErrorIs(t, err, context.Canceled)
+	assert.NotContains(t, out.String(), "Could not reach the license server",
+		"a cancellation must not be reported as an unreachable license server")
 }
 
 func TestStartContainers_SnowflakeLicenseError(t *testing.T) {
