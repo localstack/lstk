@@ -112,10 +112,15 @@ func KnownImageReposForType(t EmulatorType) []string {
 }
 
 type ContainerConfig struct {
-	Type   EmulatorType `mapstructure:"type"`
-	Tag    string       `mapstructure:"tag"`
-	Port   string       `mapstructure:"port"`
-	Volume string       `mapstructure:"volume"`
+	Type EmulatorType `mapstructure:"type"`
+	Tag  string       `mapstructure:"tag"`
+	Port string       `mapstructure:"port"`
+	// CustomImage overrides the default Docker image for this emulator. Set it to use an
+	// image from an internal registry or a locally loaded offline image instead of pulling
+	// the default localstack image from Docker Hub. If it carries no tag, Tag (or "latest")
+	// is appended.
+	CustomImage string `mapstructure:"image"`
+	Volume      string `mapstructure:"volume"`
 	// Env is a list of named environment references defined in the top-level [env.*] config sections.
 	Env []string `mapstructure:"env"`
 	// Snapshot is an optional snapshot REF (e.g. "pod:my-baseline" or a local path)
@@ -205,15 +210,30 @@ func (c *ContainerConfig) ResolvedEnv(namedEnvs map[string]map[string]string) ([
 }
 
 func (c *ContainerConfig) Image() (string, error) {
-	productName, err := c.ProductName()
-	if err != nil {
-		return "", err
-	}
 	tag := c.Tag
 	if tag == "" {
 		tag = "latest"
 	}
+	if c.CustomImage != "" {
+		if imageHasTag(c.CustomImage) {
+			return c.CustomImage, nil
+		}
+		return c.CustomImage + ":" + tag, nil
+	}
+	productName, err := c.ProductName()
+	if err != nil {
+		return "", err
+	}
 	return fmt.Sprintf("%s/%s:%s", dockerRegistry, productName, tag), nil
+}
+
+// imageHasTag reports whether a Docker image reference already includes a tag.
+// A colon only counts as a tag separator when it appears in the final path
+// segment, so "my-registry:5000/localstack-pro" (registry port, no tag) is
+// correctly treated as untagged.
+func imageHasTag(image string) bool {
+	lastSegment := image[strings.LastIndex(image, "/")+1:]
+	return strings.Contains(lastSegment, ":")
 }
 
 // Name returns the container name: "localstack-{type}" or "localstack-{type}-{tag}" if tag != latest

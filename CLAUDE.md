@@ -66,6 +66,8 @@ When adding a new command that depends on configuration, wire config initializat
 
 Created automatically on first run with defaults. Supports emulator types: `aws`, `snowflake`, and `azure`.
 
+Each `[[containers]]` block may set an optional `image` to override the default Docker Hub image (e.g. an internal registry mirror or a locally loaded offline image). `ContainerConfig.Image()` returns `image` as-is when it already carries a tag, otherwise it appends `tag` (or `latest`); the default `localstack/<product>:<tag>` is used when `image` is unset.
+
 # Emulator Setup Commands
 
 Use `lstk setup <emulator>` to set up CLI integration for an emulator type:
