@@ -16,3 +16,18 @@ func RunSetupAzure(parentCtx context.Context, containers []config.ContainerConfi
 		return azureconfig.RunSetup(ctx, sink, containers, localStackHost, lstkConfigDir)
 	})
 }
+
+// RunStartInterception redirects the user's global Azure CLI to LocalStack with TUI
+// output. The domain logic lives in azureconfig so non-interactive mode can reuse it.
+func RunStartInterception(parentCtx context.Context, endpointURL string) error {
+	return runWithTUI(parentCtx, withoutHeader(), func(ctx context.Context, sink output.Sink) error {
+		return azureconfig.StartInterception(ctx, sink, endpointURL)
+	})
+}
+
+// RunStopInterception switches the global Azure CLI cloud back to targetCloud with TUI output.
+func RunStopInterception(parentCtx context.Context, targetCloud string) error {
+	return runWithTUI(parentCtx, withoutHeader(), func(ctx context.Context, sink output.Sink) error {
+		return azureconfig.StopInterception(ctx, sink, targetCloud)
+	})
+}

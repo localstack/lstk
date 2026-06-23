@@ -109,6 +109,31 @@ func cloudExists(ctx context.Context, azEnv []string) (bool, error) {
 	return strings.TrimSpace(stdout) == CloudName, nil
 }
 
+// ListClouds returns the names of all clouds registered in the Azure CLI config
+// selected by azEnv (built-ins like AzureCloud plus any custom-registered clouds).
+func ListClouds(ctx context.Context, azEnv []string) ([]string, error) {
+	stdout, _, err := azurecli.Run(ctx, azEnv, "cloud", "list", "--query", "[].name", "-o", "tsv")
+	if err != nil {
+		return nil, err
+	}
+	var names []string
+	for _, line := range strings.Split(stdout, "\n") {
+		if name := strings.TrimSpace(line); name != "" {
+			names = append(names, name)
+		}
+	}
+	return names, nil
+}
+
+// ActiveCloud returns the name of the currently active Azure CLI cloud.
+func ActiveCloud(ctx context.Context, azEnv []string) (string, error) {
+	stdout, _, err := azurecli.Run(ctx, azEnv, "cloud", "show", "--query", "name", "-o", "tsv")
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(stdout), nil
+}
+
 // RunSetup derives the LocalStack Azure endpoint from the configured containers
 // and runs Setup against the isolated Azure CLI config dir under lstkConfigDir.
 // It works with any sink, so it serves both the interactive (TUI) and
@@ -162,8 +187,31 @@ func Setup(ctx context.Context, sink output.Sink, endpointURL, azureConfigDir st
 	if err := os.MkdirAll(azureConfigDir, 0700); err != nil {
 		return fmt.Errorf("could not create %s: %w", azureConfigDir, err)
 	}
-	azEnv := Env(azureConfigDir)
 
+	if err := registerLocalStackCloud(ctx, sink, Env(azureConfigDir), endpointURL, true); err != nil {
+		return err
+	}
+
+	if err := os.WriteFile(filepath.Join(azureConfigDir, setupMarkerFile), []byte("ok\n"), 0600); err != nil {
+		return fmt.Errorf("writing setup marker: %w", err)
+	}
+
+	sink.Emit(output.MessageEvent{
+		Severity: output.SeveritySuccess,
+		Text:     "Azure CLI integration ready. Run 'lstk az <command>' to talk to LocalStack.",
+	})
+	return nil
+}
+
+// registerLocalStackCloud registers (or updates) the LocalStack custom cloud in the
+// Azure CLI config selected by azEnv, activates it, disables instance discovery, and
+// logs in with the dummy service principal. A nil azEnv targets the user's global
+// ~/.azure; a non-nil azEnv (AZURE_CONFIG_DIR=...) targets an isolated dir.
+//
+// setLstkPrefs additionally disables telemetry and the survey link. That is fine for
+// the isolated dir but must not be forced on the user's global config, so interception
+// passes false.
+func registerLocalStackCloud(ctx context.Context, sink output.Sink, azEnv []string, endpointURL string, setLstkPrefs bool) error {
 	cloudConfigJSON, err := BuildCloudConfig(endpointURL)
 	if err != nil {
 		return fmt.Errorf("building cloud config: %w", err)
@@ -189,9 +237,12 @@ func Setup(ctx context.Context, sink output.Sink, endpointURL, azureConfigDir st
 
 	// instance_discovery=false: `az` would otherwise try to validate the authority
 	// against the public AAD discovery endpoint, which the emulator can't serve.
-	if _, _, err := azurecli.Run(ctx, azEnv, "config", "set",
-		"core.instance_discovery=false", "core.collect_telemetry=false", "output.show_survey_link=no",
-		"--only-show-errors"); err != nil {
+	configArgs := []string{"config", "set", "core.instance_discovery=false"}
+	if setLstkPrefs {
+		configArgs = append(configArgs, "core.collect_telemetry=false", "output.show_survey_link=no")
+	}
+	configArgs = append(configArgs, "--only-show-errors")
+	if _, _, err := azurecli.Run(ctx, azEnv, configArgs...); err != nil {
 		return fmt.Errorf("could not configure Azure CLI: %w", err)
 	}
 
@@ -204,14 +255,5 @@ func Setup(ctx context.Context, sink output.Sink, endpointURL, azureConfigDir st
 	); err != nil {
 		return fmt.Errorf("could not log in to the LocalStack Azure emulator: %w", err)
 	}
-
-	if err := os.WriteFile(filepath.Join(azureConfigDir, setupMarkerFile), []byte("ok\n"), 0600); err != nil {
-		return fmt.Errorf("writing setup marker: %w", err)
-	}
-
-	sink.Emit(output.MessageEvent{
-		Severity: output.SeveritySuccess,
-		Text:     "Azure CLI integration ready. Run 'lstk az <command>' to talk to LocalStack.",
-	})
 	return nil
 }
