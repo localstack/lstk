@@ -38,6 +38,31 @@ func TestRootHelpOutputTemplate(t *testing.T) {
 	assertNotContains(t, out, "\n  version ")
 }
 
+func TestRootHelpGroupsToolsSeparately(t *testing.T) {
+	out, err := executeWithArgs(t, "--help")
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+
+	assertContains(t, out, "Commands:")
+	assertContains(t, out, "Tools:")
+
+	// The proxy commands must be listed under the Tools group, not among the
+	// regular commands.
+	toolsSection := out[strings.Index(out, "Tools:"):]
+	for _, tool := range []string{"aws", "az", "cdk", "sam", "terraform"} {
+		assertContains(t, toolsSection, tool)
+	}
+
+	// Tools come after the management commands in the help output.
+	if strings.Index(out, "Commands:") > strings.Index(out, "Tools:") {
+		t.Fatalf("expected Commands group to appear before Tools group\noutput:\n%s", out)
+	}
+
+	// No commands should fall through to an ungrouped section.
+	assertNotContains(t, out, "Additional Commands:")
+}
+
 func TestSubcommandHelpUsesSubcommandUsageLine(t *testing.T) {
 	out, err := executeWithArgs(t, "start", "--help")
 	if err != nil {
