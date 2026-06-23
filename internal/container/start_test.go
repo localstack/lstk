@@ -443,6 +443,43 @@ func TestPullImages_FailsWhenPullFailsAndImageMissing(t *testing.T) {
 	assert.Contains(t, out.String(), "Failed to pull localstack/localstack-pro:latest")
 }
 
+func TestPullImages_PropagatesContextCancellation(t *testing.T) {
+	// A cancelled caller context (Ctrl+C) during a pull must surface as
+	// cancellation — not be reported as a pull failure nor probed as a local-image
+	// fallback (which would also emit a spurious start-error telemetry event).
+	ctrl := gomock.NewController(t)
+	mockRT := runtime.NewMockRuntime(ctrl)
+
+	c := runtime.ContainerConfig{
+		Image:        "localstack/localstack-pro:latest",
+		Name:         "localstack-aws",
+		EmulatorType: config.EmulatorAWS,
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	mockRT.EXPECT().Remove(gomock.Any(), c.Name).Return(nil)
+	mockRT.EXPECT().PullImage(gomock.Any(), c.Image, gomock.Any()).DoAndReturn(
+		func(_ context.Context, _ string, progress chan<- runtime.PullProgress) error {
+			cancel() // the user interrupts mid-pull
+			close(progress)
+			return context.Canceled
+		})
+	// ImageExists must NOT be called once the context is cancelled; gomock fails
+	// the test if it is (no EXPECT registered).
+
+	var out bytes.Buffer
+	sink := output.NewPlainSink(&out)
+	tel := telemetry.New("", true)
+
+	_, err := pullImages(ctx, mockRT, sink, tel, []runtime.ContainerConfig{c})
+
+	require.ErrorIs(t, err, context.Canceled)
+	assert.False(t, output.IsSilent(err), "a user cancel is not a silent start error")
+	assert.NotContains(t, out.String(), "Failed to pull", "a cancel must not be reported as a pull failure")
+	assert.NotContains(t, out.String(), "using the local image")
+}
+
 func TestValidateLicense_ContinuesWhenServerUnreachable(t *testing.T) {
 	// A closed port yields a transport-level failure (not an *api.LicenseError),
 	// which models an offline/proxy environment that cannot reach the license server.

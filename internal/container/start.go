@@ -338,6 +338,12 @@ func pullImages(ctx context.Context, rt runtime.Runtime, sink output.Sink, tel *
 		}()
 		if err := rt.PullImage(ctx, c.Image, progress); err != nil {
 			sink.Emit(output.SpinnerStop())
+			// A cancelled caller context (e.g. Ctrl+C) is not an offline condition —
+			// propagate it instead of probing for a local image or reporting a pull
+			// failure, which would also emit a spurious start-error telemetry event.
+			if ctx.Err() != nil {
+				return nil, ctx.Err()
+			}
 			// The registry may be unreachable (offline, proxy, or TLS interception in
 			// enterprise networks). If the image is already available locally, fall back
 			// to it instead of failing — the image carries its own license.
@@ -635,6 +641,10 @@ func validateLicense(ctx context.Context, sink output.Sink, opts StartOptions, c
 			sink.Emit(output.MessageEvent{Severity: output.SeverityWarning, Text: "Could not reach the license server; continuing with the image's bundled license"})
 			return nil
 		}
+		// Known limitation: any *api.LicenseError — i.e. any non-200 HTTP response,
+		// including a 5xx or a 407 from a corporate proxy — is treated as a definitive
+		// verdict and stays fatal here; only connection-level failures (handled above)
+		// degrade. Gating this on licErr.Status is tracked as follow-up.
 		if licErr.Detail != "" {
 			opts.Logger.Error("license server response (HTTP %d): %s", licErr.Status, licErr.Detail)
 		}
