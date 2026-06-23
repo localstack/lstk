@@ -34,6 +34,13 @@ import (
 // emit the same name as their canonical subcommand.
 const canonicalCommandAnnotation = "lstk.canonical"
 
+// Command group IDs used to separate the proxy "tool" commands (aws, terraform,
+// cdk, sam, az) from the rest of lstk's commands in the help output.
+const (
+	groupCommands = "commands"
+	groupTools    = "tools"
+)
+
 func NewRootCmd(cfg *env.Env, tel *telemetry.Client, logger log.Logger) *cobra.Command {
 	var firstRun bool
 	root := &cobra.Command{
@@ -69,7 +76,12 @@ func NewRootCmd(cfg *env.Env, tel *telemetry.Client, logger log.Logger) *cobra.C
 	root.Flags().Lookup("version").Usage = "Show version"
 	root.SetVersionTemplate(versionLine() + "\n")
 
-	root.AddCommand(
+	root.AddGroup(
+		&cobra.Group{ID: groupCommands, Title: "Commands:"},
+		&cobra.Group{ID: groupTools, Title: "Tools:"},
+	)
+
+	commands := []*cobra.Command{
 		newStartCmd(cfg, tel, logger),
 		newStopCmd(cfg, tel),
 		newRestartCmd(cfg, tel, logger),
@@ -82,16 +94,33 @@ func NewRootCmd(cfg *env.Env, tel *telemetry.Client, logger log.Logger) *cobra.C
 		newVolumeCmd(cfg),
 		newUpdateCmd(cfg),
 		newDocsCmd(),
+		newSnapshotCmd(cfg, tel, logger),
+		newResetCmd(cfg),
+		newSaveCmd(cfg),
+		newLoadCmd(cfg, tel, logger),
+	}
+	for _, c := range commands {
+		c.GroupID = groupCommands
+	}
+
+	// Proxy commands that forward to a wrapped tool (AWS/Azure CLI, Terraform,
+	// CDK, SAM) configured to target LocalStack.
+	tools := []*cobra.Command{
 		newAWSCmd(cfg),
 		newTerraformCmd(cfg, logger),
 		newCDKCmd(cfg, logger),
 		newSamCmd(cfg, logger),
-		newSnapshotCmd(cfg, tel, logger),
 		newAzCmd(cfg),
-		newResetCmd(cfg),
-		newSaveCmd(cfg),
-		newLoadCmd(cfg, tel, logger),
-	)
+	}
+	for _, c := range tools {
+		c.GroupID = groupTools
+	}
+
+	root.AddCommand(commands...)
+	root.AddCommand(tools...)
+
+	root.SetHelpCommandGroupID(groupCommands)
+	root.SetCompletionCommandGroupID(groupCommands)
 
 	return root
 }
