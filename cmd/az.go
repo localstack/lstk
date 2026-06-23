@@ -87,15 +87,20 @@ func newAzStartInterceptionCmd(cfg *env.Env) *cobra.Command {
 		Args:    cobra.NoArgs,
 		PreRunE: initConfig(nil),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			sink := output.NewPlainSink(os.Stdout)
-
-			endpointURL, err := azPreflight(cmd.Context(), cfg, sink)
-			if err != nil {
-				return err
+			preflight := func(ctx context.Context, sink output.Sink) (string, error) {
+				return azPreflight(ctx, cfg, sink)
 			}
 
+			// Run preflight under the same sink as the operation so its errors render
+			// in the TUI when interactive, instead of leaking plain output to stdout.
 			if isInteractiveMode(cfg) {
-				return ui.RunStartInterception(cmd.Context(), endpointURL)
+				return ui.RunStartInterception(cmd.Context(), preflight)
+			}
+
+			sink := output.NewPlainSink(os.Stdout)
+			endpointURL, err := preflight(cmd.Context(), sink)
+			if err != nil {
+				return err
 			}
 			return azureconfig.StartInterception(cmd.Context(), sink, endpointURL)
 		},
@@ -111,20 +116,10 @@ func newAzStopInterceptionCmd(cfg *env.Env) *cobra.Command {
 		Args:    cobra.NoArgs,
 		PreRunE: initConfig(nil),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			sink := output.NewPlainSink(os.Stdout)
-
-			if err := azurecli.CheckInstalled(); err != nil {
-				sink.Emit(output.ErrorEvent{
-					Title:   "az CLI not found in PATH",
-					Actions: []output.ErrorAction{{Label: "Install Azure CLI:", Value: azurecli.InstallURL}},
-				})
-				return output.NewSilentError(err)
-			}
-
 			if isInteractiveMode(cfg) {
 				return ui.RunStopInterception(cmd.Context(), cloud)
 			}
-			return azureconfig.StopInterception(cmd.Context(), sink, cloud)
+			return azureconfig.StopInterception(cmd.Context(), output.NewPlainSink(os.Stdout), cloud)
 		},
 	}
 	c.Flags().StringVar(&cloud, "cloud", azureconfig.PublicCloudName, "Azure cloud to switch back to")

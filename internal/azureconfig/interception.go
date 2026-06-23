@@ -20,13 +20,10 @@ const PublicCloudName = "AzureCloud"
 // global Azure CLI config (default ~/.azure — no AZURE_CONFIG_DIR override), so plain
 // `az` commands in any terminal target the LocalStack Azure emulator until
 // StopInterception is run. Unlike Setup, it does not touch the isolated `lstk az` config.
+// The caller is expected to have verified the Azure CLI is installed (see azPreflight).
 func StartInterception(ctx context.Context, sink output.Sink, endpointURL string) error {
 	ctx, span := otel.Tracer("github.com/localstack/lstk/internal/azureconfig").Start(ctx, "azureconfig.StartInterception")
 	defer span.End()
-
-	if err := azurecli.CheckInstalled(); err != nil {
-		return err
-	}
 
 	if err := IsHealthy(ctx, endpointURL); err != nil {
 		return fmt.Errorf("LocalStack Azure emulator not reachable at %s — run 'lstk' to start it before running 'lstk az start-interception': %w", endpointURL, err)
@@ -57,7 +54,11 @@ func StopInterception(ctx context.Context, sink output.Sink, targetCloud string)
 	defer span.End()
 
 	if err := azurecli.CheckInstalled(); err != nil {
-		return err
+		sink.Emit(output.ErrorEvent{
+			Title:   "az CLI not found in PATH",
+			Actions: []output.ErrorAction{{Label: "Install Azure CLI:", Value: azurecli.InstallURL}},
+		})
+		return output.NewSilentError(err)
 	}
 
 	if targetCloud == "" {
