@@ -109,6 +109,16 @@ lstk az group list
 
 `lstk setup azure` registers a custom Azure cloud — pointing at LocalStack's endpoints — inside an isolated `AZURE_CONFIG_DIR`, so your global `~/.azure` keeps pointing at real Azure.
 
+To run existing `az` scripts unmodified against LocalStack, you can instead redirect your **global** Azure CLI:
+
+```bash
+lstk az start-interception   # plain `az` now targets LocalStack
+az group list                # hits LocalStack, no `lstk` prefix needed
+lstk az stop-interception    # back to real Azure (use --cloud to pick another cloud)
+```
+
+This is optional and changes global state affecting every `az` invocation until you stop it; prefer `lstk az <command>` unless a script must call plain `az`.
+
 You can also point `lstk` at a specific config file for any command:
 
 ```bash
@@ -254,6 +264,10 @@ lstk setup azure
 
 # Run Azure CLI commands against LocalStack
 lstk az group list
+
+# Or redirect your global `az` so existing scripts hit LocalStack unmodified
+lstk az start-interception
+lstk az stop-interception
 
 # Save emulator state to a local file
 lstk snapshot save ./my-snapshot.snapshot
