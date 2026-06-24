@@ -52,50 +52,45 @@ func TestStartCommandSucceedsWithValidToken(t *testing.T) {
 }
 
 // PRO-323: a pinned image already present locally must be reused, not re-pulled.
+// Tags the lightweight test image under a pinned localstack-pro tag so the image
+// is present locally; lstk should skip the pull and emit "Using local image".
+// We only assert the pull decision (emitted before the container starts) — the
+// stand-in image is not a real emulator, so the subsequent start fails fast when
+// it exits. A dedicated host port keeps this off the shared 4566 used by the
+// other container tests.
 func TestStartCommandReusesLocalImageWhenPresent(t *testing.T) {
 	requireDocker(t)
-	requireAuthToken(t)
-
 	cleanup()
 	t.Cleanup(cleanup)
 
 	ctx := testContext(t)
 
-	// Pull the real default AWS image once, then pin it under a fixed local tag so
-	// lstk sees a pinned tag whose image is already present.
-	const baseImage = "localstack/localstack-pro:latest"
-	reader, err := dockerClient.ImagePull(ctx, baseImage, client.ImagePullOptions{})
-	require.NoError(t, err, "failed to pull base image")
-	_, _ = io.Copy(io.Discard, reader)
-	_ = reader.Close()
-
 	const pinnedTag = "reuse-local-test"
 	const pinnedImage = "localstack/localstack-pro:" + pinnedTag
-	_, err = dockerClient.ImageTag(ctx, client.ImageTagOptions{Source: baseImage, Target: pinnedImage})
+	reader, err := dockerClient.ImagePull(ctx, testImage, client.ImagePullOptions{})
+	require.NoError(t, err, "failed to pull test image")
+	_, _ = io.Copy(io.Discard, reader)
+	_ = reader.Close()
+	_, err = dockerClient.ImageTag(ctx, client.ImageTagOptions{Source: testImage, Target: pinnedImage})
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		_, _ = dockerClient.ImageRemove(context.Background(), pinnedImage, client.ImageRemoveOptions{})
 	})
 
-	// Real LocalStack writes root-owned files under $HOME/.cache, so use os.MkdirTemp
-	// with best-effort cleanup rather than t.TempDir (whose RemoveAll runs as the
-	// non-root test user and would fail). See startRealLocalStack for context.
-	home, err := os.MkdirTemp("", "lstk-reuse-home")
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = os.RemoveAll(home) })
-
+	home := t.TempDir()
 	configFile := filepath.Join(home, "config.toml")
 	require.NoError(t, os.WriteFile(configFile,
-		[]byte(fmt.Sprintf("[[containers]]\ntype = \"aws\"\ntag = %q\nport = \"4566\"\n", pinnedTag)), 0644))
+		[]byte(fmt.Sprintf("[[containers]]\ntype = \"aws\"\ntag = %q\nport = \"4599\"\n", pinnedTag)), 0644))
 
 	mockServer := createMockLicenseServer(true)
 	defer mockServer.Close()
 
-	e := append(testEnvWithHome(home, ""), string(env.APIEndpoint)+"="+mockServer.URL)
-	stdout, stderr, err := runLstk(t, ctx, "", e, "--config", configFile, "start")
-	require.NoError(t, err, "lstk start failed:\nstdout: %s\nstderr: %s", stdout, stderr)
+	e := append(testEnvWithHome(home, ""),
+		string(env.APIEndpoint)+"="+mockServer.URL,
+		string(env.AuthToken)+"=fake-token")
+	stdout, _, _ := runLstk(t, ctx, "", e, "--config", configFile, "start")
 
-	assert.Contains(t, stdout, "Using local image", "a pinned image present locally should be reused")
+	assert.Contains(t, stdout, "Using local image "+pinnedImage, "a pinned image present locally should be reused")
 	assert.NotContains(t, stdout, "Pulling", "lstk must not re-pull an image that is already present")
 }
 
