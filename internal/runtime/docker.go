@@ -471,3 +471,13 @@ func (d *DockerRuntime) GetImageVersion(ctx context.Context, imageName string) (
 
 	return "", fmt.Errorf("LOCALSTACK_BUILD_VERSION not found in image environment")
 }
+
+func (d *DockerRuntime) ImageExists(ctx context.Context, image string) (bool, error) {
+	if _, err := d.client.ImageInspect(ctx, image); err != nil {
+		if errdefs.IsNotFound(err) {
+			return false, nil
+		}
+		return false, fmt.Errorf("failed to inspect image: %w", err)
+	}
+	return true, nil
+}

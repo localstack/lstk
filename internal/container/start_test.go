@@ -474,3 +474,59 @@ func TestStartContainers_AzureLicenseError(t *testing.T) {
 		t.Fatal("no telemetry event received")
 	}
 }
+
+func TestPullImages_ReusesLocalImageWhenPresent(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockRT := runtime.NewMockRuntime(ctrl)
+	mockTel := telemetry.New("", true)
+
+	c := runtime.ContainerConfig{
+		Image:        "localstack/localstack-pro:3.5.0",
+		Name:         "localstack-aws",
+		EmulatorType: config.EmulatorAWS,
+		Tag:          "3.5.0",
+	}
+
+	mockRT.EXPECT().Remove(gomock.Any(), c.Name).Return(nil)
+	mockRT.EXPECT().ImageExists(gomock.Any(), c.Image).Return(true, nil)
+	// No PullImage call expected when the image is already present.
+
+	var out bytes.Buffer
+	sink := output.NewPlainSink(&out)
+
+	pulled, err := pullImages(context.Background(), mockRT, sink, mockTel, []runtime.ContainerConfig{c})
+
+	require.NoError(t, err)
+	assert.False(t, pulled[c.Name], "telemetry must not count a reused image as pulled")
+	assert.Contains(t, out.String(), "Using local image localstack/localstack-pro:3.5.0")
+}
+
+func TestPullImages_PullsWhenImageMissing(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockRT := runtime.NewMockRuntime(ctrl)
+	mockTel := telemetry.New("", true)
+
+	c := runtime.ContainerConfig{
+		Image:        "localstack/localstack-pro:3.5.0",
+		Name:         "localstack-aws",
+		EmulatorType: config.EmulatorAWS,
+		Tag:          "3.5.0",
+	}
+
+	mockRT.EXPECT().Remove(gomock.Any(), c.Name).Return(nil)
+	mockRT.EXPECT().ImageExists(gomock.Any(), c.Image).Return(false, nil)
+	mockRT.EXPECT().PullImage(gomock.Any(), c.Image, gomock.Any()).
+		DoAndReturn(func(_ context.Context, _ string, progress chan<- runtime.PullProgress) error {
+			close(progress)
+			return nil
+		})
+
+	var out bytes.Buffer
+	sink := output.NewPlainSink(&out)
+
+	pulled, err := pullImages(context.Background(), mockRT, sink, mockTel, []runtime.ContainerConfig{c})
+
+	require.NoError(t, err)
+	assert.True(t, pulled[c.Name], "a freshly pulled image must be counted as pulled")
+	assert.Contains(t, out.String(), "Pulled localstack/localstack-pro:3.5.0")
+}

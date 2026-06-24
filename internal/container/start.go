@@ -314,6 +314,20 @@ func pullImages(ctx context.Context, rt runtime.Runtime, sink output.Sink, tel *
 			return nil, fmt.Errorf("failed to remove existing container %s: %w", c.Name, err)
 		}
 
+		// Reuse a locally present image for pinned tags instead of re-pulling.
+		// Floating "latest"/empty tags always pull until pull_policy support lands.
+		if c.Tag != "" && c.Tag != "latest" {
+			exists, err := rt.ImageExists(ctx, c.Image)
+			if err != nil {
+				return nil, fmt.Errorf("failed to check for local image %s: %w", c.Image, err)
+			}
+			if exists {
+				sink.Emit(output.MessageEvent{Severity: output.SeveritySuccess, Text: fmt.Sprintf("Using local image %s", c.Image)})
+				pulled[c.Name] = false
+				continue
+			}
+		}
+
 		sink.Emit(output.SpinnerStart(fmt.Sprintf("Pulling %s", c.Image)))
 		sink.Emit(output.ContainerStatusEvent{Phase: "pulling", Container: c.Image})
 		progress := make(chan runtime.PullProgress)
