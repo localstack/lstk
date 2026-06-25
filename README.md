@@ -133,6 +133,7 @@ type = "aws"     # Emulator type. Currently supported: "aws", "snowflake", "azur
 tag  = "latest"  # Docker image tag, e.g. "latest", "2026.03"
 port = "4566"    # Host port the emulator will be accessible on
 # volume = ""    # Host directory for persistent state (default: OS cache dir)
+# volumes = []   # Extra bind mounts, "host:container[:ro]" (see below)
 # env = []       # Named environment profiles to apply (see [env.*] sections below)
 # snapshot = "pod:my-baseline"  # Snapshot REF auto-loaded on start (AWS only); see Snapshots below
 ```
@@ -142,6 +143,7 @@ port = "4566"    # Host port the emulator will be accessible on
 - `tag`: Docker image tag for LocalStack (e.g. `"latest"`, `"4.14.0"`); useful for pinning a version
 - `port`: port LocalStack listens on (default `4566`)
 - `volume`: (optional) host directory for persistent emulator state (default: OS cache dir)
+- `volumes`: (optional) list of `"host:container[:ro]"` bind mounts, e.g. for init hooks (see below)
 - `env`: (optional) list of named environment variable groups to inject into the container (see below)
 - `snapshot`: (optional) snapshot REF auto-loaded after the emulator starts on a fresh run — a local file path or a `pod:` cloud snapshot (see [Snapshots](#snapshots))
 
@@ -167,6 +169,44 @@ EAGER_SERVICE_LOADING = "1"
 ```
 
 Host environment variables prefixed with `LOCALSTACK_` are also forwarded to the emulator.
+
+### Mounting volumes and init hooks
+
+Use `volumes` to bind-mount host files or directories into the emulator, given as Docker-style `"host:container[:ro]"` strings. The most common use is [init hooks](https://docs.localstack.cloud/snowflake/capabilities/init-hooks/) — scripts LocalStack runs automatically on startup when mounted into `/etc/localstack/init/{boot,start,ready,shutdown}.d`:
+
+```toml
+[[containers]]
+type = "snowflake"
+port = "4566"
+volumes = ["./init.sf.sql:/etc/localstack/init/ready.d/init.sf.sql"]
+```
+
+- Relative host paths resolve against the config file's directory, and a leading `~/` is expanded.
+- Append `:ro` to mount read-only.
+- Host sources must already exist (init-hook entries are files, so `lstk` does not create them).
+
+#### `volume` vs `volumes`
+
+The singular `volume` and the plural `volumes` are **not** general synonyms — they overlap only for the persistence directory:
+
+- `volume` *only* sets the persistent-state directory, which is always mounted to `/var/lib/localstack` (the dir managed by `lstk volume path` / `lstk volume clear`).
+- `volumes` is a superset: it can mount arbitrary paths **and** set the persistence directory, via the entry whose container target is `/var/lib/localstack`.
+
+So these two are equivalent for persistence:
+
+```toml
+volume  = "/data"
+# is the same persistence mount as
+volumes = ["/data:/var/lib/localstack"]
+```
+
+Differences to keep in mind:
+
+- `volume` cannot express init hooks or any non-persistence mount — use `volumes` for those.
+- A `volumes` source is path-resolved (relative → config dir, `~/` expanded); the legacy `volume` value is used **verbatim**, so prefer an absolute path there.
+- Declaring the persistence directory in **both** `volume` and a `volumes` entry with different sources is a configuration error. The same source in both is allowed.
+
+`volume` remains supported for backward compatibility; reach for `volumes` when you need init hooks, extra mounts, or path resolution.
 
 ### Offline / enterprise environments
 
