@@ -189,7 +189,7 @@ func Start(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts Start
 		return "", err
 	}
 
-	pulled, err := pullImages(ctx, rt, sink, tel, containers)
+	pulled, err := pullImages(ctx, rt, sink, tel, containers, interactive)
 	if err != nil {
 		return "", err
 	}
@@ -321,7 +321,7 @@ func tipsForType(t config.EmulatorType) []string {
 	return nil
 }
 
-func pullImages(ctx context.Context, rt runtime.Runtime, sink output.Sink, tel *telemetry.Client, containers []runtime.ContainerConfig) (map[string]bool, error) {
+func pullImages(ctx context.Context, rt runtime.Runtime, sink output.Sink, tel *telemetry.Client, containers []runtime.ContainerConfig, interactive bool) (map[string]bool, error) {
 	pulled := make(map[string]bool, len(containers))
 	for _, c := range containers {
 		// Remove any existing stopped container with the same name
@@ -329,61 +329,101 @@ func pullImages(ctx context.Context, rt runtime.Runtime, sink output.Sink, tel *
 			return nil, fmt.Errorf("failed to remove existing container %s: %w", c.Name, err)
 		}
 
-		// Reuse a locally present image for pinned tags instead of re-pulling.
-		// Floating "latest"/empty tags always pull until pull_policy support lands.
-		if c.Tag != "" && c.Tag != "latest" {
-			exists, err := rt.ImageExists(ctx, c.Image)
-			if err != nil {
-				return nil, fmt.Errorf("failed to check for local image %s: %w", c.Image, err)
-			}
-			if exists {
-				sink.Emit(output.MessageEvent{Severity: output.SeveritySuccess, Text: fmt.Sprintf("Using local image %s", c.Image)})
-				pulled[c.Name] = false
-				continue
-			}
+		exists, err := rt.ImageExists(ctx, c.Image)
+		if err != nil {
+			return nil, fmt.Errorf("failed to check for local image %s: %w", c.Image, err)
 		}
 
-		sink.Emit(output.SpinnerStart(fmt.Sprintf("Pulling %s", c.Image)))
-		sink.Emit(output.ContainerStatusEvent{Phase: "pulling", Container: c.Image})
-		progress := make(chan runtime.PullProgress)
-		go func() {
-			for p := range progress {
-				sink.Emit(output.ProgressEvent{Container: c.Image, LayerID: p.LayerID, Status: p.Status, Current: p.Current, Total: p.Total})
-			}
-		}()
-		if err := rt.PullImage(ctx, c.Image, progress); err != nil {
-			sink.Emit(output.SpinnerStop())
-			// A cancelled caller context (e.g. Ctrl+C) is not an offline condition —
-			// propagate it instead of probing for a local image or reporting a pull
-			// failure, which would also emit a spurious start-error telemetry event.
-			if ctx.Err() != nil {
-				return nil, ctx.Err()
-			}
-			// The registry may be unreachable (offline, proxy, or TLS interception in
-			// enterprise networks). If the image is already available locally, fall back
-			// to it instead of failing — the image carries its own license.
-			if exists, existsErr := rt.ImageExists(ctx, c.Image); existsErr == nil && exists {
-				sink.Emit(output.MessageEvent{Severity: output.SeverityWarning, Text: fmt.Sprintf("Could not pull %s; using the local image", c.Image)})
-				continue
-			}
-			sink.Emit(output.ErrorEvent{
-				Title:   fmt.Sprintf("Failed to pull %s", c.Image),
-				Summary: err.Error(),
-			})
-			tel.EmitEmulatorLifecycleEvent(ctx, telemetry.LifecycleEvent{
-				EventType: telemetry.LifecycleStartError,
-				Emulator:  c.EmulatorType,
-				Image:     c.Image,
-				ErrorCode: telemetry.ErrCodeImagePullFailed,
-				ErrorMsg:  err.Error(),
-			})
-			return nil, output.NewSilentError(fmt.Errorf("failed to pull image %s: %w", c.Image, err))
+		// Reuse a locally present image for pinned tags instead of re-pulling.
+		// Floating "latest"/empty tags always pull until pull_policy support lands.
+		if exists && c.Tag != "" && c.Tag != "latest" {
+			sink.Emit(output.MessageEvent{Severity: output.SeveritySuccess, Text: fmt.Sprintf("Using local image %s", c.Image)})
+			pulled[c.Name] = false
+			continue
 		}
-		sink.Emit(output.SpinnerStop())
-		sink.Emit(output.MessageEvent{Severity: output.SeveritySuccess, Text: fmt.Sprintf("Pulled %s", c.Image)})
-		pulled[c.Name] = true
+
+		usedLocal, err := pullImage(ctx, rt, sink, tel, c, exists, interactive)
+		if err != nil {
+			return nil, err
+		}
+		pulled[c.Name] = !usedLocal
 	}
 	return pulled, nil
+}
+
+// pullImage pulls c.Image, with a graceful fall-back to an already-present local
+// image. When a local copy exists and we're interactive, the user can press ESC
+// to abandon the in-flight pull and keep the current image; the same fall-back
+// happens automatically when the pull fails (e.g. offline). Returns usedLocal=true
+// when the pull was skipped or failed and the local image is used instead.
+func pullImage(ctx context.Context, rt runtime.Runtime, sink output.Sink, tel *telemetry.Client, c runtime.ContainerConfig, localExists, interactive bool) (usedLocal bool, err error) {
+	sink.Emit(output.SpinnerStart(fmt.Sprintf("Pulling %s", c.Image)))
+	sink.Emit(output.ContainerStatusEvent{Phase: "pulling", Container: c.Image})
+
+	pullCtx, cancelPull := context.WithCancel(ctx)
+	defer cancelPull()
+
+	// skipCh is signaled by the TUI when the user presses ESC during the pull.
+	// Buffered so the TUI never blocks if the pull has already finished.
+	skipCh := make(chan struct{}, 1)
+	skippable := localExists && interactive
+
+	progress := make(chan runtime.PullProgress)
+	progressDone := make(chan struct{})
+	go func() {
+		defer close(progressDone)
+		armed := false
+		for p := range progress {
+			// Surface the ESC hint only once real layer download begins, so it
+			// never flashes on an "up to date" / cache-hit pull.
+			if skippable && !armed && p.Status == "Downloading" {
+				armed = true
+				sink.Emit(output.PullSkippableEvent{Image: c.Image, SkipCh: skipCh})
+			}
+			sink.Emit(output.ProgressEvent{Container: c.Image, LayerID: p.LayerID, Status: p.Status, Current: p.Current, Total: p.Total})
+		}
+	}()
+
+	pullErrCh := make(chan error, 1)
+	go func() { pullErrCh <- rt.PullImage(pullCtx, c.Image, progress) }()
+
+	select {
+	case err = <-pullErrCh:
+		<-progressDone
+	case <-skipCh:
+		cancelPull()
+		<-pullErrCh // let the pull goroutine unwind after cancellation
+		<-progressDone
+		sink.Emit(output.SpinnerStop())
+		sink.Emit(output.MessageEvent{Severity: output.SeverityNote, Text: fmt.Sprintf("Keeping current local image %s", c.Image)})
+		return true, nil
+	}
+
+	sink.Emit(output.SpinnerStop())
+
+	if err != nil {
+		// Auto fall-back: a failed pull with a local copy present (e.g. offline) is
+		// not fatal — start with the image we have and tell the user.
+		if localExists {
+			sink.Emit(output.MessageEvent{Severity: output.SeverityNote, Text: fmt.Sprintf("Could not pull %s (%v); using the local image", c.Image, err)})
+			return true, nil
+		}
+		sink.Emit(output.ErrorEvent{
+			Title:   fmt.Sprintf("Failed to pull %s", c.Image),
+			Summary: err.Error(),
+		})
+		tel.EmitEmulatorLifecycleEvent(ctx, telemetry.LifecycleEvent{
+			EventType: telemetry.LifecycleStartError,
+			Emulator:  c.EmulatorType,
+			Image:     c.Image,
+			ErrorCode: telemetry.ErrCodeImagePullFailed,
+			ErrorMsg:  err.Error(),
+		})
+		return false, output.NewSilentError(fmt.Errorf("failed to pull image %s: %w", c.Image, err))
+	}
+
+	sink.Emit(output.MessageEvent{Severity: output.SeveritySuccess, Text: fmt.Sprintf("Pulled %s", c.Image)})
+	return false, nil
 }
 
 // Validates licenses before pulling for containers with pinned tags, except those
