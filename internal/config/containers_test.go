@@ -1,6 +1,8 @@
 package config
 
 import (
+	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"testing"
@@ -80,12 +82,12 @@ func TestNormalizeTag(t *testing.T) {
 
 func TestValidate_InvalidDockerTag_IsRejected(t *testing.T) {
 	for _, tag := range []string{
-		"my tag",   // space
-		"2026.4!",  // special char
-		".hidden",  // starts with dot
-		"-beta",    // starts with hyphen
-		"tag@sha",  // @ not allowed
-		"foo:bar",  // colon not allowed
+		"my tag",                 // space
+		"2026.4!",                // special char
+		".hidden",                // starts with dot
+		"-beta",                  // starts with hyphen
+		"tag@sha",                // @ not allowed
+		"foo:bar",                // colon not allowed
 		strings.Repeat("a", 129), // too long
 	} {
 		t.Run(tag, func(t *testing.T) {
@@ -216,4 +218,130 @@ func TestValidate_NegativePort(t *testing.T) {
 	c := &ContainerConfig{Type: EmulatorAWS, Port: "-1"}
 	err := c.Validate()
 	assert.ErrorContains(t, err, "out of range")
+}
+
+func TestParseVolume_TwoParts(t *testing.T) {
+	m, err := parseVolume("/host/data:/var/lib/localstack", "/cfg")
+	require.NoError(t, err)
+	assert.Equal(t, VolumeMount{Source: "/host/data", Target: "/var/lib/localstack", ReadOnly: false}, m)
+}
+
+func TestParseVolume_ReadOnly(t *testing.T) {
+	m, err := parseVolume("/host/seed:/seed:ro", "/cfg")
+	require.NoError(t, err)
+	assert.Equal(t, VolumeMount{Source: "/host/seed", Target: "/seed", ReadOnly: true}, m)
+}
+
+func TestParseVolume_ReadOnlyAmongOptions(t *testing.T) {
+	m, err := parseVolume("/host/seed:/seed:z,ro", "/cfg")
+	require.NoError(t, err)
+	assert.True(t, m.ReadOnly)
+}
+
+func TestParseVolume_RelativeSourceResolvedAgainstConfigDir(t *testing.T) {
+	m, err := parseVolume("./init.sf.sql:/etc/localstack/init/ready.d/init.sf.sql", "/cfg/project")
+	require.NoError(t, err)
+	assert.Equal(t, "/cfg/project/init.sf.sql", m.Source)
+}
+
+func TestParseVolume_TildeExpanded(t *testing.T) {
+	home, err := os.UserHomeDir()
+	require.NoError(t, err)
+	m, err := parseVolume("~/scripts/x.sf.sql:/etc/localstack/init/ready.d/x.sf.sql", "/cfg")
+	require.NoError(t, err)
+	assert.Equal(t, filepath.Join(home, "scripts/x.sf.sql"), m.Source)
+}
+
+func TestParseVolume_AbsoluteSourceUnchanged(t *testing.T) {
+	m, err := parseVolume("/abs/x.sf.sql:/etc/localstack/init/ready.d/x.sf.sql", "/cfg")
+	require.NoError(t, err)
+	assert.Equal(t, "/abs/x.sf.sql", m.Source)
+}
+
+func TestParseVolume_Errors(t *testing.T) {
+	cases := map[string]string{
+		"one part":        "/host/only",
+		"four parts":      "/h:/c:ro:extra",
+		"empty source":    ":/c",
+		"empty target":    "/h:",
+		"relative target": "/h:relative/target",
+	}
+	for name, spec := range cases {
+		t.Run(name, func(t *testing.T) {
+			_, err := parseVolume(spec, "/cfg")
+			assert.Error(t, err)
+		})
+	}
+}
+
+func TestVolumeDir_VolumesEntryTargetingPersistenceWins(t *testing.T) {
+	c := &ContainerConfig{
+		Type:    EmulatorAWS,
+		Volume:  "", // not set
+		Volumes: []string{"/persist/dir:/var/lib/localstack", "/abs/x.sf.sql:/etc/localstack/init/ready.d/x.sf.sql"},
+	}
+	dir, err := c.VolumeDir()
+	require.NoError(t, err)
+	assert.Equal(t, "/persist/dir", dir)
+}
+
+func TestVolumeDir_LegacyVolumeUsedWhenNoPersistenceEntry(t *testing.T) {
+	c := &ContainerConfig{
+		Type:    EmulatorAWS,
+		Volume:  "/legacy/persist",
+		Volumes: []string{"/abs/x.sf.sql:/etc/localstack/init/ready.d/x.sf.sql"},
+	}
+	dir, err := c.VolumeDir()
+	require.NoError(t, err)
+	assert.Equal(t, "/legacy/persist", dir)
+}
+
+func TestVolumeDir_DefaultsToCacheDirWhenNeitherSet(t *testing.T) {
+	cacheDir, err := os.UserCacheDir()
+	require.NoError(t, err)
+	c := &ContainerConfig{Type: EmulatorAWS}
+	dir, err := c.VolumeDir()
+	require.NoError(t, err)
+	assert.Equal(t, filepath.Join(cacheDir, "lstk", "volume", c.Name()), dir)
+}
+
+func TestExtraVolumes_ExcludesPersistenceEntry(t *testing.T) {
+	c := &ContainerConfig{
+		Type: EmulatorAWS,
+		Volumes: []string{
+			"/persist/dir:/var/lib/localstack",
+			"/abs/a.sf.sql:/etc/localstack/init/ready.d/a.sf.sql",
+			"/abs/b.sf.sql:/etc/localstack/init/ready.d/b.sf.sql:ro",
+		},
+	}
+	extras, err := c.ExtraVolumes()
+	require.NoError(t, err)
+	require.Len(t, extras, 2)
+	assert.Equal(t, VolumeMount{Source: "/abs/a.sf.sql", Target: "/etc/localstack/init/ready.d/a.sf.sql"}, extras[0])
+	assert.Equal(t, VolumeMount{Source: "/abs/b.sf.sql", Target: "/etc/localstack/init/ready.d/b.sf.sql", ReadOnly: true}, extras[1])
+}
+
+func TestValidate_RejectsMalformedVolume(t *testing.T) {
+	c := &ContainerConfig{Type: EmulatorAWS, Port: "4566", Volumes: []string{"/host/only"}}
+	assert.ErrorContains(t, c.Validate(), "invalid volume")
+}
+
+func TestValidate_RejectsConflictingPersistenceSources(t *testing.T) {
+	c := &ContainerConfig{
+		Type:    EmulatorAWS,
+		Port:    "4566",
+		Volume:  "/persist/a",
+		Volumes: []string{"/persist/b:/var/lib/localstack"},
+	}
+	assert.ErrorContains(t, c.Validate(), "persistence directory set both")
+}
+
+func TestValidate_AllowsMatchingPersistenceSources(t *testing.T) {
+	c := &ContainerConfig{
+		Type:    EmulatorAWS,
+		Port:    "4566",
+		Volume:  "/persist/same",
+		Volumes: []string{"/persist/same:/var/lib/localstack"},
+	}
+	assert.NoError(t, c.Validate())
 }

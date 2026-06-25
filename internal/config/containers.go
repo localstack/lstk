@@ -120,7 +120,14 @@ type ContainerConfig struct {
 	// the default localstack image from Docker Hub. If it carries no tag, Tag (or "latest")
 	// is appended; if it already carries a tag, Tag is dropped.
 	CustomImage string `mapstructure:"image"`
-	Volume      string `mapstructure:"volume"`
+	// Volume is the legacy single-host-directory knob for the persistence mount
+	// (target /var/lib/localstack). It is still honored; new configs can express the
+	// same mount as a Volumes entry targeting persistenceTarget instead.
+	Volume string `mapstructure:"volume"`
+	// Volumes is the umbrella list of "host:container[:ro]" bind specs. It covers
+	// arbitrary mounts (e.g. Snowflake init hooks) and may also contain the persistence
+	// mount (the entry targeting /var/lib/localstack).
+	Volumes []string `mapstructure:"volumes"`
 	// Env is a list of named environment references defined in the top-level [env.*] config sections.
 	Env []string `mapstructure:"env"`
 	// Snapshot is an optional snapshot REF (e.g. "pod:my-baseline" or a local path)
@@ -128,10 +135,132 @@ type ContainerConfig struct {
 	Snapshot string `mapstructure:"snapshot"`
 }
 
-// VolumeDir returns the host directory to mount into the container for persistence/caching.
-// If Volume is set in the config, it is returned as-is. Otherwise, a default is computed
-// from os.UserCacheDir()/lstk/volume/<container-name>.
+// persistenceTarget is the container path of the managed persistence/cache mount.
+// The entry in Volumes targeting this path (or the legacy Volume field) defines the
+// host directory backing it; lstk creates it and `lstk volume clear`/`volume path` act on it.
+const persistenceTarget = "/var/lib/localstack"
+
+// VolumeMount is a parsed bind specification with the host source resolved to an absolute path.
+type VolumeMount struct {
+	Source   string
+	Target   string
+	ReadOnly bool
+}
+
+// parseVolume parses a "host:container[:opts]" spec. The host source is resolved to an
+// absolute path: a leading "~/" is expanded to the user's home directory, and a relative
+// path is joined with configDir (the directory of the config file that declared it). This
+// is required because the Docker SDK treats a non-absolute source as a named volume rather
+// than a bind mount. opts is a comma-separated list; only "ro" is honored.
+//
+// Note: a Windows drive-letter source (e.g. "C:\\data") splits on ":" ambiguously — the same
+// limitation as the upstream LocalStack volume parser.
+func parseVolume(spec, configDir string) (VolumeMount, error) {
+	parts := strings.Split(spec, ":")
+	if len(parts) < 2 || len(parts) > 3 {
+		return VolumeMount{}, fmt.Errorf("invalid volume %q: expected \"host:container\" or \"host:container:ro\"", spec)
+	}
+
+	source, target := parts[0], parts[1]
+	if source == "" {
+		return VolumeMount{}, fmt.Errorf("invalid volume %q: host source is empty", spec)
+	}
+	if target == "" {
+		return VolumeMount{}, fmt.Errorf("invalid volume %q: container target is empty", spec)
+	}
+	if !filepath.IsAbs(target) {
+		return VolumeMount{}, fmt.Errorf("invalid volume %q: container target %q must be an absolute path", spec, target)
+	}
+
+	resolved, err := resolveHostPath(source, configDir)
+	if err != nil {
+		return VolumeMount{}, fmt.Errorf("invalid volume %q: %w", spec, err)
+	}
+
+	var readOnly bool
+	if len(parts) == 3 {
+		for _, opt := range strings.Split(parts[2], ",") {
+			if opt == "ro" {
+				readOnly = true
+			}
+		}
+	}
+
+	return VolumeMount{Source: resolved, Target: target, ReadOnly: readOnly}, nil
+}
+
+// resolveHostPath expands a leading "~/" and makes a relative path absolute against configDir.
+func resolveHostPath(path, configDir string) (string, error) {
+	if path == "~" || strings.HasPrefix(path, "~/") {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", fmt.Errorf("failed to expand ~: %w", err)
+		}
+		path = filepath.Join(home, strings.TrimPrefix(path, "~"))
+	}
+	if filepath.IsAbs(path) {
+		return path, nil
+	}
+	return filepath.Join(configDir, path), nil
+}
+
+// configDirForRelativePaths returns the directory used to resolve relative volume sources:
+// the directory of the resolved config file. It falls back to the current working directory
+// when no config file is in use (e.g. in-memory defaults).
+func configDirForRelativePaths() string {
+	path, err := ConfigFilePath()
+	if err != nil || path == "" {
+		return "."
+	}
+	return filepath.Dir(path)
+}
+
+// parsedVolumes parses every entry in Volumes, resolving sources against the config dir.
+func (c *ContainerConfig) parsedVolumes() ([]VolumeMount, error) {
+	configDir := configDirForRelativePaths()
+	mounts := make([]VolumeMount, 0, len(c.Volumes))
+	for _, spec := range c.Volumes {
+		m, err := parseVolume(spec, configDir)
+		if err != nil {
+			return nil, err
+		}
+		mounts = append(mounts, m)
+	}
+	return mounts, nil
+}
+
+// ExtraVolumes returns the parsed bind mounts EXCLUDING the persistence entry
+// (target /var/lib/localstack), which start.go mounts separately via VolumeDir.
+func (c *ContainerConfig) ExtraVolumes() ([]VolumeMount, error) {
+	mounts, err := c.parsedVolumes()
+	if err != nil {
+		return nil, err
+	}
+	extras := make([]VolumeMount, 0, len(mounts))
+	for _, m := range mounts {
+		if m.Target == persistenceTarget {
+			continue
+		}
+		extras = append(extras, m)
+	}
+	return extras, nil
+}
+
+// VolumeDir returns the host directory to mount into the container for persistence/caching
+// (the mount targeting /var/lib/localstack). Resolution precedence:
+//  1. A Volumes entry targeting persistenceTarget — its resolved host source.
+//  2. The legacy Volume field, if set — returned as-is.
+//  3. The default os.UserCacheDir()/lstk/volume/<container-name>.
 func (c *ContainerConfig) VolumeDir() (string, error) {
+	mounts, err := c.parsedVolumes()
+	if err != nil {
+		return "", err
+	}
+	for _, m := range mounts {
+		if m.Target == persistenceTarget {
+			return m.Source, nil
+		}
+	}
 	if c.Volume != "" {
 		return c.Volume, nil
 	}
@@ -189,6 +318,33 @@ func (c *ContainerConfig) Validate() error {
 	}
 	if port < 1 || port > 65535 {
 		return fmt.Errorf("port %d is out of range (must be 1–65535)", port)
+	}
+	return c.validateVolumes()
+}
+
+// validateVolumes checks each Volumes entry is structurally parseable and guards against
+// declaring the persistence directory twice with conflicting sources. It does not touch the
+// filesystem (existence of sources is checked at start time).
+func (c *ContainerConfig) validateVolumes() error {
+	configDir := configDirForRelativePaths()
+	var persistenceSource string
+	for _, spec := range c.Volumes {
+		m, err := parseVolume(spec, configDir)
+		if err != nil {
+			return err
+		}
+		if m.Target == persistenceTarget {
+			persistenceSource = m.Source
+		}
+	}
+	if c.Volume != "" && persistenceSource != "" {
+		resolved, err := resolveHostPath(c.Volume, configDir)
+		if err != nil {
+			return err
+		}
+		if resolved != persistenceSource {
+			return fmt.Errorf("persistence directory set both via 'volume' and a 'volumes' entry targeting %s; use one or the other", persistenceTarget)
+		}
 	}
 	return nil
 }

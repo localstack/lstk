@@ -139,6 +139,20 @@ func Start(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts Start
 		}
 		binds = append(binds, runtime.BindMount{HostPath: volumeDir, ContainerPath: "/var/lib/localstack"})
 
+		// Extra user-defined mounts (e.g. Snowflake init hooks). Unlike the persistence
+		// directory, these are not created — init-hook entries are files, so the source
+		// must already exist; creating it would produce a wrong empty directory.
+		extraVolumes, err := c.ExtraVolumes()
+		if err != nil {
+			return "", err
+		}
+		for _, m := range extraVolumes {
+			if _, err := os.Stat(m.Source); err != nil {
+				return "", fmt.Errorf("volume source %q does not exist: %w", m.Source, err)
+			}
+			binds = append(binds, runtime.BindMount{HostPath: m.Source, ContainerPath: m.Target, ReadOnly: m.ReadOnly})
+		}
+
 		containers[i] = runtime.ContainerConfig{
 			Image:         image,
 			Name:          containerName,
