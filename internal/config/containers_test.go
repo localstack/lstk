@@ -398,6 +398,15 @@ func TestValidate_RejectsConflictingPersistenceSources(t *testing.T) {
 	assert.ErrorContains(t, c.Validate(), "persistence directory set both")
 }
 
+func TestValidate_RejectsReadOnlyPersistenceMount(t *testing.T) {
+	c := &ContainerConfig{
+		Type:    EmulatorAWS,
+		Port:    "4566",
+		Volumes: []string{"/persist:/var/lib/localstack:ro"},
+	}
+	assert.ErrorContains(t, c.Validate(), "cannot be mounted read-only")
+}
+
 func TestValidate_AllowsMatchingPersistenceSources(t *testing.T) {
 	c := &ContainerConfig{
 		Type:    EmulatorAWS,

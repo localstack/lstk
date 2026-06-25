@@ -214,29 +214,29 @@ func isDriveLetter(b byte) bool {
 }
 
 // resolveHostPath expands a leading "~/" and makes a relative path absolute against configDir.
-func resolveHostPath(path, configDir string) (string, error) {
-	if path == "~" || strings.HasPrefix(path, "~/") {
+func resolveHostPath(hostPath, configDir string) (string, error) {
+	if hostPath == "~" || strings.HasPrefix(hostPath, "~/") {
 		home, err := os.UserHomeDir()
 		if err != nil {
 			return "", fmt.Errorf("failed to expand ~: %w", err)
 		}
-		path = filepath.Join(home, strings.TrimPrefix(path, "~"))
+		hostPath = filepath.Join(home, strings.TrimPrefix(hostPath, "~"))
 	}
-	if filepath.IsAbs(path) {
-		return path, nil
+	if filepath.IsAbs(hostPath) {
+		return hostPath, nil
 	}
-	return filepath.Join(configDir, path), nil
+	return filepath.Join(configDir, hostPath), nil
 }
 
 // configDirForRelativePaths returns the directory used to resolve relative volume sources:
 // the directory of the resolved config file. It falls back to the current working directory
 // when no config file is in use (e.g. in-memory defaults).
 func configDirForRelativePaths() string {
-	path, err := ConfigFilePath()
-	if err != nil || path == "" {
+	cfgPath, err := ConfigFilePath()
+	if err != nil || cfgPath == "" {
 		return "."
 	}
-	return filepath.Dir(path)
+	return filepath.Dir(cfgPath)
 }
 
 // parsedVolumes parses every entry in Volumes, resolving sources against the config dir.
@@ -350,19 +350,21 @@ func (c *ContainerConfig) Validate() error {
 // declaring the persistence directory twice with conflicting sources. It does not touch the
 // filesystem (existence of sources is checked at start time).
 func (c *ContainerConfig) validateVolumes() error {
-	configDir := configDirForRelativePaths()
+	mounts, err := c.parsedVolumes()
+	if err != nil {
+		return err
+	}
 	var persistenceSource string
-	for _, spec := range c.Volumes {
-		m, err := parseVolume(spec, configDir)
-		if err != nil {
-			return err
-		}
+	for _, m := range mounts {
 		if m.Target == persistenceTarget {
+			if m.ReadOnly {
+				return fmt.Errorf("persistence directory (%s) cannot be mounted read-only", persistenceTarget)
+			}
 			persistenceSource = m.Source
 		}
 	}
 	if c.Volume != "" && persistenceSource != "" {
-		resolved, err := resolveHostPath(c.Volume, configDir)
+		resolved, err := resolveHostPath(c.Volume, configDirForRelativePaths())
 		if err != nil {
 			return err
 		}
