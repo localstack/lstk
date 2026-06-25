@@ -51,6 +51,49 @@ func TestStartCommandSucceedsWithValidToken(t *testing.T) {
 		"persistence bullet must be omitted when --persist is not set")
 }
 
+// PRO-323: a pinned image already present locally must be reused, not re-pulled.
+// Tags the lightweight test image under a pinned localstack-pro tag so the image
+// is present locally; lstk should skip the pull and emit "Using local image".
+// We only assert the pull decision (emitted before the container starts) — the
+// stand-in image is not a real emulator, so the subsequent start fails fast when
+// it exits. A dedicated host port keeps this off the shared 4566 used by the
+// other container tests.
+func TestStartCommandReusesLocalImageWhenPresent(t *testing.T) {
+	requireDocker(t)
+	cleanup()
+	t.Cleanup(cleanup)
+
+	ctx := testContext(t)
+
+	const pinnedTag = "reuse-local-test"
+	const pinnedImage = "localstack/localstack-pro:" + pinnedTag
+	reader, err := dockerClient.ImagePull(ctx, testImage, client.ImagePullOptions{})
+	require.NoError(t, err, "failed to pull test image")
+	_, _ = io.Copy(io.Discard, reader)
+	_ = reader.Close()
+	_, err = dockerClient.ImageTag(ctx, client.ImageTagOptions{Source: testImage, Target: pinnedImage})
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		_, _ = dockerClient.ImageRemove(context.Background(), pinnedImage, client.ImageRemoveOptions{})
+	})
+
+	home := t.TempDir()
+	configFile := filepath.Join(home, "config.toml")
+	require.NoError(t, os.WriteFile(configFile,
+		[]byte(fmt.Sprintf("[[containers]]\ntype = \"aws\"\ntag = %q\nport = \"4599\"\n", pinnedTag)), 0644))
+
+	mockServer := createMockLicenseServer(true)
+	defer mockServer.Close()
+
+	e := append(testEnvWithHome(home, ""),
+		string(env.APIEndpoint)+"="+mockServer.URL,
+		string(env.AuthToken)+"=fake-token")
+	stdout, _, _ := runLstk(t, ctx, "", e, "--config", configFile, "start")
+
+	assert.Contains(t, stdout, "Using local image "+pinnedImage, "a pinned image present locally should be reused")
+	assert.NotContains(t, stdout, "Pulling", "lstk must not re-pull an image that is already present")
+}
+
 func TestStartCommandSucceedsWithKeyringToken(t *testing.T) {
 	requireDocker(t)
 	cleanup()
