@@ -37,6 +37,10 @@ type RunOptions struct {
 	ConfigPath             string
 	EmulatorLabel          string
 	NeedsEmulatorSelection bool
+	// PostStart, when set, runs after the emulator is freshly started (e.g. to
+	// auto-load a configured snapshot). It is skipped when the emulator was
+	// already running.
+	PostStart func(ctx context.Context, sink output.Sink) error
 }
 
 func Run(parentCtx context.Context, runOpts RunOptions) error {
@@ -111,6 +115,18 @@ func Run(parentCtx context.Context, runOpts RunOptions) error {
 			}
 			p.Send(runErrMsg{err: err})
 			return
+		}
+		// Auto-load the configured snapshot only when the emulator was freshly
+		// started this run (resolvedVersion is empty when it was already running).
+		if resolvedVersion != "" && runOpts.PostStart != nil {
+			if postErr := runOpts.PostStart(ctx, sink); postErr != nil {
+				if errors.Is(postErr, context.Canceled) {
+					return
+				}
+				err = postErr
+				p.Send(runErrMsg{err: postErr})
+				return
+			}
 		}
 		// Empty resolvedVersion means the container was already running and Start
 		// returned early — use the cached label rather than re-resolving.

@@ -45,7 +45,7 @@ Running `lstk` will automatically handle configuration setup and start LocalStac
 - **Interactive TUI** — a Bubble Tea-powered terminal UI shown in an interactive terminal for commands like `start`, `login`, `status`, etc.
 - **Plain output** for CI/CD and scripting (auto-detected in non-interactive environments or forced with `--non-interactive`)
 - **Log streaming** — tail emulator logs in real-time with `--follow`; use `--verbose` to show all logs without filtering
-- **Snapshots** — save, load, and remove emulator state as local files or named cloud snapshots (`pod:` prefix)
+- **Snapshots** — save, load, and remove emulator state as local files or named cloud snapshots (`pod:` prefix), and auto-load one on start
 - **Browser-based login** — authenticate via browser and store credentials securely in the system keyring
 - **AWS CLI profile** — optionally configure a `localstack` profile in `~/.aws/` after start
 - **Terraform integration** — proxy Terraform commands to LocalStack with automatic AWS provider endpoint configuration
@@ -134,6 +134,7 @@ tag  = "latest"  # Docker image tag, e.g. "latest", "2026.03"
 port = "4566"    # Host port the emulator will be accessible on
 # volume = ""    # Host directory for persistent state (default: OS cache dir)
 # env = []       # Named environment profiles to apply (see [env.*] sections below)
+# snapshot = "pod:my-baseline"  # Snapshot REF auto-loaded on start (AWS only); see Snapshots below
 ```
 
 **Fields:**
@@ -142,6 +143,7 @@ port = "4566"    # Host port the emulator will be accessible on
 - `port`: port LocalStack listens on (default `4566`)
 - `volume`: (optional) host directory for persistent emulator state (default: OS cache dir)
 - `env`: (optional) list of named environment variable groups to inject into the container (see below)
+- `snapshot`: (optional) snapshot REF auto-loaded after the emulator starts on a fresh run — a local file path or a `pod:` cloud snapshot (see [Snapshots](#snapshots))
 
 ### Passing environment variables to the container
 
@@ -335,6 +337,24 @@ lstk snapshot remove pod:my-baseline --force  # skip the prompt (required in non
 ```
 
 `lstk snapshot load` supports merge strategies via `--merge` (`account-region-merge` (default), `overwrite`, `service-merge`) to control how snapshot state combines with running state.
+
+### Auto-load on start
+
+The AWS emulator can automatically load a snapshot whenever it starts. Set the `snapshot` field on its `[[containers]]` block to any snapshot reference — a local file or a `pod:` cloud snapshot:
+
+```toml
+[[containers]]
+type     = "aws"
+port     = "4566"
+snapshot = "pod:my-baseline"
+```
+
+Override or disable it for a single run without editing the config:
+
+```bash
+lstk start --snapshot pod:other-baseline  # load a different snapshot this run
+lstk start --no-snapshot                  # skip auto-loading this run
+```
 
 ## Reporting bugs
 

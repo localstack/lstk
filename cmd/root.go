@@ -57,7 +57,11 @@ func NewRootCmd(cfg *env.Env, tel *telemetry.Client, logger log.Logger) *cobra.C
 			if err != nil {
 				return err
 			}
-			return startEmulator(cmd.Context(), rt, cfg, tel, logger, persist, firstRun)
+			snapshotFlag, noSnapshot, err := snapshotFlags(cmd)
+			if err != nil {
+				return err
+			}
+			return startEmulator(cmd.Context(), rt, cfg, tel, logger, persist, firstRun, snapshotFlag, noSnapshot)
 		},
 	}
 
@@ -68,6 +72,7 @@ func NewRootCmd(cfg *env.Env, tel *telemetry.Client, logger log.Logger) *cobra.C
 	root.PersistentFlags().String("config", "", "Path to config file")
 	root.PersistentFlags().BoolVar(&cfg.NonInteractive, "non-interactive", false, "Disable interactive mode")
 	root.Flags().Bool("persist", false, "Persist emulator state across restarts")
+	addSnapshotStartFlags(root)
 
 	configureHelp(root)
 
@@ -201,10 +206,20 @@ func buildStartOptions(cfg *env.Env, appConfig *config.Config, logger log.Logger
 	}
 }
 
-func startEmulator(ctx context.Context, rt runtime.Runtime, cfg *env.Env, tel *telemetry.Client, logger log.Logger, persist bool, firstRun bool) error {
+func startEmulator(ctx context.Context, rt runtime.Runtime, cfg *env.Env, tel *telemetry.Client, logger log.Logger, persist bool, firstRun bool, snapshotFlag string, noSnapshot bool) error {
 	appConfig, err := config.Get()
 	if err != nil {
 		return fmt.Errorf("failed to get config: %w", err)
+	}
+
+	ref, err := resolveStartSnapshotRef(appConfig, snapshotFlag, noSnapshot)
+	if err != nil {
+		return err
+	}
+	// Parse the REF eagerly so an invalid snapshot fails before the emulator starts.
+	autoLoad, err := newSnapshotAutoLoader(cfg, rt, appConfig, ref)
+	if err != nil {
+		return err
 	}
 
 	opts := buildStartOptions(cfg, appConfig, logger, tel, persist)
@@ -230,6 +245,7 @@ func startEmulator(ctx context.Context, rt runtime.Runtime, cfg *env.Env, tel *t
 			ConfigPath:             configPath,
 			EmulatorLabel:          config.CachedPlanLabel(),
 			NeedsEmulatorSelection: firstRun,
+			PostStart:              autoLoad,
 		})
 	}
 
@@ -242,8 +258,17 @@ func startEmulator(ctx context.Context, rt runtime.Runtime, cfg *env.Env, tel *t
 		})
 	}
 	update.NotifyUpdate(ctx, sink, update.NotifyOptions{GitHubToken: cfg.GitHubToken})
-	if _, err = container.Start(ctx, rt, sink, opts, false); err != nil {
+	resolvedVersion, err := container.Start(ctx, rt, sink, opts, false)
+	if err != nil {
 		return err
+	}
+	// Auto-load the configured snapshot only when the emulator was freshly started
+	// this run (resolvedVersion is empty when it was already running). This mirrors
+	// v1's AUTO_LOAD_POD: state is loaded as the emulator comes up, not on every invocation.
+	if autoLoad != nil && resolvedVersion != "" {
+		if err := autoLoad(ctx, sink); err != nil {
+			return err
+		}
 	}
 	if firstRun {
 		return config.EnsureCreated()

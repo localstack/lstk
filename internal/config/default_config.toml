@@ -11,6 +11,7 @@ tag  = "latest"  # Docker image tag, e.g. "latest", "2026.4"
 port = "4566"    # Host port the emulator will be accessible on
 # volume = ""    # Host directory for persistent state (default: OS cache dir)
 # env = []       # Named environment profiles to apply (see [env.*] sections below)
+# snapshot = "pod:my-baseline"  # Snapshot REF auto-loaded on start (AWS only); skip once with 'lstk start --no-snapshot'
 
 # Environment profiles let you group environment variables and reference
 # them by name in one or more containers via the 'env' field above.

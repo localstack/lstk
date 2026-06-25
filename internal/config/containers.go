@@ -118,6 +118,9 @@ type ContainerConfig struct {
 	Volume string       `mapstructure:"volume"`
 	// Env is a list of named environment references defined in the top-level [env.*] config sections.
 	Env []string `mapstructure:"env"`
+	// Snapshot is an optional snapshot REF (e.g. "pod:my-baseline" or a local path)
+	// auto-loaded after the emulator starts. AWS emulator only.
+	Snapshot string `mapstructure:"snapshot"`
 }
 
 // VolumeDir returns the host directory to mount into the container for persistence/caching.
