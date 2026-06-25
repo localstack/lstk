@@ -221,41 +221,46 @@ func TestValidate_NegativePort(t *testing.T) {
 }
 
 func TestParseVolume_TwoParts(t *testing.T) {
-	m, err := parseVolume("/host/data:/var/lib/localstack", "/cfg")
+	src := filepath.Join(t.TempDir(), "data")
+	m, err := parseVolume(src+":/var/lib/localstack", t.TempDir())
 	require.NoError(t, err)
-	assert.Equal(t, VolumeMount{Source: "/host/data", Target: "/var/lib/localstack", ReadOnly: false}, m)
+	assert.Equal(t, VolumeMount{Source: src, Target: "/var/lib/localstack", ReadOnly: false}, m)
 }
 
 func TestParseVolume_ReadOnly(t *testing.T) {
-	m, err := parseVolume("/host/seed:/seed:ro", "/cfg")
+	src := filepath.Join(t.TempDir(), "seed")
+	m, err := parseVolume(src+":/seed:ro", t.TempDir())
 	require.NoError(t, err)
-	assert.Equal(t, VolumeMount{Source: "/host/seed", Target: "/seed", ReadOnly: true}, m)
+	assert.Equal(t, VolumeMount{Source: src, Target: "/seed", ReadOnly: true}, m)
 }
 
 func TestParseVolume_ReadOnlyAmongOptions(t *testing.T) {
-	m, err := parseVolume("/host/seed:/seed:z,ro", "/cfg")
+	src := filepath.Join(t.TempDir(), "seed")
+	m, err := parseVolume(src+":/seed:z,ro", t.TempDir())
 	require.NoError(t, err)
 	assert.True(t, m.ReadOnly)
 }
 
 func TestParseVolume_RelativeSourceResolvedAgainstConfigDir(t *testing.T) {
-	m, err := parseVolume("./init.sf.sql:/etc/localstack/init/ready.d/init.sf.sql", "/cfg/project")
+	cfgDir := t.TempDir()
+	m, err := parseVolume("./init.sf.sql:/etc/localstack/init/ready.d/init.sf.sql", cfgDir)
 	require.NoError(t, err)
-	assert.Equal(t, "/cfg/project/init.sf.sql", m.Source)
+	assert.Equal(t, filepath.Join(cfgDir, "init.sf.sql"), m.Source)
 }
 
 func TestParseVolume_TildeExpanded(t *testing.T) {
 	home, err := os.UserHomeDir()
 	require.NoError(t, err)
-	m, err := parseVolume("~/scripts/x.sf.sql:/etc/localstack/init/ready.d/x.sf.sql", "/cfg")
+	m, err := parseVolume("~/scripts/x.sf.sql:/etc/localstack/init/ready.d/x.sf.sql", t.TempDir())
 	require.NoError(t, err)
 	assert.Equal(t, filepath.Join(home, "scripts/x.sf.sql"), m.Source)
 }
 
 func TestParseVolume_AbsoluteSourceUnchanged(t *testing.T) {
-	m, err := parseVolume("/abs/x.sf.sql:/etc/localstack/init/ready.d/x.sf.sql", "/cfg")
+	src := filepath.Join(t.TempDir(), "x.sf.sql")
+	m, err := parseVolume(src+":/etc/localstack/init/ready.d/x.sf.sql", t.TempDir())
 	require.NoError(t, err)
-	assert.Equal(t, "/abs/x.sf.sql", m.Source)
+	assert.Equal(t, src, m.Source)
 }
 
 func TestParseVolume_Errors(t *testing.T) {
@@ -274,15 +279,68 @@ func TestParseVolume_Errors(t *testing.T) {
 	}
 }
 
+func TestSplitVolumeSpec_NonWindows(t *testing.T) {
+	cases := []struct {
+		spec                 string
+		source, target, opts string
+	}{
+		{"/host/data:/var/lib/localstack", "/host/data", "/var/lib/localstack", ""},
+		{"./rel:/seed:ro", "./rel", "/seed", "ro"},
+		// On non-Windows a single-letter host dir must NOT be treated as a drive.
+		{"a:/data", "a", "/data", ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.spec, func(t *testing.T) {
+			source, target, opts, err := splitVolumeSpec(tc.spec, false)
+			require.NoError(t, err)
+			assert.Equal(t, tc.source, source)
+			assert.Equal(t, tc.target, target)
+			assert.Equal(t, tc.opts, opts)
+		})
+	}
+}
+
+func TestSplitVolumeSpec_WindowsDriveLetter(t *testing.T) {
+	cases := []struct {
+		spec                 string
+		source, target, opts string
+	}{
+		{`C:\Users\me\persist:/var/lib/localstack`, `C:\Users\me\persist`, "/var/lib/localstack", ""},
+		{`C:\data:/seed:ro`, `C:\data`, "/seed", "ro"},
+		{"C:/forward:/seed", "C:/forward", "/seed", ""},
+		// No drive letter: behaves like the normal split.
+		{"./rel:/seed", "./rel", "/seed", ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.spec, func(t *testing.T) {
+			source, target, opts, err := splitVolumeSpec(tc.spec, true)
+			require.NoError(t, err)
+			assert.Equal(t, tc.source, source)
+			assert.Equal(t, tc.target, target)
+			assert.Equal(t, tc.opts, opts)
+		})
+	}
+}
+
+func TestParseVolume_ContainerTargetIsUnixAbsolute(t *testing.T) {
+	// The target is always a path inside the Linux container, so a leading-slash path must be
+	// accepted regardless of the host OS (filepath.IsAbs would reject it on Windows).
+	m, err := parseVolume("/host/data:/var/lib/localstack", "/cfg")
+	require.NoError(t, err)
+	assert.Equal(t, "/var/lib/localstack", m.Target)
+}
+
 func TestVolumeDir_VolumesEntryTargetingPersistenceWins(t *testing.T) {
+	persist := filepath.Join(t.TempDir(), "persist")
+	extra := filepath.Join(t.TempDir(), "x.sf.sql")
 	c := &ContainerConfig{
 		Type:    EmulatorAWS,
 		Volume:  "", // not set
-		Volumes: []string{"/persist/dir:/var/lib/localstack", "/abs/x.sf.sql:/etc/localstack/init/ready.d/x.sf.sql"},
+		Volumes: []string{persist + ":/var/lib/localstack", extra + ":/etc/localstack/init/ready.d/x.sf.sql"},
 	}
 	dir, err := c.VolumeDir()
 	require.NoError(t, err)
-	assert.Equal(t, "/persist/dir", dir)
+	assert.Equal(t, persist, dir)
 }
 
 func TestVolumeDir_LegacyVolumeUsedWhenNoPersistenceEntry(t *testing.T) {
@@ -306,19 +364,23 @@ func TestVolumeDir_DefaultsToCacheDirWhenNeitherSet(t *testing.T) {
 }
 
 func TestExtraVolumes_ExcludesPersistenceEntry(t *testing.T) {
+	dir := t.TempDir()
+	persist := filepath.Join(dir, "persist")
+	a := filepath.Join(dir, "a.sf.sql")
+	b := filepath.Join(dir, "b.sf.sql")
 	c := &ContainerConfig{
 		Type: EmulatorAWS,
 		Volumes: []string{
-			"/persist/dir:/var/lib/localstack",
-			"/abs/a.sf.sql:/etc/localstack/init/ready.d/a.sf.sql",
-			"/abs/b.sf.sql:/etc/localstack/init/ready.d/b.sf.sql:ro",
+			persist + ":/var/lib/localstack",
+			a + ":/etc/localstack/init/ready.d/a.sf.sql",
+			b + ":/etc/localstack/init/ready.d/b.sf.sql:ro",
 		},
 	}
 	extras, err := c.ExtraVolumes()
 	require.NoError(t, err)
 	require.Len(t, extras, 2)
-	assert.Equal(t, VolumeMount{Source: "/abs/a.sf.sql", Target: "/etc/localstack/init/ready.d/a.sf.sql"}, extras[0])
-	assert.Equal(t, VolumeMount{Source: "/abs/b.sf.sql", Target: "/etc/localstack/init/ready.d/b.sf.sql", ReadOnly: true}, extras[1])
+	assert.Equal(t, VolumeMount{Source: a, Target: "/etc/localstack/init/ready.d/a.sf.sql"}, extras[0])
+	assert.Equal(t, VolumeMount{Source: b, Target: "/etc/localstack/init/ready.d/b.sf.sql", ReadOnly: true}, extras[1])
 }
 
 func TestValidate_RejectsMalformedVolume(t *testing.T) {

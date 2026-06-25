@@ -4,8 +4,10 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -153,22 +155,22 @@ type VolumeMount struct {
 // is required because the Docker SDK treats a non-absolute source as a named volume rather
 // than a bind mount. opts is a comma-separated list; only "ro" is honored.
 //
-// Note: a Windows drive-letter source (e.g. "C:\\data") splits on ":" ambiguously — the same
-// limitation as the upstream LocalStack volume parser.
+// A Windows drive-letter source (e.g. "C:\\data") is handled: its drive ':' is not mistaken
+// for a field separator. The container target is always a Unix (slash) absolute path.
 func parseVolume(spec, configDir string) (VolumeMount, error) {
-	parts := strings.Split(spec, ":")
-	if len(parts) < 2 || len(parts) > 3 {
-		return VolumeMount{}, fmt.Errorf("invalid volume %q: expected \"host:container\" or \"host:container:ro\"", spec)
+	source, target, opts, err := splitVolumeSpec(spec, runtime.GOOS == "windows")
+	if err != nil {
+		return VolumeMount{}, fmt.Errorf("invalid volume %q: %w", spec, err)
 	}
-
-	source, target := parts[0], parts[1]
 	if source == "" {
 		return VolumeMount{}, fmt.Errorf("invalid volume %q: host source is empty", spec)
 	}
 	if target == "" {
 		return VolumeMount{}, fmt.Errorf("invalid volume %q: container target is empty", spec)
 	}
-	if !filepath.IsAbs(target) {
+	// The target is a path inside the (Linux) container, so it is validated with slash
+	// semantics rather than the host OS's filepath rules.
+	if !path.IsAbs(target) {
 		return VolumeMount{}, fmt.Errorf("invalid volume %q: container target %q must be an absolute path", spec, target)
 	}
 
@@ -178,15 +180,37 @@ func parseVolume(spec, configDir string) (VolumeMount, error) {
 	}
 
 	var readOnly bool
-	if len(parts) == 3 {
-		for _, opt := range strings.Split(parts[2], ",") {
-			if opt == "ro" {
-				readOnly = true
-			}
+	for _, opt := range strings.Split(opts, ",") {
+		if opt == "ro" {
+			readOnly = true
 		}
 	}
 
 	return VolumeMount{Source: resolved, Target: target, ReadOnly: readOnly}, nil
+}
+
+// splitVolumeSpec splits a "host:container[:opts]" spec into its three components. When
+// windows is true, a leading drive letter on the host (e.g. "C:\\data") is rejoined so its
+// ':' is not treated as a field separator — Docker applies the same rule only on Windows, so
+// that a single-letter relative host dir (e.g. "a:/data") stays valid elsewhere.
+func splitVolumeSpec(spec string, windows bool) (source, target, opts string, err error) {
+	parts := strings.Split(spec, ":")
+	if windows && len(parts) >= 2 && len(parts[0]) == 1 && isDriveLetter(parts[0][0]) &&
+		(strings.HasPrefix(parts[1], `\`) || strings.HasPrefix(parts[1], "/")) {
+		parts = append([]string{parts[0] + ":" + parts[1]}, parts[2:]...)
+	}
+	switch len(parts) {
+	case 2:
+		return parts[0], parts[1], "", nil
+	case 3:
+		return parts[0], parts[1], parts[2], nil
+	default:
+		return "", "", "", fmt.Errorf("expected \"host:container\" or \"host:container:ro\"")
+	}
+}
+
+func isDriveLetter(b byte) bool {
+	return (b >= 'a' && b <= 'z') || (b >= 'A' && b <= 'Z')
 }
 
 // resolveHostPath expands a leading "~/" and makes a relative path absolute against configDir.
