@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"context"
-	"crypto/rand"
 	"errors"
 	"fmt"
 	"os"
@@ -433,14 +432,6 @@ func resolveS3Credentials(profile string) (snapshot.S3Credentials, error) {
 	}, nil
 }
 
-// defaultRemotePodName generates a timestamped pod name used when saving to a
-// remote without an explicit name, mirroring local snapshot auto-naming.
-func defaultRemotePodName(now time.Time) string {
-	b := make([]byte, 2)
-	_, _ = rand.Read(b)
-	return "snapshot-" + now.UTC().Format("2006-01-02T15-04-05") + "-" + fmt.Sprintf("%x", b)[:3]
-}
-
 func newSnapshotListCmd(cfg *env.Env, logger log.Logger) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "list [s3://bucket/prefix]",
@@ -592,7 +583,7 @@ func runSnapshotSave(cfg *env.Env) func(*cobra.Command, []string) error {
 				return err
 			}
 			if podName == "" {
-				podName = defaultRemotePodName(time.Now())
+				podName = snapshot.DefaultRemotePodName(time.Now())
 			} else if err := snapshot.ValidatePodName(podName); err != nil {
 				return err
 			}

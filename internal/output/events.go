@@ -141,24 +141,24 @@ type AuthCompleteEvent struct{}
 // so Sink.Emit rejects unknown types at compile time.
 type Event interface{ sealedEvent() }
 
-func (MessageEvent) sealedEvent()            {}
-func (SpinnerEvent) sealedEvent()            {}
-func (ErrorEvent) sealedEvent()              {}
-func (AuthEvent) sealedEvent()               {}
-func (AuthCompleteEvent) sealedEvent()       {}
-func (InstanceInfoEvent) sealedEvent()       {}
-func (TableEvent) sealedEvent()              {}
-func (ResourceSummaryEvent) sealedEvent()    {}
-func (PodSnapshotSavedEvent) sealedEvent()   {}
+func (MessageEvent) sealedEvent()             {}
+func (SpinnerEvent) sealedEvent()             {}
+func (ErrorEvent) sealedEvent()               {}
+func (AuthEvent) sealedEvent()                {}
+func (AuthCompleteEvent) sealedEvent()        {}
+func (InstanceInfoEvent) sealedEvent()        {}
+func (TableEvent) sealedEvent()               {}
+func (ResourceSummaryEvent) sealedEvent()     {}
+func (PodSnapshotSavedEvent) sealedEvent()    {}
 func (RemoteSnapshotSavedEvent) sealedEvent() {}
-func (DeferredEvent) sealedEvent()           {}
-func (SnapshotLoadedEvent) sealedEvent()     {}
-func (PodSnapshotRemovedEvent) sealedEvent() {}
-func (SnapshotShownEvent) sealedEvent()      {}
-func (ContainerStatusEvent) sealedEvent()    {}
-func (ProgressEvent) sealedEvent()           {}
-func (UserInputRequestEvent) sealedEvent()   {}
-func (LogLineEvent) sealedEvent()            {}
+func (DeferredEvent) sealedEvent()            {}
+func (SnapshotLoadedEvent) sealedEvent()      {}
+func (PodSnapshotRemovedEvent) sealedEvent()  {}
+func (SnapshotShownEvent) sealedEvent()       {}
+func (ContainerStatusEvent) sealedEvent()     {}
+func (ProgressEvent) sealedEvent()            {}
+func (UserInputRequestEvent) sealedEvent()    {}
+func (LogLineEvent) sealedEvent()             {}
 
 type Sink interface {
 	Emit(event Event)

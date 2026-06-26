@@ -269,15 +269,18 @@ func TestSnapshotSaveS3Success(t *testing.T) {
 	startTestContainer(t, ctx)
 	srv, captured := mockPodS3Server(t)
 
+	// A local-testing endpoint (host.docker.internal) makes lstk skip the
+	// bucket-existence pre-flight, so the test never reaches real AWS S3.
+	const s3URL = "s3://host.docker.internal:4566/my-bucket"
 	stdout, stderr, err := runLstk(t, ctx, t.TempDir(),
 		env.Environ(testEnvWithHome(t.TempDir(), "")).
 			With(env.LocalStackHost, lsHost(srv)).
 			With(env.AWSAccessKeyID, "AKIAEXAMPLE").
 			With(env.AWSSecretAccessKey, "topsecret"),
-		"--non-interactive", "snapshot", "save", "my-pod", "s3://my-bucket/prefix",
+		"--non-interactive", "snapshot", "save", "my-pod", s3URL,
 	)
 	require.NoError(t, err, "lstk snapshot save to s3 failed: %s", stderr)
-	assert.Contains(t, stdout, "Snapshot saved to s3://my-bucket/prefix")
+	assert.Contains(t, stdout, "Snapshot saved to "+s3URL)
 	assert.Contains(t, stdout, "my-pod")
 
 	remoteURL, saveBody := captured()

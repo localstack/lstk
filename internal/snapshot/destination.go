@@ -76,6 +76,14 @@ func ValidatePodName(name string) error {
 	return nil
 }
 
+// DefaultRemotePodName generates a timestamped pod name used when saving to a
+// remote without an explicit name, mirroring local snapshot auto-naming.
+func DefaultRemotePodName(now time.Time) string {
+	b := make([]byte, 2)
+	_, _ = rand.Read(b)
+	return "snapshot-" + now.UTC().Format("2006-01-02T15-04-05") + "-" + fmt.Sprintf("%x", b)[:3]
+}
+
 // parseS3 validates an s3:// URL and returns it as a KindS3 destination. The bucket
 // must be present and the URL must not contain credential query params.
 func parseS3(ref string) (Destination, error) {

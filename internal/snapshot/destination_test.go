@@ -601,3 +601,16 @@ func TestParseDestinationTildeWithoutHome(t *testing.T) {
 		})
 	}
 }
+
+func TestDefaultRemotePodName(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 5, 11, 21, 4, 32, 0, time.UTC)
+	name := snapshot.DefaultRemotePodName(now)
+
+	assert.True(t, strings.HasPrefix(name, "snapshot-2026-05-11T21-04-32-"), "got %q", name)
+	// The generated name must be a valid pod name.
+	require.NoError(t, snapshot.ValidatePodName(name))
+	// The random suffix should make repeated calls distinct.
+	assert.NotEqual(t, name, snapshot.DefaultRemotePodName(now))
+}
