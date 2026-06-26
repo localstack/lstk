@@ -49,6 +49,7 @@ func TestSaveRemoteS3_RegistersAndSaves(t *testing.T) {
 	const s3URL = "s3://my-bucket/prefix"
 	wantName := snapshot.RemoteName(s3URL)
 
+	client.EXPECT().S3BucketExists(gomock.Any(), "my-bucket").Return(true, nil)
 	var gotURL string
 	var gotParams map[string]string
 	client.EXPECT().RegisterRemote(gomock.Any(), gomock.Any(), wantName, gomock.Any()).DoAndReturn(
@@ -95,6 +96,7 @@ func TestSaveRemoteS3_SessionTokenIncluded(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	client := NewMockRemoteClient(ctrl)
 
+	client.EXPECT().S3BucketExists(gomock.Any(), "bucket").Return(true, nil)
 	var gotURL string
 	client.EXPECT().RegisterRemote(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
 		func(_ context.Context, _, _, remoteURL string) error {
@@ -119,11 +121,59 @@ func TestSaveRemoteS3_RegisterError(t *testing.T) {
 	t.Parallel()
 	ctrl := gomock.NewController(t)
 	client := NewMockRemoteClient(ctrl)
+	client.EXPECT().S3BucketExists(gomock.Any(), "bucket").Return(true, nil)
 	client.EXPECT().RegisterRemote(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(fmt.Errorf("boom"))
 
 	err := snapshot.SaveRemoteS3(context.Background(), healthyRunningMock(t), awsContainers, client, "", "my-pod", "s3://bucket", snapshot.S3Credentials{AccessKeyID: "a", SecretAccessKey: "b"}, "", output.NewPlainSink(io.Discard))
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "register S3 remote")
+}
+
+func TestSaveRemoteS3_BucketMissingFails(t *testing.T) {
+	t.Parallel()
+	ctrl := gomock.NewController(t)
+	client := NewMockRemoteClient(ctrl)
+	// Bucket does not exist → save must fail without registering or uploading.
+	// The check runs before any runtime interaction, so a bare runtime mock is used.
+	client.EXPECT().S3BucketExists(gomock.Any(), "missing-bucket").Return(false, nil)
+
+	err := snapshot.SaveRemoteS3(context.Background(), runtime.NewMockRuntime(ctrl), awsContainers, client, "", "my-pod", "s3://missing-bucket", snapshot.S3Credentials{AccessKeyID: "a", SecretAccessKey: "b"}, "", output.NewPlainSink(io.Discard))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "does not exist")
+}
+
+func TestSaveRemoteS3_LocalEndpointSkipsBucketCheck(t *testing.T) {
+	t.Parallel()
+	ctrl := gomock.NewController(t)
+	client := NewMockRemoteClient(ctrl)
+	// No S3BucketExists expectation: the local-testing endpoint must skip the check.
+	client.EXPECT().RegisterRemote(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+	client.EXPECT().SavePodRemote(gomock.Any(), gomock.Any(), "my-pod", gomock.Any(), gomock.Any(), "").Return(snapshot.PodSaveResult{}, nil)
+
+	err := snapshot.SaveRemoteS3(context.Background(), healthyRunningMock(t), awsContainers, client, "", "my-pod", "s3://host.docker.internal:4566/my-bucket", snapshot.S3Credentials{AccessKeyID: "a", SecretAccessKey: "b"}, "", output.NewPlainSink(io.Discard))
+	require.NoError(t, err)
+}
+
+func TestSaveRemoteS3_CheckErrorWarnsAndProceeds(t *testing.T) {
+	t.Parallel()
+	ctrl := gomock.NewController(t)
+	client := NewMockRemoteClient(ctrl)
+	// A check that cannot be performed degrades to a warning, not a hard failure.
+	client.EXPECT().S3BucketExists(gomock.Any(), "bucket").Return(false, fmt.Errorf("no network"))
+	client.EXPECT().RegisterRemote(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+	client.EXPECT().SavePodRemote(gomock.Any(), gomock.Any(), "my-pod", gomock.Any(), gomock.Any(), "").Return(snapshot.PodSaveResult{}, nil)
+
+	sink, getEvents := captureEvents(t)
+	err := snapshot.SaveRemoteS3(context.Background(), healthyRunningMock(t), awsContainers, client, "", "my-pod", "s3://bucket", snapshot.S3Credentials{AccessKeyID: "a", SecretAccessKey: "b"}, "", sink)
+	require.NoError(t, err)
+
+	var warned bool
+	for _, e := range getEvents() {
+		if ev, ok := e.(output.MessageEvent); ok && ev.Severity == output.SeverityWarning {
+			warned = true
+		}
+	}
+	assert.True(t, warned, "a warning should be emitted when the bucket check fails")
 }
 
 func TestListRemoteS3_RendersTable(t *testing.T) {
@@ -134,6 +184,7 @@ func TestListRemoteS3_RendersTable(t *testing.T) {
 	mockRT := runtime.NewMockRuntime(ctrl)
 	mockRT.EXPECT().IsHealthy(gomock.Any()).Return(nil)
 
+	client.EXPECT().S3BucketExists(gomock.Any(), "bucket").Return(true, nil)
 	client.EXPECT().RegisterRemote(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 	client.EXPECT().ListPodsRemote(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), "").Return(
 		[]snapshot.RemotePod{{Name: "pod-a", MaxVersion: 3}, {Name: "pod-b", MaxVersion: 1}}, nil,

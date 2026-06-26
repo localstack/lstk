@@ -7,6 +7,8 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"net"
+	"net/url"
 	"strings"
 
 	"github.com/localstack/lstk/internal/config"
@@ -52,6 +54,10 @@ type RemotePod struct {
 // RemoteClient is satisfied by aws.Client. It manages remote registration and the
 // pod operations that target a named remote.
 type RemoteClient interface {
+	// S3BucketExists reports whether the named S3 bucket exists. Used to reject a
+	// missing bucket before an operation, rather than letting the emulator
+	// auto-create it.
+	S3BucketExists(ctx context.Context, bucket string) (bool, error)
 	// RegisterRemote upserts a named remote on the running emulator
 	// (POST /_localstack/pods/remotes/<name>). remoteURL may contain {placeholder}
 	// tokens that the emulator renders with the per-request params.
@@ -62,6 +68,42 @@ type RemoteClient interface {
 	LoadPodRemote(ctx context.Context, host, podName, remoteName string, params map[string]string, authToken, strategy string) ([]string, error)
 	// ListPodsRemote lists the snapshots stored on the named remote.
 	ListPodsRemote(ctx context.Context, host, remoteName string, params map[string]string, authToken, creator string) ([]RemotePod, error)
+}
+
+// s3RemoteBucket extracts the bucket name from an s3:// URL and reports whether
+// the URL targets a local-testing endpoint (an IP or host.docker.internal), which
+// mirrors the emulator's own detection. For local endpoints the bucket is the
+// first path segment; for real AWS it is the host.
+func s3RemoteBucket(s3URL string) (bucket string, isLocalEndpoint bool) {
+	u, err := url.Parse(s3URL)
+	if err != nil {
+		return "", false
+	}
+	host := u.Hostname()
+	if host == "host.docker.internal" || net.ParseIP(host) != nil {
+		return strings.Trim(u.Path, "/"), true
+	}
+	return host, false
+}
+
+// ensureBucketExists returns an error when s3URL points at a real-AWS bucket that
+// does not exist, so lstk never relies on the emulator auto-creating it. Local
+// testing endpoints are skipped, and a check that cannot be performed (e.g. no
+// network) is surfaced as a warning rather than a hard failure.
+func ensureBucketExists(ctx context.Context, client RemoteClient, s3URL string, sink output.Sink) error {
+	bucket, isLocal := s3RemoteBucket(s3URL)
+	if isLocal || bucket == "" {
+		return nil
+	}
+	exists, err := client.S3BucketExists(ctx, bucket)
+	if err != nil {
+		sink.Emit(output.MessageEvent{Severity: output.SeverityWarning, Text: fmt.Sprintf("could not verify S3 bucket %q exists: %v", bucket, err)})
+		return nil
+	}
+	if !exists {
+		return fmt.Errorf("S3 bucket %q does not exist — create it first; lstk does not create buckets automatically", bucket)
+	}
+	return nil
 }
 
 // remoteName derives a deterministic registry name for an s3:// URL so the
@@ -93,6 +135,9 @@ func templatedRemoteURL(s3URL string, hasSessionToken bool) string {
 // identified by s3URL, using the given credentials. An auth token is optional for
 // S3 remotes (the S3 credentials are the auth); it is forwarded when present.
 func SaveRemoteS3(ctx context.Context, rt runtime.Runtime, containers []config.ContainerConfig, client RemoteClient, host, podName, s3URL string, creds S3Credentials, authToken string, sink output.Sink) error {
+	if err := ensureBucketExists(ctx, client, s3URL, sink); err != nil {
+		return err
+	}
 	name := remoteName(s3URL)
 	remoteURL := templatedRemoteURL(s3URL, creds.SessionToken != "")
 	var result PodSaveResult
@@ -121,6 +166,9 @@ func SaveRemoteS3(ctx context.Context, rt runtime.Runtime, containers []config.C
 // LoadRemoteS3 loads podName from the S3 bucket identified by s3URL into the
 // running emulator, starting it first if needed.
 func LoadRemoteS3(ctx context.Context, rt runtime.Runtime, containers []config.ContainerConfig, client RemoteClient, host, podName, s3URL string, creds S3Credentials, authToken, strategy string, starter Starter, sink output.Sink) error {
+	if err := ensureBucketExists(ctx, client, s3URL, sink); err != nil {
+		return err
+	}
 	name := remoteName(s3URL)
 	remoteURL := templatedRemoteURL(s3URL, creds.SessionToken != "")
 	var services []string
@@ -150,6 +198,10 @@ func ListRemoteS3(ctx context.Context, rt runtime.Runtime, containers []config.C
 	if err := rt.IsHealthy(ctx); err != nil {
 		rt.EmitUnhealthyError(sink, err)
 		return output.NewSilentError(fmt.Errorf("runtime not healthy: %w", err))
+	}
+
+	if err := ensureBucketExists(ctx, client, s3URL, sink); err != nil {
+		return err
 	}
 
 	name := remoteName(s3URL)

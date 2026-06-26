@@ -20,6 +20,9 @@ import (
 
 type Client struct {
 	http *http.Client
+	// s3BucketURLTemplate builds the URL for an S3 bucket existence check; it
+	// contains a single %s for the bucket name. Overridable in tests.
+	s3BucketURLTemplate string
 }
 
 func NewClient() *Client {
@@ -32,6 +35,7 @@ func NewClient() *Client {
 				}),
 			),
 		},
+		s3BucketURLTemplate: "https://%s.s3.amazonaws.com/",
 	}
 }
 

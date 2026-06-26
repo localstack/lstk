@@ -46,6 +46,27 @@ func setBasicAuth(req *http.Request, authToken string) {
 	req.Header.Set("Authorization", "Basic "+base64.StdEncoding.EncodeToString([]byte(":"+authToken)))
 }
 
+// S3BucketExists reports whether an S3 bucket exists, via an unsigned HEAD to the
+// S3 endpoint: a 404 means the bucket does not exist; any other status (200, 403,
+// or a redirect for a bucket in another region) means it does. This lets lstk
+// reject a missing bucket up front instead of letting the emulator auto-create it.
+func (c *Client) S3BucketExists(ctx context.Context, bucket string) (bool, error) {
+	url := fmt.Sprintf(c.s3BucketURLTemplate, bucket)
+	req, err := http.NewRequestWithContext(ctx, http.MethodHead, url, nil)
+	if err != nil {
+		return false, fmt.Errorf("create request: %w", err)
+	}
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return false, fmt.Errorf("connect to S3: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode == http.StatusNotFound {
+		return false, nil
+	}
+	return true, nil
+}
+
 // RegisterRemote upserts a named remote on the running emulator. The emulator
 // persists it (idempotently replacing any same-named entry) so subsequent
 // save/load/list calls can reference it by name.

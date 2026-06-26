@@ -73,6 +73,30 @@ func TestSavePodSnapshot_SendsEmptyRemote(t *testing.T) {
 	assert.Nil(t, gotBody.Remote, "platform pod save must not include a remote payload")
 }
 
+func TestS3BucketExists(t *testing.T) {
+	t.Parallel()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// 404 for a missing bucket; 403 (access denied, unsigned) means it exists.
+		if r.URL.Path == "/missing" {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		w.WriteHeader(http.StatusForbidden)
+	}))
+	defer server.Close()
+
+	c := NewClient()
+	c.s3BucketURLTemplate = server.URL + "/%s"
+
+	exists, err := c.S3BucketExists(context.Background(), "exists")
+	require.NoError(t, err)
+	assert.True(t, exists)
+
+	missing, err := c.S3BucketExists(context.Background(), "missing")
+	require.NoError(t, err)
+	assert.False(t, missing)
+}
+
 func TestListPodsRemote(t *testing.T) {
 	t.Parallel()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

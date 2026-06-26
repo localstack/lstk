@@ -85,6 +85,21 @@ func (mr *MockRemoteClientMockRecorder) RegisterRemote(ctx, host, name, remoteUR
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RegisterRemote", reflect.TypeOf((*MockRemoteClient)(nil).RegisterRemote), ctx, host, name, remoteURL)
 }
 
+// S3BucketExists mocks base method.
+func (m *MockRemoteClient) S3BucketExists(ctx context.Context, bucket string) (bool, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "S3BucketExists", ctx, bucket)
+	ret0, _ := ret[0].(bool)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// S3BucketExists indicates an expected call of S3BucketExists.
+func (mr *MockRemoteClientMockRecorder) S3BucketExists(ctx, bucket any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "S3BucketExists", reflect.TypeOf((*MockRemoteClient)(nil).S3BucketExists), ctx, bucket)
+}
+
 // SavePodRemote mocks base method.
 func (m *MockRemoteClient) SavePodRemote(ctx context.Context, host, podName, remoteName string, params map[string]string, authToken string) (snapshot.PodSaveResult, error) {
 	m.ctrl.T.Helper()
