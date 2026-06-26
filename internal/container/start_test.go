@@ -863,3 +863,42 @@ func TestPullImages_NonInteractiveNeverSkippable(t *testing.T) {
 	assert.True(t, pulled[c.Name], "a completed pull must be counted as pulled")
 	assert.False(t, sink.sawSkippable(), "non-interactive mode must never offer to skip the pull")
 }
+
+// PRO-324: cancelling the parent context (e.g. Ctrl+C) during a pull is a
+// deliberate abort, not a pull failure — it must propagate as context.Canceled
+// rather than being swallowed by the local-image fall-back.
+func TestPullImages_ParentCancelPropagatesNotFallBack(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockRT := runtime.NewMockRuntime(ctrl)
+	mockTel := telemetry.New("", true)
+
+	c := runtime.ContainerConfig{
+		Image:        "localstack/localstack-pro:latest",
+		Name:         "localstack-aws",
+		EmulatorType: config.EmulatorAWS,
+		Tag:          "latest",
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	mockRT.EXPECT().Remove(gomock.Any(), c.Name).Return(nil)
+	mockRT.EXPECT().ImageExists(gomock.Any(), c.Image).Return(true, nil)
+	mockRT.EXPECT().PullImage(gomock.Any(), c.Image, gomock.Any()).
+		DoAndReturn(func(pullCtx context.Context, _ string, progress chan<- runtime.PullProgress) error {
+			// Simulate Ctrl+C: the parent ctx is cancelled mid-pull, which cancels
+			// the derived pullCtx; the runtime then returns its context error.
+			cancel()
+			<-pullCtx.Done()
+			close(progress)
+			return pullCtx.Err()
+		})
+
+	sink := &recordingSink{}
+
+	_, err := pullImages(ctx, mockRT, sink, mockTel, []runtime.ContainerConfig{c}, false)
+
+	require.Error(t, err, "a cancelled pull must not be swallowed as a successful fall-back")
+	assert.True(t, errors.Is(err, context.Canceled), "parent cancellation must propagate")
+	assert.NotContains(t, strings.Join(sink.messageTexts(), "\n"), "using local image",
+		"cancellation must not emit the offline fall-back message")
+}

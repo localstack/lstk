@@ -181,8 +181,8 @@ func windowsDockerStartCommand(getenv func(string) string, lookPath func(string)
 }
 
 func (d *DockerRuntime) PullImage(ctx context.Context, imageName string, progress chan<- PullProgress) error {
-	// Close progress on every return path, including when ImagePull itself fails
-	// (e.g. the registry is unreachable), so callers ranging over it never block.
+	// Close progress unconditionally — even if ImagePull fails before returning a
+	// reader — so callers that wait for the progress stream to drain never hang.
 	if progress != nil {
 		defer close(progress)
 	}

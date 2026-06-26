@@ -402,6 +402,12 @@ func pullImage(ctx context.Context, rt runtime.Runtime, sink output.Sink, tel *t
 	sink.Emit(output.SpinnerStop())
 
 	if err != nil {
+		// A cancelled parent context (e.g. Ctrl+C) is a deliberate abort, not a pull
+		// failure: propagate it so the start flow stops instead of silently falling
+		// back to the local image. (ESC-to-skip is handled by the skipCh branch above.)
+		if errors.Is(err, context.Canceled) {
+			return false, err
+		}
 		// Auto fall-back: a failed pull with a local copy present (e.g. offline) is
 		// not fatal — start with the image we have and tell the user.
 		if localExists {
