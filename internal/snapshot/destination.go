@@ -118,7 +118,15 @@ func parseCloudOnly(ref, cwd, home, action string) (Destination, error) {
 		abs = withSnapshotExt(abs)
 		return Destination{}, fmt.Errorf("'%s' resolves to a local file (%s); CLI cannot %s", ref, displayPath(abs, cwd, home), action)
 	}
-	return ParseSource(ref, home)
+	dest, err := ParseSource(ref, home)
+	if err != nil {
+		return Destination{}, err
+	}
+	// remove/show are cloud (pod:) only; S3 remotes are not yet supported here.
+	if dest.Kind == KindS3 {
+		return Destination{}, ErrRemoteNotSupported
+	}
+	return dest, nil
 }
 
 // displayPath shortens abs for human-readable output:
