@@ -56,7 +56,7 @@ func TestAzStopInterceptionNoOpWhenNotIntercepting(t *testing.T) {
 	requireAzCLI(t)
 	t.Parallel()
 	workDir := azureWorkDir(t)
-	home := t.TempDir() // fresh ~/.azure: active cloud is the default AzureCloud
+	home := azTempHome(t) // fresh ~/.azure: active cloud is the default AzureCloud
 
 	stdout, _, err := runLstk(t, testContext(t), workDir,
 		env.With(env.Home, home),

@@ -22,6 +22,19 @@ func requireAzCLI(t *testing.T) {
 	}
 }
 
+// azTempHome returns a temporary HOME directory whose cleanup tolerates Windows
+// failures. The Azure CLI spawns background processes that keep handles open
+// under HOME\.azure, so Go's t.TempDir() auto-cleanup can fail with "being used
+// by another process" on Windows and wrongly fail an otherwise-passing test.
+// We remove it best-effort instead.
+func azTempHome(t *testing.T) string {
+	t.Helper()
+	dir, err := os.MkdirTemp("", "lstk-az-home-")
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = os.RemoveAll(dir) })
+	return dir
+}
+
 // azureWorkDir prepares a fresh workDir with a project-local `.lstk/config.toml`
 // containing an Azure container, and returns its path. Tests run `lstk` with
 // `cmd.Dir = workDir` so the project-local config search finds this file —
