@@ -293,6 +293,61 @@ func TestEmulatorSelectionReappearsAfterFailedFirstRun(t *testing.T) {
 	<-outputCh
 }
 
+// Deleting the config directory after a successful run must trigger the emulator
+// selector again on the next run — the selector is gated on the config file being
+// absent, so the directory alone must not count as "already configured".
+func TestEmulatorSelectionReappearsAfterConfigDirDeleted(t *testing.T) {
+	requireDocker(t)
+	t.Parallel()
+	if runtime.GOOS == "windows" {
+		t.Skip("PTY not supported on Windows")
+	}
+
+	tmpHome := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(tmpHome, ".config"), 0755))
+	e := env.Environ(testEnvWithHome(tmpHome, tmpHome)).
+		With(env.DisableEvents, "1").
+		With(env.AuthToken, "test-token")
+
+	// Resolve where lstk would create the config, then pre-create it so lstk
+	// believes this is not a first run (simulates a previous successful start).
+	configPath, _, err := runLstk(t, testContext(t), "", e, "config", "path")
+	require.NoError(t, err)
+	require.NoError(t, os.MkdirAll(filepath.Dir(configPath), 0755))
+	require.NoError(t, os.WriteFile(configPath, []byte("[[containers]]\ntype = \"aws\"\ntag = \"latest\"\nport = \"4566\"\n"), 0644))
+	require.FileExists(t, configPath)
+
+	// Delete the entire config directory — this is what the user reported.
+	require.NoError(t, os.RemoveAll(filepath.Dir(configPath)))
+	require.NoFileExists(t, configPath)
+
+	// The next run must show the emulator selector again, not silently default to AWS.
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, binaryPath(), "start")
+	cmd.Env = e
+
+	ptmx, err := pty.Start(cmd)
+	require.NoError(t, err, "failed to start lstk in PTY")
+	defer func() { _ = ptmx.Close() }()
+
+	out := &syncBuffer{}
+	outputCh := make(chan struct{})
+	go func() {
+		_, _ = io.Copy(out, ptmx)
+		close(outputCh)
+	}()
+
+	require.Eventually(t, func() bool {
+		return bytes.Contains(out.Bytes(), []byte("Which emulator would you like to use?"))
+	}, 10*time.Second, 100*time.Millisecond,
+		"emulator selection prompt should reappear after the config directory is deleted")
+
+	cancel()
+	<-outputCh
+}
+
 func TestFirstRunChecksDockerBeforeAuthAndSelection(t *testing.T) {
 	t.Parallel()
 	if runtime.GOOS == "windows" {
