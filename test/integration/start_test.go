@@ -15,6 +15,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -737,8 +738,12 @@ image = %q
 	mockServer := createMockLicenseServer(true)
 	defer mockServer.Close()
 
-	e := env.Environ(testEnvWithHome(t.TempDir(), "")).
-		With(env.APIEndpoint, mockServer.URL).
+	// Use the real (inherited) HOME like the other fresh-start container tests
+	// (TestStartCommandSucceedsWithValidToken et al.): a started container writes
+	// root-owned files into $HOME/.cache/lstk/volume that t.TempDir's cleanup —
+	// running as the unprivileged test user — cannot unlink. Config is still
+	// isolated via --config below.
+	e := env.With(env.APIEndpoint, mockServer.URL).
 		With(env.AuthToken, authToken)
 	stdout, stderr, err := runLstk(t, ctx, "", e, "--config", configFile, "--non-interactive", "start")
 	require.NoError(t, err, "lstk start should fall back to the local image: %s", stderr)
@@ -774,8 +779,10 @@ func TestStartContinuesWhenLicenseServerUnreachable(t *testing.T) {
 	unreachableURL := unreachable.URL
 	unreachable.Close()
 
-	e := env.Environ(testEnvWithHome(t.TempDir(), "")).
-		With(env.APIEndpoint, unreachableURL).
+	// Use the real (inherited) HOME like the other fresh-start container tests: a
+	// started container writes root-owned files into $HOME/.cache/lstk/volume that
+	// t.TempDir's cleanup — running as the unprivileged test user — cannot unlink.
+	e := env.With(env.APIEndpoint, unreachableURL).
 		With(env.AuthToken, authToken)
 	stdout, stderr, err := runLstk(t, ctx, "", e, "--non-interactive", "start")
 	require.NoError(t, err, "lstk start should continue when the license server is unreachable: %s", stderr)
@@ -786,6 +793,73 @@ func TestStartContinuesWhenLicenseServerUnreachable(t *testing.T) {
 	inspect, err := dockerClient.ContainerInspect(ctx, containerName, client.ContainerInspectOptions{})
 	require.NoError(t, err, "failed to inspect container")
 	assert.True(t, inspect.Container.State.Running, "container should be running")
+}
+
+// TestStartSkipsPullAndLicenseCheckWhenImageIsLocal verifies the offline-friendly
+// success path from the #325 review: when a pinned image is configured and already
+// present locally, lstk pulls nothing and never contacts the license server — the
+// container validates its own bundled license at startup. Covers all four bullets:
+// image set in config, found locally and started, no pull, no CLI license check.
+//
+// A real LocalStack image is tagged under a custom, pinned reference that no registry
+// can serve (so any pull would fail loudly), and the license endpoint points at a
+// server that fails the test if it is ever contacted.
+func TestStartSkipsPullAndLicenseCheckWhenImageIsLocal(t *testing.T) {
+	requireDocker(t)
+	authToken := env.Require(t, env.AuthToken)
+
+	cleanup()
+	t.Cleanup(cleanup)
+
+	ctx := testContext(t)
+
+	const sourceImage = "localstack/localstack-pro:latest"
+	const localImage = "lstk-local-only-test"
+	const pinnedTag = "1.0.0"
+	reader, err := dockerClient.ImagePull(ctx, sourceImage, client.ImagePullOptions{})
+	require.NoError(t, err, "failed to pull source image")
+	_, _ = io.Copy(io.Discard, reader)
+	_ = reader.Close()
+
+	_, err = dockerClient.ImageTag(ctx, client.ImageTagOptions{Source: sourceImage, Target: localImage + ":" + pinnedTag})
+	require.NoError(t, err, "failed to tag local image")
+	t.Cleanup(func() {
+		_, _ = dockerClient.ImageRemove(context.Background(), localImage+":"+pinnedTag, client.ImageRemoveOptions{Force: true})
+	})
+
+	var licenseHits int32
+	licenseServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		atomic.AddInt32(&licenseHits, 1)
+		w.WriteHeader(http.StatusForbidden) // would make a pre-flight check fatal
+	}))
+	defer licenseServer.Close()
+
+	configContent := fmt.Sprintf(`
+[[containers]]
+type = "aws"
+tag = %q
+port = "4566"
+image = %q
+`, pinnedTag, localImage)
+	configFile := filepath.Join(t.TempDir(), "config.toml")
+	require.NoError(t, os.WriteFile(configFile, []byte(configContent), 0644))
+
+	// Real (inherited) HOME like the other fresh-start container tests: the started
+	// container writes root-owned files into $HOME/.cache/lstk/volume. Config is
+	// isolated via --config below.
+	e := env.With(env.APIEndpoint, licenseServer.URL).With(env.AuthToken, authToken)
+	stdout, stderr, err := runLstk(t, ctx, "", e, "--config", configFile, "--non-interactive", "start")
+	require.NoError(t, err, "lstk start should use the local image without a license check: %s", stderr)
+	requireExitCode(t, 0, err)
+
+	combined := stdout + stderr
+	assert.Contains(t, combined, "Using local image", "the local pinned image must be reused, not pulled")
+	assert.NotContains(t, combined, "Pulling", "no image should be pulled when it is present locally")
+	assert.Equal(t, int32(0), atomic.LoadInt32(&licenseHits), "the license server must never be contacted for a local image")
+
+	inspect, err := dockerClient.ContainerInspect(ctx, containerName, client.ContainerInspectOptions{})
+	require.NoError(t, err, "failed to inspect container")
+	assert.True(t, inspect.Container.State.Running, "container should be running from the local image")
 }
 
 func cleanup() {
