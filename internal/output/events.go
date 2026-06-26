@@ -84,6 +84,17 @@ type PodSnapshotSavedEvent struct {
 	Size     int64
 }
 
+// RemoteSnapshotSavedEvent reports a snapshot saved to a remote storage backend
+// (e.g. an S3 bucket). Location is the user-facing remote target (e.g. an s3:// URL)
+// and PodName is the snapshot's identity within that remote.
+type RemoteSnapshotSavedEvent struct {
+	PodName  string
+	Location string
+	Version  int
+	Services []string
+	Size     int64
+}
+
 // DeferredEvent wraps another event so that the TUI renders it after the interface
 // exits rather than inline. Plain sinks format the inner event immediately.
 type DeferredEvent struct {
@@ -139,6 +150,7 @@ func (InstanceInfoEvent) sealedEvent()       {}
 func (TableEvent) sealedEvent()              {}
 func (ResourceSummaryEvent) sealedEvent()    {}
 func (PodSnapshotSavedEvent) sealedEvent()   {}
+func (RemoteSnapshotSavedEvent) sealedEvent() {}
 func (DeferredEvent) sealedEvent()           {}
 func (SnapshotLoadedEvent) sealedEvent()     {}
 func (PodSnapshotRemovedEvent) sealedEvent() {}

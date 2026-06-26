@@ -18,8 +18,10 @@ const (
 	DisableEvents     Key = "LOCALSTACK_DISABLE_EVENTS"
 	Home              Key = "HOME"
 	Persistence       Key = "LOCALSTACK_PERSISTENCE"
-	Otel              Key = "LSTK_OTEL"
-	OtelEndpoint      Key = "OTEL_EXPORTER_OTLP_ENDPOINT"
+	Otel               Key = "LSTK_OTEL"
+	OtelEndpoint       Key = "OTEL_EXPORTER_OTLP_ENDPOINT"
+	AWSAccessKeyID     Key = "AWS_ACCESS_KEY_ID"
+	AWSSecretAccessKey Key = "AWS_SECRET_ACCESS_KEY"
 )
 
 // UnreachableAnalyticsEndpoint is a closed local port used as the default

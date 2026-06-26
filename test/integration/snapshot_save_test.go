@@ -3,11 +3,14 @@ package integration_test
 import (
 	"archive/zip"
 	"bytes"
+	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/localstack/lstk/test/integration/env"
@@ -173,7 +176,6 @@ func TestSnapshotSaveOverwritesExistingFile(t *testing.T) {
 func TestSnapshotSaveRemoteRejected(t *testing.T) {
 	t.Parallel()
 	for _, dest := range []string{
-		"s3://my-bucket/my-snap",
 		"oras://registry/my-snap",
 	} {
 		t.Run(dest, func(t *testing.T) {
@@ -185,6 +187,107 @@ func TestSnapshotSaveRemoteRejected(t *testing.T) {
 			assert.Contains(t, stderr, "not yet supported")
 		})
 	}
+}
+
+// TestSnapshotSaveS3MissingCredentials and the credential/URL validation tests run
+// before any Docker interaction, so they need no running emulator.
+func TestSnapshotSaveS3MissingCredentials(t *testing.T) {
+	t.Parallel()
+	ctx := testContext(t)
+
+	_, stderr, err := runLstk(t, ctx, t.TempDir(),
+		env.Environ(testEnvWithHome(t.TempDir(), "")).Without(env.AWSAccessKeyID, env.AWSSecretAccessKey),
+		"--non-interactive", "snapshot", "save", "my-pod", "s3://my-bucket/prefix",
+	)
+	requireExitCode(t, 1, err)
+	assert.Contains(t, stderr, "AWS credentials required")
+}
+
+func TestSnapshotSaveS3CredentialsInURLRejected(t *testing.T) {
+	t.Parallel()
+	ctx := testContext(t)
+
+	_, stderr, err := runLstk(t, ctx, t.TempDir(),
+		env.Environ(testEnvWithHome(t.TempDir(), "")).
+			With(env.AWSAccessKeyID, "AKIA").
+			With(env.AWSSecretAccessKey, "secret"),
+		"--non-interactive", "snapshot", "save", "my-pod", "s3://my-bucket/prefix?access_key_id=AKIA&secret_access_key=secret",
+	)
+	requireExitCode(t, 1, err)
+	assert.Contains(t, stderr, "do not put credentials")
+}
+
+// mockPodS3Server handles the remote registration plus pod save against an S3
+// remote, capturing the registered remote URL and the save request body so the
+// test can assert the wire contract (placeholders in the URL, secrets only in the
+// ephemeral params).
+func mockPodS3Server(t *testing.T) (*httptest.Server, func() (remoteURL string, saveBody []byte)) {
+	t.Helper()
+	var (
+		mu        sync.Mutex
+		remoteURL string
+		saveBody  []byte
+	)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.HasPrefix(r.URL.Path, "/_localstack/pods/remotes/") && r.Method == http.MethodPost:
+			body, _ := io.ReadAll(r.Body)
+			var parsed struct {
+				RemoteURL string `json:"remote_url"`
+			}
+			_ = json.Unmarshal(body, &parsed)
+			mu.Lock()
+			remoteURL = parsed.RemoteURL
+			mu.Unlock()
+			w.WriteHeader(http.StatusOK)
+		case strings.HasPrefix(r.URL.Path, "/_localstack/pods/") && r.Method == http.MethodPost:
+			body, _ := io.ReadAll(r.Body)
+			mu.Lock()
+			saveBody = body
+			mu.Unlock()
+			w.Header().Set("Content-Type", "application/x-ndjson")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"event":"completion","status":"ok","operation":"save","info":{"name":"my-pod","version":1,"services":["s3"],"size":2048}}` + "\n"))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	t.Cleanup(srv.Close)
+	return srv, func() (string, []byte) {
+		mu.Lock()
+		defer mu.Unlock()
+		return remoteURL, saveBody
+	}
+}
+
+func TestSnapshotSaveS3Success(t *testing.T) {
+	requireDocker(t)
+	cleanup()
+	t.Cleanup(cleanup)
+
+	ctx := testContext(t)
+	startTestContainer(t, ctx)
+	srv, captured := mockPodS3Server(t)
+
+	stdout, stderr, err := runLstk(t, ctx, t.TempDir(),
+		env.Environ(testEnvWithHome(t.TempDir(), "")).
+			With(env.LocalStackHost, lsHost(srv)).
+			With(env.AWSAccessKeyID, "AKIAEXAMPLE").
+			With(env.AWSSecretAccessKey, "topsecret"),
+		"--non-interactive", "snapshot", "save", "my-pod", "s3://my-bucket/prefix",
+	)
+	require.NoError(t, err, "lstk snapshot save to s3 failed: %s", stderr)
+	assert.Contains(t, stdout, "Snapshot saved to s3://my-bucket/prefix")
+	assert.Contains(t, stdout, "my-pod")
+
+	remoteURL, saveBody := captured()
+	// The registered URL carries placeholders, never the secret values.
+	assert.Contains(t, remoteURL, "{access_key_id}")
+	assert.NotContains(t, remoteURL, "topsecret")
+	assert.NotContains(t, remoteURL, "AKIAEXAMPLE")
+	// The secrets travel only in the ephemeral save params.
+	assert.Contains(t, string(saveBody), "topsecret")
+	assert.Contains(t, string(saveBody), "remote_params")
 }
 
 // mockPodSaveServer returns a test server that handles POST /_localstack/pods/{name}
