@@ -209,7 +209,10 @@ func runSnapshotLoad(cfg *env.Env, tel *telemetry.Client, logger log.Logger) fun
 			return err
 		}
 
-		home, _ := os.UserHomeDir()
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return err
+		}
 		src, err := snapshot.ParseSource(args[0], home)
 		if err != nil {
 			return err
@@ -419,7 +422,10 @@ func runSnapshotSave(cfg *env.Env) func(*cobra.Command, []string) error {
 			destArg = args[0]
 		}
 
-		home, _ := os.UserHomeDir()
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return err
+		}
 		dest, err := snapshot.ParseDestination(destArg, home, time.Now())
 		if err != nil {
 			return err
