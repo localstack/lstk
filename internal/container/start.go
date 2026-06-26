@@ -167,9 +167,10 @@ func Start(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts Start
 		return "", fmt.Errorf("failed to determine license file path: %w", err)
 	}
 
-	// Validate licenses before pulling. Pinned tags are validated immediately;
-	// "latest" tags are deferred to post-pull validation via image inspection.
-	postPullContainers, err := tryPrePullLicenseValidation(ctx, sink, opts, containers, token, licenseFilePath)
+	// Validate licenses before pulling. Pinned tags are validated immediately —
+	// unless the image is already present locally, in which case both the pull and
+	// the pre-flight check are skipped. "latest" tags defer to post-pull validation.
+	postPullContainers, err := tryPrePullLicenseValidation(ctx, rt, sink, opts, containers, token, licenseFilePath)
 	if err != nil {
 		return "", err
 	}
@@ -373,7 +374,7 @@ func pullImages(ctx context.Context, rt runtime.Runtime, sink output.Sink, tel *
 
 // Validates licenses before pulling for containers with pinned tags.
 // "latest" and empty tags are deferred to post-pull validation via image inspection.
-func tryPrePullLicenseValidation(ctx context.Context, sink output.Sink, opts StartOptions, containers []runtime.ContainerConfig, token, licenseFilePath string) ([]runtime.ContainerConfig, error) {
+func tryPrePullLicenseValidation(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts StartOptions, containers []runtime.ContainerConfig, token, licenseFilePath string) ([]runtime.ContainerConfig, error) {
 	var needsPostPull []runtime.ContainerConfig
 	for _, c := range containers {
 		if c.EmulatorType.SelfValidatesLicense() {
@@ -381,6 +382,14 @@ func tryPrePullLicenseValidation(ctx context.Context, sink output.Sink, opts Sta
 		}
 
 		if c.Tag != "" && c.Tag != "latest" {
+			// A pinned image already present locally is not pulled (see pullImages),
+			// so skip the license pre-flight too: the check is redundant — and a hard
+			// blocker in offline/enterprise environments — when no network round-trip
+			// happens at all and the container validates its own bundled license at
+			// startup. A probe error is non-fatal here; fall through to the check.
+			if exists, err := rt.ImageExists(ctx, c.Image); err == nil && exists {
+				continue
+			}
 			if err := validateLicense(ctx, sink, opts, c, token, licenseFilePath); err != nil {
 				return nil, err
 			}

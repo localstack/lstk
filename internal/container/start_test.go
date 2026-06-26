@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"path/filepath"
 	"strconv"
+	"sync/atomic"
 	"testing"
 
 	"github.com/localstack/lstk/internal/api"
@@ -555,6 +556,73 @@ func TestValidateLicense_PropagatesContextCancellation(t *testing.T) {
 	require.ErrorIs(t, err, context.Canceled)
 	assert.NotContains(t, out.String(), "Could not reach the license server",
 		"a cancellation must not be reported as an unreachable license server")
+}
+
+func TestTryPrePullLicenseValidation_SkipsCheckWhenImageIsLocal(t *testing.T) {
+	// A pinned image already present locally is not pulled (see pullImages), so the
+	// CLI must not run a license pre-flight either — the container validates its own
+	// bundled license at startup. This keeps the local-image start fully offline.
+	ctrl := gomock.NewController(t)
+	mockRT := runtime.NewMockRuntime(ctrl)
+
+	c := runtime.ContainerConfig{
+		Image:        "my-registry.internal/localstack-pro:2026.4",
+		Name:         "localstack-aws",
+		EmulatorType: config.EmulatorAWS,
+		ProductName:  "localstack-pro",
+		Tag:          "2026.4",
+	}
+	mockRT.EXPECT().ImageExists(gomock.Any(), c.Image).Return(true, nil)
+
+	var licenseHits int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		atomic.AddInt32(&licenseHits, 1)
+		w.WriteHeader(http.StatusForbidden)
+	}))
+	defer srv.Close()
+
+	opts := StartOptions{
+		PlatformClient: api.NewPlatformClient(srv.URL, log.Nop()),
+		Logger:         log.Nop(),
+		Telemetry:      telemetry.New("", true),
+	}
+
+	postPull, err := tryPrePullLicenseValidation(context.Background(), mockRT, output.NewPlainSink(io.Discard), opts, []runtime.ContainerConfig{c}, "tok", filepath.Join(t.TempDir(), "license.json"))
+
+	require.NoError(t, err)
+	assert.Empty(t, postPull, "a pinned local image needs no post-pull validation")
+	assert.Equal(t, int32(0), atomic.LoadInt32(&licenseHits), "the license server must not be contacted for a local image")
+}
+
+func TestTryPrePullLicenseValidation_ChecksWhenImageMissing(t *testing.T) {
+	// The pre-flight check still runs (and stays fatal on rejection) when the pinned
+	// image is not present locally — a pull will happen, so failing fast is correct.
+	ctrl := gomock.NewController(t)
+	mockRT := runtime.NewMockRuntime(ctrl)
+
+	c := runtime.ContainerConfig{
+		Image:        "localstack/localstack-pro:2026.4",
+		Name:         "localstack-aws",
+		EmulatorType: config.EmulatorAWS,
+		ProductName:  "localstack-pro",
+		Tag:          "2026.4",
+	}
+	mockRT.EXPECT().ImageExists(gomock.Any(), c.Image).Return(false, nil)
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusForbidden)
+	}))
+	defer srv.Close()
+
+	opts := StartOptions{
+		PlatformClient: api.NewPlatformClient(srv.URL, log.Nop()),
+		Logger:         log.Nop(),
+		Telemetry:      telemetry.New("", true),
+	}
+
+	_, err := tryPrePullLicenseValidation(context.Background(), mockRT, output.NewPlainSink(io.Discard), opts, []runtime.ContainerConfig{c}, "tok", filepath.Join(t.TempDir(), "license.json"))
+
+	require.Error(t, err, "a missing local image must still fail fast on a server rejection")
 }
 
 func TestStartContainers_SnowflakeLicenseError(t *testing.T) {
