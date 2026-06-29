@@ -9,6 +9,10 @@
 type = "aws"     # Emulator type. Currently supported: "aws", "snowflake", "azure"
 tag  = "latest"  # Docker image tag, e.g. "latest", "2026.4"
 port = "4566"    # Host port the emulator will be accessible on
+# image = ""     # Custom image to use instead of the default Docker Hub image, e.g.
+#                # an internal registry mirror or a locally loaded offline image.
+#                # If it carries no tag, 'tag' above is appended; if it already
+#                # carries a tag, 'tag' above is dropped.
 # volume = ""    # Host directory for persistent state (default: OS cache dir)
 # env = []       # Named environment profiles to apply (see [env.*] sections below)
 # snapshot = "pod:my-baseline"  # Snapshot REF auto-loaded on start (AWS only); skip once with 'lstk start --no-snapshot'

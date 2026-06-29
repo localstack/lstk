@@ -140,6 +140,38 @@ func TestEmulatorTypeForImage_Azure(t *testing.T) {
 	assert.Equal(t, EmulatorAzure, EmulatorTypeForImage("localstack/localstack-azure:latest"))
 }
 
+func TestImage_CustomImage(t *testing.T) {
+	tests := []struct {
+		name        string
+		customImage string
+		tag         string
+		want        string
+	}{
+		{"untagged custom image gets configured tag", "my-registry.internal/localstack-pro", "2026.4", "my-registry.internal/localstack-pro:2026.4"},
+		{"untagged custom image defaults to latest", "local-image-name", "", "local-image-name:latest"},
+		{"tagged custom image is used as-is", "my-registry.internal/localstack-pro:custom", "latest", "my-registry.internal/localstack-pro:custom"},
+		{"registry port is not mistaken for a tag", "my-registry:5000/localstack-pro", "2026.4", "my-registry:5000/localstack-pro:2026.4"},
+		{"registry port with explicit tag", "my-registry:5000/localstack-pro:custom", "", "my-registry:5000/localstack-pro:custom"},
+		{"digest-pinned image is used as-is", "localstack/localstack-pro@sha256:abc123def456", "2026.4", "localstack/localstack-pro@sha256:abc123def456"},
+		{"registry port with digest is used as-is", "my-registry:5000/localstack-pro@sha256:abc123def456", "", "my-registry:5000/localstack-pro@sha256:abc123def456"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c := &ContainerConfig{Type: EmulatorAWS, Port: "4566", Tag: tt.tag, CustomImage: tt.customImage}
+			image, err := c.Image()
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, image)
+		})
+	}
+}
+
+func TestImage_DefaultWhenNoCustomImage(t *testing.T) {
+	c := &ContainerConfig{Type: EmulatorAWS, Port: "4566", Tag: "latest"}
+	image, err := c.Image()
+	require.NoError(t, err)
+	assert.Equal(t, "localstack/localstack-pro:latest", image)
+}
+
 func TestSelfValidatesLicense(t *testing.T) {
 	// Snowflake and Azure containers activate their own license against the
 	// licensing server, so lstk skips its pre-flight platform license check.
