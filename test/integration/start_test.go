@@ -457,6 +457,148 @@ func TestStartCommandSetsUpContainerCorrectly(t *testing.T) {
 	})
 }
 
+func TestStartCommandMountsExtraVolumes(t *testing.T) {
+	requireDocker(t)
+	_ = env.Require(t, env.AuthToken)
+
+	cleanup()
+	t.Cleanup(cleanup)
+
+	mockServer := createMockLicenseServer(true)
+	defer mockServer.Close()
+
+	// A real init-hook script that lstk mounts as a file (it must already exist).
+	scriptDir := t.TempDir()
+	scriptPath := filepath.Join(scriptDir, "init.sf.sql")
+	require.NoError(t, os.WriteFile(scriptPath, []byte("SHOW DATABASES;\n"), 0644))
+
+	configContent := `
+[[containers]]
+type = "aws"
+tag = "latest"
+port = "4566"
+volumes = ["` + escapeTomlPath(scriptPath) + `:/etc/localstack/init/ready.d/init.sf.sql:ro"]
+`
+	configFile := filepath.Join(t.TempDir(), "config.toml")
+	require.NoError(t, os.WriteFile(configFile, []byte(configContent), 0644))
+
+	ctx := testContext(t)
+	_, stderr, err := runLstk(t, ctx, "", env.With(env.APIEndpoint, mockServer.URL), "--config", configFile, "start")
+	require.NoError(t, err, "lstk start failed: %s", stderr)
+
+	inspect, err := dockerClient.ContainerInspect(ctx, containerName, client.ContainerInspectOptions{})
+	require.NoError(t, err, "failed to inspect container")
+	require.True(t, inspect.Container.State.Running)
+
+	binds := inspect.Container.HostConfig.Binds
+	assert.True(t, hasBindTarget(binds, "/var/lib/localstack"),
+		"persistence mount must still be present, got: %v", binds)
+	assert.True(t, hasBindTarget(binds, "/etc/localstack/init/ready.d/init.sf.sql"),
+		"expected init-hook mount target, got: %v", binds)
+	assert.True(t, hasBindSource(binds, scriptPath),
+		"expected init-hook mount source %s, got: %v", scriptPath, binds)
+}
+
+func TestStartCommandMountsMultipleVolumes(t *testing.T) {
+	requireDocker(t)
+	_ = env.Require(t, env.AuthToken)
+
+	cleanup()
+	t.Cleanup(cleanup)
+
+	mockServer := createMockLicenseServer(true)
+	defer mockServer.Close()
+
+	// A custom persistence dir plus two real init-hook scripts that lstk mounts
+	// as files (they must already exist).
+	persistBase := t.TempDir()
+	persistDir := filepath.Join(persistBase, "persist")
+	require.NoError(t, os.MkdirAll(persistDir, 0755))
+
+	// LocalStack runs as root inside the container and writes root-owned files
+	// (certs, state) into the persistence mount. On Linux CI (non-root user),
+	// Go's t.TempDir cleanup cannot unlink them and fails with EPERM, so remove
+	// them as root via Docker first. Registered after the t.TempDir above so it
+	// runs before TempDir's RemoveAll (cleanups run LIFO).
+	t.Cleanup(func() {
+		_ = exec.Command("docker", "run", "--rm",
+			"-v", persistBase+":/vol", "alpine", "sh", "-c", "rm -rf /vol/persist",
+		).Run()
+	})
+
+	scriptDir := t.TempDir()
+	bootScript := filepath.Join(scriptDir, "boot.sh")
+	require.NoError(t, os.WriteFile(bootScript, []byte("#!/bin/sh\necho boot\n"), 0644))
+	readyScript := filepath.Join(scriptDir, "init.sf.sql")
+	require.NoError(t, os.WriteFile(readyScript, []byte("SHOW DATABASES;\n"), 0644))
+
+	configContent := `
+[[containers]]
+type = "aws"
+tag = "latest"
+port = "4566"
+volumes = [
+  "` + escapeTomlPath(persistDir) + `:/var/lib/localstack",
+  "` + escapeTomlPath(bootScript) + `:/etc/localstack/init/boot.d/boot.sh:ro",
+  "` + escapeTomlPath(readyScript) + `:/etc/localstack/init/ready.d/init.sf.sql:ro",
+]
+`
+	configFile := filepath.Join(t.TempDir(), "config.toml")
+	require.NoError(t, os.WriteFile(configFile, []byte(configContent), 0644))
+
+	ctx := testContext(t)
+	_, stderr, err := runLstk(t, ctx, "", env.With(env.APIEndpoint, mockServer.URL), "--config", configFile, "start")
+	require.NoError(t, err, "lstk start failed: %s", stderr)
+
+	inspect, err := dockerClient.ContainerInspect(ctx, containerName, client.ContainerInspectOptions{})
+	require.NoError(t, err, "failed to inspect container")
+	require.True(t, inspect.Container.State.Running)
+
+	binds := inspect.Container.HostConfig.Binds
+
+	assert.True(t, hasBindTarget(binds, "/var/lib/localstack"),
+		"expected persistence mount target, got: %v", binds)
+	assert.True(t, hasBindSource(binds, persistDir),
+		"expected persistence mount source %s, got: %v", persistDir, binds)
+
+	assert.True(t, hasBindTarget(binds, "/etc/localstack/init/boot.d/boot.sh"),
+		"expected boot init-hook mount target, got: %v", binds)
+	assert.True(t, hasBindSource(binds, bootScript),
+		"expected boot init-hook mount source %s, got: %v", bootScript, binds)
+
+	assert.True(t, hasBindTarget(binds, "/etc/localstack/init/ready.d/init.sf.sql"),
+		"expected ready init-hook mount target, got: %v", binds)
+	assert.True(t, hasBindSource(binds, readyScript),
+		"expected ready init-hook mount source %s, got: %v", readyScript, binds)
+}
+
+func TestStartCommandFailsOnMissingVolumeSource(t *testing.T) {
+	requireDocker(t)
+	_ = env.Require(t, env.AuthToken)
+
+	cleanup()
+	t.Cleanup(cleanup)
+
+	mockServer := createMockLicenseServer(true)
+	defer mockServer.Close()
+
+	missing := filepath.Join(t.TempDir(), "does-not-exist.sf.sql")
+	configContent := `
+[[containers]]
+type = "aws"
+tag = "latest"
+port = "4566"
+volumes = ["` + escapeTomlPath(missing) + `:/etc/localstack/init/ready.d/x.sf.sql"]
+`
+	configFile := filepath.Join(t.TempDir(), "config.toml")
+	require.NoError(t, os.WriteFile(configFile, []byte(configContent), 0644))
+
+	_, stderr, err := runLstk(t, testContext(t), "", env.With(env.APIEndpoint, mockServer.URL), "--config", configFile, "start")
+	require.Error(t, err)
+	requireExitCode(t, 1, err)
+	assert.Contains(t, stderr, "does not exist")
+}
+
 func TestStartCommandPassesCIAndLocalStackEnvVars(t *testing.T) {
 	requireDocker(t)
 	_ = env.Require(t, env.AuthToken)

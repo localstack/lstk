@@ -132,7 +132,7 @@ lstk --config /path/to/config.toml start
 type = "aws"     # Emulator type. Currently supported: "aws", "snowflake", "azure"
 tag  = "latest"  # Docker image tag, e.g. "latest", "2026.03"
 port = "4566"    # Host port the emulator will be accessible on
-# volume = ""    # Host directory for persistent state (default: OS cache dir)
+# volumes = []   # Bind mounts, "host:container[:ro]" (see below)
 # env = []       # Named environment profiles to apply (see [env.*] sections below)
 # snapshot = "pod:my-baseline"  # Snapshot REF auto-loaded on start (AWS only); see Snapshots below
 ```
@@ -141,7 +141,7 @@ port = "4566"    # Host port the emulator will be accessible on
 - `type`: emulator type; one of `"aws"`, `"snowflake"`, or `"azure"`
 - `tag`: Docker image tag for LocalStack (e.g. `"latest"`, `"4.14.0"`); useful for pinning a version
 - `port`: port LocalStack listens on (default `4566`)
-- `volume`: (optional) host directory for persistent emulator state (default: OS cache dir)
+- `volumes`: (optional) list of `"host:container[:ro]"` bind mounts, e.g. for init hooks or the persistent-state directory (see below)
 - `env`: (optional) list of named environment variable groups to inject into the container (see below)
 - `snapshot`: (optional) snapshot REF auto-loaded after the emulator starts on a fresh run — a local file path or a `pod:` cloud snapshot (see [Snapshots](#snapshots))
 
@@ -167,6 +167,31 @@ EAGER_SERVICE_LOADING = "1"
 ```
 
 Host environment variables prefixed with `LOCALSTACK_` are also forwarded to the emulator.
+
+### Mounting volumes and init hooks
+
+Use `volumes` to bind-mount host files or directories into the emulator, given as Docker-style `"host:container[:ro]"` strings. The most common use is [init hooks](https://docs.localstack.cloud/snowflake/capabilities/init-hooks/) — scripts LocalStack runs automatically on startup when mounted into `/etc/localstack/init/{boot,start,ready,shutdown}.d`:
+
+```toml
+[[containers]]
+type = "snowflake"
+port = "4566"
+volumes = ["./init.sf.sql:/etc/localstack/init/ready.d/init.sf.sql"]
+```
+
+- Relative host paths resolve against the config file's directory, and a leading `~/` is expanded.
+- Append `:ro` to mount read-only.
+- Host sources must already exist (init-hook entries are files, so `lstk` does not create them).
+
+#### Persistent state
+
+The persistent-state directory (mounted at `/var/lib/localstack`, managed by `lstk volume path` / `lstk volume clear`) defaults to the OS cache dir. Point it elsewhere with a `volumes` entry targeting that path:
+
+```toml
+volumes = ["/data:/var/lib/localstack"]
+```
+
+> The singular `volume = "..."` field is a legacy way to set only this directory. It still works, but `volumes` is preferred and is the only option for init hooks or other mounts.
 
 ### Offline / enterprise environments
 

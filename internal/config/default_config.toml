@@ -15,6 +15,14 @@ port = "4566"    # Host port the emulator will be accessible on
 #                # carries a tag, 'tag' above is dropped.
 # volume = ""    # Host directory for persistent state (default: OS cache dir)
 # env = []       # Named environment profiles to apply (see [env.*] sections below)
+# volumes = []   # Extra bind mounts, each "host:container[:ro]". Relative host paths
+#                # resolve against this config file's directory; a leading ~/ is expanded.
+#                # A "volumes" entry targeting /var/lib/localstack sets the persistent
+#                # state directory (equivalent to "volume" above).
+#                #
+#                # Mount Snowflake init hooks (scripts run on startup) — see
+#                # https://docs.localstack.cloud/snowflake/capabilities/init-hooks/
+#                # volumes = ["./test.sf.sql:/etc/localstack/init/ready.d/test.sf.sql"]
 # snapshot = "pod:my-baseline"  # Snapshot REF auto-loaded on start (AWS only); skip once with 'lstk start --no-snapshot'
 
 # Environment profiles let you group environment variables and reference

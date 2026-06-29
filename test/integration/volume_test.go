@@ -54,6 +54,46 @@ volume = "` + escapeTomlPath(customVolume) + `"
 		assertSamePath(t, customVolume, stdout)
 	})
 
+	t.Run("follows volumes entry targeting the persistence path", func(t *testing.T) {
+		t.Parallel()
+		persistDir := filepath.Join(t.TempDir(), "persist")
+		configContent := `
+[[containers]]
+type = "aws"
+tag = "latest"
+port = "4566"
+volumes = ["` + escapeTomlPath(persistDir) + `:/var/lib/localstack", "/abs/init.sf.sql:/etc/localstack/init/ready.d/init.sf.sql"]
+`
+		configFile := filepath.Join(t.TempDir(), "config.toml")
+		require.NoError(t, os.WriteFile(configFile, []byte(configContent), 0644))
+
+		stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), testEnvWithHome(t.TempDir(), ""), "--config", configFile, "volume", "path")
+		require.NoError(t, err, stderr)
+		requireExitCode(t, 0, err)
+
+		assertSamePath(t, persistDir, stdout)
+	})
+
+	t.Run("resolves a relative persistence source against the config directory", func(t *testing.T) {
+		t.Parallel()
+		configDir := t.TempDir()
+		configContent := `
+[[containers]]
+type = "aws"
+tag = "latest"
+port = "4566"
+volumes = ["./persist:/var/lib/localstack"]
+`
+		configFile := filepath.Join(configDir, "config.toml")
+		require.NoError(t, os.WriteFile(configFile, []byte(configContent), 0644))
+
+		stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), testEnvWithHome(t.TempDir(), ""), "--config", configFile, "volume", "path")
+		require.NoError(t, err, stderr)
+		requireExitCode(t, 0, err)
+
+		assertSamePath(t, filepath.Join(configDir, "persist"), stdout)
+	})
+
 	t.Run("emits telemetry", func(t *testing.T) {
 		t.Parallel()
 		tmpHome := t.TempDir()
