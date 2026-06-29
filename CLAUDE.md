@@ -68,6 +68,17 @@ Created automatically on first run with defaults. Supports emulator types: `aws`
 
 Each `[[containers]]` block may set an optional `image` to override the default Docker Hub image (e.g. an internal registry mirror or a locally loaded offline image). `ContainerConfig.Image()` returns `image` as-is when it already carries a tag (so the separately-configured `tag` is dropped in that case), otherwise it appends `tag` (or `latest`); the default `localstack/<product>:<tag>` is used when `image` is unset.
 
+# Offline / Enterprise Environments
+
+There is no `--offline` flag. Instead `container.Start` degrades gracefully when internet requests fail (the common enterprise blockers: Docker Hub unreachable, proxy/TLS interception, license server unreachable):
+
+- **Image pull**: if `rt.PullImage` fails but `rt.ImageExists` reports the image is already present locally, lstk warns and uses the local image instead of failing.
+- **License pre-flight (image already local)**: when a pinned image is already present locally — so `pullImages` won't pull it — `tryPrePullLicenseValidation` skips the pre-flight check entirely (gated on `rt.ImageExists`), since the redundant network round-trip would otherwise block a fully-offline start; the container validates its own bundled license at startup. This is symmetric with the skip-pull behaviour above.
+- **License pre-flight (server unreachable)**: when a check does run, `validateLicense` distinguishes a definitive server rejection (`*api.LicenseError`, e.g. HTTP 403/400 — still fatal) from a transport-level failure (any other error — offline/proxy/cert). On a transport failure it skips the pre-flight check and lets the container validate its own bundled license at startup.
+- **Telemetry/update checks** are already best-effort and fail silently when offline.
+
+`runtime.PullImage` always closes its `progress` channel (even when `ImagePull` fails early) so the local-image fallback path doesn't leak the progress goroutine. Pair this with a custom `image` in the config to point at a locally loaded image or an internal-registry mirror.
+
 # Emulator Setup Commands
 
 Use `lstk setup <emulator>` to set up CLI integration for an emulator type:

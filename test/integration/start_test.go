@@ -15,6 +15,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -691,6 +692,221 @@ image = "lstk-nonexistent-custom-image"
 	requireExitCode(t, 1, err)
 	combined := stdout + stderr
 	assert.Contains(t, combined, "Failed to pull lstk-nonexistent-custom-image:latest")
+}
+
+// TestStartFallsBackToLocalImageWhenPullFails verifies the offline degradation
+// path for image pulls: when the configured image cannot be pulled (registry
+// unreachable, or the image was never published) but is already present locally,
+// lstk warns and starts the local image instead of failing.
+//
+// The scenario is reproduced without cutting off the network by tagging a real
+// LocalStack image under a name no registry can serve: the pull fails, but
+// ImageExists reports the image locally, so the fallback fires. A valid token is
+// still required for the (real) container to activate and become healthy.
+func TestStartFallsBackToLocalImageWhenPullFails(t *testing.T) {
+	requireDocker(t)
+	authToken := env.Require(t, env.AuthToken)
+
+	cleanup()
+	t.Cleanup(cleanup)
+
+	ctx := testContext(t)
+
+	const sourceImage = "localstack/localstack-pro:latest"
+	const localImage = "lstk-offline-fallback-test"
+	reader, err := dockerClient.ImagePull(ctx, sourceImage, client.ImagePullOptions{})
+	require.NoError(t, err, "failed to pull source image")
+	_, _ = io.Copy(io.Discard, reader)
+	_ = reader.Close()
+
+	_, err = dockerClient.ImageTag(ctx, client.ImageTagOptions{Source: sourceImage, Target: localImage + ":latest"})
+	require.NoError(t, err, "failed to tag local image")
+	t.Cleanup(func() {
+		_, _ = dockerClient.ImageRemove(context.Background(), localImage+":latest", client.ImageRemoveOptions{Force: true})
+	})
+
+	// The started container writes root-owned files into its volume dir; keep that
+	// dir outside t.TempDir (whose cleanup runs as the unprivileged test user and
+	// would fail on root-owned files) so HOME can stay fully isolated below.
+	volumeDir, err := os.MkdirTemp("", "lstk-volume")
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = os.RemoveAll(volumeDir) }) // best-effort; root-owned files may remain
+
+	home := t.TempDir()
+	configContent := fmt.Sprintf(`
+[[containers]]
+type = "aws"
+tag = "latest"
+port = "4566"
+image = %q
+volume = %q
+`, localImage, volumeDir)
+	configFile := filepath.Join(home, "config.toml")
+	require.NoError(t, os.WriteFile(configFile, []byte(configContent), 0644))
+
+	mockServer := createMockLicenseServer(true)
+	defer mockServer.Close()
+
+	e := env.Environ(testEnvWithHome(home, "")).
+		With(env.APIEndpoint, mockServer.URL).
+		With(env.AuthToken, authToken)
+	stdout, stderr, err := runLstk(t, ctx, "", e, "--config", configFile, "--non-interactive", "start")
+	require.NoError(t, err, "lstk start should fall back to the local image: %s", stderr)
+	requireExitCode(t, 0, err)
+
+	assert.Contains(t, stdout+stderr, "using the local image", "expected the local-image fallback warning")
+
+	inspect, err := dockerClient.ContainerInspect(ctx, containerName, client.ContainerInspectOptions{})
+	require.NoError(t, err, "failed to inspect container")
+	assert.True(t, inspect.Container.State.Running, "container should be running from the local image")
+}
+
+// TestStartContinuesWhenLicenseServerUnreachable verifies the offline degradation
+// path for license validation: when the license server cannot be reached — a
+// transport-level failure (offline/proxy/cert), not a definitive rejection — lstk
+// skips the pre-flight check and lets the container validate its own bundled
+// license instead of blocking the start.
+//
+// The endpoint is made unreachable by closing the mock server immediately, so the
+// pre-flight request is refused at the transport level rather than returning an
+// *api.LicenseError. A "latest" tag defers validation until after the (successful)
+// pull, so the unreachable endpoint is hit at the post-pull check.
+func TestStartContinuesWhenLicenseServerUnreachable(t *testing.T) {
+	requireDocker(t)
+	authToken := env.Require(t, env.AuthToken)
+
+	cleanup()
+	t.Cleanup(cleanup)
+
+	ctx := testContext(t)
+
+	unreachable := createMockLicenseServer(true)
+	unreachableURL := unreachable.URL
+	unreachable.Close()
+
+	// The started container writes root-owned files into its volume dir; keep that
+	// dir outside t.TempDir (whose cleanup runs as the unprivileged test user and
+	// would fail on root-owned files) so HOME can stay fully isolated below.
+	volumeDir, err := os.MkdirTemp("", "lstk-volume")
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = os.RemoveAll(volumeDir) }) // best-effort; root-owned files may remain
+
+	home := t.TempDir()
+	configContent := fmt.Sprintf(`
+[[containers]]
+type = "aws"
+tag = "latest"
+port = "4566"
+volume = %q
+`, volumeDir)
+	configFile := filepath.Join(home, "config.toml")
+	require.NoError(t, os.WriteFile(configFile, []byte(configContent), 0644))
+
+	e := env.Environ(testEnvWithHome(home, "")).
+		With(env.APIEndpoint, unreachableURL).
+		With(env.AuthToken, authToken)
+	stdout, stderr, err := runLstk(t, ctx, "", e, "--config", configFile, "--non-interactive", "start")
+	require.NoError(t, err, "lstk start should continue when the license server is unreachable: %s", stderr)
+	requireExitCode(t, 0, err)
+
+	assert.Contains(t, stdout+stderr, "Could not reach the license server", "expected the license-unreachable warning")
+
+	inspect, err := dockerClient.ContainerInspect(ctx, containerName, client.ContainerInspectOptions{})
+	require.NoError(t, err, "failed to inspect container")
+	assert.True(t, inspect.Container.State.Running, "container should be running")
+}
+
+// TestStartUsesLocalCustomImageWithoutPullOrLicenseCheck verifies the offline
+// success path from the #325 review: when a custom image is configured with a
+// pinned tag and is already present locally, lstk starts it with no pull and no
+// CLI license check at all. Covers all four points: image set in config, found
+// locally and started, no image pulled, no license call from the CLI.
+//
+// This is intentionally a small, token-free test: the custom image is a
+// lightweight stand-in tagged locally (so it exits right after it is created),
+// which lets us assert the pull/license decisions and that the container lstk
+// created uses the local image — without a real auth token or a reachable
+// registry/license server. A real container reaching a healthy state from a
+// local image is already covered by TestStartFallsBackToLocalImageWhenPullFails.
+func TestStartUsesLocalCustomImageWithoutPullOrLicenseCheck(t *testing.T) {
+	requireDocker(t)
+	cleanup()
+	t.Cleanup(cleanup)
+
+	ctx := testContext(t)
+
+	const customImage = "lstk-offline-only-image"
+	const pinnedTag = "1.0.0"
+	const fullRef = customImage + ":" + pinnedTag
+	// A pinned tag names the container "localstack-aws-<tag>", not the bare
+	// "localstack-aws" that the shared cleanup() removes.
+	const wantContainer = "localstack-aws-" + pinnedTag
+
+	// Make the custom image present locally without a registry by tagging the
+	// lightweight test image under it.
+	reader, err := dockerClient.ImagePull(ctx, testImage, client.ImagePullOptions{})
+	require.NoError(t, err, "failed to pull test image")
+	_, _ = io.Copy(io.Discard, reader)
+	_ = reader.Close()
+	_, err = dockerClient.ImageTag(ctx, client.ImageTagOptions{Source: testImage, Target: fullRef})
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		_, _ = dockerClient.ImageRemove(context.Background(), fullRef, client.ImageRemoveOptions{Force: true})
+	})
+
+	// The pinned-tag container isn't the bare "localstack-aws" that cleanup()
+	// removes, so remove it explicitly to avoid leaking it onto port 4566.
+	removeContainer := func() {
+		_, _ = dockerClient.ContainerRemove(context.Background(), wantContainer, client.ContainerRemoveOptions{Force: true})
+	}
+	removeContainer()
+	t.Cleanup(removeContainer)
+
+	// Any request to the license server fails the test: a local pinned image must
+	// not trigger a CLI license check.
+	var licenseHits int32
+	licenseServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		atomic.AddInt32(&licenseHits, 1)
+		w.WriteHeader(http.StatusForbidden)
+	}))
+	defer licenseServer.Close()
+
+	home := t.TempDir()
+	configFile := filepath.Join(home, "config.toml")
+	configContent := fmt.Sprintf(`
+[[containers]]
+type = "aws"
+tag = %q
+port = "4566"
+image = %q
+`, pinnedTag, customImage)
+	require.NoError(t, os.WriteFile(configFile, []byte(configContent), 0644))
+
+	// A dummy token satisfies the up-front auth check; it is never validated
+	// because the license pre-flight is skipped for a local image.
+	e := env.Environ(testEnvWithHome(home, "")).
+		With(env.APIEndpoint, licenseServer.URL).
+		With(env.AuthToken, "dummy-token")
+	stdout, stderr, _ := runLstk(t, ctx, "", e, "--config", configFile, "--non-interactive", "start")
+	combined := stdout + stderr
+
+	// Found locally and used — nothing is pulled.
+	assert.Contains(t, combined, "Using local image "+fullRef,
+		"the configured custom image, present locally, should be reused: %s", combined)
+	assert.NotContains(t, combined, "Pulling",
+		"lstk must not pull when the configured custom image is already present locally")
+
+	// No license check from the CLI for a local image.
+	assert.Equal(t, int32(0), atomic.LoadInt32(&licenseHits),
+		"the CLI must not contact the license server for a local image")
+	assert.NotContains(t, combined, "Checking license",
+		"lstk must not run a pre-flight license check for a local image")
+
+	// Started from the configured local image: lstk created the container using it.
+	inspect, err := dockerClient.ContainerInspect(ctx, wantContainer, client.ContainerInspectOptions{})
+	require.NoError(t, err, "lstk should have created a container from the custom image")
+	assert.Equal(t, fullRef, inspect.Container.Config.Image,
+		"the container should be created from the configured custom image")
 }
 
 func cleanup() {
