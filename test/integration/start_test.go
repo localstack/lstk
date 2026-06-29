@@ -816,6 +816,9 @@ func TestStartSkipsPullAndLicenseCheckWhenImageIsLocal(t *testing.T) {
 	const sourceImage = "localstack/localstack-pro:latest"
 	const localImage = "lstk-local-only-test"
 	const pinnedTag = "1.0.0"
+	// A pinned tag names the container "localstack-aws-<tag>", not the bare
+	// "localstack-aws" that the shared cleanup() removes.
+	const wantContainer = "localstack-aws-" + pinnedTag
 	reader, err := dockerClient.ImagePull(ctx, sourceImage, client.ImagePullOptions{})
 	require.NoError(t, err, "failed to pull source image")
 	_, _ = io.Copy(io.Discard, reader)
@@ -826,6 +829,15 @@ func TestStartSkipsPullAndLicenseCheckWhenImageIsLocal(t *testing.T) {
 	t.Cleanup(func() {
 		_, _ = dockerClient.ImageRemove(context.Background(), localImage+":"+pinnedTag, client.ImageRemoveOptions{Force: true})
 	})
+
+	// Remove the pinned-tag container explicitly: cleanup() only knows the bare
+	// "localstack-aws" name, so without this the started container leaks and holds
+	// port 4566 for every test that follows on this shard.
+	removeContainer := func() {
+		_, _ = dockerClient.ContainerRemove(context.Background(), wantContainer, client.ContainerRemoveOptions{Force: true})
+	}
+	removeContainer()
+	t.Cleanup(removeContainer)
 
 	var licenseHits int32
 	licenseServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -857,7 +869,7 @@ image = %q
 	assert.NotContains(t, combined, "Pulling", "no image should be pulled when it is present locally")
 	assert.Equal(t, int32(0), atomic.LoadInt32(&licenseHits), "the license server must never be contacted for a local image")
 
-	inspect, err := dockerClient.ContainerInspect(ctx, containerName, client.ContainerInspectOptions{})
+	inspect, err := dockerClient.ContainerInspect(ctx, wantContainer, client.ContainerInspectOptions{})
 	require.NoError(t, err, "failed to inspect container")
 	assert.True(t, inspect.Container.State.Running, "container should be running from the local image")
 }
