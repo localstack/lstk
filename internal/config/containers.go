@@ -118,7 +118,7 @@ type ContainerConfig struct {
 	// CustomImage overrides the default Docker image for this emulator. Set it to use an
 	// image from an internal registry or a locally loaded offline image instead of pulling
 	// the default localstack image from Docker Hub. If it carries no tag, Tag (or "latest")
-	// is appended.
+	// is appended; if it already carries a tag, Tag is dropped.
 	CustomImage string `mapstructure:"image"`
 	Volume      string `mapstructure:"volume"`
 	// Env is a list of named environment references defined in the top-level [env.*] config sections.
