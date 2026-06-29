@@ -15,12 +15,12 @@ permissions:
   pull-requests: write
   checks: write
 
-# Cancel superseded runs on the same PR; never cancel push/tag/release runs
-# (each gets a unique group via run_id) so reusable workflow_call from the
-# release pipeline is never interrupted.
+# Cancel superseded runs on the same PR. Non-PR runs (push/tag/release) each
+# get a unique group via run_id, so cancel-in-progress can never touch them —
+# the reusable workflow_call from the release pipeline is never interrupted.
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  cancel-in-progress: true
 
 jobs:
   lint:
