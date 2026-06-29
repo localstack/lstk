@@ -29,7 +29,7 @@ const snapshotListLong = `List Cloud Pod snapshots available on the LocalStack p
 
 By default only snapshots you created are listed. Pass --all to include all snapshots in your organisation.
 
-To list snapshots in your own S3 bucket, pass an s3:// location (requires a running emulator). Credentials are read from AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY, or from --profile:
+To list snapshots in your own S3 bucket, pass an s3:// location (requires a running emulator). Credentials are read from AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY, from --profile, or from the profile named by AWS_PROFILE:
 
   lstk snapshot list s3://my-bucket/prefix
   lstk snapshot list s3://my-bucket/prefix --profile my-aws-profile`
@@ -60,7 +60,7 @@ To save to a remote pod on the LocalStack platform, use the pod: prefix:
 
   lstk snapshot save pod:my-baseline    # saves as a named pod on the platform
 
-To save to your own S3 bucket, pass an s3:// location with an optional pod name (auto-generated when omitted). Credentials are read from AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY, or from --profile; never put credentials in the URL.
+To save to your own S3 bucket, pass an s3:// location with an optional pod name (auto-generated when omitted). Credentials are read from AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY, from --profile, or from the profile named by AWS_PROFILE; never put credentials in the URL.
 
   lstk snapshot save my-pod s3://my-bucket/prefix
   lstk snapshot save my-pod s3://my-bucket/prefix --profile my-aws-profile`
@@ -75,7 +75,7 @@ REF identifies the snapshot to load:
   lstk snapshot load ./checkpoint.snapshot   # loads from explicit path
   lstk snapshot load pod:my-baseline         # loads from LocalStack Cloud
 
-To load from your own S3 bucket, pass the pod name and an s3:// location. Credentials are read from AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY, or from --profile:
+To load from your own S3 bucket, pass the pod name and an s3:// location. Credentials are read from AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY, from --profile, or from the profile named by AWS_PROFILE:
 
   lstk snapshot load my-pod s3://my-bucket/prefix
   lstk snapshot load my-pod s3://my-bucket/prefix --profile my-aws-profile
@@ -381,7 +381,7 @@ func resolveSnapshotDeps(ctx context.Context, cfg *env.Env) (rt runtime.Runtime,
 // addProfileFlag registers the --profile flag used to source AWS credentials for
 // S3 remote snapshots.
 func addProfileFlag(cmd *cobra.Command) {
-	cmd.Flags().String("profile", "", "AWS profile to read S3 credentials from (defaults to AWS_* env vars)")
+	cmd.Flags().String("profile", "", "AWS profile to read S3 credentials from (defaults to AWS_* env vars, then AWS_PROFILE)")
 }
 
 // classifyRemoteArgs inspects positional args for an s3:// location. When one is
@@ -407,22 +407,34 @@ func classifyRemoteArgs(args []string) (podName, s3URL string, ok bool, err erro
 	return podName, s3URL, true, nil
 }
 
-// resolveS3Credentials reads AWS credentials for an S3 remote from the named
-// profile, or from the AWS_* environment variables when no profile is given.
+// resolveS3Credentials reads AWS credentials for an S3 remote, following the
+// AWS CLI precedence: an explicit --profile flag wins; otherwise static AWS_*
+// environment variables win; otherwise the profile named by AWS_PROFILE is used.
 func resolveS3Credentials(profile string) (snapshot.S3Credentials, error) {
 	var (
 		creds awsconfig.Credentials
 		err   error
 	)
-	if profile != "" {
+	switch {
+	case profile != "":
 		creds, err = awsconfig.ReadProfileCredentials(profile)
 		if err != nil {
 			return snapshot.S3Credentials{}, err
 		}
-	} else {
+	default:
 		creds, err = awsconfig.CredentialsFromEnv()
+		if errors.Is(err, awsconfig.ErrNoCredentials) {
+			if envProfile := os.Getenv("AWS_PROFILE"); envProfile != "" {
+				creds, err = awsconfig.ReadProfileCredentials(envProfile)
+				if err != nil {
+					return snapshot.S3Credentials{}, err
+				}
+				break
+			}
+			return snapshot.S3Credentials{}, fmt.Errorf("AWS credentials required for S3 snapshots: set AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY, set AWS_PROFILE, or pass --profile <name>")
+		}
 		if err != nil {
-			return snapshot.S3Credentials{}, fmt.Errorf("AWS credentials required for S3 snapshots: set AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY, or pass --profile <name>")
+			return snapshot.S3Credentials{}, err
 		}
 	}
 	return snapshot.S3Credentials{
