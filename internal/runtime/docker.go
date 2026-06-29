@@ -278,6 +278,7 @@ func (d *DockerRuntime) Start(ctx context.Context, config ContainerConfig) (stri
 		HostConfig: &container.HostConfig{
 			PortBindings: portBindings,
 			Binds:        binds,
+			AutoRemove:   true,
 		},
 		Name: config.Name,
 	})

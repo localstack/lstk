@@ -481,6 +481,11 @@ func TestStartCommandSetsUpContainerCorrectly(t *testing.T) {
 			"expected volume bind mount to /var/lib/localstack, got: %v", inspect.Container.HostConfig.Binds)
 	})
 
+	t.Run("auto remove", func(t *testing.T) {
+		assert.True(t, inspect.Container.HostConfig.AutoRemove,
+			"expected container to be created with AutoRemove (--rm) so it does not linger after exit")
+	})
+
 	t.Run("http health endpoint", func(t *testing.T) {
 		resp, err := http.Get("http://localhost.localstack.cloud:4566/_localstack/health")
 		require.NoError(t, err)
