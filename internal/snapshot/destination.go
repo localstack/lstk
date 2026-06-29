@@ -170,8 +170,8 @@ func ParseSource(ref, home string) (Destination, error) {
 		return Destination{}, fmt.Errorf("'%s' is not a valid reference. Aliases use a single colon. Did you mean:\npod:%s", ref, podName)
 	case strings.HasPrefix(lower, "pod:"):
 		podName := ref[len("pod:"):]
-		if !validPodName.MatchString(podName) {
-			return Destination{}, fmt.Errorf("invalid pod name %q: use letters, digits, hyphens, and underscores only, starting with a letter or digit", podName)
+		if err := ValidatePodName(podName); err != nil {
+			return Destination{}, err
 		}
 		return Destination{Kind: KindPod, Value: podName}, nil
 	case strings.HasPrefix(lower, "s3://"):
@@ -233,8 +233,8 @@ func ParseDestination(dest, home string, now time.Time) (Destination, error) {
 			return Destination{}, fmt.Errorf("'%s' is not a valid reference. Aliases use a single colon. Did you mean:\npod:%s", dest, podName)
 		case strings.HasPrefix(lower, "pod:"):
 			podName := dest[len("pod:"):]
-			if !validPodName.MatchString(podName) {
-				return Destination{}, fmt.Errorf("invalid pod name %q: use letters, digits, hyphens, and underscores only, starting with a letter or digit", podName)
+			if err := ValidatePodName(podName); err != nil {
+				return Destination{}, err
 			}
 			return Destination{Kind: KindPod, Value: podName}, nil
 		case strings.HasPrefix(lower, "s3://"):
