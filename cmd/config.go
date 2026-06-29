@@ -14,6 +14,7 @@ func newConfigCmd(cfg *env.Env) *cobra.Command {
 		Use:   "config",
 		Short: "Manage configuration",
 	}
+	requireSubcommand(cmd)
 	cmd.AddCommand(newConfigProfileCmd(cfg))
 	cmd.AddCommand(newConfigPathCmd())
 	return cmd

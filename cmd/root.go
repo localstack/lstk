@@ -130,6 +130,18 @@ func NewRootCmd(cfg *env.Env, tel *telemetry.Client, logger log.Logger) *cobra.C
 	return root
 }
 
+// requireSubcommand configures a parent command that only groups subcommands so
+// an unknown or missing subcommand exits non-zero instead of Cobra's default of
+// printing help and exiting 0. Cobra only validates args (and so rejects unknown
+// subcommands via cobra.NoArgs) when the command is runnable, hence the RunE that
+// prints help for a bare invocation.
+func requireSubcommand(cmd *cobra.Command) {
+	cmd.Args = cobra.NoArgs
+	cmd.RunE = func(c *cobra.Command, _ []string) error {
+		return c.Help()
+	}
+}
+
 func Execute(ctx context.Context) error {
 	if len(os.Args) > 1 && os.Args[1] == telemetry.FlushCommandName {
 		return runFlushTelemetry(ctx, os.Args[2:])

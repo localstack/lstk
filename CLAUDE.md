@@ -64,6 +64,8 @@ When no config file exists, lstk creates one at `$HOME/.config/lstk/config.toml`
 Use `lstk config path` to print the resolved config file path currently in use.
 When adding a new command that depends on configuration, wire config initialization explicitly in that command (`PreRunE: initConfig`). Keep side-effect-free commands (e.g., `version`, `config path`) without config initialization.
 
+A parent command that only groups subcommands (e.g. `config`, `setup`, `volume`, `snapshot`) must call `requireSubcommand(cmd)` (in `cmd/root.go`). Cobra otherwise prints help and exits 0 for an unknown/missing subcommand of a non-runnable parent; `requireSubcommand` sets `cobra.NoArgs` plus a help-printing `RunE` so a bare invocation still shows help (exit 0) while an unknown subcommand exits non-zero.
+
 Created automatically on first run with defaults. Supports emulator types: `aws`, `snowflake`, and `azure`.
 
 Each `[[containers]]` block may set an optional `image` to override the default Docker Hub image (e.g. an internal registry mirror or a locally loaded offline image). `ContainerConfig.Image()` returns `image` as-is when it already carries a tag (so the separately-configured `tag` is dropped in that case), otherwise it appends `tag` (or `latest`); the default `localstack/<product>:<tag>` is used when `image` is unset.
