@@ -372,7 +372,8 @@ func pullImages(ctx context.Context, rt runtime.Runtime, sink output.Sink, tel *
 	return pulled, nil
 }
 
-// Validates licenses before pulling for containers with pinned tags.
+// Validates licenses before pulling for containers with pinned tags, except those
+// whose image is already present locally (not pulled, so the check is skipped too).
 // "latest" and empty tags are deferred to post-pull validation via image inspection.
 func tryPrePullLicenseValidation(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts StartOptions, containers []runtime.ContainerConfig, token, licenseFilePath string) ([]runtime.ContainerConfig, error) {
 	var needsPostPull []runtime.ContainerConfig

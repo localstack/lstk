@@ -725,25 +725,30 @@ func TestStartFallsBackToLocalImageWhenPullFails(t *testing.T) {
 		_, _ = dockerClient.ImageRemove(context.Background(), localImage+":latest", client.ImageRemoveOptions{Force: true})
 	})
 
+	// The started container writes root-owned files into its volume dir; keep that
+	// dir outside t.TempDir (whose cleanup runs as the unprivileged test user and
+	// would fail on root-owned files) so HOME can stay fully isolated below.
+	volumeDir, err := os.MkdirTemp("", "lstk-volume")
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = os.RemoveAll(volumeDir) }) // best-effort; root-owned files may remain
+
+	home := t.TempDir()
 	configContent := fmt.Sprintf(`
 [[containers]]
 type = "aws"
 tag = "latest"
 port = "4566"
 image = %q
-`, localImage)
-	configFile := filepath.Join(t.TempDir(), "config.toml")
+volume = %q
+`, localImage, volumeDir)
+	configFile := filepath.Join(home, "config.toml")
 	require.NoError(t, os.WriteFile(configFile, []byte(configContent), 0644))
 
 	mockServer := createMockLicenseServer(true)
 	defer mockServer.Close()
 
-	// Use the real (inherited) HOME like the other fresh-start container tests
-	// (TestStartCommandSucceedsWithValidToken et al.): a started container writes
-	// root-owned files into $HOME/.cache/lstk/volume that t.TempDir's cleanup —
-	// running as the unprivileged test user — cannot unlink. Config is still
-	// isolated via --config below.
-	e := env.With(env.APIEndpoint, mockServer.URL).
+	e := env.Environ(testEnvWithHome(home, "")).
+		With(env.APIEndpoint, mockServer.URL).
 		With(env.AuthToken, authToken)
 	stdout, stderr, err := runLstk(t, ctx, "", e, "--config", configFile, "--non-interactive", "start")
 	require.NoError(t, err, "lstk start should fall back to the local image: %s", stderr)
@@ -779,12 +784,28 @@ func TestStartContinuesWhenLicenseServerUnreachable(t *testing.T) {
 	unreachableURL := unreachable.URL
 	unreachable.Close()
 
-	// Use the real (inherited) HOME like the other fresh-start container tests: a
-	// started container writes root-owned files into $HOME/.cache/lstk/volume that
-	// t.TempDir's cleanup — running as the unprivileged test user — cannot unlink.
-	e := env.With(env.APIEndpoint, unreachableURL).
+	// The started container writes root-owned files into its volume dir; keep that
+	// dir outside t.TempDir (whose cleanup runs as the unprivileged test user and
+	// would fail on root-owned files) so HOME can stay fully isolated below.
+	volumeDir, err := os.MkdirTemp("", "lstk-volume")
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = os.RemoveAll(volumeDir) }) // best-effort; root-owned files may remain
+
+	home := t.TempDir()
+	configContent := fmt.Sprintf(`
+[[containers]]
+type = "aws"
+tag = "latest"
+port = "4566"
+volume = %q
+`, volumeDir)
+	configFile := filepath.Join(home, "config.toml")
+	require.NoError(t, os.WriteFile(configFile, []byte(configContent), 0644))
+
+	e := env.Environ(testEnvWithHome(home, "")).
+		With(env.APIEndpoint, unreachableURL).
 		With(env.AuthToken, authToken)
-	stdout, stderr, err := runLstk(t, ctx, "", e, "--non-interactive", "start")
+	stdout, stderr, err := runLstk(t, ctx, "", e, "--config", configFile, "--non-interactive", "start")
 	require.NoError(t, err, "lstk start should continue when the license server is unreachable: %s", stderr)
 	requireExitCode(t, 0, err)
 
