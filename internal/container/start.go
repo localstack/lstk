@@ -350,8 +350,9 @@ func tipsForType(t config.EmulatorType) []string {
 func pullImages(ctx context.Context, rt runtime.Runtime, sink output.Sink, tel *telemetry.Client, containers []runtime.ContainerConfig, interactive bool) (map[string]bool, error) {
 	pulled := make(map[string]bool, len(containers))
 	for _, c := range containers {
-		// Remove any existing stopped container with the same name
-		if err := rt.Remove(ctx, c.Name); err != nil && !errdefs.IsNotFound(err) {
+		// Remove any existing container with the same name. rt.Remove tolerates the
+		// container being absent or mid auto-removal (--rm) and waits until it is gone.
+		if err := rt.Remove(ctx, c.Name); err != nil {
 			return nil, fmt.Errorf("failed to remove existing container %s: %w", c.Name, err)
 		}
 
@@ -529,8 +530,28 @@ func startContainers(ctx context.Context, rt runtime.Runtime, sink output.Sink, 
 			return fmt.Errorf("failed to start LocalStack: %w", err)
 		}
 
+		// Follow the container's logs into a bounded buffer from the moment it
+		// starts. With AutoRemove (--rm) the container is removed the instant it
+		// exits, so a post-hoc log fetch would race the removal; buffering as it
+		// runs keeps the startup logs available to explain a crash.
+		startupLogs := newLogTail(maxStartupLogBytes)
+		logCtx, stopLogTail := context.WithCancel(ctx)
+		logDone := make(chan struct{})
+		go func() {
+			defer close(logDone)
+			_ = rt.StreamLogs(logCtx, containerID, startupLogs, true)
+		}()
+
 		healthURL := fmt.Sprintf("http://localhost:%s%s", c.Port, c.HealthPath)
-		if err := awaitStartup(ctx, rt, sink, containerID, "LocalStack", healthURL); err != nil {
+		err = awaitStartup(ctx, rt, sink, containerID, "LocalStack", healthURL, startupLogs)
+		// Stop following and let the goroutine return before continuing, so it does
+		// not outlive the start. Bounded so a slow stream teardown can't hang start.
+		stopLogTail()
+		select {
+		case <-logDone:
+		case <-time.After(2 * time.Second):
+		}
+		if err != nil {
 			sink.Emit(output.SpinnerStop())
 			errCode := telemetry.ErrCodeStartFailed
 			var licErr *licenseNotCoveredError
@@ -783,12 +804,19 @@ func (e *licenseNotCoveredError) Error() string {
 	return "license does not include this emulator"
 }
 
+// maxStartupLogBytes bounds how much of a failing container's log tail is buffered
+// to explain a crash during startup.
+const maxStartupLogBytes = 64 * 1024
+
 // awaitStartup polls until one of two outcomes:
 //   - Success: health endpoint returns 200 (license is valid, LocalStack is ready)
 //   - Failure: container stops running (e.g., license activation failed), returns error with container logs
 //
+// startupLogs holds the container's logs streamed while it ran, so they survive
+// the container being auto-removed (--rm) on exit.
+//
 // TODO: move to Runtime interface if other runtimes (k8s?) need native readiness probes
-func awaitStartup(ctx context.Context, rt runtime.Runtime, sink output.Sink, containerID, name, healthURL string) error {
+func awaitStartup(ctx context.Context, rt runtime.Runtime, sink output.Sink, containerID, name, healthURL string, startupLogs *logTail) error {
 	client := &http.Client{Timeout: 2 * time.Second}
 
 	for {
@@ -797,11 +825,18 @@ func awaitStartup(ctx context.Context, rt runtime.Runtime, sink output.Sink, con
 			return fmt.Errorf("failed to check container status: %w", err)
 		}
 		if !running {
-			logs, logsErr := rt.Logs(ctx, containerID, 20)
-			if logsErr == nil && strings.Contains(logs, "not covered by your license") {
+			// Prefer the logs streamed while the container ran: with --rm the
+			// container is already gone, so a direct fetch would return nothing.
+			logs := startupLogs.String()
+			if logs == "" {
+				if direct, derr := rt.Logs(ctx, containerID, 20); derr == nil {
+					logs = direct
+				}
+			}
+			if strings.Contains(logs, "not covered by your license") {
 				return &licenseNotCoveredError{}
 			}
-			if logsErr != nil || logs == "" {
+			if logs == "" {
 				return fmt.Errorf("%s exited unexpectedly", name)
 			}
 			return fmt.Errorf("%s exited unexpectedly:\n%s", name, logs)
