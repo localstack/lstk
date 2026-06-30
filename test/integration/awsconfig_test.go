@@ -17,8 +17,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// awsConfigEnv returns a base environment with HOME set to an isolated temp
-// directory, so tests never touch the real ~/.aws files.
+// awsConfigEnv returns a base environment with the home directory set to an
+// isolated temp directory, so tests never touch the real ~/.aws files. Both HOME
+// (Unix) and USERPROFILE (Windows) are overridden because os.UserHomeDir — which
+// awsconfig uses to locate ~/.aws — reads USERPROFILE, not HOME, on Windows.
 func awsConfigEnv(t *testing.T) (env.Environ, string) {
 	t.Helper()
 	tmpHome := t.TempDir()
@@ -32,7 +34,7 @@ func awsConfigEnv(t *testing.T) (env.Environ, string) {
 			_ = exec.Command("docker", "run", "--rm", "-v", volumeDir+":/d", "alpine", "sh", "-c", "rm -rf /d/*").Run()
 		}
 	})
-	e := env.With(env.AuthToken, env.Get(env.AuthToken)).With(env.Home, tmpHome)
+	e := env.With(env.AuthToken, env.Get(env.AuthToken)).With(env.Home, tmpHome).With(env.UserProfile, tmpHome)
 	return e, tmpHome
 }
 

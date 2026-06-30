@@ -17,6 +17,7 @@ const (
 	AnalyticsEndpoint  Key = "LSTK_ANALYTICS_ENDPOINT"
 	DisableEvents      Key = "LOCALSTACK_DISABLE_EVENTS"
 	Home               Key = "HOME"
+	UserProfile        Key = "USERPROFILE"
 	Persistence        Key = "LOCALSTACK_PERSISTENCE"
 	Otel               Key = "LSTK_OTEL"
 	OtelEndpoint       Key = "OTEL_EXPORTER_OTLP_ENDPOINT"
