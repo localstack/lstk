@@ -29,6 +29,7 @@ type ContainerConfig struct {
 	EmulatorType  config.EmulatorType
 	Port          string
 	ContainerPort string // internal port the emulator listens on inside the container (e.g. "4566/tcp")
+	BindHost      string // host IP to bind published ports to (e.g. "127.0.0.1" or "0.0.0.0"); defaults to loopback when empty
 	HealthPath    string
 	Env           []string // e.g., ["KEY=value", "FOO=bar"]
 	Tag           string

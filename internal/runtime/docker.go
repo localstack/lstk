@@ -231,14 +231,21 @@ func (d *DockerRuntime) PullImage(ctx context.Context, imageName string, progres
 }
 
 func (d *DockerRuntime) Start(ctx context.Context, config ContainerConfig) (string, error) {
-	loopback := netip.MustParseAddr("127.0.0.1")
+	bindHostStr := config.BindHost
+	if bindHostStr == "" {
+		bindHostStr = "127.0.0.1"
+	}
+	bindHost, err := netip.ParseAddr(bindHostStr)
+	if err != nil {
+		return "", fmt.Errorf("invalid bind host %q: %w", bindHostStr, err)
+	}
 
 	containerPort, err := network.ParsePort(config.ContainerPort)
 	if err != nil {
 		return "", fmt.Errorf("invalid container port %q: %w", config.ContainerPort, err)
 	}
 	exposedPorts := network.PortSet{containerPort: struct{}{}}
-	portBindings := network.PortMap{containerPort: []network.PortBinding{{HostIP: loopback, HostPort: config.Port}}}
+	portBindings := network.PortMap{containerPort: []network.PortBinding{{HostIP: bindHost, HostPort: config.Port}}}
 
 	for _, ep := range config.ExtraPorts {
 		proto := ep.Protocol
@@ -250,7 +257,7 @@ func (d *DockerRuntime) Start(ctx context.Context, config ContainerConfig) (stri
 			return "", fmt.Errorf("invalid extra port %q: %w", ep.ContainerPort, err)
 		}
 		exposedPorts[p] = struct{}{}
-		portBindings[p] = []network.PortBinding{{HostIP: loopback, HostPort: ep.HostPort}}
+		portBindings[p] = []network.PortBinding{{HostIP: bindHost, HostPort: ep.HostPort}}
 	}
 
 	var binds []string

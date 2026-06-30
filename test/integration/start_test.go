@@ -368,6 +368,52 @@ port = "4567"
 		"LOCALSTACK_HOST must reflect configured host port so LocalStack accepts requests on it")
 }
 
+func TestStartCommandConfiguresGatewayListen(t *testing.T) {
+	requireDocker(t)
+	_ = env.Require(t, env.AuthToken)
+
+	cleanup()
+	t.Cleanup(cleanup)
+
+	mockServer := createMockLicenseServer(true)
+	defer mockServer.Close()
+
+	// A custom GATEWAY_LISTEN supplied via an [env.*] profile must be honored:
+	// the value reaches the container, the host part exposes ports beyond
+	// loopback, and an extra gateway port (8443) is published on the host.
+	configContent := `
+[[containers]]
+type = "aws"
+tag = "latest"
+port = "4566"
+env = ["expose"]
+
+[env.expose]
+GATEWAY_LISTEN = "0.0.0.0:4566,0.0.0.0:443,0.0.0.0:8443"
+`
+	configFile := filepath.Join(t.TempDir(), "config.toml")
+	require.NoError(t, os.WriteFile(configFile, []byte(configContent), 0644))
+
+	ctx := testContext(t)
+	_, stderr, err := runLstk(t, ctx, "", env.With(env.APIEndpoint, mockServer.URL), "--config", configFile, "start")
+	require.NoError(t, err, "lstk start failed: %s", stderr)
+
+	inspect, err := dockerClient.ContainerInspect(ctx, containerName, client.ContainerInspectOptions{})
+	require.NoError(t, err, "failed to inspect container")
+
+	envVars := containerEnvToMap(inspect.Container.Config.Env)
+	assert.Equal(t, "0.0.0.0:4566,0.0.0.0:443,0.0.0.0:8443", envVars["GATEWAY_LISTEN"],
+		"configured GATEWAY_LISTEN must be passed to the container")
+
+	for _, p := range []string{"4566/tcp", "443/tcp", "8443/tcp", "4510/tcp"} {
+		bindings := inspect.Container.HostConfig.PortBindings[network.MustParsePort(p)]
+		if assert.NotEmpty(t, bindings, "port %s should be bound", p) {
+			assert.Equal(t, "0.0.0.0", bindings[0].HostIP.String(),
+				"port %s should bind to the host IP from GATEWAY_LISTEN", p)
+		}
+	}
+}
+
 func TestStartCommandSetsUpContainerCorrectly(t *testing.T) {
 	requireDocker(t)
 	_ = env.Require(t, env.AuthToken)
