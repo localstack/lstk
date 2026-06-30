@@ -27,6 +27,7 @@ import (
 	"github.com/localstack/lstk/internal/ports"
 	"github.com/localstack/lstk/internal/runtime"
 	"github.com/localstack/lstk/internal/telemetry"
+	"github.com/localstack/lstk/internal/version"
 )
 
 const envPersistenceEnabled = "LOCALSTACK_PERSISTENCE=1"
@@ -782,10 +783,12 @@ func envHasKey(env []string, key string) bool {
 }
 
 func agentEnv(cl caller.Classification) []string {
+	var env []string
 	if cl.AgentIdentity != "" {
-		return []string{"AI_AGENT=" + cl.AgentIdentity}
+		env = append(env, "AI_AGENT="+cl.AgentIdentity)
 	}
-	return nil
+	env = append(env, "LOCALSTACK_CLIENT_NAME=lstk", "LOCALSTACK_CLIENT_VERSION="+version.Version())
+	return env
 }
 
 func hasDuplicateContainerTypes(containers []config.ContainerConfig) bool {

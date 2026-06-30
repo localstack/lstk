@@ -20,6 +20,7 @@ import (
 	"github.com/localstack/lstk/internal/output"
 	"github.com/localstack/lstk/internal/runtime"
 	"github.com/localstack/lstk/internal/telemetry"
+	"github.com/localstack/lstk/internal/version"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
@@ -374,14 +375,19 @@ func TestFilterHostEnv(t *testing.T) {
 }
 
 func TestAgentEnv(t *testing.T) {
-	assert.Equal(t, []string{"AI_AGENT=claude-code"},
+	ver := version.Version()
+	clientVars := []string{"LOCALSTACK_CLIENT_NAME=lstk", "LOCALSTACK_CLIENT_VERSION=" + ver}
+
+	assert.Equal(t, append([]string{"AI_AGENT=claude-code"}, clientVars...),
 		agentEnv(caller.Classification{AgentIdentity: "claude-code"}),
 		"a detected agent is forwarded as AI_AGENT")
-	assert.Nil(t, agentEnv(caller.Classification{Interactive: true}),
-		"a human start forwards no AI_AGENT")
-	assert.Nil(t, agentEnv(caller.Classification{CIIdentity: "github-actions"}),
-		"CI without an agent is carried by the forwarded CI variable, not AI_AGENT")
-	assert.Equal(t, []string{"AI_AGENT=claude-code"},
+	assert.Equal(t, clientVars,
+		agentEnv(caller.Classification{Interactive: true}),
+		"a human start forwards no AI_AGENT but still forwards client vars")
+	assert.Equal(t, clientVars,
+		agentEnv(caller.Classification{CIIdentity: "github-actions"}),
+		"CI without an agent still forwards client vars")
+	assert.Equal(t, append([]string{"AI_AGENT=claude-code"}, clientVars...),
 		agentEnv(caller.Classification{AgentIdentity: "claude-code", CIIdentity: "github-actions"}),
 		"an agent running inside CI still forwards its AI_AGENT identity")
 }
