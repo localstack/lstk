@@ -93,16 +93,21 @@ lstk SHALL NOT require a manifest file to discover, validate, or invoke an exten
 
 ### Requirement: Help and discoverability
 
-lstk SHALL include resolvable extensions in its help output by scanning the bundled-extensions directory and `PATH` for `lstk-*` executables and listing each discovered extension's command name under a distinct "Extensions" grouping, so users can discover installed extensions. When a bundled and a `PATH` extension share a name, the entry SHALL be listed once (the one that would run). Built-in command help SHALL remain unchanged.
+lstk SHALL include resolvable extensions in its help output by scanning the bundled-extensions directory and `PATH` for `lstk-*` executables and listing each discovered extension's command name under a distinct "Extensions" grouping, so users can discover installed extensions. When a bundled and a `PATH` extension share a name, the entry SHALL be listed once (the one that would run). Built-in command help SHALL remain unchanged. The Extensions section SHALL align its description column with the built-in command/Tools sections, using the same name-padding rule, so the help output reads as one consistent table.
 
 #### Scenario: Extensions listed in help
 
 - **WHEN** a user runs `lstk --help`, an `lstk-deploy` is bundled, and an `lstk-hello` is on `PATH`
 - **THEN** the help output lists both `deploy` and `hello` under an Extensions section
 
+#### Scenario: Extension descriptions align with command descriptions
+
+- **WHEN** a user runs `lstk --help` and a bundled extension with a description is listed
+- **THEN** the extension's description begins in the same column as the descriptions of the built-in command sections
+
 ### Requirement: One-line descriptions from a bundled descriptions file
 
-lstk SHALL enrich the help listing with a one-line description for bundled extensions by reading a static descriptions file shipped with the distribution (generated during the release process — see the extension-bundling capability), which maps a bundled extension's command name to its description. lstk SHALL NOT execute any extension to obtain help text; help rendering remains side-effect-free. A bundled extension named in the descriptions file SHALL be listed with that description; a bundled extension absent from the file, and every `PATH`/custom extension, SHALL be listed by command name only. A missing or unreadable descriptions file SHALL degrade to name-only listing without error.
+lstk SHALL enrich the help listing with a one-line description for bundled extensions by reading a static descriptions file from the bundled directory when present, which maps a bundled extension's command name to its description. (How that file is hand-authored, shipped, and release-validated is specified by the future `add-bundled-extension-distribution` change; this change covers only reading it when present.) lstk SHALL NOT execute any extension to obtain help text; help rendering remains side-effect-free. A bundled extension named in the descriptions file SHALL be listed with that description; a bundled extension absent from the file, and every `PATH`/custom extension, SHALL be listed by command name only. A missing or unreadable descriptions file SHALL degrade to name-only listing without error.
 
 #### Scenario: Bundled extension shows its description
 
