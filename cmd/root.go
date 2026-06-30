@@ -58,7 +58,7 @@ func NewRootCmd(cfg *env.Env, tel *telemetry.Client, logger log.Logger) *cobra.C
 			// command (Cobra would have routed those to their own command), so it
 			// is an extension name; everything after it is forwarded verbatim.
 			if len(args) > 0 {
-				return dispatchExtension(cmd.Context(), cfg, logger, args)
+				return dispatchExtension(cmd.Context(), cfg, tel, logger, args)
 			}
 			rt, err := runtime.NewDockerRuntime(cfg.DockerHost)
 			if err != nil {
@@ -326,6 +326,14 @@ func instrumentCommands(cmd *cobra.Command, tel *telemetry.Client) {
 		cmd.RunE = func(c *cobra.Command, args []string) error {
 			startTime := time.Now()
 			runErr := original(c, args)
+
+			// Extension dispatch (the root command invoked with a positional arg)
+			// records its own command event in dispatchExtension, which knows the
+			// resolved extension name; skip the generic emit here so the invocation
+			// is not mislabeled as "start".
+			if c == c.Root() && len(args) > 0 {
+				return runErr
+			}
 
 			var flags []string
 			c.Flags().Visit(func(f *pflag.Flag) {

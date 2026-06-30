@@ -108,14 +108,22 @@ lstk SHALL pass the user's existing environment through to the extension and onl
 - **THEN** the extension's environment still contains `HTTP_PROXY`
 - **AND** also contains the `LSTK_EXT_API_VERSION` and `LSTK_EXT_CONTEXT` variables
 
-### Requirement: Extension invocations are recorded as telemetry
+### Requirement: Extension invocations are recorded in product telemetry
 
-When lstk telemetry is enabled (the existing `LSTK_OTEL` path), lstk SHALL record each extension invocation — at least the extension command name, the duration, and the exit code — through the same OpenTelemetry export used by the rest of lstk. Recording SHALL respect the same opt-in/opt-out as all lstk telemetry: when telemetry is disabled, lstk SHALL emit nothing for the invocation. lstk SHALL NOT inject trace context into the extension process in this change (an extension's own spans nesting under lstk's trace is deferred and would be an additive change).
+lstk SHALL record each invocation of a **resolved** extension as a product-telemetry command event (the same `lstk_command` event stream that built-in commands use, which flows to lstk's analytics pipeline), identifying the extension — for example a command name of the form `ext:<name>` — and carrying the invocation's duration and exit code. This is distinct from the OpenTelemetry tracing span lstk may also open for the invocation; the product-telemetry event is the one that reaches the data warehouse. Recording SHALL respect the same opt-out as all lstk telemetry: when telemetry is disabled, lstk SHALL emit nothing.
 
-#### Scenario: Invocation recorded when telemetry enabled
+lstk SHALL NOT mislabel an extension invocation as a different command (e.g. the bare-root `start` event), and SHALL NOT record an unresolved command (one with no matching extension) as an extension invocation. lstk SHALL NOT inject trace context into the extension process in this change (an extension's own spans nesting under lstk's trace is deferred and would be an additive change).
 
-- **WHEN** telemetry is enabled and lstk dispatches to an extension that exits with a status code
-- **THEN** lstk records the extension's command name, duration, and exit code via its telemetry export
+#### Scenario: Resolved extension invocation is recorded with its identity
+
+- **WHEN** telemetry is enabled and lstk dispatches to a resolved extension `deploy`
+- **THEN** lstk records a command event identifying the extension (e.g. `ext:deploy`) with the invocation's duration and exit code
+- **AND** the event is not labeled as the `start` command
+
+#### Scenario: Unknown command is not recorded as an extension
+
+- **WHEN** lstk is invoked with a name that resolves to no extension
+- **THEN** lstk records no extension command event for it
 
 #### Scenario: Nothing recorded when telemetry disabled
 

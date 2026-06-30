@@ -150,11 +150,11 @@ func TestExtensionUnknownCommandDispatches(t *testing.T) {
 func TestExtensionUnknownCommandNoExtensionErrors(t *testing.T) {
 	t.Parallel()
 	tmpHome := t.TempDir()
-	// Empty extension dir so `nope` resolves nowhere. The error event renders
-	// through the plain sink (stdout), consistent with other lstk commands.
-	stdout, _, err := runLstk(t, testContext(t), t.TempDir(), envWithPath(tmpHome, t.TempDir()), "nope")
+	// Empty extension dir so `nope` resolves nowhere. The unknown-command error
+	// goes to stderr, matching Cobra's own unknown-command output.
+	_, stderr, err := runLstk(t, testContext(t), t.TempDir(), envWithPath(tmpHome, t.TempDir()), "nope")
 	requireExitCode(t, 1, err)
-	require.Contains(t, stdout, "unknown command")
+	require.Contains(t, stderr, "unknown command")
 }
 
 func TestExtensionExitCodePropagates(t *testing.T) {
@@ -217,12 +217,32 @@ func TestExtensionSelfAuthorizationRefusesWithoutToken(t *testing.T) {
 	installExtension(t, extDir, "deploy")
 
 	tmpHome := t.TempDir()
-	environ := envWithPath(tmpHome, extDir)
+	// Strip any inherited LOCALSTACK_AUTH_TOKEN (CI sets one) so no token is
+	// conveyed; the extension's stubbed self-authorization must then refuse.
+	environ := env.Environ(envWithPath(tmpHome, extDir)).Without(env.AuthToken)
 	environ = append(environ, "DOCKER_HOST=tcp://127.0.0.1:1")
-	// No auth token: the extension's stubbed self-authorization refuses (exit 13).
 	_, stderr, err := runLstk(t, testContext(t), t.TempDir(), environ, "deploy", "auth")
 	requireExitCode(t, 13, err)
 	require.Contains(t, stderr, "not authorized")
+}
+
+func TestExtensionInvocationRecordedInTelemetry(t *testing.T) {
+	t.Parallel()
+	extDir := t.TempDir()
+	installExtension(t, extDir, "hello")
+
+	analyticsSrv, events := mockAnalyticsServer(t)
+
+	tmpHome := t.TempDir()
+	environ := env.Environ(envWithPath(tmpHome, extDir)).
+		With(env.AnalyticsEndpoint, analyticsSrv.URL)
+
+	_, stderr, err := runLstk(t, testContext(t), t.TempDir(), environ, "hello", "world")
+	require.NoError(t, err, stderr)
+
+	// The invocation is recorded in product telemetry as ext:<name>, so the
+	// warehouse tracks which extension ran — and is NOT mislabeled as "start".
+	assertCommandTelemetry(t, events, "ext:hello", 0)
 }
 
 func TestExtensionEndpointConveyedWhenEmulatorRunning(t *testing.T) {
@@ -352,7 +372,9 @@ func TestExtensionBundledPremiumSelfAuthorizes(t *testing.T) {
 	installExtension(t, bundleDir, "deploy") // bundled "premium" extension
 
 	tmpHome := t.TempDir()
-	noRuntime := append(envWithPath(tmpHome, t.TempDir()), "DOCKER_HOST=tcp://127.0.0.1:1")
+	// Strip any inherited LOCALSTACK_AUTH_TOKEN (CI sets one) so the unentitled
+	// case truly has no token to convey.
+	noRuntime := append(env.Environ(envWithPath(tmpHome, t.TempDir())).Without(env.AuthToken), "DOCKER_HOST=tcp://127.0.0.1:1")
 
 	// Unentitled (no token): lstk still dispatches to the bundled extension, which
 	// performs its own authorization and refuses.

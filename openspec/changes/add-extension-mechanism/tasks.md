@@ -20,7 +20,7 @@
 - [x] 3.3 Include `authToken` in the object only when a token is resolved (omit the field otherwise); always include `configDir`; no entitlement/grant fields
 - [x] 3.4 Set the `nonInteractive` field from lstk's resolved interactivity (the `isInteractive` condition: `--non-interactive` given or stdout not a TTY); document that future global flags are conveyed as additive JSON fields
 - [x] 3.5 Unit tests asserting the JSON shape across scenarios: zero/one/multiple emulators, authed vs not (field present/absent), non-interactive flag vs non-TTY, host env inherited, stray `LSTK_EXT_*` stripped
-- [x] 3.6 Record each extension invocation (command name, duration, exit code) via the existing OTEL/telemetry path when telemetry is enabled; emit nothing when disabled; do **not** inject trace context into the child (Decision 8); unit/integration coverage for enabled vs disabled
+- [x] 3.6 Record each **resolved** extension invocation in product telemetry: `dispatchExtension` emits an `lstk_command` event named `ext:<name>` (duration + exit code) via `telemetry.Client`, so the warehouse tracks which extension ran; `instrumentCommands` skips its generic emit for the extension-dispatch path so it is not mislabeled `start`, and an unresolved command records nothing. `extension.Invoke` additionally opens an OTel tracing span (name, bundled, exit code); no trace-context injection into the child (Decision 8)
 
 ## 4. Invocation (exec) path
 

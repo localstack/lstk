@@ -5,7 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"strings"
+	"time"
 
 	"github.com/localstack/lstk/internal/config"
 	"github.com/localstack/lstk/internal/container"
@@ -15,6 +17,7 @@ import (
 	"github.com/localstack/lstk/internal/log"
 	"github.com/localstack/lstk/internal/output"
 	"github.com/localstack/lstk/internal/runtime"
+	"github.com/localstack/lstk/internal/telemetry"
 	"github.com/spf13/cobra"
 )
 
@@ -24,16 +27,20 @@ import (
 // remaining args verbatim and conveying runtime context via LSTK_EXT_*. Built-in
 // commands never reach here because Cobra routes them to their own command, so
 // they always take precedence. When no extension resolves, lstk emits its
-// standard unknown-command error and returns a silent, non-zero error.
-func dispatchExtension(ctx context.Context, cfg *env.Env, logger log.Logger, args []string) error {
+// standard unknown-command error (to stderr, matching Cobra's own) and returns a
+// silent, non-zero error. A resolved extension's invocation is recorded as a
+// product-telemetry command event named "ext:<name>" so the analytics pipeline
+// can track which extension ran; this is separate from the OTel span emitted
+// inside extension.Invoke (see internal/extension/exec.go).
+func dispatchExtension(ctx context.Context, cfg *env.Env, tel *telemetry.Client, logger log.Logger, args []string) error {
 	name, extArgs := args[0], args[1:]
-	sink := output.NewPlainSink(os.Stdout)
 
 	resolver := extension.NewResolver(logger)
 	ext, err := resolver.Resolve(name)
 	if err != nil {
 		if errors.Is(err, extension.ErrNotFound) {
-			sink.Emit(output.ErrorEvent{
+			// Errors go to stderr, like Cobra's own unknown-command output.
+			output.NewPlainSink(os.Stderr).Emit(output.ErrorEvent{
 				Title:   fmt.Sprintf("unknown command %q for lstk", name),
 				Actions: []output.ErrorAction{{Label: "See help:", Value: "lstk -h"}},
 			})
@@ -56,7 +63,20 @@ func dispatchExtension(ctx context.Context, cfg *env.Env, logger log.Logger, arg
 	}
 
 	logger.Info("extension: dispatching %q (bundled=%v) at %s", name, ext.Bundled, ext.Path)
-	return extension.Invoke(ctx, ext, extArgs, runCtx)
+	start := time.Now()
+	runErr := extension.Invoke(ctx, ext, extArgs, runCtx)
+
+	exitCode, errorMsg := 0, ""
+	if runErr != nil {
+		exitCode, errorMsg = 1, runErr.Error()
+		var exitErr *exec.ExitError
+		if errors.As(runErr, &exitErr) {
+			exitCode = exitErr.ExitCode()
+		}
+	}
+	tel.EmitCommand(ctx, "ext:"+name, nil, time.Since(start).Milliseconds(), exitCode, errorMsg)
+
+	return runErr
 }
 
 // resolveEmulators best-effort discovers every running LocalStack emulator and
