@@ -45,7 +45,7 @@ Running `lstk` will automatically handle configuration setup and start LocalStac
 - **Interactive TUI** — a Bubble Tea-powered terminal UI shown in an interactive terminal for commands like `start`, `login`, `status`, etc.
 - **Plain output** for CI/CD and scripting (auto-detected in non-interactive environments or forced with `--non-interactive`)
 - **Log streaming** — tail emulator logs in real-time with `--follow`; use `--verbose` to show all logs without filtering
-- **Snapshots** — save, load, and remove emulator state as local files or named cloud snapshots (`pod:` prefix), and auto-load one on start
+- **Snapshots** — save, load, and remove emulator state as local files, named cloud snapshots (`pod:` prefix), or in your own S3 bucket (`s3://`), and auto-load one on start
 - **Browser-based login** — authenticate via browser and store credentials securely in the system keyring
 - **AWS CLI profile** — optionally configure a `localstack` profile in `~/.aws/` after start
 - **Terraform integration** — proxy Terraform commands to LocalStack with automatic AWS provider endpoint configuration
@@ -311,11 +311,18 @@ lstk snapshot save ./my-snapshot.snapshot
 # Save emulator state as a named cloud snapshot on the LocalStack platform
 lstk snapshot save pod:my-baseline
 
+# Save to your own S3 bucket (credentials from AWS_* env vars or --profile)
+lstk snapshot save my-pod s3://my-bucket/prefix
+
 # Load a snapshot back into the running emulator
 lstk snapshot load pod:my-baseline
+lstk snapshot load my-pod s3://my-bucket/prefix
 
 # List cloud snapshots on the LocalStack platform (--all for the whole organization)
 lstk snapshot list
+
+# List snapshots in your own S3 bucket (requires a running emulator)
+lstk snapshot list s3://my-bucket/prefix
 
 # Show metadata for a single cloud snapshot
 lstk snapshot show pod:my-baseline
@@ -345,22 +352,28 @@ lstk cdk synth
 
 Snapshots capture the running emulator's state so you can restore it later.
 
-A snapshot reference is either a **local file** or a **cloud snapshot**:
+A snapshot reference is a **local file**, a **cloud snapshot**, or an **S3 remote**:
 
 - **Local file** — an absolute or relative path. A `.snapshot` extension is added if omitted (snapshots saved as `.zip` by older lstk versions still load).
 - **Cloud snapshot** — a name with the `pod:` prefix (e.g. `pod:my-baseline`), stored on the LocalStack platform. Requires authentication (`LOCALSTACK_AUTH_TOKEN` or `lstk login`).
+- **S3 remote** — an `s3://bucket/prefix` location backed by your own S3 bucket. Supported by `save`, `load`, and `list`.
 
 ```bash
-# Save (local or cloud)
+# Save (local, cloud, or S3)
 lstk snapshot save ./my-snapshot.snapshot
 lstk snapshot save pod:my-baseline
+lstk snapshot save my-pod s3://my-bucket/prefix
 
 # Load (starts the emulator first if needed)
 lstk snapshot load pod:my-baseline
+lstk snapshot load my-pod s3://my-bucket/prefix
 
 # List cloud snapshots — only your own by default, --all for the whole organization
 lstk snapshot list
 lstk snapshot list --all
+
+# List snapshots in an S3 bucket
+lstk snapshot list s3://my-bucket/prefix
 
 # Show metadata for a single cloud snapshot
 lstk snapshot show pod:my-baseline
@@ -371,6 +384,26 @@ lstk snapshot remove pod:my-baseline --force  # skip the prompt (required in non
 ```
 
 `lstk snapshot load` supports merge strategies via `--merge` (`account-region-merge` (default), `overwrite`, `service-merge`) to control how snapshot state combines with running state.
+
+### S3 remotes
+
+`save`, `load`, and `list` can target your own S3 bucket with an `s3://bucket/prefix` location. The pod name (the snapshot's identity within the bucket) is a positional argument separate from the `s3://` location — required for `load`, auto-generated for `save` when omitted, and unused for `list`.
+
+Credentials come from `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` (and optional `AWS_SESSION_TOKEN`), or from a named profile via `--profile <name>`. **Never put credentials in the URL** — lstk rejects an `s3://` ref that embeds them. lstk itself never touches S3: the running emulator performs the transfer, so these commands require a running emulator, and `list s3://…` queries the emulator rather than the LocalStack platform.
+
+```bash
+export AWS_ACCESS_KEY_ID=...
+export AWS_SECRET_ACCESS_KEY=...
+
+lstk snapshot save my-pod s3://my-bucket/prefix
+lstk snapshot load my-pod s3://my-bucket/prefix
+lstk snapshot list s3://my-bucket/prefix
+
+# Or read credentials from a named AWS profile instead of env vars
+lstk snapshot save my-pod s3://my-bucket/prefix --profile my-aws-profile
+```
+
+The S3 bucket must already exist — lstk checks up front and errors out rather than creating it on a typo. `remove` and `show` are not yet supported for S3 remotes.
 
 ### Auto-load on start
 

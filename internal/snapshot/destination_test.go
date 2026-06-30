@@ -171,9 +171,20 @@ func TestParseSource(t *testing.T) {
 
 		// --- remote schemes ---
 		{
-			name:          "s3:// not supported",
-			input:         "s3://bucket/key",
-			wantRemoteErr: true,
+			name:     "s3:// is an S3 remote",
+			input:    "s3://bucket/key",
+			wantKind: snapshot.KindS3,
+			wantPath: "s3://bucket/key",
+		},
+		{
+			name:    "s3:// rejects embedded credentials",
+			input:   "s3://bucket/key?access_key_id=AKIA&secret_access_key=zzz",
+			wantErr: "do not put credentials",
+		},
+		{
+			name:    "s3:// requires a bucket",
+			input:   "s3:///key",
+			wantErr: "missing bucket",
 		},
 		{
 			name:          "oras:// not supported",
@@ -432,12 +443,19 @@ func TestParseDestination(t *testing.T) {
 
 		// --- remote: s3 ---
 		{
-			input:         "s3://bucket/key",
-			wantRemoteErr: true,
+			input:    "s3://bucket/key",
+			wantKind: snapshot.KindS3,
+			wantPath: "s3://bucket/key",
 		},
 		{
-			input:         "S3://bucket/key",
-			wantRemoteErr: true,
+			input:    "S3://bucket/key",
+			wantKind: snapshot.KindS3,
+			wantPath: "S3://bucket/key",
+		},
+		{
+			name:    "s3:// rejects embedded credentials",
+			input:   "s3://bucket/key?secret_access_key=zzz",
+			wantErr: "do not put credentials",
 		},
 
 		// --- remote: oras ---
@@ -582,4 +600,17 @@ func TestParseDestinationTildeWithoutHome(t *testing.T) {
 			require.ErrorIs(t, err, snapshot.ErrHomeNotSet)
 		})
 	}
+}
+
+func TestDefaultRemotePodName(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 5, 11, 21, 4, 32, 0, time.UTC)
+	name := snapshot.DefaultRemotePodName(now)
+
+	assert.True(t, strings.HasPrefix(name, "snapshot-2026-05-11T21-04-32-"), "got %q", name)
+	// The generated name must be a valid pod name.
+	require.NoError(t, snapshot.ValidatePodName(name))
+	// The random suffix should make repeated calls distinct.
+	assert.NotEqual(t, name, snapshot.DefaultRemotePodName(now))
 }

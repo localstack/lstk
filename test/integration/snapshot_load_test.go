@@ -108,7 +108,7 @@ func writeTestSnapFile(t *testing.T, dir, name string) string {
 
 func TestSnapshotLoadRemoteRejected(t *testing.T) {
 	t.Parallel()
-	for _, ref := range []string{"s3://bucket/key", "oras://registry/image"} {
+	for _, ref := range []string{"oras://registry/image"} {
 		t.Run(ref, func(t *testing.T) {
 			t.Parallel()
 			ctx := testContext(t)
@@ -120,6 +120,19 @@ func TestSnapshotLoadRemoteRejected(t *testing.T) {
 			assert.Contains(t, stderr, "not yet supported")
 		})
 	}
+}
+
+// Loading from S3 requires a pod name (the snapshot's identity within the
+// bucket); the s3:// location alone is not enough.
+func TestSnapshotLoadS3RequiresPodName(t *testing.T) {
+	t.Parallel()
+	ctx := testContext(t)
+	_, stderr, err := runLstk(t, ctx, t.TempDir(),
+		testEnvWithHome(t.TempDir(), ""),
+		"--non-interactive", "snapshot", "load", "s3://bucket/key",
+	)
+	requireExitCode(t, 1, err)
+	assert.Contains(t, stderr, "pod name is required")
 }
 
 func TestSnapshotLoadPodNoAuthToken(t *testing.T) {
