@@ -48,7 +48,18 @@ func NewRootCmd(cfg *env.Env, tel *telemetry.Client, logger log.Logger) *cobra.C
 		Short:   "LocalStack CLI",
 		Long:    "lstk is the command-line interface for LocalStack.",
 		PreRunE: initConfigDeferCreate(&firstRun),
+		// ArbitraryArgs stops Cobra from rejecting an unknown first arg with its
+		// own "unknown command" error before RunE runs, so an unknown `lstk
+		// <name>` falls through to extension dispatch. Built-in commands are still
+		// matched by Cobra's command resolution first, so they always win.
+		Args: cobra.ArbitraryArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			// A non-empty arg here means the first positional was not a built-in
+			// command (Cobra would have routed those to their own command), so it
+			// is an extension name; everything after it is forwarded verbatim.
+			if len(args) > 0 {
+				return dispatchExtension(cmd.Context(), cfg, logger, args)
+			}
 			rt, err := runtime.NewDockerRuntime(cfg.DockerHost)
 			if err != nil {
 				return err
@@ -69,7 +80,18 @@ func NewRootCmd(cfg *env.Env, tel *telemetry.Client, logger log.Logger) *cobra.C
 	root.PersistentFlags().BoolVar(&cfg.NonInteractive, "non-interactive", false, "Disable interactive mode")
 	root.Flags().Bool("persist", false, "Persist emulator state across restarts")
 
+	// Parse lstk's global flags only when they precede the command name: with
+	// interspersing disabled, Cobra consumes leading flags and hands everything
+	// from the first positional (the command/extension name) onward to the
+	// dispatch path verbatim. This gives Git-style "globals only before the
+	// command" and lets an extension own its entire flag space — a flag after the
+	// name (even one named like an lstk global) is forwarded untouched. Only the
+	// root's own flag set is affected; built-in subcommands keep their own
+	// (interspersing) flag parsing.
+	root.Flags().SetInterspersed(false)
+
 	configureHelp(root)
+	registerExtensionHelp(logger)
 
 	root.InitDefaultVersionFlag()
 	root.Flags().Lookup("version").Shorthand = "v"
