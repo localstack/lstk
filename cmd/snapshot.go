@@ -91,6 +91,7 @@ func newSnapshotCmd(cfg *env.Env, tel *telemetry.Client, logger log.Logger) *cob
 		Use:   "snapshot",
 		Short: "Manage emulator snapshots",
 	}
+	requireSubcommand(cmd)
 	cmd.AddCommand(newSnapshotSaveCmd(cfg))
 	cmd.AddCommand(newSnapshotLoadCmd(cfg, tel, logger))
 	cmd.AddCommand(newSnapshotListCmd(cfg, logger))

@@ -17,6 +17,7 @@ func newVolumeCmd(cfg *env.Env) *cobra.Command {
 		Use:   "volume",
 		Short: "Manage emulator volume",
 	}
+	requireSubcommand(cmd)
 	cmd.AddCommand(newVolumePathCmd(cfg))
 	cmd.AddCommand(newVolumeClearCmd(cfg))
 	return cmd
