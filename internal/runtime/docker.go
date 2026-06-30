@@ -181,6 +181,12 @@ func windowsDockerStartCommand(getenv func(string) string, lookPath func(string)
 }
 
 func (d *DockerRuntime) PullImage(ctx context.Context, imageName string, progress chan<- PullProgress) error {
+	// Close progress on every return path, including when ImagePull itself fails
+	// (e.g. the registry is unreachable), so callers ranging over it never block.
+	if progress != nil {
+		defer close(progress)
+	}
+
 	reader, err := d.client.ImagePull(ctx, imageName, client.ImagePullOptions{})
 	if err != nil {
 		return err
@@ -190,10 +196,6 @@ func (d *DockerRuntime) PullImage(ctx context.Context, imageName string, progres
 			log.Printf("failed to close image pull reader: %v", err)
 		}
 	}()
-
-	if progress != nil {
-		defer close(progress)
-	}
 
 	decoder := json.NewDecoder(reader)
 	for {
@@ -470,4 +472,14 @@ func (d *DockerRuntime) GetImageVersion(ctx context.Context, imageName string) (
 	}
 
 	return "", fmt.Errorf("LOCALSTACK_BUILD_VERSION not found in image environment")
+}
+
+func (d *DockerRuntime) ImageExists(ctx context.Context, image string) (bool, error) {
+	if _, err := d.client.ImageInspect(ctx, image); err != nil {
+		if errdefs.IsNotFound(err) {
+			return false, nil
+		}
+		return false, fmt.Errorf("failed to inspect image: %w", err)
+	}
+	return true, nil
 }

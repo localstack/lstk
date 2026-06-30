@@ -2,11 +2,13 @@ package cmd
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"time"
 
 	"github.com/localstack/lstk/internal/api"
+	"github.com/localstack/lstk/internal/awsconfig"
 	"github.com/localstack/lstk/internal/config"
 	"github.com/localstack/lstk/internal/container"
 	"github.com/localstack/lstk/internal/emulator/aws"
@@ -25,7 +27,12 @@ const snapshotSaveCanonical = "snapshot save"
 
 const snapshotListLong = `List Cloud Pod snapshots available on the LocalStack platform.
 
-By default only snapshots you created are listed. Pass --all to include all snapshots in your organisation.`
+By default only snapshots you created are listed. Pass --all to include all snapshots in your organisation.
+
+To list snapshots in your own S3 bucket, pass an s3:// location (requires a running emulator). Credentials are read from AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY, from --profile, or from the profile named by AWS_PROFILE:
+
+  lstk snapshot list s3://my-bucket/prefix
+  lstk snapshot list s3://my-bucket/prefix --profile my-aws-profile`
 
 const snapshotShowLong = `Show metadata for a cloud snapshot on the LocalStack platform.
 
@@ -51,7 +58,12 @@ Pass [destination] as an absolute or relative path for the exported file:
 
 To save to a remote pod on the LocalStack platform, use the pod: prefix:
 
-  lstk snapshot save pod:my-baseline    # saves as a named pod on the platform`
+  lstk snapshot save pod:my-baseline    # saves as a named pod on the platform
+
+To save to your own S3 bucket, pass an s3:// location with an optional pod name (auto-generated when omitted). Credentials are read from AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY, from --profile, or from the profile named by AWS_PROFILE; never put credentials in the URL.
+
+  lstk snapshot save my-pod s3://my-bucket/prefix
+  lstk snapshot save my-pod s3://my-bucket/prefix --profile my-aws-profile`
 
 const snapshotLoadCanonical = "snapshot load"
 
@@ -62,6 +74,11 @@ REF identifies the snapshot to load:
   lstk snapshot load my-baseline             # loads ./my-baseline or ./my-baseline.snapshot
   lstk snapshot load ./checkpoint.snapshot   # loads from explicit path
   lstk snapshot load pod:my-baseline         # loads from LocalStack Cloud
+
+To load from your own S3 bucket, pass the pod name and an s3:// location. Credentials are read from AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY, from --profile, or from the profile named by AWS_PROFILE:
+
+  lstk snapshot load my-pod s3://my-bucket/prefix
+  lstk snapshot load my-pod s3://my-bucket/prefix --profile my-aws-profile
 
 Merge strategies control how snapshot state is combined with running state:
 
@@ -74,12 +91,93 @@ func newSnapshotCmd(cfg *env.Env, tel *telemetry.Client, logger log.Logger) *cob
 		Use:   "snapshot",
 		Short: "Manage emulator snapshots",
 	}
+	requireSubcommand(cmd)
 	cmd.AddCommand(newSnapshotSaveCmd(cfg))
 	cmd.AddCommand(newSnapshotLoadCmd(cfg, tel, logger))
 	cmd.AddCommand(newSnapshotListCmd(cfg, logger))
 	cmd.AddCommand(newSnapshotRemoveCmd(cfg))
 	cmd.AddCommand(newSnapshotShowCmd(cfg, logger))
 	return cmd
+}
+
+// addSnapshotStartFlags registers the snapshot-related flags shared by the root
+// and `start` commands. --snapshot overrides the configured REF for one run;
+// --no-snapshot skips auto-loading for one run.
+func addSnapshotStartFlags(cmd *cobra.Command) {
+	cmd.Flags().String("snapshot", "", "Snapshot REF to load after start (overrides config for this run)")
+	cmd.Flags().Bool("no-snapshot", false, "Skip auto-loading the configured snapshot for this run")
+}
+
+func snapshotFlags(cmd *cobra.Command) (snapshotFlag string, noSnapshot bool, err error) {
+	if snapshotFlag, err = cmd.Flags().GetString("snapshot"); err != nil {
+		return "", false, err
+	}
+	if noSnapshot, err = cmd.Flags().GetBool("no-snapshot"); err != nil {
+		return "", false, err
+	}
+	return snapshotFlag, noSnapshot, nil
+}
+
+// resolveStartSnapshotRef resolves the snapshot REF to auto-load on start.
+// Precedence: --no-snapshot disables it; otherwise --snapshot wins over the
+// AWS container's configured snapshot. Returns "" when nothing should be loaded.
+func resolveStartSnapshotRef(appConfig *config.Config, snapshotFlag string, noSnapshot bool) (string, error) {
+	if noSnapshot && snapshotFlag != "" {
+		return "", errors.New("--snapshot and --no-snapshot cannot be used together")
+	}
+	if noSnapshot {
+		return "", nil
+	}
+	if snapshotFlag != "" {
+		return snapshotFlag, nil
+	}
+	for _, c := range appConfig.Containers {
+		if c.Type == config.EmulatorAWS && c.Snapshot != "" {
+			return c.Snapshot, nil
+		}
+	}
+	return "", nil
+}
+
+// newSnapshotAutoLoader returns a loader that imports the given REF into the
+// running AWS emulator, or nil when ref is empty. The REF is parsed eagerly so an
+// invalid value fails before the emulator starts. The loader passes a nil Starter:
+// it is only invoked once the emulator is already up.
+func newSnapshotAutoLoader(cfg *env.Env, rt runtime.Runtime, appConfig *config.Config, ref string) (func(context.Context, output.Sink) error, error) {
+	if ref == "" {
+		return nil, nil
+	}
+
+	var awsContainer config.ContainerConfig
+	found := false
+	for _, c := range appConfig.Containers {
+		if c.Type == config.EmulatorAWS {
+			awsContainer = c
+			found = true
+			break
+		}
+	}
+	if !found {
+		return nil, fmt.Errorf("snapshot auto-load is only supported for the AWS emulator")
+	}
+
+	home, _ := os.UserHomeDir()
+	src, err := snapshot.ParseSource(ref, home)
+	if err != nil {
+		return nil, err
+	}
+
+	client := aws.NewClient()
+	containers := []config.ContainerConfig{awsContainer}
+	return func(ctx context.Context, sink output.Sink) error {
+		host, _ := endpoint.ResolveHost(ctx, awsContainer.Port, cfg.LocalStackHost)
+		switch src.Kind {
+		case snapshot.KindPod:
+			return snapshot.LoadPod(ctx, rt, containers, client, host, src.Value, cfg.AuthToken, "", nil, sink)
+		default:
+			return snapshot.LoadLocal(ctx, rt, containers, client, host, src.Value, "", nil, sink)
+		}
+	}, nil
 }
 
 func buildStarter(cfg *env.Env, rt runtime.Runtime, appConfig *config.Config, logger log.Logger, tel *telemetry.Client) snapshot.Starter {
@@ -95,11 +193,12 @@ func newSnapshotLoadCmd(cfg *env.Env, tel *telemetry.Client, logger log.Logger) 
 		Use:     "load REF",
 		Short:   "Load a snapshot into the running emulator",
 		Long:    snapshotLoadLong,
-		Args:    cobra.ExactArgs(1),
+		Args:    cobra.RangeArgs(1, 2),
 		PreRunE: initConfig(nil),
 		RunE:    runSnapshotLoad(cfg, tel, logger),
 	}
 	addMergeFlag(cmd)
+	addProfileFlag(cmd)
 	return cmd
 }
 
@@ -108,12 +207,13 @@ func newLoadCmd(cfg *env.Env, tel *telemetry.Client, logger log.Logger) *cobra.C
 		Use:         "load REF",
 		Short:       "Load a snapshot into the running emulator",
 		Long:        snapshotLoadLong,
-		Args:        cobra.ExactArgs(1),
+		Args:        cobra.RangeArgs(1, 2),
 		PreRunE:     initConfig(nil),
 		RunE:        runSnapshotLoad(cfg, tel, logger),
 		Annotations: map[string]string{canonicalCommandAnnotation: snapshotLoadCanonical},
 	}
 	addMergeFlag(cmd)
+	addProfileFlag(cmd)
 	return cmd
 }
 
@@ -127,14 +227,53 @@ func runSnapshotLoad(cfg *env.Env, tel *telemetry.Client, logger log.Logger) fun
 		if err != nil {
 			return err
 		}
+		profile, err := cmd.Flags().GetString("profile")
+		if err != nil {
+			return err
+		}
+		if err := snapshot.ValidateMergeStrategy(strategy); err != nil {
+			return err
+		}
 
-		home, _ := os.UserHomeDir()
-		src, err := snapshot.ParseSource(args[0], home)
+		home, err := os.UserHomeDir()
 		if err != nil {
 			return err
 		}
 
-		if err := snapshot.ValidateMergeStrategy(strategy); err != nil {
+		podName, s3URL, isRemote, err := classifyRemoteArgs(args)
+		if err != nil {
+			return err
+		}
+
+		if isRemote {
+			if podName == "" {
+				return fmt.Errorf("a pod name is required to load from S3: lstk snapshot load <pod-name> %s", s3URL)
+			}
+			if err := snapshot.ValidatePodName(podName); err != nil {
+				return err
+			}
+			src, err := snapshot.ParseSource(s3URL, home)
+			if err != nil {
+				return err
+			}
+			creds, err := resolveS3Credentials(profile)
+			if err != nil {
+				return err
+			}
+			rt, client, host, containers, appConfig, err := resolveSnapshotDeps(cmd.Context(), cfg)
+			if err != nil {
+				return err
+			}
+			starter := buildStarter(cfg, rt, appConfig, logger, tel)
+			if isInteractiveMode(cfg) {
+				return ui.RunSnapshotLoadRemoteS3(cmd.Context(), rt, containers, client, host, podName, src.Value, creds, cfg.AuthToken, strategy, starter)
+			}
+			sink := output.NewPlainSink(os.Stdout)
+			return snapshot.LoadRemoteS3(cmd.Context(), rt, containers, client, host, podName, src.Value, creds, cfg.AuthToken, strategy, starter, sink)
+		}
+
+		src, err := snapshot.ParseSource(args[0], home)
+		if err != nil {
 			return err
 		}
 
@@ -240,16 +379,83 @@ func resolveSnapshotDeps(ctx context.Context, cfg *env.Env) (rt runtime.Runtime,
 	return rt, aws.NewClient(), host, []config.ContainerConfig{target}, appConfig, nil
 }
 
+// addProfileFlag registers the --profile flag used to source AWS credentials for
+// S3 remote snapshots.
+func addProfileFlag(cmd *cobra.Command) {
+	cmd.Flags().String("profile", "", "AWS profile to read S3 credentials from (defaults to AWS_* env vars, then AWS_PROFILE)")
+}
+
+// classifyRemoteArgs inspects positional args for an s3:// location. When one is
+// present, it returns the S3 URL and the optional pod name (the other positional);
+// ok is false when no s3:// ref is given, so the caller uses the local/pod path.
+func classifyRemoteArgs(args []string) (podName, s3URL string, ok bool, err error) {
+	for _, a := range args {
+		if snapshot.IsS3Ref(a) {
+			if s3URL != "" {
+				return "", "", false, fmt.Errorf("only one s3:// location may be given")
+			}
+			s3URL = a
+			continue
+		}
+		if podName != "" {
+			return "", "", false, fmt.Errorf("unexpected extra argument %q", a)
+		}
+		podName = a
+	}
+	if s3URL == "" {
+		return "", "", false, nil
+	}
+	return podName, s3URL, true, nil
+}
+
+// resolveS3Credentials reads AWS credentials for an S3 remote, following the
+// AWS CLI precedence: an explicit --profile flag wins; otherwise static AWS_*
+// environment variables win; otherwise the profile named by AWS_PROFILE is used.
+func resolveS3Credentials(profile string) (snapshot.S3Credentials, error) {
+	var (
+		creds awsconfig.Credentials
+		err   error
+	)
+	switch {
+	case profile != "":
+		creds, err = awsconfig.ReadProfileCredentials(profile)
+		if err != nil {
+			return snapshot.S3Credentials{}, err
+		}
+	default:
+		creds, err = awsconfig.CredentialsFromEnv()
+		if errors.Is(err, awsconfig.ErrNoCredentials) {
+			if envProfile := os.Getenv("AWS_PROFILE"); envProfile != "" {
+				creds, err = awsconfig.ReadProfileCredentials(envProfile)
+				if err != nil {
+					return snapshot.S3Credentials{}, err
+				}
+				break
+			}
+			return snapshot.S3Credentials{}, fmt.Errorf("AWS credentials required for S3 snapshots: set AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY, set AWS_PROFILE, or pass --profile <name>")
+		}
+		if err != nil {
+			return snapshot.S3Credentials{}, err
+		}
+	}
+	return snapshot.S3Credentials{
+		AccessKeyID:     creds.AccessKeyID,
+		SecretAccessKey: creds.SecretAccessKey,
+		SessionToken:    creds.SessionToken,
+	}, nil
+}
+
 func newSnapshotListCmd(cfg *env.Env, logger log.Logger) *cobra.Command {
 	cmd := &cobra.Command{
-		Use:     "list",
+		Use:     "list [s3://bucket/prefix]",
 		Short:   "List Cloud Pod snapshots available on the LocalStack platform",
 		Long:    snapshotListLong,
-		Args:    cobra.NoArgs,
+		Args:    cobra.MaximumNArgs(1),
 		PreRunE: initConfig(nil),
 		RunE:    runSnapshotList(cfg, logger),
 	}
 	cmd.Flags().Bool("all", false, "List all snapshots in the organisation")
+	addProfileFlag(cmd)
 	return cmd
 }
 
@@ -259,6 +465,38 @@ func runSnapshotList(cfg *env.Env, logger log.Logger) func(*cobra.Command, []str
 		if err != nil {
 			return err
 		}
+		profile, err := cmd.Flags().GetString("profile")
+		if err != nil {
+			return err
+		}
+
+		if len(args) == 1 && snapshot.IsS3Ref(args[0]) {
+			home, err := os.UserHomeDir()
+			if err != nil {
+				return err
+			}
+			src, err := snapshot.ParseSource(args[0], home)
+			if err != nil {
+				return err
+			}
+			creds, err := resolveS3Credentials(profile)
+			if err != nil {
+				return err
+			}
+			rt, client, host, containers, _, err := resolveSnapshotDeps(cmd.Context(), cfg)
+			if err != nil {
+				return err
+			}
+			if isInteractiveMode(cfg) {
+				return ui.RunSnapshotListRemoteS3(cmd.Context(), rt, containers, client, host, src.Value, creds, cfg.AuthToken)
+			}
+			sink := output.NewPlainSink(os.Stdout)
+			return snapshot.ListRemoteS3(cmd.Context(), rt, containers, client, host, src.Value, creds, cfg.AuthToken, sink)
+		}
+		if len(args) == 1 {
+			return fmt.Errorf("unexpected argument %q: snapshot list takes an optional s3:// location", args[0])
+		}
+
 		creator := "me"
 		if all {
 			creator = ""
@@ -309,36 +547,78 @@ func runSnapshotShow(cfg *env.Env, logger log.Logger) func(*cobra.Command, []str
 }
 
 func newSnapshotSaveCmd(cfg *env.Env) *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:     "save [destination]",
 		Short:   "Save a snapshot of the emulator state",
 		Long:    snapshotSaveLong,
-		Args:    cobra.MaximumNArgs(1),
+		Args:    cobra.MaximumNArgs(2),
 		PreRunE: initConfig(nil),
 		RunE:    runSnapshotSave(cfg),
 	}
+	addProfileFlag(cmd)
+	return cmd
 }
 
 func newSaveCmd(cfg *env.Env) *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:         "save [destination]",
 		Short:       "Save a snapshot of the emulator state",
 		Long:        snapshotSaveLong,
-		Args:        cobra.MaximumNArgs(1),
+		Args:        cobra.MaximumNArgs(2),
 		PreRunE:     initConfig(nil),
 		RunE:        runSnapshotSave(cfg),
 		Annotations: map[string]string{canonicalCommandAnnotation: snapshotSaveCanonical},
 	}
+	addProfileFlag(cmd)
+	return cmd
 }
 
 func runSnapshotSave(cfg *env.Env) func(*cobra.Command, []string) error {
 	return func(cmd *cobra.Command, args []string) error {
+		profile, err := cmd.Flags().GetString("profile")
+		if err != nil {
+			return err
+		}
+
+		podName, s3URL, isRemote, err := classifyRemoteArgs(args)
+		if err != nil {
+			return err
+		}
+
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return err
+		}
+
+		if isRemote {
+			dest, err := snapshot.ParseDestination(s3URL, home, time.Now())
+			if err != nil {
+				return err
+			}
+			if podName == "" {
+				podName = snapshot.DefaultRemotePodName(time.Now())
+			} else if err := snapshot.ValidatePodName(podName); err != nil {
+				return err
+			}
+			creds, err := resolveS3Credentials(profile)
+			if err != nil {
+				return err
+			}
+			rt, client, host, containers, _, err := resolveSnapshotDeps(cmd.Context(), cfg)
+			if err != nil {
+				return err
+			}
+			if isInteractiveMode(cfg) {
+				return ui.RunSnapshotSaveRemoteS3(cmd.Context(), rt, containers, client, host, podName, dest.Value, creds, cfg.AuthToken)
+			}
+			sink := output.NewPlainSink(os.Stdout)
+			return snapshot.SaveRemoteS3(cmd.Context(), rt, containers, client, host, podName, dest.Value, creds, cfg.AuthToken, sink)
+		}
+
 		var destArg string
 		if len(args) > 0 {
 			destArg = args[0]
 		}
-
-		home, _ := os.UserHomeDir()
 		dest, err := snapshot.ParseDestination(destArg, home, time.Now())
 		if err != nil {
 			return err

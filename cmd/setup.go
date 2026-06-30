@@ -18,6 +18,7 @@ func newSetupCmd(cfg *env.Env) *cobra.Command {
 		Short: "Set up emulator CLI integration",
 		Long:  "Set up emulator CLI integration for AWS or Azure.",
 	}
+	requireSubcommand(cmd)
 	cmd.AddCommand(newSetupAWSCmd(cfg))
 	cmd.AddCommand(newSetupAzureCmd(cfg))
 	return cmd

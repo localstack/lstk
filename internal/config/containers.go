@@ -4,8 +4,10 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -112,18 +114,177 @@ func KnownImageReposForType(t EmulatorType) []string {
 }
 
 type ContainerConfig struct {
-	Type   EmulatorType `mapstructure:"type"`
-	Tag    string       `mapstructure:"tag"`
-	Port   string       `mapstructure:"port"`
-	Volume string       `mapstructure:"volume"`
+	Type EmulatorType `mapstructure:"type"`
+	Tag  string       `mapstructure:"tag"`
+	Port string       `mapstructure:"port"`
+	// CustomImage overrides the default Docker image for this emulator. Set it to use an
+	// image from an internal registry or a locally loaded offline image instead of pulling
+	// the default localstack image from Docker Hub. If it carries no tag, Tag (or "latest")
+	// is appended; if it already carries a tag, Tag is dropped.
+	CustomImage string `mapstructure:"image"`
+	// Volume is the legacy single-host-directory knob for the persistence mount
+	// (target /var/lib/localstack). It is still honored; new configs can express the
+	// same mount as a Volumes entry targeting persistenceTarget instead.
+	Volume string `mapstructure:"volume"`
+	// Volumes is the umbrella list of "host:container[:ro]" bind specs. It covers
+	// arbitrary mounts (e.g. Snowflake init hooks) and may also contain the persistence
+	// mount (the entry targeting /var/lib/localstack).
+	Volumes []string `mapstructure:"volumes"`
 	// Env is a list of named environment references defined in the top-level [env.*] config sections.
 	Env []string `mapstructure:"env"`
+	// Snapshot is an optional snapshot REF (e.g. "pod:my-baseline" or a local path)
+	// auto-loaded after the emulator starts. AWS emulator only.
+	Snapshot string `mapstructure:"snapshot"`
 }
 
-// VolumeDir returns the host directory to mount into the container for persistence/caching.
-// If Volume is set in the config, it is returned as-is. Otherwise, a default is computed
-// from os.UserCacheDir()/lstk/volume/<container-name>.
+// persistenceTarget is the container path of the managed persistence/cache mount.
+// The entry in Volumes targeting this path (or the legacy Volume field) defines the
+// host directory backing it; lstk creates it and `lstk volume clear`/`volume path` act on it.
+const persistenceTarget = "/var/lib/localstack"
+
+// VolumeMount is a parsed bind specification with the host source resolved to an absolute path.
+type VolumeMount struct {
+	Source   string
+	Target   string
+	ReadOnly bool
+}
+
+// parseVolume parses a "host:container[:opts]" spec. The host source is resolved to an
+// absolute path: a leading "~/" is expanded to the user's home directory, and a relative
+// path is joined with configDir (the directory of the config file that declared it). This
+// is required because the Docker SDK treats a non-absolute source as a named volume rather
+// than a bind mount. opts is a comma-separated list; only "ro" is honored.
+//
+// A Windows drive-letter source (e.g. "C:\\data") is handled: its drive ':' is not mistaken
+// for a field separator. The container target is always a Unix (slash) absolute path.
+func parseVolume(spec, configDir string) (VolumeMount, error) {
+	source, target, opts, err := splitVolumeSpec(spec, runtime.GOOS == "windows")
+	if err != nil {
+		return VolumeMount{}, fmt.Errorf("invalid volume %q: %w", spec, err)
+	}
+	if source == "" {
+		return VolumeMount{}, fmt.Errorf("invalid volume %q: host source is empty", spec)
+	}
+	if target == "" {
+		return VolumeMount{}, fmt.Errorf("invalid volume %q: container target is empty", spec)
+	}
+	// The target is a path inside the (Linux) container, so it is validated with slash
+	// semantics rather than the host OS's filepath rules.
+	if !path.IsAbs(target) {
+		return VolumeMount{}, fmt.Errorf("invalid volume %q: container target %q must be an absolute path", spec, target)
+	}
+
+	resolved, err := resolveHostPath(source, configDir)
+	if err != nil {
+		return VolumeMount{}, fmt.Errorf("invalid volume %q: %w", spec, err)
+	}
+
+	var readOnly bool
+	for _, opt := range strings.Split(opts, ",") {
+		if opt == "ro" {
+			readOnly = true
+		}
+	}
+
+	return VolumeMount{Source: resolved, Target: target, ReadOnly: readOnly}, nil
+}
+
+// splitVolumeSpec splits a "host:container[:opts]" spec into its three components. When
+// windows is true, a leading drive letter on the host (e.g. "C:\\data") is rejoined so its
+// ':' is not treated as a field separator — Docker applies the same rule only on Windows, so
+// that a single-letter relative host dir (e.g. "a:/data") stays valid elsewhere.
+func splitVolumeSpec(spec string, windows bool) (source, target, opts string, err error) {
+	parts := strings.Split(spec, ":")
+	if windows && len(parts) >= 2 && len(parts[0]) == 1 && isDriveLetter(parts[0][0]) &&
+		(strings.HasPrefix(parts[1], `\`) || strings.HasPrefix(parts[1], "/")) {
+		parts = append([]string{parts[0] + ":" + parts[1]}, parts[2:]...)
+	}
+	switch len(parts) {
+	case 2:
+		return parts[0], parts[1], "", nil
+	case 3:
+		return parts[0], parts[1], parts[2], nil
+	default:
+		return "", "", "", fmt.Errorf("expected \"host:container\" or \"host:container:ro\"")
+	}
+}
+
+func isDriveLetter(b byte) bool {
+	return (b >= 'a' && b <= 'z') || (b >= 'A' && b <= 'Z')
+}
+
+// resolveHostPath expands a leading "~/" and makes a relative path absolute against configDir.
+func resolveHostPath(hostPath, configDir string) (string, error) {
+	if hostPath == "~" || strings.HasPrefix(hostPath, "~/") {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", fmt.Errorf("failed to expand ~: %w", err)
+		}
+		hostPath = filepath.Join(home, strings.TrimPrefix(hostPath, "~"))
+	}
+	if filepath.IsAbs(hostPath) {
+		return hostPath, nil
+	}
+	return filepath.Join(configDir, hostPath), nil
+}
+
+// configDirForRelativePaths returns the directory used to resolve relative volume sources:
+// the directory of the resolved config file. It falls back to the current working directory
+// when no config file is in use (e.g. in-memory defaults).
+func configDirForRelativePaths() string {
+	cfgPath, err := ConfigFilePath()
+	if err != nil || cfgPath == "" {
+		return "."
+	}
+	return filepath.Dir(cfgPath)
+}
+
+// parsedVolumes parses every entry in Volumes, resolving sources against the config dir.
+func (c *ContainerConfig) parsedVolumes() ([]VolumeMount, error) {
+	configDir := configDirForRelativePaths()
+	mounts := make([]VolumeMount, 0, len(c.Volumes))
+	for _, spec := range c.Volumes {
+		m, err := parseVolume(spec, configDir)
+		if err != nil {
+			return nil, err
+		}
+		mounts = append(mounts, m)
+	}
+	return mounts, nil
+}
+
+// ExtraVolumes returns the parsed bind mounts EXCLUDING the persistence entry
+// (target /var/lib/localstack), which start.go mounts separately via VolumeDir.
+func (c *ContainerConfig) ExtraVolumes() ([]VolumeMount, error) {
+	mounts, err := c.parsedVolumes()
+	if err != nil {
+		return nil, err
+	}
+	extras := make([]VolumeMount, 0, len(mounts))
+	for _, m := range mounts {
+		if m.Target == persistenceTarget {
+			continue
+		}
+		extras = append(extras, m)
+	}
+	return extras, nil
+}
+
+// VolumeDir returns the host directory to mount into the container for persistence/caching
+// (the mount targeting /var/lib/localstack). Resolution precedence:
+//  1. A Volumes entry targeting persistenceTarget — its resolved host source.
+//  2. The legacy Volume field, if set — returned as-is.
+//  3. The default os.UserCacheDir()/lstk/volume/<container-name>.
 func (c *ContainerConfig) VolumeDir() (string, error) {
+	mounts, err := c.parsedVolumes()
+	if err != nil {
+		return "", err
+	}
+	for _, m := range mounts {
+		if m.Target == persistenceTarget {
+			return m.Source, nil
+		}
+	}
 	if c.Volume != "" {
 		return c.Volume, nil
 	}
@@ -182,6 +343,35 @@ func (c *ContainerConfig) Validate() error {
 	if port < 1 || port > 65535 {
 		return fmt.Errorf("port %d is out of range (must be 1–65535)", port)
 	}
+	return c.validateVolumes()
+}
+
+// validateVolumes checks each Volumes entry is structurally parseable and guards against
+// declaring the persistence directory twice with conflicting sources. It does not touch the
+// filesystem (existence of sources is checked at start time).
+func (c *ContainerConfig) validateVolumes() error {
+	mounts, err := c.parsedVolumes()
+	if err != nil {
+		return err
+	}
+	var persistenceSource string
+	for _, m := range mounts {
+		if m.Target == persistenceTarget {
+			if m.ReadOnly {
+				return fmt.Errorf("persistence directory (%s) cannot be mounted read-only", persistenceTarget)
+			}
+			persistenceSource = m.Source
+		}
+	}
+	if c.Volume != "" && persistenceSource != "" {
+		resolved, err := resolveHostPath(c.Volume, configDirForRelativePaths())
+		if err != nil {
+			return err
+		}
+		if resolved != persistenceSource {
+			return fmt.Errorf("persistence directory set both via 'volume' and a 'volumes' entry targeting %s; use one or the other", persistenceTarget)
+		}
+	}
 	return nil
 }
 
@@ -202,15 +392,30 @@ func (c *ContainerConfig) ResolvedEnv(namedEnvs map[string]map[string]string) ([
 }
 
 func (c *ContainerConfig) Image() (string, error) {
-	productName, err := c.ProductName()
-	if err != nil {
-		return "", err
-	}
 	tag := c.Tag
 	if tag == "" {
 		tag = "latest"
 	}
+	if c.CustomImage != "" {
+		if imageHasTag(c.CustomImage) {
+			return c.CustomImage, nil
+		}
+		return c.CustomImage + ":" + tag, nil
+	}
+	productName, err := c.ProductName()
+	if err != nil {
+		return "", err
+	}
 	return fmt.Sprintf("%s/%s:%s", dockerRegistry, productName, tag), nil
+}
+
+// imageHasTag reports whether a Docker image reference already includes a tag.
+// A colon only counts as a tag separator when it appears in the final path
+// segment, so "my-registry:5000/localstack-pro" (registry port, no tag) is
+// correctly treated as untagged.
+func imageHasTag(image string) bool {
+	lastSegment := image[strings.LastIndex(image, "/")+1:]
+	return strings.Contains(lastSegment, ":")
 }
 
 // Name returns the container name: "localstack-{type}" or "localstack-{type}-{tag}" if tag != latest

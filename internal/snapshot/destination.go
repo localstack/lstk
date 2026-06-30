@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -15,10 +16,14 @@ import (
 var ErrHomeNotSet = errors.New("home directory is not set")
 
 var (
-	// ErrRemoteNotSupported is returned for known remote schemes (s3://, oras://).
+	// ErrRemoteNotSupported is returned for remote schemes that are not yet
+	// implemented (e.g. oras://). S3 (s3://) is supported.
 	ErrRemoteNotSupported = errors.New("remote destinations are not yet supported — coming soon")
 	// ErrUnknownScheme is returned for unrecognized URL schemes.
 	ErrUnknownScheme = errors.New("unrecognized destination scheme")
+	// ErrCredentialsInS3URL is returned when an s3:// ref embeds credential query
+	// params. Credentials must come from the environment or --profile, never the URL.
+	ErrCredentialsInS3URL = errors.New("do not put credentials in the s3:// URL; use AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY or --profile")
 
 	validPodName = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_-]*$`)
 )
@@ -43,14 +48,59 @@ type DestinationKind int
 const (
 	KindLocal DestinationKind = iota
 	KindPod
+	KindS3
 )
 
 // Destination is the parsed result of a user-supplied snapshot destination.
 // For KindLocal, Value is an absolute local file path with a .snapshot extension.
 // For KindPod, Value is the validated pod name (without the "pod:" prefix).
+// For KindS3, Value is the validated s3:// URL (bucket + optional key prefix), with
+// no credential query params — credentials are supplied separately at runtime.
 type Destination struct {
 	Kind  DestinationKind
 	Value string
+}
+
+// IsS3Ref reports whether ref is an s3:// reference. Used at the command boundary
+// to classify positional args into a pod name and an S3 location.
+func IsS3Ref(ref string) bool {
+	return strings.HasPrefix(strings.ToLower(ref), "s3://")
+}
+
+// ValidatePodName validates a user-supplied pod name (the identity of a snapshot
+// on a remote), using the same rules as pod: refs.
+func ValidatePodName(name string) error {
+	if !validPodName.MatchString(name) {
+		return fmt.Errorf("invalid pod name %q: use letters, digits, hyphens, and underscores only, starting with a letter or digit", name)
+	}
+	return nil
+}
+
+// DefaultRemotePodName generates a timestamped pod name used when saving to a
+// remote without an explicit name, mirroring local snapshot auto-naming.
+func DefaultRemotePodName(now time.Time) string {
+	b := make([]byte, 2)
+	_, _ = rand.Read(b)
+	return "snapshot-" + now.UTC().Format("2006-01-02T15-04-05") + "-" + fmt.Sprintf("%x", b)[:3]
+}
+
+// parseS3 validates an s3:// URL and returns it as a KindS3 destination. The bucket
+// must be present and the URL must not contain credential query params.
+func parseS3(ref string) (Destination, error) {
+	u, err := url.Parse(ref)
+	if err != nil {
+		return Destination{}, fmt.Errorf("invalid s3:// URL %q: %w", ref, err)
+	}
+	if u.Host == "" {
+		return Destination{}, fmt.Errorf("invalid s3:// URL %q: missing bucket name", ref)
+	}
+	q := u.Query()
+	for _, k := range []string{"access_key_id", "secret_access_key", "session_token"} {
+		if q.Has(k) {
+			return Destination{}, ErrCredentialsInS3URL
+		}
+	}
+	return Destination{Kind: KindS3, Value: ref}, nil
 }
 
 // ParseRemovable parses a ref for snapshot remove. Only cloud (pod:) refs are accepted;
@@ -76,7 +126,15 @@ func parseCloudOnly(ref, cwd, home, action string) (Destination, error) {
 		abs = withSnapshotExt(abs)
 		return Destination{}, fmt.Errorf("'%s' resolves to a local file (%s); CLI cannot %s", ref, displayPath(abs, cwd, home), action)
 	}
-	return ParseSource(ref, home)
+	dest, err := ParseSource(ref, home)
+	if err != nil {
+		return Destination{}, err
+	}
+	// remove/show are cloud (pod:) only; S3 remotes are not yet supported here.
+	if dest.Kind == KindS3 {
+		return Destination{}, ErrRemoteNotSupported
+	}
+	return dest, nil
 }
 
 // displayPath shortens abs for human-readable output:
@@ -112,12 +170,13 @@ func ParseSource(ref, home string) (Destination, error) {
 		return Destination{}, fmt.Errorf("'%s' is not a valid reference. Aliases use a single colon. Did you mean:\npod:%s", ref, podName)
 	case strings.HasPrefix(lower, "pod:"):
 		podName := ref[len("pod:"):]
-		if !validPodName.MatchString(podName) {
-			return Destination{}, fmt.Errorf("invalid pod name %q: use letters, digits, hyphens, and underscores only, starting with a letter or digit", podName)
+		if err := ValidatePodName(podName); err != nil {
+			return Destination{}, err
 		}
 		return Destination{Kind: KindPod, Value: podName}, nil
-	case strings.HasPrefix(lower, "s3://"),
-		strings.HasPrefix(lower, "oras://"):
+	case strings.HasPrefix(lower, "s3://"):
+		return parseS3(ref)
+	case strings.HasPrefix(lower, "oras://"):
 		return Destination{}, ErrRemoteNotSupported
 	case strings.Contains(lower, "://"):
 		scheme, _, _ := strings.Cut(ref, "://")
@@ -174,12 +233,13 @@ func ParseDestination(dest, home string, now time.Time) (Destination, error) {
 			return Destination{}, fmt.Errorf("'%s' is not a valid reference. Aliases use a single colon. Did you mean:\npod:%s", dest, podName)
 		case strings.HasPrefix(lower, "pod:"):
 			podName := dest[len("pod:"):]
-			if !validPodName.MatchString(podName) {
-				return Destination{}, fmt.Errorf("invalid pod name %q: use letters, digits, hyphens, and underscores only, starting with a letter or digit", podName)
+			if err := ValidatePodName(podName); err != nil {
+				return Destination{}, err
 			}
 			return Destination{Kind: KindPod, Value: podName}, nil
-		case strings.HasPrefix(lower, "s3://"),
-			strings.HasPrefix(lower, "oras://"):
+		case strings.HasPrefix(lower, "s3://"):
+			return parseS3(dest)
+		case strings.HasPrefix(lower, "oras://"):
 			return Destination{}, ErrRemoteNotSupported
 		case strings.Contains(lower, "://"):
 			scheme, _, _ := strings.Cut(dest, "://")

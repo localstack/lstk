@@ -139,6 +139,20 @@ func Start(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts Start
 		}
 		binds = append(binds, runtime.BindMount{HostPath: volumeDir, ContainerPath: "/var/lib/localstack"})
 
+		// Extra user-defined mounts (e.g. Snowflake init hooks). Unlike the persistence
+		// directory, these are not created — init-hook entries are files, so the source
+		// must already exist; creating it would produce a wrong empty directory.
+		extraVolumes, err := c.ExtraVolumes()
+		if err != nil {
+			return "", err
+		}
+		for _, m := range extraVolumes {
+			if _, err := os.Stat(m.Source); err != nil {
+				return "", fmt.Errorf("volume source %q does not exist: %w", m.Source, err)
+			}
+			binds = append(binds, runtime.BindMount{HostPath: m.Source, ContainerPath: m.Target, ReadOnly: m.ReadOnly})
+		}
+
 		containers[i] = runtime.ContainerConfig{
 			Image:         image,
 			Name:          containerName,
@@ -167,9 +181,10 @@ func Start(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts Start
 		return "", fmt.Errorf("failed to determine license file path: %w", err)
 	}
 
-	// Validate licenses before pulling. Pinned tags are validated immediately;
-	// "latest" tags are deferred to post-pull validation via image inspection.
-	postPullContainers, err := tryPrePullLicenseValidation(ctx, sink, opts, containers, token, licenseFilePath)
+	// Validate licenses before pulling. Pinned tags are validated immediately —
+	// unless the image is already present locally, in which case both the pull and
+	// the pre-flight check are skipped. "latest" tags defer to post-pull validation.
+	postPullContainers, err := tryPrePullLicenseValidation(ctx, rt, sink, opts, containers, token, licenseFilePath)
 	if err != nil {
 		return "", err
 	}
@@ -314,6 +329,20 @@ func pullImages(ctx context.Context, rt runtime.Runtime, sink output.Sink, tel *
 			return nil, fmt.Errorf("failed to remove existing container %s: %w", c.Name, err)
 		}
 
+		// Reuse a locally present image for pinned tags instead of re-pulling.
+		// Floating "latest"/empty tags always pull until pull_policy support lands.
+		if c.Tag != "" && c.Tag != "latest" {
+			exists, err := rt.ImageExists(ctx, c.Image)
+			if err != nil {
+				return nil, fmt.Errorf("failed to check for local image %s: %w", c.Image, err)
+			}
+			if exists {
+				sink.Emit(output.MessageEvent{Severity: output.SeveritySuccess, Text: fmt.Sprintf("Using local image %s", c.Image)})
+				pulled[c.Name] = false
+				continue
+			}
+		}
+
 		sink.Emit(output.SpinnerStart(fmt.Sprintf("Pulling %s", c.Image)))
 		sink.Emit(output.ContainerStatusEvent{Phase: "pulling", Container: c.Image})
 		progress := make(chan runtime.PullProgress)
@@ -324,6 +353,19 @@ func pullImages(ctx context.Context, rt runtime.Runtime, sink output.Sink, tel *
 		}()
 		if err := rt.PullImage(ctx, c.Image, progress); err != nil {
 			sink.Emit(output.SpinnerStop())
+			// A cancelled caller context (e.g. Ctrl+C) is not an offline condition —
+			// propagate it instead of probing for a local image or reporting a pull
+			// failure, which would also emit a spurious start-error telemetry event.
+			if ctx.Err() != nil {
+				return nil, ctx.Err()
+			}
+			// The registry may be unreachable (offline, proxy, or TLS interception in
+			// enterprise networks). If the image is already available locally, fall back
+			// to it instead of failing — the image carries its own license.
+			if exists, existsErr := rt.ImageExists(ctx, c.Image); existsErr == nil && exists {
+				sink.Emit(output.MessageEvent{Severity: output.SeverityWarning, Text: fmt.Sprintf("Could not pull %s; using the local image", c.Image)})
+				continue
+			}
 			sink.Emit(output.ErrorEvent{
 				Title:   fmt.Sprintf("Failed to pull %s", c.Image),
 				Summary: err.Error(),
@@ -344,9 +386,10 @@ func pullImages(ctx context.Context, rt runtime.Runtime, sink output.Sink, tel *
 	return pulled, nil
 }
 
-// Validates licenses before pulling for containers with pinned tags.
+// Validates licenses before pulling for containers with pinned tags, except those
+// whose image is already present locally (not pulled, so the check is skipped too).
 // "latest" and empty tags are deferred to post-pull validation via image inspection.
-func tryPrePullLicenseValidation(ctx context.Context, sink output.Sink, opts StartOptions, containers []runtime.ContainerConfig, token, licenseFilePath string) ([]runtime.ContainerConfig, error) {
+func tryPrePullLicenseValidation(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts StartOptions, containers []runtime.ContainerConfig, token, licenseFilePath string) ([]runtime.ContainerConfig, error) {
 	var needsPostPull []runtime.ContainerConfig
 	for _, c := range containers {
 		if c.EmulatorType.SelfValidatesLicense() {
@@ -354,6 +397,14 @@ func tryPrePullLicenseValidation(ctx context.Context, sink output.Sink, opts Sta
 		}
 
 		if c.Tag != "" && c.Tag != "latest" {
+			// A pinned image already present locally is not pulled (see pullImages),
+			// so skip the license pre-flight too: the check is redundant — and a hard
+			// blocker in offline/enterprise environments — when no network round-trip
+			// happens at all and the container validates its own bundled license at
+			// startup. A probe error is non-fatal here; fall through to the check.
+			if exists, err := rt.ImageExists(ctx, c.Image); err == nil && exists {
+				continue
+			}
 			if err := validateLicense(ctx, sink, opts, c, token, licenseFilePath); err != nil {
 				return nil, err
 			}
@@ -598,14 +649,31 @@ func validateLicense(ctx context.Context, sink output.Sink, opts StartOptions, c
 	licenseResp, err := opts.PlatformClient.GetLicense(ctx, licenseReq)
 	if err != nil {
 		sink.Emit(output.SpinnerStop())
+		// A cancelled caller context (e.g. Ctrl+C) is not an offline condition —
+		// propagate it instead of degrading. The client's own request timeout is
+		// distinct from ctx and still falls through to the offline fallback below.
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
 		var licErr *api.LicenseError
-		if errors.As(err, &licErr) {
-			if licErr.Detail != "" {
-				opts.Logger.Error("license server response (HTTP %d): %s", licErr.Status, licErr.Detail)
-			}
-			if licErr.IsUnsupportedTag {
-				err = errors.New(config.UnsupportedTagMessage())
-			}
+		if !errors.As(err, &licErr) {
+			// The license server responded with no definitive verdict — the request
+			// itself failed (offline, proxy, or TLS interception in enterprise
+			// networks). Skip the pre-flight check and let the container validate its
+			// own bundled license at startup instead of blocking the start.
+			opts.Logger.Info("license server unreachable, continuing with the image's bundled license: %v", err)
+			sink.Emit(output.MessageEvent{Severity: output.SeverityWarning, Text: "Could not reach the license server; continuing with the image's bundled license"})
+			return nil
+		}
+		// Known limitation: any *api.LicenseError — i.e. any non-200 HTTP response,
+		// including a 5xx or a 407 from a corporate proxy — is treated as a definitive
+		// verdict and stays fatal here; only connection-level failures (handled above)
+		// degrade. Gating this on licErr.Status is tracked as follow-up.
+		if licErr.Detail != "" {
+			opts.Logger.Error("license server response (HTTP %d): %s", licErr.Status, licErr.Detail)
+		}
+		if licErr.IsUnsupportedTag {
+			err = errors.New(config.UnsupportedTagMessage())
 		}
 		opts.Telemetry.EmitEmulatorLifecycleEvent(ctx, telemetry.LifecycleEvent{
 			EventType: telemetry.LifecycleStartError,

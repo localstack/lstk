@@ -8,9 +8,12 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"strconv"
+	"sync/atomic"
 	"testing"
 
+	"github.com/localstack/lstk/internal/api"
 	"github.com/localstack/lstk/internal/caller"
 	"github.com/localstack/lstk/internal/config"
 	"github.com/localstack/lstk/internal/log"
@@ -383,6 +386,245 @@ func TestAgentEnv(t *testing.T) {
 		"an agent running inside CI still forwards its AI_AGENT identity")
 }
 
+func TestPullImages_FallsBackToLocalImageWhenPullFails(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockRT := runtime.NewMockRuntime(ctrl)
+
+	c := runtime.ContainerConfig{
+		Image:        "my-registry.internal/localstack-pro:latest",
+		Name:         "localstack-aws",
+		EmulatorType: config.EmulatorAWS,
+	}
+
+	mockRT.EXPECT().Remove(gomock.Any(), c.Name).Return(nil)
+	mockRT.EXPECT().PullImage(gomock.Any(), c.Image, gomock.Any()).DoAndReturn(
+		func(_ context.Context, _ string, progress chan<- runtime.PullProgress) error {
+			close(progress)
+			return errors.New("tls: failed to verify certificate")
+		})
+	mockRT.EXPECT().ImageExists(gomock.Any(), c.Image).Return(true, nil)
+
+	var out bytes.Buffer
+	sink := output.NewPlainSink(&out)
+	tel := telemetry.New("", true)
+
+	pulled, err := pullImages(context.Background(), mockRT, sink, tel, []runtime.ContainerConfig{c})
+
+	require.NoError(t, err, "a pull failure must not be fatal when the image is available locally")
+	assert.False(t, pulled[c.Name], "the image was not pulled, only found locally")
+	assert.Contains(t, out.String(), "using the local image")
+}
+
+func TestPullImages_FailsWhenPullFailsAndImageMissing(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockRT := runtime.NewMockRuntime(ctrl)
+
+	c := runtime.ContainerConfig{
+		Image:        "localstack/localstack-pro:latest",
+		Name:         "localstack-aws",
+		EmulatorType: config.EmulatorAWS,
+	}
+
+	mockRT.EXPECT().Remove(gomock.Any(), c.Name).Return(nil)
+	mockRT.EXPECT().PullImage(gomock.Any(), c.Image, gomock.Any()).DoAndReturn(
+		func(_ context.Context, _ string, progress chan<- runtime.PullProgress) error {
+			close(progress)
+			return errors.New("tls: failed to verify certificate")
+		})
+	mockRT.EXPECT().ImageExists(gomock.Any(), c.Image).Return(false, nil)
+
+	var out bytes.Buffer
+	sink := output.NewPlainSink(&out)
+	tel := telemetry.New("", true)
+
+	_, err := pullImages(context.Background(), mockRT, sink, tel, []runtime.ContainerConfig{c})
+
+	require.Error(t, err)
+	assert.True(t, output.IsSilent(err), "error should be silent since an ErrorEvent was emitted")
+	assert.Contains(t, out.String(), "Failed to pull localstack/localstack-pro:latest")
+}
+
+func TestPullImages_PropagatesContextCancellation(t *testing.T) {
+	// A cancelled caller context (Ctrl+C) during a pull must surface as
+	// cancellation — not be reported as a pull failure nor probed as a local-image
+	// fallback (which would also emit a spurious start-error telemetry event).
+	ctrl := gomock.NewController(t)
+	mockRT := runtime.NewMockRuntime(ctrl)
+
+	c := runtime.ContainerConfig{
+		Image:        "localstack/localstack-pro:latest",
+		Name:         "localstack-aws",
+		EmulatorType: config.EmulatorAWS,
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	mockRT.EXPECT().Remove(gomock.Any(), c.Name).Return(nil)
+	mockRT.EXPECT().PullImage(gomock.Any(), c.Image, gomock.Any()).DoAndReturn(
+		func(_ context.Context, _ string, progress chan<- runtime.PullProgress) error {
+			cancel() // the user interrupts mid-pull
+			close(progress)
+			return context.Canceled
+		})
+	// ImageExists must NOT be called once the context is cancelled; gomock fails
+	// the test if it is (no EXPECT registered).
+
+	var out bytes.Buffer
+	sink := output.NewPlainSink(&out)
+	tel := telemetry.New("", true)
+
+	_, err := pullImages(ctx, mockRT, sink, tel, []runtime.ContainerConfig{c})
+
+	require.ErrorIs(t, err, context.Canceled)
+	assert.False(t, output.IsSilent(err), "a user cancel is not a silent start error")
+	assert.NotContains(t, out.String(), "Failed to pull", "a cancel must not be reported as a pull failure")
+	assert.NotContains(t, out.String(), "using the local image")
+}
+
+func TestValidateLicense_ContinuesWhenServerUnreachable(t *testing.T) {
+	// A closed port yields a transport-level failure (not an *api.LicenseError),
+	// which models an offline/proxy environment that cannot reach the license server.
+	opts := StartOptions{
+		PlatformClient: api.NewPlatformClient("http://127.0.0.1:1", log.Nop()),
+		Logger:         log.Nop(),
+		Telemetry:      telemetry.New("", true),
+	}
+	c := runtime.ContainerConfig{
+		EmulatorType: config.EmulatorAWS,
+		ProductName:  "localstack-pro",
+		Tag:          "2026.4",
+		Image:        "localstack/localstack-pro:2026.4",
+	}
+
+	var out bytes.Buffer
+	sink := output.NewPlainSink(&out)
+
+	err := validateLicense(context.Background(), sink, opts, c, "tok", filepath.Join(t.TempDir(), "license.json"))
+
+	require.NoError(t, err, "an unreachable license server must not block the start")
+	assert.Contains(t, out.String(), "Could not reach the license server")
+}
+
+func TestValidateLicense_FailsOnServerRejection(t *testing.T) {
+	// A definitive rejection (HTTP 403 -> *api.LicenseError) must remain fatal.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusForbidden)
+	}))
+	defer srv.Close()
+
+	opts := StartOptions{
+		PlatformClient: api.NewPlatformClient(srv.URL, log.Nop()),
+		Logger:         log.Nop(),
+		Telemetry:      telemetry.New("", true),
+	}
+	c := runtime.ContainerConfig{
+		EmulatorType: config.EmulatorAWS,
+		ProductName:  "localstack-pro",
+		Tag:          "2026.4",
+		Image:        "localstack/localstack-pro:2026.4",
+	}
+
+	err := validateLicense(context.Background(), output.NewPlainSink(io.Discard), opts, c, "tok", filepath.Join(t.TempDir(), "license.json"))
+
+	require.Error(t, err, "a server rejection must remain fatal")
+	assert.Contains(t, err.Error(), "license validation failed")
+}
+
+func TestValidateLicense_PropagatesContextCancellation(t *testing.T) {
+	// A cancelled caller context (Ctrl+C) must surface as cancellation, not be
+	// mistaken for an offline license server.
+	opts := StartOptions{
+		PlatformClient: api.NewPlatformClient("http://127.0.0.1:1", log.Nop()),
+		Logger:         log.Nop(),
+		Telemetry:      telemetry.New("", true),
+	}
+	c := runtime.ContainerConfig{
+		EmulatorType: config.EmulatorAWS,
+		ProductName:  "localstack-pro",
+		Tag:          "2026.4",
+		Image:        "localstack/localstack-pro:2026.4",
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	var out bytes.Buffer
+	sink := output.NewPlainSink(&out)
+
+	err := validateLicense(ctx, sink, opts, c, "tok", filepath.Join(t.TempDir(), "license.json"))
+
+	require.ErrorIs(t, err, context.Canceled)
+	assert.NotContains(t, out.String(), "Could not reach the license server",
+		"a cancellation must not be reported as an unreachable license server")
+}
+
+func TestTryPrePullLicenseValidation_SkipsCheckWhenImageIsLocal(t *testing.T) {
+	// A pinned image already present locally is not pulled (see pullImages), so the
+	// CLI must not run a license pre-flight either — the container validates its own
+	// bundled license at startup. This keeps the local-image start fully offline.
+	ctrl := gomock.NewController(t)
+	mockRT := runtime.NewMockRuntime(ctrl)
+
+	c := runtime.ContainerConfig{
+		Image:        "my-registry.internal/localstack-pro:2026.4",
+		Name:         "localstack-aws",
+		EmulatorType: config.EmulatorAWS,
+		ProductName:  "localstack-pro",
+		Tag:          "2026.4",
+	}
+	mockRT.EXPECT().ImageExists(gomock.Any(), c.Image).Return(true, nil)
+
+	var licenseHits int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		atomic.AddInt32(&licenseHits, 1)
+		w.WriteHeader(http.StatusForbidden)
+	}))
+	defer srv.Close()
+
+	opts := StartOptions{
+		PlatformClient: api.NewPlatformClient(srv.URL, log.Nop()),
+		Logger:         log.Nop(),
+		Telemetry:      telemetry.New("", true),
+	}
+
+	postPull, err := tryPrePullLicenseValidation(context.Background(), mockRT, output.NewPlainSink(io.Discard), opts, []runtime.ContainerConfig{c}, "tok", filepath.Join(t.TempDir(), "license.json"))
+
+	require.NoError(t, err)
+	assert.Empty(t, postPull, "a pinned local image needs no post-pull validation")
+	assert.Equal(t, int32(0), atomic.LoadInt32(&licenseHits), "the license server must not be contacted for a local image")
+}
+
+func TestTryPrePullLicenseValidation_ChecksWhenImageMissing(t *testing.T) {
+	// The pre-flight check still runs (and stays fatal on rejection) when the pinned
+	// image is not present locally — a pull will happen, so failing fast is correct.
+	ctrl := gomock.NewController(t)
+	mockRT := runtime.NewMockRuntime(ctrl)
+
+	c := runtime.ContainerConfig{
+		Image:        "localstack/localstack-pro:2026.4",
+		Name:         "localstack-aws",
+		EmulatorType: config.EmulatorAWS,
+		ProductName:  "localstack-pro",
+		Tag:          "2026.4",
+	}
+	mockRT.EXPECT().ImageExists(gomock.Any(), c.Image).Return(false, nil)
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusForbidden)
+	}))
+	defer srv.Close()
+
+	opts := StartOptions{
+		PlatformClient: api.NewPlatformClient(srv.URL, log.Nop()),
+		Logger:         log.Nop(),
+		Telemetry:      telemetry.New("", true),
+	}
+
+	_, err := tryPrePullLicenseValidation(context.Background(), mockRT, output.NewPlainSink(io.Discard), opts, []runtime.ContainerConfig{c}, "tok", filepath.Join(t.TempDir(), "license.json"))
+
+	require.Error(t, err, "a missing local image must still fail fast on a server rejection")
+}
+
 func TestStartContainers_SnowflakeLicenseError(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	mockRT := runtime.NewMockRuntime(ctrl)
@@ -473,4 +715,60 @@ func TestStartContainers_AzureLicenseError(t *testing.T) {
 	default:
 		t.Fatal("no telemetry event received")
 	}
+}
+
+func TestPullImages_ReusesLocalImageWhenPresent(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockRT := runtime.NewMockRuntime(ctrl)
+	mockTel := telemetry.New("", true)
+
+	c := runtime.ContainerConfig{
+		Image:        "localstack/localstack-pro:3.5.0",
+		Name:         "localstack-aws",
+		EmulatorType: config.EmulatorAWS,
+		Tag:          "3.5.0",
+	}
+
+	mockRT.EXPECT().Remove(gomock.Any(), c.Name).Return(nil)
+	mockRT.EXPECT().ImageExists(gomock.Any(), c.Image).Return(true, nil)
+	// No PullImage call expected when the image is already present.
+
+	var out bytes.Buffer
+	sink := output.NewPlainSink(&out)
+
+	pulled, err := pullImages(context.Background(), mockRT, sink, mockTel, []runtime.ContainerConfig{c})
+
+	require.NoError(t, err)
+	assert.False(t, pulled[c.Name], "telemetry must not count a reused image as pulled")
+	assert.Contains(t, out.String(), "Using local image localstack/localstack-pro:3.5.0")
+}
+
+func TestPullImages_PullsWhenImageMissing(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockRT := runtime.NewMockRuntime(ctrl)
+	mockTel := telemetry.New("", true)
+
+	c := runtime.ContainerConfig{
+		Image:        "localstack/localstack-pro:3.5.0",
+		Name:         "localstack-aws",
+		EmulatorType: config.EmulatorAWS,
+		Tag:          "3.5.0",
+	}
+
+	mockRT.EXPECT().Remove(gomock.Any(), c.Name).Return(nil)
+	mockRT.EXPECT().ImageExists(gomock.Any(), c.Image).Return(false, nil)
+	mockRT.EXPECT().PullImage(gomock.Any(), c.Image, gomock.Any()).
+		DoAndReturn(func(_ context.Context, _ string, progress chan<- runtime.PullProgress) error {
+			close(progress)
+			return nil
+		})
+
+	var out bytes.Buffer
+	sink := output.NewPlainSink(&out)
+
+	pulled, err := pullImages(context.Background(), mockRT, sink, mockTel, []runtime.ContainerConfig{c})
+
+	require.NoError(t, err)
+	assert.True(t, pulled[c.Name], "a freshly pulled image must be counted as pulled")
+	assert.Contains(t, out.String(), "Pulled localstack/localstack-pro:3.5.0")
 }

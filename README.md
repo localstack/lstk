@@ -45,7 +45,7 @@ Running `lstk` will automatically handle configuration setup and start LocalStac
 - **Interactive TUI** — a Bubble Tea-powered terminal UI shown in an interactive terminal for commands like `start`, `login`, `status`, etc.
 - **Plain output** for CI/CD and scripting (auto-detected in non-interactive environments or forced with `--non-interactive`)
 - **Log streaming** — tail emulator logs in real-time with `--follow`; use `--verbose` to show all logs without filtering
-- **Snapshots** — save, load, and remove emulator state as local files or named cloud snapshots (`pod:` prefix)
+- **Snapshots** — save, load, and remove emulator state as local files, named cloud snapshots (`pod:` prefix), or in your own S3 bucket (`s3://`), and auto-load one on start
 - **Browser-based login** — authenticate via browser and store credentials securely in the system keyring
 - **AWS CLI profile** — optionally configure a `localstack` profile in `~/.aws/` after start
 - **Terraform integration** — proxy Terraform commands to LocalStack with automatic AWS provider endpoint configuration
@@ -132,16 +132,18 @@ lstk --config /path/to/config.toml start
 type = "aws"     # Emulator type. Currently supported: "aws", "snowflake", "azure"
 tag  = "latest"  # Docker image tag, e.g. "latest", "2026.03"
 port = "4566"    # Host port the emulator will be accessible on
-# volume = ""    # Host directory for persistent state (default: OS cache dir)
+# volumes = []   # Bind mounts, "host:container[:ro]" (see below)
 # env = []       # Named environment profiles to apply (see [env.*] sections below)
+# snapshot = "pod:my-baseline"  # Snapshot REF auto-loaded on start (AWS only); see Snapshots below
 ```
 
 **Fields:**
 - `type`: emulator type; one of `"aws"`, `"snowflake"`, or `"azure"`
 - `tag`: Docker image tag for LocalStack (e.g. `"latest"`, `"4.14.0"`); useful for pinning a version
 - `port`: port LocalStack listens on (default `4566`)
-- `volume`: (optional) host directory for persistent emulator state (default: OS cache dir)
+- `volumes`: (optional) list of `"host:container[:ro]"` bind mounts, e.g. for init hooks or the persistent-state directory (see below)
 - `env`: (optional) list of named environment variable groups to inject into the container (see below)
+- `snapshot`: (optional) snapshot REF auto-loaded after the emulator starts on a fresh run — a local file path or a `pod:` cloud snapshot (see [Snapshots](#snapshots))
 
 ### Passing environment variables to the container
 
@@ -165,6 +167,40 @@ EAGER_SERVICE_LOADING = "1"
 ```
 
 Host environment variables prefixed with `LOCALSTACK_` are also forwarded to the emulator.
+
+### Mounting volumes and init hooks
+
+Use `volumes` to bind-mount host files or directories into the emulator, given as Docker-style `"host:container[:ro]"` strings. The most common use is [init hooks](https://docs.localstack.cloud/snowflake/capabilities/init-hooks/) — scripts LocalStack runs automatically on startup when mounted into `/etc/localstack/init/{boot,start,ready,shutdown}.d`:
+
+```toml
+[[containers]]
+type = "snowflake"
+port = "4566"
+volumes = ["./init.sf.sql:/etc/localstack/init/ready.d/init.sf.sql"]
+```
+
+- Relative host paths resolve against the config file's directory, and a leading `~/` is expanded.
+- Append `:ro` to mount read-only.
+- Host sources must already exist (init-hook entries are files, so `lstk` does not create them).
+
+#### Persistent state
+
+The persistent-state directory (mounted at `/var/lib/localstack`, managed by `lstk volume path` / `lstk volume clear`) defaults to the OS cache dir. Point it elsewhere with a `volumes` entry targeting that path:
+
+```toml
+volumes = ["/data:/var/lib/localstack"]
+```
+
+> The singular `volume = "..."` field is a legacy way to set only this directory. It still works, but `volumes` is preferred and is the only option for init hooks or other mounts.
+
+### Offline / enterprise environments
+
+`lstk start` degrades gracefully when the common enterprise blockers (Docker Hub unreachable, a forward proxy, TLS interception, or an unreachable license server) make a network request fail:
+
+- If the image cannot be pulled but is already present locally, `lstk` warns and starts the local image instead of failing.
+- If the license server cannot be reached, `lstk` skips its pre-flight check and lets the emulator validate its own bundled license at startup. A definitive rejection from the server (e.g. an invalid token) stays fatal.
+
+Pair this with a custom `image` in the config to point at a locally loaded image or an internal-registry mirror.
 
 ## Interactive And Non-Interactive Mode
 
@@ -275,11 +311,18 @@ lstk snapshot save ./my-snapshot.snapshot
 # Save emulator state as a named cloud snapshot on the LocalStack platform
 lstk snapshot save pod:my-baseline
 
+# Save to your own S3 bucket (credentials from AWS_* env vars or --profile)
+lstk snapshot save my-pod s3://my-bucket/prefix
+
 # Load a snapshot back into the running emulator
 lstk snapshot load pod:my-baseline
+lstk snapshot load my-pod s3://my-bucket/prefix
 
 # List cloud snapshots on the LocalStack platform (--all for the whole organization)
 lstk snapshot list
+
+# List snapshots in your own S3 bucket (requires a running emulator)
+lstk snapshot list s3://my-bucket/prefix
 
 # Show metadata for a single cloud snapshot
 lstk snapshot show pod:my-baseline
@@ -309,22 +352,28 @@ lstk cdk synth
 
 Snapshots capture the running emulator's state so you can restore it later.
 
-A snapshot reference is either a **local file** or a **cloud snapshot**:
+A snapshot reference is a **local file**, a **cloud snapshot**, or an **S3 remote**:
 
 - **Local file** — an absolute or relative path. A `.snapshot` extension is added if omitted (snapshots saved as `.zip` by older lstk versions still load).
 - **Cloud snapshot** — a name with the `pod:` prefix (e.g. `pod:my-baseline`), stored on the LocalStack platform. Requires authentication (`LOCALSTACK_AUTH_TOKEN` or `lstk login`).
+- **S3 remote** — an `s3://bucket/prefix` location backed by your own S3 bucket. Supported by `save`, `load`, and `list`.
 
 ```bash
-# Save (local or cloud)
+# Save (local, cloud, or S3)
 lstk snapshot save ./my-snapshot.snapshot
 lstk snapshot save pod:my-baseline
+lstk snapshot save my-pod s3://my-bucket/prefix
 
 # Load (starts the emulator first if needed)
 lstk snapshot load pod:my-baseline
+lstk snapshot load my-pod s3://my-bucket/prefix
 
 # List cloud snapshots — only your own by default, --all for the whole organization
 lstk snapshot list
 lstk snapshot list --all
+
+# List snapshots in an S3 bucket
+lstk snapshot list s3://my-bucket/prefix
 
 # Show metadata for a single cloud snapshot
 lstk snapshot show pod:my-baseline
@@ -335,6 +384,44 @@ lstk snapshot remove pod:my-baseline --force  # skip the prompt (required in non
 ```
 
 `lstk snapshot load` supports merge strategies via `--merge` (`account-region-merge` (default), `overwrite`, `service-merge`) to control how snapshot state combines with running state.
+
+### S3 remotes
+
+`save`, `load`, and `list` can target your own S3 bucket with an `s3://bucket/prefix` location. The pod name (the snapshot's identity within the bucket) is a positional argument separate from the `s3://` location — required for `load`, auto-generated for `save` when omitted, and unused for `list`.
+
+Credentials come from `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` (and optional `AWS_SESSION_TOKEN`), or from a named profile via `--profile <name>`. **Never put credentials in the URL** — lstk rejects an `s3://` ref that embeds them. lstk itself never touches S3: the running emulator performs the transfer, so these commands require a running emulator, and `list s3://…` queries the emulator rather than the LocalStack platform.
+
+```bash
+export AWS_ACCESS_KEY_ID=...
+export AWS_SECRET_ACCESS_KEY=...
+
+lstk snapshot save my-pod s3://my-bucket/prefix
+lstk snapshot load my-pod s3://my-bucket/prefix
+lstk snapshot list s3://my-bucket/prefix
+
+# Or read credentials from a named AWS profile instead of env vars
+lstk snapshot save my-pod s3://my-bucket/prefix --profile my-aws-profile
+```
+
+The S3 bucket must already exist — lstk checks up front and errors out rather than creating it on a typo. `remove` and `show` are not yet supported for S3 remotes.
+
+### Auto-load on start
+
+The AWS emulator can automatically load a snapshot whenever it starts. Set the `snapshot` field on its `[[containers]]` block to any snapshot reference — a local file or a `pod:` cloud snapshot:
+
+```toml
+[[containers]]
+type     = "aws"
+port     = "4566"
+snapshot = "pod:my-baseline"
+```
+
+Override or disable it for a single run without editing the config:
+
+```bash
+lstk start --snapshot pod:other-baseline  # load a different snapshot this run
+lstk start --no-snapshot                  # skip auto-loading this run
+```
 
 ## Reporting bugs
 

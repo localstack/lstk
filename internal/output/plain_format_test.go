@@ -211,6 +211,27 @@ func TestFormatEventLine(t *testing.T) {
 			want:   SuccessMarker() + " Snapshot saved to pod:minimal-pod",
 			wantOK: true,
 		},
+		{
+			name: "remote snapshot saved full",
+			event: RemoteSnapshotSavedEvent{
+				PodName:  "my-baseline",
+				Location: "s3://my-bucket/prefix",
+				Version:  3,
+				Services: []string{"dynamodb", "s3", "sqs"},
+				Size:     2621440,
+			},
+			want:   SuccessMarker() + " Snapshot saved to s3://my-bucket/prefix as \"my-baseline\"\n• Version: 3\n• Services: dynamodb, s3, sqs\n• Size: 2.5 MB",
+			wantOK: true,
+		},
+		{
+			name: "remote snapshot saved omits zero fields",
+			event: RemoteSnapshotSavedEvent{
+				PodName:  "minimal-pod",
+				Location: "s3://my-bucket",
+			},
+			want:   SuccessMarker() + " Snapshot saved to s3://my-bucket as \"minimal-pod\"",
+			wantOK: true,
+		},
 
 		// snapshot load events
 		{
