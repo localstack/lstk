@@ -308,6 +308,59 @@ func TestSetupAWSCreatesAWSProfileWhenConfirmed(t *testing.T) {
 	assert.NotContains(t, out.String(), "Skipped adding LocalStack AWS profile.")
 }
 
+// TestSetupAWSExitsNonZeroWhenProfileWriteFails guards DEVX-941. Writing the
+// profile is the whole purpose of `lstk setup aws`, but the command used to emit a
+// warning and return nil when the write failed — exiting 0 and masking the failure
+// from users, CI, and agents. We make ~/.aws read-only so CheckProfileStatus still
+// sees the profile files as absent (the prompt appears) but the actual write fails,
+// then confirm the prompt and assert a non-zero exit.
+func TestSetupAWSExitsNonZeroWhenProfileWriteFails(t *testing.T) {
+	t.Parallel()
+	if runtime.GOOS == "windows" {
+		t.Skip("PTY not supported on Windows")
+	}
+	if os.Geteuid() == 0 {
+		t.Skip("root bypasses directory permissions, so the profile write would not fail")
+	}
+	baseEnv, tmpHome := awsConfigEnv(t)
+
+	// A read-only ~/.aws keeps the profile files absent (so the prompt still appears)
+	// while making their creation fail inside upsertSection's SaveTo.
+	awsDir := filepath.Join(tmpHome, ".aws")
+	require.NoError(t, os.MkdirAll(awsDir, 0500))
+	// Restore write permission before t.TempDir cleanup so the dir can be removed.
+	t.Cleanup(func() { _ = os.Chmod(awsDir, 0700) })
+
+	ctx := testContext(t)
+	cmd := exec.CommandContext(ctx, binaryPath(), "setup", "aws")
+	cmd.Env = baseEnv
+
+	ptmx, err := pty.Start(cmd)
+	require.NoError(t, err, "failed to start command in PTY")
+	defer func() { _ = ptmx.Close() }()
+
+	out := &syncBuffer{}
+	outputCh := make(chan struct{})
+	go func() {
+		_, _ = io.Copy(out, ptmx)
+		close(outputCh)
+	}()
+
+	require.Eventually(t, func() bool {
+		return bytes.Contains(out.Bytes(), []byte(awsSetupPrompt))
+	}, 2*time.Minute, 200*time.Millisecond, "AWS profile prompt should appear")
+
+	_, err = ptmx.Write([]byte("y"))
+	require.NoError(t, err)
+
+	err = cmd.Wait()
+	<-outputCh
+	requireExitCode(t, 1, err)
+
+	assert.Contains(t, out.String(), "Could not set up the LocalStack AWS profile")
+	assert.NotContains(t, out.String(), "Created LocalStack profile")
+}
+
 func TestConfigProfileDoesNotCreateAWSProfileWhenDeclined(t *testing.T) {
 	t.Parallel()
 	if runtime.GOOS == "windows" {
