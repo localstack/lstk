@@ -4,8 +4,10 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/localstack/lstk/internal/awsconfig"
 	"github.com/localstack/lstk/internal/azureconfig"
 	"github.com/localstack/lstk/internal/config"
+	"github.com/localstack/lstk/internal/endpoint"
 	"github.com/localstack/lstk/internal/env"
 	"github.com/localstack/lstk/internal/output"
 	"github.com/localstack/lstk/internal/ui"
@@ -25,7 +27,7 @@ func newSetupCmd(cfg *env.Env) *cobra.Command {
 }
 
 func newSetupAWSCmd(cfg *env.Env) *cobra.Command {
-	return &cobra.Command{
+	c := &cobra.Command{
 		Use:     "aws",
 		Short:   "Set up the LocalStack AWS profile",
 		Long:    "Set up the LocalStack AWS profile in ~/.aws/config and ~/.aws/credentials for use with AWS CLI and SDKs.",
@@ -36,13 +38,28 @@ func newSetupAWSCmd(cfg *env.Env) *cobra.Command {
 				return fmt.Errorf("failed to get config: %w", err)
 			}
 
-			if !isInteractiveMode(cfg) {
-				return fmt.Errorf("setup aws requires an interactive terminal")
+			force, err := cmd.Flags().GetBool("force")
+			if err != nil {
+				return err
 			}
 
-			return ui.RunConfigProfile(cmd.Context(), appConfig.Containers, cfg.LocalStackHost)
+			if isInteractiveMode(cfg) {
+				return ui.RunConfigProfile(cmd.Context(), appConfig.Containers, cfg.LocalStackHost, force)
+			}
+
+			resolvedHost, dnsOK, err := awsconfig.ResolveProfileHost(cmd.Context(), appConfig.Containers, cfg.LocalStackHost)
+			if err != nil {
+				return err
+			}
+			sink := output.NewPlainSink(os.Stdout)
+			if !dnsOK {
+				sink.Emit(output.MessageEvent{Severity: output.SeverityNote, Text: endpoint.DNSRebindNote})
+			}
+			return awsconfig.SetupNonInteractive(cmd.Context(), sink, resolvedHost, force)
 		},
 	}
+	c.Flags().Bool("force", false, "Skip the confirmation prompt and overwrite an existing localstack profile")
+	return c
 }
 
 func newSetupAzureCmd(cfg *env.Env) *cobra.Command {

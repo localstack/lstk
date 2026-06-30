@@ -2,7 +2,6 @@ package ui
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/localstack/lstk/internal/awsconfig"
 	"github.com/localstack/lstk/internal/config"
@@ -12,19 +11,12 @@ import (
 
 // RunConfigProfile runs the AWS profile setup flow with TUI output.
 // It resolves the host from the AWS container config and runs the setup.
-func RunConfigProfile(parentCtx context.Context, containers []config.ContainerConfig, localStackHost string) error {
-	var awsContainer *config.ContainerConfig
-	for i := range containers {
-		if containers[i].Type == config.EmulatorAWS {
-			awsContainer = &containers[i]
-			break
-		}
+// When force is true, the confirmation prompt is skipped.
+func RunConfigProfile(parentCtx context.Context, containers []config.ContainerConfig, localStackHost string, force bool) error {
+	resolvedHost, dnsOK, err := awsconfig.ResolveProfileHost(parentCtx, containers, localStackHost)
+	if err != nil {
+		return err
 	}
-	if awsContainer == nil {
-		return fmt.Errorf("no aws emulator configured")
-	}
-
-	resolvedHost, dnsOK := endpoint.ResolveHost(parentCtx, awsContainer.Port, localStackHost)
 
 	return runWithTUI(parentCtx, withoutHeader(), func(ctx context.Context, sink output.Sink) error {
 		if !dnsOK {
@@ -34,6 +26,6 @@ func RunConfigProfile(parentCtx context.Context, containers []config.ContainerCo
 		if err != nil {
 			return err
 		}
-		return awsconfig.Setup(ctx, sink, resolvedHost, status, true)
+		return awsconfig.Setup(ctx, sink, resolvedHost, status, force, true)
 	})
 }

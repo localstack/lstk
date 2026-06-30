@@ -13,6 +13,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"gopkg.in/ini.v1"
 
+	"github.com/localstack/lstk/internal/config"
 	"github.com/localstack/lstk/internal/endpoint"
 	"github.com/localstack/lstk/internal/output"
 )
@@ -66,6 +67,19 @@ func awsPaths() (configPath, credentialsPath string, err error) {
 		return "", "", err
 	}
 	return filepath.Join(home, ".aws", "config"), filepath.Join(home, ".aws", "credentials"), nil
+}
+
+// ResolveProfileHost finds the configured AWS emulator container and resolves its
+// host:port endpoint, reporting whether DNS resolution succeeded. It is shared by
+// the interactive and non-interactive setup paths so both resolve identically.
+func ResolveProfileHost(ctx context.Context, containers []config.ContainerConfig, localStackHost string) (resolvedHost string, dnsOK bool, err error) {
+	for i := range containers {
+		if containers[i].Type == config.EmulatorAWS {
+			host, ok := endpoint.ResolveHost(ctx, containers[i].Port, localStackHost)
+			return host, ok, nil
+		}
+	}
+	return "", false, fmt.Errorf("no aws emulator configured")
 }
 
 // profileStatus holds which AWS profile files need to be written or updated.
@@ -236,10 +250,35 @@ func EnsureProfile(ctx context.Context, sink output.Sink, interactive bool, reso
 		return nil
 	}
 	if interactive && !configOK && !credsOK {
-		return Setup(ctx, sink, resolvedHost, status, false)
+		return Setup(ctx, sink, resolvedHost, status, false, false)
 	}
 
 	emitMissingProfileNote(sink)
+	return nil
+}
+
+// applyProfile writes the config and/or credentials sections indicated by status
+// and emits a success message. It performs no prompting, so it is shared by both
+// the interactive (Setup) and non-interactive (SetupNonInteractive) paths.
+func applyProfile(sink output.Sink, resolvedHost, configPath, credsPath string, status profileStatus) error {
+	if status.configNeeded {
+		if err := writeConfigProfile(configPath, resolvedHost); err != nil {
+			return fmt.Errorf("could not update ~/.aws/config: %w", err)
+		}
+	}
+	if status.credsNeeded {
+		if err := writeCredsProfile(credsPath); err != nil {
+			return fmt.Errorf("could not update ~/.aws/credentials: %w", err)
+		}
+	}
+	switch {
+	case status.configNeeded && status.credsNeeded:
+		sink.Emit(output.MessageEvent{Severity: output.SeveritySuccess, Text: "Created LocalStack profile in ~/.aws"})
+	case status.configNeeded:
+		sink.Emit(output.MessageEvent{Severity: output.SeveritySuccess, Text: "Created LocalStack profile in ~/.aws/config"})
+	default:
+		sink.Emit(output.MessageEvent{Severity: output.SeveritySuccess, Text: "Updated LocalStack credentials in ~/.aws/credentials"})
+	}
 	return nil
 }
 
@@ -247,12 +286,14 @@ func EnsureProfile(ctx context.Context, sink output.Sink, interactive bool, reso
 // resolvedHost must be a host:port string (e.g. "localhost.localstack.cloud:4566").
 // status is passed in from EnsureProfile to avoid re-checking the profile status.
 //
+// When skipConfirm is true the confirmation prompt is bypassed and the profile is written directly.
+//
 // explicit is true for the user-invoked `lstk setup aws` / `lstk config profile`
 // commands, where writing the profile is the command's whole purpose, so a write
 // failure must surface a non-zero exit. It is false for the best-effort post-start
 // convenience flow (EnsureProfile during `lstk start`), where a write failure must
 // only warn and must not abort an already-running emulator.
-func Setup(ctx context.Context, sink output.Sink, resolvedHost string, status profileStatus, explicit bool) error {
+func Setup(ctx context.Context, sink output.Sink, resolvedHost string, status profileStatus, skipConfirm, explicit bool) error {
 	if !status.anyNeeded() {
 		sink.Emit(output.MessageEvent{Severity: output.SeverityNote, Text: "LocalStack AWS profile is already configured."})
 		return nil
@@ -260,46 +301,80 @@ func Setup(ctx context.Context, sink output.Sink, resolvedHost string, status pr
 
 	configPath, credsPath, err := awsPaths()
 	if err != nil {
-		return reportSetupErr(sink, "could not determine AWS config paths", err, explicit)
+		return reportSetupErr(sink, fmt.Errorf("could not determine AWS config paths: %w", err), explicit)
 	}
 
-	responseCh := make(chan output.InputResponse, 1)
-	sink.Emit(output.UserInputRequestEvent{
-		Prompt:     "Set up a LocalStack profile for AWS CLI and SDKs in ~/.aws?",
-		Options:    []output.InputOption{{Key: "y", Label: "Y"}, {Key: "n", Label: "n"}},
-		ResponseCh: responseCh,
-	})
+	if !skipConfirm {
+		responseCh := make(chan output.InputResponse, 1)
+		sink.Emit(output.UserInputRequestEvent{
+			Prompt:     "Set up a LocalStack profile for AWS CLI and SDKs in ~/.aws?",
+			Options:    []output.InputOption{{Key: "y", Label: "Y"}, {Key: "n", Label: "n"}},
+			ResponseCh: responseCh,
+		})
 
-	select {
-	case resp := <-responseCh:
-		if resp.Cancelled {
-			return nil
-		}
-		if resp.SelectedKey == "n" {
-			sink.Emit(output.MessageEvent{Severity: output.SeverityNote, Text: "Skipped adding LocalStack AWS profile."})
-			return nil
-		}
-		if status.configNeeded {
-			if err := writeConfigProfile(configPath, resolvedHost); err != nil {
-				return reportSetupErr(sink, "could not update ~/.aws/config", err, explicit)
+		select {
+		case resp := <-responseCh:
+			if resp.Cancelled {
+				return nil
 			}
-		}
-		if status.credsNeeded {
-			if err := writeCredsProfile(credsPath); err != nil {
-				return reportSetupErr(sink, "could not update ~/.aws/credentials", err, explicit)
+			if resp.SelectedKey == "n" {
+				sink.Emit(output.MessageEvent{Severity: output.SeverityNote, Text: "Skipped adding LocalStack AWS profile."})
+				return nil
 			}
+		case <-ctx.Done():
+			return ctx.Err()
 		}
-		if status.configNeeded && status.credsNeeded {
-			sink.Emit(output.MessageEvent{Severity: output.SeveritySuccess, Text: "Created LocalStack profile in ~/.aws"})
-		} else if status.configNeeded {
-			sink.Emit(output.MessageEvent{Severity: output.SeveritySuccess, Text: "Created LocalStack profile in ~/.aws/config"})
-		} else {
-			sink.Emit(output.MessageEvent{Severity: output.SeveritySuccess, Text: "Updated LocalStack credentials in ~/.aws/credentials"})
-		}
-	case <-ctx.Done():
-		return ctx.Err()
 	}
 
+	if err := applyProfile(sink, resolvedHost, configPath, credsPath, status); err != nil {
+		return reportSetupErr(sink, err, explicit)
+	}
+	return nil
+}
+
+// SetupNonInteractive writes the LocalStack AWS profile without prompting, for CI,
+// piped, or --non-interactive use. A fresh profile (or completing a partial one) is
+// written automatically; overwriting an existing profile whose values differ requires
+// force. Unlike the interactive Setup, write and check failures are returned as errors
+// so the caller exits non-zero.
+func SetupNonInteractive(ctx context.Context, sink output.Sink, resolvedHost string, force bool) error {
+	_, span := otel.Tracer("github.com/localstack/lstk/internal/awsconfig").Start(ctx, "awsconfig.SetupNonInteractive")
+	defer span.End()
+
+	status, configOK, credsOK, err := checkProfileSetup(resolvedHost)
+	if err != nil {
+		sink.Emit(output.ErrorEvent{Title: "Could not check the LocalStack AWS profile", Summary: err.Error()})
+		return output.NewSilentError(err)
+	}
+	if !status.anyNeeded() {
+		sink.Emit(output.MessageEvent{Severity: output.SeverityNote, Text: "LocalStack AWS profile is already configured."})
+		return nil
+	}
+
+	configPath, credsPath, err := awsPaths()
+	if err != nil {
+		sink.Emit(output.ErrorEvent{Title: "Could not determine AWS config paths", Summary: err.Error()})
+		return output.NewSilentError(err)
+	}
+
+	// A write is only an "overwrite" when a section already exists with differing
+	// values. A missing section (fresh write) or completing a partial profile
+	// proceeds without force.
+	overwriting := (configOK && status.configNeeded) || (credsOK && status.credsNeeded)
+	if overwriting && !force {
+		err := errors.New("a 'localstack' AWS profile already exists with different values")
+		sink.Emit(output.ErrorEvent{
+			Title:   "Refusing to overwrite the existing LocalStack AWS profile",
+			Summary: err.Error(),
+			Actions: []output.ErrorAction{{Label: "Overwrite it:", Value: "lstk setup aws --force"}},
+		})
+		return output.NewSilentError(err)
+	}
+
+	if err := applyProfile(sink, resolvedHost, configPath, credsPath, status); err != nil {
+		sink.Emit(output.ErrorEvent{Title: "Could not write the LocalStack AWS profile", Summary: err.Error()})
+		return output.NewSilentError(err)
+	}
 	return nil
 }
 
@@ -307,15 +382,15 @@ func Setup(ctx context.Context, sink output.Sink, resolvedHost string, status pr
 // For the explicitly-invoked command it emits a structured error and returns a
 // SilentError so the process exits non-zero; for the best-effort post-start flow it
 // warns and returns nil so an already-running emulator's start is not aborted.
-func reportSetupErr(sink output.Sink, msg string, err error, explicit bool) error {
+func reportSetupErr(sink output.Sink, err error, explicit bool) error {
 	if explicit {
 		sink.Emit(output.ErrorEvent{
 			Title:   "Could not set up the LocalStack AWS profile",
-			Summary: fmt.Sprintf("%s: %v", msg, err),
+			Summary: err.Error(),
 			Actions: []output.ErrorAction{{Label: "Check the permissions of ~/.aws, then re-run:", Value: "lstk setup aws"}},
 		})
 		return output.NewSilentError(err)
 	}
-	sink.Emit(output.MessageEvent{Severity: output.SeverityWarning, Text: fmt.Sprintf("%s: %v", msg, err)})
+	sink.Emit(output.MessageEvent{Severity: output.SeverityWarning, Text: err.Error()})
 	return nil
 }
