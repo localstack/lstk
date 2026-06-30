@@ -8,7 +8,15 @@ Define the versioned contract by which lstk passes runtime context — resolved 
 
 ### Requirement: Versioned JSON context contract
 
-lstk SHALL pass runtime context to an extension through exactly two environment variables: `LSTK_EXT_API_VERSION`, set to the integer version of the contract it implements, and `LSTK_EXT_CONTEXT`, a single JSON object carrying the resolved context (config directory, auth token, resolved global-flag state, and running emulators). The version is kept as a flat scalar — outside the JSON payload — so an extension can check contract compatibility before parsing the object. The contract SHALL be additive within a major version (new JSON fields may be added); removing or repurposing a field SHALL require incrementing `LSTK_EXT_API_VERSION`. lstk SHALL NOT require the extension to parse lstk's own config files.
+lstk SHALL pass runtime context to an extension through exactly two environment variables: `LSTK_EXT_API_VERSION`, set to the integer version of the contract it implements, and `LSTK_EXT_CONTEXT`, a single JSON object carrying the resolved context (config directory, auth token, resolved global-flag state, and running emulators). The version is kept as a flat scalar — outside the JSON payload — so an extension can read it before parsing the object.
+
+The two concerns of detecting *additive* fields and guarding against *breaking* changes are handled separately:
+
+- `LSTK_EXT_API_VERSION` SHALL be incremented **only** when a field is removed or repurposed (a breaking change). Adding a field SHALL NOT increment it. An extension uses the version to refuse a contract generation it does not understand (a version higher than it was built for).
+- Additive fields SHALL be detected by an extension through their **presence in the JSON object**, not through the version number — since the version does not change when a field is added, it cannot signal a new field's availability.
+- Any field added after version 1 SHALL be distinguishable when absent (omitted, null, or otherwise not a zero value indistinguishable from "not provided"), so an extension running against an older lstk that omits the field can tell it apart from a newer lstk that provides it.
+
+lstk SHALL NOT require the extension to parse lstk's own config files.
 
 #### Scenario: API version is advertised
 
@@ -19,6 +27,21 @@ lstk SHALL pass runtime context to an extension through exactly two environment 
 
 - **WHEN** lstk invokes any extension
 - **THEN** the extension's environment includes `LSTK_EXT_CONTEXT` containing a JSON object the extension can decode to obtain the config directory, auth token (when present), non-interactive state, and the list of running emulators, without reading lstk's TOML config
+
+#### Scenario: A newly added field is detected by presence, not version
+
+- **WHEN** a later lstk adds a new optional field to `LSTK_EXT_CONTEXT` without incrementing `LSTK_EXT_API_VERSION`
+- **THEN** an extension determines the field's availability by checking for its presence in the decoded object
+- **AND** an older lstk that omits the field is distinguishable from a newer lstk that provides it
+
+### Requirement: lstk owns the LSTK_EXT_ namespace conveyed to the extension
+
+lstk SHALL strip any inherited `LSTK_EXT_*` variables from the environment it passes to an extension before adding its own, so every `LSTK_EXT_*` variable an extension observes originates from the current lstk invocation rather than the user's shell or a parent process. This holds even though `LSTK_EXT_API_VERSION` and `LSTK_EXT_CONTEXT` are always set (and would override an inherited value anyway): the guarantee extends to `LSTK_EXT_*` names lstk does not set.
+
+#### Scenario: Stray inherited contract variables do not reach the extension
+
+- **WHEN** the environment already contains an `LSTK_EXT_*` variable (e.g. a user-exported `LSTK_EXT_CONTEXT` or a leftover from a nested invocation)
+- **THEN** the extension does not observe that inherited value; it sees only the `LSTK_EXT_*` variables lstk resolved for this invocation
 
 ### Requirement: Running emulators are provided as a JSON array
 
