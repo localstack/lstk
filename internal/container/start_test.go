@@ -899,6 +899,6 @@ func TestPullImages_ParentCancelPropagatesNotFallBack(t *testing.T) {
 
 	require.Error(t, err, "a cancelled pull must not be swallowed as a successful fall-back")
 	assert.True(t, errors.Is(err, context.Canceled), "parent cancellation must propagate")
-	assert.NotContains(t, strings.Join(sink.messageTexts(), "\n"), "using local image",
+	assert.NotContains(t, strings.Join(sink.messageTexts(), "\n"), "using the local image",
 		"cancellation must not emit the offline fall-back message")
 }
