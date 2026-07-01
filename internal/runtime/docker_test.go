@@ -1,11 +1,13 @@
 package runtime
 
 import (
+	"context"
 	"errors"
 	"net"
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/moby/moby/client"
 	"github.com/stretchr/testify/assert"
@@ -27,6 +29,36 @@ func listenUnixSocket(t *testing.T, path string) {
 	l, err := net.Listen("unix", path)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = l.Close() })
+}
+
+// PRO-324 regression: PullImage must close the progress channel even when the
+// underlying ImagePull call fails before it returns a reader (e.g. the daemon is
+// unreachable). The caller (container.pullImage) waits for the progress stream to
+// drain, so a PullImage that returns without closing progress hangs the start flow.
+func TestPullImage_ClosesProgressOnImmediateError(t *testing.T) {
+	t.Parallel()
+
+	cli, err := client.New(client.WithHost("unix:///tmp/lstk-nonexistent-pull.sock"))
+	require.NoError(t, err)
+	rt := &DockerRuntime{client: cli}
+
+	progress := make(chan PullProgress)
+	drained := make(chan struct{})
+	go func() {
+		defer close(drained)
+		for range progress {
+		}
+	}()
+
+	pullErr := rt.PullImage(context.Background(), "localstack/localstack:latest", progress)
+	require.Error(t, pullErr, "a pull against an unreachable daemon must fail")
+
+	select {
+	case <-drained:
+		// progress was closed, so the drain goroutine could exit.
+	case <-time.After(2 * time.Second):
+		t.Fatal("PullImage returned without closing the progress channel")
+	}
 }
 
 func TestProbeSocket_ReturnsFirstLive(t *testing.T) {

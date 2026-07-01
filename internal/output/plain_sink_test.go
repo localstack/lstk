@@ -107,6 +107,15 @@ func TestPlainSink_SuppressesProgressEvent(t *testing.T) {
 	assert.Equal(t, "", out.String())
 }
 
+func TestPlainSink_SuppressesPullSkippableEvent(t *testing.T) {
+	var out bytes.Buffer
+	sink := NewPlainSink(&out)
+
+	sink.Emit(PullSkippableEvent{Image: "localstack/localstack-pro:latest", SkipCh: make(chan struct{}, 1)})
+
+	assert.Equal(t, "", out.String(), "the skippable-pull affordance has no plain-text rendering")
+}
+
 func TestPlainSink_EmitsLogLineEvent(t *testing.T) {
 	var out bytes.Buffer
 	sink := NewPlainSink(&out)

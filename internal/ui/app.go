@@ -18,6 +18,10 @@ import (
 
 const maxLines = 200
 
+// pullSkipHint replaces the "Pulling <image>" spinner text once a skippable pull
+// starts downloading, telling the user they can bail out to the local image.
+const pullSkipHint = "Pulling new version… (press ESC to keep current version)"
+
 type runDoneMsg struct{}
 
 type runErrMsg struct {
@@ -55,6 +59,7 @@ type App struct {
 	width            int
 	cancel           func()
 	pendingInput     *output.UserInputRequestEvent
+	pullSkip         *output.PullSkippableEvent
 	err              error
 	quitting         bool
 	hideHeader       bool
@@ -133,6 +138,12 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return a, tea.Quit
 		}
+		if msg.String() == "esc" && a.pullSkip != nil {
+			skipCmd := sendPullSkipCmd(a.pullSkip.SkipCh)
+			a.pullSkip = nil
+			a.spinner = a.spinner.SetText("")
+			return a, skipCmd
+		}
 		if a.pendingInput != nil {
 			if a.pendingInput.Vertical {
 				return a.handleVerticalPromptKey(msg)
@@ -179,6 +190,11 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		} else {
 			a.inputPrompt = a.inputPrompt.Show(msg.Prompt, msg.Options, msg.Vertical)
 		}
+	case output.PullSkippableEvent:
+		msgCopy := msg
+		a.pullSkip = &msgCopy
+		a.spinner = a.spinner.SetText(pullSkipHint)
+		return a, nil
 	case spinner.TickMsg:
 		var cmd tea.Cmd
 		a.spinner, cmd = a.spinner.Update(msg)
@@ -188,6 +204,7 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			a.spinner = a.spinner.Start(msg.Text, msg.MinDuration)
 			return a, a.spinner.Tick()
 		}
+		a.pullSkip = nil
 		if a.pullProgress.Visible() {
 			a.pullProgress = a.pullProgress.Hide()
 		}
@@ -334,6 +351,19 @@ func sendInputResponseCmd(responseCh chan<- output.InputResponse, response outpu
 		go func() {
 			responseCh <- response
 		}()
+		return nil
+	}
+}
+
+// sendPullSkipCmd signals the domain (over the buffered SkipCh it owns) that the
+// user pressed ESC to abandon the pull. The send runs in a goroutine so Update
+// never blocks even if the pull has already finished and stopped reading.
+func sendPullSkipCmd(skipCh chan<- struct{}) tea.Cmd {
+	if skipCh == nil {
+		return nil
+	}
+	return func() tea.Msg {
+		go func() { skipCh <- struct{}{} }()
 		return nil
 	}
 }

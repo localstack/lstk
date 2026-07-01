@@ -10,6 +10,8 @@ import (
 	"net/http/httptest"
 	"path/filepath"
 	"strconv"
+	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 
@@ -392,101 +394,6 @@ func TestAgentEnv(t *testing.T) {
 		"an agent running inside CI still forwards its AI_AGENT identity")
 }
 
-func TestPullImages_FallsBackToLocalImageWhenPullFails(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	mockRT := runtime.NewMockRuntime(ctrl)
-
-	c := runtime.ContainerConfig{
-		Image:        "my-registry.internal/localstack-pro:latest",
-		Name:         "localstack-aws",
-		EmulatorType: config.EmulatorAWS,
-	}
-
-	mockRT.EXPECT().Remove(gomock.Any(), c.Name).Return(nil)
-	mockRT.EXPECT().PullImage(gomock.Any(), c.Image, gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ string, progress chan<- runtime.PullProgress) error {
-			close(progress)
-			return errors.New("tls: failed to verify certificate")
-		})
-	mockRT.EXPECT().ImageExists(gomock.Any(), c.Image).Return(true, nil)
-
-	var out bytes.Buffer
-	sink := output.NewPlainSink(&out)
-	tel := telemetry.New("", true)
-
-	pulled, err := pullImages(context.Background(), mockRT, sink, tel, []runtime.ContainerConfig{c})
-
-	require.NoError(t, err, "a pull failure must not be fatal when the image is available locally")
-	assert.False(t, pulled[c.Name], "the image was not pulled, only found locally")
-	assert.Contains(t, out.String(), "using the local image")
-}
-
-func TestPullImages_FailsWhenPullFailsAndImageMissing(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	mockRT := runtime.NewMockRuntime(ctrl)
-
-	c := runtime.ContainerConfig{
-		Image:        "localstack/localstack-pro:latest",
-		Name:         "localstack-aws",
-		EmulatorType: config.EmulatorAWS,
-	}
-
-	mockRT.EXPECT().Remove(gomock.Any(), c.Name).Return(nil)
-	mockRT.EXPECT().PullImage(gomock.Any(), c.Image, gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ string, progress chan<- runtime.PullProgress) error {
-			close(progress)
-			return errors.New("tls: failed to verify certificate")
-		})
-	mockRT.EXPECT().ImageExists(gomock.Any(), c.Image).Return(false, nil)
-
-	var out bytes.Buffer
-	sink := output.NewPlainSink(&out)
-	tel := telemetry.New("", true)
-
-	_, err := pullImages(context.Background(), mockRT, sink, tel, []runtime.ContainerConfig{c})
-
-	require.Error(t, err)
-	assert.True(t, output.IsSilent(err), "error should be silent since an ErrorEvent was emitted")
-	assert.Contains(t, out.String(), "Failed to pull localstack/localstack-pro:latest")
-}
-
-func TestPullImages_PropagatesContextCancellation(t *testing.T) {
-	// A cancelled caller context (Ctrl+C) during a pull must surface as
-	// cancellation — not be reported as a pull failure nor probed as a local-image
-	// fallback (which would also emit a spurious start-error telemetry event).
-	ctrl := gomock.NewController(t)
-	mockRT := runtime.NewMockRuntime(ctrl)
-
-	c := runtime.ContainerConfig{
-		Image:        "localstack/localstack-pro:latest",
-		Name:         "localstack-aws",
-		EmulatorType: config.EmulatorAWS,
-	}
-
-	ctx, cancel := context.WithCancel(context.Background())
-
-	mockRT.EXPECT().Remove(gomock.Any(), c.Name).Return(nil)
-	mockRT.EXPECT().PullImage(gomock.Any(), c.Image, gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ string, progress chan<- runtime.PullProgress) error {
-			cancel() // the user interrupts mid-pull
-			close(progress)
-			return context.Canceled
-		})
-	// ImageExists must NOT be called once the context is cancelled; gomock fails
-	// the test if it is (no EXPECT registered).
-
-	var out bytes.Buffer
-	sink := output.NewPlainSink(&out)
-	tel := telemetry.New("", true)
-
-	_, err := pullImages(ctx, mockRT, sink, tel, []runtime.ContainerConfig{c})
-
-	require.ErrorIs(t, err, context.Canceled)
-	assert.False(t, output.IsSilent(err), "a user cancel is not a silent start error")
-	assert.NotContains(t, out.String(), "Failed to pull", "a cancel must not be reported as a pull failure")
-	assert.NotContains(t, out.String(), "using the local image")
-}
-
 func TestValidateLicense_ContinuesWhenServerUnreachable(t *testing.T) {
 	// A closed port yields a transport-level failure (not an *api.LicenseError),
 	// which models an offline/proxy environment that cannot reach the license server.
@@ -742,7 +649,7 @@ func TestPullImages_ReusesLocalImageWhenPresent(t *testing.T) {
 	var out bytes.Buffer
 	sink := output.NewPlainSink(&out)
 
-	pulled, err := pullImages(context.Background(), mockRT, sink, mockTel, []runtime.ContainerConfig{c})
+	pulled, err := pullImages(context.Background(), mockRT, sink, mockTel, []runtime.ContainerConfig{c}, false)
 
 	require.NoError(t, err)
 	assert.False(t, pulled[c.Name], "telemetry must not count a reused image as pulled")
@@ -772,9 +679,232 @@ func TestPullImages_PullsWhenImageMissing(t *testing.T) {
 	var out bytes.Buffer
 	sink := output.NewPlainSink(&out)
 
-	pulled, err := pullImages(context.Background(), mockRT, sink, mockTel, []runtime.ContainerConfig{c})
+	pulled, err := pullImages(context.Background(), mockRT, sink, mockTel, []runtime.ContainerConfig{c}, false)
 
 	require.NoError(t, err)
 	assert.True(t, pulled[c.Name], "a freshly pulled image must be counted as pulled")
 	assert.Contains(t, out.String(), "Pulled localstack/localstack-pro:3.5.0")
+}
+
+// recordingSink captures emitted events and optionally reacts to a
+// PullSkippableEvent (mimicking the TUI binding ESC) by invoking onSkippable.
+type recordingSink struct {
+	mu          sync.Mutex
+	events      []output.Event
+	onSkippable func(output.PullSkippableEvent)
+}
+
+func (s *recordingSink) Emit(e output.Event) {
+	s.mu.Lock()
+	s.events = append(s.events, e)
+	cb := s.onSkippable
+	s.mu.Unlock()
+	if ev, ok := e.(output.PullSkippableEvent); ok && cb != nil {
+		cb(ev)
+	}
+}
+
+func (s *recordingSink) messageTexts() []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var texts []string
+	for _, e := range s.events {
+		if m, ok := e.(output.MessageEvent); ok {
+			texts = append(texts, m.Text)
+		}
+	}
+	return texts
+}
+
+func (s *recordingSink) sawSkippable() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, e := range s.events {
+		if _, ok := e.(output.PullSkippableEvent); ok {
+			return true
+		}
+	}
+	return false
+}
+
+func (s *recordingSink) sawError() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, e := range s.events {
+		if _, ok := e.(output.ErrorEvent); ok {
+			return true
+		}
+	}
+	return false
+}
+
+// PRO-324: ESC during a floating-tag pull cancels the pull and falls back to the
+// already-present local image without erroring out.
+func TestPullImages_EscSkipsPullAndUsesLocal(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockRT := runtime.NewMockRuntime(ctrl)
+	mockTel := telemetry.New("", true)
+
+	c := runtime.ContainerConfig{
+		Image:        "localstack/localstack-pro:latest",
+		Name:         "localstack-aws",
+		EmulatorType: config.EmulatorAWS,
+		Tag:          "latest",
+	}
+
+	mockRT.EXPECT().Remove(gomock.Any(), c.Name).Return(nil)
+	mockRT.EXPECT().ImageExists(gomock.Any(), c.Image).Return(true, nil)
+	mockRT.EXPECT().PullImage(gomock.Any(), c.Image, gomock.Any()).
+		DoAndReturn(func(ctx context.Context, _ string, progress chan<- runtime.PullProgress) error {
+			// Report real layer download so the pull becomes skippable, then block
+			// until the domain cancels in response to the ESC signal.
+			progress <- runtime.PullProgress{LayerID: "layer1", Status: "Downloading", Current: 10, Total: 100}
+			<-ctx.Done()
+			close(progress)
+			return ctx.Err()
+		})
+
+	sink := &recordingSink{}
+	sink.onSkippable = func(ev output.PullSkippableEvent) { ev.SkipCh <- struct{}{} }
+
+	pulled, err := pullImages(context.Background(), mockRT, sink, mockTel, []runtime.ContainerConfig{c}, true)
+
+	require.NoError(t, err)
+	assert.False(t, pulled[c.Name], "a skipped pull must not be counted as pulled")
+	assert.True(t, sink.sawSkippable(), "a skippable pull event should be emitted once download begins")
+	assert.False(t, sink.sawError(), "skipping the pull must not surface an error")
+	assert.Contains(t, strings.Join(sink.messageTexts(), "\n"), "Keeping current local image localstack/localstack-pro:latest")
+}
+
+// PRO-324: a pull that fails with a local copy present falls back automatically
+// (e.g. offline at a booth) instead of aborting the start.
+func TestPullImages_PullErrorFallsBackToLocal(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockRT := runtime.NewMockRuntime(ctrl)
+	mockTel := telemetry.New("", true)
+
+	c := runtime.ContainerConfig{
+		Image:        "localstack/localstack-pro:latest",
+		Name:         "localstack-aws",
+		EmulatorType: config.EmulatorAWS,
+		Tag:          "latest",
+	}
+
+	mockRT.EXPECT().Remove(gomock.Any(), c.Name).Return(nil)
+	mockRT.EXPECT().ImageExists(gomock.Any(), c.Image).Return(true, nil)
+	mockRT.EXPECT().PullImage(gomock.Any(), c.Image, gomock.Any()).
+		DoAndReturn(func(_ context.Context, _ string, progress chan<- runtime.PullProgress) error {
+			close(progress)
+			return errors.New("no route to host")
+		})
+
+	sink := &recordingSink{}
+
+	pulled, err := pullImages(context.Background(), mockRT, sink, mockTel, []runtime.ContainerConfig{c}, false)
+
+	require.NoError(t, err, "a failed pull with a local image present must not be fatal")
+	assert.False(t, pulled[c.Name], "a fall-back image must not be counted as pulled")
+	assert.False(t, sink.sawError(), "the fall-back must not surface an ErrorEvent")
+	assert.Contains(t, strings.Join(sink.messageTexts(), "\n"), "Could not pull localstack/localstack-pro:latest")
+}
+
+// PRO-324: a failed pull with no local copy stays fatal (preserves prior behavior).
+func TestPullImages_PullErrorWithoutLocalIsFatal(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockRT := runtime.NewMockRuntime(ctrl)
+	mockTel := telemetry.New("", true)
+
+	c := runtime.ContainerConfig{
+		Image:        "localstack/localstack-pro:latest",
+		Name:         "localstack-aws",
+		EmulatorType: config.EmulatorAWS,
+		Tag:          "latest",
+	}
+
+	mockRT.EXPECT().Remove(gomock.Any(), c.Name).Return(nil)
+	mockRT.EXPECT().ImageExists(gomock.Any(), c.Image).Return(false, nil)
+	mockRT.EXPECT().PullImage(gomock.Any(), c.Image, gomock.Any()).
+		DoAndReturn(func(_ context.Context, _ string, progress chan<- runtime.PullProgress) error {
+			close(progress)
+			return errors.New("manifest unknown")
+		})
+
+	sink := &recordingSink{}
+
+	_, err := pullImages(context.Background(), mockRT, sink, mockTel, []runtime.ContainerConfig{c}, true)
+
+	require.Error(t, err)
+	assert.True(t, output.IsSilent(err), "error should be silent since an ErrorEvent was emitted")
+	assert.True(t, sink.sawError(), "a fatal pull failure must surface an ErrorEvent")
+}
+
+// PRO-324: in non-interactive mode no skippable-pull affordance is offered, even
+// when a local copy exists; the pull just proceeds.
+func TestPullImages_NonInteractiveNeverSkippable(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockRT := runtime.NewMockRuntime(ctrl)
+	mockTel := telemetry.New("", true)
+
+	c := runtime.ContainerConfig{
+		Image:        "localstack/localstack-pro:latest",
+		Name:         "localstack-aws",
+		EmulatorType: config.EmulatorAWS,
+		Tag:          "latest",
+	}
+
+	mockRT.EXPECT().Remove(gomock.Any(), c.Name).Return(nil)
+	mockRT.EXPECT().ImageExists(gomock.Any(), c.Image).Return(true, nil)
+	mockRT.EXPECT().PullImage(gomock.Any(), c.Image, gomock.Any()).
+		DoAndReturn(func(_ context.Context, _ string, progress chan<- runtime.PullProgress) error {
+			progress <- runtime.PullProgress{LayerID: "layer1", Status: "Downloading", Current: 10, Total: 100}
+			close(progress)
+			return nil
+		})
+
+	sink := &recordingSink{}
+
+	pulled, err := pullImages(context.Background(), mockRT, sink, mockTel, []runtime.ContainerConfig{c}, false)
+
+	require.NoError(t, err)
+	assert.True(t, pulled[c.Name], "a completed pull must be counted as pulled")
+	assert.False(t, sink.sawSkippable(), "non-interactive mode must never offer to skip the pull")
+}
+
+// PRO-324: cancelling the parent context (e.g. Ctrl+C) during a pull is a
+// deliberate abort, not a pull failure — it must propagate as context.Canceled
+// rather than being swallowed by the local-image fall-back.
+func TestPullImages_ParentCancelPropagatesNotFallBack(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockRT := runtime.NewMockRuntime(ctrl)
+	mockTel := telemetry.New("", true)
+
+	c := runtime.ContainerConfig{
+		Image:        "localstack/localstack-pro:latest",
+		Name:         "localstack-aws",
+		EmulatorType: config.EmulatorAWS,
+		Tag:          "latest",
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	mockRT.EXPECT().Remove(gomock.Any(), c.Name).Return(nil)
+	mockRT.EXPECT().ImageExists(gomock.Any(), c.Image).Return(true, nil)
+	mockRT.EXPECT().PullImage(gomock.Any(), c.Image, gomock.Any()).
+		DoAndReturn(func(pullCtx context.Context, _ string, progress chan<- runtime.PullProgress) error {
+			// Simulate Ctrl+C: the parent ctx is cancelled mid-pull, which cancels
+			// the derived pullCtx; the runtime then returns its context error.
+			cancel()
+			<-pullCtx.Done()
+			close(progress)
+			return pullCtx.Err()
+		})
+
+	sink := &recordingSink{}
+
+	_, err := pullImages(ctx, mockRT, sink, mockTel, []runtime.ContainerConfig{c}, false)
+
+	require.Error(t, err, "a cancelled pull must not be swallowed as a successful fall-back")
+	assert.True(t, errors.Is(err, context.Canceled), "parent cancellation must propagate")
+	assert.NotContains(t, strings.Join(sink.messageTexts(), "\n"), "using the local image",
+		"cancellation must not emit the offline fall-back message")
 }

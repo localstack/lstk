@@ -158,6 +158,7 @@ func (SnapshotShownEvent) sealedEvent()       {}
 func (ContainerStatusEvent) sealedEvent()     {}
 func (ProgressEvent) sealedEvent()            {}
 func (UserInputRequestEvent) sealedEvent()    {}
+func (PullSkippableEvent) sealedEvent()       {}
 func (LogLineEvent) sealedEvent()             {}
 
 type Sink interface {
@@ -202,6 +203,17 @@ type UserInputRequestEvent struct {
 	Options    []InputOption
 	ResponseCh chan<- InputResponse
 	Vertical   bool
+}
+
+// PullSkippableEvent signals that an in-flight image pull can be abandoned in
+// favor of an already-present local image. The domain emits it once real layer
+// download begins (interactive mode, with a local copy present); the TUI binds
+// ESC during the pull to send on SkipCh, which the domain selects on to cancel
+// the pull and fall back to the local image. Never emitted in non-interactive
+// mode, so PlainSink never needs to answer it.
+type PullSkippableEvent struct {
+	Image  string
+	SkipCh chan<- struct{}
 }
 
 const (

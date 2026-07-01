@@ -101,6 +101,67 @@ func TestAppQuitCancelsContext(t *testing.T) {
 	}
 }
 
+// PRO-324: ESC during a skippable pull signals the domain's skip channel and
+// shows the bail-out hint, without quitting the program.
+func TestAppEscSkipsPullWithoutQuitting(t *testing.T) {
+	t.Parallel()
+
+	cancelled := false
+	skipCh := make(chan struct{}, 1)
+	app := NewApp("dev", "", "", func() { cancelled = true })
+
+	model, _ := app.Update(output.SpinnerEvent{Active: true, Text: "Pulling img"})
+	app = model.(App)
+	model, _ = app.Update(output.PullSkippableEvent{Image: "img", SkipCh: skipCh})
+	app = model.(App)
+	if app.pullSkip == nil {
+		t.Fatal("expected the pull to be marked skippable")
+	}
+	if !strings.Contains(app.View(), "press ESC to keep current version") {
+		t.Fatal("expected the ESC hint to be shown once the pull is skippable")
+	}
+
+	model, cmd := app.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	app = model.(App)
+	if app.pullSkip != nil {
+		t.Fatal("expected pullSkip to be cleared after ESC")
+	}
+	if cancelled {
+		t.Fatal("ESC must not cancel the program context")
+	}
+	if cmd == nil {
+		t.Fatal("expected a command to signal the skip channel")
+	}
+	if msg := cmd(); msg != nil {
+		if _, isQuit := msg.(tea.QuitMsg); isQuit {
+			t.Fatal("ESC must not quit the program")
+		}
+	}
+
+	select {
+	case <-skipCh:
+	case <-time.After(time.Second):
+		t.Fatal("expected a signal on the skip channel after ESC")
+	}
+}
+
+// PRO-324: ESC is inert unless a skippable pull is in flight.
+func TestAppEscWithoutSkippablePullIsInert(t *testing.T) {
+	t.Parallel()
+
+	cancelled := false
+	app := NewApp("dev", "", "", func() { cancelled = true })
+	_, cmd := app.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	if cancelled {
+		t.Fatal("ESC with no skippable pull must not cancel the context")
+	}
+	if cmd != nil {
+		if _, isQuit := cmd().(tea.QuitMsg); isQuit {
+			t.Fatal("ESC with no skippable pull must not quit")
+		}
+	}
+}
+
 func TestAppEnterRespondsToInputRequest(t *testing.T) {
 	t.Parallel()
 
