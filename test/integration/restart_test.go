@@ -72,6 +72,33 @@ func TestRestartCommandPersistFlagSetsPersistenceEnv(t *testing.T) {
 	assert.Equal(t, "1", envVars["LOCALSTACK_PERSISTENCE"])
 }
 
+func TestRestartCommandPreservesPersistenceWithoutFlag(t *testing.T) {
+	requireDocker(t)
+	_ = env.Require(t, env.AuthToken)
+
+	cleanup()
+	t.Cleanup(cleanup)
+
+	mockServer := createMockLicenseServer(true)
+	defer mockServer.Close()
+
+	ctx := testContext(t)
+	_, stderr, err := runLstk(t, ctx, "", env.With(env.APIEndpoint, mockServer.URL), "start", "--persist")
+	require.NoError(t, err, "lstk start --persist failed: %s", stderr)
+
+	// Restart without --persist should carry the setting forward from the running instance.
+	_, stderr, err = runLstk(t, ctx, "", env.With(env.APIEndpoint, mockServer.URL), "restart")
+	require.NoError(t, err, "lstk restart failed: %s", stderr)
+	requireExitCode(t, 0, err)
+
+	inspect, err := dockerClient.ContainerInspect(ctx, containerName, client.ContainerInspectOptions{})
+	require.NoError(t, err, "failed to inspect container after restart")
+	require.True(t, inspect.Container.State.Running)
+
+	envVars := containerEnvToMap(inspect.Container.Config.Env)
+	assert.Equal(t, "1", envVars["LOCALSTACK_PERSISTENCE"])
+}
+
 func TestRestartCommandFailsWhenNotRunning(t *testing.T) {
 	requireDocker(t)
 	cleanup()
