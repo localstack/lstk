@@ -34,6 +34,6 @@ func RunConfigProfile(parentCtx context.Context, containers []config.ContainerCo
 		if err != nil {
 			return err
 		}
-		return awsconfig.Setup(ctx, sink, resolvedHost, status)
+		return awsconfig.Setup(ctx, sink, resolvedHost, status, true)
 	})
 }
