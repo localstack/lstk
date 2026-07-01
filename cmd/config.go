@@ -36,7 +36,7 @@ func newConfigProfileCmd(cfg *env.Env) *cobra.Command {
 			}
 
 			// Delegate to the same handler as "lstk setup aws"
-			return ui.RunConfigProfile(cmd.Context(), appConfig.Containers, cfg.LocalStackHost)
+			return ui.RunConfigProfile(cmd.Context(), appConfig.Containers, cfg.LocalStackHost, false)
 		},
 	}
 }

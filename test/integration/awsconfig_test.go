@@ -17,8 +17,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// awsConfigEnv returns a base environment with HOME set to an isolated temp
-// directory, so tests never touch the real ~/.aws files.
+// awsConfigEnv returns a base environment with the home directory set to an
+// isolated temp directory, so tests never touch the real ~/.aws files. Both HOME
+// (Unix) and USERPROFILE (Windows) are overridden because os.UserHomeDir — which
+// awsconfig uses to locate ~/.aws — reads USERPROFILE, not HOME, on Windows.
 func awsConfigEnv(t *testing.T) (env.Environ, string) {
 	t.Helper()
 	tmpHome := t.TempDir()
@@ -32,7 +34,7 @@ func awsConfigEnv(t *testing.T) (env.Environ, string) {
 			_ = exec.Command("docker", "run", "--rm", "-v", volumeDir+":/d", "alpine", "sh", "-c", "rm -rf /d/*").Run()
 		}
 	})
-	e := env.With(env.AuthToken, env.Get(env.AuthToken)).With(env.Home, tmpHome)
+	e := env.With(env.AuthToken, env.Get(env.AuthToken)).With(env.Home, tmpHome).With(env.UserProfile, tmpHome)
 	return e, tmpHome
 }
 
@@ -403,14 +405,92 @@ func TestConfigProfileDoesNotCreateAWSProfileWhenDeclined(t *testing.T) {
 	assert.NotContains(t, out.String(), "Created LocalStack profile in ~/.aws/config")
 }
 
-func TestSetupAWSNonInteractiveReturnsError(t *testing.T) {
+func TestSetupAWSNonInteractiveCreatesProfile(t *testing.T) {
 	t.Parallel()
-	baseEnv, _ := awsConfigEnv(t)
+	baseEnv, tmpHome := awsConfigEnv(t)
 
-	_, stderr, err := runLstk(t, testContext(t), "",
+	stdout, _, err := runLstk(t, testContext(t), "",
 		baseEnv,
 		"setup", "aws",
 	)
-	require.Error(t, err)
-	assert.Contains(t, stderr, "setup aws requires an interactive terminal")
+	requireExitCode(t, 0, err)
+	assert.Contains(t, stdout, "Created LocalStack profile in ~/.aws")
+	assert.NotContains(t, stdout, "requires an interactive terminal")
+
+	configContent, err := os.ReadFile(filepath.Join(tmpHome, ".aws", "config"))
+	require.NoError(t, err, "~/.aws/config should have been created")
+	assert.Contains(t, string(configContent), "[profile localstack]")
+	assert.Contains(t, string(configContent), "endpoint_url")
+
+	credsContent, err := os.ReadFile(filepath.Join(tmpHome, ".aws", "credentials"))
+	require.NoError(t, err, "~/.aws/credentials should have been created")
+	normalizedCreds := strings.Join(strings.Fields(string(credsContent)), " ")
+	assert.Contains(t, normalizedCreds, "[localstack]")
+	assert.Contains(t, normalizedCreds, "aws_access_key_id = test")
+	assert.Contains(t, normalizedCreds, "aws_secret_access_key = test")
+}
+
+func TestSetupAWSNonInteractiveIsIdempotent(t *testing.T) {
+	t.Parallel()
+	baseEnv, _ := awsConfigEnv(t)
+
+	// First run writes the profile.
+	_, _, err := runLstk(t, testContext(t), "", baseEnv, "setup", "aws")
+	requireExitCode(t, 0, err)
+
+	// Second run sees an already-correct profile and is a no-op success — it must
+	// not be treated as an overwrite (no --force required).
+	stdout, _, err := runLstk(t, testContext(t), "", baseEnv, "setup", "aws")
+	requireExitCode(t, 0, err)
+	assert.Contains(t, stdout, "already configured")
+}
+
+func TestSetupAWSNonInteractiveOverwriteRequiresForce(t *testing.T) {
+	t.Parallel()
+	baseEnv, tmpHome := awsConfigEnv(t)
+
+	// Pre-seed a localstack profile with different values.
+	awsDir := filepath.Join(tmpHome, ".aws")
+	require.NoError(t, os.MkdirAll(awsDir, 0700))
+	require.NoError(t, os.WriteFile(filepath.Join(awsDir, "config"),
+		[]byte("[profile localstack]\nregion = us-east-1\noutput = json\nendpoint_url = http://example.com:9999\n"), 0600))
+	require.NoError(t, os.WriteFile(filepath.Join(awsDir, "credentials"),
+		[]byte("[localstack]\naws_access_key_id = WRONG\naws_secret_access_key = WRONG\n"), 0600))
+
+	stdout, _, err := runLstk(t, testContext(t), "", baseEnv, "setup", "aws")
+	requireExitCode(t, 1, err)
+	assert.Contains(t, stdout, "--force")
+
+	// The existing profile must be left untouched.
+	configContent, err := os.ReadFile(filepath.Join(awsDir, "config"))
+	require.NoError(t, err)
+	assert.Contains(t, string(configContent), "example.com:9999", "config must not be overwritten without --force")
+	credsContent, err := os.ReadFile(filepath.Join(awsDir, "credentials"))
+	require.NoError(t, err)
+	assert.Contains(t, string(credsContent), "WRONG", "credentials must not be overwritten without --force")
+}
+
+func TestSetupAWSNonInteractiveForceOverwrites(t *testing.T) {
+	t.Parallel()
+	baseEnv, tmpHome := awsConfigEnv(t)
+
+	awsDir := filepath.Join(tmpHome, ".aws")
+	require.NoError(t, os.MkdirAll(awsDir, 0700))
+	require.NoError(t, os.WriteFile(filepath.Join(awsDir, "config"),
+		[]byte("[profile localstack]\nregion = us-east-1\noutput = json\nendpoint_url = http://example.com:9999\n"), 0600))
+	require.NoError(t, os.WriteFile(filepath.Join(awsDir, "credentials"),
+		[]byte("[localstack]\naws_access_key_id = WRONG\naws_secret_access_key = WRONG\n"), 0600))
+
+	_, _, err := runLstk(t, testContext(t), "", baseEnv, "setup", "aws", "--force")
+	requireExitCode(t, 0, err)
+
+	configContent, err := os.ReadFile(filepath.Join(awsDir, "config"))
+	require.NoError(t, err)
+	assert.NotContains(t, string(configContent), "example.com", "--force should overwrite the stale endpoint")
+	assert.Contains(t, string(configContent), "endpoint_url")
+	credsContent, err := os.ReadFile(filepath.Join(awsDir, "credentials"))
+	require.NoError(t, err)
+	normalizedCreds := strings.Join(strings.Fields(string(credsContent)), " ")
+	assert.NotContains(t, normalizedCreds, "WRONG", "--force should overwrite stale credentials")
+	assert.Contains(t, normalizedCreds, "aws_access_key_id = test")
 }
