@@ -113,6 +113,19 @@ Environment variables:
 lstk proxies third-party IaC tools at the AWS emulator so they run against LocalStack with no `*local` wrapper installed. Each command forwards its args to the real tool after configuring the environment; domain logic lives under `internal/iac/<tool>/cli/`, wiring in `cmd/<tool>.go`, with shared command-boundary helpers in `cmd/iac.go`. Siblings: `lstk terraform` (alias `tf`), `lstk cdk`, `lstk sam`.
 
 
+# Extensions
+
+lstk supports Git-style extensions: when `lstk <name>` is not a built-in command or alias, lstk resolves and execs an external `lstk-<name>` executable, forwarding all arguments after `<name>` verbatim, passing stdin/stdout/stderr through, and propagating the child's exit code. Built-ins always win (dispatch happens only on the unknown-command path). Domain logic lives in `internal/extension/`; the unknown-command dispatch, the help listing, and the runtime-context wiring are in `cmd/extension.go`, hooked from `cmd/root.go`.
+
+Resolution order is built-ins → bundled dir → `PATH`. The bundled dir is the directory containing the symlink-resolved lstk executable (`filepath.EvalSymlinks(os.Executable())`), so bundled extensions are found through npm/Homebrew shims; a bundled extension wins over a same-named `PATH` executable. Windows executable extensions (`PATHEXT`) are honored. There is no manifest — any resolvable `lstk-<name>` is the `<name>` extension.
+
+Runtime context is conveyed in two environment variables: `LSTK_EXT_API_VERSION` (a flat integer the extension checks before parsing) and `LSTK_EXT_CONTEXT` (a single JSON object: `configDir`, optional `authToken`, `nonInteractive`, and an `emulators` array of `{type, endpoint, port}` — `[]` when none running, multiple entries when several emulators run at once). The `extension.Context` type and `Environ` builder live in `internal/extension/context.go`; the command boundary (`cmd/extension.go`) discovers all running emulators and populates it. `Invoke` wraps each exec in an OTEL span (extension name, bundled, exit code), so invocations are recorded as telemetry when `LSTK_OTEL` is enabled and cost nothing when it is not.
+
+Scope: the first release **runs** extensions (PATH and bundled-dir resolution) and conveys context. Automated **distribution and atomic co-update** of LocalStack's bundled extensions are deferred to the `add-bundled-extension-distribution` change — the first release validates bundled extensions by manual placement next to `lstk`.
+
+See [extensions-authoring.md](docs/extensions-authoring.md) for the author-facing contract.
+
+
 # Snapshots
 
 `lstk snapshot` captures and restores the running emulator's state. For Snowflake and Azure, snapshot support is still maturing, so these commands surface a friendly heads-up that results may be incomplete. Domain logic lives in `internal/snapshot/`; `cmd/snapshot.go` is wiring + output-mode selection.

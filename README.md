@@ -423,6 +423,18 @@ lstk start --snapshot pod:other-baseline  # load a different snapshot this run
 lstk start --no-snapshot                  # skip auto-loading this run
 ```
 
+## Extensions
+
+lstk supports Git-style extensions: running `lstk <name>`, for a name that isn't a built-in command, delegates to an external `lstk-<name>` executable found on your `PATH`, forwarding all arguments and passing stdin/stdout/stderr through.
+
+```bash
+lstk my-tool --flag  # resolves and runs lstk-my-tool, if it exists
+```
+
+Extensions receive context about the current lstk setup (config dir, auth token, running emulators) via environment variables, so they can integrate without reimplementing discovery.
+
+See [docs/extensions-authoring.md](docs/extensions-authoring.md) for the extension contract and how to author your own.
+
 ## Reporting bugs
 
 Feedback is welcome! Use the repository issue tracker for bug reports or feature requests.

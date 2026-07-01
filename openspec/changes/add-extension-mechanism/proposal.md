@@ -1,0 +1,46 @@
+## Why
+
+`lstk` ships a fixed set of built-in commands, so any new capability — whether built by LocalStack engineers or partners — has to land in the core open-source repository. That blocks closed-source/proprietary features, slows third-party contribution, and couples every new feature's release to the core CLI's release cadence. We want a Git-style extension mechanism so anyone can add `lstk <name>` subcommands as separate binaries on their `PATH`, with lstk handing each extension enough runtime context (resolved emulator endpoint, config dir, auth token) to do useful work — while leaving any authorization decision to the extension itself.
+
+## What Changes
+
+- Introduce a Git-style extension model: when `lstk <name>` is not a built-in command, lstk resolves and executes an `lstk-<name>` executable found on `PATH`, forwarding all remaining arguments and propagating the child's stdin/stdout/stderr and exit code.
+- Define an **extension runtime contract**: lstk passes context to the extension process through two environment variables — `LSTK_EXT_API_VERSION` (a flat integer version) and `LSTK_EXT_CONTEXT` (a single, versioned JSON object carrying the config directory, auth token, resolved global-flag state, and a JSON **array of all running emulators**) — so extensions can talk to every running emulator and the platform without re-implementing discovery or config resolution. The emulator array is JSON from day one so multiple simultaneously-running emulators (e.g. AWS + Snowflake + Azure) are representable without a later breaking change.
+- **Honor global flags before the command name**: lstk parses its own global flags (e.g. `--non-interactive`, and any added later) when they precede the extension name, consumes them itself, and conveys the resolved state to the extension as fields of `LSTK_EXT_CONTEXT` (e.g. `nonInteractive`) rather than forwarding them on the extension's command line.
+- **Record extension invocations as telemetry**: when telemetry is enabled (the existing `LSTK_OTEL` path), lstk records each extension invocation (command name, duration, exit code) through its OpenTelemetry export. This is lstk-side only; injecting trace context so an extension's own spans nest under lstk's trace is deferred.
+- **Resolve bundled extensions from a directory next to the binary** (ahead of `PATH`), so a LocalStack-built `lstk-<name>` placed alongside `lstk` runs as `lstk <name>`. The first release supports *running* such an extension; automated packaging/distribution of LocalStack's bundled extensions and their atomic co-update with `lstk` are **deferred to a later launch** (see Deferred). This first release is a test bed to validate bundled extensions by placing them manually before they ship in the download bundle.
+- Establish that **authorization is the extension's responsibility**: lstk conveys the user's auth token and makes no entitlement decision of its own. An extension that needs to restrict its use authorizes the user itself (e.g. by calling the LocalStack platform with the conveyed token). A richer lstk-side mechanism — lstk obtaining a LocalStack-signed entitlement description for the extension to verify offline — is deliberately **deferred** to future work.
+- List resolvable extensions in `lstk help` by scanning the bundled directory and `PATH` for `lstk-*` executables; bundled extensions show a one-line description read from a static descriptions file that ships alongside them — hand-authored in LocalStack's private extensions repository and validated against the shipped binaries at release time — while `PATH`/custom extensions are name-only. Help rendering never executes an extension.
+- Keep the entire mechanism in the open-source repository; closed-source extensions ship only as binaries placed on `PATH` and never require source in the core repo.
+
+## Capabilities
+
+### New Capabilities
+
+- `extension-framework`: Git-style discovery, resolution, and dispatch of `lstk-<name>` extension executables (bundled dir + `PATH`), including built-in precedence, leading-only global-flag handling, forwarding of arguments/streams/exit codes, and side-effect-free help listing (bundled extensions described from a static file, others name-only). No lstk-side manifest — extensions are self-describing and self-validating.
+- `extension-runtime-context`: The versioned contract lstk establishes for an extension process — `LSTK_EXT_API_VERSION` plus a single `LSTK_EXT_CONTEXT` JSON object carrying the config directory, auth token, resolved global-flag state, and a JSON array of all running emulators (type/endpoint/port) — so extensions can reach every running emulator and the platform and honor lstk's global flags. Also covers recording extension invocations as telemetry when enabled.
+- `extension-entitlement`: The authorization model — lstk conveys the auth token and the extension authorizes itself — plus the explicit deferral of any lstk-side signed-entitlement mechanism and the security rationale (lstk is open source, so authorization cannot depend on it).
+- `extension-bundling`: The read-only bundled-extensions directory next to the binary and its resolution ahead of `PATH`, plus the rule that a bundled (possibly closed-source) extension still self-authorizes. This first-release capability covers *resolving and running* a bundled extension that is present (e.g. placed manually for validation). **Cross-channel packaging/distribution and atomic version-matched updates are deferred** to a separate future change (`add-bundled-extension-distribution`). Excludes user-facing management commands and a user-mutable directory.
+
+### Modified Capabilities
+
+<!-- No existing capability's requirements change; the IaC proxy specs (terraform-proxy, cdk-proxy) are unaffected. -->
+
+## Impact
+
+- **New code**: `internal/extension/` (bundled-dir + PATH resolution, runtime context builder, global-flag conveyance, exec), and unknown-command dispatch + help-listing wiring in `cmd/root.go`.
+- **Touched code**: `cmd/root.go` (fallthrough to extension dispatch for unknown commands; `SetInterspersed(false)` for leading-only global flags; bundled-dir + PATH scan for help), reuse of `internal/auth` (token resolution), `internal/config`/`internal/endpoint` (config dir and emulator endpoint resolution), `internal/container` (discovery of **all** running emulators for the `emulators` array, not just one), and the existing OTEL/telemetry path (recording extension invocations).
+- **Packaging/release**: not in scope for this change — automated bundling into the binary archive / Homebrew / npm payloads and the private-CI pull are deferred to `add-bundled-extension-distribution`. The first release ships no bundled binaries; they are validated by manual placement next to `lstk`.
+- **External dependencies/services**: None required by this change. Extensions that authorize use the existing LocalStack platform with the conveyed auth token; no new platform or emulator endpoints are needed.
+- **Security surface**: lstk passes the auth token into extension processes via env (as it already does for IaC proxies); this defines a local trust boundary to document. Authorization guarantees live in the extension, never in lstk.
+- **Docs**: New "Extensions" section in CLAUDE.md and a public extension-author guide (manifest-free contract, the `LSTK_EXT_API_VERSION` + `LSTK_EXT_CONTEXT` JSON contract with its `emulators` array, the self-authorization model and why it cannot rely on lstk).
+
+## Deferred (future work)
+
+- lstk-side entitlement verification and a LocalStack-signed entitlement description (grant) that extensions verify offline against a published public key.
+- Emulator genuineness attestation (distinguishing a licensed emulator from a clone).
+- **Bundled-extension distribution and atomic co-update** — packaging LocalStack's bundled `lstk-*` into the binary archive / Homebrew / npm payloads, pulling the closed-source binaries from private CI, shipping + release-validating the descriptions file, and updating the `lstk`/`lstk-*` set atomically via `internal/update`. Deferred to a separate future change, **`add-bundled-extension-distribution`**. This first release supports running a bundled extension placed manually (the test bed); resolving the bundled dir is in scope, automated shipping/updating is not.
+- User-facing `lstk extension` management commands (`list`/`info`/`install`/`remove`) and a user-mutable managed extensions directory.
+- **Trace-context propagation into extensions** (injecting W3C `traceparent`/`tracestate` so an extension's own spans nest under lstk's trace). Only lstk-side invocation telemetry is in scope now; propagation is purely additive later. (See design Decision 8.)
+- **A shared extension SDK / library** (Go helpers for UI/output). Extensions couple to lstk only through the `LSTK_EXT_*` env contract and bring their own libraries; an optional SDK could ship later without changing the contract. (See design Decision 9.)
+- **Extension allow-listing / signature verification.** lstk runs any resolvable `lstk-<name>` like Git, with no trust gate; this only becomes relevant with an internet download channel, which is itself deferred with extension management. (See design Decision 10.)
