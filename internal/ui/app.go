@@ -20,7 +20,7 @@ const maxLines = 200
 
 // pullSkipHint replaces the "Pulling <image>" spinner text once a skippable pull
 // starts downloading, telling the user they can bail out to the local image.
-const pullSkipHint = "Pulling new version… (press esc to keep current version)"
+const pullSkipHint = "Pulling new version… (press ESC to keep current version)"
 
 type runDoneMsg struct{}
 

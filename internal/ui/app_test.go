@@ -117,7 +117,7 @@ func TestAppEscSkipsPullWithoutQuitting(t *testing.T) {
 	if app.pullSkip == nil {
 		t.Fatal("expected the pull to be marked skippable")
 	}
-	if !strings.Contains(app.View(), "press esc to keep current version") {
+	if !strings.Contains(app.View(), "press ESC to keep current version") {
 		t.Fatal("expected the ESC hint to be shown once the pull is skippable")
 	}
 
