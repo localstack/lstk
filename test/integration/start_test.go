@@ -1075,6 +1075,33 @@ image = "lstk-nonexistent-custom-image"
 	assert.Contains(t, combined, "Failed to pull lstk-nonexistent-custom-image:latest")
 }
 
+// TestStartTimesOutWhenEmulatorNeverBecomesHealthy verifies that --timeout bounds
+// the health-check wait (PRO-357): a container that stays running but never serves
+// /_localstack/health must fail fast with a clear error and a non-zero exit,
+// instead of hanging indefinitely.
+func TestStartTimesOutWhenEmulatorNeverBecomesHealthy(t *testing.T) {
+	requireDocker(t)
+	cleanup()
+	t.Cleanup(cleanup)
+
+	ctx := testContext(t)
+	imageRef := commitNeverHealthyImage(t, ctx)
+
+	home := t.TempDir()
+	configFile := filepath.Join(home, "config.toml")
+	require.NoError(t, os.WriteFile(configFile,
+		[]byte(fmt.Sprintf("[[containers]]\ntype = \"aws\"\nport = \"4566\"\nimage = %q\n", imageRef)), 0644))
+
+	// The local image is reused (pull fails, ImageExists true), so the license
+	// pre-flight is skipped and a dummy token is enough to reach the health wait.
+	e := append(testEnvWithHome(home, ""), string(env.AuthToken)+"=fake-token")
+	stdout, stderr, err := runLstk(t, ctx, "", e, "--config", configFile, "--non-interactive", "start", "--timeout", "3s")
+
+	require.Error(t, err, "expected start to fail when the emulator never becomes healthy")
+	requireExitCode(t, 1, err)
+	assert.Contains(t, stdout+stderr, "LocalStack did not become ready within 3s")
+}
+
 // TestStartFallsBackToLocalImageWhenPullFails verifies the offline degradation
 // path for image pulls: when the configured image cannot be pulled (registry
 // unreachable, or the image was never published) but is already present locally,

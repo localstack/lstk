@@ -234,6 +234,40 @@ func startExternalContainer(t *testing.T, ctx context.Context, imgName, name, ho
 	})
 }
 
+// commitNeverHealthyImage builds a local-only image whose default command stays
+// running (sleep infinity) but never serves /_localstack/health. Starting it via
+// lstk exercises the failure path where the emulator comes up but never reports
+// healthy. Returns the image reference; the image and its source container are
+// removed on test cleanup.
+func commitNeverHealthyImage(t *testing.T, ctx context.Context) string {
+	t.Helper()
+
+	reader, err := dockerClient.ImagePull(ctx, testImage, client.ImagePullOptions{})
+	require.NoError(t, err, "failed to pull test image")
+	_, _ = io.Copy(io.Discard, reader)
+	_ = reader.Close()
+
+	resp, err := dockerClient.ContainerCreate(ctx, client.ContainerCreateOptions{
+		Config: &container.Config{Image: testImage},
+		Name:   "lstk-never-healthy-src",
+	})
+	require.NoError(t, err, "failed to create source container")
+	t.Cleanup(func() {
+		_, _ = dockerClient.ContainerRemove(context.Background(), resp.ID, client.ContainerRemoveOptions{Force: true})
+	})
+
+	const imageRef = "lstk-never-healthy:latest"
+	_, err = dockerClient.ContainerCommit(ctx, resp.ID, client.ContainerCommitOptions{
+		Reference: imageRef,
+		Changes:   []string{`CMD ["sleep", "infinity"]`},
+	})
+	require.NoError(t, err, "failed to commit never-healthy image")
+	t.Cleanup(func() {
+		_, _ = dockerClient.ImageRemove(context.Background(), imageRef, client.ImageRemoveOptions{Force: true})
+	})
+	return imageRef
+}
+
 func startTestSnowflakeContainer(t *testing.T, ctx context.Context) {
 	t.Helper()
 	startNamedTestContainer(t, ctx, snowflakeContainerName, "snowflake")
