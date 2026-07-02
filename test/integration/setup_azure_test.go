@@ -77,6 +77,22 @@ func TestSetupAzureNonInteractiveRunsWithoutTerminal(t *testing.T) {
 	assert.NotContains(t, stderr, "interactive terminal")
 }
 
+// `lstk setup az` must resolve to `setup azure`: the Azure tool-proxy command
+// is `lstk az` (mirroring the terraform/tf alias), so setup should accept the
+// tool name too. Routing is proven by the azure setup logic running and
+// reporting its domain error rather than Cobra failing with "unknown command".
+func TestSetupAzureAliasAz(t *testing.T) {
+	t.Parallel()
+
+	_, stderr, err := runLstk(t, testContext(t), "",
+		env.With(env.Home, t.TempDir()),
+		"setup", "az",
+	)
+	require.Error(t, err)
+	assert.NotContains(t, stderr, "unknown command")
+	assert.Contains(t, stderr, "no azure emulator configured")
+}
+
 // When the az CLI is missing, the error must be reported exactly once —
 // not as a warning and then again as the final error.
 func TestSetupAzureReportsMissingAzCLIOnce(t *testing.T) {
