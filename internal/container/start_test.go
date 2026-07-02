@@ -28,6 +28,39 @@ import (
 	"go.uber.org/mock/gomock"
 )
 
+func TestStart_RejectsMultipleContainersBeforeHealthCheck(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	// No IsHealthy expectation: the guard must fire before the runtime is touched.
+	mockRT := runtime.NewMockRuntime(ctrl)
+
+	sink := output.NewPlainSink(io.Discard)
+	opts := StartOptions{
+		Logger: log.Nop(),
+		Containers: []config.ContainerConfig{
+			{Type: config.EmulatorAWS, Port: "4566"},
+			{Type: config.EmulatorSnowflake, Port: "4567"},
+		},
+	}
+
+	_, err := Start(context.Background(), mockRT, sink, opts, false)
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "only one")
+	assert.True(t, output.IsSilent(err), "error should be silent since it was already emitted")
+}
+
+func TestCheckSingleContainer(t *testing.T) {
+	assert.NoError(t, checkSingleContainer(nil))
+	assert.NoError(t, checkSingleContainer([]config.ContainerConfig{{Type: config.EmulatorAWS}}))
+
+	err := checkSingleContainer([]config.ContainerConfig{
+		{Type: config.EmulatorAWS},
+		{Type: config.EmulatorSnowflake},
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "only one")
+}
+
 func TestStart_ReturnsEarlyIfRuntimeUnhealthy(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	mockRT := runtime.NewMockRuntime(ctrl)

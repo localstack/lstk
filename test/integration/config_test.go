@@ -202,6 +202,28 @@ tag = "latest"
 	assert.Contains(t, stderr, "port is required")
 }
 
+func TestStartWithMultipleContainersFailsFast(t *testing.T) {
+	t.Parallel()
+	configContent := `
+[[containers]]
+type = "aws"
+port = "4566"
+
+[[containers]]
+type = "snowflake"
+port = "4567"
+`
+	configFile := filepath.Join(t.TempDir(), "config.toml")
+	require.NoError(t, os.WriteFile(configFile, []byte(configContent), 0644))
+
+	// The guard runs at the very top of container.Start, before any Docker health
+	// check, auth, or image pull — so start fails fast even without a daemon/token.
+	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), testEnvWithHome(t.TempDir(), ""), "--config", configFile, "start")
+	require.Error(t, err)
+	requireExitCode(t, 1, err)
+	assert.Contains(t, stdout+stderr, "only one")
+}
+
 func TestLegacyYAMLConfigGivesHelpfulError(t *testing.T) {
 	t.Parallel()
 	tmpHome := t.TempDir()

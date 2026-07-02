@@ -49,6 +49,18 @@ type StartOptions struct {
 }
 
 func Start(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts StartOptions, interactive bool) (string, error) {
+	// Fail fast on unsupported multi-container configs before any health/auth
+	// checks or image pulls, so we don't leave a partial startup that later dies
+	// on container-name conflicts or shared port collisions.
+	if err := checkSingleContainer(opts.Containers); err != nil {
+		sink.Emit(output.ErrorEvent{
+			Title:   "Unsupported configuration",
+			Summary: err.Error(),
+			Actions: []output.ErrorAction{{Label: "Edit your config file so only one [[containers]] block is enabled:", Value: "lstk config path"}},
+		})
+		return "", output.NewSilentError(err)
+	}
+
 	if err := rt.IsHealthy(ctx); err != nil {
 		rt.EmitUnhealthyError(sink, err)
 		return "", output.NewSilentError(fmt.Errorf("runtime not healthy: %w", err))
@@ -66,10 +78,6 @@ func Start(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts Start
 	}
 
 	opts.Telemetry.SetAuthToken(token)
-
-	if hasDuplicateContainerTypes(opts.Containers) {
-		sink.Emit(output.MessageEvent{Severity: output.SeverityWarning, Text: "Multiple emulators of the same type are defined in your config; this setup is not supported yet"})
-	}
 
 	tel := opts.Telemetry
 
@@ -837,15 +845,15 @@ func agentEnv(cl caller.Classification) []string {
 	return env
 }
 
-func hasDuplicateContainerTypes(containers []config.ContainerConfig) bool {
-	seen := make(map[config.EmulatorType]bool)
-	for _, c := range containers {
-		if seen[c.Type] {
-			return true
-		}
-		seen[c.Type] = true
+// checkSingleContainer rejects configs that enable more than one [[containers]]
+// block. Only one emulator is supported at a time; running several together
+// (e.g. AWS and Snowflake) is not supported yet and would collide on container
+// names and shared ports during startup.
+func checkSingleContainer(containers []config.ContainerConfig) error {
+	if len(containers) > 1 {
+		return fmt.Errorf("found %d [[containers]] blocks, but only one is supported at a time; enable a single [[containers]] block (running multiple emulators together, e.g. AWS and Snowflake, is not supported yet)", len(containers))
 	}
-	return false
+	return nil
 }
 
 func servicePortRange() []runtime.PortMapping {
