@@ -55,3 +55,26 @@ func TestParseGatewayListenInvalid(t *testing.T) {
 		assert.Error(t, err, "expected error for %q", value)
 	}
 }
+
+func TestParseGatewayListenExtraPortsSkipsServicePortRange(t *testing.T) {
+	g, err := parseGatewayListen("0.0.0.0:4566,0.0.0.0:443,0.0.0.0:4520,0.0.0.0:8443")
+	require.NoError(t, err)
+	extra := g.extraGatewayPorts("4566")
+	require.Len(t, extra, 2, "the 4520 entry already falls in the service port range and must not be duplicated")
+	assert.Equal(t, "443", extra[0].ContainerPort)
+	assert.Equal(t, "8443", extra[1].ContainerPort)
+}
+
+func TestParseGatewayListenBracketedIPv6Host(t *testing.T) {
+	g, err := parseGatewayListen("[::]:4566,[::]:443")
+	require.NoError(t, err)
+	assert.Equal(t, "::", g.bindHost())
+	assert.Equal(t, "[::]:4566,[::]:443", g.containerEnvValue())
+}
+
+func TestParseGatewayListenUnbracketedIPv6HostErrors(t *testing.T) {
+	// Unbracketed IPv6 is ambiguous with the host:port separator, so it must
+	// be rejected rather than mis-parsed.
+	_, err := parseGatewayListen("::1:4566")
+	assert.Error(t, err)
+}

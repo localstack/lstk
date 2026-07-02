@@ -880,11 +880,12 @@ func hasDuplicateContainerTypes(containers []config.ContainerConfig) bool {
 // servicePortRange returns the external service ports LocalStack opens for
 // per-service access (4510-4559). The gateway ports (4566, 443, ...) are
 // published separately from GATEWAY_LISTEN.
+const servicePortRangeStart = 4510
+const servicePortRangeEnd = 4559
+
 func servicePortRange() []runtime.PortMapping {
-	const start = 4510
-	const end = 4559
-	ports := make([]runtime.PortMapping, 0, end-start+1)
-	for p := start; p <= end; p++ {
+	ports := make([]runtime.PortMapping, 0, servicePortRangeEnd-servicePortRangeStart+1)
+	for p := servicePortRangeStart; p <= servicePortRangeEnd; p++ {
 		ps := strconv.Itoa(p)
 		ports = append(ports, runtime.PortMapping{ContainerPort: ps, HostPort: ps})
 	}

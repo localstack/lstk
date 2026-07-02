@@ -100,23 +100,35 @@ func (g gatewayListen) containerEnvValue() string {
 		if host == defaultBindHost {
 			host = ""
 		}
-		parts[i] = host + ":" + e.port
+		parts[i] = net.JoinHostPort(host, e.port)
 	}
 	return strings.Join(parts, ",")
 }
 
 // extraGatewayPorts returns the gateway ports that must be published in addition
 // to the primary edge port (which is mapped separately via the container's
-// configured host port). Each is exposed host-port == container-port.
+// configured host port). Each is exposed host-port == container-port. Ports
+// already covered by the primary port or the service port range are skipped
+// so callers don't publish the same container port twice.
 func (g gatewayListen) extraGatewayPorts(primaryPort string) []runtime.PortMapping {
 	var ports []runtime.PortMapping
 	seen := map[string]bool{primaryPort: true}
 	for _, e := range g {
-		if seen[e.port] {
+		if seen[e.port] || inServicePortRange(e.port) {
 			continue
 		}
 		seen[e.port] = true
 		ports = append(ports, runtime.PortMapping{ContainerPort: e.port, HostPort: e.port})
 	}
 	return ports
+}
+
+// inServicePortRange reports whether port falls in the 4510-4559 range already
+// published by servicePortRange.
+func inServicePortRange(port string) bool {
+	p, err := strconv.Atoi(port)
+	if err != nil {
+		return false
+	}
+	return p >= servicePortRangeStart && p <= servicePortRangeEnd
 }
