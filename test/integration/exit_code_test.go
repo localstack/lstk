@@ -26,6 +26,7 @@ func TestInvalidUsageExitsNonZero(t *testing.T) {
 		{"unknown flag on root", []string{"--bogus-flag-xyz"}, "unknown flag"},
 		{"unknown command", []string{"bogus-command"}, "unknown command"},
 		{"unknown config subcommand", []string{"config", "bogus"}, `unknown command "bogus"`},
+		{"removed config profile subcommand", []string{"config", "profile"}, `unknown command "profile"`},
 		{"unknown setup subcommand", []string{"setup", "bogus"}, `unknown command "bogus"`},
 		{"unknown volume subcommand", []string{"volume", "bogus"}, `unknown command "bogus"`},
 		{"unknown snapshot subcommand", []string{"snapshot", "bogus"}, `unknown command "bogus"`},

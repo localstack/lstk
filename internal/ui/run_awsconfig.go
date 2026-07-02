@@ -9,10 +9,10 @@ import (
 	"github.com/localstack/lstk/internal/output"
 )
 
-// RunConfigProfile runs the AWS profile setup flow with TUI output.
+// RunSetupAWS runs the AWS profile setup flow with TUI output.
 // It resolves the host from the AWS container config and runs the setup.
 // When force is true, the confirmation prompt is skipped.
-func RunConfigProfile(parentCtx context.Context, containers []config.ContainerConfig, localStackHost string, force bool) error {
+func RunSetupAWS(parentCtx context.Context, containers []config.ContainerConfig, localStackHost string, force bool) error {
 	resolvedHost, dnsOK, err := awsconfig.ResolveProfileHost(parentCtx, containers, localStackHost)
 	if err != nil {
 		return err
