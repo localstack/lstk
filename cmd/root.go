@@ -194,6 +194,7 @@ func NewRootCmd(cfg *env.Env, tel *telemetry.Client, logger log.Logger) *cobra.C
 	root.InitDefaultCompletionCmd()
 	if completionCmd, _, err := root.Find([]string{"completion"}); err == nil && completionCmd.Name() == "completion" {
 		requireSubcommand(completionCmd)
+		selfContainBashCompletion(completionCmd)
 	}
 
 	return root
