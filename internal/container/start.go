@@ -101,10 +101,20 @@ func Start(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts Start
 			return "", err
 		}
 
+		// GATEWAY_LISTEN is configurable via the [env.*] profiles. It controls
+		// which ports the gateway listens on inside the container and, through
+		// the host part of its first entry, which host IP published ports bind
+		// to (e.g. "0.0.0.0:4566,0.0.0.0:443" exposes the emulator beyond
+		// loopback). When unset it defaults to ":4566,:443" bound to loopback.
+		gateway, err := parseGatewayListen(envValue(resolvedEnv, "GATEWAY_LISTEN"))
+		if err != nil {
+			return "", err
+		}
+
 		containerName := c.Name()
 		env := append(resolvedEnv,
 			"LOCALSTACK_AUTH_TOKEN="+token,
-			"GATEWAY_LISTEN=:4566,:443",
+			"GATEWAY_LISTEN="+gateway.containerEnvValue(),
 			"MAIN_CONTAINER_NAME="+containerName,
 			"LOCALSTACK_HOST="+endpoint.Hostname+":"+c.Port,
 		)
@@ -154,18 +164,25 @@ func Start(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts Start
 			binds = append(binds, runtime.BindMount{HostPath: m.Source, ContainerPath: m.Target, ReadOnly: m.ReadOnly})
 		}
 
+		// The primary edge port is published via the configured host port (c.Port);
+		// any further gateway ports (443, and e.g. 8443) plus the service port range
+		// are published host-port == container-port.
+		primaryPort, _, _ := strings.Cut(containerPort, "/")
+		extraPorts := append(gateway.extraGatewayPorts(primaryPort), servicePortRange()...)
+
 		containers[i] = runtime.ContainerConfig{
 			Image:         image,
 			Name:          containerName,
 			EmulatorType:  c.Type,
 			Port:          c.Port,
 			ContainerPort: containerPort,
+			BindHost:      gateway.bindHost(),
 			HealthPath:    healthPath,
 			Env:           env,
 			Tag:           c.Tag,
 			ProductName:   productName,
 			Binds:         binds,
-			ExtraPorts:    servicePortRange(),
+			ExtraPorts:    extraPorts,
 		}
 	}
 
@@ -828,6 +845,18 @@ func envHasKey(env []string, key string) bool {
 	return false
 }
 
+// envValue returns the value of the last entry matching key (KEY=value), or "".
+func envValue(env []string, key string) string {
+	prefix := key + "="
+	value := ""
+	for _, e := range env {
+		if strings.HasPrefix(e, prefix) {
+			value = strings.TrimPrefix(e, prefix)
+		}
+	}
+	return value
+}
+
 func agentEnv(cl caller.Classification) []string {
 	var env []string
 	if cl.AgentIdentity != "" {
@@ -848,11 +877,15 @@ func hasDuplicateContainerTypes(containers []config.ContainerConfig) bool {
 	return false
 }
 
+// servicePortRange returns the external service ports LocalStack opens for
+// per-service access (4510-4559). The gateway ports (4566, 443, ...) are
+// published separately from GATEWAY_LISTEN.
+const servicePortRangeStart = 4510
+const servicePortRangeEnd = 4559
+
 func servicePortRange() []runtime.PortMapping {
-	const start = 4510
-	const end = 4559
-	ports := []runtime.PortMapping{{ContainerPort: "443", HostPort: "443"}}
-	for p := start; p <= end; p++ {
+	ports := make([]runtime.PortMapping, 0, servicePortRangeEnd-servicePortRangeStart+1)
+	for p := servicePortRangeStart; p <= servicePortRangeEnd; p++ {
 		ps := strconv.Itoa(p)
 		ports = append(ports, runtime.PortMapping{ContainerPort: ps, HostPort: ps})
 	}

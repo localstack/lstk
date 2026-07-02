@@ -36,6 +36,13 @@ port = "4566"    # Host port the emulator will be accessible on
 #   SERVICES=s3,sqs         - Limit services to load
 #   EAGER_SERVICE_LOADING=1 - Preload services at startup
 #
+#   GATEWAY_LISTEN=:4566,:443  - Ports the gateway listens on (default shown).
+#                                The first entry's host sets what IP published
+#                                ports bind to — use "0.0.0.0:4566,0.0.0.0:443"
+#                                to make the emulator reachable from other
+#                                machines (e.g. on EC2). Extra ports listed
+#                                (e.g. :8443) are published too.
+#
 # See full list of configuration options:
 # > https://docs.localstack.cloud/references/configuration/
 #

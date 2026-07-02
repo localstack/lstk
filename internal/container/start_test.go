@@ -342,13 +342,12 @@ func TestEmitPostStartPointers_UnknownEmulator_NoTip(t *testing.T) {
 func TestServicePortRange_ReturnsExpectedPorts(t *testing.T) {
 	ports := servicePortRange()
 
-	require.Len(t, ports, 51)
-	assert.Equal(t, "443", ports[0].ContainerPort)
-	assert.Equal(t, "443", ports[0].HostPort)
-	assert.Equal(t, "4510", ports[1].ContainerPort)
-	assert.Equal(t, "4510", ports[1].HostPort)
-	assert.Equal(t, "4559", ports[50].ContainerPort)
-	assert.Equal(t, "4559", ports[50].HostPort)
+	// 443 is published via GATEWAY_LISTEN, not the service range.
+	require.Len(t, ports, 50)
+	assert.Equal(t, "4510", ports[0].ContainerPort)
+	assert.Equal(t, "4510", ports[0].HostPort)
+	assert.Equal(t, "4559", ports[49].ContainerPort)
+	assert.Equal(t, "4559", ports[49].HostPort)
 }
 
 func TestFilterHostEnv(t *testing.T) {

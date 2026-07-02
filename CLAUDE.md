@@ -70,6 +70,14 @@ Created automatically on first run with defaults. Supports emulator types: `aws`
 
 Each `[[containers]]` block may set an optional `image` to override the default Docker Hub image (e.g. an internal registry mirror or a locally loaded offline image). `ContainerConfig.Image()` returns `image` as-is when it already carries a tag (so the separately-configured `tag` is dropped in that case), otherwise it appends `tag` (or `latest`); the default `localstack/<product>:<tag>` is used when `image` is unset.
 
+## GATEWAY_LISTEN and host exposure
+
+`GATEWAY_LISTEN` is not hardcoded — it is read from the container's resolved env (set it via an `[env.*]` profile referenced by the container's `env` field). When unset it defaults to `:4566,:443`. Parsing/derivation lives in `internal/container/gateway.go` (`parseGatewayListen`), mirroring the v1 CLI:
+
+- The **container env value** blanks a `127.0.0.1` host so the gateway still listens on all interfaces inside the container (`:4566`), and preserves any non-loopback host verbatim.
+- The **host publish IP** for *all* published ports (gateway ports + the 4510-4559 service range) is the host part of the first entry, defaulting to `127.0.0.1`. So `GATEWAY_LISTEN = "0.0.0.0:4566,0.0.0.0:443"` exposes the emulator beyond loopback (e.g. on an EC2/MicroVM host). This is threaded through as `runtime.ContainerConfig.BindHost` and applied in `internal/runtime/docker.go`.
+- Gateway ports beyond the primary edge port (4566, which is published on the configured `port`) are published host-port == container-port, so listing an extra port like `:8443` publishes it. `servicePortRange()` covers only 4510-4559 now — 443 comes from the default `GATEWAY_LISTEN`.
+
 ## Volume Mounts
 
 Each `[[containers]]` block accepts a `volumes` list of Docker-style `"host:container[:ro]"` bind specs (e.g. for Snowflake init hooks mounted into `/etc/localstack/init/{boot,start,ready,shutdown}.d`). The persistence/cache mount to `/var/lib/localstack` is folded into this list: the entry whose container target is `/var/lib/localstack` (`persistenceTarget` in `internal/config/containers.go`) defines the host dir backing it, and that path is what `VolumeDir()`, `lstk volume path`, and `lstk volume clear` resolve. Resolution precedence in `VolumeDir()`: a `volumes` entry targeting `/var/lib/localstack` → the legacy singular `volume = "..."` field (still honored for backward compatibility) → the default OS cache dir. Setting the persistence dir via both `volume` and a `volumes` entry with differing sources is a validation error.
