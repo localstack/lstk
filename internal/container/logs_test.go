@@ -36,15 +36,15 @@ func runLogs(t *testing.T, content string, verbose bool) *captureSink {
 	mockRT.EXPECT().IsHealthy(gomock.Any()).Return(nil)
 	mockRT.EXPECT().IsRunning(gomock.Any(), "localstack-aws").Return(true, nil)
 	mockRT.EXPECT().
-		StreamLogs(gomock.Any(), "localstack-aws", gomock.Any(), false).
-		DoAndReturn(func(_ context.Context, _ string, out io.Writer, _ bool) error {
+		StreamLogs(gomock.Any(), "localstack-aws", gomock.Any(), false, "all").
+		DoAndReturn(func(_ context.Context, _ string, out io.Writer, _ bool, _ string) error {
 			_, err := io.WriteString(out, content)
 			return err
 		})
 
 	sink := &captureSink{}
 	containers := []config.ContainerConfig{{Type: config.EmulatorAWS}}
-	err := Logs(context.Background(), mockRT, sink, containers, false, verbose)
+	err := Logs(context.Background(), mockRT, sink, containers, false, "all", verbose)
 	require.NoError(t, err)
 	return sink
 }
@@ -113,7 +113,7 @@ func TestLogs_EmulatorNotRunning_ReturnsSilentError(t *testing.T) {
 
 	sink := &captureSink{}
 	containers := []config.ContainerConfig{{Type: config.EmulatorAWS}}
-	err := Logs(context.Background(), mockRT, sink, containers, false, false)
+	err := Logs(context.Background(), mockRT, sink, containers, false, "all", false)
 
 	require.Error(t, err)
 	assert.True(t, output.IsSilent(err), "error must be silent since the sink already surfaced a 'not running' message to the user")

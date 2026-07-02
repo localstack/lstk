@@ -26,7 +26,7 @@ const maxLogLineBytes = 8 * 1024
 // bounds only what is kept and emitted).
 const logReaderBufferSize = 64 * 1024
 
-func Logs(ctx context.Context, rt runtime.Runtime, sink output.Sink, containers []config.ContainerConfig, follow bool, verbose bool) error {
+func Logs(ctx context.Context, rt runtime.Runtime, sink output.Sink, containers []config.ContainerConfig, follow bool, tail string, verbose bool) error {
 	if err := rt.IsHealthy(ctx); err != nil {
 		rt.EmitUnhealthyError(sink, err)
 		return output.NewSilentError(fmt.Errorf("runtime not healthy: %w", err))
@@ -50,7 +50,7 @@ func Logs(ctx context.Context, rt runtime.Runtime, sink output.Sink, containers 
 	pr, pw := io.Pipe()
 	errCh := make(chan error, 1)
 	go func() {
-		err := rt.StreamLogs(ctx, name, pw, follow)
+		err := rt.StreamLogs(ctx, name, pw, follow, tail)
 		pw.CloseWithError(err)
 		errCh <- err
 	}()

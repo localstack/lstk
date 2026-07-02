@@ -3,6 +3,8 @@ package integration_test
 import (
 	"bufio"
 	"context"
+	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -86,6 +88,129 @@ func TestLogsWorksWithExternalContainer(t *testing.T) {
 	require.NoError(t, err, "lstk logs should work with externally-named container: %s", stderr)
 	requireExitCode(t, 0, err)
 	assertCommandTelemetry(t, events, "logs", 0)
+}
+
+// writeNumberedLogLines writes tail-marker-1..tail-marker-<count> to PID 1's
+// stdout inside the test container and waits until the last one is visible in
+// docker logs, so tail assertions don't race the writes.
+func writeNumberedLogLines(t *testing.T, ctx context.Context, count int) {
+	t.Helper()
+
+	execResp, err := dockerClient.ExecCreate(ctx, containerName, client.ExecCreateOptions{
+		Cmd: []string{"sh", "-c", fmt.Sprintf("for i in $(seq 1 %d); do echo tail-marker-$i; done >/proc/1/fd/1", count)},
+	})
+	require.NoError(t, err, "failed to create exec")
+	_, err = dockerClient.ExecStart(ctx, execResp.ID, client.ExecStartOptions{Detach: true})
+	require.NoError(t, err, "failed to start exec")
+
+	lastMarker := fmt.Sprintf("tail-marker-%d", count)
+	require.Eventually(t, func() bool {
+		reader, err := dockerClient.ContainerLogs(ctx, containerName, client.ContainerLogsOptions{
+			ShowStdout: true,
+			ShowStderr: true,
+			Tail:       "all",
+		})
+		if err != nil {
+			return false
+		}
+		defer func() { _ = reader.Close() }()
+		data, err := io.ReadAll(reader)
+		return err == nil && strings.Contains(string(data), lastMarker)
+	}, 10*time.Second, 100*time.Millisecond, "log lines did not appear in docker logs")
+}
+
+func TestLogsTailLimitsOutput(t *testing.T) {
+	requireDocker(t)
+	cleanup()
+	t.Cleanup(cleanup)
+
+	ctx := testContext(t)
+	startTestContainer(t, ctx)
+	writeNumberedLogLines(t, ctx, 10)
+
+	configFile := writeAwsConfig(t)
+
+	for _, flags := range [][]string{{"--tail", "3"}, {"-n", "3"}} {
+		args := append([]string{"--config", configFile, "logs"}, flags...)
+		stdout, stderr, err := runLstk(t, ctx, "", env.Without(), args...)
+		require.NoError(t, err, "lstk logs %s should exit cleanly, stderr: %s", strings.Join(flags, " "), stderr)
+		for i := 8; i <= 10; i++ {
+			assert.Contains(t, stdout, fmt.Sprintf("tail-marker-%d", i), "last 3 lines should be shown with %s", strings.Join(flags, " "))
+		}
+		for i := 1; i <= 7; i++ {
+			assert.NotContains(t, stdout, fmt.Sprintf("tail-marker-%d\n", i), "older lines should be cut off with %s", strings.Join(flags, " "))
+		}
+	}
+}
+
+func TestLogsWithoutTailShowsAllLines(t *testing.T) {
+	requireDocker(t)
+	cleanup()
+	t.Cleanup(cleanup)
+
+	ctx := testContext(t)
+	startTestContainer(t, ctx)
+	writeNumberedLogLines(t, ctx, 10)
+
+	configFile := writeAwsConfig(t)
+	stdout, stderr, err := runLstk(t, ctx, "", env.Without(), "--config", configFile, "logs")
+	require.NoError(t, err, "lstk logs should exit cleanly, stderr: %s", stderr)
+	for i := 1; i <= 10; i++ {
+		assert.Contains(t, stdout, fmt.Sprintf("tail-marker-%d", i), "all lines should be shown without --tail")
+	}
+}
+
+func TestLogsTailRejectsInvalidValue(t *testing.T) {
+	t.Parallel()
+
+	configFile := writeAwsConfig(t)
+	_, stderr, err := runLstk(t, testContext(t), "", env.Without(), "--config", configFile, "logs", "--tail", "bogus")
+	require.Error(t, err, "expected lstk logs --tail bogus to fail")
+	requireExitCode(t, 1, err)
+	assert.Contains(t, stderr, "bogus", "error should name the invalid value")
+	assert.Contains(t, stderr, "--tail", "error should name the flag")
+}
+
+func TestLogsTailWithFollowStartsFromTail(t *testing.T) {
+	requireDocker(t)
+	cleanup()
+	t.Cleanup(cleanup)
+
+	ctx := testContext(t)
+	startTestContainer(t, ctx)
+	writeNumberedLogLines(t, ctx, 10)
+
+	configFile := writeAwsConfig(t)
+	// Uses StdoutPipe for streaming — cannot use runLstk.
+	logsCmd := exec.CommandContext(ctx, binaryPath(), "--config", configFile, "logs", "--follow", "--tail", "3")
+	logsCmd.Env = env.Without()
+	stdout, err := logsCmd.StdoutPipe()
+	require.NoError(t, err, "failed to get stdout pipe")
+
+	err = logsCmd.Start()
+	require.NoError(t, err, "failed to start lstk logs --follow --tail 3")
+	t.Cleanup(func() { _ = logsCmd.Process.Kill() })
+
+	// The backlog is capped at the last 3 lines, so the first line streamed
+	// must be tail-marker-8; seeing an older marker first means tail was ignored.
+	firstLine := make(chan string, 1)
+	go func() {
+		scanner := bufio.NewScanner(stdout)
+		for scanner.Scan() {
+			line := scanner.Text()
+			if strings.Contains(line, "tail-marker-") {
+				firstLine <- line
+				return
+			}
+		}
+	}()
+
+	select {
+	case line := <-firstLine:
+		assert.Contains(t, line, "tail-marker-8", "follow should start from the last 3 lines")
+	case <-ctx.Done():
+		t.Fatal("no marker appeared in lstk logs --follow --tail output within timeout")
+	}
 }
 
 func TestLogsFollowStreamsOutput(t *testing.T) {

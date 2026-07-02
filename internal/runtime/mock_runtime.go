@@ -262,15 +262,15 @@ func (mr *MockRuntimeMockRecorder) Stop(ctx, containerName any) *gomock.Call {
 }
 
 // StreamLogs mocks base method.
-func (m *MockRuntime) StreamLogs(ctx context.Context, containerID string, out io.Writer, follow bool) error {
+func (m *MockRuntime) StreamLogs(ctx context.Context, containerID string, out io.Writer, follow bool, tail string) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "StreamLogs", ctx, containerID, out, follow)
+	ret := m.ctrl.Call(m, "StreamLogs", ctx, containerID, out, follow, tail)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // StreamLogs indicates an expected call of StreamLogs.
-func (mr *MockRuntimeMockRecorder) StreamLogs(ctx, containerID, out, follow any) *gomock.Call {
+func (mr *MockRuntimeMockRecorder) StreamLogs(ctx, containerID, out, follow, tail any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "StreamLogs", reflect.TypeOf((*MockRuntime)(nil).StreamLogs), ctx, containerID, out, follow)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "StreamLogs", reflect.TypeOf((*MockRuntime)(nil).StreamLogs), ctx, containerID, out, follow, tail)
 }

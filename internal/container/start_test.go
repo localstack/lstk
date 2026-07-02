@@ -660,7 +660,7 @@ func TestStartContainers_SnowflakeLicenseError(t *testing.T) {
 	const containerID = "abc123"
 	licenseLog := "⚠️ The Snowflake emulator is currently not covered by your license. ❄️"
 	mockRT.EXPECT().Start(gomock.Any(), c).Return(containerID, exitResultChan(runtime.ExitResult{ExitCode: 1}), nil)
-	mockRT.EXPECT().StreamLogs(gomock.Any(), containerID, gomock.Any(), true).Return(nil)
+	mockRT.EXPECT().StreamLogs(gomock.Any(), containerID, gomock.Any(), true, "all").Return(nil)
 	mockRT.EXPECT().IsRunning(gomock.Any(), containerID).Return(false, nil)
 	mockRT.EXPECT().Logs(gomock.Any(), containerID, 20).Return(licenseLog, nil)
 
@@ -707,7 +707,7 @@ func TestStartContainers_AzureLicenseError(t *testing.T) {
 	const containerID = "abc123"
 	licenseLog := "The Azure emulator is currently not covered by your license."
 	mockRT.EXPECT().Start(gomock.Any(), c).Return(containerID, exitResultChan(runtime.ExitResult{ExitCode: 1}), nil)
-	mockRT.EXPECT().StreamLogs(gomock.Any(), containerID, gomock.Any(), true).Return(nil)
+	mockRT.EXPECT().StreamLogs(gomock.Any(), containerID, gomock.Any(), true, "all").Return(nil)
 	mockRT.EXPECT().IsRunning(gomock.Any(), containerID).Return(false, nil)
 	mockRT.EXPECT().Logs(gomock.Any(), containerID, 20).Return(licenseLog, nil)
 
@@ -882,7 +882,7 @@ func TestStartContainers_ExitedEmitsErrorAndTelemetry(t *testing.T) {
 	}
 	const containerID = "abc123"
 	mockRT.EXPECT().Start(gomock.Any(), c).Return(containerID, exitResultChan(runtime.ExitResult{ExitCode: 3}), nil)
-	mockRT.EXPECT().StreamLogs(gomock.Any(), containerID, gomock.Any(), true).Return(nil)
+	mockRT.EXPECT().StreamLogs(gomock.Any(), containerID, gomock.Any(), true, "all").Return(nil)
 	mockRT.EXPECT().IsRunning(gomock.Any(), containerID).Return(true, nil).AnyTimes()
 	mockRT.EXPECT().Logs(gomock.Any(), containerID, 20).Return("boom: fatal error\n", nil).AnyTimes()
 
@@ -927,7 +927,7 @@ func TestStartContainers_TimeoutEmitsErrorAndTelemetry(t *testing.T) {
 	const containerID = "abc123"
 	// exitCh never fires; the container stays running but never becomes healthy.
 	mockRT.EXPECT().Start(gomock.Any(), c).Return(containerID, (<-chan runtime.ExitResult)(make(chan runtime.ExitResult)), nil)
-	mockRT.EXPECT().StreamLogs(gomock.Any(), containerID, gomock.Any(), true).Return(nil)
+	mockRT.EXPECT().StreamLogs(gomock.Any(), containerID, gomock.Any(), true, "all").Return(nil)
 	mockRT.EXPECT().IsRunning(gomock.Any(), containerID).Return(true, nil).AnyTimes()
 	mockRT.EXPECT().Logs(gomock.Any(), containerID, 20).Return("still booting...\n", nil).AnyTimes()
 

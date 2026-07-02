@@ -78,7 +78,7 @@ type Runtime interface {
 	ContainerStartedAt(ctx context.Context, containerName string) (time.Time, error)
 	ContainerEnv(ctx context.Context, containerName string) ([]string, error)
 	Logs(ctx context.Context, containerID string, tail int) (string, error)
-	StreamLogs(ctx context.Context, containerID string, out io.Writer, follow bool) error
+	StreamLogs(ctx context.Context, containerID string, out io.Writer, follow bool, tail string) error
 	GetImageVersion(ctx context.Context, imageName string) (string, error)
 	// ImageExists reports whether the given image is already present locally.
 	ImageExists(ctx context.Context, image string) (bool, error)
