@@ -76,6 +76,52 @@ func TestSubcommandHelpUsesSubcommandUsageLine(t *testing.T) {
 	assertNotContains(t, out, "LSTK - LocalStack command-line interface")
 }
 
+func TestSaveLoadHelpShowsInvokedCommandForm(t *testing.T) {
+	tests := []struct {
+		name            string
+		args            []string
+		wantContains    string
+		wantNotContains string
+	}{
+		{
+			name:            "save alias shows save examples",
+			args:            []string{"save", "--help"},
+			wantContains:    "lstk save ./my-snapshot.snapshot",
+			wantNotContains: "lstk snapshot save",
+		},
+		{
+			name:            "load alias shows load examples",
+			args:            []string{"load", "--help"},
+			wantContains:    "lstk load my-baseline",
+			wantNotContains: "lstk snapshot load",
+		},
+		{
+			name:         "snapshot save keeps canonical form",
+			args:         []string{"snapshot", "save", "--help"},
+			wantContains: "lstk snapshot save ./my-snapshot.snapshot",
+		},
+		{
+			name:         "snapshot load keeps canonical form",
+			args:         []string{"snapshot", "load", "--help"},
+			wantContains: "lstk snapshot load my-baseline",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			out, err := executeWithArgs(t, tt.args...)
+			if err != nil {
+				t.Fatalf("expected no error, got %v", err)
+			}
+
+			assertContains(t, out, tt.wantContains)
+			if tt.wantNotContains != "" {
+				assertNotContains(t, out, tt.wantNotContains)
+			}
+		})
+	}
+}
+
 func assertContains(t *testing.T, s, want string) {
 	t.Helper()
 	if !strings.Contains(s, want) {

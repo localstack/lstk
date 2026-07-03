@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/localstack/lstk/internal/api"
@@ -48,43 +49,47 @@ To skip the confirmation prompt in non-interactive mode, use --force:
 
   lstk snapshot remove pod:my-baseline --force`
 
-const snapshotSaveLong = `Save a snapshot of the running emulator's state.
+func snapshotSaveLong(cmdName string) string {
+	return fmt.Sprintf(`Save a snapshot of the running emulator's state.
 
 Pass [destination] as an absolute or relative path for the exported file:
 
-  lstk snapshot save                         # saves to ./snapshot-<YYYY-MM-DDTHH-mm-ss>-<hex>.snapshot
-  lstk snapshot save ./my-snapshot.snapshot  # saves to ./my-snapshot.snapshot
-  lstk snapshot save /tmp/my-state           # saves to /tmp/my-state.snapshot
+  lstk %[1]s                         # saves to ./snapshot-<YYYY-MM-DDTHH-mm-ss>-<hex>.snapshot
+  lstk %[1]s ./my-snapshot.snapshot  # saves to ./my-snapshot.snapshot
+  lstk %[1]s /tmp/my-state           # saves to /tmp/my-state.snapshot
 
 To save to a remote pod on the LocalStack platform, use the pod: prefix:
 
-  lstk snapshot save pod:my-baseline    # saves as a named pod on the platform
+  lstk %[1]s pod:my-baseline    # saves as a named pod on the platform
 
 To save to your own S3 bucket, pass an s3:// location with an optional pod name (auto-generated when omitted). Credentials are read from AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY, from --profile, or from the profile named by AWS_PROFILE; never put credentials in the URL.
 
-  lstk snapshot save my-pod s3://my-bucket/prefix
-  lstk snapshot save my-pod s3://my-bucket/prefix --profile my-aws-profile`
+  lstk %[1]s my-pod s3://my-bucket/prefix
+  lstk %[1]s my-pod s3://my-bucket/prefix --profile my-aws-profile`, cmdName)
+}
 
 const snapshotLoadCanonical = "snapshot load"
 
-const snapshotLoadLong = `Load a snapshot into the running emulator, starting it first if needed.
+func snapshotLoadLong(cmdName string) string {
+	return fmt.Sprintf(`Load a snapshot into the running emulator, starting it first if needed.
 
 REF identifies the snapshot to load:
 
-  lstk snapshot load my-baseline             # loads ./my-baseline or ./my-baseline.snapshot
-  lstk snapshot load ./checkpoint.snapshot   # loads from explicit path
-  lstk snapshot load pod:my-baseline         # loads from LocalStack Cloud
+  lstk %[1]s my-baseline             # loads ./my-baseline or ./my-baseline.snapshot
+  lstk %[1]s ./checkpoint.snapshot   # loads from explicit path
+  lstk %[1]s pod:my-baseline         # loads from LocalStack Cloud
 
 To load from your own S3 bucket, pass the pod name and an s3:// location. Credentials are read from AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY, from --profile, or from the profile named by AWS_PROFILE:
 
-  lstk snapshot load my-pod s3://my-bucket/prefix
-  lstk snapshot load my-pod s3://my-bucket/prefix --profile my-aws-profile
+  lstk %[1]s my-pod s3://my-bucket/prefix
+  lstk %[1]s my-pod s3://my-bucket/prefix --profile my-aws-profile
 
 Merge strategies control how snapshot state is combined with running state:
 
   --merge=account-region-merge  (default) snapshot wins on (service, account, region) overlap
   --merge=overwrite             wipe running state, then load
-  --merge=service-merge         snapshot wins per-resource; non-overlapping resources combined`
+  --merge=service-merge         snapshot wins per-resource; non-overlapping resources combined`, cmdName)
+}
 
 func newSnapshotCmd(cfg *env.Env, tel *telemetry.Client, logger log.Logger) *cobra.Command {
 	cmd := &cobra.Command{
@@ -192,7 +197,7 @@ func newSnapshotLoadCmd(cfg *env.Env, tel *telemetry.Client, logger log.Logger) 
 	cmd := &cobra.Command{
 		Use:     "load REF",
 		Short:   "Load a snapshot into the running emulator",
-		Long:    snapshotLoadLong,
+		Long:    snapshotLoadLong(snapshotLoadCanonical),
 		Args:    cobra.RangeArgs(1, 2),
 		PreRunE: initConfig(nil),
 		RunE:    runSnapshotLoad(cfg, tel, logger),
@@ -206,7 +211,7 @@ func newLoadCmd(cfg *env.Env, tel *telemetry.Client, logger log.Logger) *cobra.C
 	cmd := &cobra.Command{
 		Use:         "load REF",
 		Short:       "Load a snapshot into the running emulator",
-		Long:        snapshotLoadLong,
+		Long:        snapshotLoadLong("load"),
 		Args:        cobra.RangeArgs(1, 2),
 		PreRunE:     initConfig(nil),
 		RunE:        runSnapshotLoad(cfg, tel, logger),
@@ -247,7 +252,8 @@ func runSnapshotLoad(cfg *env.Env, tel *telemetry.Client, logger log.Logger) fun
 
 		if isRemote {
 			if podName == "" {
-				return fmt.Errorf("a pod name is required to load from S3: lstk snapshot load <pod-name> %s", s3URL)
+				invocation := strings.TrimPrefix(cmd.CommandPath(), cmd.Root().Name()+" ")
+				return fmt.Errorf("a pod name is required to load from S3: lstk %s <pod-name> %s", invocation, s3URL)
 			}
 			if err := snapshot.ValidatePodName(podName); err != nil {
 				return err
@@ -550,7 +556,7 @@ func newSnapshotSaveCmd(cfg *env.Env) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "save [destination]",
 		Short:   "Save a snapshot of the emulator state",
-		Long:    snapshotSaveLong,
+		Long:    snapshotSaveLong(snapshotSaveCanonical),
 		Args:    cobra.MaximumNArgs(2),
 		PreRunE: initConfig(nil),
 		RunE:    runSnapshotSave(cfg),
@@ -563,7 +569,7 @@ func newSaveCmd(cfg *env.Env) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:         "save [destination]",
 		Short:       "Save a snapshot of the emulator state",
-		Long:        snapshotSaveLong,
+		Long:        snapshotSaveLong("save"),
 		Args:        cobra.MaximumNArgs(2),
 		PreRunE:     initConfig(nil),
 		RunE:        runSnapshotSave(cfg),
