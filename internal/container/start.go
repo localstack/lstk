@@ -895,12 +895,12 @@ func selectContainersToStart(ctx context.Context, rt runtime.Runtime, sink outpu
 			return nil, output.NewSilentError(err)
 		}
 
-		// Check extra ports required by this emulator (443 for HTTPS, 4510-4559 for
+		// Check extra ports used by this emulator (443 for HTTPS, 4510-4559 for
 		// the service port range). Required ports are singletons: if one is taken,
-		// another LocalStack instance is likely running and we cannot start a new
-		// one. Optional ports (443 from the default GATEWAY_LISTEN) are commonly
-		// squatted by other software — e.g. Rancher Desktop's Traefik ingress — so
-		// a busy one is dropped with a warning instead of blocking the start.
+		// another process is already using it and we cannot start a new instance.
+		// Optional ports (443 from the default GATEWAY_LISTEN) are commonly squatted
+		// by other software — e.g. Rancher Desktop's Traefik ingress — so a busy one
+		// is dropped with a warning instead of blocking the start.
 		var requiredSpecs []string
 		for _, ep := range c.ExtraPorts {
 			if !ep.Optional {

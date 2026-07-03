@@ -64,5 +64,11 @@ func inspectCommand(goos, port string) string {
 	if goos == "windows" {
 		return fmt.Sprintf("netstat -ano | findstr :%s", port)
 	}
+	// Privileged ports (<1024, e.g. 443) are typically held by root-owned
+	// processes such as sshd; lsof only reports other users' sockets under
+	// sudo, so suggest sudo there to avoid an empty result.
+	if p, err := strconv.Atoi(port); err == nil && p < 1024 {
+		return fmt.Sprintf("sudo lsof -i tcp:%s", port)
+	}
 	return fmt.Sprintf("lsof -i tcp:%s", port)
 }

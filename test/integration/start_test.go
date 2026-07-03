@@ -362,14 +362,15 @@ func inspectCommandFor(port string) string {
 	if runtime.GOOS == "windows" {
 		return "netstat -ano | findstr :" + port
 	}
+	if p, err := strconv.Atoi(port); err == nil && p < 1024 {
+		return "sudo lsof -i tcp:" + port
+	}
 	return "lsof -i tcp:" + port
 }
 
-// TestStartCommandFailsWhenExtraPortInUse covers the extra-port branch (443 and
-// the 4510-4559 service range) of the pre-flight check. 443 is privileged and
-// cannot be bound by a non-root test process, so we occupy a service-range port
-// (4510) with the primary edge port (4566) left free. This exercises the same
-// branch and asserts it now surfaces the same guidance as the 4566 conflict.
+// TestStartCommandFailsWhenExtraPortInUse covers the required extra-port branch
+// of the pre-flight check. It occupies service-range port 4510 with the primary
+// edge port left free and asserts the same guidance as the 4566 conflict.
 func TestStartCommandFailsWhenExtraPortInUse(t *testing.T) {
 	requireDocker(t)
 	cleanup()
