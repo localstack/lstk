@@ -362,6 +362,9 @@ func inspectCommandFor(port string) string {
 	if runtime.GOOS == "windows" {
 		return "netstat -ano | findstr :" + port
 	}
+	if p, err := strconv.Atoi(port); err == nil && p < 1024 {
+		return "sudo lsof -i tcp:" + port
+	}
 	return "lsof -i tcp:" + port
 }
 

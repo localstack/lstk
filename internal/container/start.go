@@ -756,8 +756,9 @@ func selectContainersToStart(ctx context.Context, rt runtime.Runtime, sink outpu
 		}
 
 		// Check extra ports required by this emulator (443 for HTTPS, 4510-4559 for
-		// the service port range). These are singletons: if any is taken, another
-		// LocalStack instance is likely running and we cannot start a new one.
+		// the service port range). A running LocalStack was already ruled out above
+		// by FindRunningByImage, so a conflict here means an unrelated process holds
+		// the port — we can't publish it, so we stop rather than fail at Docker bind.
 		extraSpecs := make([]string, len(c.ExtraPorts))
 		for i, ep := range c.ExtraPorts {
 			extraSpecs[i] = ep.HostPort
