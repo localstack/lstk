@@ -344,10 +344,50 @@ func TestStartCommandFailsWhenPortInUse(t *testing.T) {
 	require.Error(t, err, "expected lstk start to fail when port is in use")
 	requireExitCode(t, 1, err)
 	assert.Contains(t, stdout, "Port 4566 already in use")
-	assert.Contains(t, stdout, "Free the port or configure a different one.")
-	assert.Contains(t, stdout, "Use another port in the configuration:")
+	assert.Contains(t, stdout, "Another process is already using this port")
+	assert.Contains(t, stdout, "Identify the process using it:")
+	assert.Contains(t, stdout, inspectCommandFor("4566"))
+	assert.Contains(t, stdout, "Or use another port in the configuration:")
 
 	// Both lstk_lifecycle (start_error) and lstk_command events should be emitted.
+	byName := collectTelemetryByName(t, events, 2)
+	assert.Contains(t, byName, "lstk_lifecycle")
+	assert.Contains(t, byName, "lstk_command")
+}
+
+// inspectCommandFor mirrors ports.InspectCommand for the current OS so the
+// port-conflict tests can assert the diagnostic hint without importing the
+// internal package.
+func inspectCommandFor(port string) string {
+	if runtime.GOOS == "windows" {
+		return "netstat -ano | findstr :" + port
+	}
+	return "lsof -i tcp:" + port
+}
+
+// TestStartCommandFailsWhenExtraPortInUse covers the extra-port branch (443 and
+// the 4510-4559 service range) of the pre-flight check. 443 is privileged and
+// cannot be bound by a non-root test process, so we occupy a service-range port
+// (4510) with the primary edge port (4566) left free. This exercises the same
+// branch and asserts it now surfaces the same guidance as the 4566 conflict.
+func TestStartCommandFailsWhenExtraPortInUse(t *testing.T) {
+	requireDocker(t)
+	cleanup()
+	t.Cleanup(cleanup)
+
+	ln, err := net.Listen("tcp", ":4510")
+	require.NoError(t, err, "failed to bind port 4510 for test")
+	defer func() { _ = ln.Close() }()
+
+	analyticsSrv, events := mockAnalyticsServer(t)
+	stdout, _, err := runLstk(t, testContext(t), "", env.With(env.AuthToken, "fake-token").With(env.AnalyticsEndpoint, analyticsSrv.URL), "start")
+	require.Error(t, err, "expected lstk start to fail when an extra port is in use")
+	requireExitCode(t, 1, err)
+	assert.Contains(t, stdout, "Port 4510 already in use")
+	assert.Contains(t, stdout, "Another process is already using this port")
+	assert.Contains(t, stdout, "Identify the process using it:")
+	assert.Contains(t, stdout, inspectCommandFor("4510"))
+
 	byName := collectTelemetryByName(t, events, 2)
 	assert.Contains(t, byName, "lstk_lifecycle")
 	assert.Contains(t, byName, "lstk_command")

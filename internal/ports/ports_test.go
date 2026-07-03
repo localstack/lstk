@@ -73,6 +73,24 @@ func TestCheckAvailable(t *testing.T) {
 	}
 }
 
+func TestInspectCommand(t *testing.T) {
+	tests := []struct {
+		goos string
+		port string
+		want string
+	}{
+		{"darwin", "443", "lsof -i tcp:443"},
+		{"linux", "4566", "lsof -i tcp:4566"},
+		{"windows", "443", "netstat -ano | findstr :443"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.goos, func(t *testing.T) {
+			assert.Equal(t, tt.want, inspectCommand(tt.goos, tt.port))
+		})
+	}
+}
+
 // bindPort opens a listener on a random port and keeps it open for the test duration.
 func bindPort(t *testing.T) string {
 	t.Helper()

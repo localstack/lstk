@@ -908,11 +908,7 @@ func selectContainersToStart(ctx context.Context, rt runtime.Runtime, sink outpu
 			}
 		}
 		if conflictPort, err := ports.CheckAvailable(requiredSpecs...); err != nil {
-			sink.Emit(output.ErrorEvent{
-				Title:   fmt.Sprintf("Port %s is already in use", conflictPort),
-				Summary: "LocalStack requires this port. Free it before starting.",
-				Actions: portConflictActions(rt.Flavor(), runtime.DetectInstalledFlavor(), conflictPort),
-			})
+			emitPortInUseError(sink, conflictPort, portConflictActions(rt.Flavor(), runtime.DetectInstalledFlavor(), conflictPort)...)
 			tel.EmitEmulatorLifecycleEvent(ctx, telemetry.LifecycleEvent{
 				EventType: telemetry.LifecycleStartError,
 				Emulator:  c.EmulatorType,
@@ -1155,15 +1151,18 @@ func portConflictActions(activeFlavor, installedFlavor, port string) []output.Er
 	return nil
 }
 
-func emitPortInUseError(sink output.Sink, port string) {
-	actions := []output.ErrorAction{}
+func emitPortInUseError(sink output.Sink, port string, extraActions ...output.ErrorAction) {
+	actions := []output.ErrorAction{
+		{Label: "Identify the process using it:", Value: ports.InspectCommand(port)},
+	}
+	actions = append(actions, extraActions...)
 	configPath, pathErr := config.ConfigFilePath()
 	if pathErr == nil {
-		actions = append(actions, output.ErrorAction{Label: "Use another port in the configuration:", Value: configPath})
+		actions = append(actions, output.ErrorAction{Label: "Or use another port in the configuration:", Value: configPath})
 	}
 	sink.Emit(output.ErrorEvent{
 		Title:   fmt.Sprintf("Port %s already in use", port),
-		Summary: "Free the port or configure a different one.",
+		Summary: "Another process is already using this port.",
 		Actions: actions,
 	})
 }
