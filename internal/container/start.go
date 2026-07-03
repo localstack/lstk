@@ -851,7 +851,7 @@ func agentEnv(cl caller.Classification) []string {
 // names and shared ports during startup.
 func checkSingleContainer(containers []config.ContainerConfig) error {
 	if len(containers) > 1 {
-		return fmt.Errorf("found %d [[containers]] blocks, but only one is supported at a time; enable a single [[containers]] block (running multiple emulators together, e.g. AWS and Snowflake, is not supported yet)", len(containers))
+		return fmt.Errorf("found %d [[containers]] blocks in your config, but only one is supported at a time", len(containers))
 	}
 	return nil
 }

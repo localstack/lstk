@@ -7,8 +7,8 @@ import (
 	"runtime"
 	"testing"
 
-	"github.com/moby/moby/client"
 	"github.com/localstack/lstk/test/integration/env"
+	"github.com/moby/moby/client"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -221,7 +221,7 @@ port = "4567"
 	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), testEnvWithHome(t.TempDir(), ""), "--config", configFile, "start")
 	require.Error(t, err)
 	requireExitCode(t, 1, err)
-	assert.Contains(t, stdout+stderr, "only one")
+	assert.Contains(t, stdout+stderr, "only one is supported at a time")
 }
 
 func TestLegacyYAMLConfigGivesHelpfulError(t *testing.T) {

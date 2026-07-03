@@ -45,7 +45,7 @@ func TestStart_RejectsMultipleContainersBeforeHealthCheck(t *testing.T) {
 	_, err := Start(context.Background(), mockRT, sink, opts, false)
 
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "only one")
+	assert.Contains(t, err.Error(), "only one is supported at a time")
 	assert.True(t, output.IsSilent(err), "error should be silent since it was already emitted")
 }
 
@@ -58,7 +58,7 @@ func TestCheckSingleContainer(t *testing.T) {
 		{Type: config.EmulatorSnowflake},
 	})
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "only one")
+	assert.Contains(t, err.Error(), "only one is supported at a time")
 }
 
 func TestStart_ReturnsEarlyIfRuntimeUnhealthy(t *testing.T) {
