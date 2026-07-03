@@ -3,6 +3,7 @@ package ports
 import (
 	"fmt"
 	"net"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -50,4 +51,18 @@ func dial(port string) error {
 	}
 	_ = conn.Close()
 	return fmt.Errorf("port %s already in use", port)
+}
+
+// InspectCommand returns a shell command the user can run to identify the
+// process currently listening on the given port, tailored to the host OS.
+// On Windows it uses netstat; elsewhere (macOS, Linux, *BSD) it uses lsof.
+func InspectCommand(port string) string {
+	return inspectCommand(runtime.GOOS, port)
+}
+
+func inspectCommand(goos, port string) string {
+	if goos == "windows" {
+		return fmt.Sprintf("netstat -ano | findstr :%s", port)
+	}
+	return fmt.Sprintf("lsof -i tcp:%s", port)
 }
