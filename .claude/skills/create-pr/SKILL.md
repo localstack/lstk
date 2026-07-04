@@ -3,7 +3,7 @@ name: create-pr
 description: Create a GitHub pull request following lstk conventions with proper title, description, and ticket references.
 argument-hint: [base-branch]
 disable-model-invocation: true
-allowed-tools: Bash(git log *), Bash(git diff *), Bash(git branch *), Bash(git push -u origin HEAD), Bash(gh pr create *), Bash(gh label list *), mcp__plugin_linear_linear__get_issue
+allowed-tools: Bash(git log *), Bash(git diff *), Bash(git branch *), Bash(git push -u origin HEAD), Bash(gh pr create *), Bash(gh label list *), mcp__claude_ai_Linear__get_issue
 ---
 
 # Create Pull Request
@@ -27,7 +27,9 @@ If `$ARGUMENTS` is provided, use it as the base branch instead of `main`.
 
 Extract the ticket ID from the branch name. The ticket ID is the last path segment, uppercased (e.g., branch `user/abc-123` → ticket `ABC-123`).
 
-Use the Linear MCP tool (`mcp__plugin_linear_linear__get_issue`) to fetch the ticket details — title and description. Use this context to inform the PR motivation.
+Use the Linear MCP tool (`mcp__claude_ai_Linear__get_issue`) to fetch the ticket details — title and description. Use this context to inform the PR motivation.
+
+If the branch name carries no ticket ID, ask whether a Linear issue exists (issues live in Linear, not GitHub Issues). When one exists, prefer its Linear-generated branch name for future work; when none exists and the change warrants tracking, offer to create the issue first and reference it.
 
 ## Step 3: Write the PR title
 
