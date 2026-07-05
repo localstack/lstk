@@ -46,6 +46,9 @@ Examples:
 			if gf.nonInteractive {
 				cfg.NonInteractive = true
 			}
+			if jsonPrecedesCommandName(cmd.CalledAs()) {
+				cfg.JSON = true
+			}
 			if gf.configPath != "" {
 				if err := cmd.Flags().Set("config", gf.configPath); err != nil {
 					return err

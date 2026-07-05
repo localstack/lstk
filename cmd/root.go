@@ -34,6 +34,11 @@ import (
 // emit the same name as their canonical subcommand.
 const canonicalCommandAnnotation = "lstk.canonical"
 
+// jsonSupportedAnnotation, when set on a cobra.Command, opts that command into
+// --json output. Commands without this annotation reject --json instead of
+// silently rendering plain text; see requireJSONSupport.
+const jsonSupportedAnnotation = "lstk.jsonSupported"
+
 // Command group IDs used to separate the proxy "tool" commands (aws, terraform,
 // cdk, sam, az) from the rest of lstk's commands in the help output.
 const (
@@ -82,6 +87,7 @@ func NewRootCmd(cfg *env.Env, tel *telemetry.Client, logger log.Logger) *cobra.C
 
 	root.PersistentFlags().String("config", "", "Path to config file")
 	root.PersistentFlags().BoolVar(&cfg.NonInteractive, "non-interactive", false, "Disable interactive mode")
+	root.PersistentFlags().BoolVar(&cfg.JSON, "json", false, "Output in JSON format (only supported by some commands)")
 	root.Flags().Bool("persist", false, "Persist emulator state across restarts")
 	addSnapshotStartFlags(root)
 
@@ -220,6 +226,7 @@ func Execute(ctx context.Context) error {
 	root := NewRootCmd(cfg, tel, logger)
 	root.SilenceErrors = true
 	root.SilenceUsage = true
+	requireJSONSupport(root, cfg)
 	instrumentCommands(root, tel)
 	if cfg.TracesEnabled {
 		wrapCommandsWithTracing(root)
@@ -364,6 +371,45 @@ func instrumentCommands(cmd *cobra.Command, tel *telemetry.Client) {
 	}
 }
 
+// requireJSONSupport walks the Cobra command tree and wraps every RunE so that,
+// when cfg.JSON is set, a command lacking the jsonSupportedAnnotation is
+// rejected instead of silently rendering plain-text output. It reuses the same
+// root/extension-dispatch carve-out instrumentCommands has (a positional arg on
+// the root command means extension dispatch, which owns its own output format
+// and is never gated).
+func requireJSONSupport(cmd *cobra.Command, cfg *env.Env) {
+	if cmd.RunE != nil {
+		original := cmd.RunE
+		cmd.RunE = func(c *cobra.Command, args []string) error {
+			if c == c.Root() && len(args) > 0 {
+				return original(c, args)
+			}
+
+			if cfg.JSON {
+				if _, ok := c.Annotations[jsonSupportedAnnotation]; !ok {
+					commandName := strings.TrimPrefix(c.CommandPath(), c.Root().Name()+" ")
+					if c == c.Root() {
+						commandName = "start"
+					}
+					if canonical, ok := c.Annotations[canonicalCommandAnnotation]; ok {
+						commandName = canonical
+					}
+					output.NewPlainSink(os.Stderr).Emit(output.ErrorEvent{
+						Title:   fmt.Sprintf("%q is not able to provide output in JSON format", commandName),
+						Actions: []output.ErrorAction{{Label: "See help:", Value: "lstk -h"}},
+					})
+					return output.NewSilentError(fmt.Errorf("%s: not able to provide output in JSON format", commandName))
+				}
+			}
+
+			return original(c, args)
+		}
+	}
+	for _, child := range cmd.Commands() {
+		requireJSONSupport(child, cfg)
+	}
+}
+
 // wrapCommandsWithTracing walks the Cobra command tree and wraps every RunE with
 // an OTel span. This is done once after the tree is built so individual commands
 // don't need to know about tracing at all.
@@ -396,7 +442,7 @@ func wrapCommandsWithTracing(cmd *cobra.Command) {
 }
 
 func isInteractiveMode(cfg *env.Env) bool {
-	return !cfg.NonInteractive && ui.IsInteractive()
+	return !cfg.NonInteractive && !cfg.JSON && ui.IsInteractive()
 }
 
 const maxLogSize = 1 << 20 // 1 MB

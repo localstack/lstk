@@ -21,6 +21,7 @@ lstk passes everything you need through two environment variables, so you never 
   "configDir": "/home/you/.config/lstk",
   "authToken": "ls-...",
   "nonInteractive": true,
+  "json": false,
   "emulators": [
     { "type": "aws", "endpoint": "http://localhost.localstack.cloud:4566", "port": "4566" }
   ]
@@ -32,6 +33,7 @@ lstk passes everything you need through two environment variables, so you never 
 | `configDir` | string | lstk's resolved config directory. Always present. |
 | `authToken` | string | The user's resolved LocalStack auth token. **Omitted** when not authenticated. |
 | `nonInteractive` | bool | `true` when the user passed `--non-interactive` or stdout is not a TTY. When true, do not prompt. |
+| `json` | bool | `true` when the user passed `--json`. Setting `--json` also forces `nonInteractive` to `true`. lstk makes no decision about your output format — decide for yourself whether to honor it. |
 | `emulators` | array | One entry per running LocalStack emulator: `{ "type", "endpoint", "port" }`. An **empty array** `[]` when none are running. |
 
 `emulators` can hold **more than one** entry — lstk may run an AWS, a Snowflake, and an Azure emulator at the same time. Don't assume a single endpoint: select the one(s) your extension needs by `type`, and handle the empty case. `authToken` is **omitted, not set empty**, when the user is not authenticated — check for its presence.
@@ -74,7 +76,7 @@ lstk performs **no** compatibility check for you — it runs any resolvable `lst
 
 ### Conveyance of global flags
 
-Each lstk global flag that affects behavior is conveyed as a field of `LSTK_EXT_CONTEXT` rather than being forwarded on your command line (today: `nonInteractive`). This is what lets you own your entire flag namespace without colliding with lstk. As lstk adds global flags, they appear as additional fields — additively, under the same `LSTK_EXT_API_VERSION` major version.
+Each lstk global flag that affects behavior is conveyed as a field of `LSTK_EXT_CONTEXT` rather than being forwarded on your command line (today: `nonInteractive`, `json`). This is what lets you own your entire flag namespace without colliding with lstk. As lstk adds global flags, they appear as additional fields — additively, under the same `LSTK_EXT_API_VERSION` major version.
 
 ## Help descriptions
 
