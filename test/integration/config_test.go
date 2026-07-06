@@ -7,8 +7,8 @@ import (
 	"runtime"
 	"testing"
 
-	"github.com/moby/moby/client"
 	"github.com/localstack/lstk/test/integration/env"
+	"github.com/moby/moby/client"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -200,6 +200,28 @@ tag = "latest"
 	require.Error(t, err)
 	requireExitCode(t, 1, err)
 	assert.Contains(t, stderr, "port is required")
+}
+
+func TestStartWithMultipleContainersFailsFast(t *testing.T) {
+	t.Parallel()
+	configContent := `
+[[containers]]
+type = "aws"
+port = "4566"
+
+[[containers]]
+type = "snowflake"
+port = "4567"
+`
+	configFile := filepath.Join(t.TempDir(), "config.toml")
+	require.NoError(t, os.WriteFile(configFile, []byte(configContent), 0644))
+
+	// The guard runs at the very top of container.Start, before any Docker health
+	// check, auth, or image pull — so start fails fast even without a daemon/token.
+	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), testEnvWithHome(t.TempDir(), ""), "--config", configFile, "start")
+	require.Error(t, err)
+	requireExitCode(t, 1, err)
+	assert.Contains(t, stdout+stderr, "only one is supported at a time")
 }
 
 func TestLegacyYAMLConfigGivesHelpfulError(t *testing.T) {

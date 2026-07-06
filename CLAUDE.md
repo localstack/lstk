@@ -68,6 +68,8 @@ A parent command that only groups subcommands (e.g. `config`, `setup`, `volume`,
 
 Created automatically on first run with defaults. Supports emulator types: `aws`, `snowflake`, and `azure`.
 
+Only one `[[containers]]` block may be enabled at a time. `container.Start` rejects a config with more than one block up front (before health/auth checks and image pulls), since running multiple emulators together (e.g. AWS + Snowflake) is unsupported and would otherwise fail later during startup with container-name conflicts or port collisions. The guard lives on the start path (not `config.Get()`) on purpose: recovery/reporting commands like `stop`, `status`, and `logout` must still enumerate multiple running emulators.
+
 Each `[[containers]]` block may set an optional `image` to override the default Docker Hub image (e.g. an internal registry mirror or a locally loaded offline image). `ContainerConfig.Image()` returns `image` as-is when it already carries a tag (so the separately-configured `tag` is dropped in that case), otherwise it appends `tag` (or `latest`); the default `localstack/<product>:<tag>` is used when `image` is unset.
 
 ## GATEWAY_LISTEN and host exposure

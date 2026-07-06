@@ -2,8 +2,9 @@
 # Run 'lstk config path' to see where this file lives.
 
 # Each [[containers]] block defines an emulator instance.
-# Currently, running AWS and Snowflake at the same time is not fully supported —
-# enable only one [[containers]] block at a time.
+# Only one [[containers]] block may be enabled at a time — running multiple
+# emulators together (e.g. AWS and Snowflake) is not supported yet, so
+# 'lstk start' refuses to start with more than one block.
 
 [[containers]]
 type = "aws"     # Emulator type. Currently supported: "aws", "snowflake", "azure"
