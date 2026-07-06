@@ -306,7 +306,7 @@ func TestAppSnapshotLoadedEventRendersGreen(t *testing.T) {
 }
 
 func TestAppMessageEventWrapsOnVisibleWidth(t *testing.T) {
-	withTrueColorProfile(t)
+	t.Parallel()
 
 	app := NewApp("dev", "", "", nil)
 	app.width = 40
@@ -392,11 +392,11 @@ func TestAppDeferredNoteStyledLikeStatus(t *testing.T) {
 	}
 	if strings.HasPrefix(out, "\n") {
 		t.Fatalf("note should not be padded with a leading blank line, got %q", out)
-        }
+	}
 }
 
 func TestAppLogLineEventWrapsAtTerminalWidth(t *testing.T) {
-	withTrueColorProfile(t)
+	t.Parallel()
 
 	app := NewApp("dev", "", "", nil, withoutHeader())
 	model, _ := app.Update(tea.WindowSizeMsg{Width: 20, Height: 10})

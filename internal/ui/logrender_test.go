@@ -14,24 +14,12 @@ import (
 
 var ansiRegexp = regexp.MustCompile(`\x1b\[[0-9;]*m`)
 
-// withTrueColorProfile forces a TrueColor profile so styling assertions are
-// deterministic. It mutates the global lipgloss color profile, so callers must
-// not run in parallel: a sibling's cleanup restoring the default profile
-// mid-run would strip the colors this test depends on.
-func withTrueColorProfile(t *testing.T) {
-	t.Helper()
-
-	original := lipgloss.ColorProfile()
-	lipgloss.SetColorProfile(termenv.TrueColor)
-	t.Cleanup(func() { lipgloss.SetColorProfile(original) })
-}
-
 func stripANSI(s string) string {
 	return ansiRegexp.ReplaceAllString(s, "")
 }
 
 func TestRenderLogLineWrapsPlainTextAtAvailableWidth(t *testing.T) {
-	withTrueColorProfile(t)
+	t.Parallel()
 
 	got := stripANSI(renderLogLine("abcdefghij", output.LogLevelInfo, 4, 0))
 	want := "abcd\nefgh\nij"
@@ -41,7 +29,7 @@ func TestRenderLogLineWrapsPlainTextAtAvailableWidth(t *testing.T) {
 }
 
 func TestRenderLogLineUsesVisiblePrefixWidth(t *testing.T) {
-	withTrueColorProfile(t)
+	t.Parallel()
 
 	prefix := styles.Secondary.Render("container | ")
 	prefixWidth := lipgloss.Width(prefix)
@@ -60,7 +48,11 @@ func TestRenderLogLineUsesVisiblePrefixWidth(t *testing.T) {
 }
 
 func TestRenderLogLineWrapsMetaAndMessage(t *testing.T) {
-	withTrueColorProfile(t)
+	// Asserts on the raw styled output, so it forces a TrueColor profile. That
+	// mutates the global lipgloss color profile, so it must not run in parallel.
+	original := lipgloss.ColorProfile()
+	lipgloss.SetColorProfile(termenv.TrueColor)
+	t.Cleanup(func() { lipgloss.SetColorProfile(original) })
 
 	line := "abcd : WXYZ"
 	got := renderLogLine(line, output.LogLevelWarn, 4, 0)
@@ -86,7 +78,7 @@ func TestRenderLogLineWrapsMetaAndMessage(t *testing.T) {
 }
 
 func TestRenderLogLineIndentsContinuationLines(t *testing.T) {
-	withTrueColorProfile(t)
+	t.Parallel()
 
 	got := stripANSI(renderLogLine("abcdefghij", output.LogLevelInfo, 4, 3))
 	want := "abcd\n   efgh\n   ij"
@@ -96,7 +88,7 @@ func TestRenderLogLineIndentsContinuationLines(t *testing.T) {
 }
 
 func TestRenderLogLineZeroWidthPassesThrough(t *testing.T) {
-	withTrueColorProfile(t)
+	t.Parallel()
 
 	got := stripANSI(renderLogLine("meta : payload", output.LogLevelWarn, 0, 12))
 	want := "meta : payload"
