@@ -59,6 +59,7 @@ func dispatchExtension(ctx context.Context, cfg *env.Env, tel *telemetry.Client,
 		ConfigDir:      configDir,
 		AuthToken:      cfg.AuthToken,
 		NonInteractive: !isInteractiveMode(cfg),
+		JSON:           cfg.JSON,
 		Emulators:      emulators,
 	}
 

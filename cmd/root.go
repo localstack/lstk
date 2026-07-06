@@ -34,6 +34,11 @@ import (
 // emit the same name as their canonical subcommand.
 const canonicalCommandAnnotation = "lstk.canonical"
 
+// jsonSupportedAnnotation, when set on a cobra.Command, opts that command into
+// --json output. Commands without this annotation reject --json instead of
+// silently rendering plain text; see requireJSONSupport.
+const jsonSupportedAnnotation = "lstk.jsonSupported"
+
 // Command group IDs used to separate the proxy "tool" commands (aws, terraform,
 // cdk, sam, az) from the rest of lstk's commands in the help output.
 const (
@@ -82,6 +87,7 @@ func NewRootCmd(cfg *env.Env, tel *telemetry.Client, logger log.Logger) *cobra.C
 
 	root.PersistentFlags().String("config", "", "Path to config file")
 	root.PersistentFlags().BoolVar(&cfg.NonInteractive, "non-interactive", false, "Disable interactive mode")
+	root.PersistentFlags().BoolVar(&cfg.JSON, "json", false, "Output in JSON format (only supported by some commands)")
 	root.Flags().Bool("persist", false, "Persist emulator state across restarts")
 	addSnapshotStartFlags(root)
 
@@ -220,6 +226,7 @@ func Execute(ctx context.Context) error {
 	root := NewRootCmd(cfg, tel, logger)
 	root.SilenceErrors = true
 	root.SilenceUsage = true
+	requireJSONSupport(root, cfg)
 	instrumentCommands(root, tel)
 	if cfg.TracesEnabled {
 		wrapCommandsWithTracing(root)
@@ -319,19 +326,52 @@ func startEmulator(ctx context.Context, rt runtime.Runtime, cfg *env.Env, tel *t
 	return nil
 }
 
+// walkCommandsWithRunE walks the Cobra command tree rooted at cmd, calling wrap
+// on every command that has a RunE so callers can layer cross-cutting behavior
+// (telemetry, JSON gating, tracing) onto it.
+func walkCommandsWithRunE(cmd *cobra.Command, wrap func(*cobra.Command)) {
+	if cmd.RunE != nil {
+		wrap(cmd)
+	}
+	for _, child := range cmd.Commands() {
+		walkCommandsWithRunE(child, wrap)
+	}
+}
+
+// isExtensionDispatch reports whether the RunE invocation is the root command
+// invoked with a positional arg, i.e. extension dispatch. Extension dispatch
+// owns its own output format and command-event reporting, so telemetry and
+// JSON-support gating both skip it.
+func isExtensionDispatch(c *cobra.Command, args []string) bool {
+	return c == c.Root() && len(args) > 0
+}
+
+// commandDisplayName returns the human-readable name for a command used in
+// telemetry and error messages: the canonicalCommandAnnotation override if
+// present, "start" for the bare root command, otherwise the command path with
+// the root command name trimmed off.
+func commandDisplayName(c *cobra.Command) string {
+	if canonical, ok := c.Annotations[canonicalCommandAnnotation]; ok {
+		return canonical
+	}
+	if c == c.Root() {
+		return "start"
+	}
+	return strings.TrimPrefix(c.CommandPath(), c.Root().Name()+" ")
+}
+
 // instrumentCommands walks the Cobra command tree and wraps every RunE with telemetry emission.
 func instrumentCommands(cmd *cobra.Command, tel *telemetry.Client) {
-	if cmd.RunE != nil {
-		original := cmd.RunE
-		cmd.RunE = func(c *cobra.Command, args []string) error {
+	walkCommandsWithRunE(cmd, func(c *cobra.Command) {
+		original := c.RunE
+		c.RunE = func(c *cobra.Command, args []string) error {
 			startTime := time.Now()
 			runErr := original(c, args)
 
-			// Extension dispatch (the root command invoked with a positional arg)
-			// records its own command event in dispatchExtension, which knows the
-			// resolved extension name; skip the generic emit here so the invocation
-			// is not mislabeled as "start".
-			if c == c.Root() && len(args) > 0 {
+			// Extension dispatch records its own command event in dispatchExtension,
+			// which knows the resolved extension name; skip the generic emit here so
+			// the invocation is not mislabeled as "start".
+			if isExtensionDispatch(c, args) {
 				return runErr
 			}
 
@@ -347,34 +387,51 @@ func instrumentCommands(cmd *cobra.Command, tel *telemetry.Client) {
 				errorMsg = runErr.Error()
 			}
 
-			commandName := strings.TrimPrefix(c.CommandPath(), c.Root().Name()+" ")
-			if c == c.Root() {
-				commandName = "start"
-			}
-			if canonical, ok := c.Annotations[canonicalCommandAnnotation]; ok {
-				commandName = canonical
-			}
-			tel.EmitCommand(c.Context(), commandName, flags, time.Since(startTime).Milliseconds(), exitCode, errorMsg)
+			tel.EmitCommand(c.Context(), commandDisplayName(c), flags, time.Since(startTime).Milliseconds(), exitCode, errorMsg)
 
 			return runErr
 		}
-	}
-	for _, child := range cmd.Commands() {
-		instrumentCommands(child, tel)
-	}
+	})
+}
+
+// requireJSONSupport walks the Cobra command tree and wraps every RunE so that,
+// when cfg.JSON is set, a command lacking the jsonSupportedAnnotation is
+// rejected instead of silently rendering plain-text output.
+func requireJSONSupport(cmd *cobra.Command, cfg *env.Env) {
+	walkCommandsWithRunE(cmd, func(c *cobra.Command) {
+		original := c.RunE
+		c.RunE = func(c *cobra.Command, args []string) error {
+			if isExtensionDispatch(c, args) {
+				return original(c, args)
+			}
+
+			if cfg.JSON {
+				if _, ok := c.Annotations[jsonSupportedAnnotation]; !ok {
+					commandName := commandDisplayName(c)
+					output.NewPlainSink(os.Stderr).Emit(output.ErrorEvent{
+						Title:   fmt.Sprintf("%q is not able to provide output in JSON format", commandName),
+						Actions: []output.ErrorAction{{Label: "See help:", Value: "lstk -h"}},
+					})
+					return output.NewSilentError(fmt.Errorf("%s: not able to provide output in JSON format", commandName))
+				}
+			}
+
+			return original(c, args)
+		}
+	})
 }
 
 // wrapCommandsWithTracing walks the Cobra command tree and wraps every RunE with
 // an OTel span. This is done once after the tree is built so individual commands
 // don't need to know about tracing at all.
 func wrapCommandsWithTracing(cmd *cobra.Command) {
-	if cmd.RunE != nil {
-		original := cmd.RunE
-		spanName := strings.ReplaceAll(cmd.CommandPath(), " ", ".")
-		if canonical, ok := cmd.Annotations[canonicalCommandAnnotation]; ok {
-			spanName = strings.ReplaceAll(cmd.Root().Name()+" "+canonical, " ", ".")
+	walkCommandsWithRunE(cmd, func(c *cobra.Command) {
+		original := c.RunE
+		spanName := strings.ReplaceAll(c.CommandPath(), " ", ".")
+		if canonical, ok := c.Annotations[canonicalCommandAnnotation]; ok {
+			spanName = strings.ReplaceAll(c.Root().Name()+" "+canonical, " ", ".")
 		}
-		cmd.RunE = func(c *cobra.Command, args []string) error {
+		c.RunE = func(c *cobra.Command, args []string) error {
 			ctx, span := otel.Tracer("github.com/localstack/lstk").Start(c.Context(), spanName)
 			defer span.End()
 			c.SetContext(ctx)
@@ -389,14 +446,11 @@ func wrapCommandsWithTracing(cmd *cobra.Command) {
 			}
 			return err
 		}
-	}
-	for _, child := range cmd.Commands() {
-		wrapCommandsWithTracing(child)
-	}
+	})
 }
 
 func isInteractiveMode(cfg *env.Env) bool {
-	return !cfg.NonInteractive && ui.IsInteractive()
+	return !cfg.NonInteractive && !cfg.JSON && ui.IsInteractive()
 }
 
 const maxLogSize = 1 << 20 // 1 MB

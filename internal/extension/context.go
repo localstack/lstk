@@ -46,14 +46,15 @@ type Emulator struct {
 
 // Context is the resolved runtime context lstk conveys to an extension, rendered
 // as the LSTK_EXT_CONTEXT JSON object. The command boundary populates it
-// (resolving running emulators, config dir, auth token, and interactivity) and
-// Environ renders it. An empty AuthToken is omitted from the JSON; Emulators is
-// always present, marshalling to [] when no emulator is running so an extension
-// always decodes a list.
+// (resolving running emulators, config dir, auth token, interactivity, and the
+// resolved --json flag) and Environ renders it. An empty AuthToken is omitted
+// from the JSON; Emulators is always present, marshalling to [] when no
+// emulator is running so an extension always decodes a list.
 type Context struct {
 	ConfigDir      string     `json:"configDir"`
 	AuthToken      string     `json:"authToken,omitempty"`
 	NonInteractive bool       `json:"nonInteractive"`
+	JSON           bool       `json:"json"`
 	Emulators      []Emulator `json:"emulators"`
 }
 

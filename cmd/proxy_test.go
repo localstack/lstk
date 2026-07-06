@@ -43,6 +43,23 @@ func TestStripGlobalFlags(t *testing.T) {
 			wantNonInteract: false,
 		},
 		{
+			// --json is deliberately NOT an lstk global for proxy commands: it must
+			// reach the wrapped tool untouched (e.g. Terraform's own -json/--json).
+			name:     "bare json is left untouched",
+			args:     []string{"--json", "s3", "ls"},
+			wantArgs: []string{"--json", "s3", "ls"},
+		},
+		{
+			name:     "json among aws args is left untouched",
+			args:     []string{"s3", "ls", "--json", "--recursive"},
+			wantArgs: []string{"s3", "ls", "--json", "--recursive"},
+		},
+		{
+			name:     "json=value form is left untouched",
+			args:     []string{"--json=true", "s3", "ls"},
+			wantArgs: []string{"--json=true", "s3", "ls"},
+		},
+		{
 			name:           "config with separate value",
 			args:           []string{"--config", "/tmp/c.toml", "s3", "ls"},
 			wantArgs:       []string{"s3", "ls"},

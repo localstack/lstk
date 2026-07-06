@@ -49,6 +49,7 @@ type extContext struct {
 	ConfigDir      string     `json:"configDir"`
 	AuthToken      string     `json:"authToken"`
 	NonInteractive bool       `json:"nonInteractive"`
+	JSON           bool       `json:"json"`
 	Emulators      []emulator `json:"emulators"`
 }
 
@@ -117,6 +118,7 @@ func echo(args []string, c extContext) {
 		fmt.Printf("AUTH_TOKEN=%s\n", c.AuthToken)
 	}
 	fmt.Printf("NON_INTERACTIVE=%t\n", c.NonInteractive)
+	fmt.Printf("JSON=%t\n", c.JSON)
 	fmt.Printf("EMULATOR_COUNT=%d\n", len(c.Emulators))
 	for _, e := range c.Emulators {
 		fmt.Printf("EMULATOR=%s %s %s\n", e.Type, e.Endpoint, e.Port)

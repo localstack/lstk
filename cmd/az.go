@@ -36,7 +36,12 @@ Examples:
   lstk az start-interception
   lstk az stop-interception`,
 		DisableFlagParsing: true,
-		PreRunE:            initConfig(nil),
+		PreRunE: func(cmd *cobra.Command, args []string) error {
+			if jsonPrecedesCommandName(cmd.CalledAs()) {
+				cfg.JSON = true
+			}
+			return initConfig(nil)(cmd, args)
+		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			sink := output.NewPlainSink(os.Stdout)
 
