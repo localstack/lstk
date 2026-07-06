@@ -3,10 +3,20 @@ package ui
 import (
 	"strings"
 
+	"github.com/charmbracelet/lipgloss"
 	"github.com/localstack/lstk/internal/output"
 	"github.com/localstack/lstk/internal/ui/styles"
 	"github.com/localstack/lstk/internal/ui/wrap"
 )
+
+// renderLogLineEvent renders a streamed log line — the styled "source | " prefix
+// followed by the wrapped, continuation-indented body — to fit the given width.
+func renderLogLineEvent(ev output.LogLineEvent, width int) string {
+	prefix := styles.Secondary.Render(ev.Source + " | ")
+	prefixWidth := lipgloss.Width(prefix)
+	availableWidth := max(0, width-prefixWidth)
+	return prefix + renderLogLine(ev.Line, ev.Level, availableWidth, prefixWidth)
+}
 
 func renderLogLine(line string, level output.LogLevel, availableWidth int, continuationIndent int) string {
 	if availableWidth <= 0 {
