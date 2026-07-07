@@ -23,18 +23,11 @@ const (
 	OtelEndpoint       Key = "OTEL_EXPORTER_OTLP_ENDPOINT"
 	AWSAccessKeyID     Key = "AWS_ACCESS_KEY_ID"
 	AWSSecretAccessKey Key = "AWS_SECRET_ACCESS_KEY"
-	// AzureCollectTelemetry controls the Azure CLI's usage telemetry.
+	// AzureCollectTelemetry controls the Azure CLI's usage telemetry. Defaulted to
+	// "false" in every test environment: an enabled `az` spawns a background uploader
+	// that keeps a handle on the test's temp dir, breaking t.TempDir() cleanup on Windows.
 	AzureCollectTelemetry Key = "AZURE_CORE_COLLECT_TELEMETRY"
 )
-
-// DisableAzureTelemetry is the value used to turn the Azure CLI's telemetry off in
-// every test environment. When telemetry is on, `az` spawns a detached background
-// uploader process that outlives the `az` invocation and keeps a handle on its
-// working directory / HOME — which for tests is a t.TempDir(). On Windows that open
-// handle makes t.TempDir()'s RemoveAll cleanup fail ("being used by another process").
-// Disabling it here prevents that flake and stops tests emitting to Azure's telemetry
-// backend, mirroring UnreachableAnalyticsEndpoint for our own analytics.
-const DisableAzureTelemetry = "false"
 
 // UnreachableAnalyticsEndpoint is a closed local port used as the default
 // analytics endpoint for every test environment, so the binary under test never
@@ -62,14 +55,14 @@ type Environ []string
 func Without(keys ...Key) Environ {
 	return Environ(os.Environ()).
 		With(AnalyticsEndpoint, UnreachableAnalyticsEndpoint).
-		With(AzureCollectTelemetry, DisableAzureTelemetry).
+		With(AzureCollectTelemetry, "false").
 		Without(keys...)
 }
 
 func With(key Key, value string) Environ {
 	return Environ(os.Environ()).
 		With(AnalyticsEndpoint, UnreachableAnalyticsEndpoint).
-		With(AzureCollectTelemetry, DisableAzureTelemetry).
+		With(AzureCollectTelemetry, "false").
 		With(key, value)
 }
 

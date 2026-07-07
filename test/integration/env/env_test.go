@@ -54,8 +54,8 @@ func TestBaseEnvDisablesAzureTelemetry(t *testing.T) {
 			if !found {
 				t.Fatalf("%s did not set %s", name, AzureCollectTelemetry)
 			}
-			if got != DisableAzureTelemetry {
-				t.Fatalf("%s Azure telemetry = %q, want %q", name, got, DisableAzureTelemetry)
+			if got != "false" {
+				t.Fatalf("%s Azure telemetry = %q, want %q", name, got, "false")
 			}
 		})
 	}
