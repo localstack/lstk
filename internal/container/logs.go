@@ -11,15 +11,19 @@ import (
 	"github.com/localstack/lstk/internal/runtime"
 )
 
-// maxLogLineBytes caps how much of a single log line lstk buffers before
-// emitting it. Anything beyond this is discarded (with a marker) rather than
-// held in memory, so a pathologically long line (e.g. a CDK CloudFormation
-// template dumped as one line in a request body) can neither exhaust memory nor
-// overflow a fixed scanner buffer.
-const maxLogLineBytes = 256 * 1024
+// maxLogLineBytes caps how much of a single log line lstk emits before
+// truncating it (with a marker). Anything beyond this is drained and discarded
+// rather than held in memory, so a pathologically long line (e.g. a CDK
+// CloudFormation template or a binary asset upload dumped as one line in a
+// request body) can neither exhaust memory nor overflow a fixed scanner buffer.
+// Kept deliberately small so a single oversized line stays readable in a
+// terminal instead of flooding the scrollback with hundreds of KB.
+const maxLogLineBytes = 8 * 1024
 
-// logReaderBufferSize is the bufio.Reader buffer size; larger than the default
-// so each ReadSlice call returns bigger chunks when draining a long line.
+// logReaderBufferSize is the bufio.Reader buffer size, larger than the default
+// so each ReadSlice call returns bigger chunks — this speeds up draining the
+// discarded tail of a very long line (independent of maxLogLineBytes, which
+// bounds only what is kept and emitted).
 const logReaderBufferSize = 64 * 1024
 
 func Logs(ctx context.Context, rt runtime.Runtime, sink output.Sink, containers []config.ContainerConfig, follow bool, verbose bool) error {
