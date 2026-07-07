@@ -1,7 +1,6 @@
 package aws
 
 import (
-	"bufio"
 	"bytes"
 	"context"
 	"encoding/base64"
@@ -186,13 +185,14 @@ func (c *Client) doPodSave(ctx context.Context, host, podName, authToken string,
 
 	// The response is a newline-delimited JSON stream. We scan until we find a
 	// completion event and surface any server-side error as a Go error.
-	scanner := bufio.NewScanner(resp.Body)
-	buf := make([]byte, 1024*1024)
-	scanner.Buffer(buf, 1024*1024)
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		if line == "" {
-			continue
+	nd := newNDJSONReader(resp.Body)
+	for {
+		line, ok, err := nd.next()
+		if err != nil {
+			return snapshot.PodSaveResult{}, fmt.Errorf("reading response: %w", err)
+		}
+		if !ok {
+			break
 		}
 		var event struct {
 			Event   string `json:"event"`
@@ -217,9 +217,6 @@ func (c *Client) doPodSave(ctx context.Context, host, podName, authToken string,
 				Size:     event.Info.Size,
 			}, nil
 		}
-	}
-	if err := scanner.Err(); err != nil {
-		return snapshot.PodSaveResult{}, fmt.Errorf("reading response: %w", err)
 	}
 	return snapshot.PodSaveResult{}, fmt.Errorf("pod save: server closed stream without a completion event")
 }
@@ -254,13 +251,14 @@ func (c *Client) doPodLoad(ctx context.Context, host, podName, authToken, strate
 	}
 
 	var services []string
-	scanner := bufio.NewScanner(resp.Body)
-	buf := make([]byte, 1024*1024)
-	scanner.Buffer(buf, 1024*1024)
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		if line == "" {
-			continue
+	nd := newNDJSONReader(resp.Body)
+	for {
+		line, ok, err := nd.next()
+		if err != nil {
+			return nil, fmt.Errorf("reading response: %w", err)
+		}
+		if !ok {
+			break
 		}
 		var event struct {
 			Event   string `json:"event"`
@@ -294,9 +292,6 @@ func (c *Client) doPodLoad(ctx context.Context, host, podName, authToken, strate
 			}
 			return services, nil
 		}
-	}
-	if err := scanner.Err(); err != nil {
-		return nil, fmt.Errorf("reading response: %w", err)
 	}
 	return services, nil
 }
