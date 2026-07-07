@@ -23,6 +23,10 @@ const (
 	OtelEndpoint       Key = "OTEL_EXPORTER_OTLP_ENDPOINT"
 	AWSAccessKeyID     Key = "AWS_ACCESS_KEY_ID"
 	AWSSecretAccessKey Key = "AWS_SECRET_ACCESS_KEY"
+	// AzureCollectTelemetry controls the Azure CLI's usage telemetry. Defaulted to
+	// "false" in every test environment: an enabled `az` spawns a background uploader
+	// that keeps a handle on the test's temp dir, breaking t.TempDir() cleanup on Windows.
+	AzureCollectTelemetry Key = "AZURE_CORE_COLLECT_TELEMETRY"
 )
 
 // UnreachableAnalyticsEndpoint is a closed local port used as the default
@@ -49,11 +53,17 @@ func Require(t testing.TB, key Key) string {
 type Environ []string
 
 func Without(keys ...Key) Environ {
-	return Environ(os.Environ()).With(AnalyticsEndpoint, UnreachableAnalyticsEndpoint).Without(keys...)
+	return Environ(os.Environ()).
+		With(AnalyticsEndpoint, UnreachableAnalyticsEndpoint).
+		With(AzureCollectTelemetry, "false").
+		Without(keys...)
 }
 
 func With(key Key, value string) Environ {
-	return Environ(os.Environ()).With(AnalyticsEndpoint, UnreachableAnalyticsEndpoint).With(key, value)
+	return Environ(os.Environ()).
+		With(AnalyticsEndpoint, UnreachableAnalyticsEndpoint).
+		With(AzureCollectTelemetry, "false").
+		With(key, value)
 }
 
 func (e Environ) Without(keys ...Key) Environ {
