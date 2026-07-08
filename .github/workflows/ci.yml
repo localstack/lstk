@@ -206,6 +206,21 @@ jobs:
             exit 1
           fi
 
+  test-launcher:
+    name: Launcher Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "20"
+
+      - name: Run launcher tests
+        run: node --test npm/*.test.js
+
   release:
     name: Build and Publish Release
     if: startsWith(github.ref, 'refs/tags/')
@@ -214,6 +229,7 @@ jobs:
       - goreleaser-check
       - test-unit
       - test-integration
+      - test-launcher
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
@@ -253,16 +269,31 @@ jobs:
           node-version: "20"
           registry-url: "https://registry.npmjs.org"
 
+      # Build the platform packages and main wrapper package from the
+      # GoReleaser output. This is the same tool the previous
+      # evg4b/goreleaser-npm-publisher-action wrapped, split into an explicit
+      # build step so we can swap in our own launcher before publishing.
+      - name: Build npm packages
+        run: >
+          npx --yes goreleaser-npm-publisher@1.5.0 build
+          --project .
+          --prefix @localstack
+          --license Apache-2.0
+          --description "LocalStack CLI v2 - Start and manage LocalStack emulators"
+          --files README.md LICENSE
+          --keywords localstack cli aws emulator docker
+
+      # Replace the auto-generated wrapper with our launcher, which forwards
+      # SIGINT/SIGTERM/SIGHUP to the Go binary (DEVX-942). The generated wrapper
+      # spawns the binary without signal handlers, so a programmatic kill of the
+      # Node process would orphan the child, including mid-flight container starts.
+      - name: Install signal-forwarding launcher
+        run: cp npm/launcher.js dist/npm/lstk/index.js
+
       - name: Publish to NPM
-        uses: evg4b/goreleaser-npm-publisher-action@v1
-        with:
-          token: ${{ secrets.NPM_AUTH_TOKEN }}
-          prefix: "@localstack"
-          license: Apache-2.0
-          description: "LocalStack CLI v2 - Start and manage LocalStack emulators"
-          keywords: |
-            localstack
-            cli
-            aws
-            emulator
-            docker
+        run: |
+          for dir in dist/npm/lstk-*/ dist/npm/lstk/; do
+            npm publish "$dir" --access public
+          done
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_AUTH_TOKEN }}

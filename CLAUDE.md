@@ -156,6 +156,12 @@ A REF is parsed by helpers in `internal/snapshot/destination.go`:
 
 **Auto-load on start.** A `[[containers]]` block (AWS only) can set `snapshot = "pod:my-baseline"` (any load REF) to auto-load that snapshot after the emulator starts. The loader runs only when the emulator is freshly started this run (skipped when already running), mirroring v1's `AUTO_LOAD_POD`. `lstk start --snapshot REF` overrides the configured REF for one run; `lstk start --no-snapshot` skips it. Resolution lives in `resolveStartSnapshotRef`/`newSnapshotAutoLoader` in `cmd/snapshot.go`; the loader is threaded into the non-interactive start in `cmd/root.go` and into the TUI via `ui.RunOptions.PostStart`. `snapshot save` never writes back into config — the `snapshot` field is manual.
 
+# NPM Distribution
+
+`@localstack/lstk` is published as a thin Node wrapper package whose `bin` is `npm/launcher.js`. The wrapper resolves the prebuilt Go binary from the platform-specific optional dependency npm installed for the host, execs it, and **forwards `SIGINT`/`SIGTERM`/`SIGHUP`** so a programmatic `kill` of the Node process tears down the Go child instead of orphaning it (the auto-generated wrapper from `goreleaser-npm-publisher` installed no signal handlers). The launcher also propagates the child's exit code / terminating signal. Tests in `npm/launcher.test.js` run via `node --test` in the `test-launcher` CI job.
+
+The release job (`.github/workflows/ci.yml`) builds the npm packages with `goreleaser-npm-publisher build`, overwrites the generated `dist/npm/lstk/index.js` with `npm/launcher.js`, then `npm publish`es each package — replacing the previous single `evg4b/goreleaser-npm-publisher-action` step.
+
 # Code Style
 
 - Don't add comments for self-explanatory code. Only comment when the "why" isn't obvious from the code itself.
