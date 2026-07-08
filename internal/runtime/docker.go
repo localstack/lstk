@@ -278,6 +278,7 @@ func (d *DockerRuntime) Start(ctx context.Context, config ContainerConfig) (stri
 		HostConfig: &container.HostConfig{
 			PortBindings: portBindings,
 			Binds:        binds,
+			AutoRemove:   true,
 		},
 		Name: config.Name,
 	})
@@ -304,9 +305,39 @@ func (d *DockerRuntime) Stop(ctx context.Context, containerName string) error {
 	return nil
 }
 
+const (
+	containerRemovalTimeout      = 10 * time.Second
+	containerRemovalPollInterval = 100 * time.Millisecond
+)
+
 func (d *DockerRuntime) Remove(ctx context.Context, containerName string) error {
 	_, err := d.client.ContainerRemove(ctx, containerName, client.ContainerRemoveOptions{})
-	return err
+	// With AutoRemove (--rm) Docker may already be removing the container, so
+	// ContainerRemove can report it is already gone (not-found) or that removal is
+	// in progress (conflict). Both mean the container is on its way out.
+	if err != nil && !errdefs.IsNotFound(err) && !errdefs.IsConflict(err) {
+		return err
+	}
+	// Wait until the container is actually gone, so a subsequent create reusing the
+	// same name does not race the in-flight auto-removal ("name already in use").
+	return d.waitContainerGone(ctx, containerName)
+}
+
+// waitContainerGone blocks until no container named containerName exists, the
+// context is cancelled, or containerRemovalTimeout elapses.
+func (d *DockerRuntime) waitContainerGone(ctx context.Context, containerName string) error {
+	ctx, cancel := context.WithTimeout(ctx, containerRemovalTimeout)
+	defer cancel()
+	for {
+		if _, err := d.client.ContainerInspect(ctx, containerName, client.ContainerInspectOptions{}); errdefs.IsNotFound(err) {
+			return nil
+		}
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("timed out waiting for container %s to be removed", containerName)
+		case <-time.After(containerRemovalPollInterval):
+		}
+	}
 }
 
 func (d *DockerRuntime) IsRunning(ctx context.Context, containerID string) (bool, error) {

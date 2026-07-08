@@ -586,6 +586,7 @@ func TestStartContainers_SnowflakeLicenseError(t *testing.T) {
 	const containerID = "abc123"
 	licenseLog := "⚠️ The Snowflake emulator is currently not covered by your license. ❄️"
 	mockRT.EXPECT().Start(gomock.Any(), c).Return(containerID, nil)
+	mockRT.EXPECT().StreamLogs(gomock.Any(), containerID, gomock.Any(), true).Return(nil)
 	mockRT.EXPECT().IsRunning(gomock.Any(), containerID).Return(false, nil)
 	mockRT.EXPECT().Logs(gomock.Any(), containerID, 20).Return(licenseLog, nil)
 
@@ -632,6 +633,7 @@ func TestStartContainers_AzureLicenseError(t *testing.T) {
 	const containerID = "abc123"
 	licenseLog := "The Azure emulator is currently not covered by your license."
 	mockRT.EXPECT().Start(gomock.Any(), c).Return(containerID, nil)
+	mockRT.EXPECT().StreamLogs(gomock.Any(), containerID, gomock.Any(), true).Return(nil)
 	mockRT.EXPECT().IsRunning(gomock.Any(), containerID).Return(false, nil)
 	mockRT.EXPECT().Logs(gomock.Any(), containerID, 20).Return(licenseLog, nil)
 
