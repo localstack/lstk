@@ -16,7 +16,10 @@ const LAUNCHER = path.join(__dirname, 'launcher.js');
 // main package containing the launcher plus a platform-specific optional
 // dependency that carries the (fake) binary.
 function makePackage(t, { binarySource, os: pkgOs, cpu, withDep = true }) {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'lstk-launcher-'));
+  // realpathSync resolves the symlinked temp dir (on macOS os.tmpdir() is
+  // /var/folders/... which is a symlink to /private/var/folders/...) so it
+  // matches what require.resolve returns inside resolveBinaryPath.
+  const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'lstk-launcher-')));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
 
   fs.copyFileSync(LAUNCHER, path.join(root, 'index.js'));
