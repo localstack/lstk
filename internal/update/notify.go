@@ -12,10 +12,10 @@ import (
 type versionFetcher func(ctx context.Context, token string) (string, error)
 
 type NotifyOptions struct {
-	GitHubToken          string
-	UpdatePrompt         bool
-	SkippedVersion       string
-	PersistSkipVersion   func(version string) error
+	GitHubToken        string
+	UpdatePrompt       bool
+	SkippedVersion     string
+	PersistSkipVersion func(version string) error
 }
 
 const checkTimeout = 2 * time.Second
@@ -95,7 +95,7 @@ func promptAndUpdate(ctx context.Context, sink output.Sink, opts NotifyOptions, 
 
 	switch resp.SelectedKey {
 	case "u":
-		if err := applyUpdate(ctx, sink, latest, opts.GitHubToken); err != nil {
+		if _, err := applyUpdate(ctx, sink, latest, opts.GitHubToken); err != nil {
 			sink.Emit(output.MessageEvent{Severity: output.SeverityWarning, Text: fmt.Sprintf("Update failed: %v", err)})
 			return false
 		}

@@ -74,16 +74,14 @@ func TestReset_Success(t *testing.T) {
 			} else {
 				spinnerStopped = true
 			}
-		case output.MessageEvent:
-			if ev.Severity == output.SeveritySuccess {
-				succeeded = true
-				assert.Contains(t, ev.Text, "reset")
-			}
+		case output.EmulatorResetEvent:
+			succeeded = true
+			assert.Equal(t, "aws", ev.Type)
 		}
 	}
 	assert.True(t, spinnerStarted, "spinner should have started")
 	assert.True(t, spinnerStopped, "spinner should have stopped")
-	assert.True(t, succeeded, "success event should have been emitted")
+	assert.True(t, succeeded, "EmulatorResetEvent should have been emitted")
 }
 
 func TestReset_EmulatorNotRunning(t *testing.T) {

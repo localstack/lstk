@@ -85,6 +85,38 @@ func NewRootCmd(cfg *env.Env, tel *telemetry.Client, logger log.Logger) *cobra.C
 	root.SilenceErrors = true
 	root.SilenceUsage = true
 
+	// Flag-parsing failures (e.g. an unknown flag, or a malformed value for an
+	// ordinary bool flag) happen inside Cobra's own ParseFlags, before any
+	// RunE — including requireJSONSupport/wrapCommandsWithJSONEnvelope below — ever runs.
+	// This is the one hook Cobra offers into that path, so it is the only place
+	// a usage error can be rendered as the JSON envelope (error.code:
+	// USAGE_ERROR) rather than falling through to the plain-text fallback in
+	// Execute(). cfg.JSON reliably reflects "was --json already recognized by
+	// the time parsing failed", since pflag parses flags left-to-right and
+	// binds each directly to its variable as it succeeds.
+	root.SetFlagErrorFunc(func(c *cobra.Command, err error) error {
+		if !cfg.JSON {
+			return err
+		}
+		commandName := commandDisplayName(c)
+		envelope := output.Envelope{
+			SchemaVersion: output.EnvelopeSchemaVersion,
+			Command:       commandName,
+			Status:        output.StatusError,
+			Warnings:      []output.Warning{},
+			Error: &output.EnvelopeError{
+				Code:      output.ErrUsageError,
+				Category:  output.ErrUsageError.Category(),
+				Message:   err.Error(),
+				Retryable: output.ErrUsageError.Retryable(),
+			},
+		}
+		if writeErr := writeEnvelope(os.Stdout, envelope); writeErr != nil {
+			return writeErr
+		}
+		return output.NewSilentError(err)
+	})
+
 	root.PersistentFlags().String("config", "", "Path to config file")
 	root.PersistentFlags().BoolVar(&cfg.NonInteractive, "non-interactive", false, "Disable interactive mode")
 	root.PersistentFlags().BoolVar(&cfg.JSON, "json", false, "Output in JSON format (only supported by some commands)")
@@ -231,6 +263,7 @@ func Execute(ctx context.Context) error {
 	if cfg.TracesEnabled {
 		wrapCommandsWithTracing(root)
 	}
+	wrapCommandsWithJSONEnvelope(root, cfg, os.Stdout)
 
 	if err := root.ExecuteContext(ctx); err != nil {
 		if !output.IsSilent(err) {
@@ -396,7 +429,11 @@ func instrumentCommands(cmd *cobra.Command, tel *telemetry.Client) {
 
 // requireJSONSupport walks the Cobra command tree and wraps every RunE so that,
 // when cfg.JSON is set, a command lacking the jsonSupportedAnnotation is
-// rejected instead of silently rendering plain-text output.
+// rejected instead of silently rendering plain-text output. The rejection
+// itself renders as the standard JSON envelope (error.code: NOT_JSON_CAPABLE)
+// since the invocation explicitly asked for JSON — there is no
+// command-specific EnvelopeSink to pull from here, so the envelope is built
+// directly.
 func requireJSONSupport(cmd *cobra.Command, cfg *env.Env) {
 	walkCommandsWithRunE(cmd, func(c *cobra.Command) {
 		original := c.RunE
@@ -408,10 +445,22 @@ func requireJSONSupport(cmd *cobra.Command, cfg *env.Env) {
 			if cfg.JSON {
 				if _, ok := c.Annotations[jsonSupportedAnnotation]; !ok {
 					commandName := commandDisplayName(c)
-					output.NewPlainSink(os.Stderr).Emit(output.ErrorEvent{
-						Title:   fmt.Sprintf("%q is not able to provide output in JSON format", commandName),
-						Actions: []output.ErrorAction{{Label: "See help:", Value: "lstk -h"}},
-					})
+					message := fmt.Sprintf("%q is not able to provide output in JSON format", commandName)
+					envelope := output.Envelope{
+						SchemaVersion: output.EnvelopeSchemaVersion,
+						Command:       commandName,
+						Status:        output.StatusError,
+						Warnings:      []output.Warning{},
+						Error: &output.EnvelopeError{
+							Code:      output.ErrNotJSONCapable,
+							Category:  output.ErrNotJSONCapable.Category(),
+							Message:   message,
+							Retryable: output.ErrNotJSONCapable.Retryable(),
+						},
+					}
+					if err := writeEnvelope(os.Stdout, envelope); err != nil {
+						return err
+					}
 					return output.NewSilentError(fmt.Errorf("%s: not able to provide output in JSON format", commandName))
 				}
 			}

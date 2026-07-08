@@ -27,8 +27,19 @@ func newResetCmd(cfg *env.Env) *cobra.Command {
 All resources created in the emulator (S3 buckets, Lambda functions, etc.) are discarded. The emulator keeps running; only its state is cleared.
 
 To wipe the on-disk volume (certificates, persistence data, cached tools) instead, stop the emulator and run "lstk volume clear".`,
-		PreRunE: initConfig(nil),
+		PreRunE:     initConfig(nil),
+		Annotations: map[string]string{jsonSupportedAnnotation: "true"},
 		RunE: func(cmd *cobra.Command, args []string) error {
+			sink := jsonAwareSink(cmd, cfg, os.Stdout)
+			failWithCode := func(message string, code output.ErrorCode) error {
+				bare := errors.New(message)
+				if !cfg.JSON {
+					return bare
+				}
+				sink.Emit(output.ErrorEvent{Title: message, Code: code})
+				return output.NewSilentError(bare)
+			}
+
 			appConfig, err := config.Get()
 			if err != nil {
 				return fmt.Errorf("failed to get config: %w", err)
@@ -44,12 +55,12 @@ To wipe the on-disk volume (certificates, persistence data, cached tools) instea
 				}
 			}
 			if !found {
-				return errors.New("reset is only supported for the AWS emulator")
+				return failWithCode("reset is only supported for the AWS emulator", output.ErrEmulatorNotConfigured)
 			}
 
 			interactive := isInteractiveMode(cfg)
 			if !interactive && !force {
-				return errors.New("reset requires confirmation; use --force to skip in non-interactive mode")
+				return failWithCode("reset requires confirmation; use --force to skip in non-interactive mode", output.ErrConfirmationRequired)
 			}
 
 			rt, err := runtime.NewDockerRuntime(cfg.DockerHost)
@@ -62,7 +73,7 @@ To wipe the on-disk volume (certificates, persistence data, cached tools) instea
 			if interactive {
 				return ui.RunReset(cmd.Context(), rt, []config.ContainerConfig{awsContainer}, resetter, host, force)
 			}
-			return reset.Reset(cmd.Context(), rt, []config.ContainerConfig{awsContainer}, resetter, host, force, output.NewPlainSink(os.Stdout))
+			return reset.Reset(cmd.Context(), rt, []config.ContainerConfig{awsContainer}, resetter, host, force, sink)
 		},
 	}
 

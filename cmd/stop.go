@@ -7,7 +7,6 @@ import (
 	"github.com/localstack/lstk/internal/config"
 	"github.com/localstack/lstk/internal/container"
 	"github.com/localstack/lstk/internal/env"
-	"github.com/localstack/lstk/internal/output"
 	"github.com/localstack/lstk/internal/runtime"
 	"github.com/localstack/lstk/internal/telemetry"
 	"github.com/localstack/lstk/internal/ui"
@@ -16,11 +15,14 @@ import (
 
 func newStopCmd(cfg *env.Env, tel *telemetry.Client) *cobra.Command {
 	return &cobra.Command{
-		Use:     "stop",
-		Short:   "Stop emulator",
-		Long:    "Stop emulator and services",
-		PreRunE: initConfig(nil),
+		Use:         "stop",
+		Short:       "Stop emulator",
+		Long:        "Stop emulator and services",
+		PreRunE:     initConfig(nil),
+		Annotations: map[string]string{jsonSupportedAnnotation: "true"},
 		RunE: func(cmd *cobra.Command, args []string) error {
+			sink := jsonAwareSink(cmd, cfg, os.Stdout)
+
 			rt, err := runtime.NewDockerRuntime(cfg.DockerHost)
 			if err != nil {
 				return err
@@ -37,7 +39,7 @@ func newStopCmd(cfg *env.Env, tel *telemetry.Client) *cobra.Command {
 			if isInteractiveMode(cfg) {
 				return ui.RunStop(cmd.Context(), rt, appConfig.Containers, stopOpts)
 			}
-			return container.Stop(cmd.Context(), rt, output.NewPlainSink(os.Stdout), appConfig.Containers, stopOpts)
+			return container.Stop(cmd.Context(), rt, sink, appConfig.Containers, stopOpts)
 		},
 	}
 }

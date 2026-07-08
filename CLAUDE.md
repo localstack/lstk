@@ -205,6 +205,10 @@ The release job (`.github/workflows/ci.yml`) builds the npm packages with `gorel
   - `internal/output/plain_format.go` (line formatting fallback)
   - tests in `internal/output/*_test.go` for formatter/sink behavior parity
 
+## Structured output (`--json`)
+
+A JSON-capable command emits a single `output.Envelope` (schema version, `data`/`error` discriminated on `status`, an enumerated `error.code`) instead of formatted lines — see [docs/structured-output.md](docs/structured-output.md) for the full envelope contract, error-code table, exit-code conventions, and the per-command catalog (implemented vs. planned). `output.EnvelopeSink` builds the envelope from the same event vocabulary described above; adding `--json` support to a command is documented step by step in that file's "Adding `--json` support to a command" section. Command opt-in is explicit via the `jsonSupportedAnnotation` on the `cobra.Command` in `cmd/`.
+
 ## User Input Handling
 
 Domain code must never read from stdin or wait for user input directly. Instead:

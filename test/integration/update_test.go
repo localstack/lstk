@@ -3,6 +3,7 @@ package integration_test
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"io"
 	"os"
 	"os/exec"
@@ -40,6 +41,31 @@ func TestUpdateCheckCommandNonInteractive(t *testing.T) {
 	require.NoError(t, err, "lstk update --check --non-interactive failed: %s", stderr)
 	requireExitCode(t, 0, err)
 	assert.Contains(t, stdout, "Note:", "should show a note in non-interactive mode")
+}
+
+func TestUpdateCheckCommandJSON(t *testing.T) {
+	t.Parallel()
+	ctx := testContext(t)
+
+	stdout, stderr, err := runLstk(t, ctx, "", testEnvWithHome(t.TempDir(), ""), "update", "--check", "--json")
+	require.NoError(t, err, "lstk update --check --json failed: %s", stderr)
+	requireExitCode(t, 0, err)
+
+	envelope := decodeEnvelope(t, stdout)
+	assert.Equal(t, "ok", envelope.Status)
+	assert.Equal(t, "update", envelope.Command)
+
+	var data struct {
+		CurrentVersion  string `json:"currentVersion"`
+		LatestVersion   string `json:"latestVersion"`
+		UpdateAvailable bool   `json:"updateAvailable"`
+	}
+	require.NoError(t, json.Unmarshal(envelope.Data, &data))
+	// The integration test binary is a dev build, so Check short-circuits
+	// before any network call — this exercises the "checked, none applied"
+	// UpdateCheckedEvent shape without depending on network access.
+	assert.Equal(t, "dev", data.CurrentVersion)
+	assert.False(t, data.UpdateAvailable)
 }
 
 func requireNPM(t *testing.T) {
@@ -159,6 +185,53 @@ func TestUpdateBinaryInPlace(t *testing.T) {
 	verOut2, err := verCmd2.CombinedOutput()
 	require.NoError(t, err)
 	assert.NotContains(t, string(verOut2), "0.0.1", "binary should no longer be the old version")
+}
+
+// TestUpdateBinaryInPlaceJSON exercises an actual applied update (not just
+// --check) under --json: Check's UpdateCheckedEvent always fires now, even on
+// the apply path, so this specifically proves EnvelopeSink's UpdateAppliedEvent
+// case clears the stale latestVersion/updateAvailable keys rather than
+// leaking them into the applied-update data shape.
+func TestUpdateBinaryInPlaceJSON(t *testing.T) {
+	t.Parallel()
+	ctx := testContext(t)
+
+	binaryName := "lstk"
+	if runtime.GOOS == "windows" {
+		binaryName = "lstk.exe"
+	}
+	tmpBinary := filepath.Join(t.TempDir(), binaryName)
+	repoRoot, err := filepath.Abs("../..")
+	require.NoError(t, err)
+
+	buildCmd := exec.CommandContext(ctx, "go", "build",
+		"-ldflags", "-X github.com/localstack/lstk/internal/version.version=0.0.1",
+		"-o", tmpBinary,
+		".",
+	)
+	buildCmd.Dir = repoRoot
+	out, err := buildCmd.CombinedOutput()
+	require.NoError(t, err, "go build failed: %s", string(out))
+
+	updateCmd := exec.CommandContext(ctx, tmpBinary, "update", "--non-interactive", "--json")
+	updateOut, err := updateCmd.CombinedOutput()
+	updateStr := string(updateOut)
+	require.NoError(t, err, "lstk update --json failed: %s", updateStr)
+	requireExitCode(t, 0, err)
+
+	envelope := decodeEnvelope(t, strings.TrimSpace(updateStr))
+	assert.Equal(t, "ok", envelope.Status)
+
+	var data map[string]any
+	require.NoError(t, json.Unmarshal(envelope.Data, &data))
+	assert.Equal(t, "0.0.1", data["currentVersion"])
+	assert.Equal(t, true, data["updated"])
+	assert.Equal(t, "binary", data["method"])
+	assert.NotEmpty(t, data["updatedVersion"])
+	_, hasLatestVersion := data["latestVersion"]
+	_, hasUpdateAvailable := data["updateAvailable"]
+	assert.False(t, hasLatestVersion, "applied-update data should not carry a stale latestVersion key from the preceding check")
+	assert.False(t, hasUpdateAvailable, "applied-update data should not carry a stale updateAvailable key from the preceding check")
 }
 
 func requireHomebrew(t *testing.T) {
@@ -298,7 +371,6 @@ port = "4566"    # Host port
 		assert.Contains(t, configStr, "# Emulator type", "inline comments should be preserved")
 		assert.Contains(t, configStr, `port = "4566"`, "existing config values should be preserved")
 	})
-
 
 	t.Run("update", func(t *testing.T) {
 		t.Parallel()

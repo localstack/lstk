@@ -27,3 +27,20 @@ func IsSilent(err error) bool {
 	return errors.As(err, &silent)
 }
 
+// ExitCodeError wraps an error with the explicit process exit code it should
+// produce, mirroring how *exec.ExitError already carries a proxied command's
+// exit code. Used for the JSON envelope's exit-code conventions (0/1/2/3/4) —
+// main.go checks for this type the same way it already checks for
+// *exec.ExitError.
+type ExitCodeError struct {
+	Err  error
+	Code int
+}
+
+func (e *ExitCodeError) Error() string {
+	return e.Err.Error()
+}
+
+func (e *ExitCodeError) Unwrap() error {
+	return e.Err
+}

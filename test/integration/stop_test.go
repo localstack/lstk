@@ -2,10 +2,11 @@ package integration_test
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 
-	"github.com/moby/moby/client"
 	"github.com/localstack/lstk/test/integration/env"
+	"github.com/moby/moby/client"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -75,7 +76,8 @@ func TestStopCommandIgnoresForeignEmulatorOnPort(t *testing.T) {
 
 	// AWS image running on 4566 while config targets snowflake.
 	const fakeImage = "localstack/localstack-pro:test-fake"
-	_, err := dockerClient.ImageTag(ctx, client.ImageTagOptions{Source: testImage, Target: fakeImage}); require.NoError(t, err)
+	_, err := dockerClient.ImageTag(ctx, client.ImageTagOptions{Source: testImage, Target: fakeImage})
+	require.NoError(t, err)
 	t.Cleanup(func() {
 		_, _ = dockerClient.ImageRemove(context.Background(), fakeImage, client.ImageRemoveOptions{})
 	})
@@ -101,7 +103,8 @@ func TestStopCommandStopsExternalContainer(t *testing.T) {
 	ctx := testContext(t)
 
 	const fakeImage = "localstack/localstack-pro:test-fake"
-	_, err := dockerClient.ImageTag(ctx, client.ImageTagOptions{Source: testImage, Target: fakeImage}); require.NoError(t, err)
+	_, err := dockerClient.ImageTag(ctx, client.ImageTagOptions{Source: testImage, Target: fakeImage})
+	require.NoError(t, err)
 	t.Cleanup(func() {
 		_, _ = dockerClient.ImageRemove(context.Background(), fakeImage, client.ImageRemoveOptions{})
 	})
@@ -136,4 +139,50 @@ func TestStopCommandIsIdempotent(t *testing.T) {
 	_, _, err = runLstk(t, ctx, "", e, "stop")
 	assert.Error(t, err, "second lstk stop should fail since container already removed")
 	requireExitCode(t, 1, err)
+}
+
+func TestStopCommandJSON(t *testing.T) {
+	requireDocker(t)
+	cleanup()
+	t.Cleanup(cleanup)
+
+	ctx := testContext(t)
+	startTestContainer(t, ctx)
+
+	stdout, stderr, err := runLstk(t, ctx, "", testEnvWithHome(t.TempDir(), ""), "stop", "--json")
+	require.NoError(t, err, "lstk stop --json failed: %s", stderr)
+	requireExitCode(t, 0, err)
+
+	envelope := decodeEnvelope(t, stdout)
+	assert.Equal(t, "ok", envelope.Status)
+	assert.Equal(t, "stop", envelope.Command)
+	assert.Nil(t, envelope.Error)
+
+	var data struct {
+		Emulators []struct {
+			Type       string `json:"type"`
+			Name       string `json:"name"`
+			WasRunning bool   `json:"wasRunning"`
+		} `json:"emulators"`
+	}
+	require.NoError(t, json.Unmarshal(envelope.Data, &data))
+	require.Len(t, data.Emulators, 1)
+	assert.Equal(t, "aws", data.Emulators[0].Type)
+	assert.Equal(t, "localstack-aws", data.Emulators[0].Name)
+	assert.True(t, data.Emulators[0].WasRunning)
+}
+
+func TestStopCommandJSONNotRunning(t *testing.T) {
+	requireDocker(t)
+	cleanup()
+	t.Cleanup(cleanup)
+
+	stdout, _, err := runLstk(t, testContext(t), "", testEnvWithHome(t.TempDir(), ""), "stop", "--json")
+	requireExitCode(t, 1, err)
+
+	envelope := decodeEnvelope(t, stdout)
+	assert.Equal(t, "error", envelope.Status)
+	require.NotNil(t, envelope.Error)
+	assert.Equal(t, "EMULATOR_NOT_RUNNING", envelope.Error.Code)
+	assert.Equal(t, "EMULATOR", envelope.Error.Category)
 }
