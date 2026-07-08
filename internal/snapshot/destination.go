@@ -205,15 +205,29 @@ func ParseSource(ref, home string) (Destination, error) {
 	return Destination{Kind: KindLocal, Value: resolved}, nil
 }
 
-// resolveSourcePath returns the first existing path among: abs as-is, then
-// abs+".snapshot", then abs+".zip" (legacy).
+// resolveSourcePath returns the first existing file among: abs as-is, then
+// abs+".snapshot", then abs+".zip" (legacy). A directory match is remembered but
+// skipped in favor of a later file match, so a directory error only surfaces when
+// no candidate resolves to an actual file.
 func resolveSourcePath(abs string) (string, error) {
 	withSnapshot := abs + snapshotExt
 	withZip := abs + legacySnapshotExt
+	var dirHit string
 	for _, candidate := range []string{abs, withSnapshot, withZip} {
-		if _, err := os.Stat(candidate); err == nil {
-			return candidate, nil
+		info, err := os.Stat(candidate)
+		if err != nil {
+			continue
 		}
+		if info.IsDir() {
+			if dirHit == "" {
+				dirHit = candidate
+			}
+			continue
+		}
+		return candidate, nil
+	}
+	if dirHit != "" {
+		return "", fmt.Errorf("%q is a directory, expected a snapshot file", dirHit)
 	}
 	return "", fmt.Errorf("snapshot file not found: %q (also tried %q and %q)", abs, withSnapshot, withZip)
 }

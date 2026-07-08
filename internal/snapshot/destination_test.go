@@ -47,8 +47,6 @@ func TestParseShowable(t *testing.T) {
 
 func TestParseSource(t *testing.T) {
 	t.Parallel()
-	wd, err := os.Getwd()
-	require.NoError(t, err)
 	// Use a temp dir as home so the test doesn't depend on the real $HOME
 	// (e.g. under Nix's sandboxed build, $HOME is a non-existent placeholder).
 	home := t.TempDir()
@@ -64,6 +62,10 @@ func TestParseSource(t *testing.T) {
 	require.NoError(t, os.WriteFile(existingLegacyBare+".zip", []byte("data"), 0600))
 	existingNoExt := filepath.Join(dir, "noext") // no extension, no fallback counterpart either
 	require.NoError(t, os.WriteFile(existingNoExt, []byte("data"), 0600))
+	plainDir := filepath.Join(dir, "some-directory")
+	require.NoError(t, os.Mkdir(plainDir, 0o755))
+	snapshotExtDir := filepath.Join(dir, "looks-like-a-snapshot.snapshot")
+	require.NoError(t, os.Mkdir(snapshotExtDir, 0o755))
 
 	type testCase struct {
 		name          string
@@ -126,18 +128,26 @@ func TestParseSource(t *testing.T) {
 			wantErr: "snapshot file not found",
 		},
 		{
-			name:     "relative path resolved via cwd",
-			input:    ".",
-			wantKind: snapshot.KindLocal,
-			wantPath: wd,
+			name:    "directory instead of file returns clear error",
+			input:   plainDir,
+			wantErr: "is a directory",
+		},
+		{
+			name:    "directory with .snapshot extension returns clear error",
+			input:   snapshotExtDir,
+			wantErr: "is a directory",
+		},
+		{
+			name:    "relative path resolved via cwd is a directory",
+			input:   ".",
+			wantErr: "is a directory",
 		},
 
 		// --- tilde expansion ---
 		{
-			name:     "tilde expands to home",
-			input:    "~/.",
-			wantKind: snapshot.KindLocal,
-			wantPath: home,
+			name:    "tilde expands to home which is a directory",
+			input:   "~/.",
+			wantErr: "is a directory",
 		},
 
 		// --- pod sources ---
