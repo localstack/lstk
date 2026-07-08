@@ -93,14 +93,14 @@ func (c *Client) FetchResources(ctx context.Context, host string) ([]emulator.Re
 	// Each line of the NDJSON stream is a JSON object mapping an AWS resource type
 	// (e.g. "AWS::S3::Bucket") to a list of resource entries.
 	var rows []emulator.Resource
-	scanner := bufio.NewScanner(resp.Body)
-	buf := make([]byte, 1024*1024)
-	scanner.Buffer(buf, 1024*1024)
-
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		if line == "" {
-			continue
+	nd := newNDJSONReader(resp.Body)
+	for {
+		line, ok, err := nd.next()
+		if err != nil {
+			return nil, fmt.Errorf("failed to read resources stream: %w", err)
+		}
+		if !ok {
+			break
 		}
 
 		var chunk map[string][]instanceResource
@@ -124,10 +124,6 @@ func (c *Client) FetchResources(ctx context.Context, host string) ([]emulator.Re
 				})
 			}
 		}
-	}
-
-	if err := scanner.Err(); err != nil {
-		return nil, fmt.Errorf("failed to read resources stream: %w", err)
 	}
 
 	sort.Slice(rows, func(i, j int) bool {
@@ -208,13 +204,14 @@ func (c *Client) ImportState(ctx context.Context, host string, src io.Reader, st
 		return fmt.Errorf("LocalStack returned status %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
 	}
 
-	scanner := bufio.NewScanner(resp.Body)
-	buf := make([]byte, 1024*1024)
-	scanner.Buffer(buf, 1024*1024)
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		if line == "" {
-			continue
+	nd := newNDJSONReader(resp.Body)
+	for {
+		line, ok, err := nd.next()
+		if err != nil {
+			return err
+		}
+		if !ok {
+			break
 		}
 		var event struct {
 			Service string `json:"service"`
@@ -231,7 +228,37 @@ func (c *Client) ImportState(ctx context.Context, host string, src io.Reader, st
 			return fmt.Errorf("load failed for service %s: %s", event.Service, event.Message)
 		}
 	}
-	return scanner.Err()
+	return nil
+}
+
+// ndjsonReader reads newline-delimited JSON streams without the fixed
+// token-size limit of bufio.Scanner (which errors with "token too long" on any
+// single line larger than its buffer). Lines grow to whatever size the stream
+// produces, so a large JSON object on one line is read whole and can be parsed.
+type ndjsonReader struct {
+	r *bufio.Reader
+}
+
+func newNDJSONReader(r io.Reader) *ndjsonReader {
+	return &ndjsonReader{r: bufio.NewReader(r)}
+}
+
+// next returns the next non-empty, trimmed line. ok is false at end of stream.
+// A read error other than io.EOF is returned in err.
+func (n *ndjsonReader) next() (line string, ok bool, err error) {
+	for {
+		s, readErr := n.r.ReadString('\n')
+		s = strings.TrimSpace(s)
+		if s != "" {
+			return s, true, nil
+		}
+		if readErr != nil {
+			if readErr == io.EOF {
+				return "", false, nil
+			}
+			return "", false, readErr
+		}
+	}
 }
 
 // isInvalidSnapshotFileMsg reports whether an emulator error message indicates
