@@ -15,10 +15,18 @@ permissions:
   pull-requests: write
   checks: write
 
+# Cancel superseded runs on the same PR. Non-PR runs (push/tag/release) each
+# get a unique group via run_id, so cancel-in-progress can never touch them —
+# the reusable workflow_call from the release pipeline is never interrupted.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
+
 jobs:
   lint:
     name: Lint
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - name: Checkout code
         uses: actions/checkout@v7
@@ -36,6 +44,7 @@ jobs:
   goreleaser-check:
     name: GoReleaser Check
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - name: Checkout code
         uses: actions/checkout@v7
@@ -50,6 +59,7 @@ jobs:
   test-unit:
     name: Unit Tests
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - name: Checkout code
         uses: actions/checkout@v7
@@ -83,6 +93,7 @@ jobs:
   test-integration:
     name: Integration Tests (${{ matrix.os }}${{ matrix.shard && format(' shard {0}/{1}', matrix.shard, matrix.shard_total) || '' }})
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
@@ -186,6 +197,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: test-integration
     if: always()
+    timeout-minutes: 5
     steps:
       - name: Verify integration matrix succeeded
         run: |
@@ -203,6 +215,7 @@ jobs:
       - test-unit
       - test-integration
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     permissions:
       contents: write
     steps:
