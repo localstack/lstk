@@ -67,57 +67,29 @@ jobs:
 
   # Weekly full scan: every severity, including vulns with no fix yet. New CVEs
   # land against unchanged code, so this catches what the PR gate never sees.
-  # Reports to Slack only when something is found (no all-clear noise).
+  # Results go to the Security tab (code scanning) — watchers subscribed to
+  # security alerts get notified there, no Slack/webhook plumbing.
   scan-weekly:
-    name: Full Scan + Slack Report
+    name: Full Scan
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    permissions:
+      contents: read
+      security-events: write # upload SARIF to code scanning
     steps:
       - name: Checkout code
         uses: actions/checkout@v7
 
       - name: Run Trivy (all severities)
-        id: trivy
         uses: aquasecurity/trivy-action@v0.36.0
-        # Don't abort the job on findings — the Slack + fail steps run after.
-        continue-on-error: true
         with:
           scan-type: fs
           scanners: vuln
-          exit-code: "1"
-          format: json
-          output: trivy.json
+          format: sarif
+          output: trivy-results.sarif
 
-      - name: Build Slack summary
-        id: summary
-        if: steps.trivy.outcome == 'failure'
-        run: |
-          TOTAL=$(jq '[.Results[]?.Vulnerabilities[]?] | length' trivy.json)
-          BREAKDOWN=$(jq -r '[.Results[]?.Vulnerabilities[]?.Severity]
-            | group_by(.) | map("\(.[0]): \(length)") | join("   ")' trivy.json)
-          LIST=$(jq -r '[.Results[]?.Vulnerabilities[]?]
-            | unique_by(.VulnerabilityID + .PkgName) | .[:15] | .[]
-            | "• `\(.PkgName)` \(.InstalledVersion) — \(.VulnerabilityID) (\(.Severity))"' trivy.json)
-          NOUN="vulnerabilities"
-          [ "$TOTAL" -eq 1 ] && NOUN="vulnerability"
-          RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-          MSG=":rotating_light: *lstk weekly Trivy scan* found ${TOTAL} ${NOUN}
-          *By severity:* ${BREAKDOWN}
-
-          ${LIST}
-
-          <${RUN_URL}|View full log>"
-          jq -n --arg t "$MSG" '{text: $t}' > slack-payload.json
-
-      - name: Notify Slack
-        if: steps.trivy.outcome == 'failure'
-        uses: slackapi/slack-github-action@v3.0.3
+      - name: Upload SARIF to code scanning
+        uses: github/codeql-action/upload-sarif@v3
         with:
-          webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
-          webhook-type: incoming-webhook
-          payload-file-path: slack-payload.json
-
-      - name: Mark run failed
-        if: steps.trivy.outcome == 'failure'
-        run: exit 1
+          sarif_file: trivy-results.sarif
