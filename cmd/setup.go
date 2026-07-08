@@ -44,7 +44,7 @@ func newSetupAWSCmd(cfg *env.Env) *cobra.Command {
 			}
 
 			if isInteractiveMode(cfg) {
-				return ui.RunConfigProfile(cmd.Context(), appConfig.Containers, cfg.LocalStackHost, force)
+				return ui.RunSetupAWS(cmd.Context(), appConfig.Containers, cfg.LocalStackHost, force)
 			}
 
 			resolvedHost, dnsOK, err := awsconfig.ResolveProfileHost(cmd.Context(), appConfig.Containers, cfg.LocalStackHost)

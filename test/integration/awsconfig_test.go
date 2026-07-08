@@ -208,57 +208,6 @@ func TestStartEmitsNoteWhenAWSProfileIsPartial(t *testing.T) {
 		"profile prompt should not appear for a partial setup")
 }
 
-func TestConfigProfileCreatesAWSProfileWhenConfirmed(t *testing.T) {
-	t.Parallel()
-	if runtime.GOOS == "windows" {
-		t.Skip("PTY not supported on Windows")
-	}
-	baseEnv, tmpHome := awsConfigEnv(t)
-
-	ctx := testContext(t)
-	cmd := exec.CommandContext(ctx, binaryPath(), "config", "profile")
-	cmd.Env = baseEnv
-
-	ptmx, err := pty.Start(cmd)
-	require.NoError(t, err, "failed to start command in PTY")
-	defer func() { _ = ptmx.Close() }()
-
-	out := &syncBuffer{}
-	outputCh := make(chan struct{})
-	go func() {
-		_, _ = io.Copy(out, ptmx)
-		close(outputCh)
-	}()
-
-	// Wait for the AWS profile prompt.
-	require.Eventually(t, func() bool {
-		return bytes.Contains(out.Bytes(), []byte(awsSetupPrompt))
-	}, 2*time.Minute, 200*time.Millisecond, "AWS profile prompt should appear")
-
-	// Press Y to confirm.
-	_, err = ptmx.Write([]byte("y"))
-	require.NoError(t, err)
-
-	err = cmd.Wait()
-	<-outputCh
-	require.NoError(t, err)
-
-	configContent, err := os.ReadFile(filepath.Join(tmpHome, ".aws", "config"))
-	require.NoError(t, err, "~/.aws/config should have been created")
-	assert.Contains(t, string(configContent), "[profile localstack]")
-	assert.Contains(t, string(configContent), "endpoint_url")
-
-	credsContent, err := os.ReadFile(filepath.Join(tmpHome, ".aws", "credentials"))
-	require.NoError(t, err, "~/.aws/credentials should have been created")
-	normalizedCreds := strings.Join(strings.Fields(string(credsContent)), " ")
-	assert.Contains(t, normalizedCreds, "[localstack]")
-	assert.Contains(t, normalizedCreds, "aws_access_key_id = test")
-	assert.Contains(t, normalizedCreds, "aws_secret_access_key = test")
-
-	assert.Contains(t, out.String(), "Created LocalStack profile in ~/.aws")
-	assert.NotContains(t, out.String(), "Skipped adding LocalStack AWS profile.")
-}
-
 func TestSetupAWSCreatesAWSProfileWhenConfirmed(t *testing.T) {
 	t.Parallel()
 	if runtime.GOOS == "windows" {
@@ -363,7 +312,7 @@ func TestSetupAWSExitsNonZeroWhenProfileWriteFails(t *testing.T) {
 	assert.NotContains(t, out.String(), "Created LocalStack profile")
 }
 
-func TestConfigProfileDoesNotCreateAWSProfileWhenDeclined(t *testing.T) {
+func TestSetupAWSDoesNotCreateAWSProfileWhenDeclined(t *testing.T) {
 	t.Parallel()
 	if runtime.GOOS == "windows" {
 		t.Skip("PTY not supported on Windows")
@@ -371,7 +320,7 @@ func TestConfigProfileDoesNotCreateAWSProfileWhenDeclined(t *testing.T) {
 	baseEnv, tmpHome := awsConfigEnv(t)
 
 	ctx := testContext(t)
-	cmd := exec.CommandContext(ctx, binaryPath(), "config", "profile")
+	cmd := exec.CommandContext(ctx, binaryPath(), "setup", "aws")
 	cmd.Env = baseEnv
 
 	ptmx, err := pty.Start(cmd)

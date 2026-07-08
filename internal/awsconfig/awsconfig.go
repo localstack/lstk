@@ -288,8 +288,8 @@ func applyProfile(sink output.Sink, resolvedHost, configPath, credsPath string, 
 //
 // When skipConfirm is true the confirmation prompt is bypassed and the profile is written directly.
 //
-// explicit is true for the user-invoked `lstk setup aws` / `lstk config profile`
-// commands, where writing the profile is the command's whole purpose, so a write
+// explicit is true for the user-invoked `lstk setup aws` command, where writing
+// the profile is the command's whole purpose, so a write
 // failure must surface a non-zero exit. It is false for the best-effort post-start
 // convenience flow (EnsureProfile during `lstk start`), where a write failure must
 // only warn and must not abort an already-running emulator.

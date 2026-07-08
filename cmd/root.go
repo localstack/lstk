@@ -123,7 +123,7 @@ func NewRootCmd(cfg *env.Env, tel *telemetry.Client, logger log.Logger) *cobra.C
 		newStatusCmd(cfg),
 		newLogsCmd(cfg),
 		newSetupCmd(cfg),
-		newConfigCmd(cfg),
+		newConfigCmd(),
 		newVolumeCmd(cfg),
 		newUpdateCmd(cfg),
 		newDocsCmd(),

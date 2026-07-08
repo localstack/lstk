@@ -4,41 +4,17 @@ import (
 	"fmt"
 
 	"github.com/localstack/lstk/internal/config"
-	"github.com/localstack/lstk/internal/env"
-	"github.com/localstack/lstk/internal/ui"
 	"github.com/spf13/cobra"
 )
 
-func newConfigCmd(cfg *env.Env) *cobra.Command {
+func newConfigCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "config",
 		Short: "Manage configuration",
 	}
 	requireSubcommand(cmd)
-	cmd.AddCommand(newConfigProfileCmd(cfg))
 	cmd.AddCommand(newConfigPathCmd())
 	return cmd
-}
-
-func newConfigProfileCmd(cfg *env.Env) *cobra.Command {
-	return &cobra.Command{
-		Use:     "profile",
-		Short:   "Deprecated: use 'lstk setup aws' instead",
-		PreRunE: initConfig(nil),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			appConfig, err := config.Get()
-			if err != nil {
-				return fmt.Errorf("failed to get config: %w", err)
-			}
-
-			if !isInteractiveMode(cfg) {
-				return fmt.Errorf("config profile requires an interactive terminal")
-			}
-
-			// Delegate to the same handler as "lstk setup aws"
-			return ui.RunConfigProfile(cmd.Context(), appConfig.Containers, cfg.LocalStackHost, false)
-		},
-	}
 }
 
 func newConfigPathCmd() *cobra.Command {
