@@ -17,16 +17,21 @@ func newLogTail(maxBytes int) *logTail {
 }
 
 // Write appends p, keeping only the most recent maxBytes. It never errors, so a
-// follow-logs goroutine writing into it cannot fail the capture.
+// follow-logs goroutine writing into it cannot fail the capture. It trims
+// before appending so a single oversized write never grows buf past maxBytes.
 func (l *logTail) Write(p []byte) (int, error) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	l.buf = append(l.buf, p...)
-	if len(l.buf) > l.maxBytes {
-		trimmed := make([]byte, l.maxBytes)
-		copy(trimmed, l.buf[len(l.buf)-l.maxBytes:])
-		l.buf = trimmed
+
+	if len(p) >= l.maxBytes {
+		l.buf = append(l.buf[:0], p[len(p)-l.maxBytes:]...)
+		return len(p), nil
 	}
+
+	if keep := l.maxBytes - len(p); len(l.buf) > keep {
+		l.buf = l.buf[len(l.buf)-keep:]
+	}
+	l.buf = append(l.buf, p...)
 	return len(p), nil
 }
 
