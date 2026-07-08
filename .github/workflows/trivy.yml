@@ -35,16 +35,14 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v7
 
-      # Writes the SARIF report before honoring exit-code, so a red check (on
-      # findings) and the always-run upload below are not mutually exclusive.
-      - name: Run Trivy (fixable CRITICAL/HIGH)
+      # SARIF report for the Security tab covers all severities and never fails
+      # the job (the gate below owns pass/fail). trivy-action ignores severity
+      # filters when format is sarif, so this cannot double as the gate.
+      - name: Run Trivy (SARIF report)
         uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: fs
           scanners: vuln
-          severity: CRITICAL,HIGH
-          ignore-unfixed: true
-          exit-code: "1"
           format: sarif
           output: trivy-results.sarif
 
@@ -55,6 +53,17 @@ jobs:
         uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: trivy-results.sarif
+
+      # The blocking gate: fail only on fixable CRITICAL/HIGH vulnerabilities.
+      - name: Run Trivy (fixable CRITICAL/HIGH gate)
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: fs
+          scanners: vuln
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          exit-code: "1"
+          format: table
 
   # Weekly full scan: every severity, including vulns with no fix yet. New CVEs
   # land against unchanged code, so this catches what the PR gate never sees.
