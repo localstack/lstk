@@ -38,7 +38,7 @@ jobs:
       # Writes the SARIF report before honoring exit-code, so a red check (on
       # findings) and the always-run upload below are not mutually exclusive.
       - name: Run Trivy (fixable CRITICAL/HIGH)
-        uses: aquasecurity/trivy-action@0.36.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: fs
           scanners: vuln
@@ -70,7 +70,7 @@ jobs:
 
       - name: Run Trivy (all severities)
         id: trivy
-        uses: aquasecurity/trivy-action@0.36.0
+        uses: aquasecurity/trivy-action@v0.36.0
         # Don't abort the job on findings — the Slack + fail steps run after.
         continue-on-error: true
         with:
