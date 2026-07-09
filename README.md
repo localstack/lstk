@@ -47,9 +47,13 @@ Running `lstk` will automatically handle configuration setup and start LocalStac
 - **Log streaming** — tail emulator logs in real-time with `--follow`; use `--verbose` to show all logs without filtering
 - **Snapshots** — save, load, and remove emulator state as local files, named cloud snapshots (`pod:` prefix), or in your own S3 bucket (`s3://`), and auto-load one on start
 - **Browser-based login** — authenticate via browser and store credentials securely in the system keyring
+- **AWS CLI proxy** — run `lstk aws <args>` with endpoint, credentials, and region pre-configured
 - **AWS CLI profile** — optionally configure a `localstack` profile in `~/.aws/` after start
 - **Terraform integration** — proxy Terraform commands to LocalStack with automatic AWS provider endpoint configuration
 - **CDK integration** — proxy AWS CDK commands to LocalStack with automatic endpoint configuration (requires AWS CDK >= 2.177.0)
+- **SAM integration** — proxy AWS SAM CLI commands to LocalStack (requires AWS SAM CLI >= 1.95.0)
+- **Reset / restart** — clear in-memory emulator state with `lstk reset`, or restart the emulator with `lstk restart`
+- **Extensions** — Git-style `lstk-<name>` executables extend the CLI with new commands
 - **Self-update** — check for and install the latest `lstk` release with `lstk update`
 - **Shell completions** — bash, zsh, and fish completions included
 
@@ -94,11 +98,14 @@ port = "4566"
 
 The chosen emulator must be running before you set up or use its CLI integration below.
 
+> [!NOTE]
+> Only one `[[containers]]` block can be enabled at a time — running multiple emulators together (e.g. AWS and Snowflake) isn't supported yet.
+
 You can also configure cloud CLI integration:
 
 ```bash
 lstk setup aws    # localstack profile in ~/.aws/
-lstk setup azure  # isolated Azure CLI config for `lstk az` (requires the Azure CLI)
+lstk setup azure  # isolated Azure CLI config for `lstk az` (requires the Azure CLI); alias: lstk setup az
 ```
 
 After starting the Azure emulator and running `lstk setup azure`, run Azure CLI commands against LocalStack with `lstk az`:
@@ -132,6 +139,7 @@ lstk --config /path/to/config.toml start
 type = "aws"     # Emulator type. Currently supported: "aws", "snowflake", "azure"
 tag  = "latest"  # Docker image tag, e.g. "latest", "2026.03"
 port = "4566"    # Host port the emulator will be accessible on
+# image = ""     # Override the default Docker image, e.g. an internal registry mirror (see below)
 # volumes = []   # Bind mounts, "host:container[:ro]" (see below)
 # env = []       # Named environment profiles to apply (see [env.*] sections below)
 # snapshot = "pod:my-baseline"  # Snapshot REF auto-loaded on start (AWS only); see Snapshots below
@@ -141,6 +149,7 @@ port = "4566"    # Host port the emulator will be accessible on
 - `type`: emulator type; one of `"aws"`, `"snowflake"`, or `"azure"`
 - `tag`: Docker image tag for LocalStack (e.g. `"latest"`, `"4.14.0"`); useful for pinning a version
 - `port`: port LocalStack listens on (default `4566`)
+- `image`: (optional) override the default `localstack/<product>:<tag>` image, e.g. `"my-registry.example.com/localstack:latest"` for an internal mirror or a locally loaded offline image; if it already carries a tag, `tag` above is ignored
 - `volumes`: (optional) list of `"host:container[:ro]"` bind mounts, e.g. for init hooks or the persistent-state directory (see below)
 - `env`: (optional) list of named environment variable groups to inject into the container (see below)
 - `snapshot`: (optional) snapshot REF auto-loaded after the emulator starts on a fresh run — a local file path or a `pod:` cloud snapshot (see [Snapshots](#snapshots))
@@ -167,6 +176,22 @@ EAGER_SERVICE_LOADING = "1"
 ```
 
 Host environment variables prefixed with `LOCALSTACK_` are also forwarded to the emulator.
+
+### Exposing the emulator beyond localhost
+
+By default the gateway (and its published ports) are only reachable from `localhost`. To expose it more broadly (e.g. on an EC2 or VM host), set `GATEWAY_LISTEN` in an `[env.*]` profile:
+
+```toml
+[[containers]]
+type = "aws"
+port = "4566"
+env  = ["public"]
+
+[env.public]
+GATEWAY_LISTEN = "0.0.0.0:4566,0.0.0.0:443"
+```
+
+The host part of the first entry becomes the bind address for every published port (the gateway ports and the 4510-4559 service range); it defaults to `127.0.0.1` when unset.
 
 ### Mounting volumes and init hooks
 
@@ -223,6 +248,15 @@ lstk --non-interactive
 | `LSTK_OTEL=1` | Enables OpenTelemetry trace export (disabled by default). When enabled, standard `OTEL_EXPORTER_OTLP_*` env vars are respected by the SDK (e.g. `OTEL_EXPORTER_OTLP_ENDPOINT` defaults to `http://localhost:4318`). Requires an OTLP-compatible backend to receive and visualize telemetry — for local development, `make otel` starts one (UI at http://localhost:16686). |
 | `DOCKER_HOST` | Override the Docker daemon socket (e.g. `unix:///home/user/.colima/default/docker.sock`). When unset, lstk tries the default socket and then probes common alternatives (Colima, OrbStack). |
 
+### AWS CLI Proxy
+
+`lstk aws <args>` runs the AWS CLI against LocalStack with the endpoint, credentials, and region pre-configured — equivalent to `aws --endpoint-url http://localhost:4566 <args>` with `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, and `AWS_DEFAULT_REGION` set automatically. Requires the AWS CLI on your `PATH`. This is separate from `lstk setup aws`, which configures a persistent `localstack` profile in `~/.aws/` instead.
+
+```bash
+lstk aws s3 ls
+lstk aws sqs list-queues
+```
+
 ### Terraform Integration
 
 `lstk terraform` (alias `tf`) is a proxy that runs Terraform commands against LocalStack, automatically configuring the AWS provider to use LocalStack's endpoints. This allows you to test infrastructure-as-code locally before deploying to AWS.
@@ -256,6 +290,25 @@ CDK always targets the default LocalStack account 000000000000; there is no --ac
 - `AWS_ENDPOINT_URL_S3` — Override the auto-derived S3 endpoint
 - `AWS_REGION` — Fallback for `--region` flag
 
+### SAM Integration
+
+`lstk sam` is a proxy that runs AWS SAM CLI commands against LocalStack, automatically configuring the endpoint and credentials.
+
+**Requires AWS SAM CLI version 1.95.0 or newer** on your `PATH` (older versions ignore `AWS_ENDPOINT_URL` and would target real AWS).
+
+**lstk-specific flags** (appear after the `sam` subcommand):
+- `--region <region>` — Deployment region (default: `us-east-1`)
+- `--account <id>` — Target AWS account ID, 12 digits (default: `000000000000`)
+
+**Environment variables:**
+- `LSTK_SAM_CMD` — SAM binary to invoke (default: `sam`)
+- `AWS_ENDPOINT_URL` — Override the auto-resolved LocalStack endpoint
+- `AWS_ENDPOINT_URL_S3` — Override the auto-derived S3 endpoint
+- `AWS_REGION` — Fallback for `--region` flag
+- `AWS_ACCESS_KEY_ID` — Fallback for `--account` flag
+
+Known limitations versus `samlocal`: image/container-based Lambda (ECR) deploys and nested CloudFormation stacks are not supported.
+
 ## Usage
 
 ```bash
@@ -267,6 +320,12 @@ LOCALSTACK_AUTH_TOKEN=<token> lstk --non-interactive
 
 # Stop the running emulator
 lstk stop
+
+# Restart the emulator
+lstk restart
+
+# Clear in-memory emulator state (buckets, functions, etc.) without stopping it
+lstk reset
 
 # Show emulator status and deployed resources
 lstk status
@@ -292,6 +351,9 @@ lstk update
 # Show resolved config file path
 lstk config path
 
+# Run AWS CLI commands against LocalStack
+lstk aws s3 ls
+
 # Set up AWS CLI profile integration
 lstk setup aws
 
@@ -305,7 +367,7 @@ lstk az group list
 lstk az start-interception
 lstk az stop-interception
 
-# Save emulator state to a local file
+# Save emulator state to a local file (`lstk save` is a shortcut for `lstk snapshot save`)
 lstk snapshot save ./my-snapshot.snapshot
 
 # Save emulator state as a named cloud snapshot on the LocalStack platform
@@ -314,7 +376,7 @@ lstk snapshot save pod:my-baseline
 # Save to your own S3 bucket (credentials from AWS_* env vars or --profile)
 lstk snapshot save my-pod s3://my-bucket/prefix
 
-# Load a snapshot back into the running emulator
+# Load a snapshot back into the running emulator (`lstk load` is a shortcut for `lstk snapshot load`)
 lstk snapshot load pod:my-baseline
 lstk snapshot load my-pod s3://my-bucket/prefix
 
@@ -345,6 +407,10 @@ lstk cdk deploy --require-approval never
 
 # Synthesize a CDK app (offline, no running emulator needed)
 lstk cdk synth
+
+# Build and deploy a SAM app against LocalStack
+lstk sam build
+lstk sam deploy
 
 ```
 
@@ -425,7 +491,7 @@ lstk start --no-snapshot                  # skip auto-loading this run
 
 ## Extensions
 
-lstk supports Git-style extensions: running `lstk <name>`, for a name that isn't a built-in command, delegates to an external `lstk-<name>` executable found on your `PATH`, forwarding all arguments and passing stdin/stdout/stderr through.
+lstk supports Git-style extensions: running `lstk <name>`, for a name that isn't a built-in command, resolves and delegates to an external `lstk-<name>` executable — checked first in lstk's bundled-extensions directory, then on your `PATH` — forwarding all arguments and passing stdin/stdout/stderr through.
 
 ```bash
 lstk my-tool --flag  # resolves and runs lstk-my-tool, if it exists
