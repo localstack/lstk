@@ -661,12 +661,19 @@ func TestStartCommandPassesCIAndLocalStackEnvVars(t *testing.T) {
 	defer mockServer.Close()
 
 	ctx := testContext(t)
-	_, stderr, err := runLstk(t, ctx, "", env.With(env.APIEndpoint, mockServer.URL).
+	// LOCALSTACK_PATH must not reach the emulator: its entrypoint strips the
+	// LOCALSTACK_ prefix and re-exports the rest, so a forwarded LOCALSTACK_PATH
+	// overrides PATH inside the emulator and startup dies with
+	// "mkdir: command not found" (DEVX-984).
+	stdout, stderr, err := runLstk(t, ctx, "", env.With(env.APIEndpoint, mockServer.URL).
 		With(env.CI, "true").
-		With(env.DisableEvents, "1"),
+		With(env.DisableEvents, "1").
+		With("LOCALSTACK_PATH", "/home/user/repos/localstack"),
 		"start")
 	require.NoError(t, err, "lstk start failed: %s", stderr)
 	requireExitCode(t, 0, err)
+	assert.Contains(t, stdout+stderr, "Not forwarding LOCALSTACK_PATH",
+		"dropping a critical-collision variable must be surfaced to the user")
 
 	inspect, err := dockerClient.ContainerInspect(ctx, containerName, client.ContainerInspectOptions{})
 	require.NoError(t, err, "failed to inspect container")
@@ -676,6 +683,7 @@ func TestStartCommandPassesCIAndLocalStackEnvVars(t *testing.T) {
 	assert.Equal(t, "true", envVars["CI"])
 	assert.Equal(t, "1", envVars["LOCALSTACK_DISABLE_EVENTS"])
 	assert.NotEmpty(t, envVars["LOCALSTACK_AUTH_TOKEN"])
+	assert.NotContains(t, envVars, "LOCALSTACK_PATH")
 }
 
 func TestStartCommandPersistFlagSetsPersistenceEnv(t *testing.T) {
