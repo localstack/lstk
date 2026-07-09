@@ -115,6 +115,61 @@ func TestFirstRunShowsEmulatorSelectionPrompt(t *testing.T) {
 	<-outputCh
 }
 
+// Running an unrelated command (one that doesn't itself start the emulator)
+// before ever running `lstk start` must not silently lock in a default
+// emulator. Every command other than bare `lstk`/`lstk start` defers config
+// creation (initConfigDeferCreate), so it must not write config.toml on its
+// own first run — otherwise firstRun would be false by the time the user
+// finally runs `lstk start`, and the selector would never appear.
+func TestFirstRunStillShowsSelectionPromptAfterRunningAnotherCommand(t *testing.T) {
+	requireDocker(t)
+	t.Parallel()
+	if runtime.GOOS == "windows" {
+		t.Skip("PTY not supported on Windows")
+	}
+
+	tmpHome := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(tmpHome, ".config"), 0755))
+	e := env.Environ(testEnvWithHome(tmpHome, tmpHome)).
+		With(env.DisableEvents, "1")
+
+	configPath, _, err := runLstk(t, testContext(t), "", e, "config", "path")
+	require.NoError(t, err)
+	require.NoFileExists(t, configPath)
+
+	// Run a command that doesn't start the emulator — this used to eagerly
+	// create the default (type = "aws") config via config.Init, consuming
+	// firstRun before the user ever saw the selector.
+	_, _, err = runLstk(t, testContext(t), "", e, "volume", "path")
+	require.NoError(t, err)
+	require.NoFileExists(t, configPath, "running an unrelated command must not create the default config")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, binaryPath(), "start")
+	cmd.Env = e
+
+	ptmx, err := pty.Start(cmd)
+	require.NoError(t, err, "failed to start lstk in PTY")
+	defer func() { _ = ptmx.Close() }()
+
+	out := &syncBuffer{}
+	outputCh := make(chan struct{})
+	go func() {
+		_, _ = io.Copy(out, ptmx)
+		close(outputCh)
+	}()
+
+	require.Eventually(t, func() bool {
+		return bytes.Contains(out.Bytes(), []byte("Which emulator would you like to use?"))
+	}, 10*time.Second, 100*time.Millisecond,
+		"emulator selection prompt should still appear on first `start` even after running another command first")
+
+	cancel()
+	<-outputCh
+}
+
 func TestFirstRunCanSelectAzureEmulator(t *testing.T) {
 	requireDocker(t)
 	t.Parallel()

@@ -17,7 +17,7 @@ func newStopCmd(cfg *env.Env, tel *telemetry.Client) *cobra.Command {
 		Use:         "stop",
 		Short:       "Stop emulator",
 		Long:        "Stop emulator and services",
-		PreRunE:     initConfig(nil),
+		PreRunE:     initConfigDeferCreate(nil),
 		Annotations: map[string]string{jsonSupportedAnnotation: "true"},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			sink := jsonAwareSink(cmd, cfg, os.Stdout)

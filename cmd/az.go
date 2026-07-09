@@ -40,7 +40,7 @@ Examples:
 			if jsonPrecedesCommandName(cmd.CalledAs()) {
 				cfg.JSON = true
 			}
-			return initConfig(nil)(cmd, args)
+			return initConfigDeferCreate(nil)(cmd, args)
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			sink := output.NewPlainSink(os.Stdout)
@@ -90,7 +90,7 @@ func newAzStartInterceptionCmd(cfg *env.Env) *cobra.Command {
 		Short:   "Redirect global 'az' to the LocalStack Azure emulator",
 		Long:    "Register and activate a custom 'LocalStack' cloud in your global Azure CLI configuration (~/.azure) so that plain 'az' commands in any terminal target the LocalStack Azure emulator. This lets existing 'az' scripts run unmodified against LocalStack. It changes global state affecting every 'az' invocation until you run 'lstk az stop-interception'; this is independent of the isolated 'lstk az' setup.",
 		Args:    cobra.NoArgs,
-		PreRunE: initConfig(nil),
+		PreRunE: initConfigDeferCreate(nil),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			preflight := func(ctx context.Context, sink output.Sink) (string, error) {
 				return azPreflight(ctx, cfg, sink)
@@ -119,7 +119,7 @@ func newAzStopInterceptionCmd(cfg *env.Env) *cobra.Command {
 		Short:   "Switch global 'az' back to real Azure",
 		Long:    "Switch your global Azure CLI cloud away from the LocalStack emulator back to real Azure (AzureCloud by default; use --cloud to choose another registered cloud) and re-enable instance discovery. To avoid clobbering an unrelated selection, it only changes the active cloud when 'LocalStack' is currently active; otherwise it reports the current cloud and does nothing.",
 		Args:    cobra.NoArgs,
-		PreRunE: initConfig(nil),
+		PreRunE: initConfigDeferCreate(nil),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if isInteractiveMode(cfg) {
 				return ui.RunStopInterception(cmd.Context(), cloud)

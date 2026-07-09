@@ -581,10 +581,6 @@ func newLogger() (log.Logger, func(), error) {
 	return log.New(f), func() { _ = f.Close() }, nil
 }
 
-func initConfig(firstRun *bool) func(*cobra.Command, []string) error {
-	return initConfigWith(firstRun, config.Init)
-}
-
 func initConfigDeferCreate(firstRun *bool) func(*cobra.Command, []string) error {
 	return initConfigWith(firstRun, config.Load)
 }
