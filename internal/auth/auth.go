@@ -21,10 +21,25 @@ type Auth struct {
 	licenseFilePath string
 }
 
-func New(sink output.Sink, platform api.PlatformAPI, storage AuthTokenStorage, authToken, webAppURL string, allowLogin bool, licenseFilePath string) *Auth {
+// Option configures optional behavior of the login flow.
+type Option func(*loginProvider)
+
+// WithBrowserOpener overrides how the login flow opens the auth URL in a
+// browser. Tests inject a recorder so they don't spawn real browser tabs.
+func WithBrowserOpener(open func(string) error) Option {
+	return func(lp *loginProvider) {
+		lp.openBrowser = open
+	}
+}
+
+func New(sink output.Sink, platform api.PlatformAPI, storage AuthTokenStorage, authToken, webAppURL string, allowLogin bool, licenseFilePath string, opts ...Option) *Auth {
+	lp := newLoginProvider(sink, platform, webAppURL)
+	for _, opt := range opts {
+		opt(lp)
+	}
 	return &Auth{
 		tokenStorage:    storage,
-		login:           newLoginProvider(sink, platform, webAppURL),
+		login:           lp,
 		sink:            sink,
 		authToken:       authToken,
 		allowLogin:      allowLogin,

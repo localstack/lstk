@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"testing"
 	"time"
 
@@ -80,6 +81,26 @@ func readOutput(r io.Reader) string {
 	return string(b)
 }
 
+// browserRecorder captures the URL the login flow would have opened instead of
+// spawning a real browser tab.
+type browserRecorder struct {
+	mu  sync.Mutex
+	url string
+}
+
+func (b *browserRecorder) open(url string) error {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.url = url
+	return nil
+}
+
+func (b *browserRecorder) opened() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.url
+}
+
 func TestLoginFlow_DeviceFlowSuccess(t *testing.T) {
 	mockServer := createMockAPIServer(t, "test-license-token", true)
 	defer mockServer.Close()
@@ -95,10 +116,11 @@ func TestLoginFlow_DeviceFlowSuccess(t *testing.T) {
 	tm := teatest.NewTestModel(t, NewApp("test", "", "", cancel), teatest.WithInitialTermSize(120, 40))
 	sender := testModelSender{tm: tm}
 	platformClient := api.NewPlatformClient(mockServer.URL, log.Nop())
+	recorder := &browserRecorder{}
 
 	errCh := make(chan error, 1)
 	go func() {
-		a := auth.New(output.NewTUISink(sender), platformClient, mockStorage, "", mockServer.URL, true, "")
+		a := auth.New(output.NewTUISink(sender), platformClient, mockStorage, "", mockServer.URL, true, "", auth.WithBrowserOpener(recorder.open))
 		_, err := a.GetToken(ctx)
 		errCh <- err
 		if err != nil && !errors.Is(err, context.Canceled) {
@@ -111,6 +133,8 @@ func TestLoginFlow_DeviceFlowSuccess(t *testing.T) {
 	teatest.WaitFor(t, tm.Output(), func(bts []byte) bool {
 		return bytes.Contains(bts, []byte("Waiting for authorization"))
 	}, teatest.WithDuration(5*time.Second))
+
+	assert.Equal(t, mockServer.URL+"/auth/request/test-auth-req-id?code=TEST123", recorder.opened())
 
 	tm.Send(tea.KeyMsg{Type: tea.KeyEnter})
 
@@ -143,10 +167,11 @@ func TestLoginFlow_DeviceFlowFailure_NotConfirmed(t *testing.T) {
 	tm := teatest.NewTestModel(t, NewApp("test", "", "", cancel), teatest.WithInitialTermSize(120, 40))
 	sender := testModelSender{tm: tm}
 	platformClient := api.NewPlatformClient(mockServer.URL, log.Nop())
+	recorder := &browserRecorder{}
 
 	errCh := make(chan error, 1)
 	go func() {
-		a := auth.New(output.NewTUISink(sender), platformClient, mockStorage, "", mockServer.URL, true, "")
+		a := auth.New(output.NewTUISink(sender), platformClient, mockStorage, "", mockServer.URL, true, "", auth.WithBrowserOpener(recorder.open))
 		_, err := a.GetToken(ctx)
 		errCh <- err
 		if err != nil && !errors.Is(err, context.Canceled) {
@@ -159,6 +184,8 @@ func TestLoginFlow_DeviceFlowFailure_NotConfirmed(t *testing.T) {
 	teatest.WaitFor(t, tm.Output(), func(bts []byte) bool {
 		return bytes.Contains(bts, []byte("Waiting for authorization"))
 	}, teatest.WithDuration(5*time.Second))
+
+	assert.Equal(t, mockServer.URL+"/auth/request/test-auth-req-id?code=TEST123", recorder.opened())
 
 	tm.Send(tea.KeyMsg{Type: tea.KeyEnter})
 
@@ -192,10 +219,11 @@ func TestLoginFlow_DeviceFlowCancelWithCtrlC(t *testing.T) {
 	tm := teatest.NewTestModel(t, NewApp("test", "", "", cancel), teatest.WithInitialTermSize(120, 40))
 	sender := testModelSender{tm: tm}
 	platformClient := api.NewPlatformClient(mockServer.URL, log.Nop())
+	recorder := &browserRecorder{}
 
 	errCh := make(chan error, 1)
 	go func() {
-		a := auth.New(output.NewTUISink(sender), platformClient, mockStorage, "", mockServer.URL, true, "")
+		a := auth.New(output.NewTUISink(sender), platformClient, mockStorage, "", mockServer.URL, true, "", auth.WithBrowserOpener(recorder.open))
 		_, err := a.GetToken(ctx)
 		errCh <- err
 		if err != nil && !errors.Is(err, context.Canceled) {
@@ -208,6 +236,8 @@ func TestLoginFlow_DeviceFlowCancelWithCtrlC(t *testing.T) {
 	teatest.WaitFor(t, tm.Output(), func(bts []byte) bool {
 		return bytes.Contains(bts, []byte("Waiting for authorization"))
 	}, teatest.WithDuration(5*time.Second))
+
+	assert.Equal(t, mockServer.URL+"/auth/request/test-auth-req-id?code=TEST123", recorder.opened())
 
 	tm.Send(tea.KeyMsg{Type: tea.KeyCtrlC})
 
