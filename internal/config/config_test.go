@@ -41,6 +41,67 @@ func TestLoadFirstRunAfterConfigDirRecreated(t *testing.T) {
 	assert.True(t, firstRun, "Load() should return firstRun=true when the config directory exists but config.toml does not")
 }
 
+// TestEnsureCreatedPrefersHomeConfigDirWhenPresent and
+// TestEnsureCreatedFallsBackToOSConfigDirWhenHomeConfigMissing cover the
+// config-creation path-resolution policy directly (rather than through an
+// arbitrary CLI command): $HOME/.config/lstk when $HOME/.config already
+// exists, otherwise the OS default. Only `start`/bare `lstk` ever call
+// EnsureCreated on a genuine first run — see the "Choosing an emulator" note
+// in CLAUDE.md — so this is tested at the config-package level instead of by
+// running some other command that happens to trigger it.
+func TestEnsureCreatedPrefersHomeConfigDirWhenPresent(t *testing.T) {
+	// Cannot run in parallel: mutates process-wide HOME env and viper state.
+	fakeHome := t.TempDir()
+	t.Setenv("HOME", fakeHome)
+	t.Setenv("XDG_CONFIG_HOME", "")
+	viper.Reset()
+	t.Cleanup(viper.Reset)
+
+	require.NoError(t, os.MkdirAll(filepath.Join(fakeHome, ".config"), 0755))
+
+	firstRun, err := Load()
+	require.NoError(t, err)
+	require.True(t, firstRun)
+	require.NoError(t, EnsureCreated())
+
+	expectedConfigFile := filepath.Join(fakeHome, ".config", "lstk", "config.toml")
+	assert.FileExists(t, expectedConfigFile)
+	assertDefaultConfigContent(t, expectedConfigFile)
+}
+
+func TestEnsureCreatedFallsBackToOSConfigDirWhenHomeConfigMissing(t *testing.T) {
+	// Cannot run in parallel: mutates process-wide HOME env and viper state.
+	fakeHome := t.TempDir()
+	t.Setenv("HOME", fakeHome)
+	t.Setenv("XDG_CONFIG_HOME", "")
+	viper.Reset()
+	t.Cleanup(viper.Reset)
+
+	firstRun, err := Load()
+	require.NoError(t, err)
+	require.True(t, firstRun)
+	require.NoError(t, EnsureCreated())
+
+	osConfigDir, err := osConfigDir()
+	require.NoError(t, err)
+	expectedConfigFile := filepath.Join(osConfigDir, "config.toml")
+	assert.FileExists(t, expectedConfigFile)
+	assertDefaultConfigContent(t, expectedConfigFile)
+}
+
+func assertDefaultConfigContent(t *testing.T, path string) {
+	t.Helper()
+	content, err := os.ReadFile(path)
+	require.NoError(t, err)
+	configStr := string(content)
+	assert.Contains(t, configStr, "type")
+	assert.Contains(t, configStr, "aws")
+	assert.Contains(t, configStr, "tag")
+	assert.Contains(t, configStr, "latest")
+	assert.Contains(t, configStr, "port")
+	assert.Contains(t, configStr, "4566")
+}
+
 func TestSetInFileAppendsWhenKeyAbsent(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.toml")
 	original := `# User comment
