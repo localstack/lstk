@@ -393,6 +393,9 @@ func TestFilterHostEnv(t *testing.T) {
 		"PATH=/usr/bin",
 		"HOME=/home/user",
 		"CI_PIPELINE=foo",
+		"LOCALSTACK_PATH=/opt/custom",
+		"LOCALSTACK_LD_PRELOAD=/tmp/evil.so",
+		"LOCALSTACK_MULTILINE=a\nLOCALSTACK_PATH=",
 	}
 
 	got := filterHostEnv(input)
@@ -406,6 +409,12 @@ func TestFilterHostEnv(t *testing.T) {
 	assert.NotContains(t, got, "PATH=/usr/bin")
 	assert.NotContains(t, got, "HOME=/home/user")
 	assert.NotContains(t, got, "CI_PIPELINE=foo", "only exact CI= must be forwarded, not CI_*")
+	assert.NotContains(t, got, "LOCALSTACK_PATH=/opt/custom",
+		"LOCALSTACK_PATH must not be forwarded: the entrypoint strips it to PATH, blanking the container PATH (DEVX-984)")
+	assert.NotContains(t, got, "LOCALSTACK_LD_PRELOAD=/tmp/evil.so",
+		"LOCALSTACK_* vars stripping to reserved shell variables must not be forwarded")
+	assert.NotContains(t, got, "LOCALSTACK_MULTILINE=a\nLOCALSTACK_PATH=",
+		"values with embedded newlines must not be forwarded: they can inject rogue exports")
 }
 
 func TestAgentEnv(t *testing.T) {

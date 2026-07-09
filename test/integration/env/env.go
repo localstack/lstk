@@ -11,6 +11,7 @@ type Key string
 const (
 	AuthToken          Key = "LOCALSTACK_AUTH_TOKEN"
 	LocalStackHost     Key = "LOCALSTACK_HOST"
+	LocalStackPath     Key = "LOCALSTACK_PATH"
 	APIEndpoint        Key = "LSTK_API_ENDPOINT"
 	Keyring            Key = "LSTK_KEYRING"
 	CI                 Key = "CI"

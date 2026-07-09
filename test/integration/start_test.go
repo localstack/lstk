@@ -52,6 +52,39 @@ func TestStartCommandSucceedsWithValidToken(t *testing.T) {
 		"persistence bullet must be omitted when --persist is not set")
 }
 
+// DEVX-984: a host LOCALSTACK_PATH must not be forwarded into the emulator
+// container. LocalStack's entrypoint re-exports every LOCALSTACK_<NAME> as
+// <NAME> and relies on the image's own PATH, so forwarding LOCALSTACK_PATH
+// blanks the container PATH and the entrypoint crashes on its first external
+// command with "mkdir: command not found". With the fix, lstk drops such
+// reserved-name vars and the emulator starts normally.
+func TestStartCommandIgnoresPathClobberingHostEnv(t *testing.T) {
+	requireDocker(t)
+	_ = env.Require(t, env.AuthToken)
+
+	cleanup()
+	t.Cleanup(cleanup)
+
+	mockServer := createMockLicenseServer(true)
+	defer mockServer.Close()
+
+	environ := env.With(env.APIEndpoint, mockServer.URL).
+		With(env.LocalStackPath, "/opt/lstk-should-be-ignored")
+
+	ctx := testContext(t)
+	stdout, stderr, err := runLstk(t, ctx, "", environ, "start")
+	require.NoError(t, err, "lstk start failed: %s\n%s", stdout, stderr)
+	requireExitCode(t, 0, err)
+
+	assert.NotContains(t, stdout, "mkdir: command not found",
+		"forwarding LOCALSTACK_PATH must not blank the container PATH (DEVX-984)")
+	assert.NotContains(t, stdout, "exited unexpectedly")
+
+	inspect, err := dockerClient.ContainerInspect(ctx, containerName, client.ContainerInspectOptions{})
+	require.NoError(t, err, "failed to inspect container")
+	assert.True(t, inspect.Container.State.Running, "container should be running")
+}
+
 // PRO-323: a pinned image already present locally must be reused, not re-pulled.
 // Tags the lightweight test image under a pinned localstack-pro tag so the image
 // is present locally; lstk should skip the pull and emit "Using local image".

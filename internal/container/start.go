@@ -863,15 +863,56 @@ func awaitStartup(ctx context.Context, rt runtime.Runtime, sink output.Sink, con
 	}
 }
 
+// entrypointReservedEnvKeys are variable names that must not be overwritten
+// inside the emulator container. LocalStack's docker-entrypoint.sh re-exports
+// every LOCALSTACK_<NAME> variable as <NAME> (stripping the prefix) via a
+// line-oriented `source <(env | ... | sed ...)`, and does not set PATH itself —
+// it relies on the image's own PATH. So forwarding e.g. LOCALSTACK_PATH turns
+// into `export PATH=...` inside the container, blanking/overwriting PATH; the
+// next entrypoint command (`mkdir -p ...`) then fails with
+// "mkdir: command not found" and the emulator exits on startup (DEVX-984).
+var entrypointReservedEnvKeys = map[string]bool{
+	"PATH":            true,
+	"HOME":            true,
+	"SHELL":           true,
+	"IFS":             true,
+	"ENV":             true,
+	"BASH_ENV":        true,
+	"LD_PRELOAD":      true,
+	"LD_LIBRARY_PATH": true,
+	"PYTHONPATH":      true,
+	"PYTHONHOME":      true,
+}
+
 // filterHostEnv returns the subset of host environment entries that should be
 // forwarded to the emulator container. It keeps CI and LOCALSTACK_* variables
-// but explicitly drops LOCALSTACK_AUTH_TOKEN so the host value cannot overwrite
-// the token resolved by lstk (which may come from the keyring).
+// but drops entries that would corrupt the container environment:
+//   - LOCALSTACK_AUTH_TOKEN, so the host value cannot overwrite the token
+//     resolved by lstk (which may come from the keyring);
+//   - any value containing a newline or carriage return, since LocalStack's
+//     entrypoint re-exports variables through a line-oriented pipeline where a
+//     multi-line value can inject spurious `export` lines; and
+//   - LOCALSTACK_* variables whose entrypoint-stripped name is a reserved shell
+//     variable (see entrypointReservedEnvKeys), e.g. LOCALSTACK_PATH -> PATH.
 func filterHostEnv(envList []string) []string {
 	var out []string
 	for _, e := range envList {
-		if strings.HasPrefix(e, "CI=") ||
-			(strings.HasPrefix(e, "LOCALSTACK_") && !strings.HasPrefix(e, "LOCALSTACK_AUTH_TOKEN=")) {
+		key, value, ok := strings.Cut(e, "=")
+		if !ok {
+			continue
+		}
+		// A multi-line value would be split across lines by the entrypoint's
+		// `env | ... | sed` pipeline, potentially injecting rogue exports.
+		if strings.ContainsAny(value, "\n\r") {
+			continue
+		}
+		switch {
+		case key == "CI":
+			out = append(out, e)
+		case strings.HasPrefix(key, "LOCALSTACK_") && key != "LOCALSTACK_AUTH_TOKEN":
+			if entrypointReservedEnvKeys[strings.TrimPrefix(key, "LOCALSTACK_")] {
+				continue
+			}
 			out = append(out, e)
 		}
 	}
