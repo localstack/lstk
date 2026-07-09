@@ -116,7 +116,7 @@ func TestDeviceFlowSuccess(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	environ, openedURL := fakeBrowserOpener(t, env.Without(env.AuthToken).With(env.APIEndpoint, mockServer.URL).With(env.AnalyticsEndpoint, analyticsSrv.URL))
+	environ, openedURL := fakeBrowserOpener(t, env.Without(env.AuthToken).With(env.APIEndpoint, mockServer.URL).With(env.WebAppURL, mockServer.URL).With(env.AnalyticsEndpoint, analyticsSrv.URL))
 
 	cmd := exec.CommandContext(ctx, binaryPath(), "login")
 	cmd.Env = environ
@@ -179,7 +179,7 @@ func TestDeviceFlowFailure_RequestNotConfirmed(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	environ, openedURL := fakeBrowserOpener(t, env.Without(env.AuthToken).With(env.APIEndpoint, mockServer.URL).With(env.AnalyticsEndpoint, analyticsSrv.URL))
+	environ, openedURL := fakeBrowserOpener(t, env.Without(env.AuthToken).With(env.APIEndpoint, mockServer.URL).With(env.WebAppURL, mockServer.URL).With(env.AnalyticsEndpoint, analyticsSrv.URL))
 
 	cmd := exec.CommandContext(ctx, binaryPath(), "login")
 	cmd.Env = environ

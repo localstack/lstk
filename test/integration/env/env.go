@@ -12,6 +12,7 @@ const (
 	AuthToken          Key = "LOCALSTACK_AUTH_TOKEN"
 	LocalStackHost     Key = "LOCALSTACK_HOST"
 	APIEndpoint        Key = "LSTK_API_ENDPOINT"
+	WebAppURL          Key = "LSTK_WEB_APP_URL"
 	Keyring            Key = "LSTK_KEYRING"
 	CI                 Key = "CI"
 	AnalyticsEndpoint  Key = "LSTK_ANALYTICS_ENDPOINT"
