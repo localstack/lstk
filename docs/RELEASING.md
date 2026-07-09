@@ -10,16 +10,17 @@ Every PR must carry exactly one release label (enforced by `Require release labe
 
 ## Release workflows
 
-Release automation uses two workflows:
+Release automation uses three workflows:
 
-1. `Create Release Tag` (`.github/workflows/create-release-tag.yml`)
-2. `LSTK CI` (`.github/workflows/ci.yml`)
+1. `Automated Weekly Release` (`.github/workflows/automated-release.yml`) — runs on a schedule (Thursdays) and can also be triggered manually.
+2. `Create Release Tag` (`.github/workflows/create-release-tag.yml`) — manual-only.
+3. `LSTK CI` (`.github/workflows/ci.yml`)
 
-How it works:
+**Automated weekly release** (the default path): every Thursday, the workflow checks whether `main` has any commits since the last `v*.*.*` tag. If so, it inspects the labels on every PR merged since that tag, picks the highest release label found (`major` > `minor` > `patch`, defaulting to `patch`), runs full CI, then creates and pushes the next version tag — which in turn triggers `LSTK CI`'s `release` job below. If there are no changes since the last tag, it skips the release entirely.
 
-1. Manually run `Create Release Tag` from GitHub Actions (default ref: `main`), choosing a `patch` or `minor` bump.
-2. The workflow computes and pushes the next version tag (e.g. `v0.2.4`).
-3. Pushing the tag triggers `LSTK CI`, which runs the `release` job and publishes the GitHub release with GoReleaser.
+**Manual release**: run `Create Release Tag` from GitHub Actions (default ref: `main`), choosing a `patch` or `minor` bump, when you need to cut a release outside the weekly schedule.
+
+Either path pushes a version tag (e.g. `v0.2.4`), which triggers `LSTK CI`, running the `release` job to publish the GitHub release with GoReleaser.
 
 To validate release packaging locally without publishing:
 
