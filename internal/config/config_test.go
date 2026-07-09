@@ -7,9 +7,39 @@ import (
 	"testing"
 
 	"github.com/pelletier/go-toml/v2"
+	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+// TestLoadFirstRunAfterConfigDirRecreated reproduces the scenario where a user
+// deletes ~/.config/lstk/ and then runs lstk. newLogger() recreates the directory
+// (for lstk.log) before config.Load() is called, so Load() must detect the
+// MISSING FILE — not just the directory — to correctly set firstRun=true.
+func TestLoadFirstRunAfterConfigDirRecreated(t *testing.T) {
+	// Cannot run in parallel: mutates process-wide HOME env and viper state.
+	fakeHome := t.TempDir()
+	t.Setenv("HOME", fakeHome)
+	t.Setenv("XDG_CONFIG_HOME", "")
+	viper.Reset()
+	t.Cleanup(viper.Reset)
+
+	// ~/.config/ exists so the creation dir is ~/.config/lstk (not the OS default).
+	homeConfig := filepath.Join(fakeHome, ".config")
+	require.NoError(t, os.MkdirAll(homeConfig, 0755))
+
+	// Simulate newLogger() recreating ~/.config/lstk/ (with a log file) after
+	// the user deleted the whole directory but before config.Load() runs.
+	configDir := filepath.Join(homeConfig, "lstk")
+	require.NoError(t, os.MkdirAll(configDir, 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(configDir, "lstk.log"), []byte("log\n"), 0600))
+	// config.toml is intentionally absent — the user deleted it along with the dir.
+
+	firstRun, err := Load()
+
+	require.NoError(t, err)
+	assert.True(t, firstRun, "Load() should return firstRun=true when the config directory exists but config.toml does not")
+}
 
 func TestSetInFileAppendsWhenKeyAbsent(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.toml")
