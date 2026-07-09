@@ -82,11 +82,12 @@ func Start(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts Start
 	tel := opts.Telemetry
 
 	hostEnv, droppedEnv := filterHostEnv(os.Environ())
-	for _, name := range droppedEnv {
-		sink.Emit(output.MessageEvent{
-			Severity: output.SeverityWarning,
-			Text:     fmt.Sprintf("Not forwarding %s to the emulator: it would override %s inside the emulator", name, strings.TrimPrefix(name, "LOCALSTACK_")),
-		})
+	for _, d := range droppedEnv {
+		text := fmt.Sprintf("Not forwarding %s to the emulator: it would override %s inside the emulator", d.name, d.overrides)
+		if d.overrides == "" {
+			text = fmt.Sprintf("Not forwarding %s to the emulator: its value contains line breaks", d.name)
+		}
+		sink.Emit(output.MessageEvent{Severity: output.SeverityWarning, Text: text})
 	}
 	agentEnvVars := agentEnv(caller.New().Classify())
 
@@ -880,25 +881,43 @@ func awaitStartup(ctx context.Context, rt runtime.Runtime, sink output.Sink, con
 	}
 }
 
+// droppedHostEnv is a host variable filterHostEnv refused to forward, so the
+// caller can warn the user. overrides names the critical variable the
+// entrypoint-stripped name would clobber inside the emulator; it is empty when
+// the entry was dropped for carrying a multi-line value instead.
+type droppedHostEnv struct {
+	name      string
+	overrides string
+}
+
 // filterHostEnv returns the subset of host environment entries that should be
 // forwarded to the emulator container. It keeps CI and LOCALSTACK_* variables
-// but explicitly drops LOCALSTACK_AUTH_TOKEN so the host value cannot overwrite
-// the token resolved by lstk (which may come from the keyring), and drops
-// variables whose prefix-stripped name would clobber a critical variable
-// inside the emulator (see stripsToCriticalVar). The names of the latter are
-// returned in dropped so callers can warn the user; the LOCALSTACK_AUTH_TOKEN
-// drop is silent because lstk forwards its own resolved token instead.
-func filterHostEnv(envList []string) (out, dropped []string) {
+// but drops entries that would corrupt the emulator environment:
+//   - LOCALSTACK_AUTH_TOKEN, so the host value cannot overwrite the token
+//     resolved by lstk (which may come from the keyring); this drop is silent
+//     because lstk forwards its own resolved token instead;
+//   - values containing a newline or carriage return: the entrypoint re-exports
+//     variables through a line-oriented `env | sed` pipeline, so an embedded
+//     line like "LOCALSTACK_PATH=" would inject a rogue export that blanks PATH;
+//   - variables whose prefix-stripped name would clobber a critical variable
+//     inside the emulator (see criticalContainerVar).
+//
+// The latter two are returned in dropped so callers can warn the user.
+func filterHostEnv(envList []string) (out []string, dropped []droppedHostEnv) {
 	for _, e := range envList {
-		if !strings.HasPrefix(e, "CI=") && !strings.HasPrefix(e, "LOCALSTACK_") {
+		key, value, ok := strings.Cut(e, "=")
+		if !ok || (key != "CI" && !strings.HasPrefix(key, "LOCALSTACK_")) {
 			continue
 		}
-		if strings.HasPrefix(e, "LOCALSTACK_AUTH_TOKEN=") {
+		if key == "LOCALSTACK_AUTH_TOKEN" {
 			continue
 		}
-		if stripsToCriticalVar(e) {
-			name, _, _ := strings.Cut(e, "=")
-			dropped = append(dropped, name)
+		if strings.ContainsAny(value, "\n\r") {
+			dropped = append(dropped, droppedHostEnv{name: key})
+			continue
+		}
+		if name := strings.TrimPrefix(key, "LOCALSTACK_"); name != key && criticalContainerVar(name) {
+			dropped = append(dropped, droppedHostEnv{name: key, overrides: name})
 			continue
 		}
 		out = append(out, e)
@@ -906,18 +925,17 @@ func filterHostEnv(envList []string) (out, dropped []string) {
 	return out, dropped
 }
 
-// stripsToCriticalVar reports whether forwarding the LOCALSTACK_* entry would
-// break the emulator: the image's docker-entrypoint.sh strips the LOCALSTACK_
-// prefix and re-exports the remainder (only LOCALSTACK_HOST/LOCALSTACK_HOSTNAME
-// are excluded), so e.g. a host LOCALSTACK_PATH becomes PATH inside the
-// emulator and startup dies with "mkdir: command not found" (DEVX-984).
-func stripsToCriticalVar(entry string) bool {
-	name, _, found := strings.Cut(strings.TrimPrefix(entry, "LOCALSTACK_"), "=")
-	if !found {
-		return false
-	}
+// criticalContainerVar reports whether a LOCALSTACK_* variable stripped to name
+// would break the emulator: the image's docker-entrypoint.sh strips the
+// LOCALSTACK_ prefix and re-exports the remainder (only LOCALSTACK_HOST and
+// LOCALSTACK_HOSTNAME are excluded), so e.g. a host LOCALSTACK_PATH becomes
+// PATH inside the emulator and startup dies with "mkdir: command not found"
+// (DEVX-984). IFS is included because the entrypoint sources the stripped
+// exports mid-script, corrupting its own word splitting.
+func criticalContainerVar(name string) bool {
 	switch name {
-	case "PATH", "HOME", "LD_PRELOAD", "LD_LIBRARY_PATH", "PYTHONPATH", "PYTHONHOME":
+	case "PATH", "HOME", "SHELL", "IFS", "ENV", "BASH_ENV",
+		"LD_PRELOAD", "LD_LIBRARY_PATH", "PYTHONPATH", "PYTHONHOME":
 		return true
 	}
 	return false
