@@ -12,11 +12,15 @@ type globalFlags struct {
 }
 
 // stripGlobalFlags removes lstk's persistent flags (--non-interactive and
-// --config, including --config's -c shorthand) from a proxy command's arguments,
-// returning the remaining args and the extracted values. Proxy commands set
-// DisableFlagParsing, so without this these flags would be forwarded to the
-// wrapped binary (which rejects them as unknown) and their effect silently lost.
-// Both --flag value and --flag=value forms are recognized, in any position.
+// --config) from a proxy command's arguments, returning the remaining args and
+// the extracted values. Proxy commands set DisableFlagParsing, so without this
+// these flags would be forwarded to the wrapped binary (which rejects them as
+// unknown) and their effect silently lost. Both --flag value and --flag=value
+// forms are recognized, in any position.
+//
+// --config is stripped only in its long form: it has no -c shorthand, and a
+// short -c must pass through untouched because wrapped tools claim it (CDK's
+// -c/--context, SAM's -c/--cached), so stripping it would break those commands.
 //
 // --json is deliberately NOT recognized here: unlike --non-interactive/--config,
 // which configure lstk's own wrapping mechanics, --json is purely about lstk's
@@ -37,15 +41,13 @@ func stripGlobalFlags(args []string) ([]string, globalFlags) {
 			// wrapped binary) and enables the mode, matching the user's intent.
 			v, err := strconv.ParseBool(strings.TrimPrefix(arg, "--non-interactive="))
 			gf.nonInteractive = err != nil || v
-		case arg == "--config" || arg == "-c":
+		case arg == "--config":
 			if i+1 < len(args) {
 				gf.configPath = args[i+1]
 				i++
 			}
 		case strings.HasPrefix(arg, "--config="):
 			gf.configPath = strings.TrimPrefix(arg, "--config=")
-		case strings.HasPrefix(arg, "-c="):
-			gf.configPath = strings.TrimPrefix(arg, "-c=")
 		default:
 			out = append(out, arg)
 		}
