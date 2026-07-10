@@ -103,7 +103,7 @@ For CI or other non-interactive use, pass `--type` (shorthand `-t`) to select th
 LOCALSTACK_AUTH_TOKEN=<token> lstk start --type azure --non-interactive
 ```
 
-The type may also be given as a positional argument (`lstk start azure`). Switching an existing config keeps the other block fields; a custom `image` blocks the switch (it pins a specific product — use a separate `--config` file instead).
+Switching an existing config keeps the other block fields; a custom `image` blocks the switch (it pins a specific product — use a separate `--config` file instead).
 
 The chosen emulator must be running before you set up or use its CLI integration below.
 

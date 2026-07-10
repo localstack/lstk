@@ -140,28 +140,21 @@ func TestStartTypeErrorsOnMultipleBlocks(t *testing.T) {
 	assert.Equal(t, content, string(data))
 }
 
-func TestStartTypePositionalAlias(t *testing.T) {
+// TestStartTypePositionalRejected pins that the emulator is a flag only: a
+// positional (`lstk start azure`) is rejected with a hint pointing at --type,
+// rather than silently starting AWS (the pre-fix behavior) or being accepted as
+// an alias. This keeps one spelling and avoids colliding with the `aws`/`az`
+// proxy subcommands that a positional mental model would imply on the root.
+func TestStartTypePositionalRejected(t *testing.T) {
 	t.Parallel()
 	e, _ := typeTestEnv(t)
 	configPath := resolvedConfigPath(t, e)
-	require.NoFileExists(t, configPath)
 
-	stdout, _, _ := runLstk(t, testContext(t), t.TempDir(), e, "start", "snowflake", "--non-interactive")
-
-	assert.Contains(t, stdout, "Snowflake emulator selected.")
-	data, err := os.ReadFile(configPath)
-	require.NoError(t, err)
-	assert.Contains(t, string(data), `type = "snowflake"`)
-}
-
-func TestStartTypeConflictingArgAndFlag(t *testing.T) {
-	t.Parallel()
-	e, _ := typeTestEnv(t)
-
-	_, stderr, err := runLstk(t, testContext(t), t.TempDir(), e, "start", "azure", "--type", "aws", "--non-interactive")
+	_, stderr, err := runLstk(t, testContext(t), t.TempDir(), e, "start", "azure", "--non-interactive")
 
 	require.Error(t, err)
-	assert.Contains(t, stderr, "specify it once")
+	assert.Contains(t, stderr, "select the emulator with --type")
+	require.NoFileExists(t, configPath)
 }
 
 func TestStartTypeInvalidValue(t *testing.T) {

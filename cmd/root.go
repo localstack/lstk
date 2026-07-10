@@ -77,9 +77,9 @@ func NewRootCmd(cfg *env.Env, tel *telemetry.Client, logger log.Logger) *cobra.C
 			if err != nil {
 				return err
 			}
-			// args is always empty here (a non-empty first positional is routed to
-			// extension dispatch above), so only the --type flag applies to the root.
-			emulatorType, err := resolveEmulatorTypeFlag(cmd, args)
+			// A non-empty first positional was already routed to extension dispatch
+			// above, so the emulator is selected only via the --type flag here.
+			emulatorType, err := resolveEmulatorTypeFlag(cmd)
 			if err != nil {
 				return err
 			}
@@ -390,28 +390,16 @@ func addEmulatorTypeFlag(cmd *cobra.Command) {
 }
 
 // resolveEmulatorTypeFlag resolves the requested emulator type from the --type
-// flag or a positional argument (the two are equivalent; giving both with
-// conflicting values is an error). It returns "" when neither is set.
-func resolveEmulatorTypeFlag(cmd *cobra.Command, args []string) (config.EmulatorType, error) {
+// flag. It returns "" when the flag is unset.
+func resolveEmulatorTypeFlag(cmd *cobra.Command) (config.EmulatorType, error) {
 	flagVal, err := cmd.Flags().GetString("type")
 	if err != nil {
 		return "", err
 	}
-	var positional string
-	if len(args) > 0 {
-		positional = args[0]
-	}
-	if flagVal != "" && positional != "" && flagVal != positional {
-		return "", fmt.Errorf("emulator type given both as an argument (%q) and via --type (%q); specify it once", positional, flagVal)
-	}
-	raw := flagVal
-	if raw == "" {
-		raw = positional
-	}
-	if raw == "" {
+	if flagVal == "" {
 		return "", nil
 	}
-	return config.ParseEmulatorType(raw)
+	return config.ParseEmulatorType(flagVal)
 }
 
 // walkCommandsWithRunE walks the Cobra command tree rooted at cmd, calling wrap
