@@ -10,6 +10,29 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestParseEmulatorType(t *testing.T) {
+	for _, tc := range []struct {
+		in      string
+		want    EmulatorType
+		wantErr bool
+	}{
+		{"aws", EmulatorAWS, false},
+		{"snowflake", EmulatorSnowflake, false},
+		{"azure", EmulatorAzure, false},
+		{"AWS", "", true},
+		{"", "", true},
+		{"bogus", "", true},
+	} {
+		got, err := ParseEmulatorType(tc.in)
+		if tc.wantErr {
+			assert.Error(t, err, "input %q", tc.in)
+			continue
+		}
+		require.NoError(t, err, "input %q", tc.in)
+		assert.Equal(t, tc.want, got)
+	}
+}
+
 func TestSetEmulatorType_WritesAndReloads(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.toml")

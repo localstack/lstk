@@ -4,9 +4,25 @@ import (
 	"fmt"
 	"os"
 	"regexp"
+	"strings"
 )
 
 var typeLineRe = regexp.MustCompile(`type\s*=\s*["'](\w+)["']`)
+
+// ParseEmulatorType validates a raw emulator type string against the selectable
+// types and returns the corresponding EmulatorType.
+func ParseEmulatorType(s string) (EmulatorType, error) {
+	for _, t := range SelectableEmulatorTypes {
+		if string(t) == s {
+			return t, nil
+		}
+	}
+	valid := make([]string, len(SelectableEmulatorTypes))
+	for i, t := range SelectableEmulatorTypes {
+		valid[i] = string(t)
+	}
+	return "", fmt.Errorf("invalid emulator type %q (must be one of: %s)", s, strings.Join(valid, ", "))
+}
 
 // SetEmulatorType rewrites the emulator type in the config file and reloads.
 // No-op if the requested type is already set.

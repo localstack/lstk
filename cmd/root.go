@@ -77,7 +77,13 @@ func NewRootCmd(cfg *env.Env, tel *telemetry.Client, logger log.Logger) *cobra.C
 			if err != nil {
 				return err
 			}
-			return startEmulator(cmd.Context(), rt, cfg, tel, logger, persist, firstRun, snapshotFlag, noSnapshot)
+			// args is always empty here (a non-empty first positional is routed to
+			// extension dispatch above), so only the --type flag applies to the root.
+			emulatorType, err := resolveEmulatorTypeFlag(cmd, args)
+			if err != nil {
+				return err
+			}
+			return startEmulator(cmd.Context(), rt, cfg, tel, logger, persist, firstRun, snapshotFlag, noSnapshot, emulatorType)
 		},
 	}
 
@@ -121,6 +127,7 @@ func NewRootCmd(cfg *env.Env, tel *telemetry.Client, logger log.Logger) *cobra.C
 	root.PersistentFlags().BoolVar(&cfg.NonInteractive, "non-interactive", false, "Disable interactive mode")
 	root.PersistentFlags().BoolVar(&cfg.JSON, "json", false, "Output in JSON format (only supported by some commands)")
 	root.Flags().Bool("persist", false, "Persist emulator state across restarts")
+	addEmulatorTypeFlag(root)
 	addSnapshotStartFlags(root)
 
 	// Parse lstk's global flags only when they precede the command name: with
@@ -292,10 +299,30 @@ func buildStartOptions(cfg *env.Env, appConfig *config.Config, logger log.Logger
 	}
 }
 
-func startEmulator(ctx context.Context, rt runtime.Runtime, cfg *env.Env, tel *telemetry.Client, logger log.Logger, persist bool, firstRun bool, snapshotFlag string, noSnapshot bool) error {
+func startEmulator(ctx context.Context, rt runtime.Runtime, cfg *env.Env, tel *telemetry.Client, logger log.Logger, persist bool, firstRun bool, snapshotFlag string, noSnapshot bool, emulatorType config.EmulatorType) error {
 	appConfig, err := config.Get()
 	if err != nil {
 		return fmt.Errorf("failed to get config: %w", err)
+	}
+
+	configPath, err := config.FriendlyConfigPath()
+	if err != nil {
+		logger.Info("could not resolve friendly config path: %v", err)
+	}
+
+	// Apply the --type flag before resolving snapshot and start options so
+	// everything downstream reflects the selected emulator. Messages go to a plain
+	// sink even in interactive mode because the config mutation has to happen before
+	// the TUI starts (the auto-load loader and start options are built from it).
+	if emulatorType != "" {
+		newContainers, applyErr := container.ApplyEmulatorType(output.NewPlainSink(os.Stdout), emulatorType, appConfig.Containers, firstRun, configPath)
+		if applyErr != nil {
+			return applyErr
+		}
+		appConfig.Containers = newContainers
+		// The config now exists and records the selection, so it is no longer a
+		// first run: skip the interactive picker and the default-emulator notice.
+		firstRun = false
 	}
 
 	ref, err := resolveStartSnapshotRef(appConfig, snapshotFlag, noSnapshot)
@@ -315,11 +342,6 @@ func startEmulator(ctx context.Context, rt runtime.Runtime, cfg *env.Env, tel *t
 		UpdatePrompt:       true,
 		SkippedVersion:     appConfig.CLI.UpdateSkippedVersion,
 		PersistSkipVersion: config.SetUpdateSkippedVersion,
-	}
-
-	configPath, err := config.FriendlyConfigPath()
-	if err != nil {
-		logger.Info("could not resolve friendly config path: %v", err)
 	}
 
 	if isInteractiveMode(cfg) {
@@ -360,6 +382,36 @@ func startEmulator(ctx context.Context, rt runtime.Runtime, cfg *env.Env, tel *t
 		return config.EnsureCreated()
 	}
 	return nil
+}
+
+// addEmulatorTypeFlag registers the --type/-t flag on a start-capable command.
+func addEmulatorTypeFlag(cmd *cobra.Command) {
+	cmd.Flags().StringP("type", "t", "", "Emulator type to start (aws, snowflake, azure)")
+}
+
+// resolveEmulatorTypeFlag resolves the requested emulator type from the --type
+// flag or a positional argument (the two are equivalent; giving both with
+// conflicting values is an error). It returns "" when neither is set.
+func resolveEmulatorTypeFlag(cmd *cobra.Command, args []string) (config.EmulatorType, error) {
+	flagVal, err := cmd.Flags().GetString("type")
+	if err != nil {
+		return "", err
+	}
+	var positional string
+	if len(args) > 0 {
+		positional = args[0]
+	}
+	if flagVal != "" && positional != "" && flagVal != positional {
+		return "", fmt.Errorf("emulator type given both as an argument (%q) and via --type (%q); specify it once", positional, flagVal)
+	}
+	raw := flagVal
+	if raw == "" {
+		raw = positional
+	}
+	if raw == "" {
+		return "", nil
+	}
+	return config.ParseEmulatorType(raw)
 }
 
 // walkCommandsWithRunE walks the Cobra command tree rooted at cmd, calling wrap

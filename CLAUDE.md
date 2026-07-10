@@ -112,6 +112,10 @@ Only one `[[containers]]` block may be enabled at a time. `container.Start` reje
 
 Each `[[containers]]` block may set an optional `image` (override the default Docker Hub image) and a `volumes` list of Docker-style bind specs (persistence dir, init hooks, arbitrary mounts). Image/tag precedence, `volume` vs `volumes` semantics, and path-resolution rules are documented in `internal/config/CLAUDE.md`.
 
+## Selecting the emulator (`--type`)
+
+`lstk start --type <aws|snowflake|azure>` (shorthand `-t`, also a positional: `lstk start azure`; also on the bare root) is the non-interactive answer to the first-run emulator picker. It is defined as "rewrite the `type` line in config", not an ephemeral per-run override — downstream commands (`stop`, `status`, `logs`, `volume`, snapshot auto-load) all resolve from the configured type, so persisting keeps config and reality in sync. First run creates the config with the selected type (same `EnsureCreated`/`SetEmulatorType` path the picker uses); a matching config is a no-op; a differing config is switched in place via the surgical type-line rewrite (comments/formatting preserved) with a note naming the file. On switch: a custom `image` is a hard error (it pins a product that can't be reinterpreted under a new type — use `--config` for a separate profile), a non-`latest` `tag` and any `volumes`/`volume` are kept with a warning, and `port`/`env`/`snapshot` are kept silently. Domain logic is `container.ApplyEmulatorType` (parallel to `container.SelectEmulator`); it is applied at the top of `startEmulator` (`cmd/root.go`) before snapshot/start-options are resolved, so it runs before the TUI and its messages go through a plain sink. `--config` also gained a `-c` shorthand (stripped for proxy commands in `cmd/proxy.go`).
+
 `GATEWAY_LISTEN` (host exposure and published ports) is read from the container's resolved env, not hardcoded; parsing and derivation are documented in `internal/container/CLAUDE.md`.
 
 # Offline / Enterprise Environments

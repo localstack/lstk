@@ -97,6 +97,14 @@ type = "azure"   # or "snowflake"
 port = "4566"
 ```
 
+For CI or other non-interactive use, pass `--type` (shorthand `-t`) to select the emulator without editing config. It records the selection in your config file — creating it on first run, or switching the `type` in place when it differs — so later commands (`stop`, `status`, `logs`, `volume`, …) resolve the same emulator:
+
+```bash
+LOCALSTACK_AUTH_TOKEN=<token> lstk start --type azure --non-interactive
+```
+
+The type may also be given as a positional argument (`lstk start azure`). Switching an existing config keeps the other block fields; a custom `image` blocks the switch (it pins a specific product — use a separate `--config` file instead).
+
 The chosen emulator must be running before you set up or use its CLI integration below.
 
 > [!NOTE]
@@ -319,6 +327,9 @@ lstk
 
 # Start non-interactively (e.g. in CI)
 LOCALSTACK_AUTH_TOKEN=<token> lstk --non-interactive
+
+# Select the emulator non-interactively (records it in config)
+LOCALSTACK_AUTH_TOKEN=<token> lstk start --type snowflake --non-interactive
 
 # Stop the running emulator
 lstk stop
