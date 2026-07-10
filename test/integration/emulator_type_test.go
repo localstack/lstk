@@ -157,6 +157,28 @@ func TestStartTypePositionalRejected(t *testing.T) {
 	require.NoFileExists(t, configPath)
 }
 
+// TestStartTypeErrorsWhenNoContainersBlock is the end-to-end regression for the
+// block-scoped rewrite: a config file with a `type` key in an [env.*] table but
+// no [[containers]] block must fail with a clear error rather than silently
+// rewriting the unrelated env key (the pre-fix behavior of an unscoped match).
+func TestStartTypeErrorsWhenNoContainersBlock(t *testing.T) {
+	t.Parallel()
+	e, _ := typeTestEnv(t)
+	configPath := resolvedConfigPath(t, e)
+	require.NoError(t, os.MkdirAll(filepath.Dir(configPath), 0755))
+	content := "[env.default]\ntype = \"custom\"\n"
+	require.NoError(t, os.WriteFile(configPath, []byte(content), 0644))
+
+	_, stderr, err := runLstk(t, testContext(t), t.TempDir(), e, "start", "--type", "azure", "--non-interactive")
+
+	require.Error(t, err)
+	assert.Contains(t, stderr, "[[containers]] block")
+	// The env table's type key must be left untouched, not corrupted to "azure".
+	data, readErr := os.ReadFile(configPath)
+	require.NoError(t, readErr)
+	assert.Equal(t, content, string(data))
+}
+
 func TestStartTypeInvalidValue(t *testing.T) {
 	t.Parallel()
 	e, _ := typeTestEnv(t)

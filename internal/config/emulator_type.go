@@ -14,6 +14,15 @@ import (
 // without disturbing quotes, spacing, or trailing comments.
 var typeLineRe = regexp.MustCompile(`(?m)^[ \t]*type[ \t]*=[ \t]*["'](\w+)["']`)
 
+// containersHeaderRe matches the `[[containers]]` array-of-tables header, and
+// tableHeaderRe matches any TOML table header. Anchoring at line start skips
+// commented-out (`#`-prefixed) headers. Together they bound the type search to
+// the active block so a `type` key in any other table is never rewritten.
+var (
+	containersHeaderRe = regexp.MustCompile(`(?m)^[ \t]*\[\[containers\]\]`)
+	tableHeaderRe      = regexp.MustCompile(`(?m)^[ \t]*\[`)
+)
+
 // ParseEmulatorType validates a raw emulator type string against the selectable
 // types and returns the corresponding EmulatorType.
 func ParseEmulatorType(s string) (EmulatorType, error) {
@@ -40,15 +49,26 @@ func SetEmulatorType(to EmulatorType) error {
 	if err != nil {
 		return fmt.Errorf("failed to read config file: %w", err)
 	}
-	// Only the first match — the active [[containers]] block's type — is
-	// rewritten, and only the captured value is replaced. This leaves any other
-	// type-like keys, commented-out example blocks, and the original formatting
-	// untouched.
-	loc := typeLineRe.FindSubmatchIndex(data)
+	// The type key belongs to the active [[containers]] block, so scope the
+	// search to that block — from just after its header to the next table header
+	// (or EOF). This guarantees a `type` key in any other table (e.g. an [env.*]
+	// profile) is never mistaken for the emulator type. Only the captured value
+	// is replaced, leaving commented-out example blocks and the original
+	// formatting untouched.
+	header := containersHeaderRe.FindIndex(data)
+	if header == nil {
+		return fmt.Errorf("no [[containers]] block found in config")
+	}
+	blockStart := header[1]
+	block := data[blockStart:]
+	if next := tableHeaderRe.FindIndex(block); next != nil {
+		block = block[:next[0]]
+	}
+	loc := typeLineRe.FindSubmatchIndex(block)
 	if loc == nil {
 		return fmt.Errorf("no emulator type field found in config")
 	}
-	valueStart, valueEnd := loc[2], loc[3]
+	valueStart, valueEnd := blockStart+loc[2], blockStart+loc[3]
 	if EmulatorType(data[valueStart:valueEnd]) == to {
 		return nil
 	}

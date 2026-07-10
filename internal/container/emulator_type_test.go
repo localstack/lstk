@@ -76,6 +76,20 @@ func TestApplyEmulatorType_ErrorsWhenImageSet(t *testing.T) {
 	assert.Equal(t, content, string(data))
 }
 
+// TestApplyEmulatorType_ErrorsWhenNoContainersBlock exercises the defensive
+// guard against a container-less config. config.Get() normally injects a default
+// container, so we pass an explicitly empty slice to reach the branch that would
+// otherwise panic on containers[0]; it must surface a clear, silent error.
+func TestApplyEmulatorType_ErrorsWhenNoContainersBlock(t *testing.T) {
+	path := loadTempConfig(t, "[[containers]]\ntype = \"aws\"\nport = \"4566\"\n")
+
+	var buf bytes.Buffer
+	_, err := ApplyEmulatorType(output.NewPlainSink(&buf), config.EmulatorAzure, nil, false, path)
+	require.Error(t, err)
+	assert.True(t, output.IsSilent(err))
+	assert.Contains(t, buf.String(), "[[containers]] block")
+}
+
 func TestApplyEmulatorType_WarnsOnTagAndVolumes(t *testing.T) {
 	path := loadTempConfig(t, "[[containers]]\ntype = \"aws\"\ntag = \"3.0\"\nport = \"4566\"\nvolumes = [\"./init.sql:/etc/localstack/init/ready.d/init.sql\"]\n")
 	cfg, err := config.Get()
