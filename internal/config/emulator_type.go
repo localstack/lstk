@@ -7,7 +7,12 @@ import (
 	"strings"
 )
 
-var typeLineRe = regexp.MustCompile(`type\s*=\s*["'](\w+)["']`)
+// typeLineRe matches a `type = "value"` assignment anchored at the start of a
+// line (leading indentation allowed). Anchoring means commented lines (which
+// start with '#') and unrelated keys such as `content_type = "..."` never match,
+// and only the value is captured (group 1) so a rewrite can splice it in place
+// without disturbing quotes, spacing, or trailing comments.
+var typeLineRe = regexp.MustCompile(`(?m)^[ \t]*type[ \t]*=[ \t]*["'](\w+)["']`)
 
 // ParseEmulatorType validates a raw emulator type string against the selectable
 // types and returns the corresponding EmulatorType.
@@ -35,15 +40,23 @@ func SetEmulatorType(to EmulatorType) error {
 	if err != nil {
 		return fmt.Errorf("failed to read config file: %w", err)
 	}
-	m := typeLineRe.FindStringSubmatch(string(data))
-	if m == nil {
+	// Only the first match — the active [[containers]] block's type — is
+	// rewritten, and only the captured value is replaced. This leaves any other
+	// type-like keys, commented-out example blocks, and the original formatting
+	// untouched.
+	loc := typeLineRe.FindSubmatchIndex(data)
+	if loc == nil {
 		return fmt.Errorf("no emulator type field found in config")
 	}
-	if EmulatorType(m[1]) == to {
+	valueStart, valueEnd := loc[2], loc[3]
+	if EmulatorType(data[valueStart:valueEnd]) == to {
 		return nil
 	}
-	updated := typeLineRe.ReplaceAllString(string(data), `type = "`+string(to)+`"`)
-	if err := os.WriteFile(path, []byte(updated), 0644); err != nil {
+	updated := make([]byte, 0, len(data)-(valueEnd-valueStart)+len(to))
+	updated = append(updated, data[:valueStart]...)
+	updated = append(updated, string(to)...)
+	updated = append(updated, data[valueEnd:]...)
+	if err := os.WriteFile(path, updated, 0644); err != nil {
 		return fmt.Errorf("failed to write config file: %w", err)
 	}
 	return loadConfig(path)

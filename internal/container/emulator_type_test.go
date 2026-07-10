@@ -34,7 +34,7 @@ func TestApplyEmulatorType_SwitchesInPlace(t *testing.T) {
 
 	require.Len(t, containers, 1)
 	assert.Equal(t, config.EmulatorAzure, containers[0].Type)
-	assert.Contains(t, buf.String(), "Switched configured emulator to azure")
+	assert.Contains(t, buf.String(), "Switched configured emulator to Azure")
 
 	data, err := os.ReadFile(path)
 	require.NoError(t, err)
@@ -88,5 +88,5 @@ func TestApplyEmulatorType_WarnsOnTagAndVolumes(t *testing.T) {
 	out := buf.String()
 	assert.Contains(t, out, `Keeping tag "3.0"`)
 	assert.Contains(t, out, "Keeping volume mounts")
-	assert.Contains(t, out, "Switched configured emulator to snowflake")
+	assert.Contains(t, out, "Switched configured emulator to Snowflake")
 }

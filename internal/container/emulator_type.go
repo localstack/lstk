@@ -52,6 +52,19 @@ func ApplyEmulatorType(sink output.Sink, requested config.EmulatorType, containe
 		return newCfg.Containers, nil
 	}
 
+	// Reject a multi-block config before touching the file: only one block can
+	// start (checkSingleContainer enforces this on the start path), and rewriting
+	// one block's type while the start is doomed to fail would leave a confusing
+	// half-changed config.
+	if err := checkSingleContainer(containers); err != nil {
+		sink.Emit(output.ErrorEvent{
+			Title:   "Unsupported configuration",
+			Summary: err.Error(),
+			Actions: []output.ErrorAction{{Label: "Edit your config file so only one [[containers]] block is enabled:", Value: "lstk config path"}},
+		})
+		return nil, output.NewSilentError(err)
+	}
+
 	current := containers[0]
 	if current.Type == requested {
 		return containers, nil
@@ -89,7 +102,7 @@ func ApplyEmulatorType(sink output.Sink, requested config.EmulatorType, containe
 	if err != nil {
 		return nil, err
 	}
-	note := fmt.Sprintf("Switched configured emulator to %s", requested)
+	note := fmt.Sprintf("Switched configured emulator to %s", requested.ShortName())
 	if configPath != "" {
 		note += fmt.Sprintf(" (%s)", configPath)
 	}

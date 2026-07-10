@@ -49,6 +49,24 @@ func TestStartTypeFlagFirstRunCreatesConfig(t *testing.T) {
 	assert.Contains(t, string(data), `type = "snowflake"`)
 }
 
+// TestBareRootTypeFlagCreatesConfig covers the bare-root form (no "start"
+// subcommand) documented in the README/CLAUDE.md; it exercises the
+// non-interspersed flag parsing that routes a leading positional to extension
+// dispatch, so only the flag form is valid on the root.
+func TestBareRootTypeFlagCreatesConfig(t *testing.T) {
+	t.Parallel()
+	e, _ := typeTestEnv(t)
+	configPath := resolvedConfigPath(t, e)
+	require.NoFileExists(t, configPath)
+
+	stdout, _, _ := runLstk(t, testContext(t), t.TempDir(), e, "--type", "azure", "--non-interactive")
+
+	assert.Contains(t, stdout, "Azure emulator selected.")
+	data, err := os.ReadFile(configPath)
+	require.NoError(t, err)
+	assert.Contains(t, string(data), `type = "azure"`)
+}
+
 func TestStartTypeFlagSwitchesInPlace(t *testing.T) {
 	t.Parallel()
 	e, _ := typeTestEnv(t)
@@ -58,7 +76,7 @@ func TestStartTypeFlagSwitchesInPlace(t *testing.T) {
 
 	stdout, _, _ := runLstk(t, testContext(t), t.TempDir(), e, "start", "--type", "azure", "--non-interactive")
 
-	assert.Contains(t, stdout, "Switched configured emulator to azure")
+	assert.Contains(t, stdout, "Switched configured emulator to Azure")
 	data, err := os.ReadFile(configPath)
 	require.NoError(t, err)
 	assert.Contains(t, string(data), `type = "azure"`)
@@ -96,6 +114,27 @@ func TestStartTypeFlagErrorsWhenImageSet(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, stdout, "Cannot switch emulator to Snowflake while a custom image is set")
 	// Config must be left untouched.
+	data, readErr := os.ReadFile(configPath)
+	require.NoError(t, readErr)
+	assert.Equal(t, content, string(data))
+}
+
+// TestStartTypeErrorsOnMultipleBlocks verifies the switch refuses a config with
+// more than one [[containers]] block before mutating it, so neither block's type
+// is rewritten by a start that cannot succeed anyway.
+func TestStartTypeErrorsOnMultipleBlocks(t *testing.T) {
+	t.Parallel()
+	e, _ := typeTestEnv(t)
+	configPath := resolvedConfigPath(t, e)
+	require.NoError(t, os.MkdirAll(filepath.Dir(configPath), 0755))
+	content := "[[containers]]\ntype = \"aws\"\nport = \"4566\"\n\n[[containers]]\ntype = \"snowflake\"\nport = \"4567\"\n"
+	require.NoError(t, os.WriteFile(configPath, []byte(content), 0644))
+
+	stdout, _, err := runLstk(t, testContext(t), t.TempDir(), e, "start", "--type", "azure", "--non-interactive")
+
+	require.Error(t, err)
+	assert.Contains(t, stdout, "Unsupported configuration")
+	// Config must be left untouched — neither block's type is rewritten.
 	data, readErr := os.ReadFile(configPath)
 	require.NoError(t, readErr)
 	assert.Equal(t, content, string(data))
