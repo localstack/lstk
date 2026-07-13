@@ -60,6 +60,7 @@ func NewDockerRuntime(dockerHost string) (*DockerRuntime, error) {
 func vmSocketPaths(home string) []string {
 	return []string{
 		filepath.Join(home, ".docker", "run", "docker.sock"),
+		filepath.Join(home, ".config", "colima", "default", "docker.sock"),
 		filepath.Join(home, ".colima", "default", "docker.sock"),
 		filepath.Join(home, ".colima", "docker.sock"),
 		filepath.Join(home, ".orbstack", "run", "docker.sock"),
