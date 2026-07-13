@@ -2,6 +2,8 @@ package integration_test
 
 import (
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -89,4 +91,53 @@ func TestUsageErrorBeforeJSONFallsBackToPlainText(t *testing.T) {
 
 	assert.Empty(t, stdout, "no JSON should be attempted when --json wasn't parsed yet")
 	assert.Contains(t, stderr, "bogus-flag")
+}
+
+// TestConfigLoadFailureRendersJSONEnvelope covers PR #374's review comment:
+// a config-loading failure happens in PreRunE, before RunE (and therefore
+// before jsonAwareSink ever registers an EnvelopeSink) — so it must be
+// rendered as a JSON envelope by a separate mechanism, not by
+// wrapCommandsWithJSONEnvelope. No Docker/emulator interaction is needed: the
+// malformed TOML fails to parse before stop's RunE ever runs.
+func TestConfigLoadFailureRendersJSONEnvelope(t *testing.T) {
+	t.Parallel()
+	ctx := testContext(t)
+
+	workDir := t.TempDir()
+	lstkDir := filepath.Join(workDir, ".lstk")
+	require.NoError(t, os.MkdirAll(lstkDir, 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(lstkDir, "config.toml"), []byte("[[containers]\ntype = \"aws\"\n"), 0644))
+
+	stdout, stderr, err := runLstk(t, ctx, workDir, testEnvWithHome(t.TempDir(), ""), "stop", "--json")
+	requireExitCode(t, 1, err)
+	assert.Empty(t, stderr, "the plain-text fallback in Execute() must not also fire alongside the envelope")
+
+	envelope := decodeEnvelope(t, stdout)
+	assert.Equal(t, "error", envelope.Status)
+	assert.Equal(t, "stop", envelope.Command)
+	require.NotNil(t, envelope.Error)
+	assert.Equal(t, "CONFIG_INVALID", envelope.Error.Code)
+	assert.Equal(t, "CONFIG", envelope.Error.Category)
+	assert.False(t, envelope.Error.Retryable)
+}
+
+// TestConfigNotFoundRendersJSONEnvelope covers the CONFIG_NOT_FOUND half of
+// the same PreRunE gap: an explicit --config path that doesn't exist.
+func TestConfigNotFoundRendersJSONEnvelope(t *testing.T) {
+	t.Parallel()
+	ctx := testContext(t)
+
+	missingConfig := filepath.Join(t.TempDir(), "does-not-exist.toml")
+	stdout, stderr, err := runLstk(t, ctx, t.TempDir(), testEnvWithHome(t.TempDir(), ""),
+		"--config", missingConfig, "reset", "--force", "--json",
+	)
+	requireExitCode(t, 1, err)
+	assert.Empty(t, stderr, "the plain-text fallback in Execute() must not also fire alongside the envelope")
+
+	envelope := decodeEnvelope(t, stdout)
+	assert.Equal(t, "error", envelope.Status)
+	assert.Equal(t, "reset", envelope.Command)
+	require.NotNil(t, envelope.Error)
+	assert.Equal(t, "CONFIG_NOT_FOUND", envelope.Error.Code)
+	assert.Equal(t, "CONFIG", envelope.Error.Category)
 }

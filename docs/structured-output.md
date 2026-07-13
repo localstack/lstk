@@ -208,7 +208,7 @@ These three ship in this PR with `--json` support. The shapes below are real —
   "error": null
 }
 ```
-Codes: `RUNTIME_UNAVAILABLE`, `EMULATOR_NOT_RUNNING` (today, `stop` fails fast on the first configured emulator found not running, matching plain-text behavior).
+Codes: `RUNTIME_UNAVAILABLE`, `EMULATOR_NOT_RUNNING` (today, `stop` fails fast on the first configured emulator found not running, matching plain-text behavior), `CONFIG_INVALID`, `CONFIG_NOT_FOUND` (bad or missing `--config` path).
 
 **`lstk reset`** — confirmation of what was reset (AWS-only today).
 ```json
@@ -224,7 +224,7 @@ Codes: `RUNTIME_UNAVAILABLE`, `EMULATOR_NOT_RUNNING` (today, `stop` fails fast o
   "error": null
 }
 ```
-Codes: `EMULATOR_NOT_CONFIGURED` (no AWS container configured), `EMULATOR_NOT_RUNNING`, `CONFIRMATION_REQUIRED` (no `--force` outside a TTY, exit code `3`), `RUNTIME_UNAVAILABLE`.
+Codes: `EMULATOR_NOT_CONFIGURED` (no AWS container configured), `EMULATOR_NOT_RUNNING`, `CONFIRMATION_REQUIRED` (no `--force` outside a TTY, exit code `3`), `RUNTIME_UNAVAILABLE`, `CONFIG_INVALID`, `CONFIG_NOT_FOUND` (bad or missing `--config` path).
 
 **`lstk update`** — differs between `--check` and an applied update.
 ```json
@@ -256,7 +256,7 @@ Codes: `EMULATOR_NOT_CONFIGURED` (no AWS container configured), `EMULATOR_NOT_RU
   "error": null
 }
 ```
-Codes: `NETWORK_ERROR` (GitHub API unreachable), `INTERNAL_ERROR` (archive/extraction failure).
+Codes: `NETWORK_ERROR` (GitHub API unreachable), `INTERNAL_ERROR` (archive/extraction failure), `CONFIG_INVALID`, `CONFIG_NOT_FOUND` (bad or missing `--config` path).
 
 ### Proposed for future work (draft)
 

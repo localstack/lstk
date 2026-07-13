@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"errors"
-	"fmt"
 	"os"
 
 	"github.com/localstack/lstk/internal/config"
@@ -42,7 +41,7 @@ To wipe the on-disk volume (certificates, persistence data, cached tools) instea
 
 			appConfig, err := config.Get()
 			if err != nil {
-				return fmt.Errorf("failed to get config: %w", err)
+				return failGetConfig(sink, cfg, err)
 			}
 
 			var awsContainer config.ContainerConfig

@@ -3,8 +3,10 @@ package cmd
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"os"
 
 	"github.com/localstack/lstk/internal/env"
 	"github.com/localstack/lstk/internal/output"
@@ -46,6 +48,41 @@ func writeEnvelope(w io.Writer, envelope output.Envelope) error {
 	}
 	_, err = fmt.Fprintln(w, string(data))
 	return err
+}
+
+// classifyConfigError maps a config.Load/Init/Get failure to the documented
+// CONFIG_NOT_FOUND ("--config path doesn't exist") vs CONFIG_INVALID ("failed
+// to parse or validate") distinction. viper.ReadInConfig on an explicit
+// missing --config path returns a wrapped *fs.PathError (errors.Is
+// ErrNotExist), not viper.ConfigFileNotFoundError — that type is only
+// returned by search-based loading, which config.Load already treats as
+// non-error/first-run rather than a failure reaching this classifier.
+func classifyConfigError(err error) *output.EnvelopeError {
+	code := output.ErrConfigInvalid
+	if errors.Is(err, os.ErrNotExist) {
+		code = output.ErrConfigNotFound
+	}
+	return &output.EnvelopeError{
+		Code:      code,
+		Category:  code.Category(),
+		Message:   err.Error(),
+		Retryable: code.Retryable(),
+	}
+}
+
+// failGetConfig builds the "failed to get config" error a command's RunE
+// should return after config.Get() fails. Unlike a PreRunE failure (see
+// wrapPreRunEForJSON), the EnvelopeSink already exists at this point — sink
+// was created via jsonAwareSink before config.Get() was called — so the
+// config error is classified and emitted through it directly rather than
+// falling back to wrapCommandsWithJSONEnvelope's generic ErrInternal.
+func failGetConfig(sink output.Sink, cfg *env.Env, err error) error {
+	wrapped := fmt.Errorf("failed to get config: %w", err)
+	if !cfg.JSON {
+		return wrapped
+	}
+	sink.Emit(output.ErrorEvent{Title: wrapped.Error(), Code: classifyConfigError(wrapped).Code})
+	return output.NewSilentError(wrapped)
 }
 
 // exitCodeFor maps an error envelope to the process exit code conventions
@@ -100,6 +137,46 @@ func wrapCommandsWithJSONEnvelope(cmd *cobra.Command, cfg *env.Env, stdout io.Wr
 				return nil
 			}
 			return output.NewSilentError(&output.ExitCodeError{Err: runErr, Code: exitCodeFor(envelope)})
+		}
+	})
+}
+
+// wrapPreRunEForJSON walks the Cobra command tree and, for every JSON-capable
+// command (jsonSupportedAnnotation), wraps its PreRunE so a config-loading
+// failure there also renders as a JSON envelope instead of falling through to
+// Execute()'s plain-text fallback. PreRunE runs before RunE — and therefore
+// before jsonAwareSink ever registers an EnvelopeSink on the command's
+// context — so this cannot reuse wrapCommandsWithJSONEnvelope's sink-based
+// approach; it builds the envelope directly, the same way requireJSONSupport
+// does for its own pre-RunE rejection.
+//
+// Commands without jsonSupportedAnnotation are left untouched: their PreRunE
+// failures keep today's plain-text behavior, matching what would have
+// happened anyway once RunE was reached (requireJSONSupport rejects them
+// there with NOT_JSON_CAPABLE).
+func wrapPreRunEForJSON(cmd *cobra.Command, cfg *env.Env, stdout io.Writer) {
+	walkCommandsWithPreRunE(cmd, func(c *cobra.Command) {
+		if _, ok := c.Annotations[jsonSupportedAnnotation]; !ok {
+			return
+		}
+		original := c.PreRunE
+		c.PreRunE = func(c *cobra.Command, args []string) error {
+			err := original(c, args)
+			if err == nil || !cfg.JSON {
+				return err
+			}
+
+			envelope := output.Envelope{
+				SchemaVersion: output.EnvelopeSchemaVersion,
+				Command:       commandDisplayName(c),
+				Status:        output.StatusError,
+				Warnings:      []output.Warning{},
+				Error:         classifyConfigError(err),
+			}
+			if writeErr := writeEnvelope(stdout, envelope); writeErr != nil {
+				return writeErr
+			}
+			return output.NewSilentError(&output.ExitCodeError{Err: err, Code: exitCodeFor(envelope)})
 		}
 	})
 }

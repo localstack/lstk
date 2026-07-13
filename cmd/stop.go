@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"fmt"
 	"os"
 
 	"github.com/localstack/lstk/internal/config"
@@ -29,7 +28,7 @@ func newStopCmd(cfg *env.Env, tel *telemetry.Client) *cobra.Command {
 			}
 			appConfig, err := config.Get()
 			if err != nil {
-				return fmt.Errorf("failed to get config: %w", err)
+				return failGetConfig(sink, cfg, err)
 			}
 
 			stopOpts := container.StopOptions{

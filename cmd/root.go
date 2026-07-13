@@ -264,6 +264,7 @@ func Execute(ctx context.Context) error {
 		wrapCommandsWithTracing(root)
 	}
 	wrapCommandsWithJSONEnvelope(root, cfg, os.Stdout)
+	wrapPreRunEForJSON(root, cfg, os.Stdout)
 
 	if err := root.ExecuteContext(ctx); err != nil {
 		if !output.IsSilent(err) {
@@ -368,6 +369,19 @@ func walkCommandsWithRunE(cmd *cobra.Command, wrap func(*cobra.Command)) {
 	}
 	for _, child := range cmd.Commands() {
 		walkCommandsWithRunE(child, wrap)
+	}
+}
+
+// walkCommandsWithPreRunE walks the Cobra command tree rooted at cmd, calling
+// wrap on every command that has a PreRunE, mirroring walkCommandsWithRunE
+// above for callers that need to layer behavior onto the pre-RunE step
+// instead (e.g. wrapPreRunEForJSON).
+func walkCommandsWithPreRunE(cmd *cobra.Command, wrap func(*cobra.Command)) {
+	if cmd.PreRunE != nil {
+		wrap(cmd)
+	}
+	for _, child := range cmd.Commands() {
+		walkCommandsWithPreRunE(child, wrap)
 	}
 }
 
