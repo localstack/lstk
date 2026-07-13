@@ -28,10 +28,11 @@ type jsonWarning struct {
 }
 
 type jsonError struct {
-	Code      string `json:"code"`
-	Category  string `json:"category"`
-	Message   string `json:"message"`
-	Retryable bool   `json:"retryable"`
+	Code      string         `json:"code"`
+	Category  string         `json:"category"`
+	Message   string         `json:"message"`
+	Retryable bool           `json:"retryable"`
+	Details   map[string]any `json:"details"`
 }
 
 // decodeEnvelope requires stdout to be exactly one well-formed JSON object,

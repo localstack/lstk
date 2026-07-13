@@ -68,6 +68,25 @@ func (s *EnvelopeSink) appendEmulator(entry JsonEmulatorEntry) {
 	s.data["emulators"] = list
 }
 
+// errorDetails builds the EnvelopeError.Details map from any non-empty
+// Summary/Detail on e, so JSON mode carries the same diagnostic depth plain
+// text and the TUI already show alongside the Title headline (Message stays
+// just the headline). Returns nil when both are empty, so Details is omitted
+// from the JSON object as today.
+func errorDetails(e ErrorEvent) map[string]any {
+	if e.Summary == "" && e.Detail == "" {
+		return nil
+	}
+	details := map[string]any{}
+	if e.Summary != "" {
+		details["summary"] = e.Summary
+	}
+	if e.Detail != "" {
+		details["detail"] = e.Detail
+	}
+	return details
+}
+
 func (s *EnvelopeSink) setError(e ErrorEvent) {
 	code := e.Code
 	if code == "" {
@@ -82,6 +101,7 @@ func (s *EnvelopeSink) setError(e ErrorEvent) {
 		Category:  code.Category(),
 		Message:   e.Title,
 		Retryable: code.Retryable(),
+		Details:   errorDetails(e),
 		Actions:   actions,
 	}
 }

@@ -179,6 +179,63 @@ func TestEnvelopeSink_ErrorEventSetsClassifiedError(t *testing.T) {
 	}
 }
 
+// TestEnvelopeSink_ErrorEventIncludesSummaryInDetails covers PR #374's report
+// that --json kept only the headline (Title) and silently dropped the
+// diagnostic (Summary) plain text and the TUI both render alongside it.
+// Message stays just the headline; the diagnostic goes into Details.
+func TestEnvelopeSink_ErrorEventIncludesSummaryInDetails(t *testing.T) {
+	t.Parallel()
+
+	sink := NewEnvelopeSink(FormatJSON)
+	sink.Emit(ErrorEvent{
+		Title:   "Docker is not available",
+		Summary: "cannot connect to Docker daemon: dial unix /var/run/docker.sock: connect: no such file or directory",
+		Code:    ErrRuntimeUnavailable,
+	})
+
+	envelope := sink.Result("stop", errors.New("Docker is not available"))
+	if envelope.Error.Message != "Docker is not available" {
+		t.Fatalf("expected message to stay just the headline, got %q", envelope.Error.Message)
+	}
+	want := "cannot connect to Docker daemon: dial unix /var/run/docker.sock: connect: no such file or directory"
+	if got := envelope.Error.Details["summary"]; got != want {
+		t.Fatalf("expected details.summary %q, got %q", want, got)
+	}
+}
+
+func TestEnvelopeSink_ErrorEventIncludesSummaryAndDetailInDetails(t *testing.T) {
+	t.Parallel()
+
+	sink := NewEnvelopeSink(FormatJSON)
+	sink.Emit(ErrorEvent{Title: "Auth failed", Summary: "Invalid token", Detail: "Token expired at 2024-01-01"})
+
+	envelope := sink.Result("login", errors.New("Auth failed"))
+	if envelope.Error.Message != "Auth failed" {
+		t.Fatalf("expected message to stay just the headline, got %q", envelope.Error.Message)
+	}
+	if got := envelope.Error.Details["summary"]; got != "Invalid token" {
+		t.Fatalf("expected details.summary %q, got %q", "Invalid token", got)
+	}
+	if got := envelope.Error.Details["detail"]; got != "Token expired at 2024-01-01" {
+		t.Fatalf("expected details.detail %q, got %q", "Token expired at 2024-01-01", got)
+	}
+}
+
+// TestEnvelopeSink_ErrorEventWithoutSummaryOmitsDetails ensures Details stays
+// nil (and so is omitted from the JSON object via omitempty) when the
+// ErrorEvent carries no Summary/Detail — the common, Title-only case.
+func TestEnvelopeSink_ErrorEventWithoutSummaryOmitsDetails(t *testing.T) {
+	t.Parallel()
+
+	sink := NewEnvelopeSink(FormatJSON)
+	sink.Emit(ErrorEvent{Title: "LocalStack is not running", Code: ErrEmulatorNotRunning})
+
+	envelope := sink.Result("reset", errors.New("LocalStack is not running"))
+	if envelope.Error.Details != nil {
+		t.Fatalf("expected nil Details, got %+v", envelope.Error.Details)
+	}
+}
+
 func TestEnvelopeSink_UnclassifiedErrorFallsBackToInternal(t *testing.T) {
 	t.Parallel()
 

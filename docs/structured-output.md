@@ -80,9 +80,9 @@ Within the main payload, the `error` field contains the following sub-fields:
 |---|---|---|
 | `code` | string | One of the enumerated codes below. Never free text — see the error-codes table. The primary, stable identifier — branch on this for anything specific. |
 | `category` | string | One of 7 coarse groupings of `code` (`RUNTIME`, `EMULATOR`, `AUTH`, `RESOURCE`, `CONFIG`, `USAGE`, `INTERNAL`) — see [Error categories](#error-categories) below. Additive alongside `code`, not a replacement for it: a caller that only wants broad handling can switch on `category`'s ~7 values instead of `code`'s ~28, while a caller that already keys off a specific `code` is unaffected. |
-| `message` | string | Human-readable, informational only. **Not guaranteed stable across versions** — scripts must branch on `code`, not `message`. |
+| `message` | string | Human-readable headline, informational only. **Not guaranteed stable across versions** — scripts must branch on `code`, not `message`. |
 | `retryable` | bool | A static property of `code` (not computed per failure) — see below. Note this is independent of `category`: a category can contain both retryable and non-retryable codes (e.g. `RUNTIME` contains both `NETWORK_ERROR` [retryable] and `DNS_RESOLUTION_REQUIRED` [not]), so `retryable` can't be inferred from `category` alone. |
-| `details` | object | Optional, code-specific structured context. Omitted when empty. Illustrative example, for a future `SNAPSHOT_BUCKET_NOT_FOUND`: `{"bucket": "my-terraform-state"}`. |
+| `details` | object | Optional, code-specific structured context. Omitted when empty. Illustrative example, for a future `SNAPSHOT_BUCKET_NOT_FOUND`: `{"bucket": "my-terraform-state"}`. Also where the additional diagnostic depth plain text and the TUI show alongside the `message` headline lands, as `summary`/`detail` string keys, when available — e.g. `{"summary": "cannot connect to Docker daemon: ..."}` for `RUNTIME_UNAVAILABLE`. |
 | `actions` | array | Optional suggested remediations. For example — this is exactly what `reset` emits today for `EMULATOR_NOT_RUNNING`: `[{"id": "start-localstack", "command": "lstk"}, {"id": "see-help", "command": "lstk -h"}]`. |
 
 ## Error codes
