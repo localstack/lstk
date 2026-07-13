@@ -11,12 +11,15 @@ import (
 	"github.com/localstack/lstk/internal/version"
 )
 
-// Check reports whether a newer version is available.
-// Returns the latest version string and true if an update is available.
+// Check reports whether a newer version is available. Returns the latest
+// version string and true if an update is available. Always emits exactly one
+// UpdateCheckedEvent, whose DevBuild/Available fields tell the sink which of
+// the three possible outcomes (dev build skipped / already up to date / an
+// update is available) occurred.
 func Check(ctx context.Context, sink output.Sink, githubToken string) (string, bool, error) {
 	current := version.Version()
 	if current == "dev" {
-		sink.Emit(output.MessageEvent{Severity: output.SeverityNote, Text: "Running a development build, skipping update check"})
+		sink.Emit(output.UpdateCheckedEvent{CurrentVersion: current, DevBuild: true})
 		return "", false, nil
 	}
 
@@ -24,20 +27,19 @@ func Check(ctx context.Context, sink output.Sink, githubToken string) (string, b
 	latest, err := fetchLatestVersion(ctx, githubToken)
 	sink.Emit(output.SpinnerStop())
 	if err != nil {
-		return "", false, fmt.Errorf("failed to check for updates: %w", err)
+		wrapped := fmt.Errorf("failed to check for updates: %w", err)
+		sink.Emit(output.ErrorEvent{Title: wrapped.Error(), Code: output.ErrNetworkError})
+		return "", false, output.NewSilentError(wrapped)
 	}
 
-	if normalizeVersion(current) == normalizeVersion(latest) {
-		sink.Emit(output.MessageEvent{Severity: output.SeverityNote, Text: fmt.Sprintf("Already up to date (%s)", current)})
-		return latest, false, nil
-	}
-
-	sink.Emit(output.MessageEvent{Severity: output.SeverityInfo, Text: fmt.Sprintf("Update available: %s → %s", current, latest)})
-	return latest, true, nil
+	available := normalizeVersion(current) != normalizeVersion(latest)
+	sink.Emit(output.UpdateCheckedEvent{CurrentVersion: current, LatestVersion: latest, Available: available})
+	return latest, available, nil
 }
 
 // Update checks for updates and applies the update if one is available.
 func Update(ctx context.Context, sink output.Sink, checkOnly bool, githubToken string) error {
+	current := version.Version()
 	latest, available, err := Check(ctx, sink, githubToken)
 	if err != nil {
 		return err
@@ -46,15 +48,19 @@ func Update(ctx context.Context, sink output.Sink, checkOnly bool, githubToken s
 		return nil
 	}
 
-	if err := applyUpdate(ctx, sink, latest, githubToken); err != nil {
-		return err
+	method, err := applyUpdate(ctx, sink, latest, githubToken)
+	if err != nil {
+		sink.Emit(output.ErrorEvent{Title: err.Error(), Code: output.ErrInternal})
+		return output.NewSilentError(err)
 	}
 
-	sink.Emit(output.MessageEvent{Severity: output.SeveritySuccess, Text: fmt.Sprintf("Updated to %s", latest)})
+	sink.Emit(output.UpdateAppliedEvent{CurrentVersion: current, UpdatedVersion: latest, Method: method})
 	return nil
 }
 
-func applyUpdate(ctx context.Context, sink output.Sink, latest, githubToken string) error {
+// applyUpdate detects the current install method and performs the update,
+// returning its canonical name ("homebrew"/"npm"/"binary") on success.
+func applyUpdate(ctx context.Context, sink output.Sink, latest, githubToken string) (string, error) {
 	info := DetectInstallMethod()
 
 	var err error
@@ -71,10 +77,10 @@ func applyUpdate(ctx context.Context, sink output.Sink, latest, githubToken stri
 		sink.Emit(output.SpinnerStop())
 	}
 	if err != nil {
-		return fmt.Errorf("update failed: %w", err)
+		return "", fmt.Errorf("update failed: %w", err)
 	}
 
-	return nil
+	return info.Method.String(), nil
 }
 
 // logLineWriter adapts an output.Sink into an io.Writer, emitting each

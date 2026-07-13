@@ -31,6 +31,7 @@ func Stop(ctx context.Context, rt runtime.Runtime, sink output.Sink, containers 
 		if name == "" {
 			sink.Emit(output.ErrorEvent{
 				Title: fmt.Sprintf("%s is not running", c.DisplayName()),
+				Code:  output.ErrEmulatorNotRunning,
 			})
 			return output.NewSilentError(fmt.Errorf("%s is not running", c.Name()))
 		}
@@ -45,11 +46,13 @@ func Stop(ctx context.Context, rt runtime.Runtime, sink output.Sink, containers 
 		if err := rt.Stop(stopCtx, name); err != nil {
 			stopCancel()
 			sink.Emit(output.SpinnerStop())
-			return fmt.Errorf("failed to stop LocalStack: %w", err)
+			wrapped := fmt.Errorf("failed to stop LocalStack: %w", err)
+			sink.Emit(output.ErrorEvent{Title: wrapped.Error(), Code: output.ErrRuntimeUnavailable})
+			return output.NewSilentError(wrapped)
 		}
 		stopCancel()
 		sink.Emit(output.SpinnerStop())
-		sink.Emit(output.MessageEvent{Severity: output.SeveritySuccess, Text: fmt.Sprintf("%s stopped", c.DisplayName())})
+		sink.Emit(output.EmulatorStoppedEvent{Type: string(c.Type), Name: name, DisplayName: c.DisplayName(), WasRunning: true})
 
 		opts.Telemetry.EmitEmulatorLifecycleEvent(ctx, telemetry.LifecycleEvent{
 			EventType:      telemetry.LifecycleStop,

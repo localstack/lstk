@@ -165,6 +165,7 @@ func (d *DockerRuntime) EmitUnhealthyError(sink output.Sink, err error) {
 		Title:   "Docker is not available",
 		Summary: summary,
 		Actions: actions,
+		Code:    output.ErrRuntimeUnavailable,
 	})
 }
 

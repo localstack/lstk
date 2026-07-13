@@ -50,6 +50,10 @@ type ErrorEvent struct {
 	Summary string
 	Detail  string
 	Actions []ErrorAction
+	// Code classifies the error for JSON output. Empty means "not yet
+	// classified" — EnvelopeSink falls back to ErrInternal. PlainSink and
+	// TUISink ignore this field.
+	Code ErrorCode
 }
 
 type AuthEvent struct {
@@ -135,6 +139,44 @@ type SnapshotShownEvent struct {
 	Resources         []SnapshotResourceLine
 }
 
+// EmulatorStoppedEvent reports that a configured emulator was running and has
+// been stopped. WasRunning is always true today (Stop returns an error before
+// reaching this point otherwise) but is carried explicitly for JSON shape
+// stability. DisplayName is precomputed by the caller (e.g. "LocalStack AWS
+// Emulator"), matching InstanceInfoEvent.EmulatorName's existing precedent, so
+// internal/output never needs to know how to derive it from Type.
+type EmulatorStoppedEvent struct {
+	Type        string
+	Name        string
+	DisplayName string
+	WasRunning  bool
+}
+
+// EmulatorResetEvent reports that the named emulator's in-memory state was reset.
+type EmulatorResetEvent struct {
+	Type string
+	Name string
+}
+
+// UpdateCheckedEvent reports the result of an update check. It always fires
+// once per Check call — DevBuild, then Available, discriminate which of the
+// three possible outcomes (dev build skipped the check / already up to date /
+// an update is available) the formatter should render. LatestVersion is empty
+// when DevBuild is true (the check never ran).
+type UpdateCheckedEvent struct {
+	CurrentVersion string
+	LatestVersion  string
+	Available      bool
+	DevBuild       bool
+}
+
+// UpdateAppliedEvent reports that an update was downloaded and installed.
+type UpdateAppliedEvent struct {
+	CurrentVersion string
+	UpdatedVersion string
+	Method         string
+}
+
 type AuthCompleteEvent struct{}
 
 // Event is a sealed marker — only event types in this package implement it,
@@ -155,6 +197,10 @@ func (DeferredEvent) sealedEvent()            {}
 func (SnapshotLoadedEvent) sealedEvent()      {}
 func (PodSnapshotRemovedEvent) sealedEvent()  {}
 func (SnapshotShownEvent) sealedEvent()       {}
+func (EmulatorStoppedEvent) sealedEvent()     {}
+func (EmulatorResetEvent) sealedEvent()       {}
+func (UpdateCheckedEvent) sealedEvent()       {}
+func (UpdateAppliedEvent) sealedEvent()       {}
 func (ContainerStatusEvent) sealedEvent()     {}
 func (ProgressEvent) sealedEvent()            {}
 func (UserInputRequestEvent) sealedEvent()    {}

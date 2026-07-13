@@ -182,6 +182,42 @@ func TestFormatEventLine(t *testing.T) {
 			wantOK: false,
 		},
 		{
+			name:   "emulator stopped event",
+			event:  EmulatorStoppedEvent{Type: "aws", Name: "localstack-aws", DisplayName: "LocalStack AWS Emulator", WasRunning: true},
+			want:   SuccessMarker() + " LocalStack AWS Emulator stopped",
+			wantOK: true,
+		},
+		{
+			name:   "emulator reset event",
+			event:  EmulatorResetEvent{Type: "aws", Name: "localstack-aws"},
+			want:   SuccessMarker() + " Emulator state reset",
+			wantOK: true,
+		},
+		{
+			name:   "update checked event dev build",
+			event:  UpdateCheckedEvent{CurrentVersion: "dev", DevBuild: true},
+			want:   "> Note: Running a development build, skipping update check",
+			wantOK: true,
+		},
+		{
+			name:   "update checked event up to date",
+			event:  UpdateCheckedEvent{CurrentVersion: "2.3.0", LatestVersion: "2.3.0", Available: false},
+			want:   "> Note: Already up to date (2.3.0)",
+			wantOK: true,
+		},
+		{
+			name:   "update checked event available",
+			event:  UpdateCheckedEvent{CurrentVersion: "2.2.1", LatestVersion: "2.3.0", Available: true},
+			want:   "Update available: 2.2.1 → 2.3.0",
+			wantOK: true,
+		},
+		{
+			name:   "update applied event",
+			event:  UpdateAppliedEvent{CurrentVersion: "2.2.1", UpdatedVersion: "2.3.0", Method: "homebrew"},
+			want:   SuccessMarker() + " Updated to 2.3.0",
+			wantOK: true,
+		},
+		{
 			name: "pod snapshot saved full",
 			event: PodSnapshotSavedEvent{
 				PodName:  "my-baseline",

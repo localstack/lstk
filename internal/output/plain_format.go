@@ -58,6 +58,14 @@ func FormatEventLine(event Event) (string, bool) {
 		return formatSnapshotShown(e), true
 	case AuthCompleteEvent:
 		return "", false
+	case EmulatorStoppedEvent:
+		return formatEmulatorStopped(e), true
+	case EmulatorResetEvent:
+		return formatEmulatorReset(e), true
+	case UpdateCheckedEvent:
+		return formatUpdateChecked(e), true
+	case UpdateAppliedEvent:
+		return formatUpdateApplied(e), true
 	default:
 		return "", false
 	}
@@ -150,6 +158,29 @@ func formatMessageEvent(e MessageEvent) string {
 	default:
 		return e.Text
 	}
+}
+
+func formatEmulatorStopped(e EmulatorStoppedEvent) string {
+	return SuccessMarker() + " " + fmt.Sprintf("%s stopped", e.DisplayName)
+}
+
+func formatEmulatorReset(e EmulatorResetEvent) string {
+	return SuccessMarker() + " Emulator state reset"
+}
+
+func formatUpdateChecked(e UpdateCheckedEvent) string {
+	switch {
+	case e.DevBuild:
+		return "> Note: Running a development build, skipping update check"
+	case !e.Available:
+		return fmt.Sprintf("> Note: Already up to date (%s)", e.CurrentVersion)
+	default:
+		return fmt.Sprintf("Update available: %s → %s", e.CurrentVersion, e.LatestVersion)
+	}
+}
+
+func formatUpdateApplied(e UpdateAppliedEvent) string {
+	return SuccessMarker() + " " + fmt.Sprintf("Updated to %s", e.UpdatedVersion)
 }
 
 func formatErrorEvent(e ErrorEvent) string {

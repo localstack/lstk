@@ -34,6 +34,7 @@ func Reset(ctx context.Context, rt runtime.Runtime, containers []config.Containe
 				{Label: "Start LocalStack:", Value: "lstk"},
 				{Label: "See help:", Value: "lstk -h"},
 			},
+			Code: output.ErrEmulatorNotRunning,
 		})
 		return output.NewSilentError(fmt.Errorf("LocalStack is not running"))
 	}
@@ -64,7 +65,7 @@ func Reset(ctx context.Context, rt runtime.Runtime, containers []config.Containe
 	defer func() {
 		sink.Emit(output.SpinnerStop())
 		if retErr == nil {
-			sink.Emit(output.MessageEvent{Severity: output.SeveritySuccess, Text: "Emulator state reset"})
+			sink.Emit(output.EmulatorResetEvent{Type: string(runningContainers[0].Type), Name: runningContainers[0].Name()})
 		}
 	}()
 

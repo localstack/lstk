@@ -5,31 +5,39 @@ import (
 	"testing"
 
 	"github.com/localstack/lstk/test/integration/env"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-// No built-in command has opted into --json output yet, so every one of these
-// tests exercises the rejection gate (requireJSONSupport in cmd/root.go)
-// rather than any actual JSON rendering.
+// Most built-in commands haven't opted into --json output yet (see
+// docs/structured-output.md's Command Catalog), so every one of these tests
+// exercises the rejection gate (requireJSONSupport in cmd/root.go), which
+// itself renders as a JSON envelope on stdout (error.code = NOT_JSON_CAPABLE)
+// since that's the one guaranteed-universal response to --json.
 
 func TestJSONFlagRejectsUnannotatedBuiltinCommand(t *testing.T) {
 	t.Parallel()
 	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), testEnvWithHome(t.TempDir(), ""), "status", "--json")
 	requireExitCode(t, 1, err)
-	require.Contains(t, stderr, "status")
-	require.Contains(t, stderr, "JSON")
-	require.Contains(t, stderr, "==> See help: lstk -h", "rejection should use lstk's interactive error style")
-	require.Empty(t, stdout, "status's normal work must not run when --json is rejected")
+	envelope := decodeEnvelope(t, stdout)
+	assert.Equal(t, "status", envelope.Command)
+	assert.Equal(t, "error", envelope.Status)
+	require.NotNil(t, envelope.Error)
+	assert.Equal(t, "NOT_JSON_CAPABLE", envelope.Error.Code)
+	assert.Contains(t, envelope.Error.Message, "status")
+	assert.Empty(t, stderr, "the rejection is rendered as JSON on stdout, not plain text on stderr")
 }
 
 func TestJSONFlagRejectsDefaultStartBehavior(t *testing.T) {
 	t.Parallel()
 	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), testEnvWithHome(t.TempDir(), ""), "--json")
 	requireExitCode(t, 1, err)
-	require.Contains(t, stderr, "start")
-	require.Contains(t, stderr, "JSON")
-	require.Contains(t, stderr, "==> See help: lstk -h", "rejection should use lstk's interactive error style")
-	require.Empty(t, stdout, "the default start behavior must not run when --json is rejected")
+	envelope := decodeEnvelope(t, stdout)
+	assert.Equal(t, "start", envelope.Command)
+	assert.Equal(t, "error", envelope.Status)
+	require.NotNil(t, envelope.Error)
+	assert.Equal(t, "NOT_JSON_CAPABLE", envelope.Error.Code)
+	assert.Empty(t, stderr, "the rejection is rendered as JSON on stdout, not plain text on stderr")
 }
 
 func TestJSONFlagDoesNotLaunchTUIOnPTY(t *testing.T) {
@@ -133,9 +141,11 @@ func TestJSONFlagProxyCommandsRejectBeforeCommandName(t *testing.T) {
 			args := append([]string{"--json", tc.name}, tc.args...)
 			stdout, stderr, err := runLstk(t, testContext(t), workDir, environ, args...)
 			requireExitCode(t, 1, err)
-			require.Contains(t, stderr, tc.name)
-			require.Contains(t, stderr, "==> See help: lstk -h", "rejection should use lstk's interactive error style")
-			require.NotContains(t, stdout, "not found in PATH", "the wrapped binary must never be invoked")
+			envelope := decodeEnvelope(t, stdout)
+			assert.Equal(t, tc.name, envelope.Command)
+			require.NotNil(t, envelope.Error)
+			assert.Equal(t, "NOT_JSON_CAPABLE", envelope.Error.Code)
+			assert.Empty(t, stderr, "the rejection is rendered as JSON on stdout, not plain text on stderr")
 		})
 	}
 }
@@ -150,10 +160,12 @@ func TestJSONFlagBeforeCommandNameBooleanValues(t *testing.T) {
 
 	t.Run("--json=true before the command name is rejected", func(t *testing.T) {
 		t.Parallel()
-		stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), env.With(env.DisableEvents, "1").With("PATH", t.TempDir()).With(env.Home, t.TempDir()), "--json=true", "aws", "s3", "ls")
+		stdout, _, err := runLstk(t, testContext(t), t.TempDir(), env.With(env.DisableEvents, "1").With("PATH", t.TempDir()).With(env.Home, t.TempDir()), "--json=true", "aws", "s3", "ls")
 		requireExitCode(t, 1, err)
-		require.Contains(t, stderr, "aws")
-		require.NotContains(t, stdout, "not found in PATH")
+		envelope := decodeEnvelope(t, stdout)
+		assert.Equal(t, "aws", envelope.Command)
+		require.NotNil(t, envelope.Error)
+		assert.Equal(t, "NOT_JSON_CAPABLE", envelope.Error.Code)
 	})
 
 	t.Run("--json=false before the command name is not rejected", func(t *testing.T) {
@@ -167,10 +179,12 @@ func TestJSONFlagBeforeCommandNameBooleanValues(t *testing.T) {
 
 	t.Run("a malformed value before the command name is rejected", func(t *testing.T) {
 		t.Parallel()
-		stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), env.With(env.DisableEvents, "1").With("PATH", t.TempDir()).With(env.Home, t.TempDir()), "--json=notabool", "aws", "s3", "ls")
+		stdout, _, err := runLstk(t, testContext(t), t.TempDir(), env.With(env.DisableEvents, "1").With("PATH", t.TempDir()).With(env.Home, t.TempDir()), "--json=notabool", "aws", "s3", "ls")
 		requireExitCode(t, 1, err)
-		require.Contains(t, stderr, "aws")
-		require.NotContains(t, stdout, "not found in PATH")
+		envelope := decodeEnvelope(t, stdout)
+		assert.Equal(t, "aws", envelope.Command)
+		require.NotNil(t, envelope.Error)
+		assert.Equal(t, "NOT_JSON_CAPABLE", envelope.Error.Code)
 	})
 }
 

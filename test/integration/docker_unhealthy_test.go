@@ -41,6 +41,27 @@ func TestStopShowsDockerErrorWhenUnhealthy(t *testing.T) {
 	assert.Contains(t, stdout, "Install Docker:")
 }
 
+// TestStopJSONIncludesDockerErrorDetail covers PR #374's report that --json
+// kept only the "Docker is not available" headline and silently dropped the
+// underlying diagnostic (the Summary set in internal/runtime/docker.go) that
+// plain text shows alongside it.
+func TestStopJSONIncludesDockerErrorDetail(t *testing.T) {
+	t.Parallel()
+	if runtime.GOOS == "windows" {
+		t.Skip("Unix socket test")
+	}
+
+	stdout, _, err := runLstk(t, testContext(t), "", unhealthyDockerEnv(), "stop", "--json")
+	requireExitCode(t, 1, err)
+
+	envelope := decodeEnvelope(t, stdout)
+	require.NotNil(t, envelope.Error)
+	assert.Equal(t, "RUNTIME_UNAVAILABLE", envelope.Error.Code)
+	assert.Equal(t, "Docker is not available", envelope.Error.Message)
+	summary, _ := envelope.Error.Details["summary"].(string)
+	assert.Contains(t, summary, "cannot connect to Docker daemon")
+}
+
 func TestStatusShowsDockerErrorWhenUnhealthy(t *testing.T) {
 	t.Parallel()
 	if runtime.GOOS == "windows" {

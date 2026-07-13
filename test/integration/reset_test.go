@@ -2,6 +2,7 @@ package integration_test
 
 import (
 	"bytes"
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -198,4 +199,76 @@ func TestResetInteractive(t *testing.T) {
 		assert.Contains(t, out.String(), "Cancelled")
 		assert.Equal(t, int32(0), calls.Load(), "reset endpoint must not be called when user cancels")
 	})
+}
+
+func TestResetJSONSucceeds(t *testing.T) {
+	requireDocker(t)
+	cleanup()
+	t.Cleanup(cleanup)
+
+	ctx := testContext(t)
+	startTestContainer(t, ctx)
+	srv, calls := mockResetServer(t, http.StatusOK)
+
+	stdout, stderr, err := runLstk(t, ctx, t.TempDir(),
+		env.Environ(testEnvWithHome(t.TempDir(), "")).With(env.LocalStackHost, lsHost(srv)),
+		"reset", "--force", "--json",
+	)
+	require.NoError(t, err, "lstk reset --json failed: %s", stderr)
+	requireExitCode(t, 0, err)
+	assert.Equal(t, int32(1), calls.Load(), "reset endpoint should be called exactly once")
+
+	envelope := decodeEnvelope(t, stdout)
+	assert.Equal(t, "ok", envelope.Status)
+	assert.Equal(t, "reset", envelope.Command)
+
+	var data struct {
+		Emulator struct {
+			Type string `json:"type"`
+			Name string `json:"name"`
+		} `json:"emulator"`
+		Reset bool `json:"reset"`
+	}
+	require.NoError(t, json.Unmarshal(envelope.Data, &data))
+	assert.Equal(t, "aws", data.Emulator.Type)
+	assert.True(t, data.Reset)
+}
+
+func TestResetJSONRequiresConfirmation(t *testing.T) {
+	requireDocker(t)
+	cleanup()
+	t.Cleanup(cleanup)
+
+	ctx := testContext(t)
+	// Container required: the --force check runs after container discovery,
+	// so without a running emulator the test would hit "not running" first.
+	startTestContainer(t, ctx)
+
+	stdout, _, err := runLstk(t, ctx, t.TempDir(), testEnvWithHome(t.TempDir(), ""), "reset", "--json")
+	requireExitCode(t, 3, err)
+
+	envelope := decodeEnvelope(t, stdout)
+	assert.Equal(t, "error", envelope.Status)
+	require.NotNil(t, envelope.Error)
+	assert.Equal(t, "CONFIRMATION_REQUIRED", envelope.Error.Code)
+	assert.Equal(t, "USAGE", envelope.Error.Category)
+	assert.False(t, envelope.Error.Retryable)
+}
+
+func TestResetJSONNotConfigured(t *testing.T) {
+	requireDocker(t)
+	cleanup()
+	t.Cleanup(cleanup)
+
+	configFile := writeSnowflakeConfig(t, "4566")
+	stdout, _, err := runLstk(t, testContext(t), t.TempDir(),
+		testEnvWithHome(t.TempDir(), ""), "--config", configFile, "reset", "--force", "--json",
+	)
+	requireExitCode(t, 1, err)
+
+	envelope := decodeEnvelope(t, stdout)
+	assert.Equal(t, "error", envelope.Status)
+	require.NotNil(t, envelope.Error)
+	assert.Equal(t, "EMULATOR_NOT_CONFIGURED", envelope.Error.Code)
+	assert.Equal(t, "EMULATOR", envelope.Error.Category)
 }
