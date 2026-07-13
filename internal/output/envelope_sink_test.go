@@ -43,17 +43,25 @@ func TestEnvelopeSink_EmulatorStoppedEventAccumulates(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected map[string]any data, got %T", envelope.Data)
 	}
-	emulators, ok := data["emulators"].([]map[string]any)
+	entries, ok := data["emulators"].([]JsonEmulatorEntry)
 	if !ok {
-		t.Fatalf("expected []map[string]any emulators, got %T", data["emulators"])
+		t.Fatalf("expected []JsonEmulatorEntry emulators, got %T", data["emulators"])
 	}
-	if len(emulators) != 2 {
-		t.Fatalf("expected 2 emulators, got %d", len(emulators))
+	if len(entries) != 2 {
+		t.Fatalf("expected 2 emulators, got %d", len(entries))
 	}
-	if emulators[0]["type"] != "aws" || emulators[0]["name"] != "localstack-aws" || emulators[0]["wasRunning"] != true {
+	emulators := make([]JsonStoppedEmulator, len(entries))
+	for i, entry := range entries {
+		stopped, ok := entry.(JsonStoppedEmulator)
+		if !ok {
+			t.Fatalf("expected entry %d to be a JsonStoppedEmulator, got %T", i, entry)
+		}
+		emulators[i] = stopped
+	}
+	if emulators[0].Type != "aws" || emulators[0].Name != "localstack-aws" || !emulators[0].WasRunning {
 		t.Fatalf("unexpected first emulator entry: %+v", emulators[0])
 	}
-	if emulators[1]["type"] != "snowflake" {
+	if emulators[1].Type != "snowflake" {
 		t.Fatalf("unexpected second emulator entry: %+v", emulators[1])
 	}
 }
@@ -66,11 +74,11 @@ func TestEnvelopeSink_EmulatorResetEvent(t *testing.T) {
 
 	envelope := sink.Result("reset", nil)
 	data := envelope.Data.(map[string]any)
-	emulator, ok := data["emulator"].(map[string]any)
+	emulator, ok := data["emulator"].(JsonEmulatorRef)
 	if !ok {
-		t.Fatalf("expected map[string]any emulator, got %T", data["emulator"])
+		t.Fatalf("expected JsonEmulatorRef emulator, got %T", data["emulator"])
 	}
-	if emulator["type"] != "aws" || emulator["name"] != "localstack-aws" {
+	if emulator.Type != "aws" || emulator.Name != "localstack-aws" {
 		t.Fatalf("unexpected emulator entry: %+v", emulator)
 	}
 	if data["reset"] != true {

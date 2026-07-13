@@ -36,9 +36,12 @@ func (s *EnvelopeSink) Emit(event Event) {
 			s.warnings = append(s.warnings, Warning{Code: warningCodeNotice, Message: e.Text})
 		}
 	case EmulatorStoppedEvent:
-		s.appendEmulator(map[string]any{"type": e.Type, "name": e.Name, "wasRunning": e.WasRunning})
+		s.appendEmulator(JsonStoppedEmulator{
+			JsonEmulatorRef: JsonEmulatorRef{Type: e.Type, Name: e.Name},
+			WasRunning:      e.WasRunning,
+		})
 	case EmulatorResetEvent:
-		s.data["emulator"] = map[string]any{"type": e.Type, "name": e.Name}
+		s.data["emulator"] = JsonEmulatorRef{Type: e.Type, Name: e.Name}
 		s.data["reset"] = true
 	case UpdateCheckedEvent:
 		s.data["currentVersion"] = e.CurrentVersion
@@ -59,8 +62,8 @@ func (s *EnvelopeSink) Emit(event Event) {
 	// Every other event type is purely presentational and intentionally dropped.
 }
 
-func (s *EnvelopeSink) appendEmulator(entry map[string]any) {
-	list, _ := s.data["emulators"].([]map[string]any)
+func (s *EnvelopeSink) appendEmulator(entry JsonEmulatorEntry) {
+	list, _ := s.data["emulators"].([]JsonEmulatorEntry)
 	list = append(list, entry)
 	s.data["emulators"] = list
 }
