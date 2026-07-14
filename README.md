@@ -223,7 +223,7 @@ volumes = ["/data:/var/lib/localstack"]
 `lstk start` degrades gracefully when the common enterprise blockers (Docker Hub unreachable, a forward proxy, TLS interception, or an unreachable license server) make a network request fail:
 
 - If the image cannot be pulled but is already present locally, `lstk` warns and starts the local image instead of failing.
-- If the license server cannot be reached, `lstk` skips its pre-flight check and lets the emulator validate its own bundled license at startup. A definitive rejection from the server (e.g. an invalid token) stays fatal.
+- If the license server cannot be reached, `lstk` skips its pre-flight check and lets the emulator validate the license at startup. A definitive rejection from the server (e.g. an invalid token) stays fatal.
 
 Pair this with a custom `image` in the config to point at a locally loaded image or an internal-registry mirror.
 

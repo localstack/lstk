@@ -478,7 +478,7 @@ func TestValidateLicense_FailsOnServerRejection(t *testing.T) {
 func TestValidateLicense_SkipsPreflightOnUnsupportedTag(t *testing.T) {
 	// The server rejecting the tag *format* (e.g. a "dev" nightly or a custom
 	// enterprise tag) is not a verdict on the license itself — the pre-flight must
-	// be skipped so the container validates its own bundled license at startup,
+	// be skipped so the container validates the license at startup,
 	// mirroring the unreachable-server fallback.
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
@@ -539,8 +539,8 @@ func TestValidateLicense_PropagatesContextCancellation(t *testing.T) {
 
 func TestTryPrePullLicenseValidation_SkipsCheckWhenImageIsLocal(t *testing.T) {
 	// A pinned image already present locally is not pulled (see pullImages), so the
-	// CLI must not run a license pre-flight either — the container validates its own
-	// bundled license at startup. This keeps the local-image start fully offline.
+	// CLI must not run a license pre-flight either — the container validates the
+	// license at startup. This keeps the local-image start fully offline.
 	ctrl := gomock.NewController(t)
 	mockRT := runtime.NewMockRuntime(ctrl)
 

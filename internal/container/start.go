@@ -473,7 +473,7 @@ func tryPrePullLicenseValidation(ctx context.Context, rt runtime.Runtime, sink o
 			// A pinned image already present locally is not pulled (see pullImages),
 			// so skip the license pre-flight too: the check is redundant — and a hard
 			// blocker in offline/enterprise environments — when no network round-trip
-			// happens at all and the container validates its own bundled license at
+			// happens at all and the container validates the license at
 			// startup. A probe error is non-fatal here; fall through to the check.
 			if exists, err := rt.ImageExists(ctx, c.Image); err == nil && exists {
 				continue
@@ -752,21 +752,21 @@ func validateLicense(ctx context.Context, sink output.Sink, opts StartOptions, c
 		if !errors.As(err, &licErr) {
 			// The license server responded with no definitive verdict — the request
 			// itself failed (offline, proxy, or TLS interception in enterprise
-			// networks). Skip the pre-flight check and let the container validate its
-			// own bundled license at startup instead of blocking the start.
-			opts.Logger.Info("license server unreachable, continuing with the image's bundled license: %v", err)
-			sink.Emit(output.MessageEvent{Severity: output.SeverityWarning, Text: "Could not reach the license server; continuing with the image's bundled license"})
+			// networks). Skip the pre-flight check and let the container validate
+			// the license at startup instead of blocking the start.
+			opts.Logger.Info("license server unreachable, deferring license validation to the emulator: %v", err)
+			sink.Emit(output.MessageEvent{Severity: output.SeverityWarning, Text: "Could not reach the license server; the emulator will validate the license once it starts"})
 			return nil
 		}
 		if licErr.IsUnsupportedTag {
 			// The server rejecting the tag *format* (e.g. a "dev" nightly or a custom
 			// enterprise tag) is not a verdict on the license itself. Degrade like the
 			// transport failure above: skip the pre-flight and let the container
-			// validate its own bundled license at startup. The suggestion keeps a
+			// validate the license at startup. The suggestion keeps a
 			// typo'd tag diagnosable, since the later pull failure won't mention tags.
 			opts.Logger.Info("license server does not support tag %q, deferring license validation to the emulator: %s", version, licErr.Detail)
 			sink.Emit(output.MessageEvent{Severity: output.SeverityWarning, Text: fmt.Sprintf(
-				"The license server does not support tag %q; continuing with the image's bundled license — if this is unintended, %s",
+				"The license server does not support tag %q; the emulator will validate the license once it starts. If this is unintended, %s",
 				version, config.TagSuggestion(),
 			)})
 			return nil
