@@ -758,15 +758,26 @@ func validateLicense(ctx context.Context, sink output.Sink, opts StartOptions, c
 			sink.Emit(output.MessageEvent{Severity: output.SeverityWarning, Text: "Could not reach the license server; continuing with the image's bundled license"})
 			return nil
 		}
-		// Known limitation: any *api.LicenseError — i.e. any non-200 HTTP response,
-		// including a 5xx or a 407 from a corporate proxy — is treated as a definitive
-		// verdict and stays fatal here; only connection-level failures (handled above)
-		// degrade. Gating this on licErr.Status is tracked as follow-up.
+		if licErr.IsUnsupportedTag {
+			// The server rejecting the tag *format* (e.g. a "dev" nightly or a custom
+			// enterprise tag) is not a verdict on the license itself. Degrade like the
+			// transport failure above: skip the pre-flight and let the container
+			// validate its own bundled license at startup. The suggestion keeps a
+			// typo'd tag diagnosable, since the later pull failure won't mention tags.
+			opts.Logger.Info("license server does not support tag %q, deferring license validation to the emulator: %s", version, licErr.Detail)
+			sink.Emit(output.MessageEvent{Severity: output.SeverityWarning, Text: fmt.Sprintf(
+				"The license server does not support tag %q; continuing with the image's bundled license — if this is unintended, %s",
+				version, config.TagSuggestion(),
+			)})
+			return nil
+		}
+		// Known limitation: any other *api.LicenseError — i.e. any non-200 HTTP
+		// response, including a 5xx or a 407 from a corporate proxy — is treated as a
+		// definitive verdict and stays fatal here; only connection-level failures and
+		// unsupported tags (both handled above) degrade. Gating this on licErr.Status
+		// is tracked as follow-up.
 		if licErr.Detail != "" {
 			opts.Logger.Error("license server response (HTTP %d): %s", licErr.Status, licErr.Detail)
-		}
-		if licErr.IsUnsupportedTag {
-			err = errors.New(config.UnsupportedTagMessage())
 		}
 		opts.Telemetry.EmitEmulatorLifecycleEvent(ctx, telemetry.LifecycleEvent{
 			EventType: telemetry.LifecycleStartError,

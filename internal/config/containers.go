@@ -295,13 +295,19 @@ func (c *ContainerConfig) VolumeDir() (string, error) {
 	return filepath.Join(cacheDir, "lstk", "volume", c.Name()), nil
 }
 
-func UnsupportedTagMessage() string {
+// TagSuggestion returns an actionable hint naming a recent calendar tag and
+// "latest", for messages about tags the license server cannot parse.
+func TagSuggestion() string {
 	y, m, _ := time.Now().Date()
 	m--
 	if m == 0 {
 		m, y = 12, y-1
 	}
-	return fmt.Sprintf("unsupported image tag — try a tag like %q or \"latest\" in your config file", fmt.Sprintf("%d.%d", y, int(m)))
+	return fmt.Sprintf("try a tag like %q or \"latest\" in your config file", fmt.Sprintf("%d.%d", y, int(m)))
+}
+
+func unsupportedTagMessage() string {
+	return "unsupported image tag — " + TagSuggestion()
 }
 
 // zeroPaddedMonthTagRe matches calendar-versioned tags where the month is zero-padded
@@ -324,7 +330,7 @@ func validateTag(tag string) error {
 		return nil
 	}
 	if len(tag) > 128 || !validTagRe.MatchString(tag) {
-		return errors.New(UnsupportedTagMessage())
+		return errors.New(unsupportedTagMessage())
 	}
 	return nil
 }

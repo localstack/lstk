@@ -101,8 +101,11 @@ func (r *LicenseResponse) PlanDisplayName() string {
 
 // LicenseError is returned when license validation fails.
 // Message is user-friendly; Detail contains the raw server response for debugging.
-// IsUnsupportedTag is set when the server rejects the image tag format, letting
-// callers that know the config context replace Message with a more specific suggestion.
+// IsUnsupportedTag is set when the server rejects the image tag format (a 400 whose
+// detail carries the licensing.license.format error code). It means "the server
+// cannot judge this tag", not that the license was rejected — the start pre-flight
+// skips validation entirely on it and defers to the container's own license check,
+// so keep the detection narrow: widening it widens that bypass.
 type LicenseError struct {
 	Status           int
 	Message          string

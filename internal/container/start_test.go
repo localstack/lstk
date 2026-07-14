@@ -475,6 +475,40 @@ func TestValidateLicense_FailsOnServerRejection(t *testing.T) {
 	assert.Contains(t, err.Error(), "license validation failed")
 }
 
+func TestValidateLicense_SkipsPreflightOnUnsupportedTag(t *testing.T) {
+	// The server rejecting the tag *format* (e.g. a "dev" nightly or a custom
+	// enterprise tag) is not a verdict on the license itself — the pre-flight must
+	// be skipped so the container validates its own bundled license at startup,
+	// mirroring the unreachable-server fallback.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte(`{"error": true, "message": "licensing.license.format:illegal version string dev"}`))
+	}))
+	defer srv.Close()
+
+	opts := StartOptions{
+		PlatformClient: api.NewPlatformClient(srv.URL, log.Nop()),
+		Logger:         log.Nop(),
+		Telemetry:      telemetry.New("", true),
+	}
+	c := runtime.ContainerConfig{
+		EmulatorType: config.EmulatorAWS,
+		ProductName:  "localstack-pro",
+		Tag:          "dev",
+		Image:        "localstack/localstack-pro:dev",
+	}
+
+	var out bytes.Buffer
+	sink := output.NewPlainSink(&out)
+
+	err := validateLicense(context.Background(), sink, opts, c, "tok", filepath.Join(t.TempDir(), "license.json"))
+
+	require.NoError(t, err, "a tag the license server cannot parse must not block the start")
+	assert.Contains(t, out.String(), `does not support tag "dev"`)
+	assert.Contains(t, out.String(), "try a tag like",
+		"the warning should keep the tag suggestion so a typo'd tag stays diagnosable")
+}
+
 func TestValidateLicense_PropagatesContextCancellation(t *testing.T) {
 	// A cancelled caller context (Ctrl+C) must surface as cancellation, not be
 	// mistaken for an offline license server.

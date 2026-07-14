@@ -15,29 +15,27 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// returns a mock license server that captures the product version from license requests.
-// licenseSuccess controls whether the server returns 200 or 403.
-func createLicenseMockServer(t *testing.T, licenseSuccess bool) (*httptest.Server, *string) {
+// returns a mock license server that answers license requests with the given
+// status and body, capturing the product version from each request.
+func createLicenseMockServer(t *testing.T, status int, body string) (*httptest.Server, *string) {
 	t.Helper()
 	capturedVersion := new(string)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case r.Method == http.MethodPost && r.URL.Path == "/v1/license/request":
-			body, _ := io.ReadAll(r.Body)
+			reqBody, _ := io.ReadAll(r.Body)
 			var req struct {
 				Product struct {
 					Version string `json:"version"`
 				} `json:"product"`
 			}
-			_ = json.Unmarshal(body, &req)
+			_ = json.Unmarshal(reqBody, &req)
 			*capturedVersion = req.Product.Version
-			if licenseSuccess {
+			if body != "" {
 				w.Header().Set("Content-Type", "application/json")
-				w.WriteHeader(http.StatusOK)
-				_, _ = w.Write([]byte(`{"license_type":"pro"}`))
-			} else {
-				w.WriteHeader(http.StatusForbidden)
 			}
+			w.WriteHeader(status)
+			_, _ = w.Write([]byte(body))
 		default:
 			w.WriteHeader(http.StatusNotFound)
 		}
@@ -55,7 +53,7 @@ func TestVersionResolvedViaImageInspection(t *testing.T) {
 	cleanup()
 	t.Cleanup(cleanup)
 
-	mockServer, capturedVersion := createLicenseMockServer(t, true)
+	mockServer, capturedVersion := createLicenseMockServer(t, http.StatusOK, `{"license_type":"pro"}`)
 
 	ctx := testContext(t)
 	stdout, stderr, err := runLstk(t, ctx, "", env.With(env.APIEndpoint, mockServer.URL), "start")
@@ -78,7 +76,7 @@ func TestCommandFailsNicelyWhenLicenseCheckFails(t *testing.T) {
 	cleanup()
 	t.Cleanup(cleanup)
 
-	mockServer, _ := createLicenseMockServer(t, false)
+	mockServer, _ := createLicenseMockServer(t, http.StatusForbidden, "")
 
 	ctx := testContext(t)
 	stdout, stderr, err := runLstk(t, ctx, "",
@@ -86,6 +84,47 @@ func TestCommandFailsNicelyWhenLicenseCheckFails(t *testing.T) {
 	require.Error(t, err, "expected lstk start to fail when license check fails")
 	assert.Contains(t, stderr, "license validation failed",
 		"stdout: %s", stdout)
+}
+
+// Verifies that a tag the license server cannot parse as a version (e.g. "dev"
+// nightlies or custom enterprise tags) does not block the start: the pre-flight is
+// skipped with a warning and license validation is left to the emulator itself
+// (DEVX-912).
+func TestUnsupportedTagSkipsPreflightValidation(t *testing.T) {
+	requireDocker(t)
+	t.Parallel()
+
+	mockServer, capturedVersion := createLicenseMockServer(t, http.StatusBadRequest,
+		`{"error": true, "message": "licensing.license.format:illegal version string dev"}`)
+
+	// The image override points at an unreachable local registry so the run stops
+	// at the pull right after the license gate (the real dev image would be a
+	// multi-GB download). The pull failure is this test's expected exit path — the
+	// behavior under test is that the run gets *past* license validation.
+	configFile := filepath.Join(t.TempDir(), "config.toml")
+	require.NoError(t, os.WriteFile(configFile, []byte(`
+[[containers]]
+type  = "aws"
+tag   = "dev"
+port  = "4599"
+image = "127.0.0.1:1/localstack-pro"
+`), 0644))
+
+	ctx := testContext(t)
+	environ := env.Environ(testEnvWithHome(t.TempDir(), "")).
+		With(env.APIEndpoint, mockServer.URL).
+		With(env.AuthToken, "test-token-for-unsupported-tag")
+	stdout, stderr, err := runLstk(t, ctx, "", environ, "--config", configFile, "start")
+
+	out := stdout + "\n" + stderr
+	assert.Equal(t, "dev", *capturedVersion, "the configured tag should be sent to the license API")
+	assert.NotContains(t, out, "license validation failed",
+		"an unparseable tag must not be treated as a license rejection")
+	assert.Contains(t, out, `does not support tag "dev"`,
+		"the skipped pre-flight should be surfaced as a warning")
+	require.Error(t, err, "the start should proceed to the pull and fail on the unreachable registry")
+	requireExitCode(t, 1, err)
+	assert.Contains(t, out, "Failed to pull")
 }
 
 // Verifies that pinned tags are validated before pulling (fail-fast path).
@@ -97,7 +136,7 @@ func TestPinnedTagValidatedPrePull(t *testing.T) {
 	t.Cleanup(cleanup)
 
 	// License rejects all requests — with a pinned tag, failure should happen before any pull
-	mockServer, capturedVersion := createLicenseMockServer(t, false)
+	mockServer, capturedVersion := createLicenseMockServer(t, http.StatusForbidden, "")
 
 	configFile := filepath.Join(t.TempDir(), "config.toml")
 	require.NoError(t, os.WriteFile(configFile, []byte(`
