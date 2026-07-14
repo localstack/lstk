@@ -3,11 +3,45 @@ package ui
 import (
 	"strings"
 
+	"github.com/charmbracelet/lipgloss"
 	"github.com/localstack/lstk/internal/output"
 	"github.com/localstack/lstk/internal/ui/styles"
+	"github.com/localstack/lstk/internal/ui/wrap"
 )
 
-func renderLogLine(line string, level output.LogLevel) string {
+// renderLogLineEvent renders a streamed log line — the styled "source | " prefix
+// followed by the wrapped, continuation-indented body — to fit the given width.
+func renderLogLineEvent(ev output.LogLineEvent, width int) string {
+	prefix := styles.Secondary.Render(ev.Source + " | ")
+	prefixWidth := lipgloss.Width(prefix)
+	availableWidth := max(0, width-prefixWidth)
+	return prefix + renderLogLine(ev.Line, ev.Level, availableWidth, prefixWidth)
+}
+
+func renderLogLine(line string, level output.LogLevel, availableWidth int, continuationIndent int) string {
+	if availableWidth <= 0 {
+		return renderStyledLogLine(line, level)
+	}
+
+	indent := strings.Repeat(" ", continuationIndent)
+	logicalLines := strings.Split(line, "\n")
+	rendered := make([]string, 0, len(logicalLines))
+	firstOutputLine := true
+
+	for _, logicalLine := range logicalLines {
+		for _, part := range renderWrappedLogLine(logicalLine, level, availableWidth) {
+			if !firstOutputLine {
+				part = indent + part
+			}
+			rendered = append(rendered, part)
+			firstOutputLine = false
+		}
+	}
+
+	return strings.Join(rendered, "\n")
+}
+
+func renderStyledLogLine(line string, level output.LogLevel) string {
 	idx := strings.Index(line, " : ")
 	if idx < 0 {
 		return renderLogMessage(line, level)
@@ -15,6 +49,45 @@ func renderLogLine(line string, level output.LogLevel) string {
 	meta := line[:idx+3] // up to and including " : "
 	msg := line[idx+3:]
 	return styles.Secondary.Render(meta) + renderLogMessage(msg, level)
+}
+
+func renderWrappedLogLine(line string, level output.LogLevel, availableWidth int) []string {
+	idx := strings.Index(line, " : ")
+	if idx < 0 {
+		return wrapStyledLogParts("", line, level, availableWidth)
+	}
+
+	meta := line[:idx+3] // up to and including " : "
+	msg := line[idx+3:]
+	return wrapStyledLogParts(meta, msg, level, availableWidth)
+}
+
+func wrapStyledLogParts(meta string, msg string, level output.LogLevel, availableWidth int) []string {
+	plain := meta + msg
+	if plain == "" {
+		return []string{""}
+	}
+
+	metaRemaining := len([]rune(meta))
+	parts := strings.Split(wrap.HardWrap(plain, availableWidth), "\n")
+	wrapped := make([]string, 0, len(parts))
+
+	for _, part := range parts {
+		partRunes := []rune(part)
+		metaCount := min(len(partRunes), metaRemaining)
+		var sb strings.Builder
+
+		if metaCount > 0 {
+			sb.WriteString(styles.Secondary.Render(string(partRunes[:metaCount])))
+			metaRemaining -= metaCount
+		}
+		if metaCount < len(partRunes) {
+			sb.WriteString(renderLogMessage(string(partRunes[metaCount:]), level))
+		}
+		wrapped = append(wrapped, sb.String())
+	}
+
+	return wrapped
 }
 
 func renderLogMessage(s string, level output.LogLevel) string {

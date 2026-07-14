@@ -45,6 +45,7 @@ type styledLine struct {
 	highlight bool
 	secondary bool
 	message   *output.MessageEvent
+	logLine   *output.LogLineEvent
 }
 
 type App struct {
@@ -252,8 +253,8 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return a, nil
 	case output.LogLineEvent:
-		prefix := styles.Secondary.Render(msg.Source + " | ")
-		a.addLine(styledLine{text: prefix + renderLogLine(msg.Line, msg.Level)})
+		logCopy := msg
+		a.addLine(styledLine{logLine: &logCopy})
 		return a, nil
 	case output.ContainerStatusEvent:
 		if msg.Phase == "pulling" {
@@ -511,6 +512,11 @@ func (a App) View() string {
 	for _, line := range a.lines {
 		if line.message != nil {
 			sb.WriteString(components.RenderWrappedMessage(*line.message, a.width))
+			sb.WriteString("\n")
+			continue
+		}
+		if line.logLine != nil {
+			sb.WriteString(renderLogLineEvent(*line.logLine, a.width))
 			sb.WriteString("\n")
 			continue
 		}

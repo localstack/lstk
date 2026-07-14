@@ -14,6 +14,7 @@ import (
 	"github.com/localstack/lstk/internal/ui/components"
 	"github.com/localstack/lstk/internal/ui/styles"
 	"github.com/muesli/termenv"
+	"gotest.tools/v3/golden"
 )
 
 func TestAppAddsFormattedLinesInOrder(t *testing.T) {
@@ -307,10 +308,6 @@ func TestAppSnapshotLoadedEventRendersGreen(t *testing.T) {
 func TestAppMessageEventWrapsOnVisibleWidth(t *testing.T) {
 	t.Parallel()
 
-	original := lipgloss.ColorProfile()
-	lipgloss.SetColorProfile(termenv.TrueColor)
-	t.Cleanup(func() { lipgloss.SetColorProfile(original) })
-
 	app := NewApp("dev", "", "", nil)
 	app.width = 40
 
@@ -395,6 +392,30 @@ func TestAppDeferredNoteStyledLikeStatus(t *testing.T) {
 	}
 	if strings.HasPrefix(out, "\n") {
 		t.Fatalf("note should not be padded with a leading blank line, got %q", out)
+	}
+}
+
+func TestAppLogLineEventWrapsAtTerminalWidth(t *testing.T) {
+	t.Parallel()
+
+	app := NewApp("dev", "", "", nil, withoutHeader())
+	model, _ := app.Update(tea.WindowSizeMsg{Width: 20, Height: 10})
+	app = model.(App)
+
+	model, _ = app.Update(output.LogLineEvent{
+		Source: "container",
+		Line:   "abcdefghijklmnopqrstuvwxyz",
+		Level:  output.LogLevelInfo,
+	})
+	app = model.(App)
+
+	view := stripANSI(app.View())
+	golden.Assert(t, view, "log_line_event_wrap.golden")
+
+	for _, line := range strings.Split(strings.TrimSuffix(view, "\n"), "\n") {
+		if lipgloss.Width(line) > 20 {
+			t.Fatalf("expected wrapped log line to fit width 20, got %q", line)
+		}
 	}
 }
 
