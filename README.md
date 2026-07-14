@@ -56,6 +56,7 @@ Running `lstk` will automatically handle configuration setup and start LocalStac
 - **Extensions** — Git-style `lstk-<name>` executables extend the CLI with new commands
 - **Self-update** — check for and install the latest `lstk` release with `lstk update`
 - **Shell completions** — bash, zsh, and fish completions included
+- **Structured JSON output** — pass `--json` to a supported command (`stop`, `reset`, `update` today, more planned) for a machine-readable envelope instead of formatted text; see [docs/structured-output.md](docs/structured-output.md)
 
 ## Authentication
 
@@ -223,7 +224,7 @@ volumes = ["/data:/var/lib/localstack"]
 `lstk start` degrades gracefully when the common enterprise blockers (Docker Hub unreachable, a forward proxy, TLS interception, or an unreachable license server) make a network request fail:
 
 - If the image cannot be pulled but is already present locally, `lstk` warns and starts the local image instead of failing.
-- If the license server cannot be reached, `lstk` skips its pre-flight check and lets the emulator validate the license at startup. A definitive rejection from the server (e.g. an invalid token) stays fatal.
+- If the license server cannot be reached, or it rejects the configured image tag as unrecognized (e.g. a `dev` nightly or a custom enterprise-mirror tag), `lstk` skips its pre-flight check and lets the emulator validate the license at startup. A definitive rejection from the server (e.g. an invalid token) stays fatal.
 
 Pair this with a custom `image` in the config to point at a locally loaded image or an internal-registry mirror.
 
