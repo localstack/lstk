@@ -77,6 +77,26 @@ func createMockAPIServer(t *testing.T, licenseToken string, confirmed bool) *htt
 	}))
 }
 
+// fakeBrowserOpener prepends a temp dir to PATH containing fake open/xdg-open
+// scripts that record the URL they were asked to open instead of spawning a real
+// browser tab. It returns the augmented environment and a reader for the recorded
+// URL. The scripts cover the providers github.com/pkg/browser tries on macOS
+// (open) and Linux (xdg-open, x-www-browser, www-browser).
+func fakeBrowserOpener(t *testing.T, environ env.Environ) (env.Environ, func() string) {
+	t.Helper()
+	dir := t.TempDir()
+	record := filepath.Join(dir, "opened-url")
+	script := fmt.Sprintf("#!/bin/sh\nprintf '%%s' \"$1\" > %q\n", record)
+	for _, name := range []string{"open", "xdg-open", "x-www-browser", "www-browser"} {
+		require.NoError(t, os.WriteFile(filepath.Join(dir, name), []byte(script), 0o755))
+	}
+	environ = environ.With(env.Path, dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	return environ, func() string {
+		b, _ := os.ReadFile(record)
+		return string(b)
+	}
+}
+
 func TestDeviceFlowSuccess(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("PTY not supported on Windows")
@@ -96,8 +116,10 @@ func TestDeviceFlowSuccess(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
+	environ, openedURL := fakeBrowserOpener(t, env.Without(env.AuthToken).With(env.APIEndpoint, mockServer.URL).With(env.WebAppURL, mockServer.URL).With(env.AnalyticsEndpoint, analyticsSrv.URL))
+
 	cmd := exec.CommandContext(ctx, binaryPath(), "login")
-	cmd.Env = env.Without(env.AuthToken).With(env.APIEndpoint, mockServer.URL).With(env.AnalyticsEndpoint, analyticsSrv.URL)
+	cmd.Env = environ
 
 	ptmx, err := pty.Start(cmd)
 	require.NoError(t, err, "failed to start command in PTY")
@@ -124,6 +146,7 @@ func TestDeviceFlowSuccess(t *testing.T) {
 	out := output.String()
 	require.NoError(t, err, "login should succeed: %s", out)
 	requireExitCode(t, 0, err)
+	assert.Equal(t, mockServer.URL+"/auth/request/test-auth-req-id?code=TEST123", openedURL(), "login should open the auth URL in a browser")
 	assert.Contains(t, out, "Opening browser to login...")
 	assert.Contains(t, out, "Browser didn't open? Visit")
 	assert.Contains(t, out, "/auth/request/test-auth-req-id?code=TEST123")
@@ -156,8 +179,10 @@ func TestDeviceFlowFailure_RequestNotConfirmed(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
+	environ, openedURL := fakeBrowserOpener(t, env.Without(env.AuthToken).With(env.APIEndpoint, mockServer.URL).With(env.WebAppURL, mockServer.URL).With(env.AnalyticsEndpoint, analyticsSrv.URL))
+
 	cmd := exec.CommandContext(ctx, binaryPath(), "login")
-	cmd.Env = env.Without(env.AuthToken).With(env.APIEndpoint, mockServer.URL).With(env.AnalyticsEndpoint, analyticsSrv.URL)
+	cmd.Env = environ
 
 	ptmx, err := pty.Start(cmd)
 	require.NoError(t, err, "failed to start command in PTY")
@@ -184,6 +209,7 @@ func TestDeviceFlowFailure_RequestNotConfirmed(t *testing.T) {
 	out := output.String()
 	require.Error(t, err, "expected login to fail when request not confirmed")
 	requireExitCode(t, 1, err)
+	assert.Equal(t, mockServer.URL+"/auth/request/test-auth-req-id?code=TEST123", openedURL(), "login should open the auth URL in a browser")
 	assert.Contains(t, out, "Opening browser to login...")
 	assert.Contains(t, out, "Browser didn't open? Visit")
 	assert.Contains(t, out, "/auth/request/test-auth-req-id?code=TEST123")

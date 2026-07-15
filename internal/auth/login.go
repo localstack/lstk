@@ -22,6 +22,13 @@ type loginProvider struct {
 	platformClient api.PlatformAPI
 	sink           output.Sink
 	webAppURL      string
+	openBrowser    func(string) error
+}
+
+func defaultOpenBrowser(url string) error {
+	browser.Stdout = io.Discard
+	browser.Stderr = io.Discard
+	return browser.OpenURL(url)
 }
 
 func newLoginProvider(sink output.Sink, platformClient api.PlatformAPI, webAppURL string) *loginProvider {
@@ -29,6 +36,7 @@ func newLoginProvider(sink output.Sink, platformClient api.PlatformAPI, webAppUR
 		platformClient: platformClient,
 		sink:           sink,
 		webAppURL:      webAppURL,
+		openBrowser:    defaultOpenBrowser,
 	}
 }
 
@@ -45,9 +53,7 @@ func (l *loginProvider) Login(ctx context.Context) (string, error) {
 		Code:     authReq.Code,
 		URL:      authURL,
 	})
-	browser.Stdout = io.Discard
-	browser.Stderr = io.Discard
-	if err := browser.OpenURL(authURL); err != nil {
+	if err := l.openBrowser(authURL); err != nil {
 		l.sink.Emit(output.MessageEvent{Severity: output.SeverityWarning, Text: fmt.Sprintf("Failed to open browser automatically. Open this URL manually to continue: %s", authURL)})
 	}
 
