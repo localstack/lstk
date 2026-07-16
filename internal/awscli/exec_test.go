@@ -6,6 +6,18 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+func TestIsHelp(t *testing.T) {
+	for _, args := range [][]string{
+		{"--help"}, {"-h"}, {"s3", "--help"}, {"s3", "ls", "-h"},
+		{"help"}, {"s3", "help"},
+	} {
+		assert.Truef(t, IsHelp(args), "%v", args)
+	}
+	for _, args := range [][]string{{"s3", "ls"}, {}} {
+		assert.Falsef(t, IsHelp(args), "%v", args)
+	}
+}
+
 func TestBuildEnvSetsDefaultsWhenAbsent(t *testing.T) {
 	base := []string{"PATH=/usr/bin", "HOME=/home/user"}
 	env := BuildEnv(base)

@@ -15,6 +15,9 @@ func TestIsOffline(t *testing.T) {
 		{"local", "generate-event", "s3", "put"},
 		{"local", "invoke"},
 		{"pipeline", "init"},
+		{"--help"},
+		{"-h"},
+		{"deploy", "--help"},
 	}
 	for _, args := range offline {
 		assert.Truef(t, IsOffline(args), "expected %v offline", args)

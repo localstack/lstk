@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 
 	"github.com/localstack/lstk/test/integration/env"
@@ -162,6 +163,29 @@ func TestTerraformUnproxiedSkipsOverride(t *testing.T) {
 			assert.NotContains(t, stdout, "--region")
 			assert.NotContains(t, stdout, "--account")
 			// No override file generated.
+			assert.NoFileExists(t, filepath.Join(workDir, tfOverrideFile))
+		})
+	}
+}
+
+// DEVX-1002 — --help (and -h) never require the emulator/provider schema, even
+// in an uninitialized project with no running emulator, and are forwarded to
+// terraform untouched.
+func TestTerraformHelpSkipsOverride(t *testing.T) {
+	t.Parallel()
+	for _, args := range [][]string{{"--help"}, {"-h"}, {"-help"}, {"plan", "--help"}} {
+		args := args
+		t.Run(strings.Join(args, "_"), func(t *testing.T) {
+			t.Parallel()
+			fakeDir := writeFakeTerraform(t)
+			workDir := t.TempDir()
+			e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).With(env.Home, t.TempDir())
+
+			cmdArgs := append([]string{"terraform"}, args...)
+			stdout, stderr, err := runLstk(t, testContext(t), workDir, e, cmdArgs...)
+			require.NoError(t, err, "stderr: %s", stderr)
+
+			assert.Contains(t, stdout, "ARGS:"+strings.Join(args, " "))
 			assert.NoFileExists(t, filepath.Join(workDir, tfOverrideFile))
 		})
 	}

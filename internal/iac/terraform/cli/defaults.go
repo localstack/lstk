@@ -39,11 +39,30 @@ var unproxiedCommands = map[string]bool{
 }
 
 // IsUnproxied reports whether the terraform invocation described by args is one
-// of the unconditionally unproxied subcommands (fmt/validate/version). The
-// subcommand is the first argument that is not a flag (terraform's global
-// options, e.g. -chdir, precede the subcommand).
+// of the unconditionally unproxied subcommands (fmt/validate/version), or a
+// help request. The subcommand is the first argument that is not a flag
+// (terraform's global options, e.g. -chdir, precede the subcommand).
 func IsUnproxied(args []string) bool {
-	return unproxiedCommands[subcommand(args)]
+	return IsHelp(args) || unproxiedCommands[subcommand(args)]
+}
+
+// helpFlags are the flags terraform recognizes as a help request, in any
+// position (e.g. `terraform --help`, `terraform plan -h`).
+var helpFlags = map[string]bool{
+	"-h":     true,
+	"-help":  true,
+	"--help": true,
+}
+
+// IsHelp reports whether args requests terraform's help output via a help flag
+// anywhere in args (e.g. `terraform --help`, `terraform plan -h`).
+func IsHelp(args []string) bool {
+	for _, a := range args {
+		if helpFlags[a] {
+			return true
+		}
+	}
+	return false
 }
 
 // RequiresEmulator reports whether the invocation needs a running LocalStack

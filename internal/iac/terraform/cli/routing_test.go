@@ -22,6 +22,26 @@ func TestIsUnproxiedSet(t *testing.T) {
 	}
 }
 
+// DEVX-1002 — help flags (in any position) are unproxied and never require
+// the emulator, even in an uninitialized project. Unlike aws/cdk, terraform
+// has no bare `help` pseudo-subcommand (`terraform help` is an error), so it
+// is not recognized.
+func TestIsHelp(t *testing.T) {
+	trueCases := [][]string{
+		{"--help"}, {"-h"}, {"-help"},
+		{"plan", "--help"}, {"plan", "-h"},
+	}
+	for _, args := range trueCases {
+		assert.Truef(t, IsHelp(args), "%v", args)
+		assert.Truef(t, IsUnproxied(args), "%v", args)
+	}
+
+	falseCases := [][]string{{"plan"}, {"apply", "-auto-approve"}, {"init"}, {"help"}, {"help", "plan"}}
+	for _, args := range falseCases {
+		assert.Falsef(t, IsHelp(args), "%v", args)
+	}
+}
+
 func TestRequiresEmulatorRouting(t *testing.T) {
 	noBackend := t.TempDir()
 	writeTF(t, noBackend, "main.tf", `provider "aws" {}`)
@@ -41,6 +61,10 @@ func TestRequiresEmulatorRouting(t *testing.T) {
 	// plan/apply always require the emulator.
 	assert.True(t, RequiresEmulator([]string{"plan"}, noBackend, log.Nop()))
 	assert.True(t, RequiresEmulator([]string{"apply", "-auto-approve"}, noBackend, log.Nop()))
+
+	// help requests never require the emulator, even with an S3 backend present.
+	assert.False(t, RequiresEmulator([]string{"--help"}, withBackend, log.Nop()))
+	assert.False(t, RequiresEmulator([]string{"plan", "-h"}, withBackend, log.Nop()))
 }
 
 // 9.2 — adding a backend/remote-state section still refuses to clobber a
