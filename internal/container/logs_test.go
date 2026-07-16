@@ -34,6 +34,7 @@ func runLogs(t *testing.T, content string, verbose bool) *captureSink {
 	ctrl := gomock.NewController(t)
 	mockRT := runtime.NewMockRuntime(ctrl)
 	mockRT.EXPECT().IsHealthy(gomock.Any()).Return(nil)
+	mockRT.EXPECT().IsRunning(gomock.Any(), "localstack-aws").Return(true, nil)
 	mockRT.EXPECT().
 		StreamLogs(gomock.Any(), "localstack-aws", gomock.Any(), false).
 		DoAndReturn(func(_ context.Context, _ string, out io.Writer, _ bool) error {
@@ -96,4 +97,22 @@ func TestLogs_FilteredLinesDropped(t *testing.T) {
 
 	require.Len(t, sink.lines, 1)
 	assert.Contains(t, sink.lines[0].Line, "keep")
+}
+
+func TestLogs_NotRunning(t *testing.T) {
+	t.Parallel()
+	ctrl := gomock.NewController(t)
+	mockRT := runtime.NewMockRuntime(ctrl)
+	mockRT.EXPECT().IsHealthy(gomock.Any()).Return(nil)
+	mockRT.EXPECT().IsRunning(gomock.Any(), "localstack-aws").Return(false, nil)
+	mockRT.EXPECT().
+		FindRunningByImage(gomock.Any(), []string{"localstack/localstack-pro", "localstack/localstack"}, "4566/tcp").
+		Return(nil, nil)
+
+	sink := &captureSink{}
+	containers := []config.ContainerConfig{{Type: config.EmulatorAWS}}
+	err := Logs(context.Background(), mockRT, sink, containers, false, false)
+
+	require.Error(t, err)
+	assert.True(t, output.IsSilent(err))
 }

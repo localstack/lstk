@@ -39,10 +39,25 @@ func Logs(ctx context.Context, rt runtime.Runtime, sink output.Sink, containers 
 	// TODO: handle logs per container
 	c := containers[0]
 
+	name, err := ResolveRunningContainerName(ctx, rt, c)
+	if err != nil {
+		return fmt.Errorf("checking %s running: %w", c.Name(), err)
+	}
+	if name == "" {
+		sink.Emit(output.ErrorEvent{
+			Title: fmt.Sprintf("%s is not running", c.DisplayName()),
+			Actions: []output.ErrorAction{
+				{Label: "Start LocalStack:", Value: "lstk"},
+				{Label: "See help:", Value: "lstk -h"},
+			},
+		})
+		return output.NewSilentError(fmt.Errorf("%s is not running", c.Name()))
+	}
+
 	pr, pw := io.Pipe()
 	errCh := make(chan error, 1)
 	go func() {
-		err := rt.StreamLogs(ctx, c.Name(), pw, follow)
+		err := rt.StreamLogs(ctx, name, pw, follow)
 		pw.CloseWithError(err)
 		errCh <- err
 	}()
