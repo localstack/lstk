@@ -95,7 +95,7 @@ func TestStartCommandReusesLocalImageWhenPresent(t *testing.T) {
 	assert.NotContains(t, stdout, "Pulling", "lstk must not re-pull an image that is already present")
 }
 
-// DEVX-758: a container that exits during startup must fail with a styled
+// A container that exits during startup must fail with a styled
 // ErrorEvent that reports the exit code, not the unstyled top-level fallback.
 // The stand-in alpine image runs its default /bin/sh which exits immediately
 // (exit code 0) without a TTY, so the container is gone almost at once.
@@ -144,9 +144,9 @@ func TestStartFailsWhenContainerExitsDuringStartup(t *testing.T) {
 	assert.Contains(t, combined, "exit code 0", "the captured exit code must be reported")
 }
 
-// DEVX-758 (the ticket's hang): a container that stays running but never serves
-// /_localstack/health must not wait forever. With a short LSTK_STARTUP_TIMEOUT in
-// non-interactive mode, lstk fails with a bounded timeout error and guidance,
+// A container that stays running but never serves /_localstack/health must not wait forever.
+// With a short LSTK_STARTUP_TIMEOUT in non-interactive mode,
+// lstk fails with a bounded timeout error and guidance,
 // leaving the container running. The stand-in nginx image keeps its entrypoint
 // alive but nothing listens on 4566, so the health check never connects.
 func TestStartFailsWhenContainerNeverBecomesHealthy(t *testing.T) {
