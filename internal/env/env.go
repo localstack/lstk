@@ -3,6 +3,7 @@ package env
 import (
 	"os"
 	"strings"
+	"time"
 
 	"github.com/spf13/viper"
 )
@@ -13,6 +14,7 @@ type Env struct {
 	DockerHost     string
 	DisableEvents  bool
 	TracesEnabled  bool
+	StartupTimeout time.Duration
 
 	APIEndpoint       string
 	WebAppURL         string
@@ -41,6 +43,7 @@ func Init() *Env {
 		DockerHost:        os.Getenv("DOCKER_HOST"),
 		DisableEvents:     os.Getenv("LOCALSTACK_DISABLE_EVENTS") == "1",
 		TracesEnabled:     viper.GetBool("otel"),
+		StartupTimeout:    viper.GetDuration("startup_timeout"),
 		APIEndpoint:       viper.GetString("api_endpoint"),
 		WebAppURL:         viper.GetString("web_app_url"),
 		ForceFileKeyring:  viper.GetString("keyring") == "file",

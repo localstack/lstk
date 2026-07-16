@@ -44,6 +44,7 @@ type StartOptions struct {
 	Containers       []config.ContainerConfig
 	Env              map[string]map[string]string
 	Persist          bool
+	StartupTimeout   time.Duration // zero uses the per-mode default (resolveStartupTimeout)
 	Logger           log.Logger
 	Telemetry        *telemetry.Client
 }
@@ -254,7 +255,7 @@ func Start(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts Start
 		}
 	}
 
-	if err := startContainers(ctx, rt, sink, tel, containers, pulled); err != nil {
+	if err := startContainers(ctx, rt, sink, tel, containers, pulled, opts.StartupTimeout, interactive); err != nil {
 		return "", err
 	}
 
@@ -520,11 +521,11 @@ func validateLicensesFromImages(ctx context.Context, rt runtime.Runtime, sink ou
 	return firstVersion, nil
 }
 
-func startContainers(ctx context.Context, rt runtime.Runtime, sink output.Sink, tel *telemetry.Client, containers []runtime.ContainerConfig, pulled map[string]bool) error {
+func startContainers(ctx context.Context, rt runtime.Runtime, sink output.Sink, tel *telemetry.Client, containers []runtime.ContainerConfig, pulled map[string]bool, startupTimeout time.Duration, interactive bool) error {
 	for _, c := range containers {
 		startTime := time.Now()
 		sink.Emit(output.SpinnerStart("Starting LocalStack"))
-		containerID, err := rt.Start(ctx, c)
+		containerID, exitCh, err := rt.Start(ctx, c)
 		if err != nil {
 			sink.Emit(output.SpinnerStop())
 			tel.EmitEmulatorLifecycleEvent(ctx, telemetry.LifecycleEvent{
@@ -550,7 +551,7 @@ func startContainers(ctx context.Context, rt runtime.Runtime, sink output.Sink, 
 		}()
 
 		healthURL := fmt.Sprintf("http://localhost:%s%s", c.Port, c.HealthPath)
-		err = awaitStartup(ctx, rt, sink, containerID, "LocalStack", healthURL, startupLogs)
+		err = awaitStartup(ctx, rt, sink, containerID, "LocalStack", healthURL, exitCh, startupTimeout, interactive)
 		// Stop following and let the goroutine return before continuing, so it does
 		// not outlive the start. Bounded so a slow stream teardown can't hang start.
 		stopLogTail()
@@ -560,27 +561,22 @@ func startContainers(ctx context.Context, rt runtime.Runtime, sink output.Sink, 
 		}
 		if err != nil {
 			sink.Emit(output.SpinnerStop())
-			errCode := telemetry.ErrCodeStartFailed
-			var licErr *licenseNotCoveredError
-			if errors.As(err, &licErr) && c.EmulatorType.SelfValidatesLicense() {
-				errCode = telemetry.ErrCodeLicenseInvalid
-				sink.Emit(output.ErrorEvent{
-					Title: fmt.Sprintf("Your license does not include the %s emulator.", c.EmulatorType.ShortName()),
-					Actions: []output.ErrorAction{
-						{Label: "Sign up for a free trial:", Value: "https://app.localstack.cloud/sign-up"},
-						{Label: "Contact our team:", Value: "https://www.localstack.cloud/demo"},
-					},
-				})
-				err = output.NewSilentError(err)
+			// A cancelled context (e.g. Ctrl+C) is a deliberate abort, not a
+			// startup failure: propagate it without a styled error. The container
+			// is detached and stays running.
+			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+				return err
 			}
-			tel.EmitEmulatorLifecycleEvent(ctx, telemetry.LifecycleEvent{
-				EventType: telemetry.LifecycleStartError,
-				Emulator:  c.EmulatorType,
-				Image:     c.Image,
-				ErrorCode: errCode,
-				ErrorMsg:  err.Error(),
-			})
-			return err
+			// Read the logs only now, after the follow-goroutine's final flush, so
+			// the tail is complete. Fall back to a direct fetch if nothing was
+			// streamed (unlikely once the container ran).
+			logs := startupLogs.String()
+			if logs == "" {
+				if direct, derr := rt.Logs(ctx, containerID, 20); derr == nil {
+					logs = direct
+				}
+			}
+			return handleStartupFailure(ctx, sink, tel, c, err, logs)
 		}
 		sink.Emit(output.SpinnerStop())
 
@@ -598,6 +594,83 @@ func startContainers(ctx context.Context, rt runtime.Runtime, sink output.Sink, 
 		})
 	}
 	return nil
+}
+
+// handleStartupFailure classifies an awaitStartup failure for container c,
+// emits the matching ErrorEvent + lifecycle telemetry, and returns a silent
+// error (so the top-level handler does not re-print it). logs is the container's
+// buffered startup output, read after the follow-goroutine's final flush.
+func handleStartupFailure(ctx context.Context, sink output.Sink, tel *telemetry.Client, c runtime.ContainerConfig, err error, logs string) error {
+	errCode := telemetry.ErrCodeStartFailed
+
+	switch {
+	// A self-validating emulator (Snowflake/Azure) whose license does not cover
+	// it exits with a distinctive log line. Preserve the dedicated messaging.
+	case c.EmulatorType.SelfValidatesLicense() && strings.Contains(logs, "not covered by your license"):
+		errCode = telemetry.ErrCodeLicenseInvalid
+		sink.Emit(output.ErrorEvent{
+			Title: fmt.Sprintf("Your license does not include the %s emulator.", c.EmulatorType.ShortName()),
+			Actions: []output.ErrorAction{
+				{Label: "Sign up for a free trial:", Value: "https://app.localstack.cloud/sign-up"},
+				{Label: "Contact our team:", Value: "https://www.localstack.cloud/demo"},
+			},
+		})
+		err = &licenseNotCoveredError{}
+
+	case isStartupTimeout(err):
+		errCode = telemetry.ErrCodeStartTimeout
+		var timeoutErr *startupTimeoutError
+		errors.As(err, &timeoutErr)
+		summary := "LocalStack is still running so you can inspect it, or stop it."
+		actions := []output.ErrorAction{
+			{Label: "View the logs:", Value: "lstk logs"},
+			{Label: "Stop LocalStack:", Value: "lstk stop"},
+			{Label: "Allow more time on a slow machine:", Value: "LSTK_STARTUP_TIMEOUT=5m lstk start"},
+		}
+		if timeoutErr != nil && timeoutErr.stopped {
+			summary = "LocalStack has been stopped."
+			actions = []output.ErrorAction{
+				{Label: "Try again:", Value: "lstk start"},
+				{Label: "Allow more time on a slow machine:", Value: "LSTK_STARTUP_TIMEOUT=5m lstk start"},
+			}
+		}
+		if tail := lastLogLines(logs, 15); tail != "" {
+			summary += "\nLast container output:\n" + tail
+		}
+		sink.Emit(output.ErrorEvent{
+			Title:   err.Error(),
+			Summary: summary,
+			Actions: actions,
+		})
+
+	default:
+		// Container exited before becoming healthy (crash during startup).
+		summary := ""
+		if tail := lastLogLines(logs, 15); tail != "" {
+			summary = "Last container output:\n" + tail
+		}
+		sink.Emit(output.ErrorEvent{
+			Title:   err.Error(),
+			Summary: summary,
+			Actions: []output.ErrorAction{
+				{Label: "Check your configuration and try again:", Value: "lstk start"},
+			},
+		})
+	}
+
+	tel.EmitEmulatorLifecycleEvent(ctx, telemetry.LifecycleEvent{
+		EventType: telemetry.LifecycleStartError,
+		Emulator:  c.EmulatorType,
+		Image:     c.Image,
+		ErrorCode: errCode,
+		ErrorMsg:  err.Error(),
+	})
+	return output.NewSilentError(err)
+}
+
+func isStartupTimeout(err error) bool {
+	var timeoutErr *startupTimeoutError
+	return errors.As(err, &timeoutErr)
 }
 
 func selectContainersToStart(ctx context.Context, rt runtime.Runtime, sink output.Sink, tel *telemetry.Client, containers []runtime.ContainerConfig, localStackHost, webAppURL string) ([]runtime.ContainerConfig, error) {
@@ -822,63 +895,216 @@ func (e *licenseNotCoveredError) Error() string {
 	return "license does not include this emulator"
 }
 
+// containerExitedError is returned by awaitStartup when the container stops
+// running before becoming healthy (e.g. it crashed during startup).
+type containerExitedError struct {
+	exitCode int // -1 when unknown
+}
+
+func (e *containerExitedError) Error() string {
+	if e.exitCode < 0 {
+		return "LocalStack exited unexpectedly"
+	}
+	return fmt.Sprintf("LocalStack exited unexpectedly (exit code %d)", e.exitCode)
+}
+
+// exitedError builds the containerExitedError for an exit detected by the
+// IsRunning poll, waiting briefly for the runtime's exit wait to deliver the
+// exit code (the wait response is already in flight once the container is seen
+// stopped). Falls back to an unknown code (-1).
+func exitedError(exitCh <-chan runtime.ExitResult) error {
+	if exitCh != nil {
+		select {
+		case res := <-exitCh:
+			if res.Err == nil {
+				return &containerExitedError{exitCode: res.ExitCode}
+			}
+		case <-time.After(2 * time.Second):
+		}
+	}
+	return &containerExitedError{exitCode: -1}
+}
+
+// startupTimeoutError is returned by awaitStartup when the container stays
+// running but does not become healthy within the deadline. stopped records
+// whether the container was stopped on the way out (the user chose "stop" at
+// the interactive prompt) so the error messaging can reflect its actual state.
+type startupTimeoutError struct {
+	timeout time.Duration
+	stopped bool
+}
+
+func (e *startupTimeoutError) Error() string {
+	return fmt.Sprintf("LocalStack did not become ready within %s", e.timeout)
+}
+
 // maxStartupLogBytes bounds how much of a failing container's log tail is buffered
 // to explain a crash during startup.
 const maxStartupLogBytes = 64 * 1024
 
-// awaitStartup polls until one of two outcomes:
-//   - Success: health endpoint returns 200 (license is valid, LocalStack is ready)
-//   - Failure: container stops running (e.g., license activation failed), returns error with container logs
+// The startup deadline plays a different role per mode: interactively it only
+// shows a recoverable "keep waiting?" prompt, so it fires early; non-
+// interactively it fails the start, so it stays conservative. LocalStack should
+// not take this long either way, so a slower start is itself unusual and worth
+// surfacing (LSTK_STARTUP_TIMEOUT overrides both).
+const (
+	defaultStartupTimeoutInteractive    = 20 * time.Second
+	defaultStartupTimeoutNonInteractive = 60 * time.Second
+)
+
+// resolveStartupTimeout applies the per-mode default when no explicit timeout
+// is configured.
+func resolveStartupTimeout(timeout time.Duration, interactive bool) time.Duration {
+	if timeout > 0 {
+		return timeout
+	}
+	if interactive {
+		return defaultStartupTimeoutInteractive
+	}
+	return defaultStartupTimeoutNonInteractive
+}
+
+// awaitStartup polls until one of these outcomes:
+//   - Success: health endpoint returns 200 (LocalStack is ready) → nil.
+//   - Exit: the container stops running before becoming healthy →
+//     *containerExitedError (exit code from exitCh when available, else -1).
+//   - Timeout: the container stays running but is not healthy within the
+//     deadline → *startupTimeoutError. In interactive mode the user is prompted
+//     first (keep waiting re-arms the deadline; stop stops the container).
 //
-// startupLogs holds the container's logs streamed while it ran, so they survive
-// the container being auto-removed (--rm) on exit.
-//
-// TODO: move to Runtime interface if other runtimes (k8s?) need native readiness probes
-func awaitStartup(ctx context.Context, rt runtime.Runtime, sink output.Sink, containerID, name, healthURL string, startupLogs *logTail) error {
+// exitCh delivers the container's exit as observed by the runtime. It may be nil
+// if no wait could be registered; the IsRunning poll then still detects an exit
+// (with an unknown exit code).
+func awaitStartup(ctx context.Context, rt runtime.Runtime, sink output.Sink, containerID, name, healthURL string, exitCh <-chan runtime.ExitResult, timeout time.Duration, interactive bool) error {
+	timeout = resolveStartupTimeout(timeout, interactive)
 	client := &http.Client{Timeout: 2 * time.Second}
 
-	for {
+	deadline := time.NewTimer(timeout)
+	defer deadline.Stop()
+	ticker := time.NewTicker(1 * time.Second)
+	defer ticker.Stop()
+
+	check := func() (ready bool, err error) {
 		running, err := rt.IsRunning(ctx, containerID)
 		if err != nil {
-			return fmt.Errorf("failed to check container status: %w", err)
+			return false, fmt.Errorf("failed to check container status: %w", err)
 		}
 		if !running {
-			// Prefer the logs streamed while the container ran: with --rm the
-			// container is already gone, so a direct fetch would return nothing.
-			logs := startupLogs.String()
-			if logs == "" {
-				if direct, derr := rt.Logs(ctx, containerID, 20); derr == nil {
-					logs = direct
-				}
-			}
-			if strings.Contains(logs, "not covered by your license") {
-				return &licenseNotCoveredError{}
-			}
-			if logs == "" {
-				return fmt.Errorf("%s exited unexpectedly", name)
-			}
-			return fmt.Errorf("%s exited unexpectedly:\n%s", name, logs)
+			// The poll can observe the exit before the runtime's wait response
+			// arrives; give exitCh a moment to deliver the exit code rather than
+			// reporting it unknown.
+			return false, exitedError(exitCh)
 		}
 
-		resp, err := client.Get(healthURL)
-		if err == nil && resp.StatusCode == http.StatusOK {
-			if err := resp.Body.Close(); err != nil {
-				sink.Emit(output.MessageEvent{Severity: output.SeverityWarning, Text: fmt.Sprintf("failed to close response body: %v", err)})
+		resp, gerr := client.Get(healthURL)
+		if gerr == nil && resp.StatusCode == http.StatusOK {
+			if cerr := resp.Body.Close(); cerr != nil {
+				sink.Emit(output.MessageEvent{Severity: output.SeverityWarning, Text: fmt.Sprintf("failed to close response body: %v", cerr)})
 			}
-			return nil
+			return true, nil
 		}
 		if resp != nil {
-			if err := resp.Body.Close(); err != nil {
-				sink.Emit(output.MessageEvent{Severity: output.SeverityWarning, Text: fmt.Sprintf("failed to close response body: %v", err)})
+			if cerr := resp.Body.Close(); cerr != nil {
+				sink.Emit(output.MessageEvent{Severity: output.SeverityWarning, Text: fmt.Sprintf("failed to close response body: %v", cerr)})
 			}
 		}
+		return false, nil
+	}
 
+	// Probe once before the first tick so a fast start is caught promptly.
+	if ready, err := check(); err != nil || ready {
+		return err
+	}
+
+	for {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
-		case <-time.After(1 * time.Second):
+		case res := <-exitCh:
+			if res.Err != nil {
+				// The wait itself failed (e.g. an exit+removal race before the
+				// wait registered). Stop trusting exitCh and let the IsRunning
+				// poll detect the exit with an unknown code.
+				exitCh = nil
+				continue
+			}
+			return &containerExitedError{exitCode: res.ExitCode}
+		case <-deadline.C:
+			surface, stopped, err := handleStartupTimeout(ctx, rt, sink, containerID, timeout, interactive)
+			if err != nil {
+				return err
+			}
+			if surface {
+				return &startupTimeoutError{timeout: timeout, stopped: stopped}
+			}
+			// Keep waiting: re-arm the deadline and restore the spinner.
+			deadline.Reset(timeout)
+			sink.Emit(output.SpinnerStart("Starting LocalStack"))
+		case <-ticker.C:
+			if ready, err := check(); err != nil || ready {
+				return err
+			}
 		}
 	}
+}
+
+// handleStartupTimeout decides what to do when the startup deadline elapses. In
+// non-interactive mode it always surfaces the timeout, leaving the container
+// running so the user can inspect it. In interactive mode it prompts the user to
+// keep waiting or stop; "keep waiting" returns surface=false so the caller
+// re-arms the deadline. stopped reports whether the container was stopped (the
+// user chose "stop"), so the timeout error can describe its actual state.
+func handleStartupTimeout(ctx context.Context, rt runtime.Runtime, sink output.Sink, containerID string, timeout time.Duration, interactive bool) (surface, stopped bool, err error) {
+	if !interactive {
+		return true, false, nil
+	}
+
+	sink.Emit(output.SpinnerStop())
+	responseCh := make(chan output.InputResponse, 1)
+	sink.Emit(output.UserInputRequestEvent{
+		Prompt: "LocalStack is taking longer than expected to start. Check logs with 'lstk logs'",
+		Options: []output.InputOption{
+			{Key: "w", Label: "Keep waiting [W]"},
+			{Key: "s", Label: "Stop LocalStack and exit [S]"},
+		},
+		ResponseCh: responseCh,
+	})
+
+	select {
+	case resp := <-responseCh:
+		if resp.Cancelled {
+			// Ctrl+C: leave the container running (it is detached).
+			if ctx.Err() != nil {
+				return false, false, ctx.Err()
+			}
+			return false, false, context.Canceled
+		}
+		if resp.SelectedKey == "s" {
+			// Stopping takes a few seconds; show progress so the CLI does not
+			// look hung after the keypress. The caller's SpinnerStop closes it.
+			sink.Emit(output.SpinnerStart("Stopping LocalStack..."))
+			// Best-effort stop; the timeout error is authoritative either way.
+			_ = rt.Stop(ctx, containerID)
+			return true, true, nil
+		}
+		return false, false, nil
+	case <-ctx.Done():
+		return false, false, ctx.Err()
+	}
+}
+
+// lastLogLines returns the last n non-empty lines of logs, for including in an
+// error summary. Returns "" when logs is empty.
+func lastLogLines(logs string, n int) string {
+	logs = strings.TrimRight(logs, "\n")
+	if logs == "" {
+		return ""
+	}
+	lines := strings.Split(logs, "\n")
+	if len(lines) > n {
+		lines = lines[len(lines)-n:]
+	}
+	return strings.Join(lines, "\n")
 }
 
 // droppedHostEnv is a host variable filterHostEnv refused to forward, so the

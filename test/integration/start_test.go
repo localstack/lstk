@@ -95,6 +95,109 @@ func TestStartCommandReusesLocalImageWhenPresent(t *testing.T) {
 	assert.NotContains(t, stdout, "Pulling", "lstk must not re-pull an image that is already present")
 }
 
+// DEVX-758: a container that exits during startup must fail with a styled
+// ErrorEvent that reports the exit code, not the unstyled top-level fallback.
+// The stand-in alpine image runs its default /bin/sh which exits immediately
+// (exit code 0) without a TTY, so the container is gone almost at once.
+func TestStartFailsWhenContainerExitsDuringStartup(t *testing.T) {
+	requireDocker(t)
+	cleanup()
+	t.Cleanup(cleanup)
+
+	ctx := testContext(t)
+
+	const pinnedTag = "exit-during-startup-test"
+	const pinnedImage = "localstack/localstack-pro:" + pinnedTag
+	reader, err := dockerClient.ImagePull(ctx, testImage, client.ImagePullOptions{})
+	require.NoError(t, err, "failed to pull test image")
+	_, _ = io.Copy(io.Discard, reader)
+	_ = reader.Close()
+	_, err = dockerClient.ImageTag(ctx, client.ImageTagOptions{Source: testImage, Target: pinnedImage})
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		_, _ = dockerClient.ImageRemove(context.Background(), pinnedImage, client.ImageRemoveOptions{})
+	})
+
+	// A pinned tag with the image present locally skips the license pre-flight.
+	wantContainer := "localstack-aws-" + pinnedTag
+	t.Cleanup(func() {
+		_, _ = dockerClient.ContainerRemove(context.Background(), wantContainer, client.ContainerRemoveOptions{Force: true})
+	})
+
+	home := t.TempDir()
+	configFile := filepath.Join(home, "config.toml")
+	require.NoError(t, os.WriteFile(configFile,
+		[]byte(fmt.Sprintf("[[containers]]\ntype = \"aws\"\ntag = %q\nport = \"4599\"\n", pinnedTag)), 0644))
+
+	mockServer := createMockLicenseServer(true)
+	defer mockServer.Close()
+
+	e := append(testEnvWithHome(home, ""),
+		string(env.APIEndpoint)+"="+mockServer.URL,
+		string(env.AuthToken)+"=fake-token")
+	stdout, stderr, err := runLstk(t, ctx, "", e, "--config", configFile, "--non-interactive", "start")
+
+	require.Error(t, err, "expected start to fail when the container exits during startup")
+	requireExitCode(t, 1, err)
+	combined := stdout + stderr
+	assert.Contains(t, combined, "exited unexpectedly", "the failure must be surfaced as a styled error")
+	assert.Contains(t, combined, "exit code 0", "the captured exit code must be reported")
+}
+
+// DEVX-758 (the ticket's hang): a container that stays running but never serves
+// /_localstack/health must not wait forever. With a short LSTK_STARTUP_TIMEOUT in
+// non-interactive mode, lstk fails with a bounded timeout error and guidance,
+// leaving the container running. The stand-in nginx image keeps its entrypoint
+// alive but nothing listens on 4566, so the health check never connects.
+func TestStartFailsWhenContainerNeverBecomesHealthy(t *testing.T) {
+	requireDocker(t)
+	cleanup()
+	t.Cleanup(cleanup)
+
+	ctx := testContext(t)
+
+	const standInImage = "nginx:alpine"
+	const pinnedTag = "never-healthy-test"
+	const pinnedImage = "localstack/localstack-pro:" + pinnedTag
+	reader, err := dockerClient.ImagePull(ctx, standInImage, client.ImagePullOptions{})
+	require.NoError(t, err, "failed to pull nginx test image")
+	_, _ = io.Copy(io.Discard, reader)
+	_ = reader.Close()
+	_, err = dockerClient.ImageTag(ctx, client.ImageTagOptions{Source: standInImage, Target: pinnedImage})
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		_, _ = dockerClient.ImageRemove(context.Background(), pinnedImage, client.ImageRemoveOptions{})
+	})
+
+	// The container stays running on timeout (it is not auto-removed until it
+	// exits), so force-remove it explicitly. Its name is localstack-aws-<tag>.
+	wantContainer := "localstack-aws-" + pinnedTag
+	t.Cleanup(func() {
+		_, _ = dockerClient.ContainerRemove(context.Background(), wantContainer, client.ContainerRemoveOptions{Force: true})
+	})
+
+	home := t.TempDir()
+	configFile := filepath.Join(home, "config.toml")
+	require.NoError(t, os.WriteFile(configFile,
+		[]byte(fmt.Sprintf("[[containers]]\ntype = \"aws\"\ntag = %q\nport = \"4599\"\n", pinnedTag)), 0644))
+
+	mockServer := createMockLicenseServer(true)
+	defer mockServer.Close()
+
+	e := append(testEnvWithHome(home, ""),
+		string(env.APIEndpoint)+"="+mockServer.URL,
+		string(env.AuthToken)+"=fake-token",
+		string(env.StartupTimeout)+"=5s")
+	stdout, stderr, err := runLstk(t, ctx, "", e, "--config", configFile, "--non-interactive", "start")
+
+	require.Error(t, err, "expected start to fail when the container never becomes healthy")
+	requireExitCode(t, 1, err)
+	combined := stdout + stderr
+	assert.Contains(t, combined, "did not become ready within 5s", "the bounded timeout must be surfaced")
+	assert.Contains(t, combined, "lstk logs", "the guidance must point at lstk logs")
+	assert.Contains(t, combined, "lstk stop", "the guidance must point at lstk stop")
+}
+
 func TestStartCommandSucceedsWithKeyringToken(t *testing.T) {
 	requireDocker(t)
 	cleanup()

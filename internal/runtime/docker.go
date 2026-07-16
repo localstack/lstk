@@ -232,19 +232,19 @@ func (d *DockerRuntime) PullImage(ctx context.Context, imageName string, progres
 	return nil
 }
 
-func (d *DockerRuntime) Start(ctx context.Context, config ContainerConfig) (string, error) {
+func (d *DockerRuntime) Start(ctx context.Context, config ContainerConfig) (string, <-chan ExitResult, error) {
 	bindHostStr := config.BindHost
 	if bindHostStr == "" {
 		bindHostStr = "127.0.0.1"
 	}
 	bindHost, err := netip.ParseAddr(bindHostStr)
 	if err != nil {
-		return "", fmt.Errorf("invalid bind host %q: %w", bindHostStr, err)
+		return "", nil, fmt.Errorf("invalid bind host %q: %w", bindHostStr, err)
 	}
 
 	containerPort, err := network.ParsePort(config.ContainerPort)
 	if err != nil {
-		return "", fmt.Errorf("invalid container port %q: %w", config.ContainerPort, err)
+		return "", nil, fmt.Errorf("invalid container port %q: %w", config.ContainerPort, err)
 	}
 	exposedPorts := network.PortSet{containerPort: struct{}{}}
 	portBindings := network.PortMap{containerPort: []network.PortBinding{{HostIP: bindHost, HostPort: config.Port}}}
@@ -256,7 +256,7 @@ func (d *DockerRuntime) Start(ctx context.Context, config ContainerConfig) (stri
 		}
 		p, err := network.ParsePort(ep.ContainerPort + "/" + proto)
 		if err != nil {
-			return "", fmt.Errorf("invalid extra port %q: %w", ep.ContainerPort, err)
+			return "", nil, fmt.Errorf("invalid extra port %q: %w", ep.ContainerPort, err)
 		}
 		exposedPorts[p] = struct{}{}
 		portBindings[p] = []network.PortBinding{{HostIP: bindHost, HostPort: ep.HostPort}}
@@ -285,14 +285,20 @@ func (d *DockerRuntime) Start(ctx context.Context, config ContainerConfig) (stri
 		Name: config.Name,
 	})
 	if err != nil {
-		return "", err
+		return "", nil, err
 	}
+
+	// Register the exit wait before starting: an instantly-exiting container is
+	// auto-removed (--rm) so fast that a wait registered after start can miss it
+	// and lose the exit code. "next-exit" cannot fire for a created but
+	// not-yet-started container, so this never observes a stale exit.
+	exitCh := d.waitForExit(ctx, resp.ID)
 
 	if _, err := d.client.ContainerStart(ctx, resp.ID, client.ContainerStartOptions{}); err != nil {
-		return "", err
+		return "", nil, err
 	}
 
-	return resp.ID, nil
+	return resp.ID, exitCh, nil
 }
 
 func (d *DockerRuntime) Stop(ctx context.Context, containerName string) error {
@@ -351,6 +357,27 @@ func (d *DockerRuntime) IsRunning(ctx context.Context, containerID string) (bool
 		return false, err
 	}
 	return inspect.Container.State.Running, nil
+}
+
+// waitForExit returns a channel that receives exactly one ExitResult for the
+// container's next exit. ContainerWait blocks until the server acknowledges the
+// wait registration, so the wait is armed by the time this returns.
+func (d *DockerRuntime) waitForExit(ctx context.Context, containerID string) <-chan ExitResult {
+	wait := d.client.ContainerWait(ctx, containerID, client.ContainerWaitOptions{Condition: container.WaitConditionNextExit})
+
+	// Buffered so the goroutine never leaks if the caller stops reading.
+	out := make(chan ExitResult, 1)
+	go func() {
+		select {
+		case resp := <-wait.Result:
+			out <- ExitResult{ExitCode: int(resp.StatusCode)}
+		case err := <-wait.Error:
+			out <- ExitResult{ExitCode: -1, Err: err}
+		case <-ctx.Done():
+			out <- ExitResult{ExitCode: -1, Err: ctx.Err()}
+		}
+	}()
+	return out
 }
 
 func (d *DockerRuntime) ContainerStartedAt(ctx context.Context, containerName string) (time.Time, error) {

@@ -23,6 +23,7 @@ const (
 	Persistence        Key = "LOCALSTACK_PERSISTENCE"
 	Otel               Key = "LSTK_OTEL"
 	OtelEndpoint       Key = "OTEL_EXPORTER_OTLP_ENDPOINT"
+	StartupTimeout     Key = "LSTK_STARTUP_TIMEOUT"
 	AWSAccessKeyID     Key = "AWS_ACCESS_KEY_ID"
 	AWSSecretAccessKey Key = "AWS_SECRET_ACCESS_KEY"
 	// AzureCollectTelemetry controls the Azure CLI's usage telemetry. Defaulted to

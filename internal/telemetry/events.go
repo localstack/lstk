@@ -78,6 +78,7 @@ const (
 	ErrCodeImagePullFailed   = "image_pull_failed"
 	ErrCodeLicenseInvalid = "license_invalid"
 	ErrCodeStartFailed       = "start_failed"
+	ErrCodeStartTimeout      = "start_timeout"
 	ErrCodeEmulatorMismatch  = "emulator_mismatch"
 )
 

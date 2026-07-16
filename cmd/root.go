@@ -285,6 +285,7 @@ func buildStartOptions(cfg *env.Env, appConfig *config.Config, logger log.Logger
 		Containers:       appConfig.Containers,
 		Env:              appConfig.Env,
 		Persist:          persist,
+		StartupTimeout:   cfg.StartupTimeout,
 		Logger:           logger,
 		Telemetry:        tel,
 	}

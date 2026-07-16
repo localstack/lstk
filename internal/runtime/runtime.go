@@ -1,5 +1,7 @@
 package runtime
 
+//go:generate mockgen -source=runtime.go -destination=mock_runtime.go -package=runtime
+
 import (
 	"context"
 	"io"
@@ -51,12 +53,25 @@ type RunningContainer struct {
 	BoundPort string // host port bound to the queried container port
 }
 
+// ExitResult reports a container's exit as observed by the exit wait that
+// Start registers.
+type ExitResult struct {
+	ExitCode int   // -1 when unknown
+	Err      error // wait itself failed (exit code unknown)
+}
+
 // Runtime abstracts container runtime operations (Docker, Podman, Kubernetes, etc.)
 type Runtime interface {
 	IsHealthy(ctx context.Context) error
 	EmitUnhealthyError(sink output.Sink, err error)
 	PullImage(ctx context.Context, image string, progress chan<- PullProgress) error
-	Start(ctx context.Context, config ContainerConfig) (string, error)
+	// Start creates and starts the container. The returned channel receives
+	// exactly one ExitResult when the container exits. The exit wait is
+	// registered between create and start so that even an instantly-exiting
+	// container's exit code is observed — with AutoRemove the container is
+	// removed the moment it exits, after which a wait can no longer be
+	// registered.
+	Start(ctx context.Context, config ContainerConfig) (string, <-chan ExitResult, error)
 	Stop(ctx context.Context, containerName string) error
 	Remove(ctx context.Context, containerName string) error
 	IsRunning(ctx context.Context, containerID string) (bool, error)
