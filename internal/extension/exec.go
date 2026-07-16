@@ -11,6 +11,7 @@ import (
 	"go.opentelemetry.io/otel/codes"
 
 	"github.com/localstack/lstk/internal/output"
+	"github.com/localstack/lstk/internal/proc"
 )
 
 // Invoke executes the resolved extension with args forwarded unmodified,
@@ -51,7 +52,7 @@ func Invoke(ctx context.Context, ext *Extension, args []string, runCtx Context) 
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
-	if err := cmd.Run(); err != nil {
+	if err := proc.Run(cmd); err != nil {
 		var exitErr *exec.ExitError
 		if errors.As(err, &exitErr) {
 			span.SetAttributes(attribute.Int("extension.exit_code", exitErr.ExitCode()))

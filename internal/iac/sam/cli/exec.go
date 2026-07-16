@@ -13,6 +13,7 @@ import (
 
 	"github.com/localstack/lstk/internal/log"
 	"github.com/localstack/lstk/internal/output"
+	"github.com/localstack/lstk/internal/proc"
 )
 
 const installDocsURL = "https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/install-sam-cli.html"
@@ -69,7 +70,7 @@ func Run(ctx context.Context, endpointURL, account, region string, sink output.S
 	cmd.Stderr = os.Stderr
 	cmd.Env = BuildEnv(os.Environ(), effectiveEndpoint, account, region)
 
-	if err := cmd.Run(); err != nil {
+	if err := proc.Run(cmd); err != nil {
 		var exitErr *exec.ExitError
 		if errors.As(err, &exitErr) {
 			span.SetAttributes(attribute.Int("sam.exit_code", exitErr.ExitCode()))

@@ -14,6 +14,7 @@ import (
 
 	"github.com/localstack/lstk/internal/awsconfig"
 	"github.com/localstack/lstk/internal/output"
+	"github.com/localstack/lstk/internal/proc"
 )
 
 const InstallURL = "https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html"
@@ -80,7 +81,7 @@ func Exec(ctx context.Context, endpointURL string, useProfile bool, stdout, stde
 		cmd.Env = BuildEnv(os.Environ())
 	}
 
-	if err := cmd.Run(); err != nil {
+	if err := proc.Run(cmd); err != nil {
 		var exitErr *exec.ExitError
 		if errors.As(err, &exitErr) {
 			span.SetAttributes(attribute.Int("aws.exit_code", exitErr.ExitCode()))

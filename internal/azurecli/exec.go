@@ -12,6 +12,8 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
+
+	"github.com/localstack/lstk/internal/proc"
 )
 
 const InstallURL = "https://learn.microsoft.com/en-us/cli/azure/"
@@ -51,7 +53,7 @@ func Exec(ctx context.Context, extraEnv []string, stdin io.Reader, stdout, stder
 	if len(extraEnv) > 0 {
 		cmd.Env = append(os.Environ(), extraEnv...)
 	}
-	if err := cmd.Run(); err != nil {
+	if err := proc.Run(cmd); err != nil {
 		var exitErr *exec.ExitError
 		if errors.As(err, &exitErr) {
 			span.SetAttributes(attribute.Int("az.exit_code", exitErr.ExitCode()))

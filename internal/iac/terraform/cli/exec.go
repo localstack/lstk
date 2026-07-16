@@ -17,6 +17,7 @@ import (
 	"github.com/localstack/lstk/internal/endpoint"
 	"github.com/localstack/lstk/internal/log"
 	"github.com/localstack/lstk/internal/output"
+	"github.com/localstack/lstk/internal/proc"
 )
 
 // Run proxies a terraform invocation against LocalStack. The path taken depends
@@ -229,7 +230,7 @@ func runTerraform(ctx context.Context, span trace.Span, tfBin string, args []str
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
-	if err := cmd.Run(); err != nil {
+	if err := proc.Run(cmd); err != nil {
 		var exitErr *exec.ExitError
 		if errors.As(err, &exitErr) {
 			span.SetAttributes(attribute.Int("terraform.exit_code", exitErr.ExitCode()))
