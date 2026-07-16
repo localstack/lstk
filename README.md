@@ -246,6 +246,7 @@ lstk --non-interactive
 |---|---|
 | `LOCALSTACK_AUTH_TOKEN` | Auth token used for non-interactive runs or to skip browser login |
 | `LOCALSTACK_DISABLE_EVENTS=1` | Disables telemetry event reporting |
+| `LSTK_STARTUP_TIMEOUT` | How long `lstk start` waits for the emulator to become healthy before acting (Go duration, e.g. `90s`, `5m`). Defaults: 20s interactively (shows a keep-waiting/stop prompt; "keep waiting" re-arms the deadline), 60s non-interactively (fails with the last container logs, leaving the emulator running for inspection). |
 | `LSTK_OTEL=1` | Enables OpenTelemetry trace export (disabled by default). When enabled, standard `OTEL_EXPORTER_OTLP_*` env vars are respected by the SDK (e.g. `OTEL_EXPORTER_OTLP_ENDPOINT` defaults to `http://localhost:4318`). Requires an OTLP-compatible backend to receive and visualize telemetry — for local development, `make otel` starts one (UI at http://localhost:16686). |
 | `DOCKER_HOST` | Override the Docker daemon socket (e.g. `unix:///home/user/.colima/default/docker.sock`). When unset, lstk tries the default socket and then probes common alternatives (Colima, OrbStack). |
 
