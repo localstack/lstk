@@ -31,7 +31,7 @@ make build              # Compiles to bin/lstk
 
 ```bash
 make test               # Run unit tests (cmd/ and internal/) via gotestsum
-make test-integration   # Run integration tests (requires Docker)
+make test-integration   # Run integration tests (rebuilds bin/lstk first, requires Docker)
 make lint               # Run golangci-lint
 ```
 
