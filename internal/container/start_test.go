@@ -390,12 +390,23 @@ func TestFilterHostEnv(t *testing.T) {
 		"LOCALSTACK_API_ENDPOINT=https://example.test",
 		"LOCALSTACK_AUTH_TOKEN=host-token",
 		"LOCALSTACK_PERSISTENCE=1",
+		"LOCALSTACK_PATH=/home/user/repos/localstack",
+		"LOCALSTACK_HOME=/root",
+		"LOCALSTACK_PYTHONPATH=/opt/code",
+		"LOCALSTACK_LD_PRELOAD=/lib/evil.so",
+		"LOCALSTACK_IFS=:",
+		"LOCALSTACK_BASH_ENV=/etc/os-release",
+		"LOCALSTACK_SHELL=/bin/zsh",
+		"LOCALSTACK_ENV=dev",
+		"LOCALSTACK_MULTILINE=a\nLOCALSTACK_PATH=",
+		"LOCALSTACK_PATHFINDER=1",
+		"LOCALSTACK_HOSTNAME=custom.host",
 		"PATH=/usr/bin",
 		"HOME=/home/user",
 		"CI_PIPELINE=foo",
 	}
 
-	got := filterHostEnv(input)
+	got, dropped := filterHostEnv(input)
 
 	assert.Contains(t, got, "CI=true")
 	assert.Contains(t, got, "LOCALSTACK_DISABLE_EVENTS=1")
@@ -406,6 +417,34 @@ func TestFilterHostEnv(t *testing.T) {
 	assert.NotContains(t, got, "PATH=/usr/bin")
 	assert.NotContains(t, got, "HOME=/home/user")
 	assert.NotContains(t, got, "CI_PIPELINE=foo", "only exact CI= must be forwarded, not CI_*")
+	assert.NotContains(t, got, "LOCALSTACK_PATH=/home/user/repos/localstack",
+		"the emulator entrypoint strips the LOCALSTACK_ prefix, so forwarding this would override PATH inside the emulator and break startup (DEVX-984)")
+	assert.NotContains(t, got, "LOCALSTACK_HOME=/root")
+	assert.NotContains(t, got, "LOCALSTACK_PYTHONPATH=/opt/code")
+	assert.NotContains(t, got, "LOCALSTACK_LD_PRELOAD=/lib/evil.so")
+	assert.NotContains(t, got, "LOCALSTACK_IFS=:",
+		"the entrypoint sources the stripped exports mid-script, so IFS would corrupt its word splitting")
+	assert.NotContains(t, got, "LOCALSTACK_BASH_ENV=/etc/os-release",
+		"every non-interactive bash in the container executes the file BASH_ENV names, e.g. init hooks")
+	assert.Contains(t, got, "LOCALSTACK_SHELL=/bin/zsh",
+		"SHELL is deliberately forwarded: nothing in the image reads it")
+	assert.Contains(t, got, "LOCALSTACK_ENV=dev",
+		"ENV is deliberately forwarded: only interactive shells read it, and they never inherit the re-exported env")
+	assert.NotContains(t, got, "LOCALSTACK_MULTILINE=a\nLOCALSTACK_PATH=",
+		"a multi-line value is split by the entrypoint's line-oriented env pipeline and can inject rogue exports like a blank PATH")
+	assert.Contains(t, got, "LOCALSTACK_PATHFINDER=1", "only exact critical names are blocked after prefix stripping, not name prefixes")
+	assert.Contains(t, got, "LOCALSTACK_HOSTNAME=custom.host",
+		"the entrypoint excludes LOCALSTACK_HOSTNAME from prefix stripping, so it stays forwardable")
+	assert.Equal(t, []droppedHostEnv{
+		{name: "LOCALSTACK_PATH", overrides: "PATH"},
+		{name: "LOCALSTACK_HOME", overrides: "HOME"},
+		{name: "LOCALSTACK_PYTHONPATH", overrides: "PYTHONPATH"},
+		{name: "LOCALSTACK_LD_PRELOAD", overrides: "LD_PRELOAD"},
+		{name: "LOCALSTACK_IFS", overrides: "IFS"},
+		{name: "LOCALSTACK_BASH_ENV", overrides: "BASH_ENV"},
+		{name: "LOCALSTACK_MULTILINE"},
+	}, dropped,
+		"dropped variables are reported with the reason so start can warn the user; the intentional LOCALSTACK_AUTH_TOKEN drop is not warned about")
 }
 
 func TestAgentEnv(t *testing.T) {

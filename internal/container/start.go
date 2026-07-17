@@ -81,7 +81,14 @@ func Start(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts Start
 
 	tel := opts.Telemetry
 
-	hostEnv := filterHostEnv(os.Environ())
+	hostEnv, droppedEnv := filterHostEnv(os.Environ())
+	for _, d := range droppedEnv {
+		text := fmt.Sprintf("Not forwarding %s to the emulator: it would override %s inside the emulator", d.name, d.overrides)
+		if d.overrides == "" {
+			text = fmt.Sprintf("Not forwarding %s to the emulator: its value contains line breaks", d.name)
+		}
+		sink.Emit(output.MessageEvent{Severity: output.SeverityWarning, Text: text})
+	}
 	agentEnvVars := agentEnv(caller.New().Classify())
 
 	containers := make([]runtime.ContainerConfig, len(opts.Containers))
@@ -874,19 +881,68 @@ func awaitStartup(ctx context.Context, rt runtime.Runtime, sink output.Sink, con
 	}
 }
 
+// droppedHostEnv is a host variable filterHostEnv refused to forward, so the
+// caller can warn the user. overrides names the critical variable the
+// entrypoint-stripped name would clobber inside the emulator; it is empty when
+// the entry was dropped for carrying a multi-line value instead.
+type droppedHostEnv struct {
+	name      string
+	overrides string
+}
+
 // filterHostEnv returns the subset of host environment entries that should be
 // forwarded to the emulator container. It keeps CI and LOCALSTACK_* variables
-// but explicitly drops LOCALSTACK_AUTH_TOKEN so the host value cannot overwrite
-// the token resolved by lstk (which may come from the keyring).
-func filterHostEnv(envList []string) []string {
-	var out []string
+// but drops entries that would corrupt the emulator environment:
+//   - LOCALSTACK_AUTH_TOKEN, so the host value cannot overwrite the token
+//     resolved by lstk (which may come from the keyring); this drop is silent
+//     because lstk forwards its own resolved token instead;
+//   - values containing a newline or carriage return: the entrypoint re-exports
+//     variables through a line-oriented `env | sed` pipeline, so an embedded
+//     line like "LOCALSTACK_PATH=" would inject a rogue export that blanks PATH;
+//   - variables whose prefix-stripped name would clobber a critical variable
+//     inside the emulator (see criticalContainerVar).
+//
+// The latter two are returned in dropped so callers can warn the user.
+func filterHostEnv(envList []string) (out []string, dropped []droppedHostEnv) {
 	for _, e := range envList {
-		if strings.HasPrefix(e, "CI=") ||
-			(strings.HasPrefix(e, "LOCALSTACK_") && !strings.HasPrefix(e, "LOCALSTACK_AUTH_TOKEN=")) {
-			out = append(out, e)
+		key, value, ok := strings.Cut(e, "=")
+		if !ok || (key != "CI" && !strings.HasPrefix(key, "LOCALSTACK_")) {
+			continue
 		}
+		if key == "LOCALSTACK_AUTH_TOKEN" {
+			continue
+		}
+		if strings.ContainsAny(value, "\n\r") {
+			dropped = append(dropped, droppedHostEnv{name: key})
+			continue
+		}
+		if name := strings.TrimPrefix(key, "LOCALSTACK_"); name != key && criticalContainerVar(name) {
+			dropped = append(dropped, droppedHostEnv{name: key, overrides: name})
+			continue
+		}
+		out = append(out, e)
 	}
-	return out
+	return out, dropped
+}
+
+// criticalContainerVar reports whether a LOCALSTACK_* variable stripped to name
+// would break the emulator: the image's docker-entrypoint.sh strips the
+// LOCALSTACK_ prefix and re-exports the remainder (skipping only LOCALSTACK_HOST*
+// and names starting with a digit), so e.g. a host LOCALSTACK_PATH becomes PATH
+// inside the emulator and startup dies with "mkdir: command not found" (DEVX-984).
+// Each entry has a verified failure mode in the image (localstack/lstk#378):
+// HOME redirects every ~-anchored path (plugin cache, ~/.localstack, ~/.aws);
+// IFS corrupts word splitting in the shell sourcing the re-exports; BASH_ENV
+// names a file every non-interactive bash executes (e.g. init hooks); LD_*
+// hijack the dynamic loader for every process; PYTHONHOME is fatal to the
+// interpreter and PYTHONPATH shadows the emulator's imports.
+func criticalContainerVar(name string) bool {
+	switch name {
+	case "PATH", "HOME", "IFS", "BASH_ENV",
+		"LD_PRELOAD", "LD_LIBRARY_PATH", "PYTHONPATH", "PYTHONHOME":
+		return true
+	}
+	return false
 }
 
 func envHasKey(env []string, key string) bool {
