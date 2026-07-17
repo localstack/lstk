@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"os/exec"
 	"strings"
 	"time"
 
@@ -67,15 +66,11 @@ func dispatchExtension(ctx context.Context, cfg *env.Env, tel *telemetry.Client,
 	start := time.Now()
 	runErr := extension.Invoke(ctx, ext, extArgs, runCtx)
 
-	exitCode, errorMsg := 0, ""
+	exitCode, errorMsg := ExitCode(runErr), ""
 	if runErr != nil {
-		exitCode, errorMsg = 1, runErr.Error()
-		var exitErr *exec.ExitError
-		if errors.As(runErr, &exitErr) {
-			exitCode = exitErr.ExitCode()
-		}
+		errorMsg = runErr.Error()
 	}
-	tel.EmitCommand(ctx, "ext:"+name, nil, time.Since(start).Milliseconds(), exitCode, errorMsg)
+	tel.EmitCommand(ctx, "ext:"+name, "", nil, time.Since(start).Milliseconds(), exitCode, errorMsg)
 
 	return runErr
 }

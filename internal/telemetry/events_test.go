@@ -68,7 +68,7 @@ func TestEmitCommand_SendsCorrectEventNameAndStructure(t *testing.T) {
 	tel, ch := captureEvents(t)
 
 	tel.SetAuthToken("ls-token")
-	tel.EmitCommand(context.Background(), "start", []string{"--non-interactive"}, 1200, 0, "")
+	tel.EmitCommand(context.Background(), "start", "", []string{"--non-interactive"}, 1200, 0, "")
 
 	got := drainEvent(t, tel, ch)
 
@@ -102,13 +102,39 @@ func TestEmitCommand_SendsCorrectEventNameAndStructure(t *testing.T) {
 func TestEmitCommand_IncludesErrorMsgOnFailure(t *testing.T) {
 	tel, ch := captureEvents(t)
 
-	tel.EmitCommand(context.Background(), "start", nil, 50, 1, "port 4566 already in use")
+	tel.EmitCommand(context.Background(), "start", "", nil, 50, 1, "port 4566 already in use")
 
 	got := drainEvent(t, tel, ch)
 	payload := got["payload"].(map[string]any)
 	result := payload["result"].(map[string]any)
 	assert.Equal(t, "port 4566 already in use", result["error_msg"])
 	assert.InDelta(t, 1, result["exit_code"], 0)
+}
+
+func TestEmitCommand_RecordsSubcommandAndRealExitCode(t *testing.T) {
+	tel, ch := captureEvents(t)
+
+	tel.EmitCommand(context.Background(), "aws", "s3 ls", nil, 80, 252, "exit status 252")
+
+	got := drainEvent(t, tel, ch)
+	payload := got["payload"].(map[string]any)
+	params := payload["parameters"].(map[string]any)
+	assert.Equal(t, "aws", params["command"])
+	assert.Equal(t, "s3 ls", params["subcommand"])
+	result := payload["result"].(map[string]any)
+	assert.InDelta(t, 252, result["exit_code"], 0)
+}
+
+func TestEmitCommand_OmitsSubcommandWhenEmpty(t *testing.T) {
+	tel, ch := captureEvents(t)
+
+	tel.EmitCommand(context.Background(), "start", "", nil, 80, 0, "")
+
+	got := drainEvent(t, tel, ch)
+	payload := got["payload"].(map[string]any)
+	params := payload["parameters"].(map[string]any)
+	_, present := params["subcommand"]
+	assert.False(t, present, "empty subcommand should be omitted from the payload")
 }
 
 func TestEmitCommand_IsNoOpWhenDisabled(t *testing.T) {
@@ -119,7 +145,7 @@ func TestEmitCommand_IsNoOpWhenDisabled(t *testing.T) {
 	defer srv.Close()
 
 	tel := New(srv.URL, true) // disabled
-	tel.EmitCommand(context.Background(), "start", nil, 0, 0, "")
+	tel.EmitCommand(context.Background(), "start", "", nil, 0, 0, "")
 	tel.Close()
 
 	select {

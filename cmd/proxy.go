@@ -55,6 +55,30 @@ func stripGlobalFlags(args []string) ([]string, globalFlags) {
 	return out, gf
 }
 
+// proxySubcommand returns the leading subcommand tokens of a proxy command's
+// raw args for telemetry, e.g. "s3 ls" for `lstk aws s3 ls s3://bucket`. Only
+// leading non-flag tokens are collected: collection stops at the first
+// flag-like arg so a flag's value can never be mistaken for a subcommand, and
+// is capped at two tokens of at most 64 runes each so free-form values are
+// never recorded.
+func proxySubcommand(args []string) string {
+	args, _ = stripGlobalFlags(args)
+	tokens := make([]string, 0, 2)
+	for _, arg := range args {
+		if strings.HasPrefix(arg, "-") {
+			break
+		}
+		if r := []rune(arg); len(r) > 64 {
+			arg = string(r[:64])
+		}
+		tokens = append(tokens, arg)
+		if len(tokens) == 2 {
+			break
+		}
+	}
+	return strings.Join(tokens, " ")
+}
+
 // jsonPrecedesCommandName reports whether --json (or --json=<value>) appears in
 // the raw command line before the literal token calledAs — the resolved proxy
 // command's own name/alias (e.g. "aws", "terraform"/"tf", "az"). Proxy commands
