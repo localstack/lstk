@@ -564,8 +564,17 @@ func startContainers(ctx context.Context, rt runtime.Runtime, sink output.Sink, 
 			sink.Emit(output.SpinnerStop())
 			// A cancelled context (e.g. Ctrl+C) is a deliberate abort, not a
 			// startup failure: propagate it without a styled error. The container
-			// is detached and stays running.
+			// is detached and stays running. It is still tracked as a start_error
+			// lifecycle event (matching the behavior before startup monitoring
+			// was introduced) so interrupted starts stay visible in telemetry.
 			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+				tel.EmitEmulatorLifecycleEvent(ctx, telemetry.LifecycleEvent{
+					EventType: telemetry.LifecycleStartError,
+					Emulator:  c.EmulatorType,
+					Image:     c.Image,
+					ErrorCode: telemetry.ErrCodeStartFailed,
+					ErrorMsg:  err.Error(),
+				})
 				return err
 			}
 			// Read the logs only now, after the follow-goroutine's final flush, so

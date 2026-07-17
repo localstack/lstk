@@ -198,6 +198,83 @@ func TestStartFailsWhenContainerNeverBecomesHealthy(t *testing.T) {
 	assert.Contains(t, combined, "lstk stop", "the guidance must point at lstk stop")
 }
 
+// Interrupting a start while it awaits readiness (Ctrl+C / SIGINT) renders no
+// styled error — it is a deliberate abort — but must still be tracked as a
+// start_error lifecycle telemetry event, as it was before startup monitoring
+// was introduced. Decided in the PR #390 review; this test guards the decision.
+func TestStartEmitsTelemetryWhenInterruptedDuringStartup(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("sending os.Interrupt to a child process is not supported on Windows")
+	}
+	requireDocker(t)
+	cleanup()
+	t.Cleanup(cleanup)
+
+	ctx := testContext(t)
+
+	// Same stand-in as TestStartFailsWhenContainerNeverBecomesHealthy: nginx
+	// keeps running but never serves the health endpoint, so the start stays in
+	// the readiness wait until interrupted.
+	const standInImage = "nginx:alpine"
+	const pinnedTag = "interrupted-startup-test"
+	const pinnedImage = "localstack/localstack-pro:" + pinnedTag
+	reader, err := dockerClient.ImagePull(ctx, standInImage, client.ImagePullOptions{})
+	require.NoError(t, err, "failed to pull nginx test image")
+	_, _ = io.Copy(io.Discard, reader)
+	_ = reader.Close()
+	_, err = dockerClient.ImageTag(ctx, client.ImageTagOptions{Source: standInImage, Target: pinnedImage})
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		_, _ = dockerClient.ImageRemove(context.Background(), pinnedImage, client.ImageRemoveOptions{})
+	})
+
+	// The container stays running after the abort (it is detached), so
+	// force-remove it explicitly.
+	wantContainer := "localstack-aws-" + pinnedTag
+	t.Cleanup(func() {
+		_, _ = dockerClient.ContainerRemove(context.Background(), wantContainer, client.ContainerRemoveOptions{Force: true})
+	})
+
+	home := t.TempDir()
+	configFile := filepath.Join(home, "config.toml")
+	require.NoError(t, os.WriteFile(configFile,
+		[]byte(fmt.Sprintf("[[containers]]\ntype = \"aws\"\ntag = %q\nport = \"4599\"\n", pinnedTag)), 0644))
+
+	mockServer := createMockLicenseServer(true)
+	defer mockServer.Close()
+	analyticsSrv, events := mockAnalyticsServer(t)
+
+	binPath, err := filepath.Abs(binaryPath())
+	require.NoError(t, err)
+	cmd := exec.CommandContext(ctx, binPath, "--config", configFile, "--non-interactive", "start")
+	cmd.Env = append(testEnvWithHome(home, ""),
+		string(env.APIEndpoint)+"="+mockServer.URL,
+		string(env.AuthToken)+"=fake-token",
+		string(env.AnalyticsEndpoint)+"="+analyticsSrv.URL)
+	out := &syncBuffer{}
+	cmd.Stdout = out
+	cmd.Stderr = out
+	require.NoError(t, cmd.Start())
+
+	// Interrupt only once the container is running, so the SIGINT lands in the
+	// readiness wait rather than during container creation.
+	require.Eventually(t, func() bool {
+		inspect, ierr := dockerClient.ContainerInspect(ctx, wantContainer, client.ContainerInspectOptions{})
+		return ierr == nil && inspect.Container.State.Running
+	}, 60*time.Second, 100*time.Millisecond, "container never started; output:\n%s", out.String())
+	require.NoError(t, cmd.Process.Signal(os.Interrupt))
+	_ = cmd.Wait()
+
+	byName := collectTelemetryByName(t, events, 2)
+	lifecycle, ok := byName["lstk_lifecycle"]
+	require.True(t, ok, "an interrupted start must still emit a lifecycle telemetry event")
+	lifePayload, _ := lifecycle["payload"].(map[string]any)
+	assert.Equal(t, "start_error", lifePayload["event_type"])
+	assert.Equal(t, "start_failed", lifePayload["error_code"])
+	assert.Contains(t, lifePayload["error_msg"], "context canceled")
+	assert.Contains(t, byName, "lstk_command")
+}
+
 func TestStartCommandSucceedsWithKeyringToken(t *testing.T) {
 	requireDocker(t)
 	cleanup()
