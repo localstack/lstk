@@ -99,7 +99,9 @@ func TestLogs_FilteredLinesDropped(t *testing.T) {
 	assert.Contains(t, sink.lines[0].Line, "keep")
 }
 
-func TestLogs_NotRunning(t *testing.T) {
+// When no matching emulator container is running, Logs must fail with a
+// silent error instead of trying to stream from a nonexistent container.
+func TestLogs_EmulatorNotRunning_ReturnsSilentError(t *testing.T) {
 	t.Parallel()
 	ctrl := gomock.NewController(t)
 	mockRT := runtime.NewMockRuntime(ctrl)
@@ -114,5 +116,5 @@ func TestLogs_NotRunning(t *testing.T) {
 	err := Logs(context.Background(), mockRT, sink, containers, false, false)
 
 	require.Error(t, err)
-	assert.True(t, output.IsSilent(err))
+	assert.True(t, output.IsSilent(err), "error must be silent since the sink already surfaced a 'not running' message to the user")
 }
