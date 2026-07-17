@@ -50,7 +50,7 @@ jobs:
       # (the scan + gate still run).
       - name: Upload SARIF to code scanning
         if: always() && github.event.pull_request.head.repo.fork != true
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: trivy-results.sarif
 
@@ -90,6 +90,6 @@ jobs:
           output: trivy-results.sarif
 
       - name: Upload SARIF to code scanning
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: trivy-results.sarif
