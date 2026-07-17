@@ -7,10 +7,11 @@ export CGO_ENABLED=0
 
 .PHONY: build clean test test-integration lint mock-generate otel
 
-$(BUILD_DIR)/$(BINARY_NAME):
+# Always invoke `go build` and let Go's build cache handle incrementality; a
+# file target on bin/lstk would be skipped when the binary exists, even with
+# stale sources.
+build:
 	go build -o $(BUILD_DIR)/$(BINARY_NAME) .
-
-build: clean $(BUILD_DIR)/$(BINARY_NAME)
 
 clean:
 	rm -rf $(BUILD_DIR)
@@ -19,7 +20,7 @@ test:
 	@JUNIT=""; [ -n "$$CREATE_JUNIT_REPORT" ] && JUNIT="--junitfile test-results.xml"; \
 	go run gotest.tools/gotestsum@latest --format testname $$JUNIT -- ./cmd/... ./internal/...
 
-test-integration: $(BUILD_DIR)/$(BINARY_NAME)
+test-integration: build
 	@RUN="$(RUN)" ./scripts/test-integration.sh
 
 otel:

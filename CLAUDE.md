@@ -17,7 +17,7 @@ This installs a [gitleaks](https://github.com/gitleaks/gitleaks) hook that scans
 ```bash
 make build              # Compiles to bin/lstk
 make test               # Run unit tests (cmd/ and internal/) via gotestsum
-make test-integration   # Run integration tests (builds first, requires Docker)
+make test-integration   # Run integration tests (rebuilds bin/lstk first, requires Docker)
 make lint               # Run golangci-lint
 make mock-generate      # Run go generate to regenerate mocks
 make clean              # Remove build artifacts
