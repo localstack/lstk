@@ -82,8 +82,8 @@ func TestCommandFailsNicelyWhenLicenseCheckFails(t *testing.T) {
 	stdout, stderr, err := runLstk(t, ctx, "",
 		env.With(env.APIEndpoint, mockServer.URL), "start")
 	require.Error(t, err, "expected lstk start to fail when license check fails")
-	assert.Contains(t, stderr, "license validation failed",
-		"stdout: %s", stdout)
+	assert.Contains(t, stdout, "License validation failed",
+		"stderr: %s", stderr)
 }
 
 // Verifies that a tag the license server cannot parse as a version (e.g. "dev"
@@ -150,7 +150,7 @@ port = "4566"
 	stdout, stderr, err := runLstk(t, ctx, "",
 		env.With(env.APIEndpoint, mockServer.URL), "--config", configFile, "start")
 	require.Error(t, err, "expected lstk start to fail when license check fails")
-	assert.Contains(t, stderr, "license validation failed",
-		"stdout: %s", stdout)
+	assert.Contains(t, stdout, "License validation failed",
+		"stderr: %s", stderr)
 	assert.Equal(t, "4.0.0", *capturedVersion, "pinned tag should be sent directly to the license API without image inspection")
 }

@@ -123,7 +123,7 @@ Each `[[containers]]` block may set an optional `image` (override the default Do
 
 # Offline / Enterprise Environments
 
-There is no `--offline` flag. Instead `container.Start` degrades gracefully when internet requests fail (Docker Hub unreachable, proxy/TLS interception, license server unreachable): local images are used when pulls fail, and the license pre-flight is skipped on transport-level failures or unsupported-tag rejections so the container validates its own bundled license. The exact fallback rules live in `internal/container/CLAUDE.md`; pair them with a custom `image` in the config to point at a locally loaded image or an internal-registry mirror.
+There is no `--offline` flag. Instead `container.Start` degrades gracefully when internet requests fail (Docker Hub unreachable, proxy/TLS interception, license server unreachable): local images are used when pulls fail, and the license pre-flight is skipped on transport-level failures, non-definitive server responses (5xx/407), or unsupported-tag rejections so the container validates its own bundled license. Definitive license rejections (HTTP 400/401/403) drop the cached license and offer an in-place re-login instead of requiring a manual `lstk logout` (DEVX-658). The exact fallback and retry rules live in `internal/container/CLAUDE.md`; pair them with a custom `image` in the config to point at a locally loaded image or an internal-registry mirror.
 
 # Emulator Setup Commands
 

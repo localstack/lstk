@@ -61,6 +61,29 @@ func (a *Auth) GetToken(ctx context.Context) (string, error) {
 		return "", fmt.Errorf("authentication required: set LOCALSTACK_AUTH_TOKEN or run in interactive mode")
 	}
 
+	return a.loginAndStore(ctx)
+}
+
+// Relogin discards the stored auth token and cached license file, then runs the
+// login flow again. Used when the platform definitively rejects the current
+// token (e.g. it predates a license purchase), so the user doesn't have to run
+// `lstk logout` manually before retrying.
+func (a *Auth) Relogin(ctx context.Context) (string, error) {
+	if !a.allowLogin {
+		return "", fmt.Errorf("authentication required: set LOCALSTACK_AUTH_TOKEN or run in interactive mode")
+	}
+
+	if err := a.tokenStorage.DeleteAuthToken(); err != nil && !errors.Is(err, ErrTokenNotFound) {
+		a.sink.Emit(output.MessageEvent{Severity: output.SeverityWarning, Text: fmt.Sprintf("could not remove stored token: %v", err)})
+	}
+	if a.licenseFilePath != "" {
+		_ = os.Remove(a.licenseFilePath)
+	}
+
+	return a.loginAndStore(ctx)
+}
+
+func (a *Auth) loginAndStore(ctx context.Context) (string, error) {
 	token, err := a.login.Login(ctx)
 	if err != nil {
 		if errors.Is(err, context.Canceled) {
