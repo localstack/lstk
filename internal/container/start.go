@@ -927,14 +927,18 @@ func filterHostEnv(envList []string) (out []string, dropped []droppedHostEnv) {
 
 // criticalContainerVar reports whether a LOCALSTACK_* variable stripped to name
 // would break the emulator: the image's docker-entrypoint.sh strips the
-// LOCALSTACK_ prefix and re-exports the remainder (only LOCALSTACK_HOST and
-// LOCALSTACK_HOSTNAME are excluded), so e.g. a host LOCALSTACK_PATH becomes
-// PATH inside the emulator and startup dies with "mkdir: command not found"
-// (DEVX-984). IFS is included because the entrypoint sources the stripped
-// exports mid-script, corrupting its own word splitting.
+// LOCALSTACK_ prefix and re-exports the remainder (skipping only LOCALSTACK_HOST*
+// and names starting with a digit), so e.g. a host LOCALSTACK_PATH becomes PATH
+// inside the emulator and startup dies with "mkdir: command not found" (DEVX-984).
+// Each entry has a verified failure mode in the image (localstack/lstk#378):
+// HOME redirects every ~-anchored path (plugin cache, ~/.localstack, ~/.aws);
+// IFS corrupts word splitting in the shell sourcing the re-exports; BASH_ENV
+// names a file every non-interactive bash executes (e.g. init hooks); LD_*
+// hijack the dynamic loader for every process; PYTHONHOME is fatal to the
+// interpreter and PYTHONPATH shadows the emulator's imports.
 func criticalContainerVar(name string) bool {
 	switch name {
-	case "PATH", "HOME", "SHELL", "IFS", "ENV", "BASH_ENV",
+	case "PATH", "HOME", "IFS", "BASH_ENV",
 		"LD_PRELOAD", "LD_LIBRARY_PATH", "PYTHONPATH", "PYTHONHOME":
 		return true
 	}

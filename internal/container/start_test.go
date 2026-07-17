@@ -395,6 +395,9 @@ func TestFilterHostEnv(t *testing.T) {
 		"LOCALSTACK_PYTHONPATH=/opt/code",
 		"LOCALSTACK_LD_PRELOAD=/lib/evil.so",
 		"LOCALSTACK_IFS=:",
+		"LOCALSTACK_BASH_ENV=/etc/os-release",
+		"LOCALSTACK_SHELL=/bin/zsh",
+		"LOCALSTACK_ENV=dev",
 		"LOCALSTACK_MULTILINE=a\nLOCALSTACK_PATH=",
 		"LOCALSTACK_PATHFINDER=1",
 		"LOCALSTACK_HOSTNAME=custom.host",
@@ -421,6 +424,12 @@ func TestFilterHostEnv(t *testing.T) {
 	assert.NotContains(t, got, "LOCALSTACK_LD_PRELOAD=/lib/evil.so")
 	assert.NotContains(t, got, "LOCALSTACK_IFS=:",
 		"the entrypoint sources the stripped exports mid-script, so IFS would corrupt its word splitting")
+	assert.NotContains(t, got, "LOCALSTACK_BASH_ENV=/etc/os-release",
+		"every non-interactive bash in the container executes the file BASH_ENV names, e.g. init hooks")
+	assert.Contains(t, got, "LOCALSTACK_SHELL=/bin/zsh",
+		"SHELL is deliberately forwarded: nothing in the image reads it")
+	assert.Contains(t, got, "LOCALSTACK_ENV=dev",
+		"ENV is deliberately forwarded: only interactive shells read it, and they never inherit the re-exported env")
 	assert.NotContains(t, got, "LOCALSTACK_MULTILINE=a\nLOCALSTACK_PATH=",
 		"a multi-line value is split by the entrypoint's line-oriented env pipeline and can inject rogue exports like a blank PATH")
 	assert.Contains(t, got, "LOCALSTACK_PATHFINDER=1", "only exact critical names are blocked after prefix stripping, not name prefixes")
@@ -432,6 +441,7 @@ func TestFilterHostEnv(t *testing.T) {
 		{name: "LOCALSTACK_PYTHONPATH", overrides: "PYTHONPATH"},
 		{name: "LOCALSTACK_LD_PRELOAD", overrides: "LD_PRELOAD"},
 		{name: "LOCALSTACK_IFS", overrides: "IFS"},
+		{name: "LOCALSTACK_BASH_ENV", overrides: "BASH_ENV"},
 		{name: "LOCALSTACK_MULTILINE"},
 	}, dropped,
 		"dropped variables are reported with the reason so start can warn the user; the intentional LOCALSTACK_AUTH_TOKEN drop is not warned about")
