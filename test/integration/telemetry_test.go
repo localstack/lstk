@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"sync"
@@ -209,6 +210,47 @@ func TestStartCommandDoesNotSendTelemetryWhenDisabled(t *testing.T) {
 	case <-time.After(time.Second):
 		// No event received — correct.
 	}
+}
+
+// DEVX-1003: a proxied `lstk aws` failure must record the wrapped CLI's real
+// exit code and the leading service/operation tokens in telemetry, instead of
+// a flattened exit_code=1 whose only signal is the "exit status 252" string.
+func TestAWSProxyTelemetryRecordsExitCodeAndSubcommand(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("fake aws shell script not supported on Windows")
+	}
+	requireDocker(t)
+	cleanup()
+	t.Cleanup(cleanup)
+
+	ctx := testContext(t)
+	startTestContainer(t, ctx)
+
+	analyticsSrv, events := mockAnalyticsServer(t)
+
+	// Fake aws on PATH exiting like the real CLI does on a usage error, so the
+	// test needs neither the AWS CLI installed nor a real malformed request.
+	fakeBinDir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(fakeBinDir, "aws"), []byte("#!/bin/sh\nexit 252\n"), 0o755))
+
+	environ := env.Environ(testEnvWithHome(t.TempDir(), "")).
+		With(env.AnalyticsEndpoint, analyticsSrv.URL).
+		With(env.Path, fakeBinDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	_, _, err := runLstk(t, ctx, "", environ, "aws", "s3", "lss")
+	require.Error(t, err)
+	requireExitCode(t, 252, err)
+
+	event := receiveEventByName(t, events, "lstk_command")
+	payload, ok := event["payload"].(map[string]any)
+	require.True(t, ok)
+	params, ok := payload["parameters"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "aws", params["command"])
+	assert.Equal(t, "s3 lss", params["subcommand"])
+	result, ok := payload["result"].(map[string]any)
+	require.True(t, ok)
+	assert.InDelta(t, 252, result["exit_code"], 0)
 }
 
 // receiveEventByName waits up to 3s for an event with the given name.

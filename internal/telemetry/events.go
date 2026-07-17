@@ -38,10 +38,13 @@ type CommandEvent struct {
 	Result      CommandResult     `json:"result"`
 }
 
-// CommandParameters holds the command name and set flags.
+// CommandParameters holds the command name and set flags. Subcommand carries
+// the leading service/operation tokens of a proxied tool invocation (e.g.
+// "s3 ls" for `lstk aws s3 ls`); empty for lstk's own commands.
 type CommandParameters struct {
-	Command string   `json:"command"`
-	Flags   []string `json:"flags"`
+	Command    string   `json:"command"`
+	Subcommand string   `json:"subcommand,omitempty"`
+	Flags      []string `json:"flags"`
 }
 
 // CommandResult holds the outcome of a command invocation.
@@ -107,10 +110,10 @@ func (c *Client) GetEnvironment(ctx context.Context) Environment {
 
 // EmitCommand emits an lstk_command telemetry event. The Environment block is
 // populated automatically from the client state.
-func (c *Client) EmitCommand(ctx context.Context, command string, flags []string, durationMS int64, exitCode int, errorMsg string) {
+func (c *Client) EmitCommand(ctx context.Context, command, subcommand string, flags []string, durationMS int64, exitCode int, errorMsg string) {
 	c.Emit(ctx, "lstk_command", ToMap(CommandEvent{
 		Environment: c.GetEnvironment(ctx),
-		Parameters:  CommandParameters{Command: command, Flags: flags},
+		Parameters:  CommandParameters{Command: command, Subcommand: subcommand, Flags: flags},
 		Result: CommandResult{
 			DurationMS: durationMS,
 			ExitCode:   exitCode,
