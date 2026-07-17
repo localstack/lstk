@@ -747,7 +747,7 @@ func exitResultChan(res runtime.ExitResult) <-chan runtime.ExitResult {
 }
 
 // unreachableHealthURL returns a URL pointing at a closed local port, so the
-// health GET in awaitStartup always fails to connect.
+// health GET in startupMonitor.await always fails to connect.
 func unreachableHealthURL(t *testing.T) string {
 	t.Helper()
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
@@ -757,7 +757,7 @@ func unreachableHealthURL(t *testing.T) string {
 	return "http://" + addr + "/_localstack/health"
 }
 
-func TestAwaitStartup_TimesOutWhenNeverHealthy(t *testing.T) {
+func TestStartupMonitorAwait_TimesOutWhenNeverHealthy(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	mockRT := runtime.NewMockRuntime(ctrl)
 	// Container stays running the whole time but never serves health.
@@ -767,7 +767,8 @@ func TestAwaitStartup_TimesOutWhenNeverHealthy(t *testing.T) {
 	// exitCh never fires; a tiny non-interactive timeout should surface promptly.
 	exitCh := make(chan runtime.ExitResult)
 
-	err := awaitStartup(context.Background(), mockRT, sink, "cid", "LocalStack", unreachableHealthURL(t), exitCh, 50*time.Millisecond, false)
+	monitor := newStartupMonitor(mockRT, sink, nil, 50*time.Millisecond, false)
+	err := monitor.await(context.Background(), "cid", unreachableHealthURL(t), exitCh)
 
 	var timeoutErr *startupTimeoutError
 	require.ErrorAs(t, err, &timeoutErr)
@@ -777,7 +778,7 @@ func TestAwaitStartup_TimesOutWhenNeverHealthy(t *testing.T) {
 // The interactive deadline shows a recoverable prompt instead of failing:
 // "keep waiting" re-arms the deadline (the prompt returns), and "stop" stops
 // the container and surfaces the timeout.
-func TestAwaitStartup_InteractivePromptKeepWaitingThenStop(t *testing.T) {
+func TestStartupMonitorAwait_InteractivePromptKeepWaitingThenStop(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	mockRT := runtime.NewMockRuntime(ctrl)
 	mockRT.EXPECT().IsRunning(gomock.Any(), "cid").Return(true, nil).AnyTimes()
@@ -803,14 +804,15 @@ func TestAwaitStartup_InteractivePromptKeepWaitingThenStop(t *testing.T) {
 	}()
 
 	exitCh := make(chan runtime.ExitResult)
-	err := awaitStartup(context.Background(), mockRT, sink, "cid", "LocalStack", unreachableHealthURL(t), exitCh, 50*time.Millisecond, true)
+	monitor := newStartupMonitor(mockRT, sink, nil, 50*time.Millisecond, true)
+	err := monitor.await(context.Background(), "cid", unreachableHealthURL(t), exitCh)
 
 	var timeoutErr *startupTimeoutError
 	require.ErrorAs(t, err, &timeoutErr)
 	assert.True(t, timeoutErr.stopped, "choosing stop at the prompt must be recorded on the error")
 }
 
-func TestAwaitStartup_ReturnsExitCodeFromExitCh(t *testing.T) {
+func TestStartupMonitorAwait_ReturnsExitCodeFromExitCh(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	mockRT := runtime.NewMockRuntime(ctrl)
 	// Running on the first probe; the exit arrives via exitCh.
@@ -818,14 +820,15 @@ func TestAwaitStartup_ReturnsExitCodeFromExitCh(t *testing.T) {
 
 	sink := output.NewPlainSink(io.Discard)
 
-	err := awaitStartup(context.Background(), mockRT, sink, "cid", "LocalStack", unreachableHealthURL(t), exitResultChan(runtime.ExitResult{ExitCode: 42}), time.Minute, false)
+	monitor := newStartupMonitor(mockRT, sink, nil, time.Minute, false)
+	err := monitor.await(context.Background(), "cid", unreachableHealthURL(t), exitResultChan(runtime.ExitResult{ExitCode: 42}))
 
 	var exitErr *containerExitedError
 	require.ErrorAs(t, err, &exitErr)
 	assert.Equal(t, 42, exitErr.exitCode)
 }
 
-func TestAwaitStartup_WaitErrorFallsBackToPoll(t *testing.T) {
+func TestStartupMonitorAwait_WaitErrorFallsBackToPoll(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	mockRT := runtime.NewMockRuntime(ctrl)
 	// First probe: running. After the exitCh error nils the channel, the poll
@@ -837,7 +840,8 @@ func TestAwaitStartup_WaitErrorFallsBackToPoll(t *testing.T) {
 
 	sink := output.NewPlainSink(io.Discard)
 
-	err := awaitStartup(context.Background(), mockRT, sink, "cid", "LocalStack", unreachableHealthURL(t), exitResultChan(runtime.ExitResult{ExitCode: -1, Err: errors.New("wait failed")}), time.Minute, false)
+	monitor := newStartupMonitor(mockRT, sink, nil, time.Minute, false)
+	err := monitor.await(context.Background(), "cid", unreachableHealthURL(t), exitResultChan(runtime.ExitResult{ExitCode: -1, Err: errors.New("wait failed")}))
 
 	var exitErr *containerExitedError
 	require.ErrorAs(t, err, &exitErr)
