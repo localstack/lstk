@@ -49,14 +49,7 @@ func requireRunningAWSEmulator(ctx context.Context, rt runtime.Runtime, sink out
 		})
 		return output.NewSilentError(fmt.Errorf("lstk %s requires the AWS emulator, but the %s is running", cmdLabel, other))
 	}
-	sink.Emit(output.ErrorEvent{
-		Title: fmt.Sprintf("%s is not running", awsContainer.DisplayName()),
-		Actions: []output.ErrorAction{
-			{Label: "Start LocalStack:", Value: "lstk"},
-			{Label: "See help:", Value: "lstk -h"},
-		},
-	})
-	return output.NewSilentError(fmt.Errorf("%s is not running", awsContainer.Name()))
+	return container.HandleNoRunningContainer(sink, awsContainer)
 }
 
 // runningNonAWSEmulator returns the display name of a running non-AWS emulator

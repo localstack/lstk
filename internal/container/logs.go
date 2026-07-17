@@ -44,14 +44,7 @@ func Logs(ctx context.Context, rt runtime.Runtime, sink output.Sink, containers 
 		return fmt.Errorf("checking %s running: %w", c.Name(), err)
 	}
 	if name == "" {
-		sink.Emit(output.ErrorEvent{
-			Title: fmt.Sprintf("%s is not running", c.DisplayName()),
-			Actions: []output.ErrorAction{
-				{Label: "Start LocalStack:", Value: "lstk"},
-				{Label: "See help:", Value: "lstk -h"},
-			},
-		})
-		return output.NewSilentError(fmt.Errorf("%s is not running", c.Name()))
+		return HandleNoRunningContainer(sink, c)
 	}
 
 	pr, pw := io.Pipe()

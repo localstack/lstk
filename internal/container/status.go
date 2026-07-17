@@ -30,14 +30,7 @@ func Status(ctx context.Context, rt runtime.Runtime, containers []config.Contain
 			return fmt.Errorf("checking %s running: %w", c.Name(), err)
 		}
 		if name == "" {
-			sink.Emit(output.ErrorEvent{
-				Title: fmt.Sprintf("%s is not running", c.DisplayName()),
-				Actions: []output.ErrorAction{
-					{Label: "Start LocalStack:", Value: "lstk"},
-					{Label: "See help:", Value: "lstk -h"},
-				},
-			})
-			return output.NewSilentError(fmt.Errorf("%s is not running", c.Name()))
+			return HandleNoRunningContainer(sink, c)
 		}
 
 		// status makes direct HTTP calls to LocalStack, so it needs the actual host port.
