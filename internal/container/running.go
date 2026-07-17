@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/localstack/lstk/internal/config"
+	"github.com/localstack/lstk/internal/output"
 	"github.com/localstack/lstk/internal/runtime"
 )
 
@@ -57,4 +58,20 @@ func ResolveRunningContainerName(ctx context.Context, rt runtime.Runtime, c conf
 	}
 
 	return "", nil
+}
+
+// HandleNoRunningContainer emits the standard "not running" error for c
+// through sink (naming it and pointing the user at how to start it), then
+// returns a silent error for the caller to propagate. Callers that already
+// resolved ResolveRunningContainerName to "" should use this instead of
+// duplicating the ErrorEvent/Actions boilerplate.
+func HandleNoRunningContainer(sink output.Sink, c config.ContainerConfig) error {
+	sink.Emit(output.ErrorEvent{
+		Title: fmt.Sprintf("%s is not running", c.DisplayName()),
+		Actions: []output.ErrorAction{
+			{Label: "Start LocalStack:", Value: "lstk"},
+			{Label: "See help:", Value: "lstk -h"},
+		},
+	})
+	return output.NewSilentError(fmt.Errorf("%s is not running", c.Name()))
 }

@@ -94,14 +94,7 @@ Examples:
 				return fmt.Errorf("checking emulator status: %w", err)
 			}
 			if runningName == "" {
-				sink.Emit(output.ErrorEvent{
-					Title: fmt.Sprintf("%s is not running", awsContainer.DisplayName()),
-					Actions: []output.ErrorAction{
-						{Label: "Start LocalStack:", Value: "lstk"},
-						{Label: "See help:", Value: "lstk -h"},
-					},
-				})
-				return output.NewSilentError(fmt.Errorf("%s is not running", awsContainer.Name()))
+				return container.HandleNoRunningContainer(sink, awsContainer)
 			}
 
 			host, _ := endpoint.ResolveHost(cmd.Context(), awsContainer.Port, cfg.LocalStackHost)

@@ -171,14 +171,7 @@ func azPreflight(ctx context.Context, cfg *env.Env, sink output.Sink) (string, e
 		return "", fmt.Errorf("checking emulator status: %w", err)
 	}
 	if runningName == "" {
-		sink.Emit(output.ErrorEvent{
-			Title: fmt.Sprintf("%s is not running", azureContainer.DisplayName()),
-			Actions: []output.ErrorAction{
-				{Label: "Start LocalStack:", Value: "lstk"},
-				{Label: "See help:", Value: "lstk -h"},
-			},
-		})
-		return "", output.NewSilentError(fmt.Errorf("%s is not running", azureContainer.Name()))
+		return "", container.HandleNoRunningContainer(sink, azureContainer)
 	}
 
 	resolvedHost, dnsOK := endpoint.ResolveHost(ctx, azureContainer.Port, cfg.LocalStackHost)

@@ -2,6 +2,7 @@ package integration_test
 
 import (
 	"bufio"
+	"context"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -53,11 +54,38 @@ func TestLogsCommandFailsWhenNotRunning(t *testing.T) {
 
 	configFile := writeAwsConfig(t)
 	analyticsSrv, events := mockAnalyticsServer(t)
-	_, stderr, err := runLstk(t, testContext(t), "", env.With(env.AnalyticsEndpoint, analyticsSrv.URL), "--config", configFile, "logs", "--follow")
+	stdout, _, err := runLstk(t, testContext(t), "", env.With(env.AnalyticsEndpoint, analyticsSrv.URL), "--config", configFile, "logs", "--follow")
 	require.Error(t, err, "expected lstk logs --follow to fail when container not running")
 	requireExitCode(t, 1, err)
-	assert.Contains(t, stderr, "emulator is not running")
+	assert.Contains(t, stdout, "LocalStack AWS Emulator is not running")
 	assertCommandTelemetry(t, events, "logs", 1)
+}
+
+// lstk logs must find the emulator even when it's running under a container
+// name other than the config-derived canonical name (e.g. started outside
+// lstk), the same way lstk status/stop already do.
+func TestLogsWorksWithExternalContainer(t *testing.T) {
+	requireDocker(t)
+	cleanup()
+	t.Cleanup(cleanup)
+
+	ctx := testContext(t)
+
+	const fakeImage = "localstack/localstack-pro:test-fake"
+	_, err := dockerClient.ImageTag(ctx, client.ImageTagOptions{Source: testImage, Target: fakeImage})
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		_, _ = dockerClient.ImageRemove(context.Background(), fakeImage, client.ImageRemoveOptions{})
+	})
+
+	startExternalContainer(t, ctx, fakeImage, "localstack-main", "4566")
+
+	configFile := writeAwsConfig(t)
+	analyticsSrv, events := mockAnalyticsServer(t)
+	_, stderr, err := runLstk(t, ctx, "", env.With(env.AnalyticsEndpoint, analyticsSrv.URL), "--config", configFile, "logs")
+	require.NoError(t, err, "lstk logs should work with externally-named container: %s", stderr)
+	requireExitCode(t, 0, err)
+	assertCommandTelemetry(t, events, "logs", 0)
 }
 
 func TestLogsFollowStreamsOutput(t *testing.T) {
