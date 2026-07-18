@@ -14,6 +14,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/localstack/lstk/internal/api"
 	"github.com/localstack/lstk/internal/caller"
@@ -658,7 +659,7 @@ func TestStartContainers_SnowflakeLicenseError(t *testing.T) {
 	}
 	const containerID = "abc123"
 	licenseLog := "⚠️ The Snowflake emulator is currently not covered by your license. ❄️"
-	mockRT.EXPECT().Start(gomock.Any(), c).Return(containerID, nil)
+	mockRT.EXPECT().Start(gomock.Any(), c).Return(containerID, exitResultChan(runtime.ExitResult{ExitCode: 1}), nil)
 	mockRT.EXPECT().StreamLogs(gomock.Any(), containerID, gomock.Any(), true).Return(nil)
 	mockRT.EXPECT().IsRunning(gomock.Any(), containerID).Return(false, nil)
 	mockRT.EXPECT().Logs(gomock.Any(), containerID, 20).Return(licenseLog, nil)
@@ -668,7 +669,7 @@ func TestStartContainers_SnowflakeLicenseError(t *testing.T) {
 	var out bytes.Buffer
 	sink := output.NewPlainSink(&out)
 
-	err := startContainers(context.Background(), mockRT, sink, tel, []runtime.ContainerConfig{c}, map[string]bool{})
+	err := startContainers(context.Background(), mockRT, sink, tel, []runtime.ContainerConfig{c}, map[string]bool{}, 0, false)
 	tel.Close()
 
 	require.Error(t, err)
@@ -705,7 +706,7 @@ func TestStartContainers_AzureLicenseError(t *testing.T) {
 	}
 	const containerID = "abc123"
 	licenseLog := "The Azure emulator is currently not covered by your license."
-	mockRT.EXPECT().Start(gomock.Any(), c).Return(containerID, nil)
+	mockRT.EXPECT().Start(gomock.Any(), c).Return(containerID, exitResultChan(runtime.ExitResult{ExitCode: 1}), nil)
 	mockRT.EXPECT().StreamLogs(gomock.Any(), containerID, gomock.Any(), true).Return(nil)
 	mockRT.EXPECT().IsRunning(gomock.Any(), containerID).Return(false, nil)
 	mockRT.EXPECT().Logs(gomock.Any(), containerID, 20).Return(licenseLog, nil)
@@ -715,7 +716,7 @@ func TestStartContainers_AzureLicenseError(t *testing.T) {
 	var out bytes.Buffer
 	sink := output.NewPlainSink(&out)
 
-	err := startContainers(context.Background(), mockRT, sink, tel, []runtime.ContainerConfig{c}, map[string]bool{})
+	err := startContainers(context.Background(), mockRT, sink, tel, []runtime.ContainerConfig{c}, map[string]bool{}, 0, false)
 	tel.Close()
 
 	require.Error(t, err)
@@ -735,6 +736,231 @@ func TestStartContainers_AzureLicenseError(t *testing.T) {
 	default:
 		t.Fatal("no telemetry event received")
 	}
+}
+
+// exitResultChan returns a buffered channel already holding res, matching the
+// contract of the exit channel returned by runtime.Runtime.Start.
+func exitResultChan(res runtime.ExitResult) <-chan runtime.ExitResult {
+	ch := make(chan runtime.ExitResult, 1)
+	ch <- res
+	return ch
+}
+
+// unreachableHealthURL returns a URL pointing at a closed local port, so the
+// health GET in startupMonitor.await always fails to connect.
+func unreachableHealthURL(t *testing.T) string {
+	t.Helper()
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	addr := ln.Addr().String()
+	require.NoError(t, ln.Close())
+	return "http://" + addr + "/_localstack/health"
+}
+
+func TestStartupMonitorAwait_TimesOutWhenNeverHealthy(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockRT := runtime.NewMockRuntime(ctrl)
+	// Container stays running the whole time but never serves health.
+	mockRT.EXPECT().IsRunning(gomock.Any(), "cid").Return(true, nil).AnyTimes()
+
+	sink := output.NewPlainSink(io.Discard)
+	// exitCh never fires; a tiny non-interactive timeout should surface promptly.
+	exitCh := make(chan runtime.ExitResult)
+
+	monitor := newStartupMonitor(mockRT, sink, nil, 50*time.Millisecond, false)
+	err := monitor.await(context.Background(), "cid", unreachableHealthURL(t), exitCh)
+
+	var timeoutErr *startupTimeoutError
+	require.ErrorAs(t, err, &timeoutErr)
+	assert.False(t, timeoutErr.stopped, "non-interactive timeout leaves the container running")
+}
+
+// The interactive deadline shows a recoverable prompt instead of failing:
+// "keep waiting" re-arms the deadline (the prompt returns), and "stop" stops
+// the container and surfaces the timeout.
+func TestStartupMonitorAwait_InteractivePromptKeepWaitingThenStop(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockRT := runtime.NewMockRuntime(ctrl)
+	mockRT.EXPECT().IsRunning(gomock.Any(), "cid").Return(true, nil).AnyTimes()
+	mockRT.EXPECT().Stop(gomock.Any(), "cid").Return(nil)
+
+	prompts := make(chan output.UserInputRequestEvent, 2)
+	sink := output.SinkFunc(func(event output.Event) {
+		if req, ok := event.(output.UserInputRequestEvent); ok {
+			prompts <- req
+		}
+	})
+
+	go func() {
+		for i, key := range []string{"w", "s"} {
+			select {
+			case req := <-prompts:
+				req.ResponseCh <- output.InputResponse{SelectedKey: key}
+			case <-time.After(5 * time.Second):
+				t.Errorf("prompt %d never appeared", i+1)
+				return
+			}
+		}
+	}()
+
+	exitCh := make(chan runtime.ExitResult)
+	monitor := newStartupMonitor(mockRT, sink, nil, 50*time.Millisecond, true)
+	err := monitor.await(context.Background(), "cid", unreachableHealthURL(t), exitCh)
+
+	var timeoutErr *startupTimeoutError
+	require.ErrorAs(t, err, &timeoutErr)
+	assert.True(t, timeoutErr.stopped, "choosing stop at the prompt must be recorded on the error")
+}
+
+func TestStartupMonitorAwait_ReturnsExitCodeFromExitCh(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockRT := runtime.NewMockRuntime(ctrl)
+	// Running on the first probe; the exit arrives via exitCh.
+	mockRT.EXPECT().IsRunning(gomock.Any(), "cid").Return(true, nil).AnyTimes()
+
+	sink := output.NewPlainSink(io.Discard)
+
+	monitor := newStartupMonitor(mockRT, sink, nil, time.Minute, false)
+	err := monitor.await(context.Background(), "cid", unreachableHealthURL(t), exitResultChan(runtime.ExitResult{ExitCode: 42}))
+
+	var exitErr *containerExitedError
+	require.ErrorAs(t, err, &exitErr)
+	assert.Equal(t, 42, exitErr.exitCode)
+}
+
+func TestStartupMonitorAwait_WaitErrorFallsBackToPoll(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockRT := runtime.NewMockRuntime(ctrl)
+	// First probe: running. After the exitCh error nils the channel, the poll
+	// sees the container gone and reports an unknown exit code.
+	gomock.InOrder(
+		mockRT.EXPECT().IsRunning(gomock.Any(), "cid").Return(true, nil),
+		mockRT.EXPECT().IsRunning(gomock.Any(), "cid").Return(false, nil),
+	)
+
+	sink := output.NewPlainSink(io.Discard)
+
+	monitor := newStartupMonitor(mockRT, sink, nil, time.Minute, false)
+	err := monitor.await(context.Background(), "cid", unreachableHealthURL(t), exitResultChan(runtime.ExitResult{ExitCode: -1, Err: errors.New("wait failed")}))
+
+	var exitErr *containerExitedError
+	require.ErrorAs(t, err, &exitErr)
+	assert.Equal(t, -1, exitErr.exitCode, "an exit detected only by polling has an unknown code")
+}
+
+func TestResolveStartupTimeout(t *testing.T) {
+	tests := []struct {
+		name        string
+		timeout     time.Duration
+		interactive bool
+		want        time.Duration
+	}{
+		{"zero interactive uses short default", 0, true, defaultStartupTimeoutInteractive},
+		{"zero non-interactive uses long default", 0, false, defaultStartupTimeoutNonInteractive},
+		{"explicit wins interactive", 5 * time.Second, true, 5 * time.Second},
+		{"explicit wins non-interactive", 5 * time.Second, false, 5 * time.Second},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, resolveStartupTimeout(tt.timeout, tt.interactive))
+		})
+	}
+}
+
+func TestStartContainers_ExitedEmitsErrorAndTelemetry(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockRT := runtime.NewMockRuntime(ctrl)
+
+	c := runtime.ContainerConfig{
+		Image:         "localstack/localstack-pro:latest",
+		Name:          "localstack-aws",
+		EmulatorType:  config.EmulatorAWS,
+		Tag:           "latest",
+		Port:          "1", // unreachable port so the health GET never connects
+		ContainerPort: "4566/tcp",
+		HealthPath:    "/_localstack/health",
+	}
+	const containerID = "abc123"
+	mockRT.EXPECT().Start(gomock.Any(), c).Return(containerID, exitResultChan(runtime.ExitResult{ExitCode: 3}), nil)
+	mockRT.EXPECT().StreamLogs(gomock.Any(), containerID, gomock.Any(), true).Return(nil)
+	mockRT.EXPECT().IsRunning(gomock.Any(), containerID).Return(true, nil).AnyTimes()
+	mockRT.EXPECT().Logs(gomock.Any(), containerID, 20).Return("boom: fatal error\n", nil).AnyTimes()
+
+	tel, capturedEvents := newCapturingTelClient(t)
+
+	var out bytes.Buffer
+	sink := output.NewPlainSink(&out)
+
+	err := startContainers(context.Background(), mockRT, sink, tel, []runtime.ContainerConfig{c}, map[string]bool{}, time.Minute, false)
+	tel.Close()
+
+	require.Error(t, err)
+	assert.True(t, output.IsSilent(err), "error should be silent since an ErrorEvent was emitted")
+	got := out.String()
+	assert.Contains(t, got, "exited unexpectedly (exit code 3)")
+	assert.Contains(t, got, "boom: fatal error", "the log tail should be surfaced in the summary")
+
+	select {
+	case ev := <-capturedEvents:
+		payload, ok := ev["payload"].(map[string]any)
+		require.True(t, ok)
+		assert.Equal(t, telemetry.LifecycleStartError, payload["event_type"])
+		assert.Equal(t, telemetry.ErrCodeStartFailed, payload["error_code"])
+	default:
+		t.Fatal("no telemetry event received")
+	}
+}
+
+func TestStartContainers_TimeoutEmitsErrorAndTelemetry(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockRT := runtime.NewMockRuntime(ctrl)
+
+	c := runtime.ContainerConfig{
+		Image:         "localstack/localstack-pro:latest",
+		Name:          "localstack-aws",
+		EmulatorType:  config.EmulatorAWS,
+		Tag:           "latest",
+		Port:          "1", // unreachable port so the health GET never connects
+		ContainerPort: "4566/tcp",
+		HealthPath:    "/_localstack/health",
+	}
+	const containerID = "abc123"
+	// exitCh never fires; the container stays running but never becomes healthy.
+	mockRT.EXPECT().Start(gomock.Any(), c).Return(containerID, (<-chan runtime.ExitResult)(make(chan runtime.ExitResult)), nil)
+	mockRT.EXPECT().StreamLogs(gomock.Any(), containerID, gomock.Any(), true).Return(nil)
+	mockRT.EXPECT().IsRunning(gomock.Any(), containerID).Return(true, nil).AnyTimes()
+	mockRT.EXPECT().Logs(gomock.Any(), containerID, 20).Return("still booting...\n", nil).AnyTimes()
+
+	tel, capturedEvents := newCapturingTelClient(t)
+
+	var out bytes.Buffer
+	sink := output.NewPlainSink(&out)
+
+	err := startContainers(context.Background(), mockRT, sink, tel, []runtime.ContainerConfig{c}, map[string]bool{}, 50*time.Millisecond, false)
+	tel.Close()
+
+	require.Error(t, err)
+	assert.True(t, output.IsSilent(err))
+	got := out.String()
+	assert.Contains(t, got, "did not become ready within 50ms")
+	assert.Contains(t, got, "lstk logs")
+	assert.Contains(t, got, "lstk stop")
+
+	select {
+	case ev := <-capturedEvents:
+		payload, ok := ev["payload"].(map[string]any)
+		require.True(t, ok)
+		assert.Equal(t, telemetry.ErrCodeStartTimeout, payload["error_code"])
+	default:
+		t.Fatal("no telemetry event received")
+	}
+}
+
+func TestLastLogLines(t *testing.T) {
+	assert.Equal(t, "", lastLogLines("", 5))
+	assert.Equal(t, "a\nb", lastLogLines("a\nb\n", 5))
+	assert.Equal(t, "d\ne", lastLogLines("a\nb\nc\nd\ne", 2))
+	assert.Equal(t, "only", lastLogLines("only", 3))
 }
 
 func TestPullImages_ReusesLocalImageWhenPresent(t *testing.T) {
