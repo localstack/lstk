@@ -1018,6 +1018,15 @@ func (m *startupMonitor) await(ctx context.Context, containerID, healthURL strin
 	check := func() (ready bool, err error) {
 		running, err := m.rt.IsRunning(ctx, containerID)
 		if err != nil {
+			// A canceled context (Ctrl+C during the readiness wait) surfaces here
+			// as an IsRunning failure. Report it as the deliberate abort it is, not
+			// a status-check failure, so Start classifies it as a cancellation and
+			// the message stays stable. (Go 1.26's signal.NotifyContext attaches a
+			// cause, so the wrapped Docker error would otherwise read
+			// "...: interrupt signal received" instead of "context canceled".)
+			if ctxErr := ctx.Err(); ctxErr != nil {
+				return false, ctxErr
+			}
 			return false, fmt.Errorf("failed to check container status: %w", err)
 		}
 		if !running {
