@@ -16,7 +16,7 @@ Before writing any code, understand what the command should do and whether the a
 **Core questions:**
 1. **What does this command do?** (one sentence — e.g., "shows the status of running emulators")
 2. **Does it need to talk to Docker/the runtime?** (determines whether `runtime.Runtime` is a dependency)
-3. **Does it need configuration?** (determines whether `PreRunE: initConfig` is needed)
+3. **Does it need configuration?** (determines whether `PreRunE: initConfig(nil)` is needed)
 4. **Does it need authentication?** (determines whether auth flow is involved)
 5. **Does it need any new event types?** (e.g., a new kind of progress, a new status phase — if yes, use `/add-event` for each)
 
@@ -42,10 +42,11 @@ Read these files before writing anything — they are the source of truth for pa
 Create `cmd/$ARGUMENTS.go` with:
 
 - A `new<Name>Cmd()` factory function returning `*cobra.Command`
-- `PreRunE: initConfig` if the command needs configuration
-- Output mode decision at the boundary:
+- `PreRunE: initConfig(nil)` if the command needs configuration (only the root command uses `initConfigDeferCreate(&firstRun)`)
+- Output mode decision at the boundary, gated on `isInteractiveMode(cfg)` (covers non-TTY and the `--non-interactive` flag):
   - Interactive: delegate to `ui.Run<Name>(...)` or TUI path
   - Non-interactive: call domain function with `output.NewPlainSink(os.Stdout)`
+- If the command only groups subcommands (like `config`, `setup`, `snapshot`), call `requireSubcommand(cmd)` so a bare invocation shows help (exit 0) while an unknown subcommand exits non-zero
 - No business logic — only Cobra wiring, dependency creation, and output mode selection
 - `Short`/`Long` help text: write each paragraph as one unbroken line (blank line between paragraphs); never hard-wrap a sentence across source lines. The help template (`cmd/help.go`) word-wraps to the terminal width at render time, and `lstk docs` reads the raw text — manual breaks fight both. Indent example/output blocks; the wrapper leaves indented lines untouched.
 
@@ -54,13 +55,13 @@ Create `cmd/$ARGUMENTS.go` with:
 Create `internal/<package>/<name>.go` (use an existing package if it fits, or create a new one) with:
 
 - A function that accepts `ctx context.Context`, `rt runtime.Runtime`, `sink output.Sink`, and any other dependencies
-- Emit events via `output.EmitXxx(sink, ...)` — never `fmt.Print` or `log.Print`
-- Return errors normally; use `output.NewSilentError(err)` only if the error was already displayed via `EmitError`
+- Emit events via `sink.Emit(output.XxxEvent{...})` — never `fmt.Print` or `log.Print`, and never add package-level emit helpers
+- Return errors normally; use `output.NewSilentError(err)` only if the error was already displayed via `sink.Emit(output.ErrorEvent{...})`
 - No imports from `internal/ui` or `charmbracelet/bubbletea`
 
 ## Step 3: Register the command
 
-In `cmd/root.go`, add the new command to `root.AddCommand(...)`.
+In `cmd/root.go`, add the new command to the appropriate group slice in `NewRootCmd`: the `commands` slice (core commands, `GroupID = groupCommands`) or the `tools` slice (proxy commands, `GroupID = groupTools`). A command appended via a bare `root.AddCommand(...)` with no `GroupID` lands under "Additional Commands" in help — almost never what you want.
 
 If the command constructor needs dependencies (like `*env.Env`), add them as parameters matching the existing pattern.
 
@@ -91,6 +92,7 @@ Create `test/integration/<name>_test.go` with:
 
 - Non-interactive tests: `exec.CommandContext(ctx, binaryPath(), "<name>")` → `cmd.CombinedOutput()`
 - Interactive (TUI) tests: use `pty.Start(cmd)` from `github.com/creack/pty`
+- Never inherit the developer's real `$HOME`: pass `testEnvWithHome(t.TempDir(), "")` (or extend it with `env.With(...)`) as the command env — never `nil` or `os.Environ()`
 - Use `requireDocker(t)` if Docker is needed
 - Use `cleanup()` and `t.Cleanup(cleanup)` for container state
 - Use `context.WithTimeout` for all tests
@@ -105,7 +107,7 @@ In the corresponding integration test, add an assertion that the `lstk_command` 
 
 - Do NOT put business logic in `cmd/` — the command file should be thin wiring only
 - Do NOT construct sinks inside domain code — always accept `output.Sink` as a parameter
-- Do NOT use `fmt.Print`/`log.Print` in domain code — use `output.EmitXxx()` helpers
+- Do NOT use `fmt.Print`/`log.Print` in domain code — emit events on the injected `output.Sink`
 - Do NOT import `internal/ui` or Bubble Tea from domain packages
 - Do NOT create package-level global variables — inject dependencies via constructors
 - Do NOT use "container" or "runtime" in user-facing text — use "emulator"

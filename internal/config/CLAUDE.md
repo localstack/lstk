@@ -1,0 +1,15 @@
+# Configuration Parsing Reference (internal/config)
+
+Detail moved out of the root CLAUDE.md; see the root file for the config search order and creation policy.
+
+## Container image override
+
+Each `[[containers]]` block may set an optional `image` to override the default Docker Hub image (e.g. an internal registry mirror or a locally loaded offline image). `ContainerConfig.Image()` returns `image` as-is when it already carries a tag (so the separately-configured `tag` is dropped in that case), otherwise it appends `tag` (or `latest`); the default `localstack/<product>:<tag>` is used when `image` is unset.
+
+## Volume Mounts
+
+Each `[[containers]]` block accepts a `volumes` list of Docker-style `"host:container[:ro]"` bind specs (e.g. for Snowflake init hooks mounted into `/etc/localstack/init/{boot,start,ready,shutdown}.d`). The persistence/cache mount to `/var/lib/localstack` is folded into this list: the entry whose container target is `/var/lib/localstack` (`persistenceTarget` in `internal/config/containers.go`) defines the host dir backing it, and that path is what `VolumeDir()`, `lstk volume path`, and `lstk volume clear` resolve. Resolution precedence in `VolumeDir()`: a `volumes` entry targeting `/var/lib/localstack` → the legacy singular `volume = "..."` field (still honored for backward compatibility) → the default OS cache dir. Setting the persistence dir via both `volume` and a `volumes` entry with differing sources is a validation error.
+
+`volume` (singular) and `volumes` (plural) are not interchangeable in general — they overlap only for the persistence mount. `volume` *only* sets the persistence dir (always mounted to `/var/lib/localstack`); `volumes` is a superset that can set the persistence dir **and** arbitrary mounts. Two further distinctions: `volume` cannot express init hooks or any non-persistence mount, and the legacy `volume` value is used **verbatim** (no path resolution) whereas a `volumes` source is resolved. So `volume = "/data"` and `volumes = ["/data:/var/lib/localstack"]` are equivalent for persistence, but `volume = "./data"` is passed raw (and would become a Docker named volume) while `volumes = ["./data:/var/lib/localstack"]` resolves `./data` against the config dir.
+
+Parsing/resolution lives in `parseVolume`/`ExtraVolumes` in `internal/config/containers.go`. The container target is validated with `path.IsAbs` (slash semantics) — never `filepath.IsAbs`, which rejects `/var/lib/localstack` on Windows. `splitVolumeSpec` rejoins a leading Windows drive letter (`C:\…`) onto the host source so its `:` is not mistaken for the host/container separator (Windows-guarded so a single-letter relative dir like `a:/data` stays valid elsewhere, matching Docker). Relative host sources resolve against the **config file's directory** and a leading `~/` is expanded — this is required because the Docker SDK treats a non-absolute source as a *named volume* rather than a bind mount. `start.go` mounts the persistence dir (creating it via `MkdirAll`) and appends `ExtraVolumes()`; extra sources are not created (`os.Stat` + error if missing) since init-hook entries are files, not dirs.

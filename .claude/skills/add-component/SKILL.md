@@ -75,7 +75,7 @@ var (
 )
 ```
 
-Use existing palette constants (`NimboDarkColor`, `NimboMidColor`, `NimboLightColor`) or standard ANSI color codes. Name styles after what they represent, not how they look.
+Use existing palette constants (`NimboDarkColor`, `NimboMidColor`, `NimboLightColor`, `SuccessColor`) or standard ANSI color codes. Name styles after what they represent, not how they look.
 
 ## Step 3: Wire into App
 

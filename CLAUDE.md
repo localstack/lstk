@@ -15,12 +15,17 @@ This installs a [gitleaks](https://github.com/gitleaks/gitleaks) hook that scans
 # Build and Test Commands
 
 ```bash
-make build              # Compiles to bin/lstk
+make build              # Compiles to bin/lstk (cleans first)
 make test               # Run unit tests (cmd/ and internal/) via gotestsum
-make test-integration   # Run integration tests (rebuilds bin/lstk first, requires Docker)
-make lint               # Run golangci-lint
-make mock-generate      # Run go generate to regenerate mocks
+make test-integration   # Run integration tests (rebuilds bin/lstk via `build`, requires Docker)
+make lint               # Run golangci-lint (version pinned via .tool-versions)
+make mock-generate      # Regenerate mocks (mockgen via go:generate)
 make clean              # Remove build artifacts
+```
+
+Run a single unit test:
+```bash
+go test ./internal/<pkg>/ -run TestName
 ```
 
 Run a single integration test:
@@ -28,22 +33,57 @@ Run a single integration test:
 make test-integration RUN=TestStartCommandSucceedsWithValidToken
 ```
 
-Note: Integration tests require `LOCALSTACK_AUTH_TOKEN` environment variable for valid token tests.
+Notes:
+- Integration tests require `LOCALSTACK_AUTH_TOKEN` environment variable for valid token tests.
+- `test/integration` is a **separate Go module** (own `go.mod`); `make lint` runs golangci-lint twice — repo root and `test/integration` — and fails if the installed golangci-lint version doesn't match `.tool-versions`. `golangci-lint run --fix` auto-fixes many findings.
+- Mocks are generated with mockgen (go.uber.org/mock) via per-file `//go:generate mockgen ...` directives (e.g. `internal/snapshot/remote.go`); adding a mock means adding a directive, then `make mock-generate`.
+- Set `CREATE_JUNIT_REPORT=1` to get a JUnit XML report from `make test` / `make test-integration`.
 
 # Architecture
 
 - `main.go` - Entry point
-- `cmd/` - CLI wiring only (Cobra framework), no business logic
+- `cmd/` - CLI wiring only (Cobra framework), no business logic; one file per command
 - `internal/` - All business logic goes here
-  - `container/` - Handling different emulator containers
-  - `runtime/` - Abstraction for container runtimes (Docker, Kubernetes, etc.) - currently only Docker implemented
-  - `auth/` - Authentication (env var token or browser-based login)
-  - `config/` - Viper-based TOML config loading and path resolution
+  - `api/` - LocalStack platform API client (auth, license)
+  - `auth/` - Authentication (env var token or browser-based login), token storage/keyring
+  - `awscli/`, `azurecli/` - Exec wrappers behind the `lstk aws` / `lstk az` proxy commands
+  - `awsconfig/` - AWS CLI profile management in `~/.aws/` (`lstk setup aws`)
+  - `azureconfig/` - Azure CLI cloud registration and interception (`lstk setup azure`, `lstk az`) — see `internal/azureconfig/CLAUDE.md`
+  - `caller/` - Classifies the invoking caller/harness (human vs agent) for telemetry
+  - `config/` - Viper-based TOML config loading and path resolution — see `internal/config/CLAUDE.md`
+  - `container/` - Handling different emulator containers (start flow, gateway ports, offline fallbacks) — see `internal/container/CLAUDE.md`
+  - `emulator/` - Emulator API abstraction with per-type implementations (`aws/`, `azure/`, `snowflake/`)
+  - `endpoint/` - Emulator endpoint/host resolution
+  - `env/` - Process environment snapshot/injection helper (also used to isolate test envs)
+  - `extension/` - Git-style `lstk-<name>` extension resolution and exec
+  - `iac/` - Wrappers for third-party infrastructure as code tools (`terraform/`, `cdk/`, `sam/`)
+  - `log/` - Internal diagnostic logging (not for user-facing output — use `output/` for that)
   - `output/` - Generic event and sink abstractions for CLI/TUI/non-interactive rendering
+  - `ports/` - Port availability checks
+  - `reset/` - `lstk reset` domain logic
+  - `runtime/` - Abstraction for container runtimes (Docker, Kubernetes, etc.) - currently only Docker implemented
+  - `snapshot/` - Snapshot save/load/list/remove/show domain logic — see `internal/snapshot/CLAUDE.md`
+  - `telemetry/` - CLI analytics events client
+  - `terminal/` - Plain-mode terminal helpers (spinner, TTY detection)
+  - `tracing/` - OpenTelemetry setup (`LSTK_OTEL=1`)
   - `ui/` - Bubble Tea views for interactive output
   - `update/` - Self-update logic: version check via GitHub API, binary/Homebrew/npm update paths, archive extraction
-  - `log/` - Internal diagnostic logging (not for user-facing output — use `output/` for that)
-  - `iac/` - Wrappers for third-party infrastructure as code tools (Terraform, AWS CDK, AWS SAM CLI).
+  - `version/` - Version info
+  - `volume/` - `lstk volume` domain logic
+
+Commands are registered in `cmd/root.go` in two Cobra groups: the `commands` group (start, stop, restart, login, logout, status, logs, setup, config, volume, update, docs, snapshot, reset, save, load) and the `tools` group of proxy commands (aws, terraform/tf, cdk, sam, az). Shared helpers: `cmd/root.go` (wiring, groups, `requireSubcommand`, `initConfig`), `cmd/help.go` (help template), `cmd/iac.go` (IaC command boundary), `cmd/extension.go` (extension dispatch).
+
+# Commits, PRs, and Linear
+
+- Commit messages: a single concise line. Never add `Co-Authored-By: Claude`, "Generated with Claude Code", or any other AI attribution to commits or PR bodies.
+- Never commit or push unless explicitly asked.
+- PRs are squash-merged; titles start with an action verb and stay under ~70 characters.
+- Every PR needs exactly one `semver:` label (`patch`/`minor`/`major`) and one `docs:` label (`skip`/`needed`) — enforced by `check-release-label.yml`. Use `/create-pr` to scaffold title, body, and labels.
+- Issues and tickets live in Linear, not GitHub Issues. Typical flow: Linear issue → branch named from the issue (e.g. `devx-123-...`) → PR body ends with `Closes DEVX-123` (or `Towards DEVX-123` if partial). Ask which Linear team if unclear (e.g. PRO = product, DEVX = developer experience).
+
+# Release Process
+
+Releases are automated: a weekly workflow (`.github/workflows/automated-release.yml` → `create-release-tag.yml`) tags and publishes via goreleaser, deriving the version bump from merged PRs' `semver:` labels. See `docs/RELEASING.md`.
 
 # Logging
 
@@ -62,7 +102,7 @@ Uses Viper with TOML format. lstk uses the first `config.toml` found in this ord
 When no config file exists, lstk creates one at `$HOME/.config/lstk/config.toml` if `$HOME/.config/` already exists, otherwise at the OS default (#3). This means #3 is only reached on macOS when `$HOME/.config/` didn't exist at first run.
 
 Use `lstk config path` to print the resolved config file path currently in use.
-When adding a new command that depends on configuration, wire config initialization explicitly in that command (`PreRunE: initConfig`). Keep side-effect-free commands (e.g., `version`, `config path`) without config initialization.
+When adding a new command that depends on configuration, wire config initialization explicitly in that command (`PreRunE: initConfig(nil)`; the root command uses `initConfigDeferCreate(&firstRun)`). Keep side-effect-free commands (e.g., `version`, `config path`) without config initialization.
 
 A parent command that only groups subcommands (e.g. `config`, `setup`, `volume`, `snapshot`) must call `requireSubcommand(cmd)` (in `cmd/root.go`). Cobra otherwise prints help and exits 0 for an unknown/missing subcommand of a non-runnable parent; `requireSubcommand` sets `cobra.NoArgs` plus a help-printing `RunE` so a bare invocation still shows help (exit 0) while an unknown subcommand exits non-zero. Cobra's autogenerated `completion` command is the same shape, but it is created lazily during `Execute`, so `NewRootCmd` calls `root.InitDefaultCompletionCmd()` to materialize it before applying `requireSubcommand` (the call is idempotent — Cobra skips re-adding it).
 
@@ -70,49 +110,21 @@ Created automatically on first run with defaults. Supports emulator types: `aws`
 
 Only one `[[containers]]` block may be enabled at a time. `container.Start` rejects a config with more than one block up front (before health/auth checks and image pulls), since running multiple emulators together (e.g. AWS + Snowflake) is unsupported and would otherwise fail later during startup with container-name conflicts or port collisions. The guard lives on the start path (not `config.Get()`) on purpose: recovery/reporting commands like `stop`, `status`, and `logout` must still enumerate multiple running emulators.
 
-Each `[[containers]]` block may set an optional `image` to override the default Docker Hub image (e.g. an internal registry mirror or a locally loaded offline image). `ContainerConfig.Image()` returns `image` as-is when it already carries a tag (so the separately-configured `tag` is dropped in that case), otherwise it appends `tag` (or `latest`); the default `localstack/<product>:<tag>` is used when `image` is unset.
+Each `[[containers]]` block may set an optional `image` (override the default Docker Hub image) and a `volumes` list of Docker-style bind specs (persistence dir, init hooks, arbitrary mounts). Image/tag precedence, `volume` vs `volumes` semantics, and path-resolution rules are documented in `internal/config/CLAUDE.md`.
 
-## GATEWAY_LISTEN and host exposure
-
-`GATEWAY_LISTEN` is not hardcoded — it is read from the container's resolved env (set it via an `[env.*]` profile referenced by the container's `env` field). When unset it defaults to `:4566,:443`. Parsing/derivation lives in `internal/container/gateway.go` (`parseGatewayListen`), mirroring the v1 CLI:
-
-- The **container env value** blanks a `127.0.0.1` host so the gateway still listens on all interfaces inside the container (`:4566`), and preserves any non-loopback host verbatim.
-- The **host publish IP** for *all* published ports (gateway ports + the 4510-4559 service range) is the host part of the first entry, defaulting to `127.0.0.1`. So `GATEWAY_LISTEN = "0.0.0.0:4566,0.0.0.0:443"` exposes the emulator beyond loopback (e.g. on an EC2/MicroVM host). This is threaded through as `runtime.ContainerConfig.BindHost` and applied in `internal/runtime/docker.go`.
-- Gateway ports beyond the primary edge port (4566, which is published on the configured `port`) are published host-port == container-port, so listing an extra port like `:8443` publishes it. `servicePortRange()` covers only 4510-4559 now — 443 comes from the default `GATEWAY_LISTEN`.
-
-## Volume Mounts
-
-Each `[[containers]]` block accepts a `volumes` list of Docker-style `"host:container[:ro]"` bind specs (e.g. for Snowflake init hooks mounted into `/etc/localstack/init/{boot,start,ready,shutdown}.d`). The persistence/cache mount to `/var/lib/localstack` is folded into this list: the entry whose container target is `/var/lib/localstack` (`persistenceTarget` in `internal/config/containers.go`) defines the host dir backing it, and that path is what `VolumeDir()`, `lstk volume path`, and `lstk volume clear` resolve. Resolution precedence in `VolumeDir()`: a `volumes` entry targeting `/var/lib/localstack` → the legacy singular `volume = "..."` field (still honored for backward compatibility) → the default OS cache dir. Setting the persistence dir via both `volume` and a `volumes` entry with differing sources is a validation error.
-
-`volume` (singular) and `volumes` (plural) are not interchangeable in general — they overlap only for the persistence mount. `volume` *only* sets the persistence dir (always mounted to `/var/lib/localstack`); `volumes` is a superset that can set the persistence dir **and** arbitrary mounts. Two further distinctions: `volume` cannot express init hooks or any non-persistence mount, and the legacy `volume` value is used **verbatim** (no path resolution) whereas a `volumes` source is resolved. So `volume = "/data"` and `volumes = ["/data:/var/lib/localstack"]` are equivalent for persistence, but `volume = "./data"` is passed raw (and would become a Docker named volume) while `volumes = ["./data:/var/lib/localstack"]` resolves `./data` against the config dir.
-
-Parsing/resolution lives in `parseVolume`/`ExtraVolumes` in `internal/config/containers.go`. The container target is validated with `path.IsAbs` (slash semantics) — never `filepath.IsAbs`, which rejects `/var/lib/localstack` on Windows. `splitVolumeSpec` rejoins a leading Windows drive letter (`C:\…`) onto the host source so its `:` is not mistaken for the host/container separator (Windows-guarded so a single-letter relative dir like `a:/data` stays valid elsewhere, matching Docker). Relative host sources resolve against the **config file's directory** and a leading `~/` is expanded — this is required because the Docker SDK treats a non-absolute source as a *named volume* rather than a bind mount. `start.go` mounts the persistence dir (creating it via `MkdirAll`) and appends `ExtraVolumes()`; extra sources are not created (`os.Stat` + error if missing) since init-hook entries are files, not dirs.
+`GATEWAY_LISTEN` (host exposure and published ports) is read from the container's resolved env, not hardcoded; parsing and derivation are documented in `internal/container/CLAUDE.md`.
 
 # Offline / Enterprise Environments
 
-There is no `--offline` flag. Instead `container.Start` degrades gracefully when internet requests fail (the common enterprise blockers: Docker Hub unreachable, proxy/TLS interception, license server unreachable):
-
-- **Image pull**: if `rt.PullImage` fails but `rt.ImageExists` reports the image is already present locally, lstk warns and uses the local image instead of failing.
-- **License pre-flight (image already local)**: when a pinned image is already present locally — so `pullImages` won't pull it — `tryPrePullLicenseValidation` skips the pre-flight check entirely (gated on `rt.ImageExists`), since the redundant network round-trip would otherwise block a fully-offline start; the container validates the license at startup. This is symmetric with the skip-pull behaviour above.
-- **License pre-flight (server unreachable)**: when a check does run, `validateLicense` distinguishes a definitive server rejection (`*api.LicenseError`, e.g. HTTP 403/400 — still fatal) from a transport-level failure (any other error — offline/proxy/cert). On a transport failure it skips the pre-flight check and lets the container validate the license at startup.
-- **License pre-flight (unsupported tag)**: when the server rejects the image tag *format* itself (`IsUnsupportedTag` — a 400 whose detail contains `licensing.license.format`, e.g. `dev` nightlies or custom enterprise-mirror tags), that is not a verdict on the license, so `validateLicense` skips the pre-flight with a warning and lets the container validate the license at startup — the same degradation as a transport failure. Genuine token/subscription rejections stay fatal. The invariant across all these paths: the pre-flight is a fail-fast optimization and must never block a start the container itself would accept.
-- **Telemetry/update checks** are already best-effort and fail silently when offline.
-
-`runtime.PullImage` always closes its `progress` channel (even when `ImagePull` fails early) so the local-image fallback path doesn't leak the progress goroutine. Pair this with a custom `image` in the config to point at a locally loaded image or an internal-registry mirror.
+There is no `--offline` flag. Instead `container.Start` degrades gracefully when internet requests fail (Docker Hub unreachable, proxy/TLS interception, license server unreachable): local images are used when pulls fail, and the license pre-flight is skipped on transport-level failures or unsupported-tag rejections so the container validates its own bundled license. The exact fallback rules live in `internal/container/CLAUDE.md`; pair them with a custom `image` in the config to point at a locally loaded image or an internal-registry mirror.
 
 # Emulator Setup Commands
 
 Use `lstk setup <emulator>` to set up CLI integration for an emulator type:
-- `lstk setup aws` — Sets up AWS CLI profile in `~/.aws/config` and `~/.aws/credentials`. Runs interactively (Y/n prompt) on a TTY; in non-interactive mode (CI / piped / `--non-interactive`) it writes the profile with defaults and exits 0 without prompting. Overwriting an existing `localstack` profile whose values differ requires `--force` (which also skips the prompt interactively); a fresh profile, completing a partial one, or an already-correct profile never needs it. Unlike the interactive path (which warns and continues on a failed write), the non-interactive path returns write/check failures as errors so automation exits non-zero. The shared host resolution lives in `awsconfig.ResolveProfileHost`; the non-interactive write is `awsconfig.SetupNonInteractive` (no `UserInputRequestEvent`), while `awsconfig.Setup(..., skipConfirm)` keeps the interactive prompt.
-- `lstk setup azure` (alias `lstk setup az`, matching the `lstk az` proxy command) — Prepares an isolated Azure CLI config dir (under the lstk config dir, via `AZURE_CONFIG_DIR`): registers a custom Azure cloud (`LocalStack`) whose endpoints point at the LocalStack Azure emulator, activates it, disables Azure CLI instance discovery and telemetry, and performs a one-time dummy service-principal login. The user's global `~/.azure` is left untouched. Requires the `az` CLI and a running Azure emulator.
-- `lstk az <args>` — Runs `az <args>` against that isolated config dir, so the Azure CLI talks to LocalStack for Azure service URLs and to the real internet for everything else (extension downloads, etc.).
-- `lstk az start-interception` / `lstk az stop-interception` — Opt-in second mode: instead of the isolated dir, these mutate the user's **global** `~/.azure` so plain `az` (any terminal/script) targets LocalStack, then switch back. `start-interception` runs the same register → activate → `instance_discovery=false` → dummy-login flow against the global config (but does not touch global telemetry/survey prefs) and is independent of `lstk setup azure`. `stop-interception` switches the active cloud back to `AzureCloud` (override with `--cloud <name>`, validated against the live `az cloud list`) and re-enables instance discovery — but only if `LocalStack` is still the active cloud, to avoid clobbering an unrelated selection.
+- `lstk setup aws` — Sets up an AWS CLI `localstack` profile in `~/.aws/config` and `~/.aws/credentials`. Runs interactively (Y/n prompt) on a TTY; in non-interactive mode (CI / piped / `--non-interactive`) it writes the profile with defaults and exits 0 without prompting, and returns write/check failures as errors so automation exits non-zero. Overwriting an existing `localstack` profile whose values differ requires `--force`. Shared host resolution lives in `awsconfig.ResolveProfileHost`; the non-interactive write is `awsconfig.SetupNonInteractive`, the interactive path is `awsconfig.Setup(..., skipConfirm)`.
+- `lstk setup azure` (alias `lstk setup az`) — Prepares an isolated Azure CLI config dir pointing at the LocalStack Azure emulator; the user's global `~/.azure` is untouched. `lstk az <args>` then runs `az` against that isolated dir. `lstk az start-interception` / `stop-interception` are the opt-in global mode that mutates `~/.azure` so plain `az` targets LocalStack. Mechanics, rationale, and extension points: `internal/azureconfig/CLAUDE.md`.
 
 This naming avoids AWS-specific "profile" terminology and uses a clear verb for mutation operations.
-
-The default `lstk az <args>` mode mirrors `lstk aws`: the Azure CLI has no `--endpoint-url`/`--profile`, so the only isolation knob is `AZURE_CONFIG_DIR`. Inside that isolated dir we register a custom cloud whose endpoints point at `https://azure.localhost.localstack.cloud:4566`, so `az` makes direct calls to LocalStack for Azure services (no HTTP(S) forward proxy in front of `az`). `core.instance_discovery=false` is required because `az` does not recognise the LocalStack host as a real Azure cloud. Adding a new Azure service that needs its own endpoint in `az`'s cloud config means extending the map in `internal/azureconfig/azureconfig.go::BuildCloudConfig`.
-
-`lstk az start-interception`/`stop-interception` additionally offer azlocal's global pattern (the same cloud registration applied to `~/.azure` rather than the isolated dir), so existing `az` scripts run unmodified against LocalStack. This is intentionally documented as optional because it mutates global state; prefer the isolated `lstk az <args>` mode unless a script must invoke plain `az`. The interception domain logic lives in `internal/azureconfig/interception.go` and reuses the shared `registerLocalStackCloud` helper; the command wiring (subcommands under `az` plus the shared `azPreflight` checks) is in `cmd/az.go`.
 
 Environment variables:
 - `LOCALSTACK_AUTH_TOKEN` - Auth token (skips browser login if set)
@@ -123,40 +135,19 @@ Environment variables:
 
 lstk proxies third-party IaC tools at the AWS emulator so they run against LocalStack with no `*local` wrapper installed. Each command forwards its args to the real tool after configuring the environment; domain logic lives under `internal/iac/<tool>/cli/`, wiring in `cmd/<tool>.go`, with shared command-boundary helpers in `cmd/iac.go`. Siblings: `lstk terraform` (alias `tf`), `lstk cdk`, `lstk sam`.
 
-
 # Extensions
 
-lstk supports Git-style extensions: when `lstk <name>` is not a built-in command or alias, lstk resolves and execs an external `lstk-<name>` executable, forwarding all arguments after `<name>` verbatim, passing stdin/stdout/stderr through, and propagating the child's exit code. Built-ins always win (dispatch happens only on the unknown-command path). Domain logic lives in `internal/extension/`; the unknown-command dispatch, the help listing, and the runtime-context wiring are in `cmd/extension.go`, hooked from `cmd/root.go`.
-
-Resolution order is built-ins → bundled dir → `PATH`. The bundled dir is the directory containing the symlink-resolved lstk executable (`filepath.EvalSymlinks(os.Executable())`), so bundled extensions are found through npm/Homebrew shims; a bundled extension wins over a same-named `PATH` executable. Windows executable extensions (`PATHEXT`) are honored. There is no manifest — any resolvable `lstk-<name>` is the `<name>` extension.
-
-Runtime context is conveyed in two environment variables: `LSTK_EXT_API_VERSION` (a flat integer the extension checks before parsing) and `LSTK_EXT_CONTEXT` (a single JSON object: `configDir`, optional `authToken`, `nonInteractive`, `json`, and an `emulators` array of `{type, endpoint, port}` — `[]` when none running, multiple entries when several emulators run at once). The `extension.Context` type and `Environ` builder live in `internal/extension/context.go`; the command boundary (`cmd/extension.go`) discovers all running emulators and populates it. `Invoke` wraps each exec in an OTEL span (extension name, bundled, exit code), so invocations are recorded as telemetry when `LSTK_OTEL` is enabled and cost nothing when it is not.
-
-Scope: the first release **runs** extensions (PATH and bundled-dir resolution) and conveys context. Automated **distribution and atomic co-update** of LocalStack's bundled extensions are deferred to the `add-bundled-extension-distribution` change — the first release validates bundled extensions by manual placement next to `lstk`.
-
-See [extensions-authoring.md](docs/extensions-authoring.md) for the author-facing contract.
-
+lstk supports Git-style extensions: when `lstk <name>` is not a built-in command or alias, lstk resolves and execs an external `lstk-<name>` executable, forwarding arguments verbatim and propagating the exit code. Built-ins always win. Resolution order is built-ins → bundled dir (the directory of the symlink-resolved lstk executable) → `PATH`; there is no manifest. Runtime context is conveyed via `LSTK_EXT_API_VERSION` and `LSTK_EXT_CONTEXT` (JSON: `configDir`, optional `authToken`, `nonInteractive`, `json`, `emulators` array) — see `extension.Context`/`Environ` in `internal/extension/context.go`; dispatch and help listing are in `cmd/extension.go`. Automated distribution/co-update of bundled extensions is deferred to the `add-bundled-extension-distribution` change. See [extensions-authoring.md](docs/extensions-authoring.md) for the author-facing contract.
 
 # Snapshots
 
-`lstk snapshot` captures and restores the running emulator's state. For Snowflake and Azure, snapshot support is still maturing, so these commands surface a friendly heads-up that results may be incomplete. Domain logic lives in `internal/snapshot/`; `cmd/snapshot.go` is wiring + output-mode selection.
+`lstk snapshot` captures and restores the running emulator's state (for Snowflake and Azure a heads-up is shown that results may be incomplete). Domain logic lives in `internal/snapshot/`; `cmd/snapshot.go` is wiring + output-mode selection. Top-level `lstk save` / `lstk load` are aliases for the save/load subcommands.
 
-- `lstk snapshot save [destination]` — export state to a local `.snapshot` file or a named cloud snapshot.
-- `lstk snapshot load REF` — restore state, starting the emulator first if needed; `--merge` controls how snapshot state combines with running state (`account-region-merge` (default), `overwrite`, `service-merge`).
-- `lstk snapshot list` — list cloud snapshots on the LocalStack platform. Lists only snapshots you created by default; pass `--all` to include every snapshot in your organization. Cloud-only; requires auth.
-- `lstk snapshot remove REF` — delete a cloud snapshot. Cloud-only; local files are never deleted by the CLI. Prompts for confirmation in interactive mode; `--force` is required to skip the prompt in non-interactive mode.
-- `lstk snapshot show REF` — show metadata for a single cloud snapshot (name, created date, size, LocalStack version, message, services, and per-service resource counts). Resource counts render only when the platform has them for that snapshot. Cloud-only; requires auth.
+- `lstk snapshot save [destination]` / `lstk snapshot load REF` (`--merge`: `account-region-merge` default, `overwrite`, `service-merge`) / `list` (cloud; `--all` for org-wide) / `remove REF` / `show REF` (remove/show are cloud-only).
+- A REF is a local `.snapshot` file, a `pod:` cloud snapshot on the LocalStack platform (requires auth), or an `s3://bucket/prefix` remote in the user's own bucket (the emulator performs the transfer; S3 supports save/load/list only).
+- A `[[containers]]` block (AWS only) can set `snapshot = "pod:..."` to auto-load after a fresh start; `lstk start --snapshot REF` overrides it for one run, `--no-snapshot` skips it.
 
-A REF is parsed by helpers in `internal/snapshot/destination.go`:
-- **local file** — absolute/relative path; the `.snapshot` extension is forced (any other extension is replaced). On load, `.zip` files saved by older lstk versions are still accepted.
-- **cloud snapshot** — `pod:` prefix (e.g. `pod:my-baseline`), stored on the LocalStack platform. Requires auth (`LOCALSTACK_AUTH_TOKEN` or `lstk login`).
-- **S3 remote** — `s3://bucket/prefix` (parsed to `KindS3`). The CLI never touches S3; the emulator performs the transfer. See the S3 remotes note below.
-
-`ParseDestination` (save), `ParseSource` (load), `ParseRemovable` (remove), and `ParseShowable` (show) share pod-name validation; `ParseRemovable` and `ParseShowable` reject local paths (via the shared `parseCloudOnly` helper) so those cloud-only commands never touch local files.
-
-**S3 remotes (save/load/list only).** `lstk snapshot save <pod-name> s3://bucket/prefix`, `load <pod-name> s3://bucket/prefix`, and `list s3://bucket/prefix` store snapshots in the user's own S3 bucket. The pod name (the snapshot's identity within the bucket) is a positional separate from the `s3://` location — required for load, auto-generated for save when omitted, unused for list. Credentials follow AWS CLI precedence (`resolveS3Credentials` in `cmd/snapshot.go`): `--profile <name>` wins, else static `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY` (optional `AWS_SESSION_TOKEN`), else the profile named by `AWS_PROFILE` (read via `internal/awsconfig.ReadProfileCredentials`/`CredentialsFromEnv`); only static credentials are supported (no SSO/assume-role/credential_process — those resolve only via the AWS SDK chain, not our ini parser); **never put credentials in the URL** (rejected by `parseS3`). The emulator-side S3 remote requires a remote to be registered by name first, so the CLI transparently upserts a deterministic remote (`POST /_localstack/pods/remotes/<name>`, name derived in `internal/snapshot/remote.go`) with a placeholder-templated URL, then passes the real credentials as ephemeral `remote_params` on each op — secrets stay out of the registered URL and out of any persisted state. `list s3://…` queries the emulator (`GET /_localstack/pods` with a remote body), not the platform API, so it **requires a running emulator** (unlike `snapshot list`). Before save/load/list, lstk runs a pre-flight bucket-existence check (`ensureBucketExists` → `RemoteClient.S3BucketExists`, an unsigned S3 `HEAD`: 404 ⇒ missing) and errors out rather than letting the emulator auto-create a bucket on a typo; local-testing endpoints (IP / `host.docker.internal`) are skipped, and a check that can't run degrades to a warning. Domain logic + client interface live in `internal/snapshot/remote.go`; the emulator HTTP impl is `internal/emulator/aws/remote.go`; command wiring/arg classification (`classifyRemoteArgs`, `resolveS3Credentials`) is in `cmd/snapshot.go`. ORAS and other remotes, and `remove`/`show`/versions on S3, are not yet supported.
-
-**Auto-load on start.** A `[[containers]]` block (AWS only) can set `snapshot = "pod:my-baseline"` (any load REF) to auto-load that snapshot after the emulator starts. The loader runs only when the emulator is freshly started this run (skipped when already running), mirroring v1's `AUTO_LOAD_POD`. `lstk start --snapshot REF` overrides the configured REF for one run; `lstk start --no-snapshot` skips it. Resolution lives in `resolveStartSnapshotRef`/`newSnapshotAutoLoader` in `cmd/snapshot.go`; the loader is threaded into the non-interactive start in `cmd/root.go` and into the TUI via `ui.RunOptions.PostStart`. `snapshot save` never writes back into config — the `snapshot` field is manual.
+REF parsing helpers, S3 credential precedence and remote-upsert mechanics, and the auto-load wiring are documented in `internal/snapshot/CLAUDE.md`.
 
 # NPM Distribution
 
@@ -176,11 +167,16 @@ The release job (`.github/workflows/ci.yml`) builds the npm packages with `gorel
   - **product name** (`productName`, `ProductName`): name only, no registry, no tag, e.g. `"localstack-pro"` / `"snowflake"`. Used for license API `ProductInfo.Name` and to build full images via `dockerRegistry + "/" + ProductName`.
 - Avoid package-level global variables. Use constructor functions that return fresh instances and inject dependencies explicitly. This keeps packages testable in isolation and prevents shared mutable state between tests.
 - Never print directly to stdout/stderr (e.g., `fmt.Fprintf(os.Stderr, …)`). For user-facing output, emit events through `output.Sink`. For internal diagnostics, use `log.Logger`. If neither is available (e.g., during logger setup), return errors to the caller and let them decide.
+- Don't deprecate commands with Cobra's `Deprecated` field: it prints the notice raw to `os.Stderr` (bypassing `output.Sink`) and silently hides the command from `--help` and generated `lstk docs`. Remove the old command outright instead; if a transition period is genuinely needed, keep the command visible and emit the deprecation notice through the sink.
 - Do not call `config.Get()` from domain/business-logic packages. Instead, extract the values you need at the command boundary (`cmd/`) and pass them as explicit function arguments. This keeps domain functions testable without requiring Viper/config initialization.
 
 # CLI Help Text
 
 - Write command `Short`/`Long` as unbroken paragraphs (one line each, blank line between); never hard-wrap a sentence in source. `wrapText` in `cmd/help.go` re-wraps to the terminal width at render time and `lstk docs` reads the raw text, so manual breaks fight both. Indented lines (examples, aligned output) are left as-is.
+
+# Writing for Humans
+
+When drafting Slack messages, PR descriptions, review replies, release notes, or README text: keep it short and plain, lead with the point, and produce one tight draft rather than multiple options.
 
 # Testing
 
@@ -272,6 +268,10 @@ case <-ctx.Done():
 - Preserve the Nimbo palette constants (`#3F51C7`, `#5E6AD2`, `#7E88EC`) unless intentionally changing branding.
 - If changing palette constants, update/add tests to guard against accidental drift.
 
+# Spec-Driven Changes
+
+`openspec/` holds specs and change proposals (`openspec/specs/`, `openspec/changes/`, archive under `openspec/changes/archive/`); change IDs referenced elsewhere in this file (e.g. `add-bundled-extension-distribution`) live there. Background: `docs/spec-driven-development.md`.
+
 # Claude Skills
 
 Custom skills are available in `.claude/skills/`:
@@ -285,3 +285,5 @@ Custom skills are available in `.claude/skills/`:
 # Maintaining This File
 
 When making significant changes to the codebase (new commands, architectural changes, build process updates, new patterns), update this CLAUDE.md file to reflect them.
+
+Deep per-feature reference lives next to the code in nested CLAUDE.md files — `internal/config/`, `internal/container/`, `internal/azureconfig/`, `internal/snapshot/` (each with an `AGENTS.md` symlink for non-Claude agents, mirroring the root). Update the nested file when its feature changes; keep this root file for guidance that applies to most sessions.

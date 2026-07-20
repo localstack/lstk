@@ -30,9 +30,9 @@ Go through each changed file and check for violations. Flag only actual problems
 
 ### Output and event system
 
-- [ ] No direct `fmt.Print`/`log.Print` in domain code — uses `output.EmitXxx()` helpers instead
+- [ ] No direct `fmt.Print`/`log.Print` in domain code — emits events via `sink.Emit(output.XxxEvent{...})` instead (no package-level emit helpers)
 - [ ] New event types (if any) are added to all required locations:
-  - `internal/output/events.go` (struct + `Event` union + emit helper)
+  - `internal/output/events.go` (struct + `sealedEvent()` marker)
   - `internal/output/plain_format.go` (`FormatEventLine` case)
   - Tests in `internal/output/*_test.go`
 - [ ] Event payloads carry domain facts, not pre-rendered UI strings
