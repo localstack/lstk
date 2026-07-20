@@ -315,7 +315,7 @@ func startEmulator(ctx context.Context, rt runtime.Runtime, cfg *env.Env, tel *t
 	// sink even in interactive mode because the config mutation has to happen before
 	// the TUI starts (the auto-load loader and start options are built from it).
 	if emulatorType != "" {
-		newContainers, applyErr := container.ApplyEmulatorType(output.NewPlainSink(os.Stdout), emulatorType, appConfig.Containers, firstRun, configPath)
+		newContainers, applyErr := container.ApplyEmulatorType(ctx, rt, output.NewPlainSink(os.Stdout), emulatorType, appConfig.Containers, firstRun, configPath)
 		if applyErr != nil {
 			return applyErr
 		}

@@ -1,10 +1,12 @@
 package container
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/localstack/lstk/internal/config"
 	"github.com/localstack/lstk/internal/output"
+	"github.com/localstack/lstk/internal/runtime"
 )
 
 // ApplyEmulatorType applies a non-interactive emulator selection (the --type
@@ -22,8 +24,22 @@ import (
 //
 // Messages are emitted through sink; configPath is the friendly config path used
 // in those messages so a switch against a checked-in file is visible.
-func ApplyEmulatorType(sink output.Sink, requested config.EmulatorType, containers []config.ContainerConfig, firstRun bool, configPath string) ([]config.ContainerConfig, error) {
+//
+// Before writing anything, it checks whether a different emulator type is
+// already running on the port the requested type would use: rewriting the
+// config to a type that is doomed to fail the port-conflict check in
+// selectContainersToStart would leave the config pointing at an emulator that
+// isn't running while the one that IS running becomes invisible to `status`,
+// `stop`, and `logs` (which resolve from the configured type). The check
+// degrades gracefully (like the offline/enterprise paths in start.go) when
+// the runtime can't be queried, so an unreachable Docker daemon here doesn't
+// block a switch — the real connectivity problem still surfaces later, from
+// the start attempt itself.
+func ApplyEmulatorType(ctx context.Context, rt runtime.Runtime, sink output.Sink, requested config.EmulatorType, containers []config.ContainerConfig, firstRun bool, configPath string) ([]config.ContainerConfig, error) {
 	if firstRun {
+		if err := rejectIfConflictingEmulatorRunning(ctx, rt, sink, requested); err != nil {
+			return nil, err
+		}
 		if err := config.EnsureCreated(); err != nil {
 			return nil, fmt.Errorf("failed to create config file: %w", err)
 		}
@@ -72,6 +88,10 @@ func ApplyEmulatorType(sink output.Sink, requested config.EmulatorType, containe
 		return containers, nil
 	}
 
+	if err := rejectIfConflictingEmulatorRunning(ctx, rt, sink, requested); err != nil {
+		return nil, err
+	}
+
 	// configPath can be empty when the friendly path couldn't be resolved; fall
 	// back to a generic phrase so the messages below still read as sentences.
 	location := configPath
@@ -117,4 +137,38 @@ func ApplyEmulatorType(sink output.Sink, requested config.EmulatorType, containe
 	}
 	sink.Emit(output.MessageEvent{Severity: output.SeverityNote, Text: note + "."})
 	return newCfg.Containers, nil
+}
+
+// rejectIfConflictingEmulatorRunning scans for an already-running emulator of a
+// different type on the port the requested type would use, emitting the same
+// "only one emulator can run on a port at a time" error selectContainersToStart
+// would surface later, but before the config is touched. It returns nil (no
+// error, proceed with the switch) both when there is no conflict and when the
+// scan itself fails — an unreachable runtime must not block a switch that would
+// otherwise succeed; the real problem still surfaces when start actually runs.
+func rejectIfConflictingEmulatorRunning(ctx context.Context, rt runtime.Runtime, sink output.Sink, requested config.EmulatorType) error {
+	probe := config.ContainerConfig{Type: requested}
+	containerPort, err := probe.ContainerPort()
+	if err != nil {
+		return nil
+	}
+
+	found, err := rt.FindRunningByImage(ctx, config.KnownImageRepos(), containerPort)
+	if err != nil || found == nil {
+		return nil
+	}
+
+	foundType := config.EmulatorTypeForImage(found.Image)
+	if foundType == "" || foundType == requested {
+		return nil
+	}
+
+	sink.Emit(output.ErrorEvent{
+		Title:   fmt.Sprintf("%s is running on port %s", foundType.DisplayName(), found.BoundPort),
+		Summary: fmt.Sprintf("Switching to the %s was skipped — only one emulator can run on a port at a time, and your config was not changed.", requested.ShortName()),
+		Actions: []output.ErrorAction{
+			{Label: "Stop the running emulator, then retry:", Value: fmt.Sprintf("docker stop %s", found.Name)},
+		},
+	})
+	return output.NewSilentError(fmt.Errorf("%s is already running on port %s", foundType.DisplayName(), found.BoundPort))
 }

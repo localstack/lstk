@@ -1,11 +1,13 @@
 package integration_test
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
 
 	"github.com/localstack/lstk/test/integration/env"
+	"github.com/moby/moby/client"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -25,6 +27,19 @@ func typeTestEnv(t *testing.T) (env.Environ, string) {
 		With(env.DisableEvents, "1").
 		With(env.AuthToken, "dummy-token").
 		With(dockerHostKey, "unix:///nonexistent-lstk-test.sock")
+	return e, tmpHome
+}
+
+// typeTestEnvWithDocker is like typeTestEnv but leaves DOCKER_HOST untouched, so
+// the binary talks to the real Docker daemon — needed by tests that must detect
+// an actually-running container rather than failing fast at the Docker ping.
+func typeTestEnvWithDocker(t *testing.T) (env.Environ, string) {
+	t.Helper()
+	tmpHome := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(tmpHome, ".config"), 0755))
+	e := env.Environ(testEnvWithHome(tmpHome, tmpHome)).
+		With(env.DisableEvents, "1").
+		With(env.AuthToken, "fake-token")
 	return e, tmpHome
 }
 
@@ -187,4 +202,49 @@ func TestStartTypeInvalidValue(t *testing.T) {
 
 	require.Error(t, err)
 	assert.Contains(t, stderr, `invalid emulator type "bogus"`)
+}
+
+// TestStartTypeFlagRefusesSwitchWhenDifferentEmulatorRunning is the end-to-end
+// regression for the reviewer-reported bug: `lstk -t azure` followed by `lstk -t
+// snowflake` while Azure was still running rewrote the config to Snowflake even
+// though the start itself failed on the port conflict, leaving `status`/`stop`/
+// `logs` unable to find the still-running Azure emulator (they resolve from the
+// configured type). The switch must be refused — and the config left untouched
+// — when a different emulator is already running on the port the requested type
+// would use. Uses a real Docker daemon (not typeTestEnv's fake DOCKER_HOST)
+// since the conflict can only be detected by actually finding the running
+// container; alpine (already used elsewhere in this suite) is tagged as a fake
+// Azure image so no real product image needs to be pulled.
+func TestStartTypeFlagRefusesSwitchWhenDifferentEmulatorRunning(t *testing.T) {
+	requireDocker(t)
+	cleanup()
+	t.Cleanup(cleanup)
+
+	ctx := testContext(t)
+
+	const fakeImage = "localstack/localstack-azure:test-fake"
+	_, err := dockerClient.ImageTag(ctx, client.ImageTagOptions{Source: testImage, Target: fakeImage})
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		_, _ = dockerClient.ImageRemove(context.Background(), fakeImage, client.ImageRemoveOptions{})
+	})
+	startExternalContainer(t, ctx, fakeImage, "localstack-external-azure", "4566")
+
+	e, _ := typeTestEnvWithDocker(t)
+	configPath := resolvedConfigPath(t, e)
+	require.NoError(t, os.MkdirAll(filepath.Dir(configPath), 0755))
+	content := "[[containers]]\ntype = \"azure\"\ntag = \"latest\"\nport = \"4566\"\n"
+	require.NoError(t, os.WriteFile(configPath, []byte(content), 0644))
+
+	stdout, _, err := runLstk(t, ctx, t.TempDir(), e, "start", "--type", "snowflake", "--non-interactive")
+
+	require.Error(t, err)
+	assert.Contains(t, stdout, "LocalStack Azure Emulator is running on port 4566")
+	assert.Contains(t, stdout, "config was not changed")
+	assert.Contains(t, stdout, "docker stop localstack-external-azure")
+
+	// Config must be left untouched: still Azure, not rewritten to Snowflake.
+	data, readErr := os.ReadFile(configPath)
+	require.NoError(t, readErr)
+	assert.Equal(t, content, string(data))
 }
