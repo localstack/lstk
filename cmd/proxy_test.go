@@ -94,6 +94,18 @@ func TestStripGlobalFlags(t *testing.T) {
 			args:     []string{"s3", "ls", "--non-interactive-mode", "--config-file", "x"},
 			wantArgs: []string{"s3", "ls", "--non-interactive-mode", "--config-file", "x"},
 		},
+		{
+			// --config has no -c shorthand: -c must pass through so wrapped tools
+			// that claim it keep working (CDK's -c/--context, SAM's -c/--cached).
+			name:     "-c passes through to the wrapped tool",
+			args:     []string{"synth", "-c", "env=prod"},
+			wantArgs: []string{"synth", "-c", "env=prod"},
+		},
+		{
+			name:     "-c=value passes through to the wrapped tool",
+			args:     []string{"synth", "-c=env=prod"},
+			wantArgs: []string{"synth", "-c=env=prod"},
+		},
 	}
 
 	for _, tt := range tests {

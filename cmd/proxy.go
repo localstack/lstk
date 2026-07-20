@@ -18,6 +18,10 @@ type globalFlags struct {
 // unknown) and their effect silently lost. Both --flag value and --flag=value
 // forms are recognized, in any position.
 //
+// --config is stripped only in its long form: it has no -c shorthand, and a
+// short -c must pass through untouched because wrapped tools claim it (CDK's
+// -c/--context, SAM's -c/--cached), so stripping it would break those commands.
+//
 // --json is deliberately NOT recognized here: unlike --non-interactive/--config,
 // which configure lstk's own wrapping mechanics, --json is purely about lstk's
 // own output rendering, which proxy commands don't have — their output is the
