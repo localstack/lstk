@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 
 	"github.com/localstack/lstk/test/integration/env"
@@ -129,6 +130,25 @@ func TestSAMOfflineCommandsNoEmulator(t *testing.T) {
 
 			assert.Contains(t, stdout, "ARGS:"+sub)
 			assert.NotContains(t, stdout, "--region")
+		})
+	}
+}
+
+// DEVX-1002 — --help (and -h) never require the emulator, even for an
+// AWS-contacting subcommand, and are forwarded to sam untouched.
+func TestSAMHelpNoEmulator(t *testing.T) {
+	t.Parallel()
+	for _, args := range [][]string{{"--help"}, {"-h"}, {"deploy", "--help"}} {
+		args := args
+		t.Run(strings.Join(args, "_"), func(t *testing.T) {
+			t.Parallel()
+			fakeDir := writeFakeSAM(t, "1.95.0")
+			e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).With(env.Home, t.TempDir())
+
+			cmdArgs := append([]string{"sam"}, args...)
+			stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), e, cmdArgs...)
+			require.NoError(t, err, "stderr: %s", stderr)
+			assert.Contains(t, stdout, "ARGS:"+strings.Join(args, " "))
 		})
 	}
 }

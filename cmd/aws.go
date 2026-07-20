@@ -66,6 +66,12 @@ Examples:
 				return output.NewSilentError(err)
 			}
 
+			// --help/-h never contacts LocalStack, so it runs directly without
+			// requiring Docker or a running emulator (DEVX-1002).
+			if awscli.IsHelp(passthrough) {
+				return awscli.Exec(cmd.Context(), "", false, os.Stdout, os.Stderr, passthrough)
+			}
+
 			rt, err := runtime.NewDockerRuntime(cfg.DockerHost)
 			if err != nil {
 				return err

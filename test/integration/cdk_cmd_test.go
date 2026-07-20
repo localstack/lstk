@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 
 	"github.com/localstack/lstk/test/integration/env"
@@ -127,6 +128,26 @@ func TestCDKOfflineCommandsNoEmulator(t *testing.T) {
 
 			assert.Contains(t, stdout, "ARGS:"+sub)
 			assert.NotContains(t, stdout, "--region")
+		})
+	}
+}
+
+// DEVX-1002 — --help/-h, and the bare "help" pseudo-subcommand, never require
+// the emulator, even for an AWS-contacting subcommand, and are forwarded to
+// cdk untouched.
+func TestCDKHelpNoEmulator(t *testing.T) {
+	t.Parallel()
+	for _, args := range [][]string{{"--help"}, {"-h"}, {"deploy", "--help"}, {"help"}, {"deploy", "help"}} {
+		args := args
+		t.Run(strings.Join(args, "_"), func(t *testing.T) {
+			t.Parallel()
+			fakeDir := writeFakeCDK(t, "2.177.0")
+			e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).With(env.Home, t.TempDir())
+
+			cmdArgs := append([]string{"cdk"}, args...)
+			stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), e, cmdArgs...)
+			require.NoError(t, err, "stderr: %s", stderr)
+			assert.Contains(t, stdout, "ARGS:"+strings.Join(args, " "))
 		})
 	}
 }

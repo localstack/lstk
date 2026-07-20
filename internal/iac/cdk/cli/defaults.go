@@ -58,9 +58,25 @@ var valueFlags = map[string]bool{
 }
 
 // IsOffline reports whether the CDK invocation described by args is one of the
-// offline subcommands that need no running emulator.
+// offline subcommands that need no running emulator, or a help request.
 func IsOffline(args []string) bool {
-	return offlineCommands[subcommand(args)]
+	return IsHelp(args) || offlineCommands[subcommand(args)]
+}
+
+// helpFlags are the flags/tokens cdk recognizes as a help request. "help" is a
+// bare pseudo-subcommand cdk accepts at any command level (`cdk help`,
+// `cdk deploy help`), equivalent to -h/--help.
+var helpFlags = map[string]bool{"-h": true, "--help": true, "help": true}
+
+// IsHelp reports whether args requests cdk's help output. cdk answers this
+// without needing a running emulator, same as the other offline commands.
+func IsHelp(args []string) bool {
+	for _, a := range args {
+		if helpFlags[a] {
+			return true
+		}
+	}
+	return false
 }
 
 // subcommand returns the first non-flag token in args that is not consumed as a

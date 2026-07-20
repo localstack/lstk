@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 
 	"github.com/moby/moby/client"
@@ -249,6 +250,38 @@ func TestAWSCommandPropagatesExitCode(t *testing.T) {
 	require.Error(t, err, "lstk aws should fail when aws command fails")
 	assert.Contains(t, stderr, "simulated failure")
 	requireExitCode(t, 42, err)
+}
+
+// DEVX-1002 — --help/-h, and the bare "help" pseudo-subcommand, never contact
+// LocalStack, so they run without Docker/an emulator: DOCKER_HOST points at an
+// unreachable address (mirroring TestAWSCommandFailsWhenDockerNotRunning) yet
+// the command still succeeds and forwards the help request untouched, with no
+// --endpoint-url injected.
+func TestAWSCommandHelpSkipsDockerAndEmulator(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows Docker error tested separately via windowsDockerErrorEnv")
+	}
+
+	dir := t.TempDir()
+	script := "#!/bin/sh\necho \"ARGS:$*\"\n"
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "aws"), []byte(script), 0755))
+
+	for _, args := range [][]string{{"--help"}, {"-h"}, {"s3", "--help"}, {"help"}, {"s3", "help"}} {
+		args := args
+		t.Run(strings.Join(args, "_"), func(t *testing.T) {
+			e := env.With(env.DisableEvents, "1").
+				With("PATH", dir).
+				With(env.Home, t.TempDir()).
+				With(env.Key("DOCKER_HOST"), "tcp://localhost:1")
+
+			cmdArgs := append([]string{"aws"}, args...)
+			stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), e, cmdArgs...)
+			require.NoError(t, err, "stderr: %s", stderr)
+
+			assert.Contains(t, stdout, "ARGS:"+strings.Join(args, " "))
+			assert.NotContains(t, stdout, "--endpoint-url")
+		})
+	}
 }
 
 func TestAWSCommandFailsWhenDockerNotRunning(t *testing.T) {

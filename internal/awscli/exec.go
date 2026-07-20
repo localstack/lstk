@@ -27,6 +27,22 @@ func CheckInstalled() error {
 	return nil
 }
 
+// helpFlags are the flags/tokens the aws CLI recognizes as a help request.
+// "help" is a bare pseudo-subcommand the aws CLI accepts at any command level
+// (`aws help`, `aws s3 help`), equivalent to -h/--help.
+var helpFlags = map[string]bool{"-h": true, "--help": true, "help": true}
+
+// IsHelp reports whether args requests the aws CLI's help output. The aws CLI
+// answers this without needing a running emulator or resolved endpoint.
+func IsHelp(args []string) bool {
+	for _, a := range args {
+		if helpFlags[a] {
+			return true
+		}
+	}
+	return false
+}
+
 func Exec(ctx context.Context, endpointURL string, useProfile bool, stdout, stderr io.Writer, args []string) error {
 	ctx, span := otel.Tracer("github.com/localstack/lstk/internal/awscli").Start(ctx, "aws cli")
 	defer span.End()
@@ -43,7 +59,9 @@ func Exec(ctx context.Context, endpointURL string, useProfile bool, stdout, stde
 		capacity += 2
 	}
 	cmdArgs := make([]string, 0, capacity)
-	cmdArgs = append(cmdArgs, "--endpoint-url", endpointURL)
+	if endpointURL != "" {
+		cmdArgs = append(cmdArgs, "--endpoint-url", endpointURL)
+	}
 	if useProfile {
 		cmdArgs = append(cmdArgs, "--profile", awsconfig.ProfileName)
 	}
