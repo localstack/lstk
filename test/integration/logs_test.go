@@ -96,14 +96,34 @@ func TestLogsWorksWithExternalContainer(t *testing.T) {
 func writeNumberedLogLines(t *testing.T, ctx context.Context, count int) {
 	t.Helper()
 
+	writeContainerLogs(t, ctx, fmt.Sprintf("for i in $(seq 1 %d); do echo tail-marker-$i; done", count), fmt.Sprintf("tail-marker-%d", count))
+}
+
+// writeLogLines writes the given lines verbatim to PID 1's stdout inside the
+// test container, so tests can plant lines that lstk's log filter drops.
+func writeLogLines(t *testing.T, ctx context.Context, lines []string) {
+	t.Helper()
+
+	var script strings.Builder
+	for _, line := range lines {
+		fmt.Fprintf(&script, "echo '%s'; ", line)
+	}
+	writeContainerLogs(t, ctx, script.String(), lines[len(lines)-1])
+}
+
+// writeContainerLogs runs script inside the test container with stdout wired to
+// PID 1's, then waits until lastMarker is visible in docker logs so tail
+// assertions don't race the writes.
+func writeContainerLogs(t *testing.T, ctx context.Context, script, lastMarker string) {
+	t.Helper()
+
 	execResp, err := dockerClient.ExecCreate(ctx, containerName, client.ExecCreateOptions{
-		Cmd: []string{"sh", "-c", fmt.Sprintf("for i in $(seq 1 %d); do echo tail-marker-$i; done >/proc/1/fd/1", count)},
+		Cmd: []string{"sh", "-c", "{ " + script + " } >/proc/1/fd/1"},
 	})
 	require.NoError(t, err, "failed to create exec")
 	_, err = dockerClient.ExecStart(ctx, execResp.ID, client.ExecStartOptions{Detach: true})
 	require.NoError(t, err, "failed to start exec")
 
-	lastMarker := fmt.Sprintf("tail-marker-%d", count)
 	require.Eventually(t, func() bool {
 		reader, err := dockerClient.ContainerLogs(ctx, containerName, client.ContainerLogsOptions{
 			ShowStdout: true,
@@ -117,6 +137,31 @@ func writeNumberedLogLines(t *testing.T, ctx context.Context, count int) {
 		data, err := io.ReadAll(reader)
 		return err == nil && strings.Contains(string(data), lastMarker)
 	}, 10*time.Second, 100*time.Millisecond, "log lines did not appear in docker logs")
+}
+
+// Regression: --tail counts the lines lstk prints, not raw container lines.
+// A burst of filtered request logs after the newest visible line used to
+// consume the whole limit, so `lstk logs --tail 1` printed nothing at all.
+func TestLogsTailCountsVisibleLinesNotFilteredOnes(t *testing.T) {
+	requireDocker(t)
+	cleanup()
+	t.Cleanup(cleanup)
+
+	ctx := testContext(t)
+	startTestContainer(t, ctx)
+
+	lines := []string{"2026-07-07T10:05:11.240  INFO --- [  MainThread] l.foo : tail-visible-marker"}
+	for i := range 5 {
+		lines = append(lines, fmt.Sprintf(
+			"2026-07-07T10:05:%02d.240  INFO --- [et.reactor-0] localstack.request.http : GET /_localstack/tail-filtered-marker => 200", 12+i))
+	}
+	writeLogLines(t, ctx, lines)
+
+	configFile := writeAwsConfig(t)
+	stdout, stderr, err := runLstk(t, ctx, "", env.Without(), "--config", configFile, "logs", "--tail", "1")
+	require.NoError(t, err, "lstk logs --tail 1 should exit cleanly, stderr: %s", stderr)
+	assert.Contains(t, stdout, "tail-visible-marker", "--tail 1 must show the newest visible line, not an empty result")
+	assert.NotContains(t, stdout, "tail-filtered-marker", "filtered request logs must stay hidden")
 }
 
 func TestLogsTailLimitsOutput(t *testing.T) {
