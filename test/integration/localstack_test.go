@@ -44,11 +44,24 @@ func requireAuthToken(t *testing.T) string {
 // so the volume holds only LocalStack's cache, never test resource state).
 func startRealLocalStack(t *testing.T, ctx context.Context, token string) {
 	t.Helper()
+	startRealLocalStackWithConfig(t, ctx, token, "")
+}
+
+// startRealLocalStackWithConfig is startRealLocalStack, but pins `lstk start`
+// to a specific config file (e.g. to override the container image tag) via
+// --config. An empty configPath behaves exactly like startRealLocalStack.
+func startRealLocalStackWithConfig(t *testing.T, ctx context.Context, token, configPath string) {
+	t.Helper()
 	home, err := os.MkdirTemp("", "lstk-e2e-home")
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = os.RemoveAll(home) })
 
 	e := env.With(env.DisableEvents, "1").With(env.Home, home).With(env.AuthToken, token)
-	_, stderr, err := runLstk(t, ctx, "", e, "start")
+	args := []string{}
+	if configPath != "" {
+		args = append(args, "--config", configPath)
+	}
+	args = append(args, "start")
+	_, stderr, err := runLstk(t, ctx, "", e, args...)
 	require.NoError(t, err, "lstk start failed: %s", stderr)
 }
