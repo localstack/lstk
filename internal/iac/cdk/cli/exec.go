@@ -15,6 +15,7 @@ import (
 	"github.com/localstack/lstk/internal/endpoint"
 	"github.com/localstack/lstk/internal/log"
 	"github.com/localstack/lstk/internal/output"
+	"github.com/localstack/lstk/internal/proc"
 )
 
 // Run proxies an AWS CDK invocation against LocalStack. It locates the cdk
@@ -75,7 +76,7 @@ func Run(ctx context.Context, endpointURL, region string, sink output.Sink, logg
 	cmd.Stderr = os.Stderr
 	cmd.Env = BuildEnv(os.Environ(), effectiveEndpoint, s3Endpoint, region)
 
-	if err := cmd.Run(); err != nil {
+	if err := proc.Run(cmd); err != nil {
 		var exitErr *exec.ExitError
 		if errors.As(err, &exitErr) {
 			span.SetAttributes(attribute.Int("cdk.exit_code", exitErr.ExitCode()))

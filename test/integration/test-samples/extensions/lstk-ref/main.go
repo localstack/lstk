@@ -16,6 +16,9 @@
 //	            (exit 13). A real extension would verify the token server-side
 //	            against the LocalStack platform — authorization must never rely on
 //	            lstk, which is open source and rebuildable.
+//	signal-wait Print a readiness marker, then exit 40 + the number of
+//	            SIGINT/SIGTERM received (40 = none after a deadline, 41 = exactly
+//	            one, 42 = a double signal). Backs lstk's signal-forwarding tests.
 //
 // The extension also self-enforces contract compatibility: it requires
 // LSTK_EXT_API_VERSION >= minAPIVersion and refuses to run otherwise, rather
@@ -26,7 +29,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/signal"
 	"strconv"
+	"syscall"
+	"time"
 )
 
 // minAPIVersion is the lowest contract version this extension supports. lstk
@@ -88,8 +94,36 @@ func run(args []string) int {
 		}
 		fmt.Println("lstk-ref: authorized")
 		return 0
+	case "signal-wait":
+		return signalWait()
 	default:
 		return 0
+	}
+}
+
+// signalWait reports signal delivery for lstk's signal-forwarding tests. It
+// prints a readiness marker, then exits 40 + the number of SIGINT/SIGTERM
+// received: 40 = none arrived before the deadline, 41 = exactly one, 42 = a
+// double signal. After the first signal it lingers briefly so a
+// near-simultaneous duplicate (the double-signal bug) is counted, not missed.
+func signalWait() int {
+	sigCh := make(chan os.Signal, 4)
+	signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
+	fmt.Println("SIGNAL_WAIT_READY")
+
+	count := 0
+	deadline := time.After(3 * time.Second)
+	for {
+		select {
+		case <-sigCh:
+			count++
+			if count >= 2 {
+				return 40 + count
+			}
+			deadline = time.After(500 * time.Millisecond)
+		case <-deadline:
+			return 40 + count
+		}
 	}
 }
 
