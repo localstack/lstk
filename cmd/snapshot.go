@@ -199,7 +199,7 @@ func newSnapshotLoadCmd(cfg *env.Env, tel *telemetry.Client, logger log.Logger) 
 		Short:   "Load a snapshot into the running emulator",
 		Long:    snapshotLoadLong(snapshotLoadCanonical),
 		Args:    cobra.RangeArgs(1, 2),
-		PreRunE: initConfig(nil),
+		PreRunE: initConfigDeferCreate(nil),
 		RunE:    runSnapshotLoad(cfg, tel, logger),
 	}
 	addMergeFlag(cmd)
@@ -213,7 +213,7 @@ func newLoadCmd(cfg *env.Env, tel *telemetry.Client, logger log.Logger) *cobra.C
 		Short:       "Load a snapshot into the running emulator",
 		Long:        snapshotLoadLong("load"),
 		Args:        cobra.RangeArgs(1, 2),
-		PreRunE:     initConfig(nil),
+		PreRunE:     initConfigDeferCreate(nil),
 		RunE:        runSnapshotLoad(cfg, tel, logger),
 		Annotations: map[string]string{canonicalCommandAnnotation: snapshotLoadCanonical},
 	}
@@ -309,7 +309,7 @@ func newSnapshotRemoveCmd(cfg *env.Env) *cobra.Command {
 		Short:   "Delete a cloud snapshot from the LocalStack platform",
 		Long:    snapshotRemoveLong,
 		Args:    cobra.ExactArgs(1),
-		PreRunE: initConfig(nil),
+		PreRunE: initConfigDeferCreate(nil),
 		RunE:    runSnapshotRemove(cfg),
 	}
 	cmd.Flags().Bool("force", false, "Skip confirmation prompt")
@@ -457,7 +457,7 @@ func newSnapshotListCmd(cfg *env.Env, logger log.Logger) *cobra.Command {
 		Short:   "List Cloud Pod snapshots available on the LocalStack platform",
 		Long:    snapshotListLong,
 		Args:    cobra.MaximumNArgs(1),
-		PreRunE: initConfig(nil),
+		PreRunE: initConfigDeferCreate(nil),
 		RunE:    runSnapshotList(cfg, logger),
 	}
 	cmd.Flags().Bool("all", false, "List all snapshots in the organisation")
@@ -522,7 +522,7 @@ func newSnapshotShowCmd(cfg *env.Env, logger log.Logger) *cobra.Command {
 		Short:   "Show metadata for a cloud snapshot",
 		Long:    snapshotShowLong,
 		Args:    cobra.ExactArgs(1),
-		PreRunE: initConfig(nil),
+		PreRunE: initConfigDeferCreate(nil),
 		RunE:    runSnapshotShow(cfg, logger),
 	}
 }
@@ -558,7 +558,7 @@ func newSnapshotSaveCmd(cfg *env.Env) *cobra.Command {
 		Short:   "Save a snapshot of the emulator state",
 		Long:    snapshotSaveLong(snapshotSaveCanonical),
 		Args:    cobra.MaximumNArgs(2),
-		PreRunE: initConfig(nil),
+		PreRunE: initConfigDeferCreate(nil),
 		RunE:    runSnapshotSave(cfg),
 	}
 	addProfileFlag(cmd)
@@ -571,7 +571,7 @@ func newSaveCmd(cfg *env.Env) *cobra.Command {
 		Short:       "Save a snapshot of the emulator state",
 		Long:        snapshotSaveLong("save"),
 		Args:        cobra.MaximumNArgs(2),
-		PreRunE:     initConfig(nil),
+		PreRunE:     initConfigDeferCreate(nil),
 		RunE:        runSnapshotSave(cfg),
 		Annotations: map[string]string{canonicalCommandAnnotation: snapshotSaveCanonical},
 	}

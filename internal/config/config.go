@@ -52,7 +52,9 @@ func InitFromPath(path string) error {
 	return loadConfig(path)
 }
 
-// Load reads config.toml without creating it; Init creates on first run.
+// Load reads config.toml without creating it; callers that need to create the
+// default config on first run should call EnsureCreated once ready to persist it
+// (e.g. after an emulator-selection prompt, or after a successful default start).
 func Load() (firstRun bool, err error) {
 	viper.Reset()
 	setDefaults()
@@ -78,14 +80,6 @@ func Load() (firstRun bool, err error) {
 		return false, fmt.Errorf("failed to read config file: %w", err)
 	}
 	return false, nil
-}
-
-func Init() (firstRun bool, err error) {
-	firstRun, err = Load()
-	if err != nil || !firstRun {
-		return firstRun, err
-	}
-	return true, EnsureCreated()
 }
 
 func EnsureCreated() error {

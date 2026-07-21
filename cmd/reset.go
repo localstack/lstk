@@ -26,7 +26,7 @@ func newResetCmd(cfg *env.Env) *cobra.Command {
 All resources created in the emulator (S3 buckets, Lambda functions, etc.) are discarded. The emulator keeps running; only its state is cleared.
 
 To wipe the on-disk volume (certificates, persistence data, cached tools) instead, stop the emulator and run "lstk volume clear".`,
-		PreRunE:     initConfig(nil),
+		PreRunE:     initConfigDeferCreate(nil),
 		Annotations: map[string]string{jsonSupportedAnnotation: "true"},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			sink := jsonAwareSink(cmd, cfg, os.Stdout)

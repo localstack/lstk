@@ -56,7 +56,7 @@ Examples:
 					return err
 				}
 			}
-			return initConfig(nil)(cmd, args)
+			return initConfigDeferCreate(nil)(cmd, args)
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			sink := output.NewPlainSink(os.Stdout)

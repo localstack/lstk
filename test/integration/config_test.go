@@ -13,42 +13,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestConfigFileCreatedOnStartup(t *testing.T) {
-	t.Parallel()
-	t.Run("creates in home .config when present", func(t *testing.T) {
-		t.Parallel()
-		tmpHome := t.TempDir()
-		workDir := t.TempDir()
-		xdgOverride := filepath.Join(tmpHome, "xdg-config-home")
-		require.NoError(t, os.MkdirAll(filepath.Join(tmpHome, ".config"), 0755))
-
-		e := testEnvWithHome(tmpHome, xdgOverride)
-		_, stderr, err := runLstk(t, testContext(t), workDir, e, "logout")
-		require.NoError(t, err, stderr)
-		requireExitCode(t, 0, err)
-
-		expectedConfigFile := filepath.Join(tmpHome, ".config", "lstk", "config.toml")
-		assert.FileExists(t, expectedConfigFile)
-		assertDefaultConfigContent(t, expectedConfigFile)
-	})
-
-	t.Run("falls back to os user config dir when home .config is missing", func(t *testing.T) {
-		t.Parallel()
-		tmpHome := t.TempDir()
-		workDir := t.TempDir()
-		xdgOverride := filepath.Join(tmpHome, "xdg-config-home")
-
-		e := testEnvWithHome(tmpHome, xdgOverride)
-		_, stderr, err := runLstk(t, testContext(t), workDir, e, "logout")
-		require.NoError(t, err, stderr)
-		requireExitCode(t, 0, err)
-
-		expectedConfigFile := filepath.Join(expectedOSConfigDir(tmpHome, xdgOverride), "config.toml")
-		assert.FileExists(t, expectedConfigFile)
-		assertDefaultConfigContent(t, expectedConfigFile)
-	})
-}
-
 func TestConfigFlagEnvVarsPassedToContainer(t *testing.T) {
 	requireDocker(t)
 	_ = env.Require(t, env.AuthToken)
@@ -296,19 +260,6 @@ func writeConfigFile(t *testing.T, path string) {
 	require.NoError(t, os.MkdirAll(filepath.Dir(path), 0755))
 	content := "[[containers]]\ntype = \"aws\"\ntag = \"latest\"\nport = \"4566\"\n"
 	require.NoError(t, os.WriteFile(path, []byte(content), 0644))
-}
-
-func assertDefaultConfigContent(t *testing.T, path string) {
-	t.Helper()
-	content, err := os.ReadFile(path)
-	require.NoError(t, err)
-	configStr := string(content)
-	assert.Contains(t, configStr, "type")
-	assert.Contains(t, configStr, "aws")
-	assert.Contains(t, configStr, "tag")
-	assert.Contains(t, configStr, "latest")
-	assert.Contains(t, configStr, "port")
-	assert.Contains(t, configStr, "4566")
 }
 
 func assertSamePath(t *testing.T, expectedPath, actualPath string) {

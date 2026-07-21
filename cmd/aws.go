@@ -48,12 +48,12 @@ Examples:
 				cfg.JSON = true
 			}
 			if gf.configPath != "" {
-				// initConfig reads the "config" flag, so feed the value back to it.
+				// initConfigDeferCreate reads the "config" flag, so feed the value back to it.
 				if err := cmd.Flags().Set("config", gf.configPath); err != nil {
 					return err
 				}
 			}
-			return initConfig(nil)(cmd, args)
+			return initConfigDeferCreate(nil)(cmd, args)
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			sink := output.NewPlainSink(os.Stdout)

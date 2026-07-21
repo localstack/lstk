@@ -19,7 +19,7 @@ func newLoginCmd(cfg *env.Env, tel *telemetry.Client, logger log.Logger) *cobra.
 		Use:     "login",
 		Short:   "Manage login",
 		Long:    "Manage login and store credentials in system keyring",
-		PreRunE: initConfig(nil),
+		PreRunE: initConfigDeferCreate(nil),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if !isInteractiveMode(cfg) {
 				return fmt.Errorf("login requires an interactive terminal")

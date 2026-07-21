@@ -21,6 +21,11 @@ import (
 // isolated temp directory, so tests never touch the real ~/.aws files. Both HOME
 // (Unix) and USERPROFILE (Windows) are overridden because os.UserHomeDir — which
 // awsconfig uses to locate ~/.aws — reads USERPROFILE, not HOME, on Windows.
+//
+// A minimal AWS-emulator config.toml is pre-written so `lstk start` doesn't hit
+// the first-run emulator-selection prompt (config.toml already exists, so it's
+// not a first run) — these tests are about the post-start AWS-profile flow, not
+// emulator selection, which is covered separately in emulator_select_test.go.
 func awsConfigEnv(t *testing.T) (env.Environ, string) {
 	t.Helper()
 	tmpHome := t.TempDir()
@@ -34,6 +39,7 @@ func awsConfigEnv(t *testing.T) (env.Environ, string) {
 			_ = exec.Command("docker", "run", "--rm", "-v", volumeDir+":/d", "alpine", "sh", "-c", "rm -rf /d/*").Run()
 		}
 	})
+	writeConfigFile(t, filepath.Join(tmpHome, ".config", "lstk", "config.toml"))
 	e := env.With(env.AuthToken, env.Get(env.AuthToken)).With(env.Home, tmpHome).With(env.UserProfile, tmpHome)
 	return e, tmpHome
 }
