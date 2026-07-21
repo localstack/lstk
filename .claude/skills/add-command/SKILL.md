@@ -16,7 +16,7 @@ Before writing any code, understand what the command should do and whether the a
 **Core questions:**
 1. **What does this command do?** (one sentence — e.g., "shows the status of running emulators")
 2. **Does it need to talk to Docker/the runtime?** (determines whether `runtime.Runtime` is a dependency)
-3. **Does it need configuration?** (determines whether `PreRunE: initConfig(nil)` is needed)
+3. **Does it need configuration?** (determines whether `PreRunE: initConfigDeferCreate(nil)` is needed)
 4. **Does it need authentication?** (determines whether auth flow is involved)
 5. **Does it need any new event types?** (e.g., a new kind of progress, a new status phase — if yes, use `/add-event` for each)
 
@@ -42,7 +42,7 @@ Read these files before writing anything — they are the source of truth for pa
 Create `cmd/$ARGUMENTS.go` with:
 
 - A `new<Name>Cmd()` factory function returning `*cobra.Command`
-- `PreRunE: initConfig(nil)` if the command needs configuration (only the root command uses `initConfigDeferCreate(&firstRun)`)
+- `PreRunE: initConfigDeferCreate(nil)` if the command needs configuration (only the root and `start` commands use `initConfigDeferCreate(&firstRun)`)
 - Output mode decision at the boundary, gated on `isInteractiveMode(cfg)` (covers non-TTY and the `--non-interactive` flag):
   - Interactive: delegate to `ui.Run<Name>(...)` or TUI path
   - Non-interactive: call domain function with `output.NewPlainSink(os.Stdout)`
