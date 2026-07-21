@@ -288,6 +288,29 @@ func TestEnvelopeSink_WarningsAccumulate(t *testing.T) {
 	}
 }
 
+func TestEnvelopeSink_MultipleInstallsBecomesWarning(t *testing.T) {
+	t.Parallel()
+
+	sink := NewEnvelopeSink(FormatJSON)
+	sink.Emit(MultipleInstallsEvent{Installs: []InstallLocation{
+		{Path: "/opt/homebrew/bin/lstk", Method: "homebrew", Running: true},
+		{Path: "/home/u/.nvm/versions/node/v22/bin/lstk", Method: "npm"},
+	}})
+
+	envelope := sink.Result("update", nil)
+	if len(envelope.Warnings) != 1 {
+		t.Fatalf("expected 1 warning, got %d: %+v", len(envelope.Warnings), envelope.Warnings)
+	}
+	w := envelope.Warnings[0]
+	if w.Code != warningCodeMultipleInstalls {
+		t.Fatalf("expected code %q, got %q", warningCodeMultipleInstalls, w.Code)
+	}
+	want := "Multiple lstk installations found on PATH: /opt/homebrew/bin/lstk, /home/u/.nvm/versions/node/v22/bin/lstk"
+	if w.Message != want {
+		t.Fatalf("unexpected message: %q", w.Message)
+	}
+}
+
 func TestEnvelopeSink_EmptyWarningsIsEmptySliceNotNil(t *testing.T) {
 	t.Parallel()
 

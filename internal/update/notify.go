@@ -3,6 +3,7 @@ package update
 import (
 	"context"
 	"fmt"
+	"os"
 	"time"
 
 	"github.com/localstack/lstk/internal/output"
@@ -47,6 +48,9 @@ func checkQuietlyWithVersion(ctx context.Context, githubToken string, currentVer
 }
 
 func NotifyUpdate(ctx context.Context, sink output.Sink, opts NotifyOptions) (exitAfter bool) {
+	// Piggyback on the per-start update notification: a stale shadowing
+	// install is exactly what makes updates appear to not take effect.
+	WarnMultipleInstalls(sink, os.Getenv)
 	return notifyUpdateWithVersion(ctx, sink, opts, version.Version(), fetchLatestVersion)
 }
 
