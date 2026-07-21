@@ -48,7 +48,7 @@ Examples:
 				cfg.JSON = true
 			}
 			if gf.configPath != "" {
-				// initConfig reads the "config" flag, so feed the value back to it.
+				// initConfigDeferCreate reads the "config" flag, so feed the value back to it.
 				if err := cmd.Flags().Set("config", gf.configPath); err != nil {
 					return err
 				}
