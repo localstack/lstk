@@ -136,9 +136,16 @@ func forEachLogLine(ctx context.Context, rt runtime.Runtime, name string, follow
 	pr, pw := io.Pipe()
 	errCh := make(chan error, 1)
 	go func() {
-		err := rt.StreamLogs(ctx, name, pw, follow, tail)
-		pw.CloseWithError(err)
-		errCh <- err
+		// Deferred so that a goroutine death which skips the normal return —
+		// a panic, or a test double calling t.Fatal — still closes the pipe and
+		// reports back. Otherwise the read loop below blocks on a writer that
+		// will never write, and the errCh receive never completes.
+		var err error
+		defer func() {
+			pw.CloseWithError(err)
+			errCh <- err
+		}()
+		err = rt.StreamLogs(ctx, name, pw, follow, tail)
 	}()
 
 	raw := 0
