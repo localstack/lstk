@@ -227,7 +227,7 @@ func resolveSourcePath(abs string) (string, error) {
 		return candidate, nil
 	}
 	if dirHit != "" {
-		return "", fmt.Errorf("%q is a directory, expected a snapshot file", dirHit)
+		return "", fmt.Errorf("%q is a directory — specify a snapshot file, e.g. ./my-snapshot.snapshot", dirHit)
 	}
 	return "", fmt.Errorf("snapshot file not found: %q (also tried %q and %q)", abs, withSnapshot, withZip)
 }
