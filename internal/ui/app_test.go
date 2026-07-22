@@ -305,6 +305,54 @@ func TestAppSnapshotLoadedEventRendersGreen(t *testing.T) {
 	}
 }
 
+func TestAppMultipleInstallsEventRendersColoredWarning(t *testing.T) {
+	// Mutates the global lipgloss color profile, so it must not run in parallel.
+	original := lipgloss.ColorProfile()
+	lipgloss.SetColorProfile(termenv.TrueColor)
+	t.Cleanup(func() { lipgloss.SetColorProfile(original) })
+
+	app := NewApp("dev", "", "", nil)
+
+	model, _ := app.Update(output.MultipleInstallsEvent{Installs: []output.InstallLocation{
+		{Path: "/opt/homebrew/bin/lstk", Method: "homebrew", Running: true},
+		{Path: "/home/u/.nvm/versions/node/v22/bin/lstk", Method: "npm"},
+	}})
+	app = model.(App)
+
+	if len(app.lines) != 4 {
+		t.Fatalf("expected 4 lines (header + 2 installs + footer), got %d: %+v", len(app.lines), app.lines)
+	}
+
+	wantWarning := styles.Warning.Render("Warning:")
+	if !strings.Contains(app.lines[0].text, wantWarning) {
+		t.Fatalf("expected colored %q in header line, got: %q", wantWarning, app.lines[0].text)
+	}
+	if !strings.Contains(app.lines[0].text, "Multiple lstk installations found on PATH:") {
+		t.Fatalf("expected header text, got: %q", app.lines[0].text)
+	}
+
+	for i, want := range []string{
+		"/opt/homebrew/bin/lstk (homebrew, currently running)",
+		"/home/u/.nvm/versions/node/v22/bin/lstk (npm)",
+	} {
+		line := app.lines[i+1]
+		if !line.secondary {
+			t.Fatalf("expected install line %d to be styled secondary, got: %+v", i, line)
+		}
+		if !strings.Contains(line.text, want) {
+			t.Fatalf("expected install line %d to contain %q, got: %q", i, want, line.text)
+		}
+	}
+
+	footer := app.lines[3]
+	if !footer.secondary {
+		t.Fatalf("expected footer line to be styled secondary, got: %+v", footer)
+	}
+	if !strings.Contains(footer.text, "Your shell runs the first one; remove the others to avoid using a stale version.") {
+		t.Fatalf("expected footer text, got: %q", footer.text)
+	}
+}
+
 func TestAppMessageEventWrapsOnVisibleWidth(t *testing.T) {
 	t.Parallel()
 
