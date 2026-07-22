@@ -52,14 +52,21 @@ type proxyCase struct {
 	setup func(t *testing.T) (workDir string, environ []string)
 }
 
+func proxyTestEnv(t *testing.T) env.Environ {
+	t.Helper()
+	return env.Environ(testEnvWithHome(t.TempDir(), "")).
+		With(env.DisableEvents, "1").
+		With(env.Path, t.TempDir())
+}
+
 func genericProxySetup(t *testing.T) (string, []string) {
-	return t.TempDir(), env.With(env.DisableEvents, "1").With("PATH", t.TempDir()).WithHome(t.TempDir())
+	return t.TempDir(), proxyTestEnv(t)
 }
 
 func azProxySetup(t *testing.T) (string, []string) {
 	workDir := azureWorkDir(t)
 	writeAzureSetupMarker(t, workDir)
-	return workDir, env.With(env.DisableEvents, "1").With("PATH", t.TempDir()).WithHome(t.TempDir())
+	return workDir, proxyTestEnv(t)
 }
 
 func proxyCases() []proxyCase {
@@ -68,12 +75,13 @@ func proxyCases() []proxyCase {
 		{name: "terraform", args: []string{"version"}, setup: genericProxySetup},
 		{name: "cdk", args: []string{"synth"}, setup: genericProxySetup},
 		{name: "sam", args: []string{"build"}, setup: genericProxySetup},
+		{name: "eksctl", args: []string{"version"}, setup: genericProxySetup},
 		{name: "az", args: []string{"group", "list"}, setup: azProxySetup},
 	}
 }
 
-// TestJSONFlagProxyCommandsForwardJSON covers all five proxy commands
-// (aws/terraform/cdk/sam/az) with one parametrized test: --json is never
+// TestJSONFlagProxyCommandsForwardJSON covers all six proxy commands
+// (aws/terraform/cdk/sam/eksctl/az) with one parametrized test: --json is never
 // recognized or intercepted from the command name onward — it always reaches
 // the wrapped tool untouched, whether typed immediately after the command name
 // or after the wrapped tool's own action (see spec.md "Proxy commands forward
@@ -114,7 +122,7 @@ func TestJSONFlagProxyCommandsForwardJSON(t *testing.T) {
 	}
 }
 
-// TestJSONFlagProxyCommandsRejectBeforeCommandName covers all five proxy
+// TestJSONFlagProxyCommandsRejectBeforeCommandName covers all six proxy
 // commands with one parametrized test: --json typed before the proxy
 // command's own name sits in the same flag-namespace slot --non-interactive/
 // --config already occupy there, so lstk rejects it exactly like an
@@ -148,7 +156,7 @@ func TestJSONFlagBeforeCommandNameBooleanValues(t *testing.T) {
 
 	t.Run("--json=true before the command name is rejected", func(t *testing.T) {
 		t.Parallel()
-		stdout, _, err := runLstk(t, testContext(t), t.TempDir(), env.With(env.DisableEvents, "1").With("PATH", t.TempDir()).WithHome(t.TempDir()), "--json=true", "aws", "s3", "ls")
+		stdout, _, err := runLstk(t, testContext(t), t.TempDir(), proxyTestEnv(t), "--json=true", "aws", "s3", "ls")
 		requireExitCode(t, 1, err)
 		decodeEnvelope(t, stdout)
 		snap.MatchJSON(t, []byte(stdout))
@@ -156,7 +164,7 @@ func TestJSONFlagBeforeCommandNameBooleanValues(t *testing.T) {
 
 	t.Run("--json=false before the command name is not rejected", func(t *testing.T) {
 		t.Parallel()
-		stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), env.With(env.DisableEvents, "1").With("PATH", t.TempDir()).WithHome(t.TempDir()), "--json=false", "aws", "s3", "ls")
+		stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), proxyTestEnv(t), "--json=false", "aws", "s3", "ls")
 		require.Error(t, err)
 		// The snapshots pin the wrapped tool's missing-binary error (proof the
 		// tool was invoked, i.e. --json=false was not rejected) with no
@@ -167,7 +175,7 @@ func TestJSONFlagBeforeCommandNameBooleanValues(t *testing.T) {
 
 	t.Run("a malformed value before the command name is rejected", func(t *testing.T) {
 		t.Parallel()
-		stdout, _, err := runLstk(t, testContext(t), t.TempDir(), env.With(env.DisableEvents, "1").With("PATH", t.TempDir()).WithHome(t.TempDir()), "--json=notabool", "aws", "s3", "ls")
+		stdout, _, err := runLstk(t, testContext(t), t.TempDir(), proxyTestEnv(t), "--json=notabool", "aws", "s3", "ls")
 		requireExitCode(t, 1, err)
 		decodeEnvelope(t, stdout)
 		snap.MatchJSON(t, []byte(stdout))
