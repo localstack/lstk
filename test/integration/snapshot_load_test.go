@@ -175,6 +175,25 @@ func TestSnapshotLoadFileNotFound(t *testing.T) {
 	assert.Contains(t, stderr, "snapshot file not found")
 }
 
+// TestSnapshotLoadPathIsDirectory ensures passing a directory instead of a
+// snapshot file fails early with a clear message, instead of surfacing a
+// confusing HTTP-layer error once the directory reaches the upload code path.
+func TestSnapshotLoadPathIsDirectory(t *testing.T) {
+	t.Parallel()
+	ctx := testContext(t)
+
+	dir := t.TempDir()
+	target := filepath.Join(dir, "some-directory")
+	require.NoError(t, os.Mkdir(target, 0o755))
+
+	_, stderr, err := runLstk(t, ctx, t.TempDir(),
+		testEnvWithHome(t.TempDir(), ""),
+		"--non-interactive", "snapshot", "load", target,
+	)
+	requireExitCode(t, 1, err)
+	assert.Contains(t, stderr, "is a directory")
+}
+
 // --- Docker required ---
 
 func TestSnapshotLoadLocalSuccess(t *testing.T) {
