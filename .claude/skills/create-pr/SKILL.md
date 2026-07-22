@@ -87,7 +87,7 @@ This applies to automated PRs too (dependency and toolchain upgrades), which are
 
 ## Step 6: Commit and push
 
-If there are uncommitted changes, commit them with a concise message. Do NOT add `Co-Authored-By: Claude` unless the user explicitly asks for it.
+If there are uncommitted changes, commit them with a concise message and a `Co-Authored-By: Claude <noreply@anthropic.com>` trailer.
 
 Then push and create the PR with the chosen labels:
 
