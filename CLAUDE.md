@@ -75,11 +75,12 @@ Commands are registered in `cmd/root.go` in two Cobra groups: the `commands` gro
 
 # Commits, PRs, and Linear
 
-- Commit messages: a single concise line. Never add `Co-Authored-By: Claude`, "Generated with Claude Code", or any other AI attribution to commits or PR bodies.
+- Commit messages: a single concise line. Add a `Co-Authored-By: Claude <noreply@anthropic.com>` trailer to commits and PR bodies.
 - Never commit or push unless explicitly asked.
 - PRs are squash-merged; titles start with an action verb and stay under ~70 characters.
 - Every PR needs exactly one `semver:` label (`patch`/`minor`/`major`) and one `docs:` label (`skip`/`needed`) — enforced by `check-release-label.yml`. Use `/create-pr` to scaffold title, body, and labels.
 - Issues and tickets live in Linear, not GitHub Issues. Typical flow: Linear issue → branch named from the issue (e.g. `devx-123-...`) → PR body ends with `Closes DEVX-123` (or `Towards DEVX-123` if partial). Ask which Linear team if unclear (e.g. PRO = product, DEVX = developer experience).
+- Small PRs and straightforward bug fixes may merge without a human approval when the author is confident; bigger features/PRs still need review and an approval, as usual. This shifts weight onto self-review rather than lowering the bar — before treating any PR-sized change as done, run `/review-pr` against it, confirm tests pass, and add integration tests per the Testing section below. Before creating a PR, say in the session whether a human review looks advisable and why, and add a short "Review" line in the PR description itself (new/changed user-facing behavior, undiscussed or speculative work → advise review; straightforward, small, already-discussed → self-merge candidate) so the assessment is visible to both the author and anyone reading the PR, not just implied. If unsure, advise review.
 
 # Release Process
 
