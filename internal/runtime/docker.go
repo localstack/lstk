@@ -431,12 +431,15 @@ func (d *DockerRuntime) Logs(ctx context.Context, containerID string, tail int) 
 	return string(logs), nil
 }
 
-func (d *DockerRuntime) StreamLogs(ctx context.Context, containerID string, out io.Writer, follow bool) error {
+func (d *DockerRuntime) StreamLogs(ctx context.Context, containerID string, out io.Writer, follow bool, tail string) error {
+	if tail == "" {
+		tail = "all"
+	}
 	reader, err := d.client.ContainerLogs(ctx, containerID, client.ContainerLogsOptions{
 		ShowStdout: true,
 		ShowStderr: true,
 		Follow:     follow,
-		Tail:       "all",
+		Tail:       tail,
 	})
 	if err != nil {
 		if errdefs.IsNotFound(err) {

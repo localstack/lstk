@@ -548,7 +548,7 @@ func startContainers(ctx context.Context, rt runtime.Runtime, sink output.Sink, 
 		logDone := make(chan struct{})
 		go func() {
 			defer close(logDone)
-			_ = rt.StreamLogs(logCtx, containerID, startupLogs, true)
+			_ = rt.StreamLogs(logCtx, containerID, startupLogs, true, "all")
 		}()
 
 		healthURL := fmt.Sprintf("http://localhost:%s%s", c.Port, c.HealthPath)
