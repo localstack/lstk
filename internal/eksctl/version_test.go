@@ -1,6 +1,8 @@
 package eksctl
 
 import (
+	"context"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -36,4 +38,10 @@ func TestCheckVersionString(t *testing.T) {
 func TestCheckVersionStringMessageMentionsMinimum(t *testing.T) {
 	err := checkVersionString("0.180.0")
 	assert.ErrorContains(t, err, minEksctlVersionString)
+}
+
+func TestCheckVersionFailsClosedWhenVersionCommandFails(t *testing.T) {
+	// A binary that cannot report its version must be rejected, not run.
+	err := CheckVersion(context.Background(), filepath.Join(t.TempDir(), "missing-eksctl"))
+	assert.ErrorContains(t, err, "could not determine eksctl version")
 }

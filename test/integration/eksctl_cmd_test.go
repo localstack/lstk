@@ -32,6 +32,7 @@ echo "ENV_AWS_EKS_ENDPOINT=${AWS_EKS_ENDPOINT:-<unset>}"
 echo "ENV_AWS_CLOUDFORMATION_ENDPOINT=${AWS_CLOUDFORMATION_ENDPOINT:-<unset>}"
 echo "ENV_AWS_STS_ENDPOINT=${AWS_STS_ENDPOINT:-<unset>}"
 echo "ENV_AWS_IAM_ENDPOINT=${AWS_IAM_ENDPOINT:-<unset>}"
+echo "ENV_AWS_ENDPOINT_URL=${AWS_ENDPOINT_URL:-<unset>}"
 echo "ENV_AWS_REGION=$AWS_REGION"
 echo "ENV_AWS_ACCESS_KEY_ID=$AWS_ACCESS_KEY_ID"
 echo "ENV_AWS_SECRET_ACCESS_KEY=$AWS_SECRET_ACCESS_KEY"
@@ -59,15 +60,16 @@ exit %d
 	return dir
 }
 
-// offline subcommands (version) run without a running emulator or Docker.
+// offline subcommands (version) run without a running emulator or Docker, and
+// without the minimum-version gate — a too-old eksctl can still report itself.
 func TestEksctlVersionNoEmulator(t *testing.T) {
 	t.Parallel()
-	fakeDir := writeFakeEksctl(t, "0.211.0")
+	fakeDir := writeFakeEksctl(t, "0.150.0")
 	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).With(env.Home, t.TempDir())
 
 	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), e, "eksctl", "version")
 	require.NoError(t, err, "stderr: %s", stderr)
-	assert.Contains(t, stdout, "0.211.0")
+	assert.Contains(t, stdout, "0.150.0")
 }
 
 // --help (and -h) never require the emulator and are forwarded to eksctl.
@@ -163,7 +165,11 @@ func TestEksctlInjectsCleanAWSEnv(t *testing.T) {
 	startTestContainer(t, ctx)
 
 	fakeDir := writeFakeEksctl(t, "0.211.0")
+	// Strip ambient values the set-if-absent assertions below depend on, so a
+	// developer shell exporting real AWS config cannot fail the test.
 	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).With(env.Home, t.TempDir()).
+		Without(env.AWSAccessKeyID, env.AWSSecretAccessKey,
+			env.Key("AWS_REGION"), env.Key("AWS_DEFAULT_REGION"), env.Key("AWS_ENDPOINT_URL")).
 		With(env.Key("AWS_PROFILE"), "my-real-profile").
 		With(env.Key("AWS_SESSION_TOKEN"), "realtoken")
 
@@ -176,6 +182,7 @@ func TestEksctlInjectsCleanAWSEnv(t *testing.T) {
 	assert.Contains(t, stdout, "ENV_AWS_CLOUDFORMATION_ENDPOINT=http")
 	assert.Contains(t, stdout, "ENV_AWS_STS_ENDPOINT=http")
 	assert.Contains(t, stdout, "ENV_AWS_IAM_ENDPOINT=http")
+	assert.Contains(t, stdout, "ENV_AWS_ENDPOINT_URL=http")
 	assert.Contains(t, stdout, ":4566")
 	// Credential defaults are applied.
 	assert.Contains(t, stdout, "ENV_AWS_ACCESS_KEY_ID=test")
@@ -208,19 +215,14 @@ func TestEksctlRequiresAWSEmulator(t *testing.T) {
 	assert.NotContains(t, stdout, "ARGS:get")
 }
 
-// propagates the eksctl exit code.
+// propagates the eksctl exit code. The offline `info` subcommand exercises the
+// same eksctl.Run → proc.Run path without needing Docker or an emulator.
 func TestEksctlPropagatesExitCode(t *testing.T) {
-	requireDocker(t)
-	cleanup()
-	t.Cleanup(cleanup)
-
-	ctx := testContext(t)
-	startTestContainer(t, ctx)
-
+	t.Parallel()
 	fakeDir := writeFakeEksctlExit(t, 7)
 	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).With(env.Home, t.TempDir())
 
-	_, stderr, err := runLstk(t, ctx, t.TempDir(), e, "eksctl", "get", "clusters")
+	_, stderr, err := runLstk(t, testContext(t), t.TempDir(), e, "eksctl", "info")
 	require.Error(t, err)
 	assert.Contains(t, stderr, "simulated failure")
 	requireExitCode(t, 7, err)

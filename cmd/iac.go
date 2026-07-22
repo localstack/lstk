@@ -14,11 +14,12 @@ import (
 	"github.com/localstack/lstk/internal/runtime"
 )
 
-// Shared command-boundary helpers for the IaC proxy commands (terraform, cdk).
-// These live here rather than in any one command's file because both commands
-// depend on them equally; keeping them in cmd/ (not a domain package) is
-// deliberate — they touch config.Get(), the output.Sink, and the raw CLI args,
-// all of which are command-boundary concerns.
+// Shared command-boundary helpers for the AWS-targeting proxy commands
+// (terraform, cdk, sam, eksctl). These live here rather than in any one
+// command's file because the commands depend on them equally; keeping them in
+// cmd/ (not a domain package) is deliberate — they touch config.Get(), the
+// output.Sink, and the raw CLI args, all of which are command-boundary
+// concerns.
 
 var accountIDRe = regexp.MustCompile(`^\d{12}$`)
 
