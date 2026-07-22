@@ -68,6 +68,7 @@ Notes:
   - `tracing/` - OpenTelemetry setup (`LSTK_OTEL=1`)
   - `ui/` - Bubble Tea views for interactive output
   - `update/` - Self-update logic: version check via GitHub API, binary/Homebrew/npm update paths, archive extraction; also detects multiple lstk installs on PATH (`FindInstalls`/`WarnMultipleInstalls`, warned on `lstk update` and the start-path update notification)
+  - `validate/` - Reusable input validators for user-supplied CLI values (pod names, env var names, auth tokens) rejecting malformed/hostile input (control chars, path traversal, percent-encoding, shell metacharacters)
   - `version/` - Version info
   - `volume/` - `lstk volume` domain logic
 
