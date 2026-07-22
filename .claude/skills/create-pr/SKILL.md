@@ -82,8 +82,11 @@ Always apply two labels, based on the size and nature of the change:
 2. A docs label reflecting whether documentation needs updating:
    - `docs: skip` — no user-facing documentation change is required (most dependency/toolchain upgrades, internal refactors).
    - `docs: needed` — the change adds or alters user-facing behavior that requires documentation updates.
+3. A review label surfacing whether this PR needs a human approval or is a self-merge candidate under the review pilot — run `/review-pr`'s "Review scope" checklist (or apply it inline if that skill wasn't run) to decide:
+   - `review: self-merged` — straightforward bug fix or internal refactor, no new user-facing behavior, small self-contained diff.
+   - `review: needs-approval` — new/changed user-facing behavior, undiscussed or speculative work, or any doubt.
 
-This applies to automated PRs too (dependency and toolchain upgrades), which are almost always `semver: patch` + `docs: skip`.
+This applies to automated PRs too (dependency and toolchain upgrades), which are almost always `semver: patch` + `docs: skip` + `review: self-merged`.
 
 ## Step 6: Commit and push
 
@@ -93,7 +96,7 @@ Then push and create the PR with the chosen labels:
 
 ```
 git push -u origin HEAD
-gh pr create --draft --title "<title>" --body "<body>" --base <base-branch> --label "<semver-label>" --label "<docs-label>"
+gh pr create --draft --title "<title>" --body "<body>" --base <base-branch> --label "<semver-label>" --label "<docs-label>" --label "<review-label>"
 ```
 
 Return the PR URL when done.

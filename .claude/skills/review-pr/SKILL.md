@@ -69,11 +69,21 @@ Go through each changed file and check for violations. Flag only actual problems
 - [ ] CLAUDE.md updated if architecture changed
 - [ ] No unnecessary comments on self-explanatory code
 
+### Review scope (self-merge vs. human review)
+
+lstk pilots merging small PRs/bug fixes without a human approval; this checklist decides which bucket a PR falls into.
+
+- [ ] New or changed user-facing behavior (new command, flag, output, or documented behavior) → needs human review
+- [ ] Wasn't discussed beforehand (no prior Slack/Linear/design conversation), or is speculative/"nice to have" → needs human review, regardless of size
+- [ ] Straightforward bug fix or internal refactor, no new user-facing behavior, small and self-contained diff → self-merge candidate
+- [ ] Any doubt after the above → needs human review (default to the safer bucket)
+
 ## Step 3: Output
 
 Provide a summary with:
 1. **Verdict**: Approve / Request changes / Comment
 2. **Issues found**: List each with file path, line, and why it's a problem
 3. **Suggestions**: Optional improvements (clearly marked as non-blocking)
+4. **Review recommendation**: `review: self-merged` or `review: needs-approval`, with a one-line reason based on the Review scope checklist above
 
 Keep feedback actionable and specific. Don't flag things that aren't problems.
