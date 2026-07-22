@@ -24,6 +24,7 @@ type Env struct {
 	NonInteractive bool
 	JSON           bool
 	GitHubToken    string
+	MergeStrategy  string
 }
 
 // Init initializes environment variable configuration and returns the result.
@@ -49,6 +50,7 @@ func Init() *Env {
 		ForceFileKeyring:  viper.GetString("keyring") == "file",
 		AnalyticsEndpoint: viper.GetString("analytics_endpoint"),
 		GitHubToken:       viper.GetString("github_token"),
+		MergeStrategy:     viper.GetString("merge_strategy"),
 	}
 
 }

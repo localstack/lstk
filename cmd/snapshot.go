@@ -88,7 +88,9 @@ Merge strategies control how snapshot state is combined with running state:
 
   --merge=account-region-merge  (default) snapshot wins on (service, account, region) overlap
   --merge=overwrite             wipe running state, then load
-  --merge=service-merge         snapshot wins per-resource; non-overlapping resources combined`, cmdName)
+  --merge=service-merge         snapshot wins per-resource; non-overlapping resources combined
+
+Alternatively, set LSTK_MERGE_STRATEGY to specify the merge strategy.`, cmdName)
 }
 
 func newSnapshotCmd(cfg *env.Env, tel *telemetry.Client, logger log.Logger) *cobra.Command {
@@ -226,17 +228,39 @@ func addMergeFlag(cmd *cobra.Command) {
 	cmd.Flags().String("merge", snapshot.MergeStrategyAccountRegion, "Merge strategy: overwrite, account-region-merge, service-merge")
 }
 
+// resolveMergeStrategy applies the LSTK_MERGE_STRATEGY env var as the default
+// when --merge was not explicitly passed; an explicit --merge always wins.
+func resolveMergeStrategy(flagValue string, flagChanged bool, envValue string) string {
+	if flagChanged || envValue == "" {
+		return flagValue
+	}
+	return envValue
+}
+
+// resolveLoadStrategy reads --merge off cmd, applies the LSTK_MERGE_STRATEGY
+// env var fallback via resolveMergeStrategy, and validates the result. It's
+// split out from runSnapshotLoad so the CLI-facing wiring (real cobra flag
+// parsing plus the env var) can be tested without a running emulator.
+func resolveLoadStrategy(cmd *cobra.Command, cfg *env.Env) (string, error) {
+	flagValue, err := cmd.Flags().GetString("merge")
+	if err != nil {
+		return "", err
+	}
+	strategy := resolveMergeStrategy(flagValue, cmd.Flags().Changed("merge"), cfg.MergeStrategy)
+	if err := snapshot.ValidateMergeStrategy(strategy); err != nil {
+		return "", err
+	}
+	return strategy, nil
+}
+
 func runSnapshotLoad(cfg *env.Env, tel *telemetry.Client, logger log.Logger) func(*cobra.Command, []string) error {
 	return func(cmd *cobra.Command, args []string) error {
-		strategy, err := cmd.Flags().GetString("merge")
+		strategy, err := resolveLoadStrategy(cmd, cfg)
 		if err != nil {
 			return err
 		}
 		profile, err := cmd.Flags().GetString("profile")
 		if err != nil {
-			return err
-		}
-		if err := snapshot.ValidateMergeStrategy(strategy); err != nil {
 			return err
 		}
 
