@@ -24,10 +24,6 @@ const (
 // minEksctlVersionString is the human-facing form used in error messages.
 const minEksctlVersionString = "0.181.0"
 
-// versionRe matches the leading MAJOR.MINOR.PATCH of `eksctl version` output
-// (e.g. "0.211.0").
-var versionRe = regexp.MustCompile(`(\d+)\.(\d+)\.(\d+)`)
-
 // CheckVersion runs `<bin> version` and returns an error if the reported version
 // is below the minimum lstk supports, or if the output cannot be parsed. lstk
 // points eksctl at LocalStack purely through environment variables — the flow
@@ -43,14 +39,18 @@ func CheckVersion(ctx context.Context, bin string) error {
 }
 
 func checkVersionString(out string) error {
+	versionRe := regexp.MustCompile(`^\s*v?(\d+)\.(\d+)\.(\d+)(-[^\s+]+)?(?:\+\S+)?\s*$`)
 	m := versionRe.FindStringSubmatch(out)
 	if m == nil {
 		return fmt.Errorf("could not parse eksctl version from %q; lstk requires eksctl %s or newer", out, minEksctlVersionString)
 	}
-	major, _ := strconv.Atoi(m[1])
-	minor, _ := strconv.Atoi(m[2])
-	patch, _ := strconv.Atoi(m[3])
-	if !atLeastMinVersion(major, minor, patch) {
+	major, majorErr := strconv.Atoi(m[1])
+	minor, minorErr := strconv.Atoi(m[2])
+	patch, patchErr := strconv.Atoi(m[3])
+	if majorErr != nil || minorErr != nil || patchErr != nil {
+		return fmt.Errorf("could not parse eksctl version from %q; lstk requires eksctl %s or newer", out, minEksctlVersionString)
+	}
+	if !atLeastMinVersion(major, minor, patch) || (major == minEksctlMajor && minor == minEksctlMinor && patch == minEksctlPatch && m[4] != "") {
 		return fmt.Errorf("eksctl %d.%d.%d is too old; lstk requires %s or newer (the earliest version lstk supports pointing at LocalStack via the AWS_*_ENDPOINT variables)", major, minor, patch, minEksctlVersionString)
 	}
 	return nil

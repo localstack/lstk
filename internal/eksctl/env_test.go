@@ -23,9 +23,10 @@ func TestBuildEnvSetsAllServiceEndpoints(t *testing.T) {
 	const url = "http://localhost.localstack.cloud:4566"
 	env := envMap(BuildEnv(nil, url))
 
-	for _, k := range endpointEnvVars {
+	for _, k := range endpointEnvVars() {
 		assert.Equalf(t, url, env[k], "expected %s to point at LocalStack", k)
 	}
+	assert.Equal(t, "false", env["AWS_IGNORE_CONFIGURED_ENDPOINT_URLS"])
 	// Credential and region defaults are filled in.
 	assert.Equal(t, "test", env["AWS_ACCESS_KEY_ID"])
 	assert.Equal(t, "test", env["AWS_SECRET_ACCESS_KEY"])
@@ -39,6 +40,23 @@ func TestBuildEnvOverridesExistingEndpoints(t *testing.T) {
 	env := envMap(BuildEnv(base, url))
 
 	assert.Equal(t, url, env["AWS_EKS_ENDPOINT"], "a pre-existing endpoint must be overridden to LocalStack")
+}
+
+func TestBuildEnvRemovesHigherPrecedenceEndpointConfig(t *testing.T) {
+	const url = "http://localhost.localstack.cloud:4566"
+	base := []string{
+		"AWS_ENDPOINT_URL_SSM=https://ssm.us-east-1.amazonaws.com",
+		"AWS_CLOUDTRAIL_ENDPOINT=https://cloudtrail.us-east-1.amazonaws.com",
+		"AWS_IGNORE_CONFIGURED_ENDPOINT_URLS=true",
+	}
+	env := envMap(BuildEnv(base, url))
+
+	_, hasSSMEndpoint := env["AWS_ENDPOINT_URL_SSM"]
+	_, hasCloudTrailEndpoint := env["AWS_CLOUDTRAIL_ENDPOINT"]
+	assert.False(t, hasSSMEndpoint)
+	assert.False(t, hasCloudTrailEndpoint)
+	assert.Equal(t, "false", env["AWS_IGNORE_CONFIGURED_ENDPOINT_URLS"])
+	assert.Equal(t, url, env["AWS_ENDPOINT_URL"])
 }
 
 func TestBuildEnvRespectsUserRegionAndAccount(t *testing.T) {
@@ -70,6 +88,21 @@ func TestBuildEnvKeepsContradictoryUserRegionsVerbatim(t *testing.T) {
 	assert.Equal(t, "us-west-2", env["AWS_DEFAULT_REGION"])
 }
 
+func TestBuildEnvDefaultsEmptyCredentialsAndRegion(t *testing.T) {
+	base := []string{
+		"AWS_ACCESS_KEY_ID=",
+		"AWS_SECRET_ACCESS_KEY=",
+		"AWS_REGION=",
+		"AWS_DEFAULT_REGION=",
+	}
+	env := envMap(BuildEnv(base, "http://localhost.localstack.cloud:4566"))
+
+	assert.Equal(t, "test", env["AWS_ACCESS_KEY_ID"])
+	assert.Equal(t, "test", env["AWS_SECRET_ACCESS_KEY"])
+	assert.Equal(t, "us-east-1", env["AWS_REGION"])
+	assert.Equal(t, "us-east-1", env["AWS_DEFAULT_REGION"])
+}
+
 func TestBuildEnvStripsAmbientAWSConfig(t *testing.T) {
 	base := []string{
 		"AWS_PROFILE=my-real-profile",
@@ -92,7 +125,7 @@ func TestBuildEnvStripsAmbientAWSConfig(t *testing.T) {
 func TestBuildEnvOfflineLeavesEndpointsUnset(t *testing.T) {
 	env := envMap(BuildEnv(nil, ""))
 
-	for _, k := range endpointEnvVars {
+	for _, k := range endpointEnvVars() {
 		_, ok := env[k]
 		assert.Falsef(t, ok, "%s must not be set when endpointURL is empty", k)
 	}

@@ -11,6 +11,8 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strconv"
+	"strings"
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -35,29 +37,28 @@ func eksctlCmd() string {
 	return "eksctl"
 }
 
-// offlineCommands are the eksctl subcommands that never contact AWS APIs and so
-// do not require a running emulator (nor the minimum-version gate). Everything
-// else (create, get, delete, upgrade, scale, …) is treated as AWS-contacting.
-var offlineCommands = map[string]bool{
-	"version":    true,
-	"info":       true,
-	"help":       true,
-	"completion": true,
+func isOfflineCommand(command string) bool {
+	switch command {
+	case "version", "info", "help", "completion":
+		return true
+	default:
+		return false
+	}
 }
-
-// helpFlags are the flags eksctl recognizes as a help request. Unlike the aws
-// CLI, eksctl (Cobra-based) accepts a bare `help` only as the leading token —
-// that case is covered by offlineCommands — so `help` is deliberately not
-// matched here: in any later position it is a flag value (e.g. a cluster
-// literally named "help"), and treating it as a help request would skip the
-// emulator and version gates for an AWS-contacting command.
-var helpFlags = map[string]bool{"-h": true, "--help": true}
 
 // IsHelp reports whether args requests eksctl's help output. eksctl answers this
 // without needing a running emulator.
 func IsHelp(args []string) bool {
 	for _, a := range args {
-		if helpFlags[a] {
+		if a == "-h" || a == "--help" {
+			return true
+		}
+		flag, value, hasValue := strings.Cut(a, "=")
+		if !hasValue || (flag != "-h" && flag != "--help") {
+			continue
+		}
+		enabled, err := strconv.ParseBool(value)
+		if err != nil || enabled {
 			return true
 		}
 	}
@@ -67,16 +68,16 @@ func IsHelp(args []string) bool {
 // IsOffline reports whether the eksctl invocation described by args is one of the
 // subcommands that need no running emulator (or a help request).
 func IsOffline(args []string) bool {
-	return IsHelp(args) || offlineCommands[subcommand(args)]
+	return IsHelp(args) || isOfflineCommand(subcommand(args))
 }
 
-// valueFlags are eksctl global options that consume the following token as
-// their value (space-separated form), so the subcommand scan must skip both the
-// flag and its value. The `--flag=value` form needs no entry here — it is a
-// single token skipped as an ordinary flag.
-var valueFlags = map[string]bool{
-	"-v": true, "--verbose": true,
-	"-C": true, "--color": true,
+func globalFlagTakesValue(flag string) bool {
+	switch flag {
+	case "-v", "--verbose", "-C", "--color":
+		return true
+	default:
+		return false
+	}
 }
 
 // subcommand returns the first non-flag token in args that is not consumed as a
@@ -88,7 +89,7 @@ func subcommand(args []string) string {
 			continue
 		}
 		if a[0] == '-' {
-			if valueFlags[a] && i+1 < len(args) {
+			if globalFlagTakesValue(a) && i+1 < len(args) {
 				i++ // skip this flag's value
 			}
 			continue

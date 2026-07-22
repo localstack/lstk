@@ -325,7 +325,7 @@ Known limitations versus `samlocal`: image/container-based Lambda (ECR) deploys 
 
 **Requires eksctl version 0.181.0 or newer** on your `PATH` — the boundary the LocalStack docs define for the environment-variable flow; lstk rejects older versions rather than run a flow it doesn't support. EKS is included in LocalStack's Ultimate plan (the community image does not support it), and you'll need `kubectl` to interact with the created cluster.
 
-lstk sets the CloudFormation, EC2, EKS, ELB, ELBv2, IAM, and STS service endpoints (plus the generic `AWS_ENDPOINT_URL`) to the resolved LocalStack endpoint, and strips ambient AWS profile/session configuration that could redirect at real AWS.
+lstk sets the CloudFormation, EC2, EKS, ELB, ELBv2, IAM, and STS service endpoints (plus the generic `AWS_ENDPOINT_URL`) to the resolved LocalStack endpoint. It clears inherited service-specific endpoint overrides and AWS profile/session configuration so they cannot take precedence over the LocalStack endpoint.
 
 **Environment variables:**
 - `LSTK_EKSCTL_CMD` — eksctl binary to invoke (default: `eksctl`)

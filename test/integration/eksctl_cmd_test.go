@@ -33,6 +33,9 @@ echo "ENV_AWS_CLOUDFORMATION_ENDPOINT=${AWS_CLOUDFORMATION_ENDPOINT:-<unset>}"
 echo "ENV_AWS_STS_ENDPOINT=${AWS_STS_ENDPOINT:-<unset>}"
 echo "ENV_AWS_IAM_ENDPOINT=${AWS_IAM_ENDPOINT:-<unset>}"
 echo "ENV_AWS_ENDPOINT_URL=${AWS_ENDPOINT_URL:-<unset>}"
+echo "ENV_AWS_ENDPOINT_URL_SSM=${AWS_ENDPOINT_URL_SSM:-<unset>}"
+echo "ENV_AWS_CLOUDTRAIL_ENDPOINT=${AWS_CLOUDTRAIL_ENDPOINT:-<unset>}"
+echo "ENV_AWS_IGNORE_CONFIGURED_ENDPOINT_URLS=${AWS_IGNORE_CONFIGURED_ENDPOINT_URLS:-<unset>}"
 echo "ENV_AWS_REGION=$AWS_REGION"
 echo "ENV_AWS_ACCESS_KEY_ID=$AWS_ACCESS_KEY_ID"
 echo "ENV_AWS_SECRET_ACCESS_KEY=$AWS_SECRET_ACCESS_KEY"
@@ -41,6 +44,13 @@ echo "ENV_AWS_SESSION_TOKEN=${AWS_SESSION_TOKEN:-<unset>}"
 `, version)
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "eksctl"), []byte(script), 0755))
 	return dir
+}
+
+func eksctlTestEnv(t *testing.T, path string) env.Environ {
+	t.Helper()
+	return env.Environ(testEnvWithHome(t.TempDir(), "")).
+		With(env.DisableEvents, "1").
+		With(env.Path, path)
 }
 
 // writeFakeEksctlExit creates a stub `eksctl` reporting a supported version but
@@ -65,7 +75,7 @@ exit %d
 func TestEksctlVersionNoEmulator(t *testing.T) {
 	t.Parallel()
 	fakeDir := writeFakeEksctl(t, "0.150.0")
-	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).With(env.Home, t.TempDir())
+	e := eksctlTestEnv(t, fakeDir)
 
 	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), e, "eksctl", "version")
 	require.NoError(t, err, "stderr: %s", stderr)
@@ -75,12 +85,12 @@ func TestEksctlVersionNoEmulator(t *testing.T) {
 // --help (and -h) never require the emulator and are forwarded to eksctl.
 func TestEksctlHelpNoEmulator(t *testing.T) {
 	t.Parallel()
-	for _, args := range [][]string{{"--help"}, {"-h"}, {"create", "cluster", "--help"}} {
+	for _, args := range [][]string{{"--help"}, {"--help=true"}, {"-h"}, {"create", "cluster", "--help"}} {
 		args := args
 		t.Run(strings.Join(args, "_"), func(t *testing.T) {
 			t.Parallel()
 			fakeDir := writeFakeEksctl(t, "0.211.0")
-			e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).With(env.Home, t.TempDir())
+			e := eksctlTestEnv(t, fakeDir)
 
 			cmdArgs := append([]string{"eksctl"}, args...)
 			stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), e, cmdArgs...)
@@ -90,8 +100,9 @@ func TestEksctlHelpNoEmulator(t *testing.T) {
 	}
 }
 
-// a too-old eksctl fails before an AWS-contacting command runs.
-func TestEksctlVersionTooOld(t *testing.T) {
+// an unsupported or ambiguous eksctl version fails before an AWS-contacting
+// command runs.
+func TestEksctlRejectsUnsupportedVersion(t *testing.T) {
 	requireDocker(t)
 	cleanup()
 	t.Cleanup(cleanup)
@@ -99,20 +110,29 @@ func TestEksctlVersionTooOld(t *testing.T) {
 	ctx := testContext(t)
 	startTestContainer(t, ctx)
 
-	fakeDir := writeFakeEksctl(t, "0.180.0")
-	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).With(env.Home, t.TempDir())
+	for _, tc := range []struct {
+		name    string
+		version string
+	}{
+		{name: "too old", version: "0.180.0"},
+		{name: "untrusted extra output", version: "warning: built with Go 1.25.0\n0.180.0"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			fakeDir := writeFakeEksctl(t, tc.version)
+			e := eksctlTestEnv(t, fakeDir)
 
-	stdout, stderr, err := runLstk(t, ctx, t.TempDir(), e, "eksctl", "get", "clusters")
-	require.Error(t, err)
-	assert.Contains(t, stderr+stdout, "0.181.0")
-	// eksctl was never run for real.
-	assert.NotContains(t, stdout, "ARGS:get")
+			stdout, stderr, err := runLstk(t, ctx, t.TempDir(), e, "eksctl", "get", "clusters")
+			require.Error(t, err)
+			assert.Contains(t, stderr+stdout, "0.181.0")
+			assert.NotContains(t, stdout, "ARGS:get")
+		})
+	}
 }
 
 // a missing eksctl binary yields the install error.
 func TestEksctlMissingBinary(t *testing.T) {
 	t.Parallel()
-	e := env.With(env.DisableEvents, "1").With("PATH", t.TempDir()).With(env.Home, t.TempDir())
+	e := eksctlTestEnv(t, t.TempDir())
 
 	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), e, "eksctl", "version")
 	require.Error(t, err)
@@ -128,7 +148,7 @@ func TestEksctlHonorsLstkEksctlCmd(t *testing.T) {
 	dir := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "myeksctl"),
 		[]byte("#!/bin/sh\nif [ \"$1\" = \"version\" ]; then echo \"0.211.0\"; exit 0; fi\necho \"MYEKSCTL:$*\"\n"), 0755))
-	e := env.With(env.DisableEvents, "1").With("PATH", dir).With(env.Home, t.TempDir()).
+	e := eksctlTestEnv(t, dir).
 		With(env.Key("LSTK_EKSCTL_CMD"), "myeksctl")
 
 	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), e, "eksctl", "info")
@@ -144,7 +164,7 @@ func TestEksctlFailsWhenEmulatorNotRunning(t *testing.T) {
 	t.Cleanup(cleanup)
 
 	fakeDir := writeFakeEksctl(t, "0.211.0")
-	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).With(env.Home, t.TempDir())
+	e := eksctlTestEnv(t, fakeDir)
 
 	stdout, _, err := runLstk(t, testContext(t), t.TempDir(), e, "eksctl", "get", "clusters")
 	require.Error(t, err)
@@ -165,13 +185,19 @@ func TestEksctlInjectsCleanAWSEnv(t *testing.T) {
 	startTestContainer(t, ctx)
 
 	fakeDir := writeFakeEksctl(t, "0.211.0")
-	// Strip ambient values the set-if-absent assertions below depend on, so a
-	// developer shell exporting real AWS config cannot fail the test.
-	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).With(env.Home, t.TempDir()).
-		Without(env.AWSAccessKeyID, env.AWSSecretAccessKey,
-			env.Key("AWS_REGION"), env.Key("AWS_DEFAULT_REGION"), env.Key("AWS_ENDPOINT_URL")).
+	// Empty AWS defaults must behave like unset values, while ambient endpoint
+	// and profile settings must not escape to the subprocess.
+	e := eksctlTestEnv(t, fakeDir).
+		Without(env.Key("AWS_ENDPOINT_URL")).
+		With(env.AWSAccessKeyID, "").
+		With(env.AWSSecretAccessKey, "").
+		With(env.Key("AWS_REGION"), "").
+		With(env.Key("AWS_DEFAULT_REGION"), "").
 		With(env.Key("AWS_PROFILE"), "my-real-profile").
-		With(env.Key("AWS_SESSION_TOKEN"), "realtoken")
+		With(env.Key("AWS_SESSION_TOKEN"), "realtoken").
+		With(env.Key("AWS_ENDPOINT_URL_SSM"), "https://ssm.us-east-1.amazonaws.com").
+		With(env.Key("AWS_CLOUDTRAIL_ENDPOINT"), "https://cloudtrail.us-east-1.amazonaws.com").
+		With(env.Key("AWS_IGNORE_CONFIGURED_ENDPOINT_URLS"), "true")
 
 	stdout, stderr, err := runLstk(t, ctx, t.TempDir(), e, "eksctl", "get", "clusters")
 	require.NoError(t, err, "stderr: %s", stderr)
@@ -184,6 +210,11 @@ func TestEksctlInjectsCleanAWSEnv(t *testing.T) {
 	assert.Contains(t, stdout, "ENV_AWS_IAM_ENDPOINT=http")
 	assert.Contains(t, stdout, "ENV_AWS_ENDPOINT_URL=http")
 	assert.Contains(t, stdout, ":4566")
+	// Higher-precedence endpoint settings cannot bypass the generic LocalStack
+	// endpoint used by clients such as SSM and CloudTrail.
+	assert.Contains(t, stdout, "ENV_AWS_ENDPOINT_URL_SSM=<unset>")
+	assert.Contains(t, stdout, "ENV_AWS_CLOUDTRAIL_ENDPOINT=<unset>")
+	assert.Contains(t, stdout, "ENV_AWS_IGNORE_CONFIGURED_ENDPOINT_URLS=false")
 	// Credential defaults are applied.
 	assert.Contains(t, stdout, "ENV_AWS_ACCESS_KEY_ID=test")
 	assert.Contains(t, stdout, "ENV_AWS_SECRET_ACCESS_KEY=test")
@@ -191,6 +222,13 @@ func TestEksctlInjectsCleanAWSEnv(t *testing.T) {
 	// Ambient AWS config is stripped.
 	assert.Contains(t, stdout, "ENV_AWS_PROFILE=<unset>")
 	assert.Contains(t, stdout, "ENV_AWS_SESSION_TOKEN=<unset>")
+
+	const override = "http://eksctl-override.example.test:4567"
+	overrideEnv := e.With(env.Key("AWS_ENDPOINT_URL"), override)
+	overrideOut, overrideErrOut, err := runLstk(t, ctx, t.TempDir(), overrideEnv, "eksctl", "get", "clusters")
+	require.NoError(t, err, "stderr: %s", overrideErrOut)
+	assert.Contains(t, overrideOut, "ENV_AWS_EKS_ENDPOINT="+override)
+	assert.Contains(t, overrideOut, "ENV_AWS_ENDPOINT_URL="+override)
 }
 
 // an AWS-contacting command fails with an AWS-specific error naming the running
@@ -206,7 +244,7 @@ func TestEksctlRequiresAWSEmulator(t *testing.T) {
 	startTestSnowflakeContainer(t, ctx)
 
 	fakeDir := writeFakeEksctl(t, "0.211.0")
-	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).With(env.Home, t.TempDir())
+	e := eksctlTestEnv(t, fakeDir)
 
 	stdout, _, err := runLstk(t, ctx, t.TempDir(), e, "eksctl", "get", "clusters")
 	require.Error(t, err)
@@ -220,7 +258,7 @@ func TestEksctlRequiresAWSEmulator(t *testing.T) {
 func TestEksctlPropagatesExitCode(t *testing.T) {
 	t.Parallel()
 	fakeDir := writeFakeEksctlExit(t, 7)
-	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).With(env.Home, t.TempDir())
+	e := eksctlTestEnv(t, fakeDir)
 
 	_, stderr, err := runLstk(t, testContext(t), t.TempDir(), e, "eksctl", "info")
 	require.Error(t, err)
