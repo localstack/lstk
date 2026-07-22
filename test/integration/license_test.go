@@ -251,8 +251,19 @@ func TestLicenseRejectionOffersReloginAndRetries(t *testing.T) {
 	require.NoError(t, err, "failed to inspect container")
 	assert.True(t, inspect.Container.State.Running, "container should be running after the retried start")
 
-	storedToken, err := GetAuthTokenFromKeyring()
-	require.NoError(t, err)
+	// lstk's file-keyring fallback stores the token next to the active config
+	// file (ConfigDir follows --config), so on headless CI runners the token
+	// lands in this test's temp dir — not in the default config dir the shared
+	// GetAuthTokenFromKeyring helper reads.
+	var storedToken string
+	if useFileKeyring {
+		data, rerr := os.ReadFile(filepath.Join(filepath.Dir(configFile), authTokenFile))
+		require.NoError(t, rerr, "the re-logged-in token should be stored in the file keyring next to the config file")
+		storedToken = string(data)
+	} else {
+		storedToken, err = GetAuthTokenFromKeyring()
+		require.NoError(t, err, "the re-logged-in token should be stored in the system keyring")
+	}
 	assert.Equal(t, realToken, storedToken, "the fresh token must replace the rejected one")
 }
 
