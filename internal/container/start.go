@@ -89,8 +89,8 @@ func Start(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts Start
 	opts.Telemetry.SetAuthToken(token)
 
 	version, err := startOnce(ctx, rt, sink, opts, interactive, token, licenseFilePath, false)
-	var licErr *api.LicenseError
-	if err == nil || !errors.As(err, &licErr) {
+	var rejErr *licenseRejectedError
+	if err == nil || !errors.As(err, &rejErr) {
 		return version, err
 	}
 
@@ -98,7 +98,7 @@ func Start(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts Start
 	// already dropped the cached license.json). The rejected token may simply
 	// predate a license purchase or plan change (DEVX-658), so offer a fresh
 	// login instead of requiring a manual `lstk logout` before the next run.
-	if interactive && promptRelogin(ctx, sink, licErr) {
+	if interactive && promptRelogin(ctx, sink, rejErr.licErr) {
 		newToken, loginErr := a.Relogin(ctx)
 		if loginErr != nil {
 			return "", loginErr
@@ -108,8 +108,8 @@ func Start(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts Start
 	}
 
 	sink.Emit(output.ErrorEvent{
-		Title:   "License validation failed",
-		Summary: licErr.Message,
+		Title:   fmt.Sprintf("License validation failed for %s:%s", rejErr.productName, rejErr.version),
+		Summary: rejErr.licErr.Message,
 		Actions: []output.ErrorAction{
 			{Label: "Log in again to refresh your credentials:", Value: "lstk logout && lstk login"},
 			{Label: "Or provide a valid token via the environment variable:", Value: "LOCALSTACK_AUTH_TOKEN"},
@@ -117,6 +117,21 @@ func Start(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts Start
 	})
 	return "", output.NewSilentError(err)
 }
+
+// licenseRejectedError carries the product/version context of a definitive
+// license rejection so the top-level handler can render it (and offer the
+// re-login recovery) without re-deriving the container details.
+type licenseRejectedError struct {
+	productName string
+	version     string
+	licErr      *api.LicenseError
+}
+
+func (e *licenseRejectedError) Error() string {
+	return fmt.Sprintf("license validation failed for %s:%s: %v", e.productName, e.version, e.licErr)
+}
+
+func (e *licenseRejectedError) Unwrap() error { return e.licErr }
 
 func startOnce(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts StartOptions, interactive bool, token, licenseFilePath string, forceLicenseValidation bool) (string, error) {
 	tel := opts.Telemetry
@@ -979,7 +994,7 @@ func validateLicense(ctx context.Context, sink output.Sink, opts StartOptions, c
 			ErrorCode: telemetry.ErrCodeLicenseInvalid,
 			ErrorMsg:  err.Error(),
 		})
-		return false, fmt.Errorf("license validation failed for %s:%s: %w", containerConfig.ProductName, version, err)
+		return false, &licenseRejectedError{productName: containerConfig.ProductName, version: version, licErr: licErr}
 	}
 	sink.Emit(output.SpinnerStop())
 
