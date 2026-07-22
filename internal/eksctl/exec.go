@@ -45,8 +45,13 @@ var offlineCommands = map[string]bool{
 	"completion": true,
 }
 
-// helpFlags are the flags/tokens eksctl recognizes as a help request.
-var helpFlags = map[string]bool{"-h": true, "--help": true, "help": true}
+// helpFlags are the flags eksctl recognizes as a help request. Unlike the aws
+// CLI, eksctl (Cobra-based) accepts a bare `help` only as the leading token —
+// that case is covered by offlineCommands — so `help` is deliberately not
+// matched here: in any later position it is a flag value (e.g. a cluster
+// literally named "help"), and treating it as a help request would skip the
+// emulator and version gates for an AWS-contacting command.
+var helpFlags = map[string]bool{"-h": true, "--help": true}
 
 // IsHelp reports whether args requests eksctl's help output. eksctl answers this
 // without needing a running emulator.
@@ -99,11 +104,13 @@ func subcommand(args []string) string {
 // then runs eksctl with stdio wired through.
 //
 // endpointURL is the resolved LocalStack endpoint (http://host:port), or "" for
-// offline subcommands that do not contact AWS. eksctl output is streamed
-// unobstructed (no spinner); a non-zero exit is wrapped as a silent error so
-// lstk does not reprint it.
+// offline subcommands that do not contact AWS; a user-set AWS_ENDPOINT_URL
+// takes precedence over the resolved endpoint (same contract as the
+// terraform/cdk/sam proxies). eksctl output is streamed unobstructed (no
+// spinner); a non-zero exit is wrapped as a silent error so lstk does not
+// reprint it.
 func Run(ctx context.Context, endpointURL string, sink output.Sink, logger log.Logger, args []string) error {
-	ctx, span := otel.Tracer("github.com/localstack/lstk/internal/eksctl").Start(ctx, "eksctl")
+	ctx, span := otel.Tracer("github.com/localstack/lstk/internal/eksctl").Start(ctx, "eksctl cli")
 	defer span.End()
 
 	bin, err := exec.LookPath(eksctlCmd())
@@ -127,6 +134,13 @@ func Run(ctx context.Context, endpointURL string, sink output.Sink, logger log.L
 				Actions: []output.ErrorAction{{Label: "Upgrade eksctl:", Value: installDocsURL}},
 			})
 			return output.NewSilentError(err)
+		}
+	}
+
+	if !offline {
+		if override := endpointURLOverride(); override != "" {
+			endpointURL = override
+			logger.Info("eksctl: using AWS_ENDPOINT_URL override %s", override)
 		}
 	}
 

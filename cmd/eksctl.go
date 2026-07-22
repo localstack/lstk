@@ -22,10 +22,13 @@ func newEksctlCmd(cfg *env.Env, logger log.Logger) *cobra.Command {
 		Short: "Run eksctl against LocalStack",
 		Long: `Proxy eksctl commands to the running LocalStack emulator.
 
-Requires eksctl version 0.181.0 or newer on your PATH. lstk points eksctl at LocalStack by setting the AWS service endpoint environment variables it reads (CloudFormation, EC2, EKS, ELB, ELBv2, IAM, STS), so cluster operations target the emulator instead of real AWS. This mirrors the "Newer Versions" flow from the LocalStack docs; older eksctl releases ignore these variables and are rejected.
+Requires eksctl version 0.181.0 or newer on your PATH. lstk points eksctl at LocalStack by setting the AWS service endpoint environment variables it reads (CloudFormation, EC2, EKS, ELB, ELBv2, IAM, STS, plus the generic AWS_ENDPOINT_URL), so cluster operations target the emulator instead of real AWS. This is the "Newer Versions" flow from the LocalStack docs; older eksctl releases are rejected since lstk supports only that flow.
+
+eksctl support in LocalStack is experimental and may not work in all cases.
 
 Supported environment variables:
   LSTK_EKSCTL_CMD    eksctl binary to invoke (default eksctl)
+  AWS_ENDPOINT_URL   Overrides the auto-resolved LocalStack endpoint
   AWS_REGION         Deployment region (default us-east-1)
   AWS_ACCESS_KEY_ID  Access key LocalStack derives the account from (default test)
 

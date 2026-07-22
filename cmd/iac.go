@@ -11,11 +11,12 @@ import (
 	"github.com/localstack/lstk/internal/runtime"
 )
 
-// Shared command-boundary helpers for the IaC proxy commands (terraform, cdk,
-// sam). These live here rather than in any one command's file because all three
-// depend on them equally; keeping them in cmd/ (not a domain package) is
-// deliberate — they touch config.Get(), the output.Sink, and the raw CLI args,
-// all of which are command-boundary concerns.
+// Shared command-boundary helpers for the AWS-targeting proxy commands
+// (terraform, cdk, sam, eksctl). These live here rather than in any one
+// command's file because all of them depend on them equally; keeping them in
+// cmd/ (not a domain package) is deliberate — they touch config.Get(), the
+// output.Sink, and the raw CLI args, all of which are command-boundary
+// concerns.
 //
 // The leading-flag parsing and account resolution that used to live here now
 // sit in proxy.go: `lstk aws` shares them, so they are no longer IaC-specific.
