@@ -338,8 +338,6 @@ lstk eksctl create cluster --nodes 1
 lstk eksctl get clusters
 ```
 
-eksctl support in LocalStack is experimental and may not work in all cases.
-
 ## Usage
 
 ```bash
