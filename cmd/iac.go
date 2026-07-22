@@ -22,13 +22,13 @@ import (
 
 var accountIDRe = regexp.MustCompile(`^\d{12}$`)
 
-// requireRunningAWSEmulator verifies the AWS emulator is running before an IaC
-// proxy command (terraform/cdk) that contacts AWS proceeds. When it is not
-// running it emits an actionable error through the sink — an AWS-specific
-// message naming the other emulator when a non-AWS one is up, otherwise the
-// generic "not running" error — and returns a silent error. cmdLabel is the
-// lstk command name used in the message (e.g. "terraform"/"cdk"). It returns nil
-// when the AWS emulator is running.
+// requireRunningAWSEmulator verifies the AWS emulator is running before an
+// AWS-targeting proxy command (terraform/cdk/sam/eksctl) that contacts AWS
+// proceeds. When it is not running it emits an actionable error through the
+// sink — an AWS-specific message naming the other emulator when a non-AWS one
+// is up, otherwise the generic "not running" error — and returns a silent
+// error. cmdLabel is the lstk command name used in the message (e.g.
+// "terraform"/"cdk"/"eksctl"). It returns nil when the AWS emulator is running.
 func requireRunningAWSEmulator(ctx context.Context, rt runtime.Runtime, sink output.Sink, awsContainer config.ContainerConfig, cmdLabel string) error {
 	runningName, err := container.ResolveRunningContainerName(ctx, rt, awsContainer)
 	if err != nil {

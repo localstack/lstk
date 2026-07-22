@@ -319,6 +319,26 @@ CDK always targets the default LocalStack account 000000000000; there is no --ac
 
 Known limitations versus `samlocal`: image/container-based Lambda (ECR) deploys and nested CloudFormation stacks are not supported.
 
+### eksctl Integration
+
+`lstk eksctl` is a proxy that runs [eksctl](https://eksctl.io/) commands against LocalStack, pointing eksctl at LocalStack's endpoints via environment variables so cluster operations target the running emulator instead of real AWS. This replaces the manual export of several `AWS_*_ENDPOINT` variables documented for the "Newer Versions" flow.
+
+**Requires eksctl version 0.181.0 or newer** on your `PATH` (from this version eksctl honors the `AWS_*_ENDPOINT` variables lstk sets; older versions ignore them and would target real AWS).
+
+lstk sets the CloudFormation, EC2, EKS, ELB, ELBv2, IAM, and STS service endpoints to the resolved LocalStack endpoint, and strips ambient AWS profile/session configuration that could redirect at real AWS.
+
+**Environment variables:**
+- `LSTK_EKSCTL_CMD` — eksctl binary to invoke (default: `eksctl`)
+- `AWS_REGION` — Deployment region (default: `us-east-1`)
+- `AWS_ACCESS_KEY_ID` — Access key LocalStack derives the account from (default: `test`)
+
+```bash
+lstk eksctl create cluster --nodes 1
+lstk eksctl get clusters
+```
+
+Support for EKS in LocalStack is experimental and may not cover all workflows.
+
 ## Usage
 
 ```bash
@@ -424,6 +444,9 @@ lstk cdk synth
 # Build and deploy a SAM app against LocalStack
 lstk sam build
 lstk sam deploy
+
+# Create an EKS cluster against LocalStack
+lstk eksctl create cluster --nodes 1
 
 ```
 

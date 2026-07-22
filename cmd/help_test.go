@@ -50,7 +50,7 @@ func TestRootHelpGroupsToolsSeparately(t *testing.T) {
 	// The proxy commands must be listed under the Tools group, not among the
 	// regular commands.
 	toolsSection := out[strings.Index(out, "Tools:"):]
-	for _, tool := range []string{"aws", "az", "cdk", "sam", "terraform"} {
+	for _, tool := range []string{"aws", "az", "cdk", "eksctl", "sam", "terraform"} {
 		assertContains(t, toolsSection, tool)
 	}
 
