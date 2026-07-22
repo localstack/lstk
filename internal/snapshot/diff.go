@@ -4,6 +4,7 @@ package snapshot
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/localstack/lstk/internal/config"
@@ -57,6 +58,16 @@ func DiffPod(ctx context.Context, rt runtime.Runtime, containers []config.Contai
 	sink.Emit(output.SpinnerStart(fmt.Sprintf("Checking diff for pod %q...", podName)))
 	result, err := differ.DiffPodSnapshot(ctx, host, podName, authToken)
 	sink.Emit(output.SpinnerStop())
+	if errors.Is(err, ErrPodNotFound) {
+		sink.Emit(output.ErrorEvent{
+			Title:   "Could not check pod diff",
+			Summary: "Snapshot was not found on the LocalStack platform",
+			Actions: []output.ErrorAction{
+				{Label: "List your snapshots:", Value: "lstk snapshot list"},
+			},
+		})
+		return output.NewSilentError(err)
+	}
 	if err != nil {
 		return err
 	}

@@ -298,7 +298,11 @@ func (c *Client) DiffPodSnapshot(ctx context.Context, host, podName, authToken s
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("diff failed (HTTP %d): %s", resp.StatusCode, strings.TrimSpace(string(body)))
+		bodyStr := strings.TrimSpace(string(body))
+		if isPodNotFoundMsg(bodyStr) {
+			return nil, fmt.Errorf("%w: %s", snapshot.ErrPodNotFound, bodyStr)
+		}
+		return nil, fmt.Errorf("diff failed (HTTP %d): %s", resp.StatusCode, bodyStr)
 	}
 
 	var raw map[string][]struct {

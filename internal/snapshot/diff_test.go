@@ -99,6 +99,29 @@ func TestDiffPod_DifferError(t *testing.T) {
 	assert.Contains(t, err.Error(), "platform unreachable")
 }
 
+func TestDiffPod_PodNotFound(t *testing.T) {
+	t.Parallel()
+	ctrl := gomock.NewController(t)
+	differ := NewMockPodDiffer(ctrl)
+	differ.EXPECT().DiffPodSnapshot(gomock.Any(), gomock.Any(), "does-not-exist", "test-token").
+		Return(nil, fmt.Errorf("%w: Failed to get version information from platform.. aborting", snapshot.ErrPodNotFound))
+
+	sink, getEvents := captureEvents(t)
+	err := snapshot.DiffPod(context.Background(), healthyRunningMock(t), awsContainers, differ, "", "does-not-exist", "test-token", "", sink)
+	require.Error(t, err)
+	assert.True(t, output.IsSilent(err))
+
+	var gotErrorEvent bool
+	for _, e := range getEvents() {
+		if ev, ok := e.(output.ErrorEvent); ok {
+			gotErrorEvent = true
+			assert.Contains(t, ev.Summary, "not found on the LocalStack platform")
+			assert.NotContains(t, ev.Summary, "version information")
+		}
+	}
+	assert.True(t, gotErrorEvent, "ErrorEvent should have been emitted")
+}
+
 func TestDiffPod_EmulatorNotRunning(t *testing.T) {
 	t.Parallel()
 	ctrl := gomock.NewController(t)
