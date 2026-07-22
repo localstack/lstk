@@ -12,6 +12,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -204,6 +205,25 @@ func TestLicenseRejectionOffersReloginAndRetries(t *testing.T) {
 
 	err = cmd.Wait()
 	<-outputCh
+	if err != nil {
+		// The PTY transcript cannot explain a container that never became
+		// healthy — capture the emulator's own view before cleanup removes it.
+		diagCtx, diagCancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer diagCancel()
+		if inspectOut, ierr := exec.CommandContext(diagCtx, "docker", "inspect", "--format", "{{.State.Status}} exit={{.State.ExitCode}}", containerName).CombinedOutput(); ierr == nil {
+			t.Logf("container state: %s", strings.TrimSpace(string(inspectOut)))
+		}
+		if logsOut, lerr := exec.CommandContext(diagCtx, "docker", "logs", "--tail", "150", containerName).CombinedOutput(); lerr == nil {
+			t.Logf("container logs (tail):\n%s", string(logsOut))
+		}
+		if resp, herr := http.Get("http://localhost:4566/_localstack/health"); herr == nil {
+			body, _ := io.ReadAll(io.LimitReader(resp.Body, 2048))
+			_ = resp.Body.Close()
+			t.Logf("health endpoint: HTTP %d %s", resp.StatusCode, string(body))
+		} else {
+			t.Logf("health endpoint unreachable: %v", herr)
+		}
+	}
 	require.NoError(t, err, "start should succeed after re-login: %s", out.String())
 	assert.True(t, staleRejected.Load(), "the stale token must have been rejected by the license server first")
 	assert.Contains(t, out.String(), "Valid license")
