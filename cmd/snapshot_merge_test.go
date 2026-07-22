@@ -9,35 +9,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// resolveMergeStrategy(flagValue, flagChanged, envValue) picks the strategy to use.
-// flagChanged is cmd.Flags().Changed("merge") — true only if the user actually
-// typed --merge on the command line. It's needed because the flag's default value
-// ("account-region-merge") is itself a valid strategy, so flagValue alone can't
-// tell "user explicitly chose account-region-merge" apart from "user passed
-// nothing and this is just the zero-value default".
-func TestResolveMergeStrategy(t *testing.T) {
-	t.Run("flag changed wins over env", func(t *testing.T) {
-		// flagChanged=true means --merge was passed explicitly, so it must win
-		// even though LSTK_MERGE_STRATEGY also has a value.
-		got := resolveMergeStrategy("account-region-merge", true, "overwrite")
-		assert.Equal(t, "account-region-merge", got)
-	})
-
-	t.Run("env used when flag not changed", func(t *testing.T) {
-		// flagChanged=false means the caller never passed --merge; flagValue here
-		// is just cobra's default, which the env var should override.
-		got := resolveMergeStrategy("account-region-merge", false, "overwrite")
-		assert.Equal(t, "overwrite", got)
-	})
-
-	t.Run("flag default kept when env unset", func(t *testing.T) {
-		// Neither --merge nor LSTK_MERGE_STRATEGY was set, so the flag's own
-		// default ("account-region-merge") passes through unchanged.
-		got := resolveMergeStrategy("account-region-merge", false, "")
-		assert.Equal(t, "account-region-merge", got)
-	})
-}
-
 // mergeTestCmd builds a bare *cobra.Command with just the --merge flag
 // registered (via the same addMergeFlag used by the real load commands), so
 // resolveLoadStrategy sees real cobra flag/Changed() behavior rather than

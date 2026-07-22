@@ -230,6 +230,9 @@ func addMergeFlag(cmd *cobra.Command) {
 
 // resolveMergeStrategy applies the LSTK_MERGE_STRATEGY env var as the default
 // when --merge was not explicitly passed; an explicit --merge always wins.
+// flagChanged (cmd.Flags().Changed("merge")) is required because the flag's
+// own default value is itself a valid strategy, so flagValue alone can't
+// distinguish "user explicitly chose this" from "this is just the default."
 func resolveMergeStrategy(flagValue string, flagChanged bool, envValue string) string {
 	if flagChanged || envValue == "" {
 		return flagValue
