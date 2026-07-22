@@ -84,6 +84,6 @@ Provide a summary with:
 1. **Verdict**: Approve / Request changes / Comment
 2. **Issues found**: List each with file path, line, and why it's a problem
 3. **Suggestions**: Optional improvements (clearly marked as non-blocking)
-4. **Review recommendation**: `review: self-merged` or `review: needs-approval`, with a one-line reason based on the Review scope checklist above
+4. **Review recommendation**: whether a human review is advised or this looks like a self-merge candidate, with a one-line reason based on the Review scope checklist above
 
 Keep feedback actionable and specific. Don't flag things that aren't problems.
