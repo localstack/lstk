@@ -108,8 +108,7 @@ func Start(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts Start
 	}
 
 	sink.Emit(output.ErrorEvent{
-		Title:   fmt.Sprintf("License validation failed for %s:%s", rejErr.productName, rejErr.version),
-		Summary: rejErr.licErr.Message,
+		Title: fmt.Sprintf("License validation failed for %s:%s: %s", rejErr.productName, rejErr.version, rejErr.licErr.Message),
 		Actions: []output.ErrorAction{
 			{Label: "Log in again to refresh your credentials:", Value: "lstk logout && lstk login"},
 			{Label: "Or provide a valid token via the environment variable:", Value: "LOCALSTACK_AUTH_TOKEN"},
