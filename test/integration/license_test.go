@@ -159,8 +159,15 @@ func TestLicenseRejectionOffersReloginAndRetries(t *testing.T) {
 	}))
 	defer mockServer.Close()
 
-	ctx := testContext(t)
+	// A generous budget: this flow pulls the image, runs a full login round-trip,
+	// and boots the emulator — the default 2-minute test context is too tight on
+	// CI runners. LSTK_STARTUP_TIMEOUT keeps the interactive "keep waiting?"
+	// prompt (20s default) from pausing the start while the emulator boots,
+	// since this test only answers the re-login and login prompts.
+	ctx, cancel := context.WithTimeout(context.Background(), 6*time.Minute)
+	t.Cleanup(cancel)
 	environ, _ := fakeBrowserOpener(t, env.With(env.AuthToken, staleToken).With(env.APIEndpoint, mockServer.URL).With(env.WebAppURL, mockServer.URL))
+	environ = append(environ, "LSTK_STARTUP_TIMEOUT=5m")
 
 	// An explicit config prevents firstRun=true, which would block the TUI on the
 	// emulator selection prompt before the license check runs.
@@ -181,9 +188,10 @@ func TestLicenseRejectionOffersReloginAndRetries(t *testing.T) {
 	}()
 
 	// The stale token is rejected; the re-login prompt appears. Press ENTER.
+	// The wait covers a cold image pull on CI runners.
 	require.Eventually(t, func() bool {
 		return bytes.Contains(out.Bytes(), []byte("Log in again"))
-	}, 90*time.Second, 100*time.Millisecond, "the re-login prompt should appear after the license rejection")
+	}, 3*time.Minute, 100*time.Millisecond, "the re-login prompt should appear after the license rejection")
 	_, err = ptmx.Write([]byte("\r"))
 	require.NoError(t, err)
 
