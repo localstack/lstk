@@ -47,8 +47,27 @@ func TestBuildEnvRespectsUserRegionAndAccount(t *testing.T) {
 
 	assert.Equal(t, "eu-west-1", env["AWS_REGION"])
 	assert.Equal(t, "111111111111", env["AWS_ACCESS_KEY_ID"])
-	// AWS_DEFAULT_REGION is still defaulted since only AWS_REGION was set.
-	assert.Equal(t, "us-east-1", env["AWS_DEFAULT_REGION"])
+	// AWS_DEFAULT_REGION follows the user's region rather than the us-east-1
+	// default, so the injected pair can never contradict the user's setting.
+	assert.Equal(t, "eu-west-1", env["AWS_DEFAULT_REGION"])
+}
+
+func TestBuildEnvDefaultRegionOnlySeedsAWSRegion(t *testing.T) {
+	// A user with only AWS_DEFAULT_REGION set must not have it shadowed by an
+	// injected AWS_REGION=us-east-1 (the SDK resolves AWS_REGION first).
+	base := []string{"AWS_DEFAULT_REGION=eu-central-1"}
+	env := envMap(BuildEnv(base, "http://localhost.localstack.cloud:4566"))
+
+	assert.Equal(t, "eu-central-1", env["AWS_REGION"])
+	assert.Equal(t, "eu-central-1", env["AWS_DEFAULT_REGION"])
+}
+
+func TestBuildEnvKeepsContradictoryUserRegionsVerbatim(t *testing.T) {
+	base := []string{"AWS_REGION=eu-west-1", "AWS_DEFAULT_REGION=us-west-2"}
+	env := envMap(BuildEnv(base, "http://localhost.localstack.cloud:4566"))
+
+	assert.Equal(t, "eu-west-1", env["AWS_REGION"])
+	assert.Equal(t, "us-west-2", env["AWS_DEFAULT_REGION"])
 }
 
 func TestBuildEnvStripsAmbientAWSConfig(t *testing.T) {
@@ -79,6 +98,16 @@ func TestBuildEnvOfflineLeavesEndpointsUnset(t *testing.T) {
 	}
 	// Credential defaults are still applied.
 	assert.Equal(t, "test", env["AWS_ACCESS_KEY_ID"])
+}
+
+func TestBuildEnvOfflineStillStripsAmbientConfig(t *testing.T) {
+	base := []string{"AWS_PROFILE=my-real-profile", "AWS_SESSION_TOKEN=realtoken"}
+	env := envMap(BuildEnv(base, ""))
+
+	_, hasProfile := env["AWS_PROFILE"]
+	_, hasSessionToken := env["AWS_SESSION_TOKEN"]
+	assert.False(t, hasProfile)
+	assert.False(t, hasSessionToken)
 }
 
 func TestBuildEnvDoesNotMutateInput(t *testing.T) {

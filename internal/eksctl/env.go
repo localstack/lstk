@@ -1,12 +1,18 @@
 package eksctl
 
-import "strings"
+import (
+	"os"
+	"strings"
+)
 
-// endpointEnvVars are the AWS service endpoint variables eksctl (via aws-sdk-go)
-// reads to route each service at a custom endpoint. lstk sets them all to the
-// resolved LocalStack endpoint so `eksctl create cluster` and friends target the
-// emulator. This is the "Newer Versions" flow from the LocalStack eksctl docs;
-// older eksctl releases ignore these variables (see version.go for the gate).
+// endpointEnvVars are the AWS service endpoint variables set to the resolved
+// LocalStack endpoint so `eksctl create cluster` and friends target the
+// emulator. The seven AWS_<SVC>_ENDPOINT names are the ones eksctl resolves
+// itself per client (the "Newer Versions" flow from the LocalStack eksctl docs;
+// see version.go for the gate). AWS_ENDPOINT_URL is the aws-sdk-go-v2 generic
+// fallback: eksctl builds a few clients with no per-service override (SSM for
+// AMI resolution, Outposts, the STS presigner), and without it those would
+// resolve to real AWS endpoints.
 var endpointEnvVars = []string{
 	"AWS_CLOUDFORMATION_ENDPOINT",
 	"AWS_EC2_ENDPOINT",
@@ -15,6 +21,14 @@ var endpointEnvVars = []string{
 	"AWS_ELBV2_ENDPOINT",
 	"AWS_IAM_ENDPOINT",
 	"AWS_STS_ENDPOINT",
+	"AWS_ENDPOINT_URL",
+}
+
+// endpointURLOverride returns AWS_ENDPOINT_URL from the process environment,
+// which takes precedence over the auto-resolved LocalStack endpoint (same
+// contract as the terraform/cdk/sam proxies).
+func endpointURLOverride() string {
+	return os.Getenv("AWS_ENDPOINT_URL")
 }
 
 // strippedKeys are ambient AWS configuration variables removed from the eksctl
@@ -36,9 +50,10 @@ var strippedKeys = map[string]bool{
 // is respected.
 //
 // When endpointURL is empty (offline subcommands like `version`/`completion`),
-// no endpoint variables are set and none are stripped — the invocation does not
-// contact LocalStack, so the caller's environment is left as-is apart from the
-// credential defaults.
+// no endpoint variables are set or stripped — the invocation does not contact
+// LocalStack. The profile/session keys are still stripped and the credential
+// defaults still applied, keeping the subprocess environment predictable on
+// every path.
 func BuildEnv(base []string, endpointURL string) []string {
 	managed := make(map[string]bool, len(endpointEnvVars))
 	if endpointURL != "" {
@@ -71,10 +86,32 @@ func BuildEnv(base []string, endpointURL string) []string {
 	// a user-set value (or eksctl's own --region flag) takes precedence.
 	setIfAbsent(&env, "AWS_ACCESS_KEY_ID", "test")
 	setIfAbsent(&env, "AWS_SECRET_ACCESS_KEY", "test")
-	setIfAbsent(&env, "AWS_DEFAULT_REGION", "us-east-1")
-	setIfAbsent(&env, "AWS_REGION", "us-east-1")
+
+	// Resolve one region and default both variables to it. Defaulting them
+	// independently would let an injected AWS_REGION=us-east-1 shadow a
+	// user-set AWS_DEFAULT_REGION (the SDK resolves AWS_REGION first), moving
+	// the cluster to a region the user never asked for.
+	region := lookup(env, "AWS_REGION")
+	if region == "" {
+		region = lookup(env, "AWS_DEFAULT_REGION")
+	}
+	if region == "" {
+		region = "us-east-1"
+	}
+	setIfAbsent(&env, "AWS_REGION", region)
+	setIfAbsent(&env, "AWS_DEFAULT_REGION", region)
 
 	return env
+}
+
+func lookup(env []string, key string) string {
+	prefix := key + "="
+	for _, e := range env {
+		if strings.HasPrefix(e, prefix) {
+			return strings.TrimPrefix(e, prefix)
+		}
+	}
+	return ""
 }
 
 func setIfAbsent(env *[]string, key, value string) {

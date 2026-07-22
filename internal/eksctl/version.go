@@ -8,11 +8,13 @@ import (
 	"strconv"
 )
 
-// minEksctlVersion is the lowest eksctl version lstk supports. From this version
-// (the "Newer Versions" flow in the LocalStack eksctl docs) eksctl routes AWS
-// services through the AWS_*_ENDPOINT environment variables lstk sets. Older
-// releases ignore them and would silently target real AWS, so lstk refuses to
-// run against them.
+// minEksctlVersion is the lowest eksctl version lstk supports. 0.181.0 is where
+// eksctl moved to per-client resolution of the AWS_*_ENDPOINT variables lstk
+// sets, and the boundary the LocalStack eksctl docs define for the env-var
+// ("Newer Versions") flow. Older releases resolved the same variables through a
+// deprecated SDK global-resolver path the docs route through `--profile
+// localstack` instead; lstk supports only the documented env-var flow, so it
+// refuses to run against them rather than risk requests escaping to real AWS.
 const (
 	minEksctlMajor = 0
 	minEksctlMinor = 181
@@ -28,9 +30,10 @@ var versionRe = regexp.MustCompile(`(\d+)\.(\d+)\.(\d+)`)
 
 // CheckVersion runs `<bin> version` and returns an error if the reported version
 // is below the minimum lstk supports, or if the output cannot be parsed. lstk
-// points eksctl at LocalStack purely through environment variables, which only
-// eksctl >= minEksctlVersionString honors; on an older (or unparseable) version
-// lstk must refuse to run so it cannot silently target real AWS.
+// points eksctl at LocalStack purely through environment variables — the flow
+// LocalStack documents and tests from eksctl >= minEksctlVersionString; on an
+// older (or unparseable) version lstk must refuse to run so requests cannot
+// silently escape to real AWS.
 func CheckVersion(ctx context.Context, bin string) error {
 	out, err := exec.CommandContext(ctx, bin, "version").Output()
 	if err != nil {
@@ -48,7 +51,7 @@ func checkVersionString(out string) error {
 	minor, _ := strconv.Atoi(m[2])
 	patch, _ := strconv.Atoi(m[3])
 	if !atLeastMinVersion(major, minor, patch) {
-		return fmt.Errorf("eksctl %d.%d.%d is too old; lstk requires %s or newer (it points eksctl at LocalStack via the AWS_*_ENDPOINT variables, which older versions ignore)", major, minor, patch, minEksctlVersionString)
+		return fmt.Errorf("eksctl %d.%d.%d is too old; lstk requires %s or newer (the earliest version lstk supports pointing at LocalStack via the AWS_*_ENDPOINT variables)", major, minor, patch, minEksctlVersionString)
 	}
 	return nil
 }

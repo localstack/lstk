@@ -321,14 +321,15 @@ Known limitations versus `samlocal`: image/container-based Lambda (ECR) deploys 
 
 ### eksctl Integration
 
-`lstk eksctl` is a proxy that runs [eksctl](https://eksctl.io/) commands against LocalStack, pointing eksctl at LocalStack's endpoints via environment variables so cluster operations target the running emulator instead of real AWS. This replaces the manual export of several `AWS_*_ENDPOINT` variables documented for the "Newer Versions" flow.
+`lstk eksctl` is a proxy that runs [eksctl](https://eksctl.io/) commands against LocalStack, pointing eksctl at LocalStack's endpoints via environment variables so cluster operations target the running emulator instead of real AWS. This replaces the manual export of several `AWS_*_ENDPOINT` variables documented for the ["Newer Versions" flow](https://docs.localstack.cloud/aws/customization/kubernetes/eksctl/) in the LocalStack docs.
 
-**Requires eksctl version 0.181.0 or newer** on your `PATH` (from this version eksctl honors the `AWS_*_ENDPOINT` variables lstk sets; older versions ignore them and would target real AWS).
+**Requires eksctl version 0.181.0 or newer** on your `PATH` — the boundary the LocalStack docs define for the environment-variable flow; lstk rejects older versions rather than run a flow it doesn't support. EKS is included in LocalStack's Ultimate plan (the community image does not support it), and you'll need `kubectl` to interact with the created cluster.
 
-lstk sets the CloudFormation, EC2, EKS, ELB, ELBv2, IAM, and STS service endpoints to the resolved LocalStack endpoint, and strips ambient AWS profile/session configuration that could redirect at real AWS.
+lstk sets the CloudFormation, EC2, EKS, ELB, ELBv2, IAM, and STS service endpoints (plus the generic `AWS_ENDPOINT_URL`) to the resolved LocalStack endpoint, and strips ambient AWS profile/session configuration that could redirect at real AWS.
 
 **Environment variables:**
 - `LSTK_EKSCTL_CMD` — eksctl binary to invoke (default: `eksctl`)
+- `AWS_ENDPOINT_URL` — Overrides the auto-resolved LocalStack endpoint
 - `AWS_REGION` — Deployment region (default: `us-east-1`)
 - `AWS_ACCESS_KEY_ID` — Access key LocalStack derives the account from (default: `test`)
 
@@ -337,7 +338,7 @@ lstk eksctl create cluster --nodes 1
 lstk eksctl get clusters
 ```
 
-Support for EKS in LocalStack is experimental and may not cover all workflows.
+eksctl support in LocalStack is experimental and may not work in all cases.
 
 ## Usage
 
