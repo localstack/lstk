@@ -48,6 +48,7 @@ Go through each changed file and check for violations. Flag only actual problems
 - [ ] Domain code never reads from stdin directly
 - [ ] Interactive input uses `UserInputRequestEvent` + `ResponseCh` pattern
 - [ ] Non-TTY mode fails early with a helpful error if input would be required
+- [ ] New user-supplied inputs (args, flags, config values) are validated at the boundary via `internal/validate`; no new inline validation regexp duplicating it (identifiers → `ResourceName`; opaque secrets → loose checks like `AuthToken`; paths/URLs → their existing parsers) and malformed-input cases are tested
 
 ### TUI (if UI changes)
 

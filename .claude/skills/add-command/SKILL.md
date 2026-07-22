@@ -19,6 +19,7 @@ Before writing any code, understand what the command should do and whether the a
 3. **Does it need configuration?** (determines whether `PreRunE: initConfigDeferCreate(nil)` is needed)
 4. **Does it need authentication?** (determines whether auth flow is involved)
 5. **Does it need any new event types?** (e.g., a new kind of progress, a new status phase — if yes, use `/add-event` for each)
+6. **What user-supplied inputs does it accept?** (args, flags, config values — determines which `internal/validate` validators apply at the boundary)
 
 **Also ask context-specific questions** that aren't in this list but would help clarify behavior — e.g., edge cases ("what happens if no emulators are running?"), flags/arguments the command should accept, expected output format, whether it should be idempotent, etc.
 
@@ -48,6 +49,7 @@ Create `cmd/$ARGUMENTS.go` with:
   - Non-interactive: call domain function with `output.NewPlainSink(os.Stdout)`
 - If the command only groups subcommands (like `config`, `setup`, `snapshot`), call `requireSubcommand(cmd)` so a bare invocation shows help (exit 0) while an unknown subcommand exits non-zero
 - No business logic — only Cobra wiring, dependency creation, and output mode selection
+- Validate user-supplied args/flags where they are first accepted, via `internal/validate` — identifiers through `validate.ResourceName`, opaque secrets through loose checks like `validate.AuthToken`, paths/URLs through their normal parsers (`filepath`, `net/url`). If no validator fits, add one to `internal/validate` (with rule-code tests); never write an inline validation regexp
 - `Short`/`Long` help text: write each paragraph as one unbroken line (blank line between paragraphs); never hard-wrap a sentence across source lines. The help template (`cmd/help.go`) word-wraps to the terminal width at render time, and `lstk docs` reads the raw text — manual breaks fight both. Indent example/output blocks; the wrapper leaves indented lines untouched.
 
 ## Step 2: Create the domain logic package
@@ -96,6 +98,7 @@ Create `test/integration/<name>_test.go` with:
 - Use `requireDocker(t)` if Docker is needed
 - Use `cleanup()` and `t.Cleanup(cleanup)` for container state
 - Use `context.WithTimeout` for all tests
+- If the command accepts identifiers or free-form values, include malformed-input cases (control characters, `../` traversal, percent-encoding, shell metacharacters) asserting a clear rejection
 
 ## Telemetry
 
