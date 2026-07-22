@@ -238,6 +238,19 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		msgCopy := msg
 		a.addLine(styledLine{text: components.RenderMessage(msg), message: &msgCopy})
 		return a, nil
+	case output.MultipleInstallsEvent:
+		if line, ok := output.FormatEventLine(msg); ok {
+			parts := strings.Split(line, "\n")
+			if len(parts) > 0 {
+				first := strings.Replace(parts[0], "> ", styles.Secondary.Render("> "), 1)
+				first = strings.Replace(first, "Warning:", styles.Warning.Render("Warning:"), 1)
+				a.addLine(styledLine{text: first})
+			}
+			for _, part := range parts[1:] {
+				a.addLine(styledLine{text: part, secondary: true})
+			}
+		}
+		return a, nil
 	case output.AuthEvent:
 		if msg.Preamble != "" {
 			a.lines = appendLine(a.lines, styledLine{text: "> " + msg.Preamble, secondary: true})

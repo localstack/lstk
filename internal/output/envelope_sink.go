@@ -25,6 +25,10 @@ func NewEnvelopeSink(format Format) *EnvelopeSink {
 // which carries no machine-readable code of its own today.
 const warningCodeNotice = "NOTICE"
 
+// warningCodeMultipleInstalls flags that more than one distinct lstk install
+// was found on PATH.
+const warningCodeMultipleInstalls = "MULTIPLE_INSTALLS"
+
 func (s *EnvelopeSink) Emit(event Event) {
 	switch e := event.(type) {
 	case DeferredEvent:
@@ -35,6 +39,15 @@ func (s *EnvelopeSink) Emit(event Event) {
 		if e.Severity == SeverityWarning {
 			s.warnings = append(s.warnings, Warning{Code: warningCodeNotice, Message: e.Text})
 		}
+	case MultipleInstallsEvent:
+		paths := make([]string, len(e.Installs))
+		for i, in := range e.Installs {
+			paths[i] = in.Path
+		}
+		s.warnings = append(s.warnings, Warning{
+			Code:    warningCodeMultipleInstalls,
+			Message: "Multiple lstk installations found on PATH: " + strings.Join(paths, ", "),
+		})
 	case EmulatorStoppedEvent:
 		s.appendEmulator(JsonStoppedEmulator{
 			JsonEmulatorRef: JsonEmulatorRef{Type: e.Type, Name: e.Name},
