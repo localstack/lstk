@@ -203,6 +203,25 @@ func TestLicenseRejectionOffersReloginAndRetries(t *testing.T) {
 	_, err = ptmx.Write([]byte("\r"))
 	require.NoError(t, err)
 
+	// After a successful start, the post-start AWS profile setup asks a Y/n
+	// question when the runner's ~/.aws has no matching profile. It is
+	// conditional (skipped when the profile already matches), so watch for it
+	// and decline instead of requiring it.
+	go func() {
+		var answered atomic.Bool
+		for {
+			select {
+			case <-outputCh:
+				return
+			case <-time.After(200 * time.Millisecond):
+				if !answered.Load() && bytes.Contains(out.Bytes(), []byte("~/.aws? [Y/n]")) {
+					answered.Store(true)
+					_, _ = ptmx.Write([]byte("n"))
+				}
+			}
+		}
+	}()
+
 	err = cmd.Wait()
 	<-outputCh
 	if err != nil {
