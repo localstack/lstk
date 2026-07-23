@@ -422,6 +422,69 @@ func TestAppDeferredEventStyling(t *testing.T) {
 	}
 }
 
+func TestAppDeferredSnapshotInspectStyling(t *testing.T) {
+	// Mutates the global lipgloss color profile, so it must not run in parallel.
+	original := lipgloss.ColorProfile()
+	lipgloss.SetColorProfile(termenv.TrueColor)
+	t.Cleanup(func() { lipgloss.SetColorProfile(original) })
+
+	app := NewApp("dev", "", "", nil)
+	event := output.SnapshotInspectedEvent{
+		Path:              "./x.snapshot",
+		TotalUncompressed: 1500,
+		TotalCompressed:   1350,
+		Services: []output.SnapshotServiceSize{
+			{Service: "s3", Uncompressed: 1300, Compressed: 1200},
+			{Service: "iam", Uncompressed: 200, Compressed: 150},
+		},
+	}
+
+	model, _ := app.Update(output.DeferredEvent{Inner: event})
+	app = model.(App)
+	out := app.DeferredOutput()
+
+	rendered, ok := output.FormatEventLine(event)
+	if !ok {
+		t.Fatal("expected inspect event to format")
+	}
+	var title, size, service, total, sep string
+	for i, line := range strings.Split(rendered, "\n") {
+		trimmed := strings.TrimLeft(line, " ")
+		switch {
+		case i == 0:
+			title = line
+		case i == 1:
+			size = line
+		case strings.HasPrefix(trimmed, "s3"):
+			service = line
+		case strings.HasPrefix(trimmed, "TOTAL"):
+			total = line
+		case strings.HasPrefix(trimmed, "─"):
+			sep = line
+		}
+	}
+
+	// The title uses the light purple (same as the list summary) with a blank
+	// line above it.
+	if want := "\n" + styles.Highlight.Render(title); !strings.Contains(out, want) {
+		t.Fatalf("expected light-purple title %q in deferred output, got: %q", want, out)
+	}
+	// The size line is gray with a blank line below it.
+	if want := styles.SecondaryMessage.Render(size) + "\n"; !strings.Contains(out, want) {
+		t.Fatalf("expected gray size line %q with blank line below in deferred output, got: %q", want, out)
+	}
+	// The separator rule and the TOTAL footer are subdued gray.
+	for _, want := range []string{sep, total} {
+		if !strings.Contains(out, styles.SecondaryMessage.Render(want)) {
+			t.Fatalf("expected gray row %q in deferred output, got: %q", want, out)
+		}
+	}
+	// Per-service rows stay neutral (neither purple nor gray).
+	if strings.Contains(out, styles.Highlight.Render(service)) || strings.Contains(out, styles.SecondaryMessage.Render(service)) {
+		t.Fatal("per-service rows should not be colored")
+	}
+}
+
 func TestAppDeferredNoteStyledLikeStatus(t *testing.T) {
 	// Mutates the global lipgloss color profile, so it must not run in parallel.
 	original := lipgloss.ColorProfile()

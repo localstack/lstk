@@ -2,6 +2,8 @@ package output
 
 import (
 	"fmt"
+	"math"
+	"path/filepath"
 	"strings"
 	"time"
 )
@@ -56,6 +58,8 @@ func FormatEventLine(event Event) (string, bool) {
 		return formatPodSnapshotRemoved(e), true
 	case SnapshotShownEvent:
 		return formatSnapshotShown(e), true
+	case SnapshotInspectedEvent:
+		return formatSnapshotInspected(e), true
 	case AuthCompleteEvent:
 		return "", false
 	case EmulatorStoppedEvent:
@@ -343,6 +347,52 @@ func formatSnapshotShown(e SnapshotShownEvent) string {
 			sb.WriteString(fmt.Sprintf("  %-*s%s", snapshotShowLabelWidth-2, r.Service, strings.Join(parts, ", ")))
 		}
 	}
+	return sb.String()
+}
+
+func formatSnapshotInspected(e SnapshotInspectedEvent) string {
+	pct := func(b int64) string {
+		if e.TotalUncompressed <= 0 {
+			return "0%"
+		}
+		return fmt.Sprintf("%d%%", int64(math.Round(float64(b)*100/float64(e.TotalUncompressed))))
+	}
+
+	type sizeRow struct{ label, size, pct string }
+	var rows []sizeRow
+	for _, s := range e.Services {
+		rows = append(rows, sizeRow{s.Service, formatBytes(s.Uncompressed), pct(s.Uncompressed)})
+	}
+	totalRow := sizeRow{"TOTAL", formatBytes(e.TotalUncompressed), "100%"}
+
+	labelW, sizeW := 0, 0
+	for _, r := range append(append([]sizeRow{}, rows...), totalRow) {
+		if len(r.label) > labelW {
+			labelW = len(r.label)
+		}
+		if len(r.size) > sizeW {
+			sizeW = len(r.size)
+		}
+	}
+
+	line := func(r sizeRow) string {
+		return fmt.Sprintf("%-*s  %*s  %4s", labelW, r.label, sizeW, r.size, r.pct)
+	}
+
+	const indent = "  " // left margin for the whole block
+
+	var sb strings.Builder
+	sb.WriteString(indent + fmt.Sprintf("~ Snapshot analysis for %s", filepath.Base(e.Path)))
+	sb.WriteString("\n")
+	sb.WriteString(indent + "  " + formatBytes(e.TotalUncompressed))
+	for _, r := range rows {
+		sb.WriteString("\n")
+		sb.WriteString(indent + line(r))
+	}
+	sb.WriteString("\n")
+	sb.WriteString(indent + strings.Repeat("─", labelW+2+sizeW+2+4))
+	sb.WriteString("\n")
+	sb.WriteString(indent + line(totalRow))
 	return sb.String()
 }
 
