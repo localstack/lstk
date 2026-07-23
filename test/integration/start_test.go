@@ -1075,6 +1075,46 @@ image = "lstk-nonexistent-custom-image"
 	assert.Contains(t, combined, "Failed to pull lstk-nonexistent-custom-image:latest")
 }
 
+// TestStartTimesOutWhenEmulatorNeverBecomesHealthy verifies that --timeout bounds
+// the health-check wait (PRO-357): a container that stays running but never serves
+// /_localstack/health must fail fast with a clear error and a non-zero exit,
+// instead of hanging indefinitely.
+func TestStartTimesOutWhenEmulatorNeverBecomesHealthy(t *testing.T) {
+	requireDocker(t)
+	cleanup()
+	t.Cleanup(cleanup)
+
+	ctx := testContext(t)
+	imageRef := commitNeverHealthyImage(t, ctx)
+	imageName, imageTag, ok := strings.Cut(imageRef, ":")
+	require.True(t, ok, "never-healthy image reference must carry a pinned tag")
+
+	// A non-interactive startup timeout deliberately leaves the container running
+	// for inspection, and the pinned tag names it "localstack-aws-<tag>" — a name
+	// the shared cleanup() (which only removes "localstack-aws") never touches.
+	// Remove it explicitly, or it keeps holding port 4566 and breaks every later
+	// test that starts an emulator. Registered after commitNeverHealthyImage's
+	// cleanups so it runs before them (LIFO): the container goes first, then its image.
+	t.Cleanup(func() {
+		_, _ = dockerClient.ContainerRemove(context.Background(), "localstack-aws-"+imageTag, client.ContainerRemoveOptions{Force: true})
+	})
+
+	home := t.TempDir()
+	configFile := filepath.Join(home, "config.toml")
+	require.NoError(t, os.WriteFile(configFile,
+		[]byte(fmt.Sprintf("[[containers]]\ntype = \"aws\"\nport = \"4566\"\nimage = %q\ntag = %q\n", imageName, imageTag)), 0644))
+
+	// A pinned tag already present locally skips both the pull and the license
+	// checks (see commitNeverHealthyImage), so a dummy token is enough to reach
+	// the health wait.
+	e := append(testEnvWithHome(home, ""), string(env.AuthToken)+"=fake-token")
+	stdout, stderr, err := runLstk(t, ctx, "", e, "--config", configFile, "--non-interactive", "start", "--timeout", "3s")
+
+	require.Error(t, err, "expected start to fail when the emulator never becomes healthy")
+	requireExitCode(t, 1, err)
+	assert.Contains(t, stdout+stderr, "LocalStack did not become ready within 3s")
+}
+
 // TestStartFallsBackToLocalImageWhenPullFails verifies the offline degradation
 // path for image pulls: when the configured image cannot be pulled (registry
 // unreachable, or the image was never published) but is already present locally,

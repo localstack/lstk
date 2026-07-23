@@ -83,6 +83,9 @@ func NewRootCmd(cfg *env.Env, tel *telemetry.Client, logger log.Logger) *cobra.C
 			if err != nil {
 				return err
 			}
+			if err := applyTimeoutFlag(cmd, cfg); err != nil {
+				return err
+			}
 			return startEmulator(cmd.Context(), rt, cfg, tel, logger, persist, firstRun, snapshotFlag, noSnapshot, emulatorType)
 		},
 	}
@@ -129,6 +132,7 @@ func NewRootCmd(cfg *env.Env, tel *telemetry.Client, logger log.Logger) *cobra.C
 	root.Flags().Bool("persist", false, "Persist emulator state across restarts")
 	addEmulatorTypeFlag(root)
 	addSnapshotStartFlags(root)
+	addTimeoutFlag(root)
 
 	// Parse lstk's global flags only when they precede the command name: with
 	// interspersing disabled, Cobra consumes leading flags and hands everything
@@ -400,6 +404,30 @@ func resolveEmulatorTypeFlag(cmd *cobra.Command) (config.EmulatorType, error) {
 		return "", nil
 	}
 	return config.ParseEmulatorType(flagVal)
+}
+
+// addTimeoutFlag registers the --timeout flag on a start-capable command. It is
+// a per-run override of LSTK_STARTUP_TIMEOUT / the startup_timeout config; 0
+// (the default) leaves the env/config value in place, which in turn falls back
+// to the per-mode default in resolveStartupTimeout. restart and the snapshot
+// auto-start path deliberately do not expose this flag.
+func addTimeoutFlag(cmd *cobra.Command) {
+	cmd.Flags().Duration("timeout", 0, "Maximum time to wait for the emulator to become ready (overrides LSTK_STARTUP_TIMEOUT; 0 uses the default)")
+}
+
+// applyTimeoutFlag lets --timeout override the env/config-derived
+// cfg.StartupTimeout, but only when the flag was explicitly set, so an unset
+// flag preserves the LSTK_STARTUP_TIMEOUT value.
+func applyTimeoutFlag(cmd *cobra.Command, cfg *env.Env) error {
+	if !cmd.Flags().Changed("timeout") {
+		return nil
+	}
+	timeout, err := cmd.Flags().GetDuration("timeout")
+	if err != nil {
+		return err
+	}
+	cfg.StartupTimeout = timeout
+	return nil
 }
 
 // walkCommandsWithRunE walks the Cobra command tree rooted at cmd, calling wrap
