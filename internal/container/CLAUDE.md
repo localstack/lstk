@@ -21,3 +21,13 @@ There is no `--offline` flag. Instead `container.Start` degrades gracefully when
 - **Telemetry/update checks** are already best-effort and fail silently when offline.
 
 `runtime.PullImage` always closes its `progress` channel (even when `ImagePull` fails early) so the local-image fallback path doesn't leak the progress goroutine. Pair this with a custom `image` in the config to point at a locally loaded image or an internal-registry mirror.
+
+## Host environment forwarding (`filterHostEnv`)
+
+`Start` forwards `CI` and `LOCALSTACK_*` host env vars to the emulator, but `filterHostEnv` (`internal/container/start.go`) silently or warningly drops entries that would corrupt the container rather than passing them through:
+
+- `LOCALSTACK_AUTH_TOKEN` is dropped silently — lstk forwards its own resolved token (keyring or env) instead, so the host value must never win.
+- A value containing `\n`/`\r` is dropped with a warning: the image's entrypoint re-exports `LOCALSTACK_*` vars through a line-oriented `env | sed` pipeline, and an embedded newline would inject a rogue export.
+- A `LOCALSTACK_*` var whose prefix-stripped name is a `criticalContainerVar` (`PATH`, `HOME`, `IFS`, `BASH_ENV`, `LD_PRELOAD`, `LD_LIBRARY_PATH`, `PYTHONPATH`, `PYTHONHOME`) is dropped with a warning — the entrypoint strips the `LOCALSTACK_` prefix and re-exports the remainder, so e.g. a host `LOCALSTACK_PATH` becomes `PATH` inside the emulator and startup breaks (DEVX-984, localstack/lstk#378).
+
+Warnings are emitted via `output.MessageEvent{Severity: output.SeverityWarning}`, one per dropped variable.
