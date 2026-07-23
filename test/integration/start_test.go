@@ -1089,6 +1089,16 @@ func TestStartTimesOutWhenEmulatorNeverBecomesHealthy(t *testing.T) {
 	imageName, imageTag, ok := strings.Cut(imageRef, ":")
 	require.True(t, ok, "never-healthy image reference must carry a pinned tag")
 
+	// A non-interactive startup timeout deliberately leaves the container running
+	// for inspection, and the pinned tag names it "localstack-aws-<tag>" — a name
+	// the shared cleanup() (which only removes "localstack-aws") never touches.
+	// Remove it explicitly, or it keeps holding port 4566 and breaks every later
+	// test that starts an emulator. Registered after commitNeverHealthyImage's
+	// cleanups so it runs before them (LIFO): the container goes first, then its image.
+	t.Cleanup(func() {
+		_, _ = dockerClient.ContainerRemove(context.Background(), "localstack-aws-"+imageTag, client.ContainerRemoveOptions{Force: true})
+	})
+
 	home := t.TempDir()
 	configFile := filepath.Join(home, "config.toml")
 	require.NoError(t, os.WriteFile(configFile,
