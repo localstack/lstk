@@ -528,7 +528,7 @@ func startContainers(ctx context.Context, rt runtime.Runtime, sink output.Sink, 
 	for _, c := range containers {
 		startTime := time.Now()
 		sink.Emit(output.SpinnerStart("Starting LocalStack"))
-		containerID, exitCh, err := rt.Start(ctx, c)
+		containerID, exitCh, err := startWithOptionalPortFallback(ctx, rt, sink, c)
 		if err != nil {
 			sink.Emit(output.SpinnerStop())
 			tel.EmitEmulatorLifecycleEvent(ctx, telemetry.LifecycleEvent{
@@ -821,7 +821,7 @@ func dropBusyOptionalPorts(sink output.Sink, flavor, edgePort string, mappings [
 				}
 				sink.Emit(output.MessageEvent{
 					Severity: output.SeverityWarning,
-					Text:     optionalPortDropWarning(flavor, ep.HostPort, edgePort),
+					Text:     optionalPortDropWarning(flavor, ep.HostPort, edgePort, portBusy),
 				})
 				continue
 			}
@@ -836,26 +836,99 @@ func dropBusyOptionalPorts(sink output.Sink, flavor, edgePort string, mappings [
 	return kept
 }
 
+// portDropCause distinguishes why an optional port cannot be published: someone
+// else holds it (busy), or the daemon lacks permission to bind it (denied —
+// typical for ports below 1024 on VM-based runtimes running without admin/root).
+type portDropCause int
+
+const (
+	portBusy portDropCause = iota
+	portBindDenied
+)
+
 // optionalPortDropWarning explains that an optional port is skipped and where
 // HTTPS clients should go instead: the edge port serves both HTTP and HTTPS, so
 // only clients hardwired to the dropped port itself are affected.
-func optionalPortDropWarning(flavor, port, edgePort string) string {
+func optionalPortDropWarning(flavor, port, edgePort string, cause portDropCause) string {
+	reason := "is in use"
+	if cause == portBindDenied {
+		reason = "cannot be published (bind: permission denied)"
+	}
 	text := fmt.Sprintf(
-		"Port %s is in use — starting without it. Clients that hardwire HTTPS on port %s must use https://localhost:%s instead (the edge port serves both HTTP and HTTPS).",
-		port, port, edgePort)
-	if hint := rancherPort443Hint(flavor, port); hint != "" {
+		"Port %s %s — starting without it. Clients that hardwire HTTPS on port %s must use https://localhost:%s instead (the edge port serves both HTTP and HTTPS).",
+		port, reason, port, edgePort)
+	if hint := tailoredPortDropHint(flavor, port, cause); hint != "" {
 		text += " " + hint
 	}
 	return text
 }
 
-// rancherPort443Hint names the usual 443 squatter on Rancher Desktop and how to
-// evict it; empty for other runtimes/ports.
-func rancherPort443Hint(flavor, port string) string {
-	if flavor == runtime.FlavorRancherDesktop && port == "443" {
-		return "Rancher Desktop's Kubernetes ingress (Traefik) usually holds port 443 — free it with `rdctl set --kubernetes.options.traefik=false`, then restart lstk."
+// tailoredPortDropHint names the likely culprit and remedy for a dropped port
+// on runtimes where it is known; empty otherwise.
+func tailoredPortDropHint(flavor, port string, cause portDropCause) string {
+	switch cause {
+	case portBindDenied:
+		switch flavor {
+		case runtime.FlavorRancherDesktop:
+			return "Rancher Desktop needs Administrative Access to publish ports below 1024 — enable it under Preferences > Application, then restart lstk."
+		case runtime.FlavorPodman:
+			return "Podman machine cannot publish ports below 1024 in rootless mode — switch with `podman machine set --rootful`, then restart lstk."
+		}
+	case portBusy:
+		if flavor == runtime.FlavorRancherDesktop && port == "443" {
+			return "Rancher Desktop's Kubernetes ingress (Traefik) usually holds port 443 — free it with `rdctl set --kubernetes.options.traefik=false`, then restart lstk."
+		}
 	}
 	return ""
+}
+
+// failedOptionalPortBind returns the index of the optional mapping whose
+// host-side bind failed according to err, or -1 when err is about something
+// else. Docker-compatible daemons embed "listen tcp <ip>:<port>: bind: <cause>"
+// in the start error.
+func failedOptionalPortBind(err error, mappings []runtime.PortMapping) int {
+	if err == nil || !strings.Contains(err.Error(), "bind:") {
+		return -1
+	}
+	for i, ep := range mappings {
+		if ep.Optional && strings.Contains(err.Error(), ":"+ep.HostPort+": bind:") {
+			return i
+		}
+	}
+	return -1
+}
+
+// startWithOptionalPortFallback starts the container, retrying without any
+// optional published port whose bind the daemon rejects. The dial-based
+// preflight only sees ports that are busy on the host; a port the daemon lacks
+// permission to bind (e.g. 443 under a runtime without admin/root) surfaces
+// only here, at start time.
+func startWithOptionalPortFallback(ctx context.Context, rt runtime.Runtime, sink output.Sink, c runtime.ContainerConfig) (string, <-chan runtime.ExitResult, error) {
+	for {
+		id, exitCh, err := rt.Start(ctx, c)
+		if err == nil {
+			return id, exitCh, nil
+		}
+		i := failedOptionalPortBind(err, c.ExtraPorts)
+		if i < 0 {
+			return "", nil, err
+		}
+		cause := portBusy
+		if strings.Contains(err.Error(), "permission denied") {
+			cause = portBindDenied
+		}
+		sink.Emit(output.MessageEvent{
+			Severity: output.SeverityWarning,
+			Text:     optionalPortDropWarning(rt.Flavor(), c.ExtraPorts[i].HostPort, c.Port, cause),
+		})
+		// The failed attempt leaves the created-but-never-started container behind
+		// under the same name (AutoRemove only fires on exit); remove it before
+		// retrying, and surface the original error if removal fails.
+		if rmErr := rt.Remove(ctx, c.Name); rmErr != nil {
+			return "", nil, err
+		}
+		c.ExtraPorts = append(append([]runtime.PortMapping{}, c.ExtraPorts[:i]...), c.ExtraPorts[i+1:]...)
+	}
 }
 
 // portConflictActions builds the next-step actions for a fatal extra-port
