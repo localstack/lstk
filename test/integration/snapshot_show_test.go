@@ -110,12 +110,15 @@ func TestSnapshotShowWithoutResources(t *testing.T) {
 	assert.NotContains(t, stdout, "Resources", "Resources section must be omitted when no counts are available")
 }
 
-func TestSnapshotShowPodNameWithPeriod(t *testing.T) {
+// TestSnapshotShowPodNameLeadingUnderscore covers a name the platform's
+// POD_NAME_PATTERN (^[a-zA-Z0-9_-]+$) accepts but older lstk versions
+// rejected — the CLI must be able to address any platform-legal pod.
+func TestSnapshotShowPodNameLeadingUnderscore(t *testing.T) {
 	t.Parallel()
 
-	const name = "release.v1"
+	const name = "_baseline"
 	var cap showCapture
-	body := `{"pod_name": "release.v1", "max_version": 1, "versions": [{"version": 1}]}`
+	body := `{"pod_name": "_baseline", "max_version": 1, "versions": [{"version": 1}]}`
 	srv := mockCloudPodServer(t, name, body, &cap)
 
 	_, stderr, err := runLstk(t, testContext(t), t.TempDir(),
@@ -127,6 +130,26 @@ func TestSnapshotShowPodNameWithPeriod(t *testing.T) {
 	called, path, _ := cap.get()
 	require.True(t, called, "the single-pod endpoint should have been called")
 	assert.Equal(t, "/v1/cloudpods/"+name, path)
+}
+
+// TestSnapshotShowRejectsPodNameWithPeriod: dots are outside the platform's
+// POD_NAME_PATTERN and would be rejected server-side with HTTP 400, so the
+// CLI must fail fast locally without calling the platform.
+func TestSnapshotShowRejectsPodNameWithPeriod(t *testing.T) {
+	t.Parallel()
+
+	var cap showCapture
+	srv := mockCloudPodServer(t, "release.v1", `{}`, &cap)
+
+	_, stderr, err := runLstk(t, testContext(t), t.TempDir(),
+		listEnv(t, srv, "test-token"),
+		"--non-interactive", "snapshot", "show", "pod:release.v1",
+	)
+	require.Error(t, err, "a dotted pod name must be rejected client-side")
+	assert.Contains(t, stderr, "invalid pod name")
+
+	called, _, _ := cap.get()
+	assert.False(t, called, "the platform endpoint must not be called for an invalid name")
 }
 
 func TestSnapshotShowSendsBasicAuthHeader(t *testing.T) {

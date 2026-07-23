@@ -72,15 +72,22 @@ func EnvVarName(name string) error {
 	return nil
 }
 
-var podNameRegexp = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9._-]*$`)
+// podNameRegexp mirrors the platform API's POD_NAME_PATTERN (also enforced
+// identically by the emulator's pods bootstrap): letters, digits, underscores,
+// and hyphens only. Anything else — including dots — is rejected server-side
+// with HTTP 400 "Invalid name for cloud pod", so accepting it here would only
+// defer the failure.
+var podNameRegexp = regexp.MustCompile(`^[a-zA-Z0-9_-]+$`)
 
 // shellMetaChars are characters that enable command injection if a pod name is
 // ever interpolated into a shell. The slash, question mark, and hash are handled
 // separately as embedded path/query characters and are not repeated here.
 const shellMetaChars = ";&|$\x60<>(){}[]!*'~\\\""
 
-// PodName validates a Cloud Pod name.
-// It runs ordered deny-checks so the most specific reason wins, then a strict
+// PodName validates a Cloud Pod name against the platform's contract. The
+// platform pattern has no length bound; the 128-character cap here is a local
+// sanity limit against absurd inputs, not part of the platform contract.
+// It runs ordered deny-checks so the most specific reason wins, then the
 // allow-list. The deny-checks exist to give precise, machine-classifiable
 // feedback; the allow-list alone would reject every invalid value.
 func PodName(value string) error {
@@ -99,7 +106,7 @@ func PodName(value string) error {
 	case len(value) > 128:
 		return newError(field, RuleRange, "must be 128 characters or fewer")
 	case !podNameRegexp.MatchString(value):
-		return newError(field, RuleFormat, "use letters, digits, periods, hyphens, and underscores only, starting with a letter or digit")
+		return newError(field, RuleFormat, "use letters, digits, hyphens, and underscores only")
 	}
 	return nil
 }

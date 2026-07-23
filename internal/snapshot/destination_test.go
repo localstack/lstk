@@ -174,9 +174,10 @@ func TestParseSource(t *testing.T) {
 			wantErr: "invalid pod name",
 		},
 		{
-			name:    "pod: leading hyphen",
-			input:   "pod:-bad",
-			wantErr: "invalid pod name",
+			name:        "pod: leading hyphen accepted (platform allows it)",
+			input:       "pod:-baseline",
+			wantKind:    snapshot.KindPod,
+			wantPodName: "-baseline",
 		},
 		{
 			name:    "pod: percent encoding rejected",
@@ -521,10 +522,11 @@ func TestParseDestination(t *testing.T) {
 			wantErr: "invalid pod name",
 		},
 		{
-			// pod name starting with hyphen
-			name:    "pod: leading hyphen",
-			input:   "pod:-invalid",
-			wantErr: "invalid pod name",
+			// leading hyphen is inside the platform's POD_NAME_PATTERN
+			name:        "pod: leading hyphen accepted (platform allows it)",
+			input:       "pod:-baseline",
+			wantKind:    snapshot.KindPod,
+			wantPodName: "-baseline",
 		},
 		{
 			name:        "pod: underscore allowed",
