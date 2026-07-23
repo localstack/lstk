@@ -29,6 +29,47 @@ const (
 	flavorDockerNative
 )
 
+// Exported flavor identifiers returned by Runtime.Flavor, so packages outside
+// runtime (e.g. internal/container) can tailor user-facing messages to the
+// runtime in use without depending on the unexported classifier.
+const (
+	FlavorUnknown        = ""
+	FlavorDockerDesktop  = "docker-desktop"
+	FlavorRancherDesktop = "rancher-desktop"
+	FlavorColima         = "colima"
+	FlavorOrbstack       = "orbstack"
+	FlavorLima           = "lima"
+	FlavorPodman         = "podman"
+	FlavorPodmanRootful  = "podman-rootful"
+	FlavorPodmanRootless = "podman-rootless"
+	FlavorDockerNative   = "docker"
+)
+
+func (f runtimeFlavor) String() string {
+	switch f {
+	case flavorDockerDesktop:
+		return FlavorDockerDesktop
+	case flavorRancherDesktop:
+		return FlavorRancherDesktop
+	case flavorColima:
+		return FlavorColima
+	case flavorOrbstack:
+		return FlavorOrbstack
+	case flavorLima:
+		return FlavorLima
+	case flavorPodman:
+		return FlavorPodman
+	case flavorPodmanRootful:
+		return FlavorPodmanRootful
+	case flavorPodmanRootless:
+		return FlavorPodmanRootless
+	case flavorDockerNative:
+		return FlavorDockerNative
+	default:
+		return FlavorUnknown
+	}
+}
+
 // vmSocketSpec pairs one vmSocketPaths() entry (a user-scoped socket path,
 // relative to $HOME) with the runtime flavor it belongs to. vmSocketPaths
 // (docker.go) and classifySocketFlavor both derive from this single table, so

@@ -23,6 +23,8 @@ The default. Nothing to configure.
 
 Use the **dockerd (moby)** container engine — containerd mode isn't supported, since it doesn't expose a Docker-compatible socket. The socket is auto-detected at `~/.rd/docker.sock`. If detection doesn't find it, check that Rancher Desktop's "Administrative Access" setting is enabled, which also symlinks the socket to `/var/run/docker.sock`.
 
+**Port 443**: when Rancher Desktop's Kubernetes is enabled, its Traefik ingress holds port 443, which the emulator publishes by default for HTTPS clients. `lstk` then starts without 443 and prints a warning — everything keeps working, but clients that hardwire HTTPS on port 443 (e.g. S3 virtual-host-style URLs without a port) must target `https://localhost:4566` instead; the edge port serves both HTTP and HTTPS. To get 443 back, free it with `rdctl set --kubernetes.options.traefik=false` (or disable Kubernetes in the preferences) and restart `lstk`.
+
 ### Colima / OrbStack / Lima
 
 Auto-detected. Nothing to configure.

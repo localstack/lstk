@@ -110,7 +110,11 @@ func (g gatewayListen) containerEnvValue() string {
 // configured host port). Each is exposed host-port == container-port. Ports
 // already covered by the primary port or the service port range are skipped
 // so callers don't publish the same container port twice.
-func (g gatewayListen) extraGatewayPorts(primaryPort string) []runtime.PortMapping {
+//
+// optional marks the mappings as best-effort: ports lstk added on its own (the
+// default GATEWAY_LISTEN's 443) are dropped with a warning when busy, while a
+// user-supplied GATEWAY_LISTEN is a demand and a busy port stays a hard error.
+func (g gatewayListen) extraGatewayPorts(primaryPort string, optional bool) []runtime.PortMapping {
 	var ports []runtime.PortMapping
 	seen := map[string]bool{primaryPort: true}
 	for _, e := range g {
@@ -118,7 +122,7 @@ func (g gatewayListen) extraGatewayPorts(primaryPort string) []runtime.PortMappi
 			continue
 		}
 		seen[e.port] = true
-		ports = append(ports, runtime.PortMapping{ContainerPort: e.port, HostPort: e.port})
+		ports = append(ports, runtime.PortMapping{ContainerPort: e.port, HostPort: e.port, Optional: optional})
 	}
 	return ports
 }

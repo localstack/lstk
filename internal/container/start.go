@@ -122,10 +122,12 @@ func Start(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts Start
 		// the host part of its first entry, which host IP published ports bind
 		// to (e.g. "0.0.0.0:4566,0.0.0.0:443" exposes the emulator beyond
 		// loopback). When unset it defaults to ":4566,:443" bound to loopback.
-		gateway, err := parseGatewayListen(envValue(resolvedEnv, "GATEWAY_LISTEN"))
+		gatewayValue := envValue(resolvedEnv, "GATEWAY_LISTEN")
+		gateway, err := parseGatewayListen(gatewayValue)
 		if err != nil {
 			return "", err
 		}
+		gatewayDefaulted := strings.TrimSpace(gatewayValue) == ""
 
 		containerName := c.Name()
 		env := append(resolvedEnv,
@@ -184,7 +186,7 @@ func Start(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts Start
 		// any further gateway ports (443, and e.g. 8443) plus the service port range
 		// are published host-port == container-port.
 		primaryPort, _, _ := strings.Cut(containerPort, "/")
-		extraPorts := append(gateway.extraGatewayPorts(primaryPort), servicePortRange()...)
+		extraPorts := append(gateway.extraGatewayPorts(primaryPort, gatewayDefaulted), servicePortRange()...)
 
 		containers[i] = runtime.ContainerConfig{
 			Image:         image,
@@ -756,16 +758,22 @@ func selectContainersToStart(ctx context.Context, rt runtime.Runtime, sink outpu
 		}
 
 		// Check extra ports required by this emulator (443 for HTTPS, 4510-4559 for
-		// the service port range). These are singletons: if any is taken, another
-		// LocalStack instance is likely running and we cannot start a new one.
-		extraSpecs := make([]string, len(c.ExtraPorts))
-		for i, ep := range c.ExtraPorts {
-			extraSpecs[i] = ep.HostPort
+		// the service port range). Required ports are singletons: if one is taken,
+		// another LocalStack instance is likely running and we cannot start a new
+		// one. Optional ports (443 from the default GATEWAY_LISTEN) are commonly
+		// squatted by other software — e.g. Rancher Desktop's Traefik ingress — so
+		// a busy one is dropped with a warning instead of blocking the start.
+		var requiredSpecs []string
+		for _, ep := range c.ExtraPorts {
+			if !ep.Optional {
+				requiredSpecs = append(requiredSpecs, ep.HostPort)
+			}
 		}
-		if conflictPort, err := ports.CheckAvailable(extraSpecs...); err != nil {
+		if conflictPort, err := ports.CheckAvailable(requiredSpecs...); err != nil {
 			sink.Emit(output.ErrorEvent{
 				Title:   fmt.Sprintf("Port %s is already in use", conflictPort),
 				Summary: "LocalStack requires this port. Free it before starting.",
+				Actions: portConflictActions(rt.Flavor(), conflictPort),
 			})
 			tel.EmitEmulatorLifecycleEvent(ctx, telemetry.LifecycleEvent{
 				EventType: telemetry.LifecycleStartError,
@@ -776,6 +784,7 @@ func selectContainersToStart(ctx context.Context, rt runtime.Runtime, sink outpu
 			})
 			return nil, output.NewSilentError(err)
 		}
+		c.ExtraPorts = dropBusyOptionalPorts(sink, rt.Flavor(), c.Port, c.ExtraPorts)
 
 		filtered = append(filtered, c)
 	}
@@ -794,6 +803,71 @@ func emitLocalStackAlreadyRunningWarning(sink output.Sink, port, runningVersion,
 	} else {
 		sink.Emit(output.MessageEvent{Severity: output.SeverityInfo, Text: fmt.Sprintf("LocalStack %s is already running on port %s", runningVersion, port)})
 	}
+}
+
+// dropBusyOptionalPorts removes optional port mappings whose host port is
+// already taken, warning about each one, and returns the mappings to publish.
+// Required mappings are passed through untouched — the caller has already
+// verified them.
+func dropBusyOptionalPorts(sink output.Sink, flavor, edgePort string, mappings []runtime.PortMapping) []runtime.PortMapping {
+	var kept []runtime.PortMapping
+	dropped := false
+	for i, ep := range mappings {
+		if ep.Optional {
+			if _, err := ports.CheckAvailable(ep.HostPort); err != nil {
+				if !dropped {
+					dropped = true
+					kept = append(kept, mappings[:i]...)
+				}
+				sink.Emit(output.MessageEvent{
+					Severity: output.SeverityWarning,
+					Text:     optionalPortDropWarning(flavor, ep.HostPort, edgePort),
+				})
+				continue
+			}
+		}
+		if dropped {
+			kept = append(kept, ep)
+		}
+	}
+	if !dropped {
+		return mappings
+	}
+	return kept
+}
+
+// optionalPortDropWarning explains that an optional port is skipped and where
+// HTTPS clients should go instead: the edge port serves both HTTP and HTTPS, so
+// only clients hardwired to the dropped port itself are affected.
+func optionalPortDropWarning(flavor, port, edgePort string) string {
+	text := fmt.Sprintf(
+		"Port %s is in use — starting without it. Clients that hardwire HTTPS on port %s must use https://localhost:%s instead (the edge port serves both HTTP and HTTPS).",
+		port, port, edgePort)
+	if hint := rancherPort443Hint(flavor, port); hint != "" {
+		text += " " + hint
+	}
+	return text
+}
+
+// rancherPort443Hint names the usual 443 squatter on Rancher Desktop and how to
+// evict it; empty for other runtimes/ports.
+func rancherPort443Hint(flavor, port string) string {
+	if flavor == runtime.FlavorRancherDesktop && port == "443" {
+		return "Rancher Desktop's Kubernetes ingress (Traefik) usually holds port 443 — free it with `rdctl set --kubernetes.options.traefik=false`, then restart lstk."
+	}
+	return ""
+}
+
+// portConflictActions builds the next-step actions for a fatal extra-port
+// conflict, tailored to the runtime in use where the squatter is known.
+func portConflictActions(flavor, port string) []output.ErrorAction {
+	if flavor == runtime.FlavorRancherDesktop && port == "443" {
+		return []output.ErrorAction{{
+			Label: "Rancher Desktop's Kubernetes ingress (Traefik) usually holds port 443. Free it:",
+			Value: "rdctl set --kubernetes.options.traefik=false",
+		}}
+	}
+	return nil
 }
 
 func emitPortInUseError(sink output.Sink, port string) {

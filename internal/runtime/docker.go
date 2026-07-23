@@ -167,6 +167,11 @@ func (d *DockerRuntime) isVM() bool {
 // For VM-based Docker (Colima, OrbStack) returns /var/run/docker.sock as the
 // socket is remapped inside the VM. For rootless or custom setups, returns the
 // actual socket path extracted from the daemon host.
+func (d *DockerRuntime) Flavor() string {
+	home, _ := os.UserHomeDir()
+	return classifySocketFlavor(home, d.client.DaemonHost()).String()
+}
+
 func (d *DockerRuntime) SocketPath() string {
 	if d.isVM() {
 		return "/var/run/docker.sock"
