@@ -237,8 +237,11 @@ func startExternalContainer(t *testing.T, ctx context.Context, imgName, name, ho
 // commitNeverHealthyImage builds a local-only image whose default command stays
 // running (sleep infinity) but never serves /_localstack/health. Starting it via
 // lstk exercises the failure path where the emulator comes up but never reports
-// healthy. Returns the image reference; the image and its source container are
-// removed on test cleanup.
+// healthy. The tag must stay pinned (non-latest): a pinned locally-present image
+// skips both the pull and the license checks, while a "latest" tag is validated
+// post-pull via GetImageVersion, which fails on this image (no
+// LOCALSTACK_BUILD_VERSION) before the health wait is ever reached. Returns the
+// image reference; the image and its source container are removed on test cleanup.
 func commitNeverHealthyImage(t *testing.T, ctx context.Context) string {
 	t.Helper()
 
@@ -256,7 +259,7 @@ func commitNeverHealthyImage(t *testing.T, ctx context.Context) string {
 		_, _ = dockerClient.ContainerRemove(context.Background(), resp.ID, client.ContainerRemoveOptions{Force: true})
 	})
 
-	const imageRef = "lstk-never-healthy:latest"
+	const imageRef = "lstk-never-healthy:test"
 	_, err = dockerClient.ContainerCommit(ctx, resp.ID, client.ContainerCommitOptions{
 		Reference: imageRef,
 		Changes:   []string{`CMD ["sleep", "infinity"]`},

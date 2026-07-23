@@ -1086,14 +1086,17 @@ func TestStartTimesOutWhenEmulatorNeverBecomesHealthy(t *testing.T) {
 
 	ctx := testContext(t)
 	imageRef := commitNeverHealthyImage(t, ctx)
+	imageName, imageTag, ok := strings.Cut(imageRef, ":")
+	require.True(t, ok, "never-healthy image reference must carry a pinned tag")
 
 	home := t.TempDir()
 	configFile := filepath.Join(home, "config.toml")
 	require.NoError(t, os.WriteFile(configFile,
-		[]byte(fmt.Sprintf("[[containers]]\ntype = \"aws\"\nport = \"4566\"\nimage = %q\n", imageRef)), 0644))
+		[]byte(fmt.Sprintf("[[containers]]\ntype = \"aws\"\nport = \"4566\"\nimage = %q\ntag = %q\n", imageName, imageTag)), 0644))
 
-	// The local image is reused (pull fails, ImageExists true), so the license
-	// pre-flight is skipped and a dummy token is enough to reach the health wait.
+	// A pinned tag already present locally skips both the pull and the license
+	// checks (see commitNeverHealthyImage), so a dummy token is enough to reach
+	// the health wait.
 	e := append(testEnvWithHome(home, ""), string(env.AuthToken)+"=fake-token")
 	stdout, stderr, err := runLstk(t, ctx, "", e, "--config", configFile, "--non-interactive", "start", "--timeout", "3s")
 
