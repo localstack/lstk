@@ -14,21 +14,22 @@ import (
 	"github.com/localstack/lstk/internal/runtime"
 )
 
-// Shared command-boundary helpers for the IaC proxy commands (terraform, cdk).
-// These live here rather than in any one command's file because both commands
-// depend on them equally; keeping them in cmd/ (not a domain package) is
-// deliberate — they touch config.Get(), the output.Sink, and the raw CLI args,
-// all of which are command-boundary concerns.
+// Shared command-boundary helpers for the AWS-targeting proxy commands
+// (terraform, cdk, sam, eksctl). These live here rather than in any one
+// command's file because the commands depend on them equally; keeping them in
+// cmd/ (not a domain package) is deliberate — they touch config.Get(), the
+// output.Sink, and the raw CLI args, all of which are command-boundary
+// concerns.
 
 var accountIDRe = regexp.MustCompile(`^\d{12}$`)
 
-// requireRunningAWSEmulator verifies the AWS emulator is running before an IaC
-// proxy command (terraform/cdk) that contacts AWS proceeds. When it is not
-// running it emits an actionable error through the sink — an AWS-specific
-// message naming the other emulator when a non-AWS one is up, otherwise the
-// generic "not running" error — and returns a silent error. cmdLabel is the
-// lstk command name used in the message (e.g. "terraform"/"cdk"). It returns nil
-// when the AWS emulator is running.
+// requireRunningAWSEmulator verifies the AWS emulator is running before an
+// AWS-targeting proxy command (terraform/cdk/sam/eksctl) that contacts AWS
+// proceeds. When it is not running it emits an actionable error through the
+// sink — an AWS-specific message naming the other emulator when a non-AWS one
+// is up, otherwise the generic "not running" error — and returns a silent
+// error. cmdLabel is the lstk command name used in the message (e.g.
+// "terraform"/"cdk"/"eksctl"). It returns nil when the AWS emulator is running.
 func requireRunningAWSEmulator(ctx context.Context, rt runtime.Runtime, sink output.Sink, awsContainer config.ContainerConfig, cmdLabel string) error {
 	runningName, err := container.ResolveRunningContainerName(ctx, rt, awsContainer)
 	if err != nil {

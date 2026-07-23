@@ -1,0 +1,57 @@
+package eksctl
+
+import (
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+)
+
+func TestIsHelp(t *testing.T) {
+	for _, args := range [][]string{
+		{"--help"}, {"-h"}, {"--help=true"}, {"-h=true"}, {"--help=invalid"},
+		{"create", "cluster", "--help"}, {"get", "clusters", "-h"},
+	} {
+		assert.Truef(t, IsHelp(args), "%v", args)
+	}
+	// A bare leading "help" is an offline command, not an IsHelp match; in any
+	// later position it is a flag value and must not be treated as help.
+	for _, args := range [][]string{{"--help=false"}, {"-h=false"}, {"create", "cluster"}, {"get", "clusters"}, {"help"}, {"delete", "cluster", "--name", "help"}, {}} {
+		assert.Falsef(t, IsHelp(args), "%v", args)
+	}
+}
+
+func TestIsOffline(t *testing.T) {
+	offline := [][]string{
+		{"version"},
+		{"info"},
+		{"completion", "bash"},
+		{"help"},
+		{"--help"},
+		{"--help=true"},
+		{"-h"},
+		{"create", "cluster", "--help"},
+	}
+	for _, args := range offline {
+		assert.Truef(t, IsOffline(args), "expected %v offline", args)
+	}
+
+	awsContacting := [][]string{
+		{"create", "cluster", "--nodes", "1"},
+		{"get", "clusters"},
+		{"delete", "cluster", "--name", "demo"},
+		{"upgrade", "cluster"},
+		{"create", "cluster", "--help=false"},
+		{"delete", "cluster", "--name", "help"}, // "help" as a flag value is not a help request
+		{},                                      // no subcommand → not offline (gate on emulator)
+	}
+	for _, args := range awsContacting {
+		assert.Falsef(t, IsOffline(args), "expected %v not offline", args)
+	}
+}
+
+func TestSubcommandSkipsLeadingFlags(t *testing.T) {
+	assert.Equal(t, "create", subcommand([]string{"-v", "4", "create", "cluster"}))
+	assert.Equal(t, "get", subcommand([]string{"--color=false", "get", "clusters"}))
+	assert.Equal(t, "", subcommand([]string{"-h"}))
+	assert.Equal(t, "", subcommand(nil))
+}
