@@ -29,3 +29,13 @@ A stale cached license (`license.json`) or a stale token (e.g. one that predates
 - **Definitive rejection (HTTP 400/401/403) in the pre-flight**: `validateLicense` deletes the cached `license.json` (the verdict invalidates it — a later start whose pre-flight is skipped must not keep mounting the stale copy). In interactive mode, `container.Start` then prompts to log in again (`auth.Relogin`: drops the stored token + cached license, reruns the browser login) and retries the start once with the fresh token. In non-interactive mode it emits an `ErrorEvent` pointing at `lstk logout && lstk login` / `LOCALSTACK_AUTH_TOKEN` and returns a silent error.
 - **Startup license failure with a stale mounted cache**: when the container exits with license-related logs while a cached `license.json` that this run did *not* refresh was mounted (pre-flight skipped, e.g. image already local), `startContainers` returns a `licenseStartupError` instead of rendering the failure through `startupMonitor.handleFailure`, and `startWithLicenseRetry` drops the cache, re-validates against the license server (forced, bypassing the image-local skip), and retries the start once. No retry when the license was freshly fetched this run or no cache was mounted; a repeat failure is rendered by `handleFailure` as usual. The self-validating "not covered by your license" case keeps its dedicated messaging and is never retried.
 - `StartOptions.AuthOptions` threads `auth.Option`s (e.g. `WithBrowserOpener`) into the internally constructed `auth.Auth` so tests of the re-login path never open a real browser tab.
+
+## Host environment forwarding (`filterHostEnv`)
+
+`Start` forwards `CI` and `LOCALSTACK_*` host env vars to the emulator, but `filterHostEnv` (`internal/container/start.go`) silently or warningly drops entries that would corrupt the container rather than passing them through:
+
+- `LOCALSTACK_AUTH_TOKEN` is dropped silently — lstk forwards its own resolved token (keyring or env) instead, so the host value must never win.
+- A value containing `\n`/`\r` is dropped with a warning: the image's entrypoint re-exports `LOCALSTACK_*` vars through a line-oriented `env | sed` pipeline, and an embedded newline would inject a rogue export.
+- A `LOCALSTACK_*` var whose prefix-stripped name is a `criticalContainerVar` (`PATH`, `HOME`, `IFS`, `BASH_ENV`, `LD_PRELOAD`, `LD_LIBRARY_PATH`, `PYTHONPATH`, `PYTHONHOME`) is dropped with a warning — the entrypoint strips the `LOCALSTACK_` prefix and re-exports the remainder, so e.g. a host `LOCALSTACK_PATH` becomes `PATH` inside the emulator and startup breaks (DEVX-984, localstack/lstk#378).
+
+Warnings are emitted via `output.MessageEvent{Severity: output.SeverityWarning}`, one per dropped variable.
