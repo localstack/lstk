@@ -110,6 +110,25 @@ func TestSnapshotShowWithoutResources(t *testing.T) {
 	assert.NotContains(t, stdout, "Resources", "Resources section must be omitted when no counts are available")
 }
 
+func TestSnapshotShowPodNameWithPeriod(t *testing.T) {
+	t.Parallel()
+
+	const name = "release.v1"
+	var cap showCapture
+	body := `{"pod_name": "release.v1", "max_version": 1, "versions": [{"version": 1}]}`
+	srv := mockCloudPodServer(t, name, body, &cap)
+
+	_, stderr, err := runLstk(t, testContext(t), t.TempDir(),
+		listEnv(t, srv, "test-token"),
+		"--non-interactive", "snapshot", "show", "pod:"+name,
+	)
+	require.NoError(t, err, "lstk snapshot show failed: %s", stderr)
+
+	called, path, _ := cap.get()
+	require.True(t, called, "the single-pod endpoint should have been called")
+	assert.Equal(t, "/v1/cloudpods/"+name, path)
+}
+
 func TestSnapshotShowSendsBasicAuthHeader(t *testing.T) {
 	t.Parallel()
 

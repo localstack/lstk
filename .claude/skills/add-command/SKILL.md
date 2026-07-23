@@ -49,7 +49,7 @@ Create `cmd/$ARGUMENTS.go` with:
   - Non-interactive: call domain function with `output.NewPlainSink(os.Stdout)`
 - If the command only groups subcommands (like `config`, `setup`, `snapshot`), call `requireSubcommand(cmd)` so a bare invocation shows help (exit 0) while an unknown subcommand exits non-zero
 - No business logic — only Cobra wiring, dependency creation, and output mode selection
-- Validate user-supplied args/flags where they are first accepted, via `internal/validate` — identifiers through `validate.ResourceName`, opaque secrets through loose checks like `validate.AuthToken`, paths/URLs through their normal parsers (`filepath`, `net/url`). If no validator fits, add one to `internal/validate` (with rule-code tests); never write an inline validation regexp
+- Validate user-supplied args/flags where they are first accepted, via `internal/validate` — pod names through `validate.PodName`, opaque secrets through loose checks like `validate.AuthToken`, and paths/URLs through their normal parsers (`filepath`, `net/url`). For other identifiers, follow the owning API's documented contract and add a dedicated validator if needed. If no validator fits, add one to `internal/validate` (with rule-code tests); never write an inline validation regexp
 - `Short`/`Long` help text: write each paragraph as one unbroken line (blank line between paragraphs); never hard-wrap a sentence across source lines. The help template (`cmd/help.go`) word-wraps to the terminal width at render time, and `lstk docs` reads the raw text — manual breaks fight both. Indent example/output blocks; the wrapper leaves indented lines untouched.
 
 ## Step 2: Create the domain logic package

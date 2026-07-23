@@ -23,7 +23,6 @@ const (
 	RuleEmpty        = "empty"
 	RuleControlChars = "control_chars"
 	RuleEncoding     = "encoding"
-	RuleTraversal    = "traversal"
 	RuleEmbedded     = "embedded"
 	RuleMetachars    = "metachars"
 	RuleFormat       = "format"
@@ -73,18 +72,19 @@ func EnvVarName(name string) error {
 	return nil
 }
 
-var resourceNameRegexp = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_-]*$`)
+var podNameRegexp = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9._-]*$`)
 
-// shellMetaChars are characters that enable command injection if an identifier is
+// shellMetaChars are characters that enable command injection if a pod name is
 // ever interpolated into a shell. The slash, question mark, and hash are handled
 // separately as embedded path/query characters and are not repeated here.
 const shellMetaChars = ";&|$\x60<>(){}[]!*'~\\\""
 
-// ResourceName validates an opaque resource identifier such as a Cloud Pod name.
+// PodName validates a Cloud Pod name.
 // It runs ordered deny-checks so the most specific reason wins, then a strict
 // allow-list. The deny-checks exist to give precise, machine-classifiable
 // feedback; the allow-list alone would reject every invalid value.
-func ResourceName(field, value string) error {
+func PodName(value string) error {
+	const field = "pod name"
 	switch {
 	case value == "":
 		return newError(field, RuleEmpty, "must not be empty")
@@ -92,14 +92,14 @@ func ResourceName(field, value string) error {
 		return newError(field, RuleControlChars, "contains control characters")
 	case strings.Contains(value, "%"):
 		return newError(field, RuleEncoding, "contains percent-encoding (pass the decoded value)")
-	case strings.Contains(value, ".."):
-		return newError(field, RuleTraversal, "contains a path traversal sequence (..)")
 	case strings.ContainsAny(value, "/?#"):
 		return newError(field, RuleEmbedded, "contains path or query characters (/, ?, #)")
 	case strings.ContainsAny(value, shellMetaChars):
 		return newError(field, RuleMetachars, "contains shell metacharacters")
-	case !resourceNameRegexp.MatchString(value):
-		return newError(field, RuleFormat, "use letters, digits, hyphens, and underscores only, starting with a letter or digit")
+	case len(value) > 128:
+		return newError(field, RuleRange, "must be 128 characters or fewer")
+	case !podNameRegexp.MatchString(value):
+		return newError(field, RuleFormat, "use letters, digits, periods, hyphens, and underscores only, starting with a letter or digit")
 	}
 	return nil
 }

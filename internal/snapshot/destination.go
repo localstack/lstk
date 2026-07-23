@@ -69,7 +69,7 @@ func IsS3Ref(ref string) bool {
 // ValidatePodName validates a user-supplied pod name (the identity of a snapshot
 // on a remote), using the same rules as pod: refs.
 func ValidatePodName(name string) error {
-	if err := validate.ResourceName("pod name", name); err != nil {
+	if err := validate.PodName(name); err != nil {
 		return fmt.Errorf("invalid pod name %q: %w", name, err)
 	}
 	return nil

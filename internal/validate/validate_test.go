@@ -33,7 +33,7 @@ func TestNoControlChars(t *testing.T) {
 	}
 }
 
-func TestResourceName(t *testing.T) {
+func TestPodName(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
 		name     string
@@ -45,10 +45,14 @@ func TestResourceName(t *testing.T) {
 		{"alphanumeric", "abc123", false, ""},
 		{"single char", "a", false, ""},
 		{"long hyphenated", "my-long-pod-name-123", false, ""},
+		{"period", "release.v1", false, ""},
+		{"consecutive periods", "release..v1", false, ""},
+		{"maximum length", strings.Repeat("a", 128), false, ""},
+		{"too long", strings.Repeat("a", 129), true, RuleRange},
 		{"empty", "", true, RuleEmpty},
 		{"control char", "ba\x00d", true, RuleControlChars},
 		{"percent encoding", "staging%2Fpod", true, RuleEncoding},
-		{"path traversal", "../etc", true, RuleTraversal},
+		{"path traversal", "../etc", true, RuleEmbedded},
 		{"embedded query", "abc?fields=name", true, RuleEmbedded},
 		{"slash", "a/b", true, RuleEmbedded},
 		{"fragment", "id#frag", true, RuleEmbedded},
@@ -62,17 +66,17 @@ func TestResourceName(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			err := ResourceName("name", tt.value)
+			err := PodName(tt.value)
 			if (err != nil) != tt.wantErr {
-				t.Fatalf("ResourceName(%q) error = %v, wantErr %v", tt.value, err, tt.wantErr)
+				t.Fatalf("PodName(%q) error = %v, wantErr %v", tt.value, err, tt.wantErr)
 			}
 			if tt.wantRule != "" {
 				var ve *Error
 				if !errors.As(err, &ve) {
-					t.Fatalf("ResourceName(%q) error is not *validate.Error: %v", tt.value, err)
+					t.Fatalf("PodName(%q) error is not *validate.Error: %v", tt.value, err)
 				}
 				if ve.Rule != tt.wantRule {
-					t.Errorf("ResourceName(%q) Rule = %q, want %q", tt.value, ve.Rule, tt.wantRule)
+					t.Errorf("PodName(%q) Rule = %q, want %q", tt.value, ve.Rule, tt.wantRule)
 				}
 			}
 		})
