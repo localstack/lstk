@@ -271,3 +271,51 @@ func TestAzCommandUsesExternalInstance(t *testing.T) {
 
 	assert.Contains(t, stdout, "AZ-ARGS:group list")
 }
+
+// TestAzStartInterceptionUsesExternalInstance pins the regression Paolo reported
+// in the head-of-engineering thread: with the Azure emulator running as a host
+// process (debug mode — no container, and often the Docker daemon down), `lstk
+// az start-interception` failed its preflight with "LocalStack Azure Emulator is
+// not running", because emulator discovery was Docker-only.
+//
+// start-interception routes through the same azPreflight as `lstk az <args>`, so
+// the HTTP-probe fallback now lets it find the external instance too. The
+// interception step that follows registers the 'LocalStack' cloud against the
+// emulator's TLS gateway at azure.<host> and needs wildcard DNS, which a plain
+// httptest mock can't provide — so this test asserts the fix at the point that
+// regressed: the command gets past Docker-only discovery (no "is not running",
+// no "Docker is not available") and reaches the reachability check against the
+// resolved external endpoint. The full interception path is covered by
+// TestSetupAzureAndAzCommandSucceed (Docker + real az + auth token).
+func TestAzStartInterceptionUsesExternalInstance(t *testing.T) {
+	t.Parallel()
+	if runtime.GOOS == "windows" {
+		t.Skip("fake az script and unix-socket DOCKER_HOST not supported on Windows")
+	}
+
+	srv := mockLocalStackInfoServer(t, nil)
+	workDir := azureWorkDir(t)
+
+	// azPreflight checks the az CLI is installed before discovery; a stub on PATH
+	// satisfies that. It is never executed here — IsHealthy fails first.
+	fakeDir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(fakeDir, "az"),
+		[]byte("#!/bin/sh\nexit 0\n"), 0755))
+
+	e := unhealthyDockerEnv().
+		With(env.DisableEvents, "1").
+		With("PATH", fakeDir).
+		With(env.Home, t.TempDir()).
+		With(env.LocalStackHost, lsHost(srv))
+
+	stdout, stderr, err := runLstk(t, testContext(t), workDir, e, "az", "start-interception")
+	requireExitCode(t, 1, err)
+
+	combined := stdout + stderr
+	assert.NotContains(t, combined, "is not running",
+		"preflight must discover the external instance instead of reporting it missing")
+	assert.NotContains(t, combined, "Docker is not available",
+		"Docker being down must not block discovery of an already-running instance")
+	assert.Contains(t, combined, "not reachable at https://azure.",
+		"discovery succeeds, so interception proceeds to the reachability check against the resolved external endpoint")
+}
