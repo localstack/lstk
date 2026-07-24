@@ -10,7 +10,6 @@ import (
 	tfcli "github.com/localstack/lstk/internal/iac/terraform/cli"
 	"github.com/localstack/lstk/internal/log"
 	"github.com/localstack/lstk/internal/output"
-	"github.com/localstack/lstk/internal/runtime"
 	"github.com/spf13/cobra"
 )
 
@@ -120,23 +119,14 @@ Examples:
 				}
 				endpointURL = target.URL
 			} else {
-				rt, err := runtime.NewDockerRuntime(cfg.DockerHost)
-				if err != nil {
-					return err
-				}
-
 				awsContainer := resolveAWSContainer()
 
-				if err := rt.IsHealthy(cmd.Context()); err != nil {
-					rt.EmitUnhealthyError(sink, err)
-					return output.NewSilentError(fmt.Errorf("runtime not healthy: %w", err))
-				}
+				host, _ := endpoint.ResolveHost(cmd.Context(), awsContainer.Port, cfg.LocalStackHost)
 
-				if err := requireRunningAWSEmulator(cmd.Context(), rt, sink, awsContainer, "terraform"); err != nil {
+				if err := requireRunningAWSEmulator(cmd.Context(), cfg.DockerHost, sink, awsContainer, host, "terraform"); err != nil {
 					return err
 				}
 
-				host, _ := endpoint.ResolveHost(cmd.Context(), awsContainer.Port, cfg.LocalStackHost)
 				endpointURL = "http://" + host
 			}
 

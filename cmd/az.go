@@ -14,7 +14,6 @@ import (
 	"github.com/localstack/lstk/internal/endpoint"
 	"github.com/localstack/lstk/internal/env"
 	"github.com/localstack/lstk/internal/output"
-	"github.com/localstack/lstk/internal/runtime"
 	"github.com/localstack/lstk/internal/terminal"
 	"github.com/localstack/lstk/internal/ui"
 	"github.com/spf13/cobra"
@@ -173,8 +172,9 @@ func newAzStopInterceptionCmd(cfg *env.Env) *cobra.Command {
 }
 
 // azPreflight runs the checks shared by 'lstk az' passthrough and 'start-interception':
-// the Azure CLI is installed, the Docker runtime is healthy, the Azure emulator is
-// running, and *.localhost.localstack.cloud resolves. On failure it emits the matching
+// the Azure CLI is installed, the Azure emulator is reachable (a managed container, or
+// an already-running instance found via the HTTP probe when Docker discovery comes up
+// empty), and *.localhost.localstack.cloud resolves. On failure it emits the matching
 // ErrorEvent and returns a silent error. On success it returns the resolved LocalStack
 // Azure endpoint URL.
 //
@@ -213,24 +213,16 @@ func azPreflight(ctx context.Context, cfg *env.Env, sink output.Sink, target *en
 		}
 	}
 
-	rt, err := runtime.NewDockerRuntime(cfg.DockerHost)
+	resolvedHost, dnsOK := endpoint.ResolveHost(ctx, azureContainer.Port, cfg.LocalStackHost)
+
+	resolved, _, err := resolveReachableEmulator(ctx, cfg.DockerHost, sink, azureContainer, resolvedHost)
 	if err != nil {
 		return "", err
 	}
-	if err := rt.IsHealthy(ctx); err != nil {
-		rt.EmitUnhealthyError(sink, err)
-		return "", output.NewSilentError(fmt.Errorf("runtime not healthy: %w", err))
-	}
-
-	runningName, err := container.ResolveRunningContainerName(ctx, rt, azureContainer)
-	if err != nil {
-		return "", fmt.Errorf("checking emulator status: %w", err)
-	}
-	if runningName == "" {
+	if !resolved.Found() {
 		return "", container.HandleNoRunningContainer(sink, azureContainer)
 	}
 
-	resolvedHost, dnsOK := endpoint.ResolveHost(ctx, azureContainer.Port, cfg.LocalStackHost)
 	if !dnsOK {
 		sink.Emit(output.ErrorEvent{
 			Title: "DNS resolution required for 'lstk az'",

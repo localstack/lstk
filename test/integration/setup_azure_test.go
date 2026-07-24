@@ -128,7 +128,7 @@ func TestAzCommandErrorsWhenEmulatorNotRunning(t *testing.T) {
 	writeAzureSetupMarker(t, workDir)
 
 	stdout, _, err := runLstk(t, testContext(t), workDir,
-		env.WithHome(t.TempDir()),
+		env.WithHome(t.TempDir()).With(env.LocalStackHost, deadLocalStackHost),
 		"az", "group", "list",
 	)
 	require.Error(t, err)
