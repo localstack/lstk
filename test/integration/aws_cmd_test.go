@@ -292,7 +292,8 @@ func TestAWSCommandFailsWhenDockerNotRunning(t *testing.T) {
 	fakeDir := writeFakeAWS(t)
 	e := env.With(env.DisableEvents, "1").
 		With("PATH", fakeDir).
-		With(env.Key("DOCKER_HOST"), "tcp://localhost:1")
+		With(env.Key("DOCKER_HOST"), "tcp://localhost:1").
+		With(env.LocalStackHost, deadLocalStackHost)
 
 	stdout, _, err := runLstk(t, testContext(t), t.TempDir(), e, "aws", "s3", "ls")
 	require.Error(t, err)
@@ -307,7 +308,8 @@ func TestAWSCommandFailsWhenEmulatorNotRunning(t *testing.T) {
 	fakeDir := writeFakeAWS(t)
 	analyticsSrv, events := mockAnalyticsServer(t)
 	e := env.With("PATH", fakeDir).
-		With(env.AnalyticsEndpoint, analyticsSrv.URL)
+		With(env.AnalyticsEndpoint, analyticsSrv.URL).
+		With(env.LocalStackHost, deadLocalStackHost)
 
 	stdout, _, err := runLstk(t, testContext(t), t.TempDir(), e, "aws", "s3", "ls")
 	require.Error(t, err)
