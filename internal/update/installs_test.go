@@ -63,6 +63,43 @@ func TestFindInstallsDeduplicatesSymlinkAliases(t *testing.T) {
 	}
 }
 
+func TestFindInstallsDeduplicatesAsdfShimAlias(t *testing.T) {
+	t.Parallel()
+	asdfDataDir := t.TempDir()
+	installBin := filepath.Join(asdfDataDir, "installs", "nodejs", "22.22.0", "bin")
+	npmPackage := filepath.Join(asdfDataDir, "installs", "nodejs", "22.22.0", "lib", "node_modules", "@localstack", "lstk")
+	shimsDir := filepath.Join(asdfDataDir, "shims")
+	for _, dir := range []string{installBin, npmPackage, shimsDir} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	launcher := writeFakeExecutable(t, npmPackage)
+	installPath := filepath.Join(installBin, binaryName)
+	if err := os.Symlink(launcher, installPath); err != nil {
+		t.Fatal(err)
+	}
+	shimPath := filepath.Join(shimsDir, binaryName)
+	shim := "#!/usr/bin/env bash\n# asdf-plugin: nodejs 22.22.0\nexec asdf exec \"lstk\" \"$@\"\n"
+	if err := os.WriteFile(shimPath, []byte(shim), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, dirs := range [][]string{{installBin, shimsDir}, {shimsDir, installBin}} {
+		installs := FindInstalls(pathGetenv(dirs...))
+		if len(installs) != 1 {
+			t.Fatalf("expected asdf shim and npm launcher to be one install, got %d: %+v", len(installs), installs)
+		}
+		if installs[0].Path != filepath.Join(dirs[0], binaryName) {
+			t.Errorf("expected first PATH hit to be reported, got %s", installs[0].Path)
+		}
+		if installs[0].Method != InstallNPM {
+			t.Errorf("expected npm install, got %s", installs[0].Method)
+		}
+	}
+}
+
 func TestFindInstallsDeduplicatesRepeatedPathDir(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()

@@ -37,3 +37,7 @@ func executableCandidates(dir string, getenv func(string) string) []string {
 	}
 	return out
 }
+
+func executableAlias(candidate string, _ []string) string {
+	return candidate
+}
