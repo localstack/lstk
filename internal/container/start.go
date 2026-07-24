@@ -873,17 +873,15 @@ func selectContainersToStart(ctx context.Context, rt runtime.Runtime, sink outpu
 		}
 
 		// Check extra ports required by this emulator (443 for HTTPS, 4510-4559 for
-		// the service port range). These are singletons: if any is taken, another
-		// LocalStack instance is likely running and we cannot start a new one.
+		// the service port range). A running LocalStack was already ruled out above
+		// by FindRunningByImage, so a conflict here means an unrelated process holds
+		// the port — we can't publish it, so we stop rather than fail at Docker bind.
 		extraSpecs := make([]string, len(c.ExtraPorts))
 		for i, ep := range c.ExtraPorts {
 			extraSpecs[i] = ep.HostPort
 		}
 		if conflictPort, err := ports.CheckAvailable(extraSpecs...); err != nil {
-			sink.Emit(output.ErrorEvent{
-				Title:   fmt.Sprintf("Port %s is already in use", conflictPort),
-				Summary: "LocalStack requires this port. Free it before starting.",
-			})
+			emitPortInUseError(sink, conflictPort)
 			tel.EmitEmulatorLifecycleEvent(ctx, telemetry.LifecycleEvent{
 				EventType: telemetry.LifecycleStartError,
 				Emulator:  c.EmulatorType,
@@ -914,14 +912,16 @@ func emitLocalStackAlreadyRunningWarning(sink output.Sink, port, runningVersion,
 }
 
 func emitPortInUseError(sink output.Sink, port string) {
-	actions := []output.ErrorAction{}
+	actions := []output.ErrorAction{
+		{Label: "Identify the process using it:", Value: ports.InspectCommand(port)},
+	}
 	configPath, pathErr := config.ConfigFilePath()
 	if pathErr == nil {
-		actions = append(actions, output.ErrorAction{Label: "Use another port in the configuration:", Value: configPath})
+		actions = append(actions, output.ErrorAction{Label: "Or use another port in the configuration:", Value: configPath})
 	}
 	sink.Emit(output.ErrorEvent{
 		Title:   fmt.Sprintf("Port %s already in use", port),
-		Summary: "Free the port or configure a different one.",
+		Summary: "Another process is already using this port.",
 		Actions: actions,
 	})
 }
