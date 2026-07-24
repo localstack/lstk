@@ -1500,6 +1500,55 @@ func TestStartCommandSucceedsForAzure(t *testing.T) {
 		"azure start should print a tip line like AWS does")
 }
 
+func TestStartCommandForAzureShowsPlanFromActivatedLicense(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("PTY not supported on Windows")
+	}
+	requireDocker(t)
+	cleanup()
+	cleanupAzure()
+	t.Cleanup(cleanup)
+	t.Cleanup(cleanupAzure)
+
+	ctx := testContext(t)
+
+	// Azure self-validates its license, so the header plan label must come from
+	// the license the container activated into its volume — not the license API.
+	const fakeImage = "localstack/localstack-azure:test-fake"
+	_, err := dockerClient.ImageTag(ctx, client.ImageTagOptions{Source: testImage, Target: fakeImage})
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		_, _ = dockerClient.ImageRemove(context.Background(), fakeImage, client.ImageRemoveOptions{})
+	})
+	startExternalContainer(t, ctx, fakeImage, "localstack-external-azure", "4566")
+
+	home := t.TempDir()
+	volumeDir := filepath.Join(home, "volume")
+	require.NoError(t, os.MkdirAll(filepath.Join(volumeDir, "cache"), 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(volumeDir, "cache", "license.json"),
+		[]byte(`{"license_type":"enterprise"}`), 0600))
+
+	configContent := fmt.Sprintf(`
+[[containers]]
+type = "azure"
+tag  = "latest"
+port = "4566"
+volume = %q
+`, volumeDir)
+	configFile := filepath.Join(home, "config.toml")
+	require.NoError(t, os.WriteFile(configFile, []byte(configContent), 0644))
+
+	// Fresh HOME = no cached plan_label, so the label must come from the volume license.
+	stdout, err := runLstkInPTY(t, ctx,
+		env.Environ(testEnvWithHome(home, "")).Without(env.AuthToken).With(env.AuthToken, "fake-token"),
+		"start", "--config", configFile,
+	)
+	require.NoError(t, err, "lstk start failed: %s", stdout)
+	assert.Contains(t, stdout, "already running")
+	assert.Contains(t, stdout, "LocalStack Enterprise",
+		"azure header should show the plan from the license the emulator activated into its volume")
+}
+
 func TestStartCommandForAzureSkipsLicenseValidation(t *testing.T) {
 	requireDocker(t)
 	_ = env.Require(t, env.AuthToken)
