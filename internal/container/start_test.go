@@ -3,11 +3,13 @@ package container
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -17,6 +19,7 @@ import (
 	"time"
 
 	"github.com/localstack/lstk/internal/api"
+	"github.com/localstack/lstk/internal/auth"
 	"github.com/localstack/lstk/internal/caller"
 	"github.com/localstack/lstk/internal/config"
 	"github.com/localstack/lstk/internal/log"
@@ -484,7 +487,7 @@ func TestValidateLicense_ContinuesWhenServerUnreachable(t *testing.T) {
 	var out bytes.Buffer
 	sink := output.NewPlainSink(&out)
 
-	err := validateLicense(context.Background(), sink, opts, c, "tok", filepath.Join(t.TempDir(), "license.json"))
+	_, err := validateLicense(context.Background(), sink, opts, c, "tok", filepath.Join(t.TempDir(), "license.json"))
 
 	require.NoError(t, err, "an unreachable license server must not block the start")
 	assert.Contains(t, out.String(), "Could not reach the license server")
@@ -509,7 +512,7 @@ func TestValidateLicense_FailsOnServerRejection(t *testing.T) {
 		Image:        "localstack/localstack-pro:2026.4",
 	}
 
-	err := validateLicense(context.Background(), output.NewPlainSink(io.Discard), opts, c, "tok", filepath.Join(t.TempDir(), "license.json"))
+	_, err := validateLicense(context.Background(), output.NewPlainSink(io.Discard), opts, c, "tok", filepath.Join(t.TempDir(), "license.json"))
 
 	require.Error(t, err, "a server rejection must remain fatal")
 	assert.Contains(t, err.Error(), "license validation failed")
@@ -541,7 +544,7 @@ func TestValidateLicense_SkipsPreflightOnUnsupportedTag(t *testing.T) {
 	var out bytes.Buffer
 	sink := output.NewPlainSink(&out)
 
-	err := validateLicense(context.Background(), sink, opts, c, "tok", filepath.Join(t.TempDir(), "license.json"))
+	_, err := validateLicense(context.Background(), sink, opts, c, "tok", filepath.Join(t.TempDir(), "license.json"))
 
 	require.NoError(t, err, "a tag the license server cannot parse must not block the start")
 	assert.Contains(t, out.String(), `does not support tag "dev"`)
@@ -570,7 +573,7 @@ func TestValidateLicense_PropagatesContextCancellation(t *testing.T) {
 	var out bytes.Buffer
 	sink := output.NewPlainSink(&out)
 
-	err := validateLicense(ctx, sink, opts, c, "tok", filepath.Join(t.TempDir(), "license.json"))
+	_, err := validateLicense(ctx, sink, opts, c, "tok", filepath.Join(t.TempDir(), "license.json"))
 
 	require.ErrorIs(t, err, context.Canceled)
 	assert.NotContains(t, out.String(), "Could not reach the license server",
@@ -606,7 +609,7 @@ func TestTryPrePullLicenseValidation_SkipsCheckWhenImageIsLocal(t *testing.T) {
 		Telemetry:      telemetry.New("", true),
 	}
 
-	postPull, err := tryPrePullLicenseValidation(context.Background(), mockRT, output.NewPlainSink(io.Discard), opts, []runtime.ContainerConfig{c}, "tok", filepath.Join(t.TempDir(), "license.json"))
+	postPull, _, err := tryPrePullLicenseValidation(context.Background(), mockRT, output.NewPlainSink(io.Discard), opts, []runtime.ContainerConfig{c}, "tok", filepath.Join(t.TempDir(), "license.json"), false)
 
 	require.NoError(t, err)
 	assert.Empty(t, postPull, "a pinned local image needs no post-pull validation")
@@ -639,7 +642,7 @@ func TestTryPrePullLicenseValidation_ChecksWhenImageMissing(t *testing.T) {
 		Telemetry:      telemetry.New("", true),
 	}
 
-	_, err := tryPrePullLicenseValidation(context.Background(), mockRT, output.NewPlainSink(io.Discard), opts, []runtime.ContainerConfig{c}, "tok", filepath.Join(t.TempDir(), "license.json"))
+	_, _, err := tryPrePullLicenseValidation(context.Background(), mockRT, output.NewPlainSink(io.Discard), opts, []runtime.ContainerConfig{c}, "tok", filepath.Join(t.TempDir(), "license.json"), false)
 
 	require.Error(t, err, "a missing local image must still fail fast on a server rejection")
 }
@@ -669,7 +672,7 @@ func TestStartContainers_SnowflakeLicenseError(t *testing.T) {
 	var out bytes.Buffer
 	sink := output.NewPlainSink(&out)
 
-	err := startContainers(context.Background(), mockRT, sink, tel, []runtime.ContainerConfig{c}, map[string]bool{}, 0, false)
+	err := startContainers(context.Background(), mockRT, sink, tel, []runtime.ContainerConfig{c}, map[string]bool{}, 0, false, false)
 	tel.Close()
 
 	require.Error(t, err)
@@ -716,7 +719,7 @@ func TestStartContainers_AzureLicenseError(t *testing.T) {
 	var out bytes.Buffer
 	sink := output.NewPlainSink(&out)
 
-	err := startContainers(context.Background(), mockRT, sink, tel, []runtime.ContainerConfig{c}, map[string]bool{}, 0, false)
+	err := startContainers(context.Background(), mockRT, sink, tel, []runtime.ContainerConfig{c}, map[string]bool{}, 0, false, false)
 	tel.Close()
 
 	require.Error(t, err)
@@ -891,7 +894,7 @@ func TestStartContainers_ExitedEmitsErrorAndTelemetry(t *testing.T) {
 	var out bytes.Buffer
 	sink := output.NewPlainSink(&out)
 
-	err := startContainers(context.Background(), mockRT, sink, tel, []runtime.ContainerConfig{c}, map[string]bool{}, time.Minute, false)
+	err := startContainers(context.Background(), mockRT, sink, tel, []runtime.ContainerConfig{c}, map[string]bool{}, time.Minute, false, false)
 	tel.Close()
 
 	require.Error(t, err)
@@ -936,7 +939,7 @@ func TestStartContainers_TimeoutEmitsErrorAndTelemetry(t *testing.T) {
 	var out bytes.Buffer
 	sink := output.NewPlainSink(&out)
 
-	err := startContainers(context.Background(), mockRT, sink, tel, []runtime.ContainerConfig{c}, map[string]bool{}, 50*time.Millisecond, false)
+	err := startContainers(context.Background(), mockRT, sink, tel, []runtime.ContainerConfig{c}, map[string]bool{}, 50*time.Millisecond, false, false)
 	tel.Close()
 
 	require.Error(t, err)
@@ -1240,4 +1243,349 @@ func TestPullImages_ParentCancelPropagatesNotFallBack(t *testing.T) {
 	assert.True(t, errors.Is(err, context.Canceled), "parent cancellation must propagate")
 	assert.NotContains(t, strings.Join(sink.messageTexts(), "\n"), "using the local image",
 		"cancellation must not emit the offline fall-back message")
+}
+
+func TestValidateLicense_DefersOnServerError(t *testing.T) {
+	// A 5xx (or 407, ...) from the license server is an outage, not a verdict on
+	// the license — the pre-flight must degrade to container-side validation.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusBadGateway)
+	}))
+	defer srv.Close()
+
+	opts := StartOptions{
+		PlatformClient: api.NewPlatformClient(srv.URL, log.Nop()),
+		Logger:         log.Nop(),
+		Telemetry:      telemetry.New("", true),
+	}
+	c := runtime.ContainerConfig{
+		EmulatorType: config.EmulatorAWS,
+		ProductName:  "localstack-pro",
+		Tag:          "2026.4",
+		Image:        "localstack/localstack-pro:2026.4",
+	}
+
+	var out bytes.Buffer
+	sink := output.NewPlainSink(&out)
+
+	_, err := validateLicense(context.Background(), sink, opts, c, "tok", filepath.Join(t.TempDir(), "license.json"))
+
+	require.NoError(t, err, "a license server outage must not block the start")
+	assert.Contains(t, out.String(), "unexpected response (HTTP 502)")
+}
+
+func TestValidateLicense_RemovesCachedLicenseOnRejection(t *testing.T) {
+	// A definitive rejection invalidates the cached license: a later start whose
+	// pre-flight is skipped (e.g. image already local) must not keep mounting the
+	// stale copy (DEVX-658).
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusForbidden)
+	}))
+	defer srv.Close()
+
+	licenseFilePath := filepath.Join(t.TempDir(), "license.json")
+	require.NoError(t, os.WriteFile(licenseFilePath, []byte(`{"license":"stale"}`), 0600))
+
+	opts := StartOptions{
+		PlatformClient: api.NewPlatformClient(srv.URL, log.Nop()),
+		Logger:         log.Nop(),
+		Telemetry:      telemetry.New("", true),
+	}
+	c := runtime.ContainerConfig{
+		EmulatorType: config.EmulatorAWS,
+		ProductName:  "localstack-pro",
+		Tag:          "2026.4",
+		Image:        "localstack/localstack-pro:2026.4",
+	}
+
+	_, err := validateLicense(context.Background(), output.NewPlainSink(io.Discard), opts, c, "tok", licenseFilePath)
+
+	require.Error(t, err, "a server rejection must remain fatal")
+	assert.NoFileExists(t, licenseFilePath, "the stale cached license must be removed on a definitive rejection")
+}
+
+func TestLogsIndicateLicenseFailure(t *testing.T) {
+	cases := []struct {
+		name string
+		logs string
+		want bool
+	}{
+		{"activation failure", "ERROR: License activation failed! Please check your auth token.", true},
+		{"invalid license", "The License is invalid or has expired", true},
+		{"license mentioned without failure", "Checking license... OK\nReady.", false},
+		{"unrelated crash", "panic: something exploded", false},
+		{"empty", "", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.want, logsIndicateLicenseFailure(tc.logs))
+		})
+	}
+}
+
+func TestStartWithLicenseRetry_RefreshesStaleCachedLicense(t *testing.T) {
+	// The joel scenario from DEVX-658: the pre-flight was skipped (image already
+	// local), so a stale cached license.json was mounted and the emulator exited
+	// with a license failure. The start must drop the cache, fetch a fresh
+	// license, and retry once — without a manual `lstk logout`.
+	ctrl := gomock.NewController(t)
+	mockRT := runtime.NewMockRuntime(ctrl)
+
+	healthSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer healthSrv.Close()
+	_, port, err := net.SplitHostPort(strings.TrimPrefix(healthSrv.URL, "http://"))
+	require.NoError(t, err)
+
+	licenseFilePath := filepath.Join(t.TempDir(), "license.json")
+	require.NoError(t, os.WriteFile(licenseFilePath, []byte(`{"license":"stale"}`), 0600))
+
+	var licenseHits int32
+	licSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		atomic.AddInt32(&licenseHits, 1)
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"license_type":"enterprise","license":"fresh"}`))
+	}))
+	defer licSrv.Close()
+
+	c := runtime.ContainerConfig{
+		Image:         "localstack/localstack-pro:2026.4",
+		Name:          "localstack-aws",
+		EmulatorType:  config.EmulatorAWS,
+		ProductName:   "localstack-pro",
+		Tag:           "2026.4",
+		Port:          port,
+		ContainerPort: "4566/tcp",
+		HealthPath:    "/health",
+	}
+
+	// First attempt: the container exits with a license failure.
+	mockRT.EXPECT().Start(gomock.Any(), gomock.Any()).Return("cid1cid1cid1", exitResultChan(runtime.ExitResult{ExitCode: 1}), nil)
+	mockRT.EXPECT().StreamLogs(gomock.Any(), "cid1cid1cid1", gomock.Any(), true, "all").Return(nil)
+	mockRT.EXPECT().IsRunning(gomock.Any(), "cid1cid1cid1").Return(false, nil)
+	mockRT.EXPECT().Logs(gomock.Any(), "cid1cid1cid1", 20).Return("License activation failed: the license is invalid or expired", nil)
+
+	// Second attempt succeeds (the health endpoint responds 200).
+	var secondStart runtime.ContainerConfig
+	mockRT.EXPECT().Start(gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, cfg runtime.ContainerConfig) (string, <-chan runtime.ExitResult, error) {
+		secondStart = cfg
+		return "cid2cid2cid2", make(chan runtime.ExitResult), nil
+	})
+	mockRT.EXPECT().StreamLogs(gomock.Any(), "cid2cid2cid2", gomock.Any(), true, "all").Return(nil)
+	mockRT.EXPECT().IsRunning(gomock.Any(), "cid2cid2cid2").Return(true, nil).AnyTimes()
+
+	opts := StartOptions{
+		PlatformClient: api.NewPlatformClient(licSrv.URL, log.Nop()),
+		Logger:         log.Nop(),
+		Telemetry:      telemetry.New("", true),
+	}
+
+	var out bytes.Buffer
+	sink := output.NewPlainSink(&out)
+
+	err = startWithLicenseRetry(context.Background(), mockRT, sink, opts, false, []runtime.ContainerConfig{c}, map[string]bool{}, "tok", licenseFilePath, false)
+
+	require.NoError(t, err, "the retry with a refreshed license must succeed; output: %s", out.String())
+	assert.Equal(t, int32(1), atomic.LoadInt32(&licenseHits), "the retry must fetch a fresh license exactly once")
+	data, readErr := os.ReadFile(licenseFilePath)
+	require.NoError(t, readErr)
+	assert.Contains(t, string(data), "fresh", "the cached license must be replaced by the freshly fetched one")
+
+	var licenseBinds int
+	for _, b := range secondStart.Binds {
+		if b.ContainerPath == licenseMountPath {
+			licenseBinds++
+			assert.Equal(t, licenseFilePath, b.HostPath)
+		}
+	}
+	assert.Equal(t, 1, licenseBinds, "the retry must mount exactly one refreshed license file")
+	assert.Contains(t, out.String(), "refreshing the cached license and retrying")
+}
+
+func TestStartWithLicenseRetry_NoRetryWhenPreflightRefreshedLicense(t *testing.T) {
+	// When this run already fetched a fresh license, a startup license failure is
+	// a real verdict — refetching the same license again would loop for nothing.
+	// The failure renders through the regular startup error path instead.
+	ctrl := gomock.NewController(t)
+	mockRT := runtime.NewMockRuntime(ctrl)
+
+	licenseFilePath := filepath.Join(t.TempDir(), "license.json")
+	require.NoError(t, os.WriteFile(licenseFilePath, []byte(`{"license":"fresh"}`), 0600))
+
+	c := runtime.ContainerConfig{
+		Image:         "localstack/localstack-pro:2026.4",
+		Name:          "localstack-aws",
+		EmulatorType:  config.EmulatorAWS,
+		ProductName:   "localstack-pro",
+		Tag:           "2026.4",
+		Port:          "4566",
+		ContainerPort: "4566/tcp",
+		HealthPath:    "/health",
+	}
+
+	mockRT.EXPECT().Start(gomock.Any(), gomock.Any()).Return("cid1cid1cid1", exitResultChan(runtime.ExitResult{ExitCode: 1}), nil)
+	mockRT.EXPECT().StreamLogs(gomock.Any(), "cid1cid1cid1", gomock.Any(), true, "all").Return(nil)
+	mockRT.EXPECT().IsRunning(gomock.Any(), "cid1cid1cid1").Return(false, nil)
+	mockRT.EXPECT().Logs(gomock.Any(), "cid1cid1cid1", 20).Return("License activation failed", nil)
+
+	opts := StartOptions{
+		PlatformClient: api.NewPlatformClient("http://127.0.0.1:1", log.Nop()),
+		Logger:         log.Nop(),
+		Telemetry:      telemetry.New("", true),
+	}
+
+	var out bytes.Buffer
+	sink := output.NewPlainSink(&out)
+
+	err := startWithLicenseRetry(context.Background(), mockRT, sink, opts, false, []runtime.ContainerConfig{c}, map[string]bool{}, "tok", licenseFilePath, true)
+
+	require.Error(t, err)
+	assert.True(t, output.IsSilent(err), "the failure must be rendered by the regular startup error path")
+	assert.NotContains(t, out.String(), "refreshing the cached license", "no retry when the license was freshly fetched this run")
+	assert.FileExists(t, licenseFilePath, "a freshly validated license must not be dropped")
+}
+
+func TestStartWithLicenseRetry_NoRetryWithoutCachedLicense(t *testing.T) {
+	// With no cached license mounted, a startup license failure cannot be a stale
+	// cache problem — the failure renders through the regular startup error path.
+	ctrl := gomock.NewController(t)
+	mockRT := runtime.NewMockRuntime(ctrl)
+
+	c := runtime.ContainerConfig{
+		Image:         "localstack/localstack-pro:2026.4",
+		Name:          "localstack-aws",
+		EmulatorType:  config.EmulatorAWS,
+		ProductName:   "localstack-pro",
+		Tag:           "2026.4",
+		Port:          "4566",
+		ContainerPort: "4566/tcp",
+		HealthPath:    "/health",
+	}
+
+	mockRT.EXPECT().Start(gomock.Any(), gomock.Any()).Return("cid1cid1cid1", exitResultChan(runtime.ExitResult{ExitCode: 1}), nil)
+	mockRT.EXPECT().StreamLogs(gomock.Any(), "cid1cid1cid1", gomock.Any(), true, "all").Return(nil)
+	mockRT.EXPECT().IsRunning(gomock.Any(), "cid1cid1cid1").Return(false, nil)
+	mockRT.EXPECT().Logs(gomock.Any(), "cid1cid1cid1", 20).Return("License activation failed", nil)
+
+	opts := StartOptions{
+		PlatformClient: api.NewPlatformClient("http://127.0.0.1:1", log.Nop()),
+		Logger:         log.Nop(),
+		Telemetry:      telemetry.New("", true),
+	}
+
+	var out bytes.Buffer
+	sink := output.NewPlainSink(&out)
+
+	err := startWithLicenseRetry(context.Background(), mockRT, sink, opts, false, []runtime.ContainerConfig{c}, map[string]bool{}, "tok", filepath.Join(t.TempDir(), "license.json"), false)
+
+	require.Error(t, err)
+	assert.True(t, output.IsSilent(err), "the failure must be rendered by the regular startup error path")
+	assert.NotContains(t, out.String(), "refreshing the cached license")
+}
+
+// TestStart_SecondLicenseRejectionAfterReloginRendersErrorEvent covers a gap in
+// DEVX-658: if the freshly re-logged-in token is rejected too (the license
+// server's answer didn't change), the second rejection must render through the
+// same styled ErrorEvent as the first — not bypass the sink and fall through to
+// the top-level "Error: %v" fallback (cmd/root.go), which is reserved for
+// failures no sink was available to render.
+func TestStart_SecondLicenseRejectionAfterReloginRendersErrorEvent(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+
+	const authReqID = "second-rejection-auth-req"
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/auth/request":
+			w.WriteHeader(http.StatusCreated)
+			_ = json.NewEncoder(w).Encode(map[string]string{
+				"id": authReqID, "code": "TEST123", "exchange_token": "exchange-token",
+			})
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/auth/request/"+authReqID:
+			_ = json.NewEncoder(w).Encode(map[string]bool{"confirmed": true})
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/auth/request/"+authReqID+"/exchange":
+			_ = json.NewEncoder(w).Encode(map[string]string{"id": authReqID, "auth_token": "Bearer test-bearer"})
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/license/credentials":
+			_ = json.NewEncoder(w).Encode(map[string]string{"token": "fresh-token"})
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/license/request":
+			// Every license check is rejected — both the stale token on the first
+			// attempt and the freshly re-logged-in one on the retry.
+			w.WriteHeader(http.StatusForbidden)
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer mockServer.Close()
+
+	ctrl := gomock.NewController(t)
+	mockRT := runtime.NewMockRuntime(ctrl)
+	mockRT.EXPECT().IsHealthy(gomock.Any()).Return(nil)
+	mockRT.EXPECT().SocketPath().Return("").AnyTimes()
+	mockRT.EXPECT().IsRunning(gomock.Any(), gomock.Any()).Return(false, nil).AnyTimes()
+	mockRT.EXPECT().FindRunningByImage(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
+	mockRT.EXPECT().ImageExists(gomock.Any(), gomock.Any()).Return(false, nil).AnyTimes()
+
+	var mu sync.Mutex
+	var out bytes.Buffer
+	sink := output.SinkFunc(func(event output.Event) {
+		mu.Lock()
+		if line, ok := output.FormatEventLine(event); ok {
+			out.WriteString(line + "\n")
+		}
+		mu.Unlock()
+		// Auto-answer every prompt (the re-login confirmation, then the login
+		// flow's "press any key" completion prompt) as if the user pressed enter.
+		if req, ok := event.(output.UserInputRequestEvent); ok {
+			req.ResponseCh <- output.InputResponse{SelectedKey: "enter"}
+		}
+	})
+
+	opts := StartOptions{
+		PlatformClient:   api.NewPlatformClient(mockServer.URL, log.Nop()),
+		WebAppURL:        mockServer.URL,
+		AuthToken:        "stale-token-predating-license-purchase",
+		ForceFileKeyring: true,
+		Logger:           log.Nop(),
+		Telemetry:        telemetry.New("", true),
+		AuthOptions:      []auth.Option{auth.WithBrowserOpener(func(string) error { return nil })},
+		Containers: []config.ContainerConfig{
+			{Type: config.EmulatorAWS, Port: "48213", Tag: "2026.4"},
+		},
+	}
+
+	_, err := Start(context.Background(), mockRT, sink, opts, true)
+
+	require.Error(t, err)
+	assert.True(t, output.IsSilent(err), "a second rejection must render through the sink, not the raw stderr fallback")
+	mu.Lock()
+	got := out.String()
+	mu.Unlock()
+	assert.Contains(t, got, "License validation failed", "the second rejection must render the same actionable error as the first")
+	assert.Contains(t, got, "lstk logout && lstk login")
+}
+
+// TestPromptRelogin_FoldsReasonIntoThePromptWithoutASeparateWarning covers a
+// duplication bug: promptRelogin used to emit the rejection reason as its own
+// warning message before asking the question, so a decline showed "License
+// validation failed" a second time in the final ErrorEvent. The reason must be
+// folded into the prompt itself instead, so it's stated exactly once.
+func TestPromptRelogin_FoldsReasonIntoThePromptWithoutASeparateWarning(t *testing.T) {
+	licErr := &api.LicenseError{Message: "invalid, inactive, or expired authentication token or subscription", Status: http.StatusForbidden}
+
+	var events []output.Event
+	sink := output.SinkFunc(func(event output.Event) {
+		events = append(events, event)
+		if req, ok := event.(output.UserInputRequestEvent); ok {
+			req.ResponseCh <- output.InputResponse{Cancelled: true}
+		}
+	})
+
+	accepted := promptRelogin(context.Background(), sink, licErr)
+
+	require.False(t, accepted, "declining must report false")
+	require.Len(t, events, 1, "the rejection reason must be folded into the prompt, not emitted as a separate message first")
+	req, ok := events[0].(output.UserInputRequestEvent)
+	require.True(t, ok, "the only event emitted must be the prompt itself")
+	assert.Contains(t, req.Prompt, licErr.Message, "the prompt must explain why the user is being asked to log in again")
+	assert.Contains(t, req.Prompt, "Log in again to refresh your credentials?")
 }

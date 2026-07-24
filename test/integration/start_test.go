@@ -307,10 +307,10 @@ func TestStartCommandFailsWithInvalidToken(t *testing.T) {
 	mockServer := createMockLicenseServer(false)
 	defer mockServer.Close()
 
-	_, stderr, err := runLstk(t, testContext(t), "", env.With(env.AuthToken, "invalid-token").With(env.APIEndpoint, mockServer.URL), "start")
+	stdout, _, err := runLstk(t, testContext(t), "", env.With(env.AuthToken, "invalid-token").With(env.APIEndpoint, mockServer.URL), "start")
 	require.Error(t, err, "expected lstk start to fail with invalid token")
 	requireExitCode(t, 1, err)
-	assert.Contains(t, stderr, "license validation failed")
+	assert.Contains(t, stdout, "License validation failed")
 }
 
 func TestStartCommandDoesNothingWhenAlreadyRunning(t *testing.T) {

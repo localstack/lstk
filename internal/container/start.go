@@ -47,6 +47,9 @@ type StartOptions struct {
 	StartupTimeout   time.Duration // zero uses the per-mode default (resolveStartupTimeout)
 	Logger           log.Logger
 	Telemetry        *telemetry.Client
+	// AuthOptions is passed through to auth.New; tests use it to inject a fake
+	// browser opener so a re-login flow never opens a real tab.
+	AuthOptions []auth.Option
 }
 
 func Start(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts StartOptions, interactive bool) (string, error) {
@@ -67,11 +70,16 @@ func Start(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts Start
 		return "", output.NewSilentError(fmt.Errorf("runtime not healthy: %w", err))
 	}
 
+	licenseFilePath, err := config.LicenseFilePath()
+	if err != nil {
+		return "", fmt.Errorf("failed to determine license file path: %w", err)
+	}
+
 	tokenStorage, err := auth.NewTokenStorage(opts.ForceFileKeyring, opts.Logger)
 	if err != nil {
 		return "", fmt.Errorf("failed to initialize token storage: %w", err)
 	}
-	a := auth.New(sink, opts.PlatformClient, tokenStorage, opts.AuthToken, opts.WebAppURL, interactive, "")
+	a := auth.New(sink, opts.PlatformClient, tokenStorage, opts.AuthToken, opts.WebAppURL, interactive, licenseFilePath, opts.AuthOptions...)
 
 	token, err := a.GetToken(ctx)
 	if err != nil {
@@ -80,6 +88,64 @@ func Start(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts Start
 
 	opts.Telemetry.SetAuthToken(token)
 
+	version, err := startOnce(ctx, rt, sink, opts, interactive, token, licenseFilePath, false)
+	var rejErr *licenseRejectedError
+	if err == nil || !errors.As(err, &rejErr) {
+		return version, err
+	}
+
+	// The platform definitively rejected the token/license (validateLicense has
+	// already dropped the cached license.json). The rejected token may simply
+	// predate a license purchase or plan change (DEVX-658), so offer a fresh
+	// login instead of requiring a manual `lstk logout` before the next run.
+	if interactive && promptRelogin(ctx, sink, rejErr.licErr) {
+		newToken, loginErr := a.Relogin(ctx)
+		if loginErr != nil {
+			return "", loginErr
+		}
+		opts.Telemetry.SetAuthToken(newToken)
+		version, err = startOnce(ctx, rt, sink, opts, interactive, newToken, licenseFilePath, true)
+		if err == nil || !errors.As(err, &rejErr) {
+			return version, err
+		}
+		// The freshly logged-in token was rejected too: render it the same way
+		// as a first rejection instead of surfacing the raw error, below.
+	}
+
+	return "", renderLicenseRejection(sink, rejErr, err)
+}
+
+// renderLicenseRejection emits the actionable ErrorEvent for a definitive
+// license rejection and returns a silent error wrapping err, so a rejection
+// renders identically whether it's the initial failure or a retry after
+// re-login came back rejected too.
+func renderLicenseRejection(sink output.Sink, rejErr *licenseRejectedError, err error) error {
+	sink.Emit(output.ErrorEvent{
+		Title: fmt.Sprintf("License validation failed for %s:%s: %s", rejErr.productName, rejErr.version, rejErr.licErr.Message),
+		Actions: []output.ErrorAction{
+			{Label: "Log in again to refresh your credentials:", Value: "lstk logout && lstk login"},
+			{Label: "Or provide a valid token via the environment variable:", Value: "LOCALSTACK_AUTH_TOKEN"},
+		},
+	})
+	return output.NewSilentError(err)
+}
+
+// licenseRejectedError carries the product/version context of a definitive
+// license rejection so the top-level handler can render it (and offer the
+// re-login recovery) without re-deriving the container details.
+type licenseRejectedError struct {
+	productName string
+	version     string
+	licErr      *api.LicenseError
+}
+
+func (e *licenseRejectedError) Error() string {
+	return fmt.Sprintf("license validation failed for %s:%s: %v", e.productName, e.version, e.licErr)
+}
+
+func (e *licenseRejectedError) Unwrap() error { return e.licErr }
+
+func startOnce(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts StartOptions, interactive bool, token, licenseFilePath string, forceLicenseValidation bool) (string, error) {
 	tel := opts.Telemetry
 
 	hostEnv, droppedEnv := filterHostEnv(os.Environ())
@@ -202,7 +268,7 @@ func Start(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts Start
 		}
 	}
 
-	containers, err = selectContainersToStart(ctx, rt, sink, tel, containers, opts.LocalStackHost, opts.WebAppURL)
+	containers, err := selectContainersToStart(ctx, rt, sink, tel, containers, opts.LocalStackHost, opts.WebAppURL)
 	if err != nil {
 		return "", err
 	}
@@ -210,15 +276,10 @@ func Start(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts Start
 		return "", nil
 	}
 
-	licenseFilePath, err := config.LicenseFilePath()
-	if err != nil {
-		return "", fmt.Errorf("failed to determine license file path: %w", err)
-	}
-
 	// Validate licenses before pulling. Pinned tags are validated immediately —
 	// unless the image is already present locally, in which case both the pull and
 	// the pre-flight check are skipped. "latest" tags defer to post-pull validation.
-	postPullContainers, err := tryPrePullLicenseValidation(ctx, rt, sink, opts, containers, token, licenseFilePath)
+	postPullContainers, prePullRefreshed, err := tryPrePullLicenseValidation(ctx, rt, sink, opts, containers, token, licenseFilePath, forceLicenseValidation)
 	if err != nil {
 		return "", err
 	}
@@ -229,10 +290,11 @@ func Start(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts Start
 	}
 
 	// Validate "latest" containers by inspecting the pulled image for its version.
-	resolvedVersion, err := validateLicensesFromImages(ctx, rt, sink, opts, postPullContainers, token, licenseFilePath)
+	resolvedVersion, postPullRefreshed, err := validateLicensesFromImages(ctx, rt, sink, opts, postPullContainers, token, licenseFilePath)
 	if err != nil {
 		return "", err
 	}
+	licenseRefreshed := prePullRefreshed || postPullRefreshed
 
 	// For pinned containers (postPullContainers was empty), use the tag directly.
 	if resolvedVersion == "" {
@@ -244,18 +306,7 @@ func Start(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts Start
 		}
 	}
 
-	// Mount the cached license file into each container if available.
-	if _, err := os.Stat(licenseFilePath); err == nil {
-		for i := range containers {
-			containers[i].Binds = append(containers[i].Binds, runtime.BindMount{
-				HostPath:      licenseFilePath,
-				ContainerPath: "/etc/localstack/conf.d/license.json",
-				ReadOnly:      true,
-			})
-		}
-	}
-
-	if err := startContainers(ctx, rt, sink, tel, containers, pulled, opts.StartupTimeout, interactive); err != nil {
+	if err := startWithLicenseRetry(ctx, rt, sink, opts, interactive, containers, pulled, token, licenseFilePath, licenseRefreshed); err != nil {
 		return "", err
 	}
 
@@ -468,10 +519,13 @@ func pullImage(ctx context.Context, rt runtime.Runtime, sink output.Sink, tel *t
 }
 
 // Validates licenses before pulling for containers with pinned tags, except those
-// whose image is already present locally (not pulled, so the check is skipped too).
+// whose image is already present locally (not pulled, so the check is skipped too —
+// unless force is set, e.g. when retrying after a startup license failure).
 // "latest" and empty tags are deferred to post-pull validation via image inspection.
-func tryPrePullLicenseValidation(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts StartOptions, containers []runtime.ContainerConfig, token, licenseFilePath string) ([]runtime.ContainerConfig, error) {
+// The bool reports whether any validation refreshed the cached license file.
+func tryPrePullLicenseValidation(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts StartOptions, containers []runtime.ContainerConfig, token, licenseFilePath string, force bool) ([]runtime.ContainerConfig, bool, error) {
 	var needsPostPull []runtime.ContainerConfig
+	var refreshed bool
 	for _, c := range containers {
 		if c.EmulatorType.SelfValidatesLicense() {
 			continue
@@ -483,24 +537,30 @@ func tryPrePullLicenseValidation(ctx context.Context, rt runtime.Runtime, sink o
 			// blocker in offline/enterprise environments — when no network round-trip
 			// happens at all and the container validates the license at
 			// startup. A probe error is non-fatal here; fall through to the check.
-			if exists, err := rt.ImageExists(ctx, c.Image); err == nil && exists {
-				continue
+			if !force {
+				if exists, err := rt.ImageExists(ctx, c.Image); err == nil && exists {
+					continue
+				}
 			}
-			if err := validateLicense(ctx, sink, opts, c, token, licenseFilePath); err != nil {
-				return nil, err
+			wrote, err := validateLicense(ctx, sink, opts, c, token, licenseFilePath)
+			if err != nil {
+				return nil, false, err
 			}
+			refreshed = refreshed || wrote
 			continue
 		}
 
 		needsPostPull = append(needsPostPull, c)
 	}
-	return needsPostPull, nil
+	return needsPostPull, refreshed, nil
 }
 
 // Inspects each pulled image for its version, then validates the license.
-// Returns the resolved version of the first validated container, empty string if none.
-func validateLicensesFromImages(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts StartOptions, containers []runtime.ContainerConfig, token, licenseFilePath string) (string, error) {
+// Returns the resolved version of the first validated container (empty string if
+// none) and whether any validation refreshed the cached license file.
+func validateLicensesFromImages(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts StartOptions, containers []runtime.ContainerConfig, token, licenseFilePath string) (string, bool, error) {
 	var firstVersion string
+	var refreshed bool
 	for _, c := range containers {
 		if c.EmulatorType.SelfValidatesLicense() {
 			continue
@@ -508,20 +568,60 @@ func validateLicensesFromImages(ctx context.Context, rt runtime.Runtime, sink ou
 
 		v, err := rt.GetImageVersion(ctx, c.Image)
 		if err != nil {
-			return "", fmt.Errorf("could not resolve version from image %s: %w", c.Image, err)
+			return "", false, fmt.Errorf("could not resolve version from image %s: %w", c.Image, err)
 		}
 		c.Tag = v
 		if firstVersion == "" {
 			firstVersion = v
 		}
-		if err := validateLicense(ctx, sink, opts, c, token, licenseFilePath); err != nil {
-			return "", err
+		wrote, err := validateLicense(ctx, sink, opts, c, token, licenseFilePath)
+		if err != nil {
+			return "", false, err
 		}
+		refreshed = refreshed || wrote
 	}
-	return firstVersion, nil
+	return firstVersion, refreshed, nil
 }
 
-func startContainers(ctx context.Context, rt runtime.Runtime, sink output.Sink, tel *telemetry.Client, containers []runtime.ContainerConfig, pulled map[string]bool, startupTimeout time.Duration, interactive bool) error {
+// startWithLicenseRetry mounts the cached license file and starts the
+// containers. When a container exits with a license failure while a cached
+// license.json that this run did not refresh was mounted (the pre-flight was
+// skipped, e.g. because the image was already local), the cache may predate a
+// license purchase or plan change (DEVX-658): it is dropped, re-validated
+// against the license server, and the start is retried once.
+func startWithLicenseRetry(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts StartOptions, interactive bool, containers []runtime.ContainerConfig, pulled map[string]bool, token, licenseFilePath string, licenseRefreshed bool) error {
+	// A retry only makes sense when a cached license this run did not refresh
+	// was mounted — a freshly fetched license failing at startup is a real
+	// verdict, and refetching it would loop for nothing.
+	licenseMounted := mountCachedLicense(containers, licenseFilePath)
+	retryCandidate := licenseMounted && !licenseRefreshed
+
+	err := startContainers(ctx, rt, sink, opts.Telemetry, containers, pulled, opts.StartupTimeout, interactive, retryCandidate)
+	if err == nil {
+		return nil
+	}
+	var licStartErr *licenseStartupError
+	if !errors.As(err, &licStartErr) {
+		return err
+	}
+
+	sink.Emit(output.MessageEvent{Severity: output.SeverityWarning, Text: "License rejected at startup — refreshing the cached license and retrying"})
+	if rmErr := os.Remove(licenseFilePath); rmErr != nil && !errors.Is(rmErr, os.ErrNotExist) {
+		opts.Logger.Error("failed to remove cached license file: %v", rmErr)
+	}
+	retryPostPull, _, verr := tryPrePullLicenseValidation(ctx, rt, sink, opts, containers, token, licenseFilePath, true)
+	if verr != nil {
+		return verr
+	}
+	if _, _, verr := validateLicensesFromImages(ctx, rt, sink, opts, retryPostPull, token, licenseFilePath); verr != nil {
+		return verr
+	}
+	stripLicenseMount(containers)
+	mountCachedLicense(containers, licenseFilePath)
+	return startContainers(ctx, rt, sink, opts.Telemetry, containers, pulled, opts.StartupTimeout, interactive, false)
+}
+
+func startContainers(ctx context.Context, rt runtime.Runtime, sink output.Sink, tel *telemetry.Client, containers []runtime.ContainerConfig, pulled map[string]bool, startupTimeout time.Duration, interactive bool, licenseRetryCandidate bool) error {
 	monitor := newStartupMonitor(rt, sink, tel, startupTimeout, interactive)
 	for _, c := range containers {
 		startTime := time.Now()
@@ -585,6 +685,23 @@ func startContainers(ctx context.Context, rt runtime.Runtime, sink output.Sink, 
 				if direct, derr := rt.Logs(ctx, containerID, 20); derr == nil {
 					logs = direct
 				}
+			}
+			// When the caller can retry with a refreshed license (a stale cached
+			// license.json was mounted, DEVX-658), return the classification
+			// instead of rendering the failure — startWithLicenseRetry retries
+			// once, and a repeat failure comes back through handleFailure. The
+			// self-validating "not covered" case keeps its dedicated messaging.
+			var exitErr *containerExitedError
+			notCovered := c.EmulatorType.SelfValidatesLicense() && strings.Contains(logs, "not covered by your license")
+			if licenseRetryCandidate && !notCovered && errors.As(err, &exitErr) && logsIndicateLicenseFailure(logs) {
+				tel.EmitEmulatorLifecycleEvent(ctx, telemetry.LifecycleEvent{
+					EventType: telemetry.LifecycleStartError,
+					Emulator:  c.EmulatorType,
+					Image:     c.Image,
+					ErrorCode: telemetry.ErrCodeLicenseInvalid,
+					ErrorMsg:  err.Error(),
+				})
+				return &licenseStartupError{name: "LocalStack", logs: logs}
 			}
 			return monitor.handleFailure(ctx, c, err, logs)
 		}
@@ -809,7 +926,9 @@ func emitPortInUseError(sink output.Sink, port string) {
 	})
 }
 
-func validateLicense(ctx context.Context, sink output.Sink, opts StartOptions, containerConfig runtime.ContainerConfig, token, licenseFilePath string) error {
+// validateLicense runs the license pre-flight and caches the license file on
+// success. The bool reports whether the cached license file was (re)written.
+func validateLicense(ctx context.Context, sink output.Sink, opts StartOptions, containerConfig runtime.ContainerConfig, token, licenseFilePath string) (bool, error) {
 	version := containerConfig.Tag
 	sink.Emit(output.SpinnerStart("Checking license"))
 
@@ -836,7 +955,7 @@ func validateLicense(ctx context.Context, sink output.Sink, opts StartOptions, c
 		// propagate it instead of degrading. The client's own request timeout is
 		// distinct from ctx and still falls through to the offline fallback below.
 		if ctx.Err() != nil {
-			return ctx.Err()
+			return false, ctx.Err()
 		}
 		var licErr *api.LicenseError
 		if !errors.As(err, &licErr) {
@@ -846,7 +965,7 @@ func validateLicense(ctx context.Context, sink output.Sink, opts StartOptions, c
 			// the license at startup instead of blocking the start.
 			opts.Logger.Info("license server unreachable, deferring license validation to the emulator: %v", err)
 			sink.Emit(output.MessageEvent{Severity: output.SeverityWarning, Text: "Could not reach the license server; the emulator will validate the license once it starts"})
-			return nil
+			return false, nil
 		}
 		if licErr.IsUnsupportedTag {
 			// The server rejecting the tag *format* (e.g. a "dev" nightly or a custom
@@ -859,15 +978,26 @@ func validateLicense(ctx context.Context, sink output.Sink, opts StartOptions, c
 				"The license server does not support tag %q; the emulator will validate the license once it starts. If this is unintended, %s",
 				version, config.TagSuggestion(),
 			)})
-			return nil
+			return false, nil
 		}
-		// Known limitation: any other *api.LicenseError — i.e. any non-200 HTTP
-		// response, including a 5xx or a 407 from a corporate proxy — is treated as a
-		// definitive verdict and stays fatal here; only connection-level failures and
-		// unsupported tags (both handled above) degrade. Gating this on licErr.Status
-		// is tracked as follow-up.
+		if !isDefinitiveLicenseRejection(licErr.Status) {
+			// A 5xx outage, a 407 from a corporate proxy, or any other unexpected
+			// status is not a verdict on the license. Degrade like the transport
+			// failure above and let the container validate the license at startup.
+			opts.Logger.Info("license server returned HTTP %d, deferring license validation to the emulator: %s", licErr.Status, licErr.Detail)
+			sink.Emit(output.MessageEvent{Severity: output.SeverityWarning, Text: fmt.Sprintf(
+				"The license server returned an unexpected response (HTTP %d); the emulator will validate the license once it starts", licErr.Status,
+			)})
+			return false, nil
+		}
 		if licErr.Detail != "" {
 			opts.Logger.Error("license server response (HTTP %d): %s", licErr.Status, licErr.Detail)
+		}
+		// A definitive rejection also invalidates the cached license: drop it so a
+		// later start (whose pre-flight may be skipped, e.g. when the image is
+		// already local) cannot keep failing against the stale copy (DEVX-658).
+		if rmErr := os.Remove(licenseFilePath); rmErr != nil && !errors.Is(rmErr, os.ErrNotExist) {
+			opts.Logger.Error("failed to remove cached license file: %v", rmErr)
 		}
 		opts.Telemetry.EmitEmulatorLifecycleEvent(ctx, telemetry.LifecycleEvent{
 			EventType: telemetry.LifecycleStartError,
@@ -876,7 +1006,7 @@ func validateLicense(ctx context.Context, sink output.Sink, opts StartOptions, c
 			ErrorCode: telemetry.ErrCodeLicenseInvalid,
 			ErrorMsg:  err.Error(),
 		})
-		return fmt.Errorf("license validation failed for %s:%s: %w", containerConfig.ProductName, version, err)
+		return false, &licenseRejectedError{productName: containerConfig.ProductName, version: version, licErr: licErr}
 	}
 	sink.Emit(output.SpinnerStop())
 
@@ -891,10 +1021,67 @@ func validateLicense(ctx context.Context, sink output.Sink, opts StartOptions, c
 			opts.Logger.Error("failed to create license cache directory: %v", err)
 		} else if err := os.WriteFile(licenseFilePath, licenseResp.RawBytes, 0600); err != nil {
 			opts.Logger.Error("failed to cache license file: %v", err)
+		} else {
+			return true, nil
 		}
 	}
 
-	return nil
+	return false, nil
+}
+
+// isDefinitiveLicenseRejection reports whether an HTTP status from the license
+// server is a verdict on the token/license itself. Anything else (a 5xx outage,
+// a 407 from a corporate proxy, ...) is not, and degrades to container-side
+// validation instead of blocking the start.
+func isDefinitiveLicenseRejection(status int) bool {
+	return status == http.StatusBadRequest || status == http.StatusUnauthorized || status == http.StatusForbidden
+}
+
+// promptRelogin asks the user whether to run a fresh login after a definitive
+// license rejection. Only call in interactive mode: the plain sink never
+// answers input requests, so waiting on one would hang. The rejection reason is
+// folded into the prompt itself (rather than emitted as a separate message
+// first) so a decline doesn't show "License validation failed" twice — once
+// here and again in the final ErrorEvent if the user says no.
+func promptRelogin(ctx context.Context, sink output.Sink, licErr *api.LicenseError) bool {
+	responseCh := make(chan output.InputResponse, 1)
+	sink.Emit(output.UserInputRequestEvent{
+		Prompt:     fmt.Sprintf("License validation failed: %s. Log in again to refresh your credentials?", licErr.Message),
+		Options:    []output.InputOption{{Key: "enter", Label: "Press ENTER to log in again"}},
+		ResponseCh: responseCh,
+	})
+	select {
+	case resp := <-responseCh:
+		return !resp.Cancelled
+	case <-ctx.Done():
+		return false
+	}
+}
+
+const licenseMountPath = "/etc/localstack/conf.d/license.json"
+
+// mountCachedLicense mounts the cached license file read-only into each
+// container when it exists on disk, and reports whether it did.
+func mountCachedLicense(containers []runtime.ContainerConfig, licenseFilePath string) bool {
+	if _, err := os.Stat(licenseFilePath); err != nil {
+		return false
+	}
+	for i := range containers {
+		containers[i].Binds = append(containers[i].Binds, runtime.BindMount{
+			HostPath:      licenseFilePath,
+			ContainerPath: licenseMountPath,
+			ReadOnly:      true,
+		})
+	}
+	return true
+}
+
+func stripLicenseMount(containers []runtime.ContainerConfig) {
+	for i := range containers {
+		containers[i].Binds = slices.DeleteFunc(containers[i].Binds, func(b runtime.BindMount) bool {
+			return b.ContainerPath == licenseMountPath
+		})
+	}
 }
 
 // licenseNotCoveredError is returned by startupMonitor.handleFailure when the container exits
@@ -903,6 +1090,37 @@ type licenseNotCoveredError struct{}
 
 func (e *licenseNotCoveredError) Error() string {
 	return "license does not include this emulator"
+}
+
+// licenseStartupError is returned by startContainers instead of rendering the
+// failure when the container exits with license-related output while a retry
+// with a refreshed license is possible — e.g. after validating a stale cached
+// license.json mounted from an earlier run (DEVX-658). startWithLicenseRetry
+// retries the start once with a freshly fetched license.
+type licenseStartupError struct {
+	name string
+	logs string
+}
+
+func (e *licenseStartupError) Error() string {
+	return fmt.Sprintf("%s exited during license validation:\n%s", e.name, e.logs)
+}
+
+// logsIndicateLicenseFailure reports whether a failed container's logs point at
+// license validation rather than some other startup crash. Matching is loose on
+// purpose: the emulator wording varies across products and versions, and a
+// false positive only costs one extra license fetch and start attempt.
+func logsIndicateLicenseFailure(logs string) bool {
+	l := strings.ToLower(logs)
+	if !strings.Contains(l, "license") {
+		return false
+	}
+	for _, marker := range []string{"fail", "invalid", "expired", "error", "could not", "unable"} {
+		if strings.Contains(l, marker) {
+			return true
+		}
+	}
+	return false
 }
 
 // containerExitedError is returned by startupMonitor.await when the container stops

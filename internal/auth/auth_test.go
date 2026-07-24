@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -56,4 +57,44 @@ func TestGetToken_ReturnsTokenWhenKeyringStoreFails(t *testing.T) {
 		}
 		return false
 	})
+}
+
+func TestRelogin_DiscardsTokenAndLicenseThenLogsIn(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockStorage := NewMockAuthTokenStorage(ctrl)
+	mockLogin := NewMockLoginProvider(ctrl)
+
+	licensePath := filepath.Join(t.TempDir(), "license.json")
+	if err := os.WriteFile(licensePath, []byte(`{"license":"stale"}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	auth := &Auth{
+		tokenStorage:    mockStorage,
+		login:           mockLogin,
+		sink:            output.SinkFunc(func(output.Event) {}),
+		allowLogin:      true,
+		licenseFilePath: licensePath,
+	}
+
+	mockStorage.EXPECT().DeleteAuthToken().Return(nil)
+	mockLogin.EXPECT().Login(gomock.Any()).Return("fresh-token", nil)
+	mockStorage.EXPECT().SetAuthToken("fresh-token").Return(nil)
+
+	token, err := auth.Relogin(context.Background())
+
+	assert.NoError(t, err)
+	assert.Equal(t, "fresh-token", token)
+	assert.NoFileExists(t, licensePath, "relogin must drop the cached license file")
+}
+
+func TestRelogin_FailsWhenLoginNotAllowed(t *testing.T) {
+	auth := &Auth{
+		sink:       output.SinkFunc(func(output.Event) {}),
+		allowLogin: false,
+	}
+
+	_, err := auth.Relogin(context.Background())
+
+	assert.ErrorContains(t, err, "authentication required")
 }
