@@ -256,7 +256,7 @@ Codes: `EMULATOR_NOT_CONFIGURED` (no AWS container configured), `EMULATOR_NOT_RU
   "error": null
 }
 ```
-Codes: `NETWORK_ERROR` (GitHub API unreachable), `INTERNAL_ERROR` (archive/extraction failure), `CONFIG_INVALID`, `CONFIG_NOT_FOUND` (bad or missing `--config` path).
+Codes: `NETWORK_ERROR` (GitHub API unreachable), `INTERNAL_ERROR` (archive download verification, extraction, or replacement failure), `CONFIG_INVALID`, `CONFIG_NOT_FOUND` (bad or missing `--config` path).
 
 ### Proposed for future work (draft)
 
