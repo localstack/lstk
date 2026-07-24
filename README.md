@@ -44,7 +44,7 @@ Running `lstk` will automatically handle configuration setup and start LocalStac
 - **Start / stop / status** — manage LocalStack emulators with a single command
 - **Interactive TUI** — a Bubble Tea-powered terminal UI shown in an interactive terminal for commands like `start`, `login`, `status`, etc.
 - **Plain output** for CI/CD and scripting (auto-detected in non-interactive environments or forced with `--non-interactive`)
-- **Log streaming** — tail emulator logs in real-time with `--follow`; use `--verbose` to show all logs without filtering
+- **Log streaming** — tail emulator logs in real-time with `--follow`; limit to the last N lines with `-n`/`--tail`; use `--verbose` to show all logs without filtering
 - **Snapshots** — save, load, and remove emulator state as local files, named cloud snapshots (`pod:` prefix), or in your own S3 bucket (`s3://`), and auto-load one on start
 - **Browser-based login** — authenticate via browser and store credentials securely in the system keyring
 - **AWS CLI proxy** — run `lstk aws <args>` with endpoint, credentials, and region pre-configured
@@ -184,7 +184,7 @@ SERVICES = "s3,sqs"
 EAGER_SERVICE_LOADING = "1"
 ```
 
-Host environment variables prefixed with `LOCALSTACK_` are also forwarded to the emulator.
+Host environment variables prefixed with `LOCALSTACK_` are also forwarded to the emulator, except a few that would corrupt it once the `LOCALSTACK_` prefix is stripped inside the container (e.g. `LOCALSTACK_PATH`, `LOCALSTACK_HOME`) or that contain line breaks — lstk drops these and warns instead of forwarding them. `LOCALSTACK_AUTH_TOKEN` is never forwarded from the host, since lstk always forwards its own resolved token.
 
 ### Exposing the emulator beyond localhost
 
@@ -254,7 +254,8 @@ lstk --non-interactive
 |---|---|
 | `LOCALSTACK_AUTH_TOKEN` | Auth token used for non-interactive runs or to skip browser login |
 | `LOCALSTACK_DISABLE_EVENTS=1` | Disables telemetry event reporting |
-| `LSTK_STARTUP_TIMEOUT` | How long `lstk start` waits for the emulator to become healthy before acting (Go duration, e.g. `90s`, `5m`). Defaults: 20s interactively (shows a keep-waiting/stop prompt; "keep waiting" re-arms the deadline), 60s non-interactively (fails with the last container logs, leaving the emulator running for inspection). |
+| `LSTK_STARTUP_TIMEOUT` | How long `lstk start` waits for the emulator to become healthy before acting (Go duration, e.g. `90s`, `5m`). Defaults: 20s interactively (shows a keep-waiting/stop prompt; "keep waiting" re-arms the deadline), 60s non-interactively (fails with the last container logs, leaving the emulator running for inspection). Override for a single run with `lstk start --timeout <duration>` (the flag wins over the env var; `--timeout 0` falls back to the default). |
+| `LSTK_MERGE_STRATEGY` | Default merge strategy for `lstk snapshot load` / `lstk load` (`account-region-merge`, `overwrite`, or `service-merge`) when `--merge` is not passed; an explicit `--merge` always wins. |
 | `LSTK_OTEL=1` | Enables OpenTelemetry trace export (disabled by default). When enabled, standard `OTEL_EXPORTER_OTLP_*` env vars are respected by the SDK (e.g. `OTEL_EXPORTER_OTLP_ENDPOINT` defaults to `http://localhost:4318`). Requires an OTLP-compatible backend to receive and visualize telemetry — for local development, `make otel` starts one (UI at http://localhost:16686). |
 | `DOCKER_HOST` | Override the Docker daemon socket (e.g. `unix:///home/user/.colima/default/docker.sock`). When unset, lstk tries the default socket and then probes common alternatives (Colima, OrbStack). |
 
@@ -345,6 +346,9 @@ lstk status
 
 # Stream emulator logs
 lstk logs --follow
+
+# Show only the last 100 lines
+lstk logs --tail 100
 
 # Stream all emulator logs without filtering
 lstk logs --follow --verbose
