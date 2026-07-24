@@ -82,7 +82,8 @@ func TestResetLocalStackNotRunning(t *testing.T) {
 	ctx := testContext(t)
 	// Intentionally no startTestContainer: the emulator is not running.
 
-	stdout, _, err := runLstk(t, ctx, t.TempDir(), testEnvWithHome(t.TempDir(), ""),
+	stdout, _, err := runLstk(t, ctx, t.TempDir(),
+		env.Environ(testEnvWithHome(t.TempDir(), "")).With(env.LocalStackHost, deadLocalStackHost),
 		"--non-interactive", "reset", "--force",
 	)
 	requireExitCode(t, 1, err)
@@ -136,7 +137,9 @@ func TestResetTelemetryOnFailure(t *testing.T) {
 
 	analyticsSrv, events := mockAnalyticsServer(t)
 	_, _, err := runLstk(t, ctx, t.TempDir(),
-		env.Environ(testEnvWithHome(t.TempDir(), "")).With(env.AnalyticsEndpoint, analyticsSrv.URL),
+		env.Environ(testEnvWithHome(t.TempDir(), "")).
+			With(env.AnalyticsEndpoint, analyticsSrv.URL).
+			With(env.LocalStackHost, deadLocalStackHost),
 		"--non-interactive", "reset", "--force",
 	)
 	requireExitCode(t, 1, err)

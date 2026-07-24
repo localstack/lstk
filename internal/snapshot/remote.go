@@ -141,7 +141,7 @@ func SaveRemoteS3(ctx context.Context, rt runtime.Runtime, containers []config.C
 	name := remoteName(s3URL)
 	remoteURL := templatedRemoteURL(s3URL, creds.SessionToken != "")
 	var result PodSaveResult
-	return save(ctx, rt, containers, sink,
+	return save(ctx, rt, containers, sink, host,
 		fmt.Sprintf("Saving snapshot to %s...", s3URL),
 		func() {
 			sink.Emit(output.RemoteSnapshotSavedEvent{
@@ -172,7 +172,7 @@ func LoadRemoteS3(ctx context.Context, rt runtime.Runtime, containers []config.C
 	name := remoteName(s3URL)
 	remoteURL := templatedRemoteURL(s3URL, creds.SessionToken != "")
 	var services []string
-	return load(ctx, rt, containers, sink, starter,
+	return load(ctx, rt, containers, sink, host, starter,
 		fmt.Sprintf("Loading snapshot %q from %s...", podName, s3URL),
 		func() {
 			sink.Emit(output.SnapshotLoadedEvent{

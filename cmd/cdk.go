@@ -9,7 +9,6 @@ import (
 	cdkcli "github.com/localstack/lstk/internal/iac/cdk/cli"
 	"github.com/localstack/lstk/internal/log"
 	"github.com/localstack/lstk/internal/output"
-	"github.com/localstack/lstk/internal/runtime"
 	"github.com/spf13/cobra"
 )
 
@@ -89,21 +88,12 @@ Examples:
 				return cdkcli.Run(cmd.Context(), "http://"+host, region, sink, logger, cdkArgs)
 			}
 
-			rt, err := runtime.NewDockerRuntime(cfg.DockerHost)
-			if err != nil {
-				return err
-			}
-
-			if err := rt.IsHealthy(cmd.Context()); err != nil {
-				rt.EmitUnhealthyError(sink, err)
-				return output.NewSilentError(fmt.Errorf("runtime not healthy: %w", err))
-			}
-
-			if err := requireRunningAWSEmulator(cmd.Context(), rt, sink, awsContainer, "cdk"); err != nil {
-				return err
-			}
-
 			host, dnsOK := endpoint.ResolveHost(cmd.Context(), awsContainer.Port, cfg.LocalStackHost)
+
+			if err := requireRunningAWSEmulator(cmd.Context(), cfg.DockerHost, sink, awsContainer, host, "cdk"); err != nil {
+				return err
+			}
+
 			if !dnsOK {
 				// CDK has no env-only lever to force S3 path style, so on the
 				// loopback fallback its S3 asset operations (bootstrap, asset

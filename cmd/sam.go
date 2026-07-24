@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"fmt"
 	"os"
 
 	"github.com/localstack/lstk/internal/endpoint"
@@ -9,7 +8,6 @@ import (
 	samcli "github.com/localstack/lstk/internal/iac/sam/cli"
 	"github.com/localstack/lstk/internal/log"
 	"github.com/localstack/lstk/internal/output"
-	"github.com/localstack/lstk/internal/runtime"
 	"github.com/spf13/cobra"
 )
 
@@ -86,21 +84,11 @@ Examples:
 				return samcli.Run(cmd.Context(), "http://"+host, account, region, sink, logger, samArgs)
 			}
 
-			rt, err := runtime.NewDockerRuntime(cfg.DockerHost)
-			if err != nil {
-				return err
-			}
-
-			if err := rt.IsHealthy(cmd.Context()); err != nil {
-				rt.EmitUnhealthyError(sink, err)
-				return output.NewSilentError(fmt.Errorf("runtime not healthy: %w", err))
-			}
-
-			if err := requireRunningAWSEmulator(cmd.Context(), rt, sink, awsContainer, "sam"); err != nil {
-				return err
-			}
-
 			host, _ := endpoint.ResolveHost(cmd.Context(), awsContainer.Port, cfg.LocalStackHost)
+
+			if err := requireRunningAWSEmulator(cmd.Context(), cfg.DockerHost, sink, awsContainer, host, "sam"); err != nil {
+				return err
+			}
 
 			return samcli.Run(cmd.Context(), "http://"+host, account, region, sink, logger, samArgs)
 		},

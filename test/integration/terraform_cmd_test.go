@@ -247,7 +247,8 @@ func TestTerraformFailsWhenEmulatorNotRunning(t *testing.T) {
 	t.Cleanup(cleanup)
 
 	fakeDir := writeFakeTerraform(t)
-	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).With(env.Home, t.TempDir())
+	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).With(env.Home, t.TempDir()).
+		With(env.LocalStackHost, deadLocalStackHost)
 
 	stdout, _, err := runLstk(t, testContext(t), t.TempDir(), e, "terraform", "plan")
 	require.Error(t, err)

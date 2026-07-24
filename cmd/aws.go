@@ -13,7 +13,6 @@ import (
 	"github.com/localstack/lstk/internal/endpoint"
 	"github.com/localstack/lstk/internal/env"
 	"github.com/localstack/lstk/internal/output"
-	"github.com/localstack/lstk/internal/runtime"
 	"github.com/localstack/lstk/internal/terminal"
 	"github.com/spf13/cobra"
 )
@@ -72,11 +71,6 @@ Examples:
 				return awscli.Exec(cmd.Context(), "", false, os.Stdout, os.Stderr, passthrough)
 			}
 
-			rt, err := runtime.NewDockerRuntime(cfg.DockerHost)
-			if err != nil {
-				return err
-			}
-
 			appCfg, err := config.Get()
 			if err != nil {
 				return fmt.Errorf("failed to get config: %w", err)
@@ -90,20 +84,15 @@ Examples:
 				}
 			}
 
-			if err := rt.IsHealthy(cmd.Context()); err != nil {
-				rt.EmitUnhealthyError(sink, err)
-				return output.NewSilentError(fmt.Errorf("runtime not healthy: %w", err))
-			}
+			host, _ := endpoint.ResolveHost(cmd.Context(), awsContainer.Port, cfg.LocalStackHost)
 
-			runningName, err := container.ResolveRunningContainerName(cmd.Context(), rt, awsContainer)
+			resolved, _, err := resolveReachableEmulator(cmd.Context(), cfg.DockerHost, sink, awsContainer, host)
 			if err != nil {
-				return fmt.Errorf("checking emulator status: %w", err)
+				return err
 			}
-			if runningName == "" {
+			if !resolved.Found() {
 				return container.HandleNoRunningContainer(sink, awsContainer)
 			}
-
-			host, _ := endpoint.ResolveHost(cmd.Context(), awsContainer.Port, cfg.LocalStackHost)
 
 			profileExists, _ := awsconfig.ProfileExists(cmd.Context())
 			if !profileExists {

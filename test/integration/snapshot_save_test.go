@@ -411,7 +411,7 @@ func TestSnapshotSaveEmulatorNotRunning(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			// Intentionally no startTestContainer: the emulator is not running.
 			ctx := testContext(t)
-			e := env.Environ(testEnvWithHome(t.TempDir(), ""))
+			e := env.Environ(testEnvWithHome(t.TempDir(), "")).With(env.LocalStackHost, deadLocalStackHost)
 			if tc.authToken != "" {
 				e = e.With(env.AuthToken, tc.authToken)
 			}
