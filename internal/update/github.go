@@ -40,7 +40,7 @@ func githubRequest(ctx context.Context, url, token string) (*http.Response, erro
 }
 
 func fetchLatestRelease(ctx context.Context, token string) (*githubRelease, error) {
-	resp, err := githubRequest(ctx, releasesAPIURL(), token)
+	resp, err := githubRequest(ctx, latestReleaseURL, token)
 	if err != nil {
 		return nil, err
 	}
@@ -77,7 +77,7 @@ type binaryUpdater struct {
 
 func newBinaryUpdater() *binaryUpdater {
 	return &binaryUpdater{
-		downloadBase: releaseDownloadBase(),
+		downloadBase: "https://github.com/" + githubRepo + "/releases/download",
 		resolveExe: func() (string, error) {
 			exe, err := os.Executable()
 			if err != nil {
