@@ -2,8 +2,10 @@ package cmd
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -487,6 +489,28 @@ func commandDisplayName(c *cobra.Command) string {
 	return strings.TrimPrefix(c.CommandPath(), c.Root().Name()+" ")
 }
 
+// ExitCode maps a command error to the exit code the lstk process terminates
+// with: a proxied tool's *exec.ExitError carries that tool's exact code, an
+// output.ExitCodeError carries the --json exit-code convention (3
+// CONFIRMATION_REQUIRED, 4 AUTH_REQUIRED), anything else collapses to 1.
+// errors.As unwraps through the SilentError wrapper to reach either type.
+// main.go and instrumentCommands both use this, so the telemetry exit_code
+// always matches the real process exit code.
+func ExitCode(err error) int {
+	if err == nil {
+		return 0
+	}
+	var exitErr *exec.ExitError
+	if errors.As(err, &exitErr) {
+		return exitErr.ExitCode()
+	}
+	var codeErr *output.ExitCodeError
+	if errors.As(err, &codeErr) {
+		return codeErr.Code
+	}
+	return 1
+}
+
 // instrumentCommands walks the Cobra command tree and wraps every RunE with telemetry emission.
 func instrumentCommands(cmd *cobra.Command, tel *telemetry.Client) {
 	walkCommandsWithRunE(cmd, func(c *cobra.Command) {
@@ -507,14 +531,21 @@ func instrumentCommands(cmd *cobra.Command, tel *telemetry.Client) {
 				flags = append(flags, "--"+f.Name)
 			})
 
-			exitCode := 0
+			// Proxy commands disable flag parsing, so their wrapped tool's
+			// subcommand is invisible in the command path; record its leading
+			// tokens so failures are attributable to a service/operation.
+			subcommand := ""
+			if c.DisableFlagParsing {
+				subcommand = proxySubcommand(args)
+			}
+
+			exitCode := ExitCode(runErr)
 			errorMsg := ""
 			if runErr != nil {
-				exitCode = 1
 				errorMsg = runErr.Error()
 			}
 
-			tel.EmitCommand(c.Context(), commandDisplayName(c), flags, time.Since(startTime).Milliseconds(), exitCode, errorMsg)
+			tel.EmitCommand(c.Context(), commandDisplayName(c), subcommand, flags, time.Since(startTime).Milliseconds(), exitCode, errorMsg)
 
 			return runErr
 		}
