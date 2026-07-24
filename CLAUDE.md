@@ -67,7 +67,7 @@ Notes:
   - `terminal/` - Plain-mode terminal helpers (spinner, TTY detection)
   - `tracing/` - OpenTelemetry setup (`LSTK_OTEL=1`)
   - `ui/` - Bubble Tea views for interactive output
-  - `update/` - Self-update logic: version check via GitHub API, binary/Homebrew/npm update paths, archive extraction; also detects multiple lstk installs on PATH (`FindInstalls`/`WarnMultipleInstalls`, warned on `lstk update` and the start-path update notification)
+  - `update/` - Self-update logic: version check via GitHub API, binary/Homebrew/npm update paths, archive extraction; the binary path verifies the downloaded archive's SHA-256 against the release's `checksums.txt` before replacing the executable (hard fail on missing/malformed manifest or mismatch); also detects multiple lstk installs on PATH (`FindInstalls`/`WarnMultipleInstalls`, warned on `lstk update` and the start-path update notification)
   - `validate/` - Reusable input validators for user-supplied CLI values (pod names, env var names, auth tokens) rejecting malformed/hostile input (control chars, path traversal, percent-encoding, shell metacharacters)
   - `version/` - Version info
   - `volume/` - `lstk volume` domain logic

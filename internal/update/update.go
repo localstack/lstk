@@ -74,8 +74,8 @@ func applyUpdate(ctx context.Context, sink output.Sink, latest, githubToken stri
 		sink.Emit(output.MessageEvent{Severity: output.SeverityNote, Text: "Installed through npm, running npm install -g"})
 		err = updateNPM(ctx, sink)
 	default:
-		sink.Emit(output.SpinnerStart("Downloading update"))
-		err = updateBinary(ctx, latest, githubToken)
+		sink.Emit(output.SpinnerStart("Downloading and verifying update"))
+		err = newBinaryUpdater().update(ctx, latest, githubToken)
 		sink.Emit(output.SpinnerStop())
 	}
 	if err != nil {
