@@ -30,7 +30,7 @@ func TestStartSnapshotInvalidPodName(t *testing.T) {
 
 	_, stderr, err := runLstk(t, ctx, t.TempDir(),
 		testEnvWithHome(t.TempDir(), ""),
-		"--non-interactive", "start", "--snapshot", "pod:_bad",
+		"--non-interactive", "start", "--snapshot", "pod:bad.name",
 	)
 	requireExitCode(t, 1, err)
 	assert.Contains(t, stderr, "invalid pod name")

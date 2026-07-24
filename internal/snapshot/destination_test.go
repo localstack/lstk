@@ -174,8 +174,19 @@ func TestParseSource(t *testing.T) {
 			wantErr: "invalid pod name",
 		},
 		{
-			name:    "pod: leading hyphen",
-			input:   "pod:-bad",
+			name:        "pod: leading hyphen accepted (platform allows it)",
+			input:       "pod:-baseline",
+			wantKind:    snapshot.KindPod,
+			wantPodName: "-baseline",
+		},
+		{
+			name:    "pod: percent encoding rejected",
+			input:   "pod:staging%2Fpod",
+			wantErr: "invalid pod name",
+		},
+		{
+			name:    "pod: shell metacharacters rejected",
+			input:   "pod:a;rm",
 			wantErr: "invalid pod name",
 		},
 
@@ -511,16 +522,32 @@ func TestParseDestination(t *testing.T) {
 			wantErr: "invalid pod name",
 		},
 		{
-			// pod name starting with hyphen
-			name:    "pod: leading hyphen",
-			input:   "pod:-invalid",
-			wantErr: "invalid pod name",
+			// leading hyphen is inside the platform's POD_NAME_PATTERN
+			name:        "pod: leading hyphen accepted (platform allows it)",
+			input:       "pod:-baseline",
+			wantKind:    snapshot.KindPod,
+			wantPodName: "-baseline",
 		},
 		{
 			name:        "pod: underscore allowed",
 			input:       "pod:ci_test-underscore",
 			wantKind:    snapshot.KindPod,
 			wantPodName: "ci_test-underscore",
+		},
+		{
+			name:    "pod: percent encoding rejected",
+			input:   "pod:staging%2Fpod",
+			wantErr: "invalid pod name",
+		},
+		{
+			name:    "pod: embedded query rejected",
+			input:   "pod:abc?fields=name",
+			wantErr: "invalid pod name",
+		},
+		{
+			name:    "pod: shell metacharacters rejected",
+			input:   "pod:a;rm",
+			wantErr: "invalid pod name",
 		},
 
 		// --- unknown schemes ---

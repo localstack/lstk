@@ -7,9 +7,10 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"time"
+
+	"github.com/localstack/lstk/internal/validate"
 )
 
 // ErrHomeNotSet is returned when a path needs "~" expansion but no home directory was provided.
@@ -24,8 +25,6 @@ var (
 	// ErrCredentialsInS3URL is returned when an s3:// ref embeds credential query
 	// params. Credentials must come from the environment or --profile, never the URL.
 	ErrCredentialsInS3URL = errors.New("do not put credentials in the s3:// URL; use AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY or --profile")
-
-	validPodName = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_-]*$`)
 )
 
 const (
@@ -70,8 +69,8 @@ func IsS3Ref(ref string) bool {
 // ValidatePodName validates a user-supplied pod name (the identity of a snapshot
 // on a remote), using the same rules as pod: refs.
 func ValidatePodName(name string) error {
-	if !validPodName.MatchString(name) {
-		return fmt.Errorf("invalid pod name %q: use letters, digits, hyphens, and underscores only, starting with a letter or digit", name)
+	if err := validate.PodName(name); err != nil {
+		return fmt.Errorf("invalid pod name %q: %w", name, err)
 	}
 	return nil
 }

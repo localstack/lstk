@@ -9,6 +9,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/localstack/lstk/internal/validate"
 	"github.com/pelletier/go-toml/v2"
 	"github.com/spf13/viper"
 )
@@ -184,5 +185,24 @@ func Get() (*Config, error) {
 			return nil, fmt.Errorf("invalid container config: %w", err)
 		}
 	}
+	if err := validateNamedEnvs(cfg.Env); err != nil {
+		return nil, err
+	}
 	return &cfg, nil
+}
+
+// validateNamedEnvs rejects malformed variables defined in the top-level [env.*]
+// config sections before they are injected into a container's environment.
+func validateNamedEnvs(envs map[string]map[string]string) error {
+	for name, vars := range envs {
+		for key, value := range vars {
+			if err := validate.EnvVarName(key); err != nil {
+				return fmt.Errorf("invalid variable in [env.%s]: %w", name, err)
+			}
+			if err := validate.NoControlChars("value for "+key, value); err != nil {
+				return fmt.Errorf("invalid variable in [env.%s]: %w", name, err)
+			}
+		}
+	}
+	return nil
 }

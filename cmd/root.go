@@ -24,6 +24,7 @@ import (
 	"github.com/localstack/lstk/internal/tracing"
 	"github.com/localstack/lstk/internal/ui"
 	"github.com/localstack/lstk/internal/update"
+	"github.com/localstack/lstk/internal/validate"
 	"github.com/localstack/lstk/internal/version"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -263,6 +264,15 @@ func Execute(ctx context.Context) error {
 		if token, err := tokenStorage.GetAuthToken(); err == nil && token != "" {
 			resolvedToken = token
 		}
+	}
+	// Trim surrounding whitespace: env-injected tokens (e.g. CI secrets) commonly
+	// carry a trailing newline. Then reject clearly malformed tokens before they
+	// reach the platform API, telemetry, or the container environment.
+	resolvedToken = strings.TrimSpace(resolvedToken)
+	if err := validate.AuthToken(resolvedToken); err != nil {
+		err = fmt.Errorf("invalid auth token: %w", err)
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		return err
 	}
 	cfg.AuthToken = resolvedToken
 	tel.SetAuthToken(resolvedToken)

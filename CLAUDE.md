@@ -68,6 +68,7 @@ Notes:
   - `tracing/` - OpenTelemetry setup (`LSTK_OTEL=1`)
   - `ui/` - Bubble Tea views for interactive output
   - `update/` - Self-update logic: version check via GitHub API, binary/Homebrew/npm update paths, archive extraction; also detects multiple lstk installs on PATH (`FindInstalls`/`WarnMultipleInstalls`, warned on `lstk update` and the start-path update notification)
+  - `validate/` - Reusable input validators for user-supplied CLI values (pod names, env var names, auth tokens) rejecting malformed/hostile input (control chars, path traversal, percent-encoding, shell metacharacters)
   - `version/` - Version info
   - `volume/` - `lstk volume` domain logic
 
@@ -182,6 +183,7 @@ The release job (`.github/workflows/ci.yml`) builds the npm packages with `gorel
 - Never print directly to stdout/stderr (e.g., `fmt.Fprintf(os.Stderr, …)`). For user-facing output, emit events through `output.Sink`. For internal diagnostics, use `log.Logger`. If neither is available (e.g., during logger setup), return errors to the caller and let them decide.
 - Don't deprecate commands with Cobra's `Deprecated` field: it prints the notice raw to `os.Stderr` (bypassing `output.Sink`) and silently hides the command from `--help` and generated `lstk docs`. Remove the old command outright instead; if a transition period is genuinely needed, keep the command visible and emit the deprecation notice through the sink.
 - Do not call `config.Get()` from domain/business-logic packages. Instead, extract the values you need at the command boundary (`cmd/`) and pass them as explicit function arguments. This keeps domain functions testable without requiring Viper/config initialization.
+- Validate user/agent-supplied values where they are first accepted (the command boundary, or the domain parser that owns the format) via `internal/validate` — never an inline one-off regexp. Route by value class: pod names → `validate.PodName`; opaque secrets → only loose malformed-ness checks (`validate.AuthToken` style — no charset restriction); paths and URLs → their existing parsers (`filepath`, `net/url`). For other identifiers, follow the owning API's documented contract and add a dedicated validator if needed. If no validator fits, add one to `internal/validate` with rule-code tests instead of forking rules locally — parallel validators for the same value class drift (the pod-name rules forked exactly this way before #293 re-unified them).
 
 # Shell Completion
 
