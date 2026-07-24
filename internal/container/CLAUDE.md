@@ -2,6 +2,16 @@
 
 Detail moved out of the root CLAUDE.md.
 
+## Emulator discovery and external instances
+
+Discovery is Docker-first with an HTTP fallback. `ResolveRunningContainerName` (running.go) is the Docker-only path: exact container-name match (`localstack-{type}`), then `FindRunningByImage` (known image repos + internal port). `ResolveEmulator` wraps it and, when Docker finds nothing — or Docker is unavailable (`rt == nil`) — probes `GET /_localstack/info` on the resolved host (`ProbeEmulatorInfo`, info.go: 2s timeout, requires 200 + JSON + non-empty `version` so an unrelated service can't false-positive). A successful probe yields an **external instance** (`ResolvedEmulator.External`): something lstk did not start, e.g. LocalStack running from source (`uv run -m localstack.runtime.main`) or reached via `LOCALSTACK_HOST`. The probe runs only on paths that previously errored, so container flows are unchanged and no latency is added to success paths.
+
+Guard: `/_localstack/info` cannot identify the emulator product, so when Docker is healthy and a known LocalStack container of *any* type is running, `ResolveEmulator` treats the probe answer as that container and reports not-found — preserving the type-mismatch errors (e.g. `lstk terraform` with only Snowflake up). With Docker down the guard can't run; that looseness is accepted (from-source runs are overwhelmingly single-type).
+
+Consumers: the proxies (`aws`, `az`, `terraform`/`cdk`/`sam`) go through `resolveReachableEmulator` in `cmd/emulator.go`; `reset` and `snapshot save/load` go through `FirstReachableEmulator` (running.go), which also demotes the Docker health check to lazy — "Docker is not available" is emitted only when the probe finds nothing either. `snapshot load`'s auto-starter requires Docker, so it runs only when Docker is healthy and nothing is reachable; an external instance is used as-is. `stop`, `logs`, `restart`, and `status` remain Docker-only (a non-container instance cannot be stopped or log-tailed by lstk; status/stop/logs messaging for external instances is a planned follow-up).
+
+Integration tests for external instances live in `test/integration/external_instance_test.go`. **When adding a negative-path test** asserting "is not running"/"Docker is not available" on a probe-adopting command, pin `LOCALSTACK_HOST` to `deadLocalStackHost` (`127.0.0.1:1`) — otherwise the probe finds any real LocalStack on the developer's 4566 and the test flakes exactly on the machines this feature targets.
+
 ## GATEWAY_LISTEN and host exposure
 
 `GATEWAY_LISTEN` is not hardcoded — it is read from the container's resolved env (set it via an `[env.*]` profile referenced by the container's `env` field). When unset it defaults to `:4566,:443`. Parsing/derivation lives in `internal/container/gateway.go` (`parseGatewayListen`), mirroring the v1 CLI:

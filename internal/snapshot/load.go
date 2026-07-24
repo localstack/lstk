@@ -58,21 +58,20 @@ type PodLoader interface {
 }
 
 // load is the shared entry point for both LoadLocal and LoadPod.
-// It checks runtime health, auto-starts the emulator if needed, then runs do().
-func load(ctx context.Context, rt runtime.Runtime, containers []config.ContainerConfig, sink output.Sink, starter Starter, spinnerText string, onSuccess func(), do func() error) (retErr error) {
-	if err := rt.IsHealthy(ctx); err != nil {
-		rt.EmitUnhealthyError(sink, err)
-		return output.NewSilentError(fmt.Errorf("runtime not healthy: %w", err))
+// It checks the emulator is reachable (a managed container, or an
+// already-running instance answering the HTTP probe on host, e.g. LocalStack
+// running from source), auto-starts the emulator if needed, then runs do().
+// The auto-starter requires Docker, so it only runs when Docker is healthy;
+// an external instance found via the probe is used as-is.
+func load(ctx context.Context, rt runtime.Runtime, containers []config.ContainerConfig, sink output.Sink, host string, starter Starter, spinnerText string, onSuccess func(), do func() error) (retErr error) {
+	_, resolved, err := container.FirstReachableEmulator(ctx, rt, sink, containers, host)
+	if err != nil {
+		return err
 	}
 
 	emitExperimentalWarning(containers, sink)
 
-	runningContainers, err := container.RunningEmulators(ctx, rt, containers)
-	if err != nil {
-		return fmt.Errorf("checking emulator status: %w", err)
-	}
-
-	if len(runningContainers) == 0 {
+	if !resolved.Found() {
 		if starter == nil {
 			sink.Emit(output.ErrorEvent{
 				Title: "LocalStack is not running",
@@ -128,7 +127,7 @@ func LoadLocal(ctx context.Context, rt runtime.Runtime, containers []config.Cont
 	cwd, _ := os.Getwd()
 	home, _ := os.UserHomeDir()
 
-	return load(ctx, rt, containers, sink, starter,
+	return load(ctx, rt, containers, sink, host, starter,
 		"Loading snapshot...",
 		func() {
 			sink.Emit(output.SnapshotLoadedEvent{Source: displayPath(src, cwd, home)})
@@ -160,7 +159,7 @@ func LoadPod(ctx context.Context, rt runtime.Runtime, containers []config.Contai
 	}
 
 	var services []string
-	return load(ctx, rt, containers, sink, starter,
+	return load(ctx, rt, containers, sink, host, starter,
 		fmt.Sprintf("Loading snapshot from pod %q...", podName),
 		func() {
 			sink.Emit(output.SnapshotLoadedEvent{

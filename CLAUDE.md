@@ -126,6 +126,10 @@ Each `[[containers]]` block may set an optional `image` (override the default Do
 
 There is no `--offline` flag. Instead `container.Start` degrades gracefully when internet requests fail (Docker Hub unreachable, proxy/TLS interception, license server unreachable): local images are used when pulls fail, and the license pre-flight is skipped on transport-level failures or unsupported-tag rejections so the container validates its own bundled license. The exact fallback rules live in `internal/container/CLAUDE.md`; pair them with a custom `image` in the config to point at a locally loaded image or an internal-registry mirror.
 
+# Already-Running / From-Source Instances
+
+The proxies (`aws`, `az`, `terraform`/`cdk`/`sam`) plus `reset` and `snapshot save/load` work against a LocalStack instance lstk did not start — a from-source run, a hand-started container with an unknown image, or a remote host via `LOCALSTACK_HOST`. When Docker discovery finds nothing (or Docker is down), they probe `GET /_localstack/info` on the resolved host and attach silently on a LocalStack-shaped answer. `stop`/`logs`/`restart`/`status` remain Docker-only. Discovery semantics, the wrong-type guard, and the test-pinning rule (`deadLocalStackHost`) are documented in `internal/container/CLAUDE.md`.
+
 # Emulator Setup Commands
 
 Use `lstk setup <emulator>` to set up CLI integration for an emulator type:

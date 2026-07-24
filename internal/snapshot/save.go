@@ -31,17 +31,12 @@ type PodSaver interface {
 	SavePodSnapshot(ctx context.Context, host, podName, authToken string) (PodSaveResult, error)
 }
 
-func save(ctx context.Context, rt runtime.Runtime, containers []config.ContainerConfig, sink output.Sink, spinnerText string, onSuccess func(), do func() error) (retErr error) {
-	if err := rt.IsHealthy(ctx); err != nil {
-		rt.EmitUnhealthyError(sink, err)
-		return output.NewSilentError(fmt.Errorf("runtime not healthy: %w", err))
-	}
-
-	runningContainers, err := container.RunningEmulators(ctx, rt, containers)
+func save(ctx context.Context, rt runtime.Runtime, containers []config.ContainerConfig, sink output.Sink, host, spinnerText string, onSuccess func(), do func() error) (retErr error) {
+	_, resolved, err := container.FirstReachableEmulator(ctx, rt, sink, containers, host)
 	if err != nil {
-		return fmt.Errorf("checking emulator status: %w", err)
+		return err
 	}
-	if len(runningContainers) == 0 {
+	if !resolved.Found() {
 		sink.Emit(output.ErrorEvent{
 			Title: "LocalStack is not running",
 			Actions: []output.ErrorAction{
@@ -68,7 +63,7 @@ func save(ctx context.Context, rt runtime.Runtime, containers []config.Container
 func SaveLocal(ctx context.Context, rt runtime.Runtime, containers []config.ContainerConfig, exporter StateExporter, host, dest string, sink output.Sink) error {
 	cwd, _ := os.Getwd()
 	home, _ := os.UserHomeDir()
-	return save(ctx, rt, containers, sink,
+	return save(ctx, rt, containers, sink, host,
 		"Saving snapshot...",
 		func() {
 			sink.Emit(output.MessageEvent{Severity: output.SeveritySuccess, Text: fmt.Sprintf("Snapshot saved to %s", displayPath(dest, cwd, home))})
@@ -93,7 +88,7 @@ func SavePod(ctx context.Context, rt runtime.Runtime, containers []config.Contai
 		return fmt.Errorf("pod snapshots require authentication — set LOCALSTACK_AUTH_TOKEN or run %q", "lstk login")
 	}
 	var result PodSaveResult
-	return save(ctx, rt, containers, sink,
+	return save(ctx, rt, containers, sink, host,
 		fmt.Sprintf("Saving snapshot to pod %q...", podName),
 		func() {
 			sink.Emit(output.PodSnapshotSavedEvent{
