@@ -175,6 +175,7 @@ func NewRootCmd(cfg *env.Env, tel *telemetry.Client, logger log.Logger) *cobra.C
 		newResetCmd(cfg),
 		newSaveCmd(cfg),
 		newLoadCmd(cfg, tel, logger),
+		newSandboxCmd(cfg, logger),
 	}
 	for _, c := range commands {
 		c.GroupID = groupCommands
