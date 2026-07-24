@@ -58,6 +58,7 @@ Notes:
   - `extension/` - Git-style `lstk-<name>` extension resolution and exec
   - `iac/` - Wrappers for third-party infrastructure as code tools (`terraform/`, `cdk/`, `sam/`)
   - `log/` - Internal diagnostic logging (not for user-facing output — use `output/` for that)
+  - `mcpconfig/` - Native configuration of MCP clients (Cursor, Claude Code, VS Code, ...) to launch the LocalStack MCP server. Domain logic for `lstk mcp init`.
   - `output/` - Generic event and sink abstractions for CLI/TUI/non-interactive rendering
   - `ports/` - Port availability checks
   - `reset/` - `lstk reset` domain logic
@@ -168,6 +169,18 @@ REF parsing helpers, S3 credential precedence and remote-upsert mechanics, and t
 `@localstack/lstk` is published as a thin Node wrapper package whose `bin` is `npm/launcher.js`. The wrapper resolves the prebuilt Go binary from the platform-specific optional dependency npm installed for the host, execs it, and **forwards `SIGINT`/`SIGTERM`/`SIGHUP`** so a programmatic `kill` of the Node process tears down the Go child instead of orphaning it (the auto-generated wrapper from `goreleaser-npm-publisher` installed no signal handlers). The launcher also propagates the child's exit code / terminating signal. Tests in `npm/launcher.test.js` run via `node --test` in the `test-launcher` CI job.
 
 The release job (`.github/workflows/ci.yml`) builds the npm packages with `goreleaser-npm-publisher build`, overwrites the generated `dist/npm/lstk/index.js` with `npm/launcher.js`, then `npm publish`es each package — replacing the previous single `evg4b/goreleaser-npm-publisher-action` step.
+
+# MCP Integration
+
+`lstk mcp init` configures installed MCP clients to launch the LocalStack MCP server (`@localstack/localstack-mcp-server`) so coding agents can drive LocalStack. Domain logic lives in `internal/mcpconfig/`; `cmd/mcp.go` is wiring + output-mode selection. `lstk mcp` is a namespace parent (matching `claude mcp`/`gemini mcp`/`codex mcp` conventions); bare `lstk mcp` prints help.
+
+This is a native Go reimplementation of the standalone setup wizard shipped in the `localstack-mcp-server` repo — NOT a wrapper around `npx … init`. The rationale: lstk is a self-contained Go binary that has never required Node, and the users most likely to run `lstk mcp init` (Homebrew/raw-binary installs) often have no Node. Reimplementing natively keeps that property, reuses the auth token lstk already resolves (no token prompt), and matches lstk's output/sink house style. The entry it writes is kept byte-compatible with the npm wizard's (literally named `localstack`, same `LOCALSTACK_AUTH_TOKEN` convention) so the two installers are interchangeable.
+
+- Defaults to **Docker mode** (`command: docker run … localstack/localstack-mcp-server`) so the lstk user needs no Node at all — neither to run init nor to run the server. `--method npx` switches to the host-Node launcher.
+- Reuses the resolved auth token (`cfg.AuthToken` from env or keyring); errors early if absent. The command needs no `initConfig`/config.toml.
+- Two adapter kinds in `internal/mcpconfig/clients.go`: **file-based** (Cursor, Claude Desktop, VS Code) merge a JSON entry into the client's config (0600, token-bearing); **CLI-managed** (Claude Code, Codex) shell out to the client's own `mcp add` via an injectable `cliRunner`. VS Code uses the divergent top-level `servers` key + `type: "stdio"`. Adding a client = add an adapter to `allAdapters` (OpenCode and Amazon Q/Kiro are intentionally deferred).
+- Per-client config paths/schemas were ported from the wizard source; `internal/mcpconfig/paths.go` resolves them per-OS. Limitation: the JSON merge reformats existing files and drops JSONC comments (acceptable for v1).
+- By default every detected client is configured; `--client` narrows the selection (and bypasses detection). `--config KEY=VALUE` forwards extra server env; `--cache-dir`/`--workspace`/`--image-tag` tune Docker mode.
 
 # Code Style
 
