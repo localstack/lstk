@@ -1563,3 +1563,29 @@ func TestStart_SecondLicenseRejectionAfterReloginRendersErrorEvent(t *testing.T)
 	assert.Contains(t, got, "License validation failed", "the second rejection must render the same actionable error as the first")
 	assert.Contains(t, got, "lstk logout && lstk login")
 }
+
+// TestPromptRelogin_FoldsReasonIntoThePromptWithoutASeparateWarning covers a
+// duplication bug: promptRelogin used to emit the rejection reason as its own
+// warning message before asking the question, so a decline showed "License
+// validation failed" a second time in the final ErrorEvent. The reason must be
+// folded into the prompt itself instead, so it's stated exactly once.
+func TestPromptRelogin_FoldsReasonIntoThePromptWithoutASeparateWarning(t *testing.T) {
+	licErr := &api.LicenseError{Message: "invalid, inactive, or expired authentication token or subscription", Status: http.StatusForbidden}
+
+	var events []output.Event
+	sink := output.SinkFunc(func(event output.Event) {
+		events = append(events, event)
+		if req, ok := event.(output.UserInputRequestEvent); ok {
+			req.ResponseCh <- output.InputResponse{Cancelled: true}
+		}
+	})
+
+	accepted := promptRelogin(context.Background(), sink, licErr)
+
+	require.False(t, accepted, "declining must report false")
+	require.Len(t, events, 1, "the rejection reason must be folded into the prompt, not emitted as a separate message first")
+	req, ok := events[0].(output.UserInputRequestEvent)
+	require.True(t, ok, "the only event emitted must be the prompt itself")
+	assert.Contains(t, req.Prompt, licErr.Message, "the prompt must explain why the user is being asked to log in again")
+	assert.Contains(t, req.Prompt, "Log in again to refresh your credentials?")
+}

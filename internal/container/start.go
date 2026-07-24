@@ -1039,12 +1039,14 @@ func isDefinitiveLicenseRejection(status int) bool {
 
 // promptRelogin asks the user whether to run a fresh login after a definitive
 // license rejection. Only call in interactive mode: the plain sink never
-// answers input requests, so waiting on one would hang.
+// answers input requests, so waiting on one would hang. The rejection reason is
+// folded into the prompt itself (rather than emitted as a separate message
+// first) so a decline doesn't show "License validation failed" twice — once
+// here and again in the final ErrorEvent if the user says no.
 func promptRelogin(ctx context.Context, sink output.Sink, licErr *api.LicenseError) bool {
-	sink.Emit(output.MessageEvent{Severity: output.SeverityWarning, Text: fmt.Sprintf("License validation failed: %s", licErr.Message)})
 	responseCh := make(chan output.InputResponse, 1)
 	sink.Emit(output.UserInputRequestEvent{
-		Prompt:     "Log in again to refresh your credentials?",
+		Prompt:     fmt.Sprintf("License validation failed: %s. Log in again to refresh your credentials?", licErr.Message),
 		Options:    []output.InputOption{{Key: "enter", Label: "Press ENTER to log in again"}},
 		ResponseCh: responseCh,
 	})
