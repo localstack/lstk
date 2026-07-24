@@ -773,7 +773,7 @@ func selectContainersToStart(ctx context.Context, rt runtime.Runtime, sink outpu
 			sink.Emit(output.ErrorEvent{
 				Title:   fmt.Sprintf("Port %s is already in use", conflictPort),
 				Summary: "LocalStack requires this port. Free it before starting.",
-				Actions: portConflictActions(rt.Flavor(), conflictPort),
+				Actions: portConflictActions(rt.Flavor(), runtime.DetectInstalledFlavor(), conflictPort),
 			})
 			tel.EmitEmulatorLifecycleEvent(ctx, telemetry.LifecycleEvent{
 				EventType: telemetry.LifecycleStartError,
@@ -784,7 +784,7 @@ func selectContainersToStart(ctx context.Context, rt runtime.Runtime, sink outpu
 			})
 			return nil, output.NewSilentError(err)
 		}
-		c.ExtraPorts = dropBusyOptionalPorts(sink, rt.Flavor(), c.Port, c.ExtraPorts)
+		c.ExtraPorts = dropBusyOptionalPorts(sink, rt.Flavor(), runtime.DetectInstalledFlavor(), c.Port, c.ExtraPorts)
 
 		filtered = append(filtered, c)
 	}
@@ -809,7 +809,7 @@ func emitLocalStackAlreadyRunningWarning(sink output.Sink, port, runningVersion,
 // already taken, warning about each one, and returns the mappings to publish.
 // Required mappings are passed through untouched — the caller has already
 // verified them.
-func dropBusyOptionalPorts(sink output.Sink, flavor, edgePort string, mappings []runtime.PortMapping) []runtime.PortMapping {
+func dropBusyOptionalPorts(sink output.Sink, activeFlavor, installedFlavor, edgePort string, mappings []runtime.PortMapping) []runtime.PortMapping {
 	var kept []runtime.PortMapping
 	dropped := false
 	for i, ep := range mappings {
@@ -821,7 +821,7 @@ func dropBusyOptionalPorts(sink output.Sink, flavor, edgePort string, mappings [
 				}
 				sink.Emit(output.MessageEvent{
 					Severity: output.SeverityWarning,
-					Text:     optionalPortDropWarning(flavor, ep.HostPort, edgePort, portBusy),
+					Text:     optionalPortDropWarning(activeFlavor, installedFlavor, ep.HostPort, edgePort, portBusy),
 				})
 				continue
 			}
@@ -849,7 +849,7 @@ const (
 // optionalPortDropWarning explains that an optional port is skipped and where
 // HTTPS clients should go instead: the edge port serves both HTTP and HTTPS, so
 // only clients hardwired to the dropped port itself are affected.
-func optionalPortDropWarning(flavor, port, edgePort string, cause portDropCause) string {
+func optionalPortDropWarning(activeFlavor, installedFlavor, port, edgePort string, cause portDropCause) string {
 	reason := "is in use"
 	if cause == portBindDenied {
 		reason = "cannot be published (bind: permission denied)"
@@ -857,17 +857,28 @@ func optionalPortDropWarning(flavor, port, edgePort string, cause portDropCause)
 	text := fmt.Sprintf(
 		"Port %s %s — starting without it. Clients that hardwire HTTPS on port %s must use https://localhost:%s instead (the edge port serves both HTTP and HTTPS).",
 		port, reason, port, edgePort)
-	if hint := tailoredPortDropHint(flavor, port, cause); hint != "" {
+	if hint := tailoredPortDropHint(activeFlavor, installedFlavor, port, cause); hint != "" {
 		text += " " + hint
 	}
 	return text
 }
 
 // tailoredPortDropHint names the likely culprit and remedy for a dropped port
-// on runtimes where it is known; empty otherwise.
-func tailoredPortDropHint(flavor, port string, cause portDropCause) string {
+// on runtimes where it is known; empty otherwise. activeFlavor classifies the
+// daemon socket lstk is connected to; installedFlavor is filesystem/PATH
+// evidence (runtime.DetectInstalledFlavor). Both matter: on Windows the daemon
+// host is a named pipe, so activeFlavor is always unknown and the evidence is
+// the only way e.g. Rancher users ever see the rdctl fix.
+func tailoredPortDropHint(activeFlavor, installedFlavor, port string, cause portDropCause) string {
 	switch cause {
 	case portBindDenied:
+		// A bind denial is about the privileges of the daemon actually in use, so
+		// evidence of some other installed runtime is irrelevant — only substitute
+		// it when the active daemon couldn't be classified at all.
+		flavor := activeFlavor
+		if flavor == runtime.FlavorUnknown {
+			flavor = installedFlavor
+		}
 		switch flavor {
 		case runtime.FlavorRancherDesktop:
 			return "Rancher Desktop needs Administrative Access to publish ports below 1024 — enable it under Preferences > Application, then restart lstk."
@@ -875,7 +886,10 @@ func tailoredPortDropHint(flavor, port string, cause portDropCause) string {
 			return "Podman machine cannot publish ports below 1024 in rootless mode — switch with `podman machine set --rootful`, then restart lstk."
 		}
 	case portBusy:
-		if flavor == runtime.FlavorRancherDesktop && port == "443" {
+		// Traefik holds 443 whenever Rancher Desktop's Kubernetes runs, regardless
+		// of which runtime lstk is connected to — so Rancher merely being installed
+		// is enough to name it as the likely squatter.
+		if port == "443" && (activeFlavor == runtime.FlavorRancherDesktop || installedFlavor == runtime.FlavorRancherDesktop) {
 			return "Rancher Desktop's Kubernetes ingress (Traefik) usually holds port 443 — free it with `rdctl set --kubernetes.options.traefik=false`, then restart lstk."
 		}
 	}
@@ -919,7 +933,7 @@ func startWithOptionalPortFallback(ctx context.Context, rt runtime.Runtime, sink
 		}
 		sink.Emit(output.MessageEvent{
 			Severity: output.SeverityWarning,
-			Text:     optionalPortDropWarning(rt.Flavor(), c.ExtraPorts[i].HostPort, c.Port, cause),
+			Text:     optionalPortDropWarning(rt.Flavor(), runtime.DetectInstalledFlavor(), c.ExtraPorts[i].HostPort, c.Port, cause),
 		})
 		// The failed attempt leaves the created-but-never-started container behind
 		// under the same name (AutoRemove only fires on exit); remove it before
@@ -932,9 +946,12 @@ func startWithOptionalPortFallback(ctx context.Context, rt runtime.Runtime, sink
 }
 
 // portConflictActions builds the next-step actions for a fatal extra-port
-// conflict, tailored to the runtime in use where the squatter is known.
-func portConflictActions(flavor, port string) []output.ErrorAction {
-	if flavor == runtime.FlavorRancherDesktop && port == "443" {
+// conflict, tailored to the runtime where the squatter is known. Rancher merely
+// being installed counts (see tailoredPortDropHint): Traefik holds 443 no
+// matter which runtime lstk is connected to, and on Windows the active flavor
+// is always unknown (named pipe).
+func portConflictActions(activeFlavor, installedFlavor, port string) []output.ErrorAction {
+	if port == "443" && (activeFlavor == runtime.FlavorRancherDesktop || installedFlavor == runtime.FlavorRancherDesktop) {
 		return []output.ErrorAction{{
 			Label: "Rancher Desktop's Kubernetes ingress (Traefik) usually holds port 443. Free it:",
 			Value: "rdctl set --kubernetes.options.traefik=false",

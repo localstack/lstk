@@ -297,6 +297,17 @@ func detectRuntimeFlavor(
 	return flavorUnknown
 }
 
+// DetectInstalledFlavor reports which container runtime appears to be installed
+// on this machine from filesystem/PATH evidence alone (state directories, the
+// podman CLI), independent of the daemon lstk is connected to. This matters for
+// hints when socket classification comes up empty — e.g. on Windows the daemon
+// host is a named pipe, which classifySocketFlavor cannot attribute to any
+// runtime, so Flavor() alone would hide runtime-specific fixes there.
+func DetectInstalledFlavor() string {
+	home, _ := os.UserHomeDir()
+	return detectRuntimeFlavor(flavorUnknown, home, os.Stat, exec.LookPath, stdruntime.GOOS).String()
+}
+
 // tailoredRuntimeAction returns the start hint for a detected non-Docker
 // runtime, or ok=false if flavor has no dedicated hint (e.g. Docker Desktop/
 // native Docker are already covered by the generic per-OS actions, and Lima

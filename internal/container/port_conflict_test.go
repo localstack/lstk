@@ -38,7 +38,7 @@ func TestDropBusyOptionalPortsDropsBusyAndWarns(t *testing.T) {
 	free := freePort(t)
 
 	sink := &recordingSink{}
-	kept := dropBusyOptionalPorts(sink, runtime.FlavorDockerDesktop, "4566", []runtime.PortMapping{
+	kept := dropBusyOptionalPorts(sink, runtime.FlavorDockerDesktop, runtime.FlavorUnknown, "4566", []runtime.PortMapping{
 		{ContainerPort: "443", HostPort: busy, Optional: true},
 		{ContainerPort: "8443", HostPort: free, Optional: true},
 	})
@@ -56,7 +56,7 @@ func TestDropBusyOptionalPortsPassesRequiredThrough(t *testing.T) {
 	busy := busyPort(t)
 
 	sink := &recordingSink{}
-	kept := dropBusyOptionalPorts(sink, runtime.FlavorDockerDesktop, "4566", []runtime.PortMapping{
+	kept := dropBusyOptionalPorts(sink, runtime.FlavorDockerDesktop, runtime.FlavorUnknown, "4566", []runtime.PortMapping{
 		{ContainerPort: "443", HostPort: busy, Optional: false},
 	})
 
@@ -65,18 +65,43 @@ func TestDropBusyOptionalPortsPassesRequiredThrough(t *testing.T) {
 }
 
 func TestOptionalPortDropWarningRancherHint(t *testing.T) {
-	busyHint := optionalPortDropWarning(runtime.FlavorRancherDesktop, "443", "4566", portBusy)
+	busyHint := optionalPortDropWarning(runtime.FlavorRancherDesktop, runtime.FlavorUnknown, "443", "4566", portBusy)
 	assert.Contains(t, busyHint, "rdctl set --kubernetes.options.traefik=false")
 
-	deniedHint := optionalPortDropWarning(runtime.FlavorRancherDesktop, "443", "4566", portBindDenied)
+	deniedHint := optionalPortDropWarning(runtime.FlavorRancherDesktop, runtime.FlavorUnknown, "443", "4566", portBindDenied)
 	assert.Contains(t, deniedHint, "permission denied")
 	assert.Contains(t, deniedHint, "Administrative Access")
 
-	podmanDenied := optionalPortDropWarning(runtime.FlavorPodman, "443", "4566", portBindDenied)
+	podmanDenied := optionalPortDropWarning(runtime.FlavorPodman, runtime.FlavorUnknown, "443", "4566", portBindDenied)
 	assert.Contains(t, podmanDenied, "podman machine set --rootful")
 
-	withoutHint := optionalPortDropWarning(runtime.FlavorDockerDesktop, "443", "4566", portBusy)
+	withoutHint := optionalPortDropWarning(runtime.FlavorDockerDesktop, runtime.FlavorUnknown, "443", "4566", portBusy)
 	assert.NotContains(t, withoutHint, "rdctl")
+}
+
+// On Windows the daemon host is a named pipe, so the active socket flavor is
+// always unknown — installed-runtime evidence must carry the hints there.
+func TestTailoredPortDropHintUsesInstalledEvidence(t *testing.T) {
+	// Busy 443: Rancher merely being installed names Traefik, even when lstk is
+	// connected to a different (or unclassifiable) runtime.
+	assert.Contains(t,
+		tailoredPortDropHint(runtime.FlavorUnknown, runtime.FlavorRancherDesktop, "443", portBusy),
+		"rdctl set --kubernetes.options.traefik=false")
+	assert.Contains(t,
+		tailoredPortDropHint(runtime.FlavorDockerDesktop, runtime.FlavorRancherDesktop, "443", portBusy),
+		"rdctl set --kubernetes.options.traefik=false")
+
+	// Bind denied: evidence substitutes only when the active daemon is
+	// unclassified — a denial under a positively identified runtime is about
+	// that runtime's privileges, not some other installed one.
+	assert.Contains(t,
+		tailoredPortDropHint(runtime.FlavorUnknown, runtime.FlavorRancherDesktop, "443", portBindDenied),
+		"Administrative Access")
+	assert.Contains(t,
+		tailoredPortDropHint(runtime.FlavorUnknown, runtime.FlavorPodman, "443", portBindDenied),
+		"podman machine set --rootful")
+	assert.Empty(t,
+		tailoredPortDropHint(runtime.FlavorDockerDesktop, runtime.FlavorRancherDesktop, "443", portBindDenied))
 }
 
 func TestFailedOptionalPortBindMatchesDaemonError(t *testing.T) {
@@ -146,10 +171,13 @@ func TestStartWithOptionalPortFallbackPassesThroughOtherErrors(t *testing.T) {
 }
 
 func TestPortConflictActions(t *testing.T) {
-	actions := portConflictActions(runtime.FlavorRancherDesktop, "443")
+	actions := portConflictActions(runtime.FlavorRancherDesktop, runtime.FlavorUnknown, "443")
 	require.Len(t, actions, 1)
 	assert.Equal(t, "rdctl set --kubernetes.options.traefik=false", actions[0].Value)
 
-	assert.Empty(t, portConflictActions(runtime.FlavorDockerDesktop, "443"))
-	assert.Empty(t, portConflictActions(runtime.FlavorRancherDesktop, "8443"))
+	fromEvidence := portConflictActions(runtime.FlavorUnknown, runtime.FlavorRancherDesktop, "443")
+	require.Len(t, fromEvidence, 1, "installed-runtime evidence must carry the hint when the socket flavor is unknown (e.g. Windows named pipe)")
+
+	assert.Empty(t, portConflictActions(runtime.FlavorDockerDesktop, runtime.FlavorUnknown, "443"))
+	assert.Empty(t, portConflictActions(runtime.FlavorRancherDesktop, runtime.FlavorUnknown, "8443"))
 }
