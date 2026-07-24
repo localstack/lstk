@@ -343,6 +343,11 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			a.deferredOutput += styled
 		}
 		return a, nil
+	case output.SnapshotDiffEvent:
+		if line, ok := output.FormatEventLine(msg); ok {
+			a.addSuccessLines(line)
+		}
+		return a, nil
 	default:
 		if e, ok := msg.(output.Event); ok {
 			if line, ok := output.FormatEventLine(e); ok {

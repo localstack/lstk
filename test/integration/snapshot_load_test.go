@@ -14,6 +14,25 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// mockPodDiffServer returns a test server that handles GET /_localstack/pods/{name}/diff.
+// It responds with a fixed diff payload: two S3 additions and one DynamoDB modification.
+func mockPodDiffServer(t *testing.T) *httptest.Server {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, "/_localstack/pods/") &&
+			strings.HasSuffix(r.URL.Path, "/diff") &&
+			r.Method == http.MethodGet {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"s3":[{"operation_type":"ADDITION"},{"operation_type":"ADDITION"}],"dynamodb":[{"operation_type":"MODIFICATION"}]}`))
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	t.Cleanup(srv.Close)
+	return srv
+}
+
 // mockLocalLoadServer returns a test server that handles local snapshot import:
 //   - POST /_localstack/pods              → import (always succeeds)
 //   - POST /_localstack/state/reset       → state reset (overwrite strategy)
@@ -88,6 +107,27 @@ func mockPodNotFoundServer(t *testing.T) *httptest.Server {
 			w.Header().Set("Content-Type", "application/x-ndjson")
 			w.WriteHeader(http.StatusOK)
 			_, _ = w.Write([]byte(`{"event":"completion","status":"error","message":"Failed to get version information from platform.. aborting"}` + "\n"))
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+// mockPodDiffNotFoundServer mimics the emulator response when the requested
+// cloud snapshot does not exist: the platform version lookup fails, so the
+// diff request completes with the generic "Failed to get version information"
+// diagnostic (same underlying message as mockPodNotFoundServer, but returned
+// synchronously with an error status rather than via an NDJSON completion event).
+func mockPodDiffNotFoundServer(t *testing.T) *httptest.Server {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, "/_localstack/pods/") &&
+			strings.HasSuffix(r.URL.Path, "/diff") &&
+			r.Method == http.MethodGet {
+			w.WriteHeader(http.StatusInternalServerError)
+			_, _ = w.Write([]byte("Error: Failed to get version information from platform.. aborting"))
 			return
 		}
 		w.WriteHeader(http.StatusNotFound)
@@ -438,4 +478,78 @@ func TestLoadAliasMatchesSnapshotLoad(t *testing.T) {
 	// Alias must emit telemetry under the canonical name so usage isn't
 	// split across "load" and "snapshot load" labels.
 	assertCommandTelemetry(t, events, "snapshot load", 0)
+}
+
+// --- dry-run tests ---
+
+func TestSnapshotLoadDryRunOnLocalRef(t *testing.T) {
+	t.Parallel()
+	ctx := testContext(t)
+	dir := t.TempDir()
+	snapPath := writeTestSnapFile(t, dir, "snap.zip")
+
+	_, stderr, err := runLstk(t, ctx, dir,
+		testEnvWithHome(t.TempDir(), ""),
+		"--non-interactive", "snapshot", "load", "--dry-run", snapPath,
+	)
+	requireExitCode(t, 1, err)
+	assert.Contains(t, stderr, "pod refs")
+}
+
+func TestSnapshotLoadDryRunPodNoAuthToken(t *testing.T) {
+	t.Parallel()
+	ctx := testContext(t)
+
+	_, stderr, err := runLstk(t, ctx, t.TempDir(),
+		env.Environ(testEnvWithHome(t.TempDir(), "")).Without(env.AuthToken),
+		"--non-interactive", "snapshot", "load", "--dry-run", "pod:my-baseline",
+	)
+	requireExitCode(t, 1, err)
+	assert.Contains(t, stderr, "authentication")
+}
+
+func TestSnapshotLoadDryRunPodSuccess(t *testing.T) {
+	requireDocker(t)
+	cleanup()
+	t.Cleanup(cleanup)
+
+	ctx := testContext(t)
+	startTestContainer(t, ctx)
+	srv := mockPodDiffServer(t)
+
+	stdout, stderr, err := runLstk(t, ctx, t.TempDir(),
+		env.Environ(testEnvWithHome(t.TempDir(), "")).
+			With(env.LocalStackHost, lsHost(srv)).
+			With(env.AuthToken, "test-token"),
+		"--non-interactive", "snapshot", "load", "--dry-run", "pod:my-baseline",
+	)
+	require.NoError(t, err, "lstk snapshot load --dry-run failed: %s", stderr)
+	assert.Contains(t, stdout, "Dry-run results")
+	assert.Contains(t, stdout, "my-baseline")
+	assert.Contains(t, stdout, "No state was modified.")
+}
+
+// TestSnapshotLoadDryRunPodNotFound covers a non-existent cloud snapshot, mirroring
+// TestSnapshotLoadPodNotFound for the --dry-run path: the emulator's diff endpoint
+// reports the same generic platform version-lookup failure for an unknown pod, and
+// lstk must translate it into a clear "not found" message rather than leaking the
+// raw platform diagnostic.
+func TestSnapshotLoadDryRunPodNotFound(t *testing.T) {
+	requireDocker(t)
+	cleanup()
+	t.Cleanup(cleanup)
+
+	ctx := testContext(t)
+	startTestContainer(t, ctx)
+	srv := mockPodDiffNotFoundServer(t)
+
+	stdout, stderr, err := runLstk(t, ctx, t.TempDir(),
+		env.Environ(testEnvWithHome(t.TempDir(), "")).
+			With(env.LocalStackHost, lsHost(srv)).
+			With(env.AuthToken, "test-token"),
+		"--non-interactive", "snapshot", "load", "--dry-run", "pod:does-not-exist",
+	)
+	requireExitCode(t, 1, err)
+	assert.Contains(t, stdout, "not found on the LocalStack platform")
+	assert.NotContains(t, strings.ToLower(stdout+stderr), "version information")
 }
