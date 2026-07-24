@@ -104,9 +104,22 @@ func Start(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts Start
 			return "", loginErr
 		}
 		opts.Telemetry.SetAuthToken(newToken)
-		return startOnce(ctx, rt, sink, opts, interactive, newToken, licenseFilePath, true)
+		version, err = startOnce(ctx, rt, sink, opts, interactive, newToken, licenseFilePath, true)
+		if err == nil || !errors.As(err, &rejErr) {
+			return version, err
+		}
+		// The freshly logged-in token was rejected too: render it the same way
+		// as a first rejection instead of surfacing the raw error, below.
 	}
 
+	return "", renderLicenseRejection(sink, rejErr, err)
+}
+
+// renderLicenseRejection emits the actionable ErrorEvent for a definitive
+// license rejection and returns a silent error wrapping err, so a rejection
+// renders identically whether it's the initial failure or a retry after
+// re-login came back rejected too.
+func renderLicenseRejection(sink output.Sink, rejErr *licenseRejectedError, err error) error {
 	sink.Emit(output.ErrorEvent{
 		Title: fmt.Sprintf("License validation failed for %s:%s: %s", rejErr.productName, rejErr.version, rejErr.licErr.Message),
 		Actions: []output.ErrorAction{
@@ -114,7 +127,7 @@ func Start(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts Start
 			{Label: "Or provide a valid token via the environment variable:", Value: "LOCALSTACK_AUTH_TOKEN"},
 		},
 	})
-	return "", output.NewSilentError(err)
+	return output.NewSilentError(err)
 }
 
 // licenseRejectedError carries the product/version context of a definitive

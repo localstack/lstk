@@ -3,6 +3,7 @@ package container
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"net"
@@ -18,6 +19,7 @@ import (
 	"time"
 
 	"github.com/localstack/lstk/internal/api"
+	"github.com/localstack/lstk/internal/auth"
 	"github.com/localstack/lstk/internal/caller"
 	"github.com/localstack/lstk/internal/config"
 	"github.com/localstack/lstk/internal/log"
@@ -1480,4 +1482,84 @@ func TestStartWithLicenseRetry_NoRetryWithoutCachedLicense(t *testing.T) {
 	require.Error(t, err)
 	assert.True(t, output.IsSilent(err), "the failure must be rendered by the regular startup error path")
 	assert.NotContains(t, out.String(), "refreshing the cached license")
+}
+
+// TestStart_SecondLicenseRejectionAfterReloginRendersErrorEvent covers a gap in
+// DEVX-658: if the freshly re-logged-in token is rejected too (the license
+// server's answer didn't change), the second rejection must render through the
+// same styled ErrorEvent as the first — not bypass the sink and fall through to
+// the top-level "Error: %v" fallback (cmd/root.go), which is reserved for
+// failures no sink was available to render.
+func TestStart_SecondLicenseRejectionAfterReloginRendersErrorEvent(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+
+	const authReqID = "second-rejection-auth-req"
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/auth/request":
+			w.WriteHeader(http.StatusCreated)
+			_ = json.NewEncoder(w).Encode(map[string]string{
+				"id": authReqID, "code": "TEST123", "exchange_token": "exchange-token",
+			})
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/auth/request/"+authReqID:
+			_ = json.NewEncoder(w).Encode(map[string]bool{"confirmed": true})
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/auth/request/"+authReqID+"/exchange":
+			_ = json.NewEncoder(w).Encode(map[string]string{"id": authReqID, "auth_token": "Bearer test-bearer"})
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/license/credentials":
+			_ = json.NewEncoder(w).Encode(map[string]string{"token": "fresh-token"})
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/license/request":
+			// Every license check is rejected — both the stale token on the first
+			// attempt and the freshly re-logged-in one on the retry.
+			w.WriteHeader(http.StatusForbidden)
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer mockServer.Close()
+
+	ctrl := gomock.NewController(t)
+	mockRT := runtime.NewMockRuntime(ctrl)
+	mockRT.EXPECT().IsHealthy(gomock.Any()).Return(nil)
+	mockRT.EXPECT().SocketPath().Return("").AnyTimes()
+	mockRT.EXPECT().IsRunning(gomock.Any(), gomock.Any()).Return(false, nil).AnyTimes()
+	mockRT.EXPECT().FindRunningByImage(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
+	mockRT.EXPECT().ImageExists(gomock.Any(), gomock.Any()).Return(false, nil).AnyTimes()
+
+	var mu sync.Mutex
+	var out bytes.Buffer
+	sink := output.SinkFunc(func(event output.Event) {
+		mu.Lock()
+		if line, ok := output.FormatEventLine(event); ok {
+			out.WriteString(line + "\n")
+		}
+		mu.Unlock()
+		// Auto-answer every prompt (the re-login confirmation, then the login
+		// flow's "press any key" completion prompt) as if the user pressed enter.
+		if req, ok := event.(output.UserInputRequestEvent); ok {
+			req.ResponseCh <- output.InputResponse{SelectedKey: "enter"}
+		}
+	})
+
+	opts := StartOptions{
+		PlatformClient:   api.NewPlatformClient(mockServer.URL, log.Nop()),
+		WebAppURL:        mockServer.URL,
+		AuthToken:        "stale-token-predating-license-purchase",
+		ForceFileKeyring: true,
+		Logger:           log.Nop(),
+		Telemetry:        telemetry.New("", true),
+		AuthOptions:      []auth.Option{auth.WithBrowserOpener(func(string) error { return nil })},
+		Containers: []config.ContainerConfig{
+			{Type: config.EmulatorAWS, Port: "48213", Tag: "2026.4"},
+		},
+	}
+
+	_, err := Start(context.Background(), mockRT, sink, opts, true)
+
+	require.Error(t, err)
+	assert.True(t, output.IsSilent(err), "a second rejection must render through the sink, not the raw stderr fallback")
+	mu.Lock()
+	got := out.String()
+	mu.Unlock()
+	assert.Contains(t, got, "License validation failed", "the second rejection must render the same actionable error as the first")
+	assert.Contains(t, got, "lstk logout && lstk login")
 }
