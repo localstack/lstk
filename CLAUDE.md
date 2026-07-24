@@ -56,6 +56,7 @@ Notes:
   - `endpoint/` - Emulator endpoint/host resolution
   - `env/` - Process environment snapshot/injection helper (also used to isolate test envs)
   - `extension/` - Git-style `lstk-<name>` extension resolution and exec
+  - `feedback/` - Feedback API client and metadata helpers used by `lstk feedback`
   - `iac/` - Wrappers for third-party infrastructure as code tools (`terraform/`, `cdk/`, `sam/`)
   - `log/` - Internal diagnostic logging (not for user-facing output — use `output/` for that)
   - `output/` - Generic event and sink abstractions for CLI/TUI/non-interactive rendering
@@ -136,6 +137,7 @@ This naming avoids AWS-specific "profile" terminology and uses a clear verb for 
 Environment variables:
 - `LOCALSTACK_AUTH_TOKEN` - Auth token (skips browser login if set)
 - `LSTK_STARTUP_TIMEOUT` - Startup readiness deadline for `lstk start` (Go duration). Zero/unset uses the per-mode default resolved in `resolveStartupTimeout` (`internal/container/start.go`): 20s interactive (deadline only shows a recoverable keep-waiting/stop prompt, re-armed by "keep waiting"), 60s non-interactive (fatal; the container is left running for inspection). Container exits are detected separately — and instantly, with the exit code — via the exit wait `runtime.Runtime.Start` registers between create and start. `lstk start --timeout <duration>` (also on the bare root) overrides this for a single run; the flag wins over the env var when explicitly set, and `--timeout 0` falls back to the per-mode default (`addTimeoutFlag`/`applyTimeoutFlag` in `cmd/root.go`). `restart` and the snapshot auto-start path do not expose the flag.
+- `LSTK_API_ENDPOINT` - Override the LocalStack platform API endpoint (also used by `lstk feedback`)
 - `LSTK_OTEL=1` - Enables OpenTelemetry trace export (disabled by default); when enabled, standard `OTEL_EXPORTER_OTLP_*` env vars are respected by the SDK. Requires an OTLP-compatible backend to receive and visualize telemetry — for local development, `make otel` starts one (UI at http://localhost:16686).
 - `LSTK_MERGE_STRATEGY` - Default merge strategy for `snapshot load` / `load` (`account-region-merge`, `overwrite`, or `service-merge`) when `--merge` is not passed; an explicit `--merge` always wins. Resolved in `resolveMergeStrategy` (`cmd/snapshot.go`).
 

@@ -20,6 +20,7 @@ const (
 	Home               Key = "HOME"
 	UserProfile        Key = "USERPROFILE"
 	Path               Key = "PATH"
+	TermProgram        Key = "TERM_PROGRAM"
 	Persistence        Key = "LOCALSTACK_PERSISTENCE"
 	Otel               Key = "LSTK_OTEL"
 	OtelEndpoint       Key = "OTEL_EXPORTER_OTLP_ENDPOINT"
