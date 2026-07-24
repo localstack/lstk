@@ -306,6 +306,7 @@ func TestSelectContainersToStart_QueuesContainerWhenNoneRunningOnPort(t *testing
 	mockRT.EXPECT().IsRunning(gomock.Any(), c.Name).Return(false, nil)
 	mockRT.EXPECT().FindRunningByImage(gomock.Any(), []string{"localstack/localstack-pro", "localstack/localstack", "localstack/snowflake", "localstack/localstack-azure"}, "4566/tcp").
 		Return(nil, nil)
+	mockRT.EXPECT().Flavor().Return(runtime.FlavorDockerDesktop).AnyTimes()
 
 	sink := output.NewPlainSink(io.Discard)
 

@@ -35,11 +35,21 @@ func TestParseGatewayListenLoopbackHostIsBlankedForContainer(t *testing.T) {
 func TestParseGatewayListenExtraPortsPublished(t *testing.T) {
 	g, err := parseGatewayListen("0.0.0.0:4566,0.0.0.0:443,0.0.0.0:8443")
 	require.NoError(t, err)
-	extra := g.extraGatewayPorts("4566")
+	extra := g.extraGatewayPorts("4566", false)
 	require.Len(t, extra, 2)
 	assert.Equal(t, "443", extra[0].ContainerPort)
 	assert.Equal(t, "443", extra[0].HostPort)
+	assert.False(t, extra[0].Optional)
 	assert.Equal(t, "8443", extra[1].ContainerPort)
+}
+
+func TestExtraGatewayPortsMarkedOptionalWhenDefaulted(t *testing.T) {
+	g, err := parseGatewayListen("")
+	require.NoError(t, err)
+	extra := g.extraGatewayPorts("4566", true)
+	require.Len(t, extra, 1)
+	assert.Equal(t, "443", extra[0].HostPort)
+	assert.True(t, extra[0].Optional)
 }
 
 func TestParseGatewayListenBarePort(t *testing.T) {
@@ -59,7 +69,7 @@ func TestParseGatewayListenInvalid(t *testing.T) {
 func TestParseGatewayListenExtraPortsSkipsServicePortRange(t *testing.T) {
 	g, err := parseGatewayListen("0.0.0.0:4566,0.0.0.0:443,0.0.0.0:4520,0.0.0.0:8443")
 	require.NoError(t, err)
-	extra := g.extraGatewayPorts("4566")
+	extra := g.extraGatewayPorts("4566", false)
 	require.Len(t, extra, 2, "the 4520 entry already falls in the service port range and must not be duplicated")
 	assert.Equal(t, "443", extra[0].ContainerPort)
 	assert.Equal(t, "8443", extra[1].ContainerPort)

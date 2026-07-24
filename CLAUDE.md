@@ -74,6 +74,10 @@ Notes:
 
 Commands are registered in `cmd/root.go` in two Cobra groups: the `commands` group (start, stop, restart, login, logout, status, logs, setup, config, volume, update, docs, snapshot, reset, save, load) and the `tools` group of proxy commands (aws, terraform/tf, cdk, sam, az). Shared helpers: `cmd/root.go` (wiring, groups, `requireSubcommand`, `initConfig`), `cmd/help.go` (help template), `cmd/iac.go` (IaC command boundary), `cmd/extension.go` (extension dispatch).
 
+## Container runtime discovery
+
+When `DOCKER_HOST` isn't set, `DockerRuntime` resolves the daemon endpoint in order: explicit `DOCKER_HOST` (always wins, unconditionally) > `DOCKER_CONTEXT` or the current Docker CLI context (if non-default and dialable — a stale/unreachable context falls through rather than hard-failing) > a probe list of known sockets (Docker Desktop, Rancher Desktop, Colima, OrbStack, Podman machine on macOS, Lima, then native Podman on Linux) > the Docker SDK's own default. The "runtime unavailable" error also tailors its suggested start command (`rdctl start`, `colima start`, `podman machine start`, etc.) to whichever runtime it detects. Logic lives in `internal/runtime/docker.go`, `internal/runtime/docker_context.go`, and `internal/runtime/flavor.go`. User-facing per-runtime setup notes: [docs/container-runtimes.md](docs/container-runtimes.md).
+
 # Commits, PRs, and Linear
 
 - Commit messages: a single concise line. Add a `Co-Authored-By: Claude <noreply@anthropic.com>` trailer to commits and PR bodies.

@@ -163,8 +163,10 @@ func TestSocketPath_VMDetection(t *testing.T) {
 		relPath string
 	}{
 		{"docker desktop", ".docker/run/docker.sock"},
+		{"rancher desktop", ".rd/docker.sock"},
 		{"colima", ".colima/default/docker.sock"},
 		{"orbstack", ".orbstack/run/docker.sock"},
+		{"podman machine", ".local/share/containers/podman/machine/podman.sock"},
 		{"lima host", ".lima/docker/sock/docker.sock"},
 	}
 
@@ -230,8 +232,10 @@ func TestFindDockerSocket_ProbesVMSockets(t *testing.T) {
 		relPath string
 	}{
 		{"docker desktop", ".docker/run/docker.sock"},
+		{"rancher desktop", ".rd/docker.sock"},
 		{"colima", ".colima/default/docker.sock"},
 		{"orbstack", ".orbstack/run/docker.sock"},
+		{"podman machine", ".local/share/containers/podman/machine/podman.sock"},
 		{"lima host", ".lima/docker/sock/docker.sock"},
 	}
 
@@ -246,4 +250,51 @@ func TestFindDockerSocket_ProbesVMSockets(t *testing.T) {
 			assert.Equal(t, sock, findDockerSocket())
 		})
 	}
+}
+
+func TestFindDockerSocket_FallsThroughToNativeRootlessPodman(t *testing.T) {
+	t.Setenv("LIMA_INSTANCE", "")
+
+	// Empty (but existing) HOME so none of the VM candidates match, forcing the
+	// fallback into the native podman probe list.
+	home := shortTempDir(t)
+	t.Setenv("HOME", home)
+
+	xdgRuntimeDir := shortTempDir(t)
+	rootless := filepath.Join(xdgRuntimeDir, "podman", "podman.sock")
+	require.NoError(t, os.MkdirAll(filepath.Dir(rootless), 0o700))
+	listenUnixSocket(t, rootless)
+	t.Setenv("XDG_RUNTIME_DIR", xdgRuntimeDir)
+
+	assert.Equal(t, rootless, findDockerSocket())
+}
+
+func TestNativeSocketPaths_IncludesRootfulAlways(t *testing.T) {
+	orig := os.Getenv("XDG_RUNTIME_DIR")
+	t.Cleanup(func() { _ = os.Setenv("XDG_RUNTIME_DIR", orig) })
+	require.NoError(t, os.Unsetenv("XDG_RUNTIME_DIR"))
+
+	paths := nativeSocketPaths()
+	assert.Contains(t, paths, filepath.Join("/run", "podman", "podman.sock"))
+	assert.Len(t, paths, 1, "rootless path must be skipped when XDG_RUNTIME_DIR is unset")
+}
+
+func TestNativeSocketPaths_IncludesRootlessWhenXDGRuntimeDirSet(t *testing.T) {
+	t.Setenv("XDG_RUNTIME_DIR", "/run/user/1000")
+
+	paths := nativeSocketPaths()
+	assert.Contains(t, paths, filepath.Join("/run/user/1000", "podman", "podman.sock"))
+}
+
+func TestSocketPath_NativePodmanIsNotTreatedAsVM(t *testing.T) {
+	dir := shortTempDir(t)
+	sock := filepath.Join(dir, "podman.sock")
+	require.NoError(t, os.WriteFile(sock, nil, 0o600))
+
+	cli, err := client.New(client.WithHost("unix://" + sock))
+	require.NoError(t, err)
+	rt := &DockerRuntime{client: cli}
+
+	assert.False(t, rt.isVM())
+	assert.Equal(t, sock, rt.SocketPath(), "native (non-VM) socket must resolve to its real host path")
 }

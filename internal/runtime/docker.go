@@ -42,10 +42,15 @@ func NewDockerRuntime(dockerHost string) (*DockerRuntime, error) {
 		),
 	}
 
-	// When DOCKER_HOST is not set, the Docker SDK defaults to /var/run/docker.sock.
-	// If that socket doesn't exist, probe known alternative locations (e.g. Colima).
+	// When DOCKER_HOST is not set, prefer the Docker CLI's own notion of where the
+	// daemon lives (its current context, which Rancher Desktop and OrbStack both
+	// register) since that self-maintains as new runtimes are installed. Fall back
+	// to probing known alternative socket locations (e.g. Colima, Podman), then to
+	// the Docker SDK's default (/var/run/docker.sock).
 	if dockerHost == "" {
-		if sock := findDockerSocket(); sock != "" {
+		if host := resolveDockerContextHost(os.Getenv, defaultDockerConfigDir(os.Getenv)); host != "" {
+			opts = append(opts, client.WithHost(host))
+		} else if sock := findDockerSocket(); sock != "" {
 			opts = append(opts, client.WithHost("unix://"+sock))
 		}
 	}
@@ -57,15 +62,52 @@ func NewDockerRuntime(dockerHost string) (*DockerRuntime, error) {
 	return &DockerRuntime{client: cli}, nil
 }
 
+// vmSocketPaths lists user-scoped sockets for VM-backed runtimes: the daemon runs
+// inside a VM and the socket seen here is a remapped/forwarded view of it, so
+// isVM() treats a match as needing the /var/run/docker.sock rewrite for container
+// bind-mounts (see SocketPath). Podman's macOS "machine" backend is VM-based too and
+// exposes a Docker-compatible socket, hence its inclusion here rather than in
+// nativeSocketPaths.
 func vmSocketPaths(home string) []string {
-	return []string{
-		filepath.Join(home, ".docker", "run", "docker.sock"),
-		filepath.Join(home, ".config", "colima", "default", "docker.sock"),
-		filepath.Join(home, ".colima", "default", "docker.sock"),
-		filepath.Join(home, ".colima", "docker.sock"),
-		filepath.Join(home, ".orbstack", "run", "docker.sock"),
-		filepath.Join(home, ".lima", "docker", "sock", "docker.sock"),
+	paths := make([]string, len(vmSocketSpecs))
+	for i, spec := range vmSocketSpecs {
+		paths[i] = filepath.Join(home, spec.relPath)
 	}
+	return paths
+}
+
+// nativeSocketSpec pairs one nativeSocketPaths() entry with the runtime flavor
+// (rootful vs. rootless Podman) it belongs to, mirroring how vmSocketSpec pairs
+// vmSocketPaths() entries with their flavor.
+type nativeSocketSpec struct {
+	flavor runtimeFlavor
+	path   string
+}
+
+// nativeSocketSpecs lists sockets for daemons that run directly on the host (no VM
+// layer), so unlike vmSocketPaths their path is also the daemon-visible path used
+// for the Lambda container bind-mount — isVM() must not match these. Rootful and
+// rootless Podman are tracked as distinct flavors since they're started with
+// different systemctl invocations (see tailoredRuntimeAction).
+func nativeSocketSpecs() []nativeSocketSpec {
+	specs := []nativeSocketSpec{
+		{flavorPodmanRootful, filepath.Join("/run", "podman", "podman.sock")},
+	}
+	if xdgRuntimeDir := os.Getenv("XDG_RUNTIME_DIR"); xdgRuntimeDir != "" {
+		specs = append(specs, nativeSocketSpec{flavorPodmanRootless, filepath.Join(xdgRuntimeDir, "podman", "podman.sock")})
+	}
+	return specs
+}
+
+// nativeSocketPaths returns just the paths from nativeSocketSpecs, for callers
+// (e.g. probeSocket) that only care about socket discovery, not flavor.
+func nativeSocketPaths() []string {
+	specs := nativeSocketSpecs()
+	paths := make([]string, len(specs))
+	for i, spec := range specs {
+		paths[i] = spec.path
+	}
+	return paths
 }
 
 func findDockerSocket() string {
@@ -75,7 +117,10 @@ func findDockerSocket() string {
 	}
 
 	home, _ := os.UserHomeDir()
-	return probeSocket(vmSocketPaths(home)...)
+	if sock := probeSocket(vmSocketPaths(home)...); sock != "" {
+		return sock
+	}
+	return probeSocket(nativeSocketPaths()...)
 }
 
 // Dial as well as stat: a socket file may linger after its daemon is gone (e.g. a
@@ -96,9 +141,13 @@ func probeSocket(candidates ...string) string {
 	return ""
 }
 
-// isVM reports whether the Docker daemon is running inside a VM (e.g., Docker Desktop, Colima, OrbStack, Lima).
+// isVM reports whether the Docker daemon is running inside a VM (e.g., Docker
+// Desktop, Colima, OrbStack, Lima, Rancher Desktop, Podman machine on macOS).
 // In these cases the socket is remapped inside the VM and the container sees it at
-// /var/run/docker.sock even if the CLI connects via a user-scoped socket path.
+// /var/run/docker.sock even if the CLI connects via a user-scoped socket path. This
+// holds regardless of how that path was resolved (context lookup or probing), since
+// isVM checks the daemon host actually in use — native (non-VM) runtimes such as
+// Linux Podman are deliberately kept out of vmSocketPaths so they're never matched.
 func (d *DockerRuntime) isVM() bool {
 	host := d.client.DaemonHost()
 	if strings.HasPrefix(host, "unix://") {
@@ -118,6 +167,11 @@ func (d *DockerRuntime) isVM() bool {
 // For VM-based Docker (Colima, OrbStack) returns /var/run/docker.sock as the
 // socket is remapped inside the VM. For rootless or custom setups, returns the
 // actual socket path extracted from the daemon host.
+func (d *DockerRuntime) Flavor() string {
+	home, _ := os.UserHomeDir()
+	return classifySocketFlavor(home, d.client.DaemonHost()).String()
+}
+
 func (d *DockerRuntime) SocketPath() string {
 	if d.isVM() {
 		return "/var/run/docker.sock"
@@ -147,26 +201,144 @@ func (d *DockerRuntime) IsHealthy(ctx context.Context) error {
 }
 
 func (d *DockerRuntime) EmitUnhealthyError(sink output.Sink, err error) {
+	home, _ := os.UserHomeDir()
+	d.emitUnhealthyError(sink, err, home, os.Stat, exec.LookPath, os.Getenv, stdruntime.GOOS)
+}
+
+// emitUnhealthyError is EmitUnhealthyError with its runtime-detection evidence
+// (home dir, stat/lookPath/getenv, GOOS) injected, following the same style as
+// windowsDockerStartCommand so tests can simulate any runtime being installed
+// without touching the real filesystem or PATH.
+func (d *DockerRuntime) emitUnhealthyError(
+	sink output.Sink,
+	err error,
+	home string,
+	statFn func(string) (os.FileInfo, error),
+	lookPath func(string) (string, error),
+	getenv func(string) string,
+	goos string,
+) {
 	actions := []output.ErrorAction{
 		{Label: "Install Docker:", Value: "https://docs.docker.com/get-docker/"},
 	}
 	summary := err.Error()
-	switch stdruntime.GOOS {
+	switch goos {
 	case "darwin":
 		actions = append([]output.ErrorAction{{Label: "Start Docker Desktop:", Value: "open -a Docker"}}, actions...)
 	case "linux":
 		actions = append([]output.ErrorAction{{Label: "Start Docker:", Value: "sudo systemctl start docker"}}, actions...)
 	case "windows":
-		actions = append([]output.ErrorAction{{Label: "Start Docker Desktop:", Value: windowsDockerStartCommand(os.Getenv, exec.LookPath)}}, actions...)
+		actions = append([]output.ErrorAction{{Label: "Start Docker Desktop:", Value: windowsDockerStartCommand(getenv, lookPath)}}, actions...)
 		// Suppress the raw error: on Windows it's a named-pipe message that users can't act on.
 		summary = ""
 	}
+
+	// The daemon is unreachable, but the socket path (if any) the client was
+	// configured with, or filesystem/PATH evidence of another runtime, can often
+	// tell us what the user actually has installed. Put that ahead of the
+	// generic Docker actions above so the most relevant hint reads first.
+	configuredFlavor := classifySocketFlavor(home, d.client.DaemonHost())
+	flavor := detectRuntimeFlavor(configuredFlavor, home, statFn, lookPath, goos)
+	if tailored, ok := tailoredRuntimeAction(flavor, goos); ok {
+		actions = append([]output.ErrorAction{tailored}, actions...)
+	}
+
 	sink.Emit(output.ErrorEvent{
 		Title:   "Docker is not available",
 		Summary: summary,
 		Actions: actions,
 		Code:    output.ErrRuntimeUnavailable,
 	})
+}
+
+// detectRuntimeFlavor identifies the runtime most likely installed when the
+// daemon can't be reached: the socket the client was actually configured with
+// wins if recognized, otherwise it falls back to filesystem/PATH evidence for
+// each runtime. Install-specific state (a runtime's own home-dir/state
+// directory) is checked before the podman CLI's mere presence on PATH, since a
+// machine can have the podman binary installed (e.g. as a Docker CLI helper)
+// while actually running a different runtime — the state directory is the
+// stronger signal of the two.
+func detectRuntimeFlavor(
+	configuredFlavor runtimeFlavor,
+	home string,
+	statFn func(string) (os.FileInfo, error),
+	lookPath func(string) (string, error),
+	goos string,
+) runtimeFlavor {
+	// flavorDockerNative just means the client fell back to the SDK's plain
+	// default socket, not that we positively identified Docker as installed —
+	// so unlike other recognized flavors it must not short-circuit the
+	// filesystem/PATH evidence checks below.
+	if configuredFlavor != flavorUnknown && configuredFlavor != flavorDockerNative {
+		return configuredFlavor
+	}
+	if _, err := statFn(filepath.Join(home, ".rd")); err == nil {
+		return flavorRancherDesktop
+	}
+	if _, err := statFn(filepath.Join(home, ".colima")); err == nil {
+		return flavorColima
+	}
+	if _, err := statFn(filepath.Join(home, ".config", "colima")); err == nil {
+		return flavorColima
+	}
+	if goos == "darwin" {
+		if _, err := statFn(filepath.Join(home, ".orbstack")); err == nil {
+			return flavorOrbstack
+		}
+	}
+	// Weakest evidence checked last: the podman CLI merely being on PATH doesn't
+	// prove Podman is the runtime actually in use (unlike the state-directory
+	// checks above), and we have no socket path here to tell rootful from
+	// rootless, so this can only ever resolve to the ambiguous flavorPodman.
+	if _, err := lookPath("podman"); err == nil {
+		return flavorPodman
+	}
+	return flavorUnknown
+}
+
+// DetectInstalledFlavor reports which container runtime appears to be installed
+// on this machine from filesystem/PATH evidence alone (state directories, the
+// podman CLI), independent of the daemon lstk is connected to. This matters for
+// hints when socket classification comes up empty — e.g. on Windows the daemon
+// host is a named pipe, which classifySocketFlavor cannot attribute to any
+// runtime, so Flavor() alone would hide runtime-specific fixes there.
+func DetectInstalledFlavor() string {
+	home, _ := os.UserHomeDir()
+	return detectRuntimeFlavor(flavorUnknown, home, os.Stat, exec.LookPath, stdruntime.GOOS).String()
+}
+
+// tailoredRuntimeAction returns the start hint for a detected non-Docker
+// runtime, or ok=false if flavor has no dedicated hint (e.g. Docker Desktop/
+// native Docker are already covered by the generic per-OS actions, and Lima
+// has no separate CLI start command of its own).
+func tailoredRuntimeAction(flavor runtimeFlavor, goos string) (output.ErrorAction, bool) {
+	switch flavor {
+	case flavorRancherDesktop:
+		// rdctl ships with Rancher Desktop and works cross-platform, unlike the
+		// GUI-only "open -a Rancher Desktop" equivalent.
+		return output.ErrorAction{Label: "Start Rancher Desktop:", Value: "rdctl start"}, true
+	case flavorColima:
+		return output.ErrorAction{Label: "Start Colima:", Value: "colima start"}, true
+	case flavorPodman:
+		switch goos {
+		case "darwin":
+			return output.ErrorAction{Label: "Start Podman:", Value: "podman machine start"}, true
+		case "linux":
+			// No socket-path evidence to tell rootful from rootless (e.g. only the
+			// podman CLI was found on PATH); rootless is the more common default.
+			return output.ErrorAction{Label: "Start Podman:", Value: "systemctl --user start podman.socket"}, true
+		}
+	case flavorPodmanRootful:
+		return output.ErrorAction{Label: "Start Podman:", Value: "systemctl start podman"}, true
+	case flavorPodmanRootless:
+		return output.ErrorAction{Label: "Start Podman:", Value: "systemctl --user start podman.socket"}, true
+	case flavorOrbstack:
+		if goos == "darwin" {
+			return output.ErrorAction{Label: "Start OrbStack:", Value: "open -a OrbStack"}, true
+		}
+	}
+	return output.ErrorAction{}, false
 }
 
 // PSModulePath is always set by PowerShell and never by cmd.exe; use it to pick the right start command.

@@ -23,6 +23,11 @@ type PortMapping struct {
 	ContainerPort string
 	HostPort      string
 	Protocol      string // "tcp" (default) or "udp"
+	// Optional marks a best-effort publication: when the host port is already
+	// taken, the mapping is dropped with a warning instead of failing the start.
+	// Used for ports lstk adds on its own (e.g. 443 from the default
+	// GATEWAY_LISTEN) — ports the user asked for explicitly are never optional.
+	Optional bool
 }
 
 type ContainerConfig struct {
@@ -86,4 +91,8 @@ type Runtime interface {
 	GetBoundPort(ctx context.Context, containerName string, containerPort string) (string, error)
 	FindRunningByImage(ctx context.Context, imageRepos []string, containerPort string) (*RunningContainer, error)
 	SocketPath() string
+	// Flavor identifies the runtime backing the daemon connection (one of the
+	// Flavor* constants, e.g. FlavorRancherDesktop) so callers can tailor
+	// user-facing messages. FlavorUnknown (empty) when unrecognized.
+	Flavor() string
 }
