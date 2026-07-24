@@ -26,34 +26,38 @@ type Install struct {
 func FindInstalls(getenv func(string) string) []Install {
 	runningInfo, runningResolved := runningExecutable()
 
-	var installs []Install
-	var seen []os.FileInfo
+	var candidates []string
 	for _, dir := range filepath.SplitList(getenv("PATH")) {
 		// Relative and empty entries (cwd-dependent lookup) are skipped: they
 		// resolve differently per invocation and are not real install locations.
 		if dir == "" || !filepath.IsAbs(dir) {
 			continue
 		}
-		for _, candidate := range executableCandidates(dir, getenv) {
-			resolved, err := filepath.EvalSymlinks(candidate)
-			if err != nil {
-				resolved = candidate
-			}
-			info, err := os.Stat(resolved)
-			if err != nil {
-				continue
-			}
-			if isDuplicate(seen, info) {
-				continue
-			}
-			seen = append(seen, info)
-			installs = append(installs, Install{
-				Path:         candidate,
-				ResolvedPath: resolved,
-				Method:       classifyPath(resolved),
-				Running:      isRunning(info, resolved, runningInfo, runningResolved),
-			})
+		candidates = append(candidates, executableCandidates(dir, getenv)...)
+	}
+
+	var installs []Install
+	var seen []os.FileInfo
+	for _, candidate := range candidates {
+		alias := executableAlias(candidate, candidates)
+		resolved, err := filepath.EvalSymlinks(alias)
+		if err != nil {
+			resolved = alias
 		}
+		info, err := os.Stat(resolved)
+		if err != nil {
+			continue
+		}
+		if isDuplicate(seen, info) {
+			continue
+		}
+		seen = append(seen, info)
+		installs = append(installs, Install{
+			Path:         candidate,
+			ResolvedPath: resolved,
+			Method:       classifyPath(resolved),
+			Running:      isRunning(info, resolved, runningInfo, runningResolved),
+		})
 	}
 	return installs
 }
