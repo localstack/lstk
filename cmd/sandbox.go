@@ -43,7 +43,7 @@ func newSandboxCreateCmd(cfg *env.Env, logger log.Logger) *cobra.Command {
 		Use:     "create <name>",
 		Short:   "Create a sandbox instance",
 		Args:    cobra.MaximumNArgs(1),
-		PreRunE: initConfig(nil),
+		PreRunE: initConfigDeferCreate(nil),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name, err := sandboxName(args, name)
 			if err != nil {
@@ -83,7 +83,7 @@ func newSandboxListCmd(cfg *env.Env, logger log.Logger) *cobra.Command {
 		Use:     "list",
 		Short:   "List sandbox instances",
 		Args:    cobra.NoArgs,
-		PreRunE: initConfig(nil),
+		PreRunE: initConfigDeferCreate(nil),
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			client, err := newSandboxClient(cfg, logger)
 			if err != nil {
@@ -118,7 +118,7 @@ func newSandboxDescribeCmd(cfg *env.Env, logger log.Logger) *cobra.Command {
 		Use:     "describe <name>",
 		Short:   "Show the current state of a sandbox instance",
 		Args:    cobra.MaximumNArgs(1),
-		PreRunE: initConfig(nil),
+		PreRunE: initConfigDeferCreate(nil),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name, err := sandboxName(args, name)
 			if err != nil {
@@ -153,7 +153,7 @@ func newSandboxDeleteCmd(cfg *env.Env, logger log.Logger) *cobra.Command {
 		Use:     "delete <name>",
 		Short:   "Delete a sandbox instance",
 		Args:    cobra.MaximumNArgs(1),
-		PreRunE: initConfig(nil),
+		PreRunE: initConfigDeferCreate(nil),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name, err := sandboxName(args, name)
 			if err != nil {
@@ -197,7 +197,7 @@ func newSandboxLogsCmd(cfg *env.Env, logger log.Logger) *cobra.Command {
 		Use:     "logs <name>",
 		Short:   "Fetch logs from a sandbox instance",
 		Args:    cobra.MaximumNArgs(1),
-		PreRunE: initConfig(nil),
+		PreRunE: initConfigDeferCreate(nil),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name, err := sandboxName(args, name)
 			if err != nil {
@@ -235,7 +235,7 @@ func newSandboxURLCmd(cfg *env.Env, logger log.Logger) *cobra.Command {
 		Use:     "url <name>",
 		Short:   "Print the sandbox endpoint URL",
 		Args:    cobra.MaximumNArgs(1),
-		PreRunE: initConfig(nil),
+		PreRunE: initConfigDeferCreate(nil),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name, err := sandboxName(args, name)
 			if err != nil {
@@ -263,7 +263,7 @@ func newSandboxResetCmd(cfg *env.Env, logger log.Logger) *cobra.Command {
 		Use:     "reset <name>",
 		Short:   "Reset all state in a running sandbox instance",
 		Args:    cobra.MaximumNArgs(1),
-		PreRunE: initConfig(nil),
+		PreRunE: initConfigDeferCreate(nil),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name, err := sandboxName(args, name)
 			if err != nil {
