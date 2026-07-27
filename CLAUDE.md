@@ -19,6 +19,7 @@ make build              # Compiles to bin/lstk
 make test               # Run unit tests (cmd/ and internal/) via gotestsum
 make test-integration   # Run integration tests (rebuilds bin/lstk via `build`, requires Docker)
 make lint               # Run golangci-lint (version pinned via .tool-versions)
+make govulncheck        # Run govulncheck (reachability-based vuln scan)
 make mock-generate      # Regenerate mocks (mockgen via go:generate)
 make clean              # Remove build artifacts
 ```
@@ -36,6 +37,7 @@ make test-integration RUN=TestStartCommandSucceedsWithValidToken
 Notes:
 - Integration tests require `LOCALSTACK_AUTH_TOKEN` environment variable for valid token tests.
 - `test/integration` is a **separate Go module** (own `go.mod`); `make lint` runs golangci-lint twice — repo root and `test/integration` — and fails if the installed golangci-lint version doesn't match `.tool-versions`. `golangci-lint run --fix` auto-fixes many findings.
+- `make govulncheck` also runs twice for the same reason (root + `test/integration`). It complements the dependency-version scan in `trivy.yml` with call-graph reachability analysis — it only flags known vulnerabilities in code actually called from the repo. It has no severity filter (most Go vulnerability reports carry no CVSS data), so it gates on reachability alone: any reachable known vulnerability fails the job. CI (`ci.yml`'s `govulncheck` job) runs it on every push/PR and uploads a SARIF report to the Security tab, same pattern as Trivy, but it is **not yet** in `release`'s `needs:` — it's a new check on a staged rollout and should be promoted to a hard release gate once it's proven false-positive-free.
 - Mocks are generated with mockgen (go.uber.org/mock) via per-file `//go:generate mockgen ...` directives (e.g. `internal/snapshot/remote.go`); adding a mock means adding a directive, then `make mock-generate`.
 - Set `CREATE_JUNIT_REPORT=1` to get a JUnit XML report from `make test` / `make test-integration`.
 

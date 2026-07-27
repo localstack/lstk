@@ -5,7 +5,7 @@ endif
 BUILD_DIR=bin
 export CGO_ENABLED=0
 
-.PHONY: build clean test test-integration lint mock-generate otel
+.PHONY: build clean test test-integration lint govulncheck mock-generate otel
 
 # Always invoke `go build` and let Go's build cache handle incrementality; a
 # file target on bin/lstk would be skipped when the binary exists, even with
@@ -35,3 +35,7 @@ lint:
 	[ "$$INSTALLED" = "$$EXPECTED" ] || { echo "golangci-lint $$EXPECTED required (found: $$INSTALLED)"; exit 1; }
 	golangci-lint run --tests ./...
 	(cd test/integration && golangci-lint run --tests ./...)
+
+govulncheck:
+	go run golang.org/x/vuln/cmd/govulncheck@latest ./...
+	(cd test/integration && go run golang.org/x/vuln/cmd/govulncheck@latest ./...)
