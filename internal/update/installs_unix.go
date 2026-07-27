@@ -23,15 +23,44 @@ func executableCandidates(dir string, _ func(string) string) []string {
 	return []string{path}
 }
 
-// executableAlias resolves an asdf shim to the matching installed executable
-// when both appear on PATH. asdf shims are dispatcher scripts, not separate
+// executableAlias resolves a version-manager shim to the matching installed
+// executable when both appear on PATH. Shims are dispatchers, not separate
 // installations, but os.SameFile cannot identify that relationship.
 func executableAlias(candidate string, candidates []string) string {
+	if filepath.Base(filepath.Dir(candidate)) != "shims" {
+		return candidate
+	}
+	// asdf shims are scripts naming their backing plugin/version in a
+	// comment; prefer that exact mapping.
 	for _, target := range asdfShimTargets(candidate) {
 		for _, other := range candidates {
 			if filepath.Clean(target) == filepath.Clean(other) {
 				return other
 			}
+		}
+	}
+	return dispatcherShimAlias(candidate, candidates)
+}
+
+// dispatcherShimAlias handles argv[0]-dispatch shims: mise shims are symlinks
+// to the mise binary itself, so neither file identity nor shim content can
+// reveal the backing install. A shim symlink-resolving to a foreign-named
+// executable is such a dispatcher; it aliases to the first PATH candidate
+// inside the sibling installs/ tree (shims/ and installs/ always share the
+// mise data dir — there is no override that separates them). The true
+// dispatch target is resolved by mise per-invocation and cannot be known
+// here, so a candidate from the same installs/ tree is trusted to be it;
+// anything under that tree is managed by the same version manager, not a
+// competing installation this warning is meant to catch.
+func dispatcherShimAlias(candidate string, candidates []string) string {
+	resolved, err := filepath.EvalSymlinks(candidate)
+	if err != nil || filepath.Base(resolved) == binaryName {
+		return candidate
+	}
+	installsPrefix := filepath.Join(filepath.Dir(filepath.Dir(candidate)), "installs") + string(filepath.Separator)
+	for _, other := range candidates {
+		if other != candidate && strings.HasPrefix(filepath.Clean(other), installsPrefix) {
+			return other
 		}
 	}
 	return candidate

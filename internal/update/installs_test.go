@@ -100,6 +100,71 @@ func TestFindInstallsDeduplicatesAsdfShimAlias(t *testing.T) {
 	}
 }
 
+func TestFindInstallsDeduplicatesMiseShimAlias(t *testing.T) {
+	t.Parallel()
+	miseDataDir := t.TempDir()
+	versionDir := filepath.Join(miseDataDir, "installs", "github-localstack-lstk", "0.18.0")
+	shimsDir := filepath.Join(miseDataDir, "shims")
+	miseBinDir := t.TempDir()
+	for _, dir := range []string{versionDir, shimsDir} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	writeFakeExecutable(t, versionDir)
+	latestDir := filepath.Join(miseDataDir, "installs", "github-localstack-lstk", "latest")
+	if err := os.Symlink("./0.18.0", latestDir); err != nil {
+		t.Fatal(err)
+	}
+	// mise shims are symlinks to the mise binary itself (argv[0] dispatch).
+	miseBinary := filepath.Join(miseBinDir, "mise")
+	if err := os.WriteFile(miseBinary, []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(miseBinary, filepath.Join(shimsDir, binaryName)); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, dirs := range [][]string{{latestDir, shimsDir}, {shimsDir, latestDir}} {
+		installs := FindInstalls(pathGetenv(dirs...))
+		if len(installs) != 1 {
+			t.Fatalf("expected mise shim and install to be one install, got %d: %+v", len(installs), installs)
+		}
+		if installs[0].Path != filepath.Join(dirs[0], binaryName) {
+			t.Errorf("expected first PATH hit to be reported, got %s", installs[0].Path)
+		}
+		if installs[0].Method != InstallBinary {
+			t.Errorf("expected binary install, got %s", installs[0].Method)
+		}
+	}
+}
+
+func TestFindInstallsKeepsMiseShimWithoutBackingInstallOnPath(t *testing.T) {
+	t.Parallel()
+	miseDataDir := t.TempDir()
+	shimsDir := filepath.Join(miseDataDir, "shims")
+	miseBinDir, otherDir := t.TempDir(), t.TempDir()
+	if err := os.MkdirAll(shimsDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	miseBinary := filepath.Join(miseBinDir, "mise")
+	if err := os.WriteFile(miseBinary, []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(miseBinary, filepath.Join(shimsDir, binaryName)); err != nil {
+		t.Fatal(err)
+	}
+	writeFakeExecutable(t, otherDir)
+
+	installs := FindInstalls(pathGetenv(otherDir, shimsDir))
+
+	if len(installs) != 2 {
+		t.Fatalf("expected shim without a backing install on PATH to stay a distinct install, got %d: %+v", len(installs), installs)
+	}
+}
+
 func TestFindInstallsDeduplicatesRepeatedPathDir(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
