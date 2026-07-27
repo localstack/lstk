@@ -46,11 +46,15 @@ If a snapshot is configured for the AWS emulator (the snapshot field in [[contai
 			if err != nil {
 				return err
 			}
+			if err := applyTimeoutFlag(c, cfg); err != nil {
+				return err
+			}
 			return startEmulator(c.Context(), rt, cfg, tel, logger, persist, firstRun, snapshotFlag, noSnapshot, emulatorType)
 		},
 	}
 	cmd.Flags().Bool("persist", false, "Persist emulator state across restarts")
 	addEmulatorTypeFlag(cmd)
 	addSnapshotStartFlags(cmd)
+	addTimeoutFlag(cmd)
 	return cmd
 }

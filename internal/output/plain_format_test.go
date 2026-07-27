@@ -218,6 +218,30 @@ func TestFormatEventLine(t *testing.T) {
 			wantOK: true,
 		},
 		{
+			name: "multiple installs event",
+			event: MultipleInstallsEvent{Installs: []InstallLocation{
+				{Path: "/opt/homebrew/bin/lstk", Method: "homebrew", Running: true},
+				{Path: "/home/u/.nvm/versions/node/v22/bin/lstk", Method: "npm"},
+			}},
+			want: "> Warning: Multiple lstk installations found on PATH:\n" +
+				"  /opt/homebrew/bin/lstk (homebrew, currently running)\n" +
+				"  /home/u/.nvm/versions/node/v22/bin/lstk (npm)\n" +
+				"  Your shell runs the first one; remove the others to avoid using a stale version.",
+			wantOK: true,
+		},
+		{
+			name: "multiple installs event no running marker",
+			event: MultipleInstallsEvent{Installs: []InstallLocation{
+				{Path: "/usr/local/bin/lstk", Method: "binary"},
+				{Path: "/opt/homebrew/bin/lstk", Method: "homebrew"},
+			}},
+			want: "> Warning: Multiple lstk installations found on PATH:\n" +
+				"  /usr/local/bin/lstk (binary)\n" +
+				"  /opt/homebrew/bin/lstk (homebrew)\n" +
+				"  Your shell runs the first one; remove the others to avoid using a stale version.",
+			wantOK: true,
+		},
+		{
 			name: "pod snapshot saved full",
 			event: PodSnapshotSavedEvent{
 				PodName:  "my-baseline",
@@ -326,6 +350,43 @@ func TestFormatEventLine(t *testing.T) {
 			name:   "pod snapshot removed",
 			event:  PodSnapshotRemovedEvent{PodName: "my-baseline"},
 			want:   SuccessMarker() + " Cloud snapshot 'pod:my-baseline' deleted",
+			wantOK: true,
+		},
+
+		// snapshot diff events
+		{
+			name: "snapshot diff with additions and modifications",
+			event: SnapshotDiffEvent{
+				PodName:  "my-baseline",
+				Strategy: "account-region-merge",
+				Services: map[string]SnapshotDiffServiceResult{
+					"s3":  {Additions: 5},
+					"sqs": {Additions: 3, Modifications: 1},
+				},
+			},
+			want:   "Dry-run results for pod:my-baseline\n\n  s3   + 5 additions\n  sqs  + 3 additions   ~ 1 modification ⚠\n\n> Note: 1 modification will be resolved using the account-region-merge strategy.\n\n" + SuccessMarker() + " No state was modified.",
+			wantOK: true,
+		},
+		{
+			name: "snapshot diff additions only",
+			event: SnapshotDiffEvent{
+				PodName:  "my-baseline",
+				Strategy: "account-region-merge",
+				Services: map[string]SnapshotDiffServiceResult{
+					"dynamodb": {Additions: 2},
+				},
+			},
+			want:   "Dry-run results for pod:my-baseline\n\n  dynamodb  + 2 additions\n\n" + SuccessMarker() + " No state was modified.",
+			wantOK: true,
+		},
+		{
+			name: "snapshot diff no changes",
+			event: SnapshotDiffEvent{
+				PodName:  "empty-pod",
+				Strategy: "account-region-merge",
+				Services: map[string]SnapshotDiffServiceResult{},
+			},
+			want:   "Dry-run results for pod:empty-pod\n\n  No changes — pod state matches running state.\n\n" + SuccessMarker() + " No state was modified.",
 			wantOK: true,
 		},
 	}

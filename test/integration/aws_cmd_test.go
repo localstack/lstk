@@ -9,8 +9,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/moby/moby/client"
 	"github.com/localstack/lstk/test/integration/env"
+	"github.com/moby/moby/client"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -340,7 +340,8 @@ func TestAWSCommandWorksWithExternalContainer(t *testing.T) {
 	ctx := testContext(t)
 
 	const fakeImage = "localstack/localstack-pro:test-fake"
-	_, err := dockerClient.ImageTag(ctx, client.ImageTagOptions{Source: testImage, Target: fakeImage}); require.NoError(t, err)
+	_, err := dockerClient.ImageTag(ctx, client.ImageTagOptions{Source: testImage, Target: fakeImage})
+	require.NoError(t, err)
 	t.Cleanup(func() {
 		_, _ = dockerClient.ImageRemove(context.Background(), fakeImage, client.ImageRemoveOptions{})
 	})

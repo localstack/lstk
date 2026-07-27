@@ -19,8 +19,26 @@ There is no `--offline` flag. Instead `container.Start` degrades gracefully when
 
 - **Image pull**: if `rt.PullImage` fails but `rt.ImageExists` reports the image is already present locally, lstk warns and uses the local image instead of failing.
 - **License pre-flight (image already local)**: when a pinned image is already present locally — so `pullImages` won't pull it — `tryPrePullLicenseValidation` skips the pre-flight check entirely (gated on `rt.ImageExists`), since the redundant network round-trip would otherwise block a fully-offline start; the container validates its own bundled license at startup. This is symmetric with the skip-pull behaviour above.
-- **License pre-flight (server unreachable)**: when a check does run, `validateLicense` distinguishes a definitive server rejection (`*api.LicenseError`, e.g. HTTP 403/400 — still fatal) from a transport-level failure (any other error — offline/proxy/cert). On a transport failure it skips the pre-flight check and lets the container validate its own bundled license at startup.
+- **License pre-flight (server unreachable or erroring)**: when a check does run, `validateLicense` distinguishes a definitive server rejection (`isDefinitiveLicenseRejection`: HTTP 400/401/403 — fatal) from everything else: a transport-level failure (offline/proxy/cert) *and* any non-definitive status (5xx outage, 407 from a corporate proxy, ...) both skip the pre-flight check and let the container validate its own bundled license at startup.
 - **License pre-flight (unsupported tag)**: when the server rejects the image tag *format* itself (`IsUnsupportedTag` — a 400 whose detail contains `licensing.license.format`, e.g. `dev` nightlies or custom enterprise-mirror tags), that is not a verdict on the license, so `validateLicense` skips the pre-flight with a warning and lets the container validate its own bundled license at startup — the same degradation as a transport failure. Genuine token/subscription rejections stay fatal. The invariant across all these paths: the pre-flight is a fail-fast optimization and must never block a start the container itself would accept.
 - **Telemetry/update checks** are already best-effort and fail silently when offline.
 
 `runtime.PullImage` always closes its `progress` channel (even when `ImagePull` fails early) so the local-image fallback path doesn't leak the progress goroutine. Pair this with a custom `image` in the config to point at a locally loaded image or an internal-registry mirror.
+
+## License errors: cache invalidation and retry (DEVX-658)
+
+A stale cached license (`license.json`) or a stale token (e.g. one that predates a license purchase) must never require a manual `lstk logout` to recover:
+
+- **Definitive rejection (HTTP 400/401/403) in the pre-flight**: `validateLicense` deletes the cached `license.json` (the verdict invalidates it — a later start whose pre-flight is skipped must not keep mounting the stale copy). In interactive mode, `container.Start` then prompts to log in again (`auth.Relogin`: drops the stored token + cached license, reruns the browser login) and retries the start once with the fresh token. In non-interactive mode it emits an `ErrorEvent` pointing at `lstk logout && lstk login` / `LOCALSTACK_AUTH_TOKEN` and returns a silent error.
+- **Startup license failure with a stale mounted cache**: when the container exits with license-related logs while a cached `license.json` that this run did *not* refresh was mounted (pre-flight skipped, e.g. image already local), `startContainers` returns a `licenseStartupError` instead of rendering the failure through `startupMonitor.handleFailure`, and `startWithLicenseRetry` drops the cache, re-validates against the license server (forced, bypassing the image-local skip), and retries the start once. No retry when the license was freshly fetched this run or no cache was mounted; a repeat failure is rendered by `handleFailure` as usual. The self-validating "not covered by your license" case keeps its dedicated messaging and is never retried.
+- `StartOptions.AuthOptions` threads `auth.Option`s (e.g. `WithBrowserOpener`) into the internally constructed `auth.Auth` so tests of the re-login path never open a real browser tab.
+
+## Host environment forwarding (`filterHostEnv`)
+
+`Start` forwards `CI` and `LOCALSTACK_*` host env vars to the emulator, but `filterHostEnv` (`internal/container/start.go`) silently or warningly drops entries that would corrupt the container rather than passing them through:
+
+- `LOCALSTACK_AUTH_TOKEN` is dropped silently — lstk forwards its own resolved token (keyring or env) instead, so the host value must never win.
+- A value containing `\n`/`\r` is dropped with a warning: the image's entrypoint re-exports `LOCALSTACK_*` vars through a line-oriented `env | sed` pipeline, and an embedded newline would inject a rogue export.
+- A `LOCALSTACK_*` var whose prefix-stripped name is a `criticalContainerVar` (`PATH`, `HOME`, `IFS`, `BASH_ENV`, `LD_PRELOAD`, `LD_LIBRARY_PATH`, `PYTHONPATH`, `PYTHONHOME`) is dropped with a warning — the entrypoint strips the `LOCALSTACK_` prefix and re-exports the remainder, so e.g. a host `LOCALSTACK_PATH` becomes `PATH` inside the emulator and startup breaks (DEVX-984, localstack/lstk#378).
+
+Warnings are emitted via `output.MessageEvent{Severity: output.SeverityWarning}`, one per dropped variable.

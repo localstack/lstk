@@ -15,7 +15,7 @@ This installs a [gitleaks](https://github.com/gitleaks/gitleaks) hook that scans
 # Build and Test Commands
 
 ```bash
-make build              # Compiles to bin/lstk (cleans first)
+make build              # Compiles to bin/lstk
 make test               # Run unit tests (cmd/ and internal/) via gotestsum
 make test-integration   # Run integration tests (rebuilds bin/lstk via `build`, requires Docker)
 make lint               # Run golangci-lint (version pinned via .tool-versions)
@@ -60,6 +60,7 @@ Notes:
   - `log/` - Internal diagnostic logging (not for user-facing output — use `output/` for that)
   - `output/` - Generic event and sink abstractions for CLI/TUI/non-interactive rendering
   - `ports/` - Port availability checks
+  - `proc/` - Runs wrapped external tools (`aws`, `terraform`, `cdk`, `sam`, `az`, extensions) with signal forwarding instead of `cmd.Run()` — see Signal Forwarding to Wrapped Tools below
   - `reset/` - `lstk reset` domain logic
   - `runtime/` - Abstraction for container runtimes (Docker, Kubernetes, etc.) - currently only Docker implemented
   - `snapshot/` - Snapshot save/load/list/remove/show domain logic — see `internal/snapshot/CLAUDE.md`
@@ -67,7 +68,8 @@ Notes:
   - `terminal/` - Plain-mode terminal helpers (spinner, TTY detection)
   - `tracing/` - OpenTelemetry setup (`LSTK_OTEL=1`)
   - `ui/` - Bubble Tea views for interactive output
-  - `update/` - Self-update logic: version check via GitHub API, binary/Homebrew/npm update paths, archive extraction
+  - `update/` - Self-update logic: version check via GitHub API, binary/Homebrew/npm update paths, archive extraction; also detects multiple lstk installs on PATH (`FindInstalls`/`WarnMultipleInstalls`, warned on `lstk update` and the start-path update notification)
+  - `validate/` - Reusable input validators for user-supplied CLI values (pod names, env var names, auth tokens) rejecting malformed/hostile input (control chars, path traversal, percent-encoding, shell metacharacters)
   - `version/` - Version info
   - `volume/` - `lstk volume` domain logic
 
@@ -79,11 +81,12 @@ When `DOCKER_HOST` isn't set, `DockerRuntime` resolves the daemon endpoint in or
 
 # Commits, PRs, and Linear
 
-- Commit messages: a single concise line. Never add `Co-Authored-By: Claude`, "Generated with Claude Code", or any other AI attribution to commits or PR bodies.
+- Commit messages: a single concise line. Add a `Co-Authored-By: Claude <noreply@anthropic.com>` trailer to commits and PR bodies.
 - Never commit or push unless explicitly asked.
 - PRs are squash-merged; titles start with an action verb and stay under ~70 characters.
 - Every PR needs exactly one `semver:` label (`patch`/`minor`/`major`) and one `docs:` label (`skip`/`needed`) — enforced by `check-release-label.yml`. Use `/create-pr` to scaffold title, body, and labels.
 - Issues and tickets live in Linear, not GitHub Issues. Typical flow: Linear issue → branch named from the issue (e.g. `devx-123-...`) → PR body ends with `Closes DEVX-123` (or `Towards DEVX-123` if partial). Ask which Linear team if unclear (e.g. PRO = product, DEVX = developer experience).
+- Small PRs and straightforward bug fixes may merge without a human approval when the author is confident; bigger features/PRs still need review and an approval, as usual. This shifts weight onto self-review rather than lowering the bar — before treating any PR-sized change as done, run `/review-pr` against it, confirm tests pass, and add integration tests per the Testing section below. Before creating a PR, say in the session whether a human review looks advisable and why, and add a short "Review" line in the PR description itself (new/changed user-facing behavior, undiscussed or speculative work → advise review; straightforward, small, already-discussed → self-merge candidate) so the assessment is visible to both the author and anyone reading the PR, not just implied. If unsure, advise review.
 
 # Release Process
 
@@ -126,7 +129,7 @@ Each `[[containers]]` block may set an optional `image` (override the default Do
 
 # Offline / Enterprise Environments
 
-There is no `--offline` flag. Instead `container.Start` degrades gracefully when internet requests fail (Docker Hub unreachable, proxy/TLS interception, license server unreachable): local images are used when pulls fail, and the license pre-flight is skipped on transport-level failures or unsupported-tag rejections so the container validates its own bundled license. The exact fallback rules live in `internal/container/CLAUDE.md`; pair them with a custom `image` in the config to point at a locally loaded image or an internal-registry mirror.
+There is no `--offline` flag. Instead `container.Start` degrades gracefully when internet requests fail (Docker Hub unreachable, proxy/TLS interception, license server unreachable): local images are used when pulls fail, and the license pre-flight is skipped on transport-level failures, non-definitive server responses (5xx/407), or unsupported-tag rejections so the container validates its own bundled license. Definitive license rejections (HTTP 400/401/403) drop the cached license and offer an in-place re-login instead of requiring a manual `lstk logout` (DEVX-658). The exact fallback and retry rules live in `internal/container/CLAUDE.md`; pair them with a custom `image` in the config to point at a locally loaded image or an internal-registry mirror.
 
 # Emulator Setup Commands
 
@@ -138,8 +141,9 @@ This naming avoids AWS-specific "profile" terminology and uses a clear verb for 
 
 Environment variables:
 - `LOCALSTACK_AUTH_TOKEN` - Auth token (skips browser login if set)
-- `LSTK_STARTUP_TIMEOUT` - Startup readiness deadline for `lstk start` (Go duration). Zero/unset uses the per-mode default resolved in `resolveStartupTimeout` (`internal/container/start.go`): 20s interactive (deadline only shows a recoverable keep-waiting/stop prompt, re-armed by "keep waiting"), 60s non-interactive (fatal; the container is left running for inspection). Container exits are detected separately — and instantly, with the exit code — via the exit wait `runtime.Runtime.Start` registers between create and start.
+- `LSTK_STARTUP_TIMEOUT` - Startup readiness deadline for `lstk start` (Go duration). Zero/unset uses the per-mode default resolved in `resolveStartupTimeout` (`internal/container/start.go`): 20s interactive (deadline only shows a recoverable keep-waiting/stop prompt, re-armed by "keep waiting"), 60s non-interactive (fatal; the container is left running for inspection). Container exits are detected separately — and instantly, with the exit code — via the exit wait `runtime.Runtime.Start` registers between create and start. `lstk start --timeout <duration>` (also on the bare root) overrides this for a single run; the flag wins over the env var when explicitly set, and `--timeout 0` falls back to the per-mode default (`addTimeoutFlag`/`applyTimeoutFlag` in `cmd/root.go`). `restart` and the snapshot auto-start path do not expose the flag.
 - `LSTK_OTEL=1` - Enables OpenTelemetry trace export (disabled by default); when enabled, standard `OTEL_EXPORTER_OTLP_*` env vars are respected by the SDK. Requires an OTLP-compatible backend to receive and visualize telemetry — for local development, `make otel` starts one (UI at http://localhost:16686).
+- `LSTK_MERGE_STRATEGY` - Default merge strategy for `snapshot load` / `load` (`account-region-merge`, `overwrite`, or `service-merge`) when `--merge` is not passed; an explicit `--merge` always wins. Resolved in `resolveMergeStrategy` (`cmd/snapshot.go`).
 
 # Infrastructure as Code Commands
 
@@ -184,6 +188,7 @@ The release job (`.github/workflows/ci.yml`) builds the npm packages with `gorel
 - Never print directly to stdout/stderr (e.g., `fmt.Fprintf(os.Stderr, …)`). For user-facing output, emit events through `output.Sink`. For internal diagnostics, use `log.Logger`. If neither is available (e.g., during logger setup), return errors to the caller and let them decide.
 - Don't deprecate commands with Cobra's `Deprecated` field: it prints the notice raw to `os.Stderr` (bypassing `output.Sink`) and silently hides the command from `--help` and generated `lstk docs`. Remove the old command outright instead; if a transition period is genuinely needed, keep the command visible and emit the deprecation notice through the sink.
 - Do not call `config.Get()` from domain/business-logic packages. Instead, extract the values you need at the command boundary (`cmd/`) and pass them as explicit function arguments. This keeps domain functions testable without requiring Viper/config initialization.
+- Validate user/agent-supplied values where they are first accepted (the command boundary, or the domain parser that owns the format) via `internal/validate` — never an inline one-off regexp. Route by value class: pod names → `validate.PodName`; opaque secrets → only loose malformed-ness checks (`validate.AuthToken` style — no charset restriction); paths and URLs → their existing parsers (`filepath`, `net/url`). For other identifiers, follow the owning API's documented contract and add a dedicated validator if needed. If no validator fits, add one to `internal/validate` with rule-code tests instead of forking rules locally — parallel validators for the same value class drift (the pod-name rules forked exactly this way before #293 re-unified them).
 
 # Shell Completion
 

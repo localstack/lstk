@@ -88,7 +88,9 @@ Merge strategies control how snapshot state is combined with running state:
 
   --merge=account-region-merge  (default) snapshot wins on (service, account, region) overlap
   --merge=overwrite             wipe running state, then load
-  --merge=service-merge         snapshot wins per-resource; non-overlapping resources combined`, cmdName)
+  --merge=service-merge         snapshot wins per-resource; non-overlapping resources combined
+
+Alternatively, set LSTK_MERGE_STRATEGY to specify the merge strategy.`, cmdName)
 }
 
 func newSnapshotCmd(cfg *env.Env, tel *telemetry.Client, logger log.Logger) *cobra.Command {
@@ -204,6 +206,7 @@ func newSnapshotLoadCmd(cfg *env.Env, tel *telemetry.Client, logger log.Logger) 
 	}
 	addMergeFlag(cmd)
 	addProfileFlag(cmd)
+	addDryRunFlag(cmd)
 	return cmd
 }
 
@@ -219,6 +222,7 @@ func newLoadCmd(cfg *env.Env, tel *telemetry.Client, logger log.Logger) *cobra.C
 	}
 	addMergeFlag(cmd)
 	addProfileFlag(cmd)
+	addDryRunFlag(cmd)
 	return cmd
 }
 
@@ -226,9 +230,41 @@ func addMergeFlag(cmd *cobra.Command) {
 	cmd.Flags().String("merge", snapshot.MergeStrategyAccountRegion, "Merge strategy: overwrite, account-region-merge, service-merge")
 }
 
+// resolveMergeStrategy applies the LSTK_MERGE_STRATEGY env var as the default
+// when --merge was not explicitly passed; an explicit --merge always wins.
+// flagChanged (cmd.Flags().Changed("merge")) is required because the flag's
+// own default value is itself a valid strategy, so flagValue alone can't
+// distinguish "user explicitly chose this" from "this is just the default."
+func resolveMergeStrategy(flagValue string, flagChanged bool, envValue string) string {
+	if flagChanged || envValue == "" {
+		return flagValue
+	}
+	return envValue
+}
+
+// resolveLoadStrategy reads --merge off cmd, applies the LSTK_MERGE_STRATEGY
+// env var fallback via resolveMergeStrategy, and validates the result. It's
+// split out from runSnapshotLoad so the CLI-facing wiring (real cobra flag
+// parsing plus the env var) can be tested without a running emulator.
+func resolveLoadStrategy(cmd *cobra.Command, cfg *env.Env) (string, error) {
+	flagValue, err := cmd.Flags().GetString("merge")
+	if err != nil {
+		return "", err
+	}
+	strategy := resolveMergeStrategy(flagValue, cmd.Flags().Changed("merge"), cfg.MergeStrategy)
+	if err := snapshot.ValidateMergeStrategy(strategy); err != nil {
+		return "", err
+	}
+	return strategy, nil
+}
+
+func addDryRunFlag(cmd *cobra.Command) {
+	cmd.Flags().Bool("dry-run", false, "Preview what would change without modifying state (pod refs only)")
+}
+
 func runSnapshotLoad(cfg *env.Env, tel *telemetry.Client, logger log.Logger) func(*cobra.Command, []string) error {
 	return func(cmd *cobra.Command, args []string) error {
-		strategy, err := cmd.Flags().GetString("merge")
+		strategy, err := resolveLoadStrategy(cmd, cfg)
 		if err != nil {
 			return err
 		}
@@ -236,7 +272,9 @@ func runSnapshotLoad(cfg *env.Env, tel *telemetry.Client, logger log.Logger) fun
 		if err != nil {
 			return err
 		}
-		if err := snapshot.ValidateMergeStrategy(strategy); err != nil {
+
+		dryRun, err := cmd.Flags().GetBool("dry-run")
+		if err != nil {
 			return err
 		}
 
@@ -281,6 +319,13 @@ func runSnapshotLoad(cfg *env.Env, tel *telemetry.Client, logger log.Logger) fun
 		src, err := snapshot.ParseSource(args[0], home)
 		if err != nil {
 			return err
+		}
+
+		if dryRun {
+			if src.Kind != snapshot.KindPod {
+				return fmt.Errorf("--dry-run is only supported for pod refs — use the \"pod:\" prefix (e.g. pod:my-baseline --dry-run)")
+			}
+			return execDiff(cmd, cfg, src.Value, strategy)
 		}
 
 		rt, client, host, containers, appConfig, err := resolveSnapshotDeps(cmd.Context(), cfg)
@@ -354,6 +399,19 @@ func runSnapshotRemove(cfg *env.Env) func(*cobra.Command, []string) error {
 		}
 		return ui.RunSnapshotRemove(cmd.Context(), rt, containers, client, host, args[0], cwd, home, cfg.AuthToken, force)
 	}
+}
+
+func execDiff(cmd *cobra.Command, cfg *env.Env, podName, strategy string) error {
+	rt, client, host, containers, _, err := resolveSnapshotDeps(cmd.Context(), cfg)
+	if err != nil {
+		return err
+	}
+
+	if isInteractiveMode(cfg) {
+		return ui.RunSnapshotDiff(cmd.Context(), rt, containers, client, host, podName, cfg.AuthToken, strategy)
+	}
+	sink := output.NewPlainSink(os.Stdout)
+	return snapshot.DiffPod(cmd.Context(), rt, containers, client, host, podName, cfg.AuthToken, strategy, sink)
 }
 
 func resolveSnapshotDeps(ctx context.Context, cfg *env.Env) (rt runtime.Runtime, client *aws.Client, host string, containers []config.ContainerConfig, appConfig *config.Config, err error) {

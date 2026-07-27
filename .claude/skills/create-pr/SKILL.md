@@ -52,6 +52,10 @@ Use this structure:
 - Bullet point per meaningful change
 - Group related changes together
 
+## Review
+
+<Self-merge candidate — one-line reason. Or: Human review advised — one-line reason.>
+
 ## Tests
 
 <How this was tested — new tests added, manual verification, etc.>
@@ -68,6 +72,7 @@ Rules:
   - Use `Closes TICKET-ID` if the PR fully resolves the issue
   - Use `Towards TICKET-ID` if it's a partial contribution
 - Keep bullet points concise — what changed, not how every line was modified
+- The Review line reflects lstk's review pilot (small PRs/bug fixes may self-merge; bigger or undiscussed work needs a human). Decide it using `/review-pr`'s "Review scope" checklist (run that skill, or apply the checklist inline if it wasn't run), and say so out loud in the session before creating the PR — don't just silently decide.
 - Omit Todo section if there are no follow-up items
 - Don't over-explain; the diff speaks for itself
 
@@ -87,7 +92,7 @@ This applies to automated PRs too (dependency and toolchain upgrades), which are
 
 ## Step 6: Commit and push
 
-If there are uncommitted changes, commit them with a concise message. Do NOT add `Co-Authored-By: Claude` unless the user explicitly asks for it.
+If there are uncommitted changes, commit them with a concise message and a `Co-Authored-By: Claude <noreply@anthropic.com>` trailer.
 
 Then push and create the PR with the chosen labels:
 
