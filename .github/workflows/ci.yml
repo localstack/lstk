@@ -59,10 +59,14 @@ jobs:
 
       # SARIF report for the Security tab covers both modules and never fails
       # the job (govulncheck always exits 0 for sarif/json output) — the gate
-      # steps below own pass/fail.
+      # steps below own pass/fail. repo-checkout: false on every invocation
+      # below: the action's default (true) runs its own actions/checkout with
+      # clean: true, which git-clean -ffdx's away any *.sarif file a prior
+      # step in this job already wrote, before the upload step can read it.
       - name: Run govulncheck (root module, SARIF report)
         uses: golang/govulncheck-action@v1
         with:
+          repo-checkout: false
           go-version-file: go.mod
           output-format: sarif
           output-file: govulncheck-root.sarif
@@ -70,6 +74,7 @@ jobs:
       - name: Run govulncheck (test/integration module, SARIF report)
         uses: golang/govulncheck-action@v1
         with:
+          repo-checkout: false
           work-dir: test/integration
           go-version-file: test/integration/go.mod
           output-format: sarif
@@ -98,11 +103,13 @@ jobs:
       - name: Run govulncheck (root module, gate)
         uses: golang/govulncheck-action@v1
         with:
+          repo-checkout: false
           go-version-file: go.mod
 
       - name: Run govulncheck (test/integration module, gate)
         uses: golang/govulncheck-action@v1
         with:
+          repo-checkout: false
           work-dir: test/integration
           go-version-file: test/integration/go.mod
 
