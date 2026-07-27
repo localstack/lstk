@@ -15,7 +15,7 @@ This installs a [gitleaks](https://github.com/gitleaks/gitleaks) hook that scans
 # Build and Test Commands
 
 ```bash
-make build              # Compiles to bin/lstk (cleans first)
+make build              # Compiles to bin/lstk
 make test               # Run unit tests (cmd/ and internal/) via gotestsum
 make test-integration   # Run integration tests (rebuilds bin/lstk via `build`, requires Docker)
 make lint               # Run golangci-lint (version pinned via .tool-versions)
@@ -60,6 +60,7 @@ Notes:
   - `log/` - Internal diagnostic logging (not for user-facing output — use `output/` for that)
   - `output/` - Generic event and sink abstractions for CLI/TUI/non-interactive rendering
   - `ports/` - Port availability checks
+  - `proc/` - Runs wrapped external tools (`aws`, `terraform`, `cdk`, `sam`, `az`, extensions) with signal forwarding instead of `cmd.Run()` — see Signal Forwarding to Wrapped Tools below
   - `reset/` - `lstk reset` domain logic
   - `runtime/` - Abstraction for container runtimes (Docker, Kubernetes, etc.) - currently only Docker implemented
   - `snapshot/` - Snapshot save/load/list/remove/show domain logic — see `internal/snapshot/CLAUDE.md`
