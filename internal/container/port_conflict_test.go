@@ -11,8 +11,24 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
+	"github.com/localstack/lstk/internal/config"
+	"github.com/localstack/lstk/internal/output"
 	"github.com/localstack/lstk/internal/runtime"
+	"github.com/localstack/lstk/internal/telemetry"
 )
+
+// errorEvents returns the ErrorEvents captured by the sink.
+func (s *recordingSink) errorEvents() []output.ErrorEvent {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var errs []output.ErrorEvent
+	for _, e := range s.events {
+		if ev, ok := e.(output.ErrorEvent); ok {
+			errs = append(errs, ev)
+		}
+	}
+	return errs
+}
 
 // busyPort binds a listener for the duration of the test and returns its port.
 func busyPort(t *testing.T) string {
@@ -154,6 +170,84 @@ func TestStartWithOptionalPortFallbackRetriesWithoutDeniedPort(t *testing.T) {
 	require.Len(t, texts, 1)
 	assert.Contains(t, texts[0], "Port 443 cannot be published (bind: permission denied) — starting without it")
 	assert.Contains(t, texts[0], "Administrative Access")
+}
+
+func TestStartWithOptionalPortFallbackNamesLeftoverContainerWhenRemoveFails(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockRT := runtime.NewMockRuntime(ctrl)
+
+	c := runtime.ContainerConfig{
+		Name: "localstack-aws",
+		Port: "4566",
+		ExtraPorts: []runtime.PortMapping{
+			{ContainerPort: "443", HostPort: "443", Optional: true},
+		},
+	}
+
+	bindErr := errors.New(`listen tcp 127.0.0.1:443: bind: permission denied`)
+	mockRT.EXPECT().Start(gomock.Any(), c).Return("", nil, bindErr)
+	mockRT.EXPECT().Flavor().Return(runtime.FlavorUnknown)
+	mockRT.EXPECT().Remove(gomock.Any(), c.Name).Return(errors.New("daemon busy"))
+
+	_, _, err := startWithOptionalPortFallback(context.Background(), mockRT, &recordingSink{}, c)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, bindErr, "the original bind error must stay the cause")
+	assert.Contains(t, err.Error(), `"localstack-aws"`, "the leftover container must be named so the user can remove it")
+	assert.Contains(t, err.Error(), "docker rm -f localstack-aws")
+}
+
+func TestHealLeftoverContainerRemovesManagedCreatedLeftover(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockRT := runtime.NewMockRuntime(ctrl)
+
+	c := runtime.ContainerConfig{Name: "localstack-aws", EmulatorType: config.EmulatorAWS}
+	brief := runtime.ContainerBrief{Exists: true, Created: true, Managed: true, Image: "localstack/localstack-pro:latest"}
+	mockRT.EXPECT().Remove(gomock.Any(), c.Name).Return(nil)
+
+	sink := &recordingSink{}
+	err := healLeftoverContainer(context.Background(), mockRT, sink, telemetry.New("", true), c, brief)
+	require.NoError(t, err)
+
+	texts := sink.messageTexts()
+	require.Len(t, texts, 1)
+	assert.Contains(t, texts[0], `Removed leftover container "localstack-aws"`)
+}
+
+func TestHealLeftoverContainerRefusesForeignContainer(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockRT := runtime.NewMockRuntime(ctrl)
+
+	c := runtime.ContainerConfig{Name: "localstack-aws", EmulatorType: config.EmulatorAWS}
+	// No Remove expectation: a container without the lstk label must never be removed.
+	brief := runtime.ContainerBrief{Exists: true, Created: true, Managed: false, Image: "nginx:latest"}
+
+	sink := &recordingSink{}
+	err := healLeftoverContainer(context.Background(), mockRT, sink, telemetry.New("", true), c, brief)
+	require.Error(t, err)
+	assert.True(t, output.IsSilent(err))
+
+	errs := sink.errorEvents()
+	require.Len(t, errs, 1)
+	assert.Contains(t, errs[0].Summary, "nginx:latest")
+	assert.Contains(t, errs[0].Summary, "not created by lstk")
+}
+
+func TestHealLeftoverContainerReportsFailedRemoval(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockRT := runtime.NewMockRuntime(ctrl)
+
+	c := runtime.ContainerConfig{Name: "localstack-aws", EmulatorType: config.EmulatorAWS}
+	brief := runtime.ContainerBrief{Exists: true, Created: true, Managed: true, Image: "localstack/localstack-pro:latest"}
+	mockRT.EXPECT().Remove(gomock.Any(), c.Name).Return(errors.New("daemon busy"))
+
+	sink := &recordingSink{}
+	err := healLeftoverContainer(context.Background(), mockRT, sink, telemetry.New("", true), c, brief)
+	require.Error(t, err)
+
+	errs := sink.errorEvents()
+	require.Len(t, errs, 1)
+	require.Len(t, errs[0].Actions, 1)
+	assert.Equal(t, "docker rm -f localstack-aws", errs[0].Actions[0].Value)
 }
 
 func TestStartWithOptionalPortFallbackPassesThroughOtherErrors(t *testing.T) {

@@ -28,6 +28,14 @@ import (
 	"github.com/localstack/lstk/internal/output"
 )
 
+// managedLabelKey/-Value mark every container lstk creates, so pre-start checks
+// can positively identify an lstk leftover instead of guessing from the image
+// or name — self-healing must never remove a container lstk didn't create.
+const (
+	managedLabelKey   = "cloud.localstack.lstk"
+	managedLabelValue = "true"
+)
+
 type DockerRuntime struct {
 	client *client.Client
 }
@@ -448,6 +456,7 @@ func (d *DockerRuntime) Start(ctx context.Context, config ContainerConfig) (stri
 			Image:        config.Image,
 			ExposedPorts: exposedPorts,
 			Env:          config.Env,
+			Labels:       map[string]string{managedLabelKey: managedLabelValue},
 		},
 		HostConfig: &container.HostConfig{
 			PortBindings: portBindings,
@@ -529,6 +538,26 @@ func (d *DockerRuntime) IsRunning(ctx context.Context, containerID string) (bool
 		return false, err
 	}
 	return inspect.Container.State.Running, nil
+}
+
+func (d *DockerRuntime) InspectBrief(ctx context.Context, containerName string) (ContainerBrief, error) {
+	inspect, err := d.client.ContainerInspect(ctx, containerName, client.ContainerInspectOptions{})
+	if err != nil {
+		if errdefs.IsNotFound(err) {
+			return ContainerBrief{}, nil
+		}
+		return ContainerBrief{}, err
+	}
+	brief := ContainerBrief{Exists: true}
+	if state := inspect.Container.State; state != nil {
+		brief.Running = state.Running
+		brief.Created = string(state.Status) == "created"
+	}
+	if cfg := inspect.Container.Config; cfg != nil {
+		brief.Image = cfg.Image
+		brief.Managed = cfg.Labels[managedLabelKey] == managedLabelValue
+	}
+	return brief, nil
 }
 
 // waitForExit returns a channel that receives exactly one ExitResult for the

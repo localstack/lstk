@@ -58,6 +58,17 @@ type RunningContainer struct {
 	BoundPort string // host port bound to the queried container port
 }
 
+// ContainerBrief describes an existing container for pre-start checks, so
+// callers can tell an lstk leftover (safe to self-heal) from a foreign
+// container that happens to use the same name.
+type ContainerBrief struct {
+	Exists  bool
+	Running bool
+	Created bool   // state "created": created but never started
+	Image   string // full image the container was created from
+	Managed bool   // carries the label Start stamps on every lstk container
+}
+
 // ExitResult reports a container's exit as observed by the exit wait that
 // Start registers.
 type ExitResult struct {
@@ -80,6 +91,10 @@ type Runtime interface {
 	Stop(ctx context.Context, containerName string) error
 	Remove(ctx context.Context, containerName string) error
 	IsRunning(ctx context.Context, containerID string) (bool, error)
+	// InspectBrief reports whether a container with the given name exists and
+	// the facts pre-start checks need about it. A missing container is
+	// (ContainerBrief{}, nil), not an error.
+	InspectBrief(ctx context.Context, containerName string) (ContainerBrief, error)
 	ContainerStartedAt(ctx context.Context, containerName string) (time.Time, error)
 	ContainerEnv(ctx context.Context, containerName string) ([]string, error)
 	Logs(ctx context.Context, containerID string, tail int) (string, error)

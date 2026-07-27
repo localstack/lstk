@@ -159,6 +159,21 @@ func (mr *MockRuntimeMockRecorder) ImageExists(ctx, image any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ImageExists", reflect.TypeOf((*MockRuntime)(nil).ImageExists), ctx, image)
 }
 
+// InspectBrief mocks base method.
+func (m *MockRuntime) InspectBrief(ctx context.Context, containerName string) (ContainerBrief, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "InspectBrief", ctx, containerName)
+	ret0, _ := ret[0].(ContainerBrief)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// InspectBrief indicates an expected call of InspectBrief.
+func (mr *MockRuntimeMockRecorder) InspectBrief(ctx, containerName any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InspectBrief", reflect.TypeOf((*MockRuntime)(nil).InspectBrief), ctx, containerName)
+}
+
 // IsHealthy mocks base method.
 func (m *MockRuntime) IsHealthy(ctx context.Context) error {
 	m.ctrl.T.Helper()

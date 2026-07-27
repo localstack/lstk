@@ -240,7 +240,7 @@ func TestSelectContainersToStart_AttachesWhenExternalContainerOnConfiguredPort(t
 		ContainerPort: "4566/tcp",
 	}
 
-	mockRT.EXPECT().IsRunning(gomock.Any(), c.Name).Return(false, nil)
+	mockRT.EXPECT().InspectBrief(gomock.Any(), c.Name).Return(runtime.ContainerBrief{}, nil)
 	mockRT.EXPECT().FindRunningByImage(gomock.Any(), []string{"localstack/localstack-pro", "localstack/localstack", "localstack/snowflake", "localstack/localstack-azure"}, "4566/tcp").
 		Return(&runtime.RunningContainer{Name: "external-container", Image: "localstack/localstack-pro:3.5.0", BoundPort: "4566"}, nil)
 	mockRT.EXPECT().ContainerEnv(gomock.Any(), "external-container").Return(nil, nil)
@@ -269,7 +269,7 @@ func TestSelectContainersToStart_AttachesWhenExternalContainerVersionDiffers(t *
 		ContainerPort: "4566/tcp",
 	}
 
-	mockRT.EXPECT().IsRunning(gomock.Any(), c.Name).Return(false, nil)
+	mockRT.EXPECT().InspectBrief(gomock.Any(), c.Name).Return(runtime.ContainerBrief{}, nil)
 	mockRT.EXPECT().FindRunningByImage(gomock.Any(), []string{"localstack/localstack-pro", "localstack/localstack", "localstack/snowflake", "localstack/localstack-azure"}, "4566/tcp").
 		Return(&runtime.RunningContainer{Name: "external-container", Image: "localstack/localstack-pro:3.5.0", BoundPort: "4566"}, nil)
 	mockRT.EXPECT().ContainerEnv(gomock.Any(), "external-container").Return(nil, nil)
@@ -303,7 +303,7 @@ func TestSelectContainersToStart_QueuesContainerWhenNoneRunningOnPort(t *testing
 		ContainerPort: "4566/tcp",
 	}
 
-	mockRT.EXPECT().IsRunning(gomock.Any(), c.Name).Return(false, nil)
+	mockRT.EXPECT().InspectBrief(gomock.Any(), c.Name).Return(runtime.ContainerBrief{}, nil)
 	mockRT.EXPECT().FindRunningByImage(gomock.Any(), []string{"localstack/localstack-pro", "localstack/localstack", "localstack/snowflake", "localstack/localstack-azure"}, "4566/tcp").
 		Return(nil, nil)
 	mockRT.EXPECT().Flavor().Return(runtime.FlavorDockerDesktop).AnyTimes()
@@ -330,7 +330,7 @@ func TestSelectContainersToStart_ErrorsOnEmulatorTypeMismatch(t *testing.T) {
 		ContainerPort: "4566/tcp",
 	}
 
-	mockRT.EXPECT().IsRunning(gomock.Any(), c.Name).Return(false, nil)
+	mockRT.EXPECT().InspectBrief(gomock.Any(), c.Name).Return(runtime.ContainerBrief{}, nil)
 	mockRT.EXPECT().FindRunningByImage(gomock.Any(), []string{"localstack/localstack-pro", "localstack/localstack", "localstack/snowflake", "localstack/localstack-azure"}, "4566/tcp").
 		Return(&runtime.RunningContainer{Name: "localstack-aws", Image: "localstack/localstack-pro:latest", BoundPort: "4566"}, nil)
 

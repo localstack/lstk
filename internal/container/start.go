@@ -14,7 +14,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/containerd/errdefs"
 	"github.com/localstack/lstk/internal/api"
 	"github.com/localstack/lstk/internal/auth"
 	"github.com/localstack/lstk/internal/awsconfig"
@@ -688,13 +687,18 @@ func isStartupTimeout(err error) bool {
 func selectContainersToStart(ctx context.Context, rt runtime.Runtime, sink output.Sink, tel *telemetry.Client, containers []runtime.ContainerConfig, localStackHost, webAppURL string) ([]runtime.ContainerConfig, error) {
 	var filtered []runtime.ContainerConfig
 	for _, c := range containers {
-		running, err := rt.IsRunning(ctx, c.Name)
-		if err != nil && !errdefs.IsNotFound(err) {
+		brief, err := rt.InspectBrief(ctx, c.Name)
+		if err != nil {
 			return nil, fmt.Errorf("failed to check container status: %w", err)
 		}
-		if running {
+		if brief.Running {
 			emitAlreadyRunning(ctx, sink, c, localStackHost, webAppURL, isPersistenceEnabled(ctx, rt, c.Name))
 			continue
+		}
+		if brief.Exists {
+			if err := healLeftoverContainer(ctx, rt, sink, tel, c, brief); err != nil {
+				return nil, err
+			}
 		}
 
 		found, err := rt.FindRunningByImage(ctx, config.KnownImageRepos(), c.ContainerPort)
@@ -803,6 +807,49 @@ func emitLocalStackAlreadyRunningWarning(sink output.Sink, port, runningVersion,
 	} else {
 		sink.Emit(output.MessageEvent{Severity: output.SeverityInfo, Text: fmt.Sprintf("LocalStack %s is already running on port %s", runningVersion, port)})
 	}
+}
+
+// healLeftoverContainer deals with an existing, non-running container that
+// holds the name we are about to create. Only a positively identified lstk
+// leftover is removed: it must carry the label Start stamps on every container
+// lstk creates, and be in "created" state — an lstk container that actually ran
+// removes itself on exit (AutoRemove), so a leftover can only be one whose
+// start failed after create (e.g. a rejected port bind). Anything else gets a
+// clear error instead of the daemon's raw name-conflict, and is never removed.
+func healLeftoverContainer(ctx context.Context, rt runtime.Runtime, sink output.Sink, tel *telemetry.Client, c runtime.ContainerConfig, brief runtime.ContainerBrief) error {
+	emitStartError := func(msg string) error {
+		tel.EmitEmulatorLifecycleEvent(ctx, telemetry.LifecycleEvent{
+			EventType: telemetry.LifecycleStartError,
+			Emulator:  c.EmulatorType,
+			Image:     c.Image,
+			ErrorCode: telemetry.ErrCodeStartFailed,
+			ErrorMsg:  msg,
+		})
+		return output.NewSilentError(errors.New(msg))
+	}
+
+	if !brief.Managed || !brief.Created {
+		sink.Emit(output.ErrorEvent{
+			Title:   fmt.Sprintf("Container name %q is already taken", c.Name),
+			Summary: fmt.Sprintf("An existing container (image %s) uses this name but was not created by lstk, so lstk will not remove it.", brief.Image),
+			Actions: []output.ErrorAction{{Label: "Remove or rename that container, e.g.:", Value: "docker rm " + c.Name}},
+		})
+		return emitStartError(fmt.Sprintf("container name %s taken by a foreign container (image %s)", c.Name, brief.Image))
+	}
+
+	if err := rt.Remove(ctx, c.Name); err != nil {
+		sink.Emit(output.ErrorEvent{
+			Title:   fmt.Sprintf("Cannot remove leftover container %q", c.Name),
+			Summary: fmt.Sprintf("A previous start left this container behind and removing it failed: %v", err),
+			Actions: []output.ErrorAction{{Label: "Remove it manually, then retry:", Value: "docker rm -f " + c.Name}},
+		})
+		return emitStartError(fmt.Sprintf("failed to remove leftover container %s: %v", c.Name, err))
+	}
+	sink.Emit(output.MessageEvent{
+		Severity: output.SeverityWarning,
+		Text:     fmt.Sprintf("Removed leftover container %q from a previously failed start.", c.Name),
+	})
+	return nil
 }
 
 // dropBusyOptionalPorts removes optional port mappings whose host port is
@@ -937,9 +984,11 @@ func startWithOptionalPortFallback(ctx context.Context, rt runtime.Runtime, sink
 		})
 		// The failed attempt leaves the created-but-never-started container behind
 		// under the same name (AutoRemove only fires on exit); remove it before
-		// retrying, and surface the original error if removal fails.
+		// retrying. If removal also fails, surface the original error but name the
+		// leftover container — it would otherwise make the next start fail with a
+		// confusing name conflict.
 		if rmErr := rt.Remove(ctx, c.Name); rmErr != nil {
-			return "", nil, err
+			return "", nil, fmt.Errorf("%w (a leftover container named %q may block the next start — remove it manually, e.g. `docker rm -f %s`)", err, c.Name, c.Name)
 		}
 		c.ExtraPorts = append(append([]runtime.PortMapping{}, c.ExtraPorts[:i]...), c.ExtraPorts[i+1:]...)
 	}
