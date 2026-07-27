@@ -553,6 +553,9 @@ func (d *DockerRuntime) InspectBrief(ctx context.Context, containerName string) 
 		brief.Running = state.Running
 		brief.Created = string(state.Status) == "created"
 	}
+	if hostConfig := inspect.Container.HostConfig; hostConfig != nil {
+		brief.AutoRemove = hostConfig.AutoRemove
+	}
 	if cfg := inspect.Container.Config; cfg != nil {
 		brief.Image = cfg.Image
 		brief.Managed = cfg.Labels[managedLabelKey] == managedLabelValue

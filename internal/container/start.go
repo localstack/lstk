@@ -927,12 +927,21 @@ func emitLocalStackAlreadyRunningWarning(sink output.Sink, port, runningVersion,
 }
 
 // healLeftoverContainer deals with an existing, non-running container that
-// holds the name we are about to create. Only a positively identified lstk
-// leftover is removed: it must carry the label Start stamps on every container
-// lstk creates, and be in "created" state — an lstk container that actually ran
-// removes itself on exit (AutoRemove), so a leftover can only be one whose
-// start failed after create (e.g. a rejected port bind). Anything else gets a
-// clear error instead of the daemon's raw name-conflict, and is never removed.
+// holds the name we are about to create. Removal is allowed only when the
+// container is positively on its way out or positively ours:
+//   - lstk-labeled (Managed): safe to remove regardless of state — a labeled
+//     container that ran removes itself on exit (AutoRemove), so a non-running
+//     one is either a created-but-never-started leftover (warn: it records a
+//     previously failed start) or mid-self-removal (silent: `lstk restart`
+//     races the AutoRemove of the container it just stopped, and warning here
+//     would fire on every restart).
+//   - unlabeled but AutoRemove and not "created": a self-removing container
+//     from an older lstk (pre-label) or a foreign `--rm` container in its
+//     removal window; Remove just accompanies the removal already in flight
+//     and waits for the name to free up.
+//
+// Anything else — a foreign container parked on the name — is never removed;
+// the user gets a clear error instead of the daemon's raw name-conflict.
 func healLeftoverContainer(ctx context.Context, rt runtime.Runtime, sink output.Sink, tel *telemetry.Client, c runtime.ContainerConfig, brief runtime.ContainerBrief) error {
 	emitStartError := func(msg string) error {
 		tel.EmitEmulatorLifecycleEvent(ctx, telemetry.LifecycleEvent{
@@ -945,7 +954,8 @@ func healLeftoverContainer(ctx context.Context, rt runtime.Runtime, sink output.
 		return output.NewSilentError(errors.New(msg))
 	}
 
-	if !brief.Managed || !brief.Created {
+	removable := brief.Managed || (brief.AutoRemove && !brief.Created)
+	if !removable {
 		sink.Emit(output.ErrorEvent{
 			Title:   fmt.Sprintf("Container name %q is already taken", c.Name),
 			Summary: fmt.Sprintf("An existing container (image %s) uses this name but was not created by lstk, so lstk will not remove it.", brief.Image),
@@ -962,10 +972,12 @@ func healLeftoverContainer(ctx context.Context, rt runtime.Runtime, sink output.
 		})
 		return emitStartError(fmt.Sprintf("failed to remove leftover container %s: %v", c.Name, err))
 	}
-	sink.Emit(output.MessageEvent{
-		Severity: output.SeverityWarning,
-		Text:     fmt.Sprintf("Removed leftover container %q from a previously failed start.", c.Name),
-	})
+	if brief.Managed && brief.Created {
+		sink.Emit(output.MessageEvent{
+			Severity: output.SeverityWarning,
+			Text:     fmt.Sprintf("Removed leftover container %q from a previously failed start.", c.Name),
+		})
+	}
 	return nil
 }
 

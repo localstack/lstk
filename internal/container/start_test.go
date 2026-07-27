@@ -1523,6 +1523,8 @@ func TestStart_SecondLicenseRejectionAfterReloginRendersErrorEvent(t *testing.T)
 	mockRT.EXPECT().IsHealthy(gomock.Any()).Return(nil)
 	mockRT.EXPECT().SocketPath().Return("").AnyTimes()
 	mockRT.EXPECT().IsRunning(gomock.Any(), gomock.Any()).Return(false, nil).AnyTimes()
+	mockRT.EXPECT().InspectBrief(gomock.Any(), gomock.Any()).Return(runtime.ContainerBrief{}, nil).AnyTimes()
+	mockRT.EXPECT().Flavor().Return(runtime.FlavorDockerDesktop).AnyTimes()
 	mockRT.EXPECT().FindRunningByImage(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
 	mockRT.EXPECT().ImageExists(gomock.Any(), gomock.Any()).Return(false, nil).AnyTimes()
 

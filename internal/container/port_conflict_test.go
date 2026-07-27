@@ -218,7 +218,8 @@ func TestHealLeftoverContainerRefusesForeignContainer(t *testing.T) {
 	mockRT := runtime.NewMockRuntime(ctrl)
 
 	c := runtime.ContainerConfig{Name: "localstack-aws", EmulatorType: config.EmulatorAWS}
-	// No Remove expectation: a container without the lstk label must never be removed.
+	// No Remove expectation: a container without the lstk label (and not
+	// self-removing) must never be removed.
 	brief := runtime.ContainerBrief{Exists: true, Created: true, Managed: false, Image: "nginx:latest"}
 
 	sink := &recordingSink{}
@@ -230,6 +231,56 @@ func TestHealLeftoverContainerRefusesForeignContainer(t *testing.T) {
 	require.Len(t, errs, 1)
 	assert.Contains(t, errs[0].Summary, "nginx:latest")
 	assert.Contains(t, errs[0].Summary, "not created by lstk")
+}
+
+// `lstk restart` stops the old container and immediately starts a new one; the
+// stopped container's AutoRemove may still be in flight when the pre-start
+// check runs. That container (labeled, exited) must be waited out silently —
+// no error, and no "leftover" warning on every restart.
+func TestHealLeftoverContainerSilentlyRemovesManagedExitingContainer(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockRT := runtime.NewMockRuntime(ctrl)
+
+	c := runtime.ContainerConfig{Name: "localstack-aws", EmulatorType: config.EmulatorAWS}
+	brief := runtime.ContainerBrief{Exists: true, Created: false, AutoRemove: true, Managed: true, Image: "localstack/localstack-pro:latest"}
+	mockRT.EXPECT().Remove(gomock.Any(), c.Name).Return(nil)
+
+	sink := &recordingSink{}
+	err := healLeftoverContainer(context.Background(), mockRT, sink, telemetry.New("", true), c, brief)
+	require.NoError(t, err)
+	assert.Empty(t, sink.messageTexts(), "restart-race cleanup must not warn on every restart")
+}
+
+// Containers from lstk versions before the managed label existed have no label
+// but do run with AutoRemove; their in-flight self-removal must be waited out,
+// not refused as foreign.
+func TestHealLeftoverContainerWaitsOutUnlabeledAutoRemoveContainer(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockRT := runtime.NewMockRuntime(ctrl)
+
+	c := runtime.ContainerConfig{Name: "localstack-aws", EmulatorType: config.EmulatorAWS}
+	brief := runtime.ContainerBrief{Exists: true, Created: false, AutoRemove: true, Managed: false, Image: "localstack/localstack-pro:latest"}
+	mockRT.EXPECT().Remove(gomock.Any(), c.Name).Return(nil)
+
+	sink := &recordingSink{}
+	err := healLeftoverContainer(context.Background(), mockRT, sink, telemetry.New("", true), c, brief)
+	require.NoError(t, err)
+	assert.Empty(t, sink.messageTexts())
+}
+
+// An unlabeled AutoRemove container in "created" state is NOT self-removing
+// (AutoRemove only fires on exit) and not provably ours — refuse it.
+func TestHealLeftoverContainerRefusesUnlabeledCreatedAutoRemoveContainer(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockRT := runtime.NewMockRuntime(ctrl)
+
+	c := runtime.ContainerConfig{Name: "localstack-aws", EmulatorType: config.EmulatorAWS}
+	brief := runtime.ContainerBrief{Exists: true, Created: true, AutoRemove: true, Managed: false, Image: "nginx:latest"}
+
+	sink := &recordingSink{}
+	err := healLeftoverContainer(context.Background(), mockRT, sink, telemetry.New("", true), c, brief)
+	require.Error(t, err)
+	require.Len(t, sink.errorEvents(), 1)
 }
 
 func TestHealLeftoverContainerReportsFailedRemoval(t *testing.T) {
