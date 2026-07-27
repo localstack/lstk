@@ -41,11 +41,9 @@ jobs:
         with:
           version-file: .tool-versions
 
-  # Reachability-based vulnerability scan (complements the dependency-version
-  # scan in trivy.yml by only flagging vulnerable code actually called from
-  # this repo). Intentionally not in `release`'s needs: yet — see the comment
-  # there. Runs against both Go modules (root + test/integration have no
-  # go.work tying them together, so each needs its own invocation).
+  # Reachability-based vulnerability scan, complementing trivy.yml's
+  # dependency scan. Runs against both Go modules (no go.work ties them
+  # together).
   govulncheck:
     name: Vulnerability Check
     runs-on: ubuntu-latest
@@ -57,12 +55,10 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v7
 
-      # SARIF report for the Security tab covers both modules and never fails
-      # the job (govulncheck always exits 0 for sarif/json output) — the gate
-      # steps below own pass/fail. repo-checkout: false on every invocation
-      # below: the action's default (true) runs its own actions/checkout with
-      # clean: true, which git-clean -ffdx's away any *.sarif file a prior
-      # step in this job already wrote, before the upload step can read it.
+      # SARIF report for the Security tab; never fails the job (gate steps
+      # below own pass/fail). repo-checkout: false everywhere: the action's
+      # default checkout (with git clean) would delete a prior step's *.sarif
+      # file before the upload step can read it.
       - name: Run govulncheck (root module, SARIF report)
         uses: golang/govulncheck-action@v1
         with:
@@ -97,9 +93,7 @@ jobs:
           category: govulncheck-integration
 
       # The blocking gate: fails on any known vulnerability reachable from the
-      # repo's own code. govulncheck has no severity filter (most Go vuln
-      # reports carry no CVSS data at all), so this gates on reachability
-      # rather than severity.
+      # repo's own code.
       - name: Run govulncheck (root module, gate)
         uses: golang/govulncheck-action@v1
         with:
@@ -296,9 +290,6 @@ jobs:
   release:
     name: Build and Publish Release
     if: startsWith(github.ref, 'refs/tags/')
-    # govulncheck is intentionally NOT required here yet — it's a new check
-    # (staged rollout) and needs a trial period with no false positives
-    # before it can block releases. Promote it once that's confirmed.
     needs:
       - lint
       - goreleaser-check
