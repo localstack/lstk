@@ -33,6 +33,28 @@ func mockPodDiffServer(t *testing.T) *httptest.Server {
 	return srv
 }
 
+// mockPodDiffServerCapturingAuth behaves like mockPodDiffServer but records the
+// Authorization header it received (empty when the header was absent).
+func mockPodDiffServerCapturingAuth(t *testing.T) (*httptest.Server, func() string) {
+	t.Helper()
+	var gotAuth atomic.Value
+	gotAuth.Store("")
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, "/_localstack/pods/") &&
+			strings.HasSuffix(r.URL.Path, "/diff") &&
+			r.Method == http.MethodGet {
+			gotAuth.Store(r.Header.Get("Authorization"))
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"s3":[{"operation_type":"ADDITION"}]}`))
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	t.Cleanup(srv.Close)
+	return srv, func() string { return gotAuth.Load().(string) }
+}
+
 // mockLocalLoadServer returns a test server that handles local snapshot import:
 //   - POST /_localstack/pods              → import (always succeeds)
 //   - POST /_localstack/state/reset       → state reset (overwrite strategy)
@@ -95,6 +117,34 @@ func mockPodLoadServer(t *testing.T, respondOK bool) *httptest.Server {
 	}))
 	t.Cleanup(srv.Close)
 	return srv
+}
+
+// mockPodLoadServerCapturingAuth returns a test server that handles
+// PUT /_localstack/pods/{name} with the given status and records the
+// Authorization header it received (empty when the header was absent). A status
+// of 401/403 mimics an emulator that has no usable identity of its own.
+func mockPodLoadServerCapturingAuth(t *testing.T, status int) (*httptest.Server, func() string) {
+	t.Helper()
+	var gotAuth atomic.Value
+	gotAuth.Store("")
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !strings.HasPrefix(r.URL.Path, "/_localstack/pods/") || r.Method != http.MethodPut {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		gotAuth.Store(r.Header.Get("Authorization"))
+		if status != http.StatusOK {
+			w.WriteHeader(status)
+			_, _ = w.Write([]byte("no credentials configured"))
+			return
+		}
+		w.Header().Set("Content-Type", "application/x-ndjson")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"event":"service","service":"s3","status":"ok"}` + "\n"))
+		_, _ = w.Write([]byte(`{"event":"completion","status":"ok"}` + "\n"))
+	}))
+	t.Cleanup(srv.Close)
+	return srv, func() string { return gotAuth.Load().(string) }
 }
 
 // mockPodNotFoundServer mimics the emulator response when the requested cloud
@@ -173,18 +223,6 @@ func TestSnapshotLoadS3RequiresPodName(t *testing.T) {
 	)
 	requireExitCode(t, 1, err)
 	assert.Contains(t, stderr, "pod name is required")
-}
-
-func TestSnapshotLoadPodNoAuthToken(t *testing.T) {
-	t.Parallel()
-	ctx := testContext(t)
-
-	_, stderr, err := runLstk(t, ctx, t.TempDir(),
-		env.Environ(testEnvWithHome(t.TempDir(), "")).Without(env.AuthToken),
-		"--non-interactive", "snapshot", "load", "pod:my-baseline",
-	)
-	requireExitCode(t, 1, err)
-	assert.Contains(t, stderr, "authentication")
 }
 
 func TestSnapshotLoadPodInvalidName(t *testing.T) {
@@ -365,6 +403,92 @@ func TestSnapshotLoadPodSuccess(t *testing.T) {
 	assert.Contains(t, stdout, "dynamodb")
 }
 
+// A pod load must not be rejected client-side just because the caller supplied
+// no token: the emulator was started with an identity (e.g. a job-level
+// LOCALSTACK_AUTH_TOKEN that only `lstk start` saw) and reuses it, so lstk sends
+// no Authorization header and lets the emulator decide.
+func TestSnapshotLoadPodReusesEmulatorIdentity(t *testing.T) {
+	requireDocker(t)
+	cleanup()
+	t.Cleanup(cleanup)
+
+	ctx := testContext(t)
+	startTestContainer(t, ctx)
+	srv, gotAuth := mockPodLoadServerCapturingAuth(t, http.StatusOK)
+
+	stdout, stderr, err := runLstk(t, ctx, t.TempDir(),
+		env.Environ(testEnvWithHome(t.TempDir(), "")).
+			With(env.LocalStackHost, lsHost(srv)).
+			Without(env.AuthToken),
+		"--non-interactive", "snapshot", "load", "pod:my-baseline",
+	)
+	require.NoError(t, err, "lstk snapshot load pod:my-baseline failed: %s", stderr)
+	assert.Contains(t, stdout, "Snapshot loaded")
+	assert.Empty(t, gotAuth(), "no Authorization header should be sent so the emulator reuses its own identity")
+}
+
+// An explicitly supplied token still overrides the emulator's identity.
+func TestSnapshotLoadPodExplicitTokenOverridesEmulatorIdentity(t *testing.T) {
+	requireDocker(t)
+	cleanup()
+	t.Cleanup(cleanup)
+
+	ctx := testContext(t)
+	startTestContainer(t, ctx)
+	srv, gotAuth := mockPodLoadServerCapturingAuth(t, http.StatusOK)
+
+	_, stderr, err := runLstk(t, ctx, t.TempDir(),
+		env.Environ(testEnvWithHome(t.TempDir(), "")).
+			With(env.LocalStackHost, lsHost(srv)).
+			With(env.AuthToken, "the-token"),
+		"--non-interactive", "snapshot", "load", "pod:my-baseline",
+	)
+	require.NoError(t, err, "lstk snapshot load pod:my-baseline failed: %s", stderr)
+	assert.Equal(t, "Basic OnRoZS10b2tlbg==", gotAuth()) // base64(":the-token")
+}
+
+// When neither the caller nor the emulator has an identity, the emulator's
+// rejection is surfaced as an actionable authentication error.
+func TestSnapshotLoadPodEmulatorRejectsUnauthenticated(t *testing.T) {
+	requireDocker(t)
+	cleanup()
+	t.Cleanup(cleanup)
+
+	ctx := testContext(t)
+	startTestContainer(t, ctx)
+	srv, _ := mockPodLoadServerCapturingAuth(t, http.StatusUnauthorized)
+
+	stdout, _, err := runLstk(t, ctx, t.TempDir(),
+		env.Environ(testEnvWithHome(t.TempDir(), "")).
+			With(env.LocalStackHost, lsHost(srv)).
+			Without(env.AuthToken),
+		"--non-interactive", "snapshot", "load", "pod:my-baseline",
+	)
+	requireExitCode(t, 1, err)
+	assert.Contains(t, stdout, "Authentication failed")
+	assert.Contains(t, stdout, "no credentials configured", "the emulator's own explanation should be surfaced")
+	assert.Contains(t, stdout, "lstk login")
+}
+
+// With no emulator running there is no identity to reuse, so the auto-start path
+// still requires a token from the environment or keychain.
+func TestSnapshotLoadPodNoAuthTokenAndNoEmulator(t *testing.T) {
+	requireDocker(t)
+	cleanup()
+	t.Cleanup(cleanup)
+
+	ctx := testContext(t)
+	// Intentionally no startTestContainer: load auto-starts the emulator, which
+	// needs a token of its own.
+
+	_, stderr, err := runLstk(t, ctx, t.TempDir(),
+		env.Environ(testEnvWithHome(t.TempDir(), "")).Without(env.AuthToken),
+		"--non-interactive", "snapshot", "load", "pod:my-baseline",
+	)
+	requireExitCode(t, 1, err)
+	assert.Contains(t, stderr, "authentication required")
+}
+
 func TestSnapshotLoadPodServerError(t *testing.T) {
 	requireDocker(t)
 	cleanup()
@@ -496,16 +620,44 @@ func TestSnapshotLoadDryRunOnLocalRef(t *testing.T) {
 	assert.Contains(t, stderr, "pod refs")
 }
 
+// A dry run without a token is not rejected client-side either; it needs a
+// running emulator whose identity it can reuse (there is no auto-start).
 func TestSnapshotLoadDryRunPodNoAuthToken(t *testing.T) {
-	t.Parallel()
-	ctx := testContext(t)
+	requireDocker(t)
+	cleanup()
+	t.Cleanup(cleanup)
 
-	_, stderr, err := runLstk(t, ctx, t.TempDir(),
+	ctx := testContext(t)
+	// Intentionally no startTestContainer: --dry-run does not auto-start.
+
+	stdout, _, err := runLstk(t, ctx, t.TempDir(),
 		env.Environ(testEnvWithHome(t.TempDir(), "")).Without(env.AuthToken),
 		"--non-interactive", "snapshot", "load", "--dry-run", "pod:my-baseline",
 	)
 	requireExitCode(t, 1, err)
-	assert.Contains(t, stderr, "authentication")
+	assert.Contains(t, stdout, "not running")
+}
+
+// The dry run reuses the running emulator's identity: no token supplied, no
+// Authorization header sent, and the diff still runs.
+func TestSnapshotLoadDryRunPodReusesEmulatorIdentity(t *testing.T) {
+	requireDocker(t)
+	cleanup()
+	t.Cleanup(cleanup)
+
+	ctx := testContext(t)
+	startTestContainer(t, ctx)
+	srv, gotAuth := mockPodDiffServerCapturingAuth(t)
+
+	stdout, stderr, err := runLstk(t, ctx, t.TempDir(),
+		env.Environ(testEnvWithHome(t.TempDir(), "")).
+			With(env.LocalStackHost, lsHost(srv)).
+			Without(env.AuthToken),
+		"--non-interactive", "snapshot", "load", "--dry-run", "pod:my-baseline",
+	)
+	require.NoError(t, err, "lstk snapshot load --dry-run failed: %s", stderr)
+	assert.Contains(t, stdout, "Dry-run results")
+	assert.Empty(t, gotAuth(), "no Authorization header should be sent so the emulator reuses its own identity")
 }
 
 func TestSnapshotLoadDryRunPodSuccess(t *testing.T) {

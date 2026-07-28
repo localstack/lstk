@@ -276,15 +276,43 @@ func TestSavePod_Success(t *testing.T) {
 	assert.Equal(t, int64(1048576), saved.Size)
 }
 
-func TestSavePod_NoAuthToken(t *testing.T) {
+// Without a caller-supplied token the save still goes through, with the empty
+// token passed on: the running emulator reuses the identity it was started with.
+func TestSavePod_NoAuthTokenReusesEmulatorIdentity(t *testing.T) {
 	t.Parallel()
 	ctrl := gomock.NewController(t)
 	saver := NewMockPodSaver(ctrl)
+	saver.EXPECT().SavePodSnapshot(gomock.Any(), gomock.Any(), "my-baseline", "", gomock.Any()).
+		Return(snapshot.PodSaveResult{Version: 1}, nil)
 
 	sink := output.NewPlainSink(io.Discard)
-	err := snapshot.SavePod(context.Background(), runtime.NewMockRuntime(ctrl), awsContainers, saver, "", "my-baseline", "", nil, sink)
+	err := snapshot.SavePod(context.Background(), healthyRunningMock(t), awsContainers, saver, "", "my-baseline", "", nil, sink)
+	require.NoError(t, err)
+}
+
+// When the emulator has no identity either, its rejection is rendered as an
+// actionable error instead of a raw HTTP failure.
+func TestSavePod_AuthRequiredFromEmulator(t *testing.T) {
+	t.Parallel()
+	ctrl := gomock.NewController(t)
+	saver := NewMockPodSaver(ctrl)
+	saver.EXPECT().SavePodSnapshot(gomock.Any(), gomock.Any(), "my-baseline", "", gomock.Any()).
+		Return(snapshot.PodSaveResult{}, fmt.Errorf("%w: no credentials", snapshot.ErrAuthRequired))
+
+	sink, getEvents := captureEvents(t)
+	err := snapshot.SavePod(context.Background(), healthyRunningMock(t), awsContainers, saver, "", "my-baseline", "", nil, sink)
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "authentication")
+	assert.True(t, output.IsSilent(err), "the error should be silent: it is rendered through the sink")
+
+	var errEvent *output.ErrorEvent
+	for _, e := range getEvents() {
+		if ev, ok := e.(output.ErrorEvent); ok {
+			errEvent = &ev
+		}
+	}
+	require.NotNil(t, errEvent, "ErrorEvent should have been emitted")
+	assert.Contains(t, errEvent.Title, "Authentication failed")
+	assert.Equal(t, "no credentials", errEvent.Summary, "the emulator's own explanation should be surfaced")
 }
 
 func TestSavePod_EmulatorNotRunning(t *testing.T) {
@@ -338,4 +366,3 @@ func TestSavePod_SaverError(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "platform unreachable")
 }
-

@@ -178,12 +178,13 @@ When lstk's stdout and stderr are both terminals, `lstk aws` runs the child via 
 
 - `lstk snapshot save [destination]` (`-s`/`--services`: comma-separated list to limit a save to a subset of services; applies uniformly to local files, `pod:` cloud snapshots, and S3-remote saves) / `lstk snapshot load REF` (`--merge`: `account-region-merge` default, `overwrite`, `service-merge`) / `list` (cloud; `--all` for org-wide) / `remove REF` / `show REF` / `versions REF`.
 - `show`, `versions`, and bare `list` (no `s3://` arg) only ever call the LocalStack platform API — never the emulator. `remove`, by contrast, proxies its delete through the running emulator despite being a "cloud" (`pod:`) concept, so it still requires one to be reachable; don't conflate "operates on cloud-hosted storage" with "never touches the emulator" — they're different axes.
-- A REF is a local `.snapshot` file, a `pod:` cloud snapshot on the LocalStack platform (requires auth), or an `s3://bucket/prefix` remote in the user's own bucket (the emulator performs the transfer; S3 supports save/load/list only).
+- A REF is a local `.snapshot` file, a `pod:` cloud snapshot on the LocalStack platform (requires an identity), or an `s3://bucket/prefix` remote in the user's own bucket (the emulator performs the transfer; S3 supports save/load/list only).
 - Every save to an existing `pod:` snapshot creates a new **version**. `versions REF` lists them; `load` and `show` accept a `pod:<name>:<version>` REF (latest when omitted). `save`, `remove`, `versions`, and S3 remotes reject a version suffix rather than ignore it.
 - A `[[containers]]` block (AWS only) can set `snapshot = "pod:..."` to auto-load after a fresh start; `lstk start --snapshot REF` overrides it for one run, `--no-snapshot` skips it.
+- Emulator-backed pod operations against an lstk-managed local emulator do not pre-check for a token: with none supplied they send no auth header, so the running emulator reuses the identity it was started with. Externally-managed targets (`--endpoint-url` and its environment-variable equivalents) and platform-direct commands (`list`, `show`, `versions`) still need a token from the environment or keychain.
 - `save`/`load`/`remove` and `list s3://...` support the global `--endpoint-url` targeting described under "Targeting an External Emulator"; `show`, `versions`, and bare `list` silently ignore it (they never touch the emulator regardless).
 
-REF parsing helpers, S3 credential precedence and remote-upsert mechanics, and the auto-load wiring are documented in `internal/snapshot/CLAUDE.md`.
+REF parsing helpers, the authentication rules, S3 credential precedence and remote-upsert mechanics, and the auto-load wiring are documented in `internal/snapshot/CLAUDE.md`.
 
 # NPM Distribution
 

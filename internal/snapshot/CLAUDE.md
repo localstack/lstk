@@ -6,7 +6,7 @@ Detail moved out of the root CLAUDE.md; see the root file for the command list.
 
 A REF is parsed by helpers in `internal/snapshot/destination.go`:
 - **local file** — absolute/relative path; the `.snapshot` extension is forced (any other extension is replaced). On load, `.zip` files saved by older lstk versions are still accepted.
-- **cloud snapshot** — `pod:` prefix (e.g. `pod:my-baseline`), stored on the LocalStack platform. Requires auth (`LOCALSTACK_AUTH_TOKEN` or `lstk login`).
+- **cloud snapshot** — `pod:` prefix (e.g. `pod:my-baseline`), stored on the LocalStack platform. Requires an identity (`LOCALSTACK_AUTH_TOKEN`, `lstk login`, or the running emulator's — see Authentication below).
 - **S3 remote** — `s3://bucket/prefix` (parsed to `KindS3`). The CLI never touches S3; the emulator performs the transfer.
 
 `ParseDestination` (save), `ParseSource` (load), `ParseRemovable` (remove), `ParseShowable` (show), and `ParseVersionable` (versions) share pod-name validation; `ParseRemovable`, `ParseShowable`, and `ParseVersionable` reject local paths (via the shared `parseCloudOnly` helper) so those cloud-only commands never touch local files.
@@ -33,6 +33,16 @@ Two things to keep in mind when touching this:
 - **`ResetState` is shared with `lstk reset`.** Every other gated client method is called only from `internal/snapshot`, but `aws.Client.ResetState` is also used by `internal/reset`, which wraps the error and prints its text verbatim. That's why `ErrSnapshotFeatureUnavailable`'s message says "feature not available on this plan" and not "snapshot ..." — keep it feature-neutral, or `lstk reset` starts blaming snapshots. Giving `lstk reset` its own paid-plan message (with the pricing CTA) is a reasonable follow-up.
 
 `snapshot list` and `snapshot show` reach the same conclusion from a different signal: they query the platform API (`/v1/cloudpods*`), not the emulator, and it answers an unentitled plan with `403 {"error": true, "message": "generic.forbidden"}`. `ListCloudPods`/`GetCloudPod` map that to `api.ErrCloudPodsForbidden`, which both commands render through the same `emitFeatureUnavailableError`. Only `403` maps — a rejected token is a `401` and stays a generic error, so a re-login problem is never reported as a billing problem.
+
+## Authentication
+
+Emulator-backed pod operations (`save pod:`, `load pod:`, `load --dry-run`, and `remove`) against an lstk-managed local emulator send the caller's token as a Basic auth header only when there is one (`setBasicAuth` in `internal/emulator/aws/remote.go`) and never pre-check for it. Omitting the header is what lets the emulator reuse the identity it was started with — `lstk start` passes an env-provided `LOCALSTACK_AUTH_TOKEN` to the container but does not persist it to the keychain, so in CI the following steps may have no token of their own (DEVX-1022). An explicitly supplied token still wins, since it is sent as the header.
+
+That fallback is limited to locally managed emulators. `requireExternalPodAuth` at the command boundary rejects tokenless platform-pod operations when `resolveSnapshotDeps` selected an externally-managed target through `--endpoint-url`, `LSTK_ENDPOINT_URL`, or `AWS_ENDPOINT_URL`; network access to a remote emulator must not grant use of the identity it was started with. S3-remote operations remain separate: they use the caller's AWS credentials and do not require a LocalStack platform token.
+
+A rejected request comes back 401/403, which the client maps to `snapshot.ErrAuthRequired` (`authRejected`) for the domain layer to render as the actionable "Authentication failed for cloud snapshots" error (`emitAuthRequired` in `internal/snapshot/auth.go`). Since the rejection can mean no identity, an invalid token, or one without access — and on an `s3://` remote it can even be the AWS credentials rather than the platform token — the emulator's own message is used as the error summary rather than a guess. Body-based classifications run first (`isPodNotFoundMsg`, remove's `"not found"` match): the platform answers 403 for a pod the identity cannot see, and that is a missing pod, not a missing identity.
+
+Commands that talk to the platform API directly (`list` without an `s3://` location, `show`, `versions`) have no emulator to fall back on and keep their up-front token check, resolved from the environment or keychain in `cmd/root.go`.
 
 ## Limiting saved services (`--services`)
 

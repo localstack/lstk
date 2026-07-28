@@ -358,6 +358,11 @@ func runSnapshotLoad(cfg *env.Env, tel *telemetry.Client, logger log.Logger) fun
 		if err != nil {
 			return err
 		}
+		if src.Kind == snapshot.KindPod {
+			if err := requireExternalPodAuth(external, cfg.AuthToken); err != nil {
+				return err
+			}
+		}
 
 		var starter snapshot.Starter
 		if !external {
@@ -414,16 +419,22 @@ func runSnapshotRemove(cfg *env.Env) func(*cobra.Command, []string) error {
 			if !force {
 				return fmt.Errorf("snapshot remove requires confirmation; use --force to skip in non-interactive mode")
 			}
-			rt, client, host, containers, _, _, err := resolveSnapshotDeps(cmd.Context(), cmd, cfg)
+			rt, client, host, containers, _, external, err := resolveSnapshotDeps(cmd.Context(), cmd, cfg)
 			if err != nil {
+				return err
+			}
+			if err := requireExternalPodAuth(external, cfg.AuthToken); err != nil {
 				return err
 			}
 			sink := output.NewPlainSink(os.Stdout)
 			return snapshot.Remove(cmd.Context(), rt, containers, ref.Value, cfg.AuthToken, client, host, force, sink)
 		}
 
-		rt, client, host, containers, _, _, err := resolveSnapshotDeps(cmd.Context(), cmd, cfg)
+		rt, client, host, containers, _, external, err := resolveSnapshotDeps(cmd.Context(), cmd, cfg)
 		if err != nil {
+			return err
+		}
+		if err := requireExternalPodAuth(external, cfg.AuthToken); err != nil {
 			return err
 		}
 		return ui.RunSnapshotRemove(cmd.Context(), rt, containers, client, host, args[0], cwd, home, cfg.AuthToken, force)
@@ -431,8 +442,11 @@ func runSnapshotRemove(cfg *env.Env) func(*cobra.Command, []string) error {
 }
 
 func execDiff(cmd *cobra.Command, cfg *env.Env, podName string, version int, strategy string) error {
-	rt, client, host, containers, _, _, err := resolveSnapshotDeps(cmd.Context(), cmd, cfg)
+	rt, client, host, containers, _, external, err := resolveSnapshotDeps(cmd.Context(), cmd, cfg)
 	if err != nil {
+		return err
+	}
+	if err := requireExternalPodAuth(external, cfg.AuthToken); err != nil {
 		return err
 	}
 
@@ -441,6 +455,13 @@ func execDiff(cmd *cobra.Command, cfg *env.Env, podName string, version int, str
 	}
 	sink := output.NewPlainSink(os.Stdout)
 	return snapshot.DiffPod(cmd.Context(), rt, containers, client, host, podName, version, cfg.AuthToken, strategy, sink)
+}
+
+func requireExternalPodAuth(external bool, authToken string) error {
+	if external && authToken == "" {
+		return fmt.Errorf("authentication is required for cloud snapshot operations against an externally-managed emulator — set LOCALSTACK_AUTH_TOKEN or run %q", "lstk login")
+	}
+	return nil
 }
 
 // resolveSnapshotDeps resolves the runtime, host, and target container(s) for
@@ -786,9 +807,14 @@ func runSnapshotSave(cfg *env.Env) func(*cobra.Command, []string) error {
 			return err
 		}
 
-		rt, client, host, containers, _, _, err := resolveSnapshotDeps(cmd.Context(), cmd, cfg)
+		rt, client, host, containers, _, external, err := resolveSnapshotDeps(cmd.Context(), cmd, cfg)
 		if err != nil {
 			return err
+		}
+		if dest.Kind == snapshot.KindPod {
+			if err := requireExternalPodAuth(external, cfg.AuthToken); err != nil {
+				return err
+			}
 		}
 
 		if isInteractiveMode(cfg) {

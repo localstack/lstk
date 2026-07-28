@@ -123,15 +123,43 @@ func TestDiffPod_EmptyResult(t *testing.T) {
 	assert.Empty(t, diffEvent.Services)
 }
 
-func TestDiffPod_NoAuthToken(t *testing.T) {
+// Without a caller-supplied token the diff still goes through, with the empty
+// token passed on: the running emulator reuses the identity it was started with.
+func TestDiffPod_NoAuthTokenReusesEmulatorIdentity(t *testing.T) {
 	t.Parallel()
 	ctrl := gomock.NewController(t)
 	differ := NewMockPodDiffer(ctrl)
-	sink := output.NewPlainSink(io.Discard)
+	differ.EXPECT().DiffPodSnapshot(gomock.Any(), gomock.Any(), "my-baseline", 0, "").
+		Return(snapshot.DiffResult{}, nil)
 
-	err := snapshot.DiffPod(context.Background(), runtime.NewMockRuntime(ctrl), awsContainers, differ, "", "my-baseline", 0, "", "", sink)
+	sink := output.NewPlainSink(io.Discard)
+	err := snapshot.DiffPod(context.Background(), healthyRunningMock(t), awsContainers, differ, "", "my-baseline", 0, "", "", sink)
+	require.NoError(t, err)
+}
+
+// When the emulator has no identity either, its rejection is rendered as an
+// actionable error instead of a raw HTTP failure.
+func TestDiffPod_AuthRequiredFromEmulator(t *testing.T) {
+	t.Parallel()
+	ctrl := gomock.NewController(t)
+	differ := NewMockPodDiffer(ctrl)
+	differ.EXPECT().DiffPodSnapshot(gomock.Any(), gomock.Any(), "my-baseline", 0, "").
+		Return(nil, fmt.Errorf("%w: no credentials", snapshot.ErrAuthRequired))
+
+	sink, getEvents := captureEvents(t)
+	err := snapshot.DiffPod(context.Background(), healthyRunningMock(t), awsContainers, differ, "", "my-baseline", 0, "", "", sink)
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "authentication")
+	assert.True(t, output.IsSilent(err), "the error should be silent: it is rendered through the sink")
+
+	var errEvent *output.ErrorEvent
+	for _, e := range getEvents() {
+		if ev, ok := e.(output.ErrorEvent); ok {
+			errEvent = &ev
+		}
+	}
+	require.NotNil(t, errEvent, "ErrorEvent should have been emitted")
+	assert.Contains(t, errEvent.Title, "Authentication failed")
+	assert.Equal(t, "no credentials", errEvent.Summary, "the emulator's own explanation should be surfaced")
 }
 
 func TestDiffPod_DifferError(t *testing.T) {

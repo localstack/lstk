@@ -50,12 +50,23 @@ func marshalPodBody(remoteName string, params map[string]string, services []stri
 }
 
 // setBasicAuth sets the LocalStack Basic auth header when a token is present.
-// S3 remotes do not require a platform token, so it is optional.
+// It is optional: S3 remotes do not require a platform token, and for
+// platform-hosted pods on a locally managed emulator an omitted header makes
+// the emulator fall back to the identity it was started with.
 func setBasicAuth(req *http.Request, authToken string) {
 	if authToken == "" {
 		return
 	}
 	req.Header.Set("Authorization", "Basic "+base64.StdEncoding.EncodeToString([]byte(":"+authToken)))
+}
+
+// authRejected reports whether status is the emulator rejecting a pod operation
+// for lack of a usable identity: 401 for no or invalid credentials, 403 for
+// credentials that exist but don't grant access. Callers wrap the response body
+// in snapshot.ErrAuthRequired so the domain layer can render an actionable
+// message with the emulator's own explanation.
+func authRejected(status int) bool {
+	return status == http.StatusUnauthorized || status == http.StatusForbidden
 }
 
 // S3BucketExists reports whether an S3 bucket exists, via an unsigned HEAD to the
@@ -163,6 +174,10 @@ func (c *Client) ListPodsRemote(ctx context.Context, baseURL, remoteName string,
 		if isFeatureUnavailableResponse(resp.StatusCode, respBody) {
 			return nil, snapshot.ErrSnapshotFeatureUnavailable
 		}
+		msg := strings.TrimSpace(string(respBody))
+		if authRejected(resp.StatusCode) {
+			return nil, fmt.Errorf("%w: %s", snapshot.ErrAuthRequired, msg)
+		}
 		return nil, emulatorStatusError(fmt.Sprintf("list pods failed (HTTP %d)", resp.StatusCode), respBody)
 	}
 
@@ -203,6 +218,10 @@ func (c *Client) doPodSave(ctx context.Context, baseURL, podName, authToken stri
 		respBody, _ := io.ReadAll(resp.Body)
 		if isFeatureUnavailableResponse(resp.StatusCode, respBody) {
 			return snapshot.PodSaveResult{}, snapshot.ErrSnapshotFeatureUnavailable
+		}
+		msg := strings.TrimSpace(string(respBody))
+		if authRejected(resp.StatusCode) {
+			return snapshot.PodSaveResult{}, fmt.Errorf("%w: %s", snapshot.ErrAuthRequired, msg)
 		}
 		return snapshot.PodSaveResult{}, emulatorStatusError(fmt.Sprintf("pod save failed (HTTP %d)", resp.StatusCode), respBody)
 	}
@@ -283,8 +302,12 @@ func (c *Client) doPodLoad(ctx context.Context, baseURL, podName string, version
 		if isFeatureUnavailableResponse(resp.StatusCode, respBody) {
 			return nil, snapshot.ErrSnapshotFeatureUnavailable
 		}
-		if bodyStr := strings.TrimSpace(string(respBody)); isPodVersionNotFoundMsg(bodyStr) {
-			return nil, fmt.Errorf("%w: %s", snapshot.ErrPodVersionNotFound, bodyStr)
+		msg := strings.TrimSpace(string(respBody))
+		if isPodVersionNotFoundMsg(msg) {
+			return nil, fmt.Errorf("%w: %s", snapshot.ErrPodVersionNotFound, msg)
+		}
+		if authRejected(resp.StatusCode) {
+			return nil, fmt.Errorf("%w: %s", snapshot.ErrAuthRequired, msg)
 		}
 		return nil, emulatorStatusError(fmt.Sprintf("pod load failed (HTTP %d)", resp.StatusCode), respBody)
 	}

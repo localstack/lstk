@@ -22,11 +22,8 @@ type PodRemover interface {
 }
 
 // Remove deletes a remote pod snapshot, prompting for confirmation unless force is true.
+// An empty authToken is intentional; see ErrAuthRequired.
 func Remove(ctx context.Context, rt runtime.Runtime, containers []config.ContainerConfig, podName, authToken string, remover PodRemover, host string, force bool, sink output.Sink) error {
-	if authToken == "" {
-		return fmt.Errorf("pod snapshots require authentication — set LOCALSTACK_AUTH_TOKEN or run %q", "lstk login")
-	}
-
 	if err := rt.IsHealthy(ctx); err != nil {
 		rt.EmitUnhealthyError(sink, err)
 		return output.NewSilentError(fmt.Errorf("runtime not healthy: %w", err))
@@ -83,6 +80,9 @@ func remove(ctx context.Context, podName, authToken string, remover PodRemover, 
 	err := remover.RemovePodSnapshot(ctx, host, podName, authToken)
 	if errors.Is(err, ErrSnapshotFeatureUnavailable) {
 		return emitFeatureUnavailableError(sink)
+	}
+	if errors.Is(err, ErrAuthRequired) {
+		return emitAuthRequired(sink, err)
 	}
 	if errors.Is(err, ErrPodNotFound) {
 		return fmt.Errorf("cloud pod %q not found", podName)

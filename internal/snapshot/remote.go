@@ -220,6 +220,9 @@ func ListRemoteS3(ctx context.Context, rt runtime.Runtime, containers []config.C
 	}
 	pods, err := client.ListPodsRemote(ctx, host, name, creds.params(), authToken, "")
 	sink.Emit(output.SpinnerStop())
+	if errors.Is(err, ErrAuthRequired) {
+		return emitAuthRequired(sink, err)
+	}
 	if err != nil {
 		if errors.Is(err, ErrSnapshotFeatureUnavailable) {
 			return emitFeatureUnavailableError(sink)

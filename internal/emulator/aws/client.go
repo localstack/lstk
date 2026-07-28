@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"bytes"
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -351,7 +350,7 @@ func (c *Client) DiffPodSnapshot(ctx context.Context, baseURL, podName string, v
 	if err != nil {
 		return nil, fmt.Errorf("create request: %w", err)
 	}
-	req.Header.Set("Authorization", "Basic "+base64.StdEncoding.EncodeToString([]byte(":"+authToken)))
+	setBasicAuth(req, authToken)
 
 	resp, err := c.http.Do(req)
 	if err != nil {
@@ -365,11 +364,17 @@ func (c *Client) DiffPodSnapshot(ctx context.Context, baseURL, podName string, v
 		if isPodVersionNotFoundMsg(bodyStr) {
 			return nil, fmt.Errorf("%w: %s", snapshot.ErrPodVersionNotFound, bodyStr)
 		}
+		// Not-found is classified from the body first: the platform answers 403
+		// for a pod the identity cannot see, which is a missing pod rather than a
+		// missing identity.
 		if isPodNotFoundMsg(bodyStr) {
 			return nil, fmt.Errorf("%w: %s", snapshot.ErrPodNotFound, bodyStr)
 		}
 		if isFeatureUnavailableResponse(resp.StatusCode, body) {
 			return nil, snapshot.ErrSnapshotFeatureUnavailable
+		}
+		if authRejected(resp.StatusCode) {
+			return nil, fmt.Errorf("%w: %s", snapshot.ErrAuthRequired, bodyStr)
 		}
 		return nil, emulatorStatusError(fmt.Sprintf("diff failed (HTTP %d)", resp.StatusCode), body)
 	}
@@ -390,7 +395,7 @@ func (c *Client) DiffPodSnapshot(ctx context.Context, baseURL, podName string, v
 				counts.Additions++
 			case "MODIFICATION":
 				counts.Modifications++
-			// DELETION is intentionally omitted: the diff endpoint does not currently return deletions.
+				// DELETION is intentionally omitted: the diff endpoint does not currently return deletions.
 			}
 		}
 		result[svc] = counts
@@ -415,7 +420,7 @@ func (c *Client) RemovePodSnapshot(ctx context.Context, baseURL, podName, authTo
 		return fmt.Errorf("create request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Basic "+base64.StdEncoding.EncodeToString([]byte(":"+authToken)))
+	setBasicAuth(req, authToken)
 
 	resp, err := c.http.Do(req)
 	if err != nil {
@@ -426,11 +431,17 @@ func (c *Client) RemovePodSnapshot(ctx context.Context, baseURL, podName, authTo
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
 		bodyStr := strings.TrimSpace(string(body))
+		// Not-found is classified from the body first: the platform answers 403
+		// for a pod the identity cannot see, which is a missing pod rather than a
+		// missing identity.
 		if strings.Contains(strings.ToLower(bodyStr), "not found") {
 			return fmt.Errorf("%w: %s", snapshot.ErrPodNotFound, bodyStr)
 		}
 		if isFeatureUnavailableResponse(resp.StatusCode, body) {
 			return snapshot.ErrSnapshotFeatureUnavailable
+		}
+		if authRejected(resp.StatusCode) {
+			return fmt.Errorf("%w: %s", snapshot.ErrAuthRequired, bodyStr)
 		}
 		return emulatorStatusError(fmt.Sprintf("pod remove failed (HTTP %d)", resp.StatusCode), body)
 	}

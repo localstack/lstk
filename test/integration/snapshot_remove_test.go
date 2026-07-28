@@ -20,21 +20,25 @@ import (
 )
 
 // mockPodRemoveServer returns a test server that handles DELETE /_localstack/pods/{name}.
-// status is the HTTP status code to respond with.
-// The returned function reports how many times the endpoint was called.
-func mockPodRemoveServer(t *testing.T, status int) (*httptest.Server, func() int32) {
+// status is the HTTP status code to respond with. The returned functions report how
+// many times the endpoint was called and which Authorization header it last received
+// (empty when the header was absent).
+func mockPodRemoveServer(t *testing.T, status int) (srv *httptest.Server, calls func() int32, auth func() string) {
 	t.Helper()
-	var calls atomic.Int32
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	var callCount atomic.Int32
+	var gotAuth atomic.Value
+	gotAuth.Store("")
+	srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasPrefix(r.URL.Path, "/_localstack/pods/") && r.Method == http.MethodDelete {
-			calls.Add(1)
+			callCount.Add(1)
+			gotAuth.Store(r.Header.Get("Authorization"))
 			w.WriteHeader(status)
 			return
 		}
 		w.WriteHeader(http.StatusNotFound)
 	}))
 	t.Cleanup(srv.Close)
-	return srv, calls.Load
+	return srv, callCount.Load, func() string { return gotAuth.Load().(string) }
 }
 
 // --- no Docker required (parallel) ---
@@ -65,16 +69,23 @@ func TestSnapshotRemoveLocalBareNameRejected(t *testing.T) {
 	assert.Contains(t, stderr, "CLI cannot delete local files")
 }
 
-func TestSnapshotRemovePodNoAuthToken(t *testing.T) {
-	t.Parallel()
-	ctx := testContext(t)
+// Removal goes through the emulator, so without a caller-supplied token there is
+// no client-side rejection: with no emulator running the command fails on that
+// instead.
+func TestSnapshotRemovePodNoAuthTokenAndNoEmulator(t *testing.T) {
+	requireDocker(t)
+	cleanup()
+	t.Cleanup(cleanup)
 
-	_, stderr, err := runLstk(t, ctx, t.TempDir(),
+	ctx := testContext(t)
+	// Intentionally no startTestContainer: the emulator is not running.
+
+	stdout, _, err := runLstk(t, ctx, t.TempDir(),
 		env.Environ(testEnvWithHome(t.TempDir(), "")).Without(env.AuthToken),
 		"--non-interactive", "snapshot", "remove", "pod:my-baseline", "--force",
 	)
 	requireExitCode(t, 1, err)
-	assert.Contains(t, stderr, "authentication")
+	assert.Contains(t, stdout, "not running")
 }
 
 func TestSnapshotRemovePodInvalidName(t *testing.T) {
@@ -132,7 +143,7 @@ func TestSnapshotRemovePodSuccess(t *testing.T) {
 
 	ctx := testContext(t)
 	startTestContainer(t, ctx)
-	srv, calls := mockPodRemoveServer(t, http.StatusOK)
+	srv, calls, _ := mockPodRemoveServer(t, http.StatusOK)
 
 	stdout, stderr, err := runLstk(t, ctx, t.TempDir(),
 		env.Environ(testEnvWithHome(t.TempDir(), "")).
@@ -146,6 +157,51 @@ func TestSnapshotRemovePodSuccess(t *testing.T) {
 	assert.Equal(t, int32(1), calls(), "DELETE endpoint should be called exactly once")
 }
 
+// Removal without a caller-supplied token reuses the running emulator's
+// identity: lstk sends no Authorization header instead of failing client-side.
+func TestSnapshotRemovePodReusesEmulatorIdentity(t *testing.T) {
+	requireDocker(t)
+	cleanup()
+	t.Cleanup(cleanup)
+
+	ctx := testContext(t)
+	startTestContainer(t, ctx)
+	srv, calls, gotAuth := mockPodRemoveServer(t, http.StatusOK)
+
+	stdout, stderr, err := runLstk(t, ctx, t.TempDir(),
+		env.Environ(testEnvWithHome(t.TempDir(), "")).
+			With(env.LocalStackHost, lsHost(srv)).
+			Without(env.AuthToken),
+		"--non-interactive", "snapshot", "remove", "pod:my-baseline", "--force",
+	)
+	require.NoError(t, err, "lstk snapshot remove pod:my-baseline failed: %s", stderr)
+	assert.Contains(t, stdout, "deleted")
+	assert.Equal(t, int32(1), calls())
+	assert.Empty(t, gotAuth(), "no Authorization header should be sent so the emulator reuses its own identity")
+}
+
+// A 401 from the emulator (neither side has an identity) is rendered as an
+// actionable authentication error carrying the emulator's own explanation.
+func TestSnapshotRemovePodEmulatorRejectsUnauthenticated(t *testing.T) {
+	requireDocker(t)
+	cleanup()
+	t.Cleanup(cleanup)
+
+	ctx := testContext(t)
+	startTestContainer(t, ctx)
+	srv, _, _ := mockPodRemoveServer(t, http.StatusUnauthorized)
+
+	stdout, _, err := runLstk(t, ctx, t.TempDir(),
+		env.Environ(testEnvWithHome(t.TempDir(), "")).
+			With(env.LocalStackHost, lsHost(srv)).
+			Without(env.AuthToken),
+		"--non-interactive", "snapshot", "remove", "pod:my-baseline", "--force",
+	)
+	requireExitCode(t, 1, err)
+	assert.Contains(t, stdout, "Authentication failed")
+	assert.Contains(t, stdout, "lstk login")
+}
+
 func TestSnapshotRemovePodServerError(t *testing.T) {
 	requireDocker(t)
 	cleanup()
@@ -153,7 +209,7 @@ func TestSnapshotRemovePodServerError(t *testing.T) {
 
 	ctx := testContext(t)
 	startTestContainer(t, ctx)
-	srv, calls := mockPodRemoveServer(t, http.StatusInternalServerError)
+	srv, calls, _ := mockPodRemoveServer(t, http.StatusInternalServerError)
 
 	_, stderr, err := runLstk(t, ctx, t.TempDir(),
 		env.Environ(testEnvWithHome(t.TempDir(), "")).
@@ -233,7 +289,7 @@ func TestSnapshotRemoveInteractive(t *testing.T) {
 	}
 
 	t.Run("confirms with y", func(t *testing.T) {
-		srv, calls := mockPodRemoveServer(t, http.StatusOK)
+		srv, calls, _ := mockPodRemoveServer(t, http.StatusOK)
 		ptmx, out, outputCh, cmd := startRemove(t, srv)
 		_, err := ptmx.Write([]byte("y"))
 		require.NoError(t, err)
@@ -245,7 +301,7 @@ func TestSnapshotRemoveInteractive(t *testing.T) {
 	})
 
 	t.Run("cancels with n", func(t *testing.T) {
-		srv, calls := mockPodRemoveServer(t, http.StatusOK)
+		srv, calls, _ := mockPodRemoveServer(t, http.StatusOK)
 		ptmx, out, outputCh, cmd := startRemove(t, srv)
 		_, err := ptmx.Write([]byte("n"))
 		require.NoError(t, err)
@@ -257,7 +313,7 @@ func TestSnapshotRemoveInteractive(t *testing.T) {
 	})
 
 	t.Run("force skips confirmation prompt", func(t *testing.T) {
-		srv, calls := mockPodRemoveServer(t, http.StatusOK)
+		srv, calls, _ := mockPodRemoveServer(t, http.StatusOK)
 
 		binPath, err := filepath.Abs(binaryPath())
 		require.NoError(t, err)

@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 
 	"github.com/localstack/lstk/test/integration/env"
@@ -363,6 +364,26 @@ func mockPodSaveServer(t *testing.T, respondOK bool) *httptest.Server {
 	return srv
 }
 
+// mockPodSaveServerCapturingAuth behaves like mockPodSaveServer but records the
+// Authorization header it received (empty when the header was absent).
+func mockPodSaveServerCapturingAuth(t *testing.T) (*httptest.Server, func() string) {
+	t.Helper()
+	var gotAuth atomic.Value
+	gotAuth.Store("")
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, "/_localstack/pods/") && r.Method == http.MethodPost {
+			gotAuth.Store(r.Header.Get("Authorization"))
+			w.Header().Set("Content-Type", "application/x-ndjson")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"event":"completion","status":"ok","operation":"save","info":{"name":"my-baseline","version":1,"remote":"platform","services":["s3"],"size":1024}}` + "\n"))
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	t.Cleanup(srv.Close)
+	return srv, func() string { return gotAuth.Load().(string) }
+}
+
 func TestSnapshotSavePodSuccess(t *testing.T) {
 	requireDocker(t)
 	cleanup()
@@ -404,16 +425,44 @@ func TestSnapshotSavePodServerError(t *testing.T) {
 	assert.Contains(t, stderr, "platform error")
 }
 
-func TestSnapshotSavePodNoAuthToken(t *testing.T) {
-	t.Parallel()
-	ctx := testContext(t)
+// A pod save without a caller-supplied token reuses the running emulator's
+// identity: lstk sends no Authorization header instead of failing client-side.
+func TestSnapshotSavePodReusesEmulatorIdentity(t *testing.T) {
+	requireDocker(t)
+	cleanup()
+	t.Cleanup(cleanup)
 
-	_, stderr, err := runLstk(t, ctx, t.TempDir(),
+	ctx := testContext(t)
+	startTestContainer(t, ctx)
+	srv, gotAuth := mockPodSaveServerCapturingAuth(t)
+
+	stdout, stderr, err := runLstk(t, ctx, t.TempDir(),
+		env.Environ(testEnvWithHome(t.TempDir(), "")).
+			With(env.LocalStackHost, lsHost(srv)).
+			Without(env.AuthToken),
+		"--non-interactive", "snapshot", "save", "pod:my-baseline",
+	)
+	require.NoError(t, err, "lstk snapshot save pod:my-baseline failed: %s", stderr)
+	assert.Contains(t, stdout, "my-baseline")
+	assert.Empty(t, gotAuth(), "no Authorization header should be sent so the emulator reuses its own identity")
+}
+
+// With no emulator running there is no identity to reuse, and save does not
+// auto-start one.
+func TestSnapshotSavePodNoAuthTokenAndNoEmulator(t *testing.T) {
+	requireDocker(t)
+	cleanup()
+	t.Cleanup(cleanup)
+
+	ctx := testContext(t)
+	// Intentionally no startTestContainer: the emulator is not running.
+
+	stdout, _, err := runLstk(t, ctx, t.TempDir(),
 		env.Environ(testEnvWithHome(t.TempDir(), "")).Without(env.AuthToken),
 		"--non-interactive", "snapshot", "save", "pod:my-baseline",
 	)
 	requireExitCode(t, 1, err)
-	assert.Contains(t, stderr, "authentication")
+	assert.Contains(t, stdout, "not running")
 }
 
 func TestSnapshotSavePodInvalidName(t *testing.T) {

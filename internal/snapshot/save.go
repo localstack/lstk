@@ -66,9 +66,13 @@ func save(ctx context.Context, rt runtime.Runtime, containers []config.Container
 		}
 	}()
 
-	if err := do(); err != nil {
+	err = do()
+	if err != nil {
 		if errors.Is(err, ErrSnapshotFeatureUnavailable) {
 			return emitFeatureUnavailableError(sink)
+		}
+		if errors.Is(err, ErrAuthRequired) {
+			return emitAuthRequired(sink, err)
 		}
 		return err
 	}
@@ -119,10 +123,8 @@ func fileSize(dest string) int64 {
 
 // SavePod saves the running emulator's state to a platform-hosted pod.
 // services, when non-empty, limits the save to that subset of services.
+// An empty authToken is intentional; see ErrAuthRequired.
 func SavePod(ctx context.Context, rt runtime.Runtime, containers []config.ContainerConfig, saver PodSaver, host, podName, authToken string, services []string, sink output.Sink) error {
-	if authToken == "" {
-		return fmt.Errorf("pod snapshots require authentication — set LOCALSTACK_AUTH_TOKEN or run %q", "lstk login")
-	}
 	var result PodSaveResult
 	return save(ctx, rt, containers, sink,
 		fmt.Sprintf("Saving snapshot to pod %q...", podName),

@@ -336,15 +336,43 @@ func TestLoadPod_Success(t *testing.T) {
 	assert.Equal(t, []string{"s3", "dynamodb"}, loaded.Services)
 }
 
-func TestLoadPod_NoAuthToken(t *testing.T) {
+// Without a caller-supplied token the load still goes through, with the empty
+// token passed on: the running emulator reuses the identity it was started with.
+func TestLoadPod_NoAuthTokenReusesEmulatorIdentity(t *testing.T) {
 	t.Parallel()
 	ctrl := gomock.NewController(t)
 	loader := NewMockPodLoader(ctrl)
-	sink := output.NewPlainSink(io.Discard)
+	loader.EXPECT().LoadPodSnapshot(gomock.Any(), gomock.Any(), "my-baseline", 0, "", gomock.Any()).
+		Return([]string{"s3"}, nil)
 
-	err := snapshot.LoadPod(context.Background(), runtime.NewMockRuntime(ctrl), awsContainers, loader, "", "my-baseline", 0, "", "", nopStarter, sink)
+	sink := output.NewPlainSink(io.Discard)
+	err := snapshot.LoadPod(context.Background(), healthyRunningMock(t), awsContainers, loader, "", "my-baseline", 0, "", "", nopStarter, sink)
+	require.NoError(t, err)
+}
+
+// When the emulator has no identity either, its rejection is rendered as an
+// actionable error instead of a raw HTTP failure.
+func TestLoadPod_AuthRequiredFromEmulator(t *testing.T) {
+	t.Parallel()
+	ctrl := gomock.NewController(t)
+	loader := NewMockPodLoader(ctrl)
+	loader.EXPECT().LoadPodSnapshot(gomock.Any(), gomock.Any(), "my-baseline", 0, "", gomock.Any()).
+		Return(nil, fmt.Errorf("%w: no credentials", snapshot.ErrAuthRequired))
+
+	sink, getEvents := captureEvents(t)
+	err := snapshot.LoadPod(context.Background(), healthyRunningMock(t), awsContainers, loader, "", "my-baseline", 0, "", "", nopStarter, sink)
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "authentication")
+	assert.True(t, output.IsSilent(err), "the error should be silent: it is rendered through the sink")
+
+	var errEvent *output.ErrorEvent
+	for _, e := range getEvents() {
+		if ev, ok := e.(output.ErrorEvent); ok {
+			errEvent = &ev
+		}
+	}
+	require.NotNil(t, errEvent, "ErrorEvent should have been emitted")
+	assert.Contains(t, errEvent.Title, "Authentication failed")
+	assert.Equal(t, "no credentials", errEvent.Summary, "the emulator's own explanation should be surfaced")
 }
 
 func TestLoadPod_LoaderError(t *testing.T) {

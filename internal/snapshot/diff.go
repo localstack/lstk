@@ -32,11 +32,8 @@ type PodDiffer interface {
 // DiffPod calls the diff endpoint for a named pod and emits a SnapshotDiffEvent.
 // It requires the emulator to already be running (unlike LoadPod, there is no auto-start).
 // version 0 diffs against the pod's latest version.
+// An empty authToken is intentional for a locally managed emulator; see ErrAuthRequired.
 func DiffPod(ctx context.Context, rt runtime.Runtime, containers []config.ContainerConfig, differ PodDiffer, host, podName string, version int, authToken, strategy string, sink output.Sink) error {
-	if authToken == "" {
-		return fmt.Errorf("pod snapshots require authentication — set LOCALSTACK_AUTH_TOKEN or run %q", "lstk login")
-	}
-
 	if err := rt.IsHealthy(ctx); err != nil {
 		rt.EmitUnhealthyError(sink, err)
 		return output.NewSilentError(fmt.Errorf("runtime not healthy: %w", err))
@@ -70,6 +67,9 @@ func DiffPod(ctx context.Context, rt runtime.Runtime, containers []config.Contai
 	}
 	if errors.Is(err, ErrPodVersionNotFound) {
 		return emitPodVersionNotFound(err, podName, "Could not check pod diff", sink)
+	}
+	if errors.Is(err, ErrAuthRequired) {
+		return emitAuthRequired(sink, err)
 	}
 	if errors.Is(err, ErrPodNotFound) {
 		sink.Emit(output.ErrorEvent{
