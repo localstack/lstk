@@ -9,6 +9,7 @@ permissions:
   contents: write
   pull-requests: write
   checks: write
+  security-events: write
 
 concurrency:
   group: create-release-tag
