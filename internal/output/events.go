@@ -88,6 +88,15 @@ type PodSnapshotSavedEvent struct {
 	Size     int64
 }
 
+// LocalSnapshotSavedEvent reports a snapshot saved to a local file. Services
+// lists what was actually captured (all services when no --services filter
+// was requested).
+type LocalSnapshotSavedEvent struct {
+	Path     string
+	Services []string
+	Size     int64
+}
+
 // RemoteSnapshotSavedEvent reports a snapshot saved to a remote storage backend
 // (e.g. an S3 bucket). Location is the user-facing remote target (e.g. an s3:// URL)
 // and PodName is the snapshot's identity within that remote.
@@ -217,6 +226,7 @@ func (InstanceInfoEvent) sealedEvent()        {}
 func (TableEvent) sealedEvent()               {}
 func (ResourceSummaryEvent) sealedEvent()     {}
 func (PodSnapshotSavedEvent) sealedEvent()    {}
+func (LocalSnapshotSavedEvent) sealedEvent()  {}
 func (RemoteSnapshotSavedEvent) sealedEvent() {}
 func (DeferredEvent) sealedEvent()            {}
 func (SnapshotLoadedEvent) sealedEvent()      {}

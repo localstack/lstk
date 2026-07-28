@@ -101,16 +101,16 @@ func (mr *MockRemoteClientMockRecorder) S3BucketExists(ctx, bucket any) *gomock.
 }
 
 // SavePodRemote mocks base method.
-func (m *MockRemoteClient) SavePodRemote(ctx context.Context, host, podName, remoteName string, params map[string]string, authToken string) (snapshot.PodSaveResult, error) {
+func (m *MockRemoteClient) SavePodRemote(ctx context.Context, host, podName, remoteName string, params map[string]string, authToken string, services []string) (snapshot.PodSaveResult, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "SavePodRemote", ctx, host, podName, remoteName, params, authToken)
+	ret := m.ctrl.Call(m, "SavePodRemote", ctx, host, podName, remoteName, params, authToken, services)
 	ret0, _ := ret[0].(snapshot.PodSaveResult)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // SavePodRemote indicates an expected call of SavePodRemote.
-func (mr *MockRemoteClientMockRecorder) SavePodRemote(ctx, host, podName, remoteName, params, authToken any) *gomock.Call {
+func (mr *MockRemoteClientMockRecorder) SavePodRemote(ctx, host, podName, remoteName, params, authToken, services any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SavePodRemote", reflect.TypeOf((*MockRemoteClient)(nil).SavePodRemote), ctx, host, podName, remoteName, params, authToken)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SavePodRemote", reflect.TypeOf((*MockRemoteClient)(nil).SavePodRemote), ctx, host, podName, remoteName, params, authToken, services)
 }

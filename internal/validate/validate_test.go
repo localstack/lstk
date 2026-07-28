@@ -111,3 +111,55 @@ func TestAuthToken(t *testing.T) {
 		})
 	}
 }
+
+func TestServiceList(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name     string
+		value    string
+		want     []string
+		wantErr  bool
+		wantRule string
+	}{
+		{"empty means no filter", "", nil, false, ""},
+		{"single value", "s3", []string{"s3"}, false, ""},
+		{"multiple values", "s3,lambda,dynamodb", []string{"s3", "lambda", "dynamodb"}, false, ""},
+		{"whitespace around items trimmed", "s3, lambda , dynamodb", []string{"s3", "lambda", "dynamodb"}, false, ""},
+		{"underscores and hyphens allowed", "cognito-idp,step_functions", []string{"cognito-idp", "step_functions"}, false, ""},
+		{"duplicates preserved", "s3,s3,lambda", []string{"s3", "s3", "lambda"}, false, ""},
+		{"whitespace only", "   ", nil, true, RuleFormat},
+		{"double comma", "s3,,lambda", nil, true, RuleFormat},
+		{"trailing comma", "s3,", nil, true, RuleFormat},
+		{"leading comma", ",s3", nil, true, RuleFormat},
+		{"semicolon separated", "s3;lambda", nil, true, RuleFormat},
+		{"embedded space in item", "s3, la mbda", nil, true, RuleFormat},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got, err := ServiceList(tt.value)
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("ServiceList(%q) error = %v, wantErr %v", tt.value, err, tt.wantErr)
+			}
+			if !tt.wantErr {
+				if len(got) != len(tt.want) {
+					t.Fatalf("ServiceList(%q) = %v, want %v", tt.value, got, tt.want)
+				}
+				for i := range got {
+					if got[i] != tt.want[i] {
+						t.Fatalf("ServiceList(%q) = %v, want %v", tt.value, got, tt.want)
+					}
+				}
+			}
+			if tt.wantRule != "" {
+				var ve *Error
+				if !errors.As(err, &ve) {
+					t.Fatalf("ServiceList(%q) error is not *validate.Error: %v", tt.value, err)
+				}
+				if ve.Rule != tt.wantRule {
+					t.Errorf("ServiceList(%q) Rule = %q, want %q", tt.value, ve.Rule, tt.wantRule)
+				}
+			}
+		})
+	}
+}

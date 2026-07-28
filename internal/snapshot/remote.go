@@ -63,7 +63,8 @@ type RemoteClient interface {
 	// tokens that the emulator renders with the per-request params.
 	RegisterRemote(ctx context.Context, host, name, remoteURL string) error
 	// SavePodRemote saves the running state to podName on the named remote.
-	SavePodRemote(ctx context.Context, host, podName, remoteName string, params map[string]string, authToken string) (PodSaveResult, error)
+	// services, when non-empty, limits the save to that subset of services.
+	SavePodRemote(ctx context.Context, host, podName, remoteName string, params map[string]string, authToken string, services []string) (PodSaveResult, error)
 	// LoadPodRemote loads podName from the named remote with the given merge strategy.
 	LoadPodRemote(ctx context.Context, host, podName, remoteName string, params map[string]string, authToken, strategy string) ([]string, error)
 	// ListPodsRemote lists the snapshots stored on the named remote.
@@ -134,7 +135,8 @@ func templatedRemoteURL(s3URL string, hasSessionToken bool) string {
 // SaveRemoteS3 saves the running emulator's state to podName in the S3 bucket
 // identified by s3URL, using the given credentials. An auth token is optional for
 // S3 remotes (the S3 credentials are the auth); it is forwarded when present.
-func SaveRemoteS3(ctx context.Context, rt runtime.Runtime, containers []config.ContainerConfig, client RemoteClient, host, podName, s3URL string, creds S3Credentials, authToken string, sink output.Sink) error {
+// services, when non-empty, limits the save to that subset of services.
+func SaveRemoteS3(ctx context.Context, rt runtime.Runtime, containers []config.ContainerConfig, client RemoteClient, host, podName, s3URL string, creds S3Credentials, authToken string, services []string, sink output.Sink) error {
 	if err := ensureBucketExists(ctx, client, s3URL, sink); err != nil {
 		return err
 	}
@@ -157,7 +159,7 @@ func SaveRemoteS3(ctx context.Context, rt runtime.Runtime, containers []config.C
 				return fmt.Errorf("register S3 remote: %w", err)
 			}
 			var err error
-			result, err = client.SavePodRemote(ctx, host, podName, name, creds.params(), authToken)
+			result, err = client.SavePodRemote(ctx, host, podName, name, creds.params(), authToken, services)
 			return err
 		},
 	)

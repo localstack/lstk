@@ -9,9 +9,9 @@ import (
 	"github.com/localstack/lstk/internal/snapshot"
 )
 
-func RunSnapshotSaveRemoteS3(parentCtx context.Context, rt runtime.Runtime, containers []config.ContainerConfig, client snapshot.RemoteClient, host, podName, s3URL string, creds snapshot.S3Credentials, authToken string) error {
+func RunSnapshotSaveRemoteS3(parentCtx context.Context, rt runtime.Runtime, containers []config.ContainerConfig, client snapshot.RemoteClient, host, podName, s3URL string, creds snapshot.S3Credentials, authToken string, services []string) error {
 	return runWithTUI(parentCtx, withoutHeader(), func(ctx context.Context, sink output.Sink) error {
-		return snapshot.SaveRemoteS3(ctx, rt, containers, client, host, podName, s3URL, creds, authToken, sink)
+		return snapshot.SaveRemoteS3(ctx, rt, containers, client, host, podName, s3URL, creds, authToken, services, sink)
 	})
 }
 

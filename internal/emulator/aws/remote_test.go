@@ -46,13 +46,34 @@ func TestSavePodRemote_SendsRemoteBody(t *testing.T) {
 
 	c := NewClient()
 	params := map[string]string{"access_key_id": "AKIA", "secret_access_key": "shh"}
-	res, err := c.SavePodRemote(context.Background(), server.Listener.Addr().String(), "my-pod", "lstk-s3-abc", params, "")
+	res, err := c.SavePodRemote(context.Background(), server.Listener.Addr().String(), "my-pod", "lstk-s3-abc", params, "", nil)
 	require.NoError(t, err)
 	assert.Equal(t, 1, res.Version)
 	require.NotNil(t, gotBody.Remote)
 	assert.Equal(t, "lstk-s3-abc", gotBody.Remote.RemoteName)
 	assert.Equal(t, "AKIA", gotBody.Remote.RemoteParams["access_key_id"])
 	assert.Equal(t, "shh", gotBody.Remote.RemoteParams["secret_access_key"])
+	assert.Nil(t, gotBody.Attributes, "no services filter passed, so attributes should be omitted")
+}
+
+func TestSavePodRemote_SendsServicesFilter(t *testing.T) {
+	t.Parallel()
+	var gotBody podRequestBody
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		require.NoError(t, json.Unmarshal(body, &gotBody))
+		w.Header().Set("Content-Type", "application/x-ndjson")
+		_, _ = fmt.Fprintln(w, `{"event": "completion", "status": "ok", "info": {"version": 1, "services": ["s3"], "size": 10}}`)
+	}))
+	defer server.Close()
+
+	c := NewClient()
+	params := map[string]string{"access_key_id": "AKIA", "secret_access_key": "shh"}
+	_, err := c.SavePodRemote(context.Background(), server.Listener.Addr().String(), "my-pod", "lstk-s3-abc", params, "", []string{"s3", "dynamodb"})
+	require.NoError(t, err)
+	require.NotNil(t, gotBody.Remote)
+	require.NotNil(t, gotBody.Attributes)
+	assert.Equal(t, []string{"s3", "dynamodb"}, gotBody.Attributes.Services)
 }
 
 func TestSavePodSnapshot_SendsEmptyRemote(t *testing.T) {
@@ -68,9 +89,29 @@ func TestSavePodSnapshot_SendsEmptyRemote(t *testing.T) {
 	defer server.Close()
 
 	c := NewClient()
-	_, err := c.SavePodSnapshot(context.Background(), server.Listener.Addr().String(), "my-pod", "the-token")
+	_, err := c.SavePodSnapshot(context.Background(), server.Listener.Addr().String(), "my-pod", "the-token", nil)
 	require.NoError(t, err)
 	assert.Nil(t, gotBody.Remote, "platform pod save must not include a remote payload")
+	assert.Nil(t, gotBody.Attributes, "no services filter passed, so attributes should be omitted")
+}
+
+func TestSavePodSnapshot_SendsServicesFilter(t *testing.T) {
+	t.Parallel()
+	var gotBody podRequestBody
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		require.NoError(t, json.Unmarshal(body, &gotBody))
+		w.Header().Set("Content-Type", "application/x-ndjson")
+		_, _ = fmt.Fprintln(w, `{"event": "completion", "status": "ok", "info": {"version": 1, "services": ["s3", "lambda"], "size": 10}}`)
+	}))
+	defer server.Close()
+
+	c := NewClient()
+	_, err := c.SavePodSnapshot(context.Background(), server.Listener.Addr().String(), "my-pod", "the-token", []string{"s3", "lambda"})
+	require.NoError(t, err)
+	assert.Nil(t, gotBody.Remote, "platform pod save must not include a remote payload")
+	require.NotNil(t, gotBody.Attributes)
+	assert.Equal(t, []string{"s3", "lambda"}, gotBody.Attributes.Services)
 }
 
 func TestS3BucketExists(t *testing.T) {

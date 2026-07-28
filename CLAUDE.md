@@ -160,7 +160,7 @@ Wrapped external tools (`aws`, `terraform`, `cdk`, `sam`, `az`, and extensions) 
 
 `lstk snapshot` captures and restores the running emulator's state (for Snowflake and Azure a heads-up is shown that results may be incomplete). Domain logic lives in `internal/snapshot/`; `cmd/snapshot.go` is wiring + output-mode selection. Top-level `lstk save` / `lstk load` are aliases for the save/load subcommands.
 
-- `lstk snapshot save [destination]` / `lstk snapshot load REF` (`--merge`: `account-region-merge` default, `overwrite`, `service-merge`) / `list` (cloud; `--all` for org-wide) / `remove REF` / `show REF` (remove/show are cloud-only).
+- `lstk snapshot save [destination]` (`-s`/`--services`: comma-separated list to limit a save to a subset of services; applies uniformly to local files, `pod:` cloud snapshots, and S3-remote saves) / `lstk snapshot load REF` (`--merge`: `account-region-merge` default, `overwrite`, `service-merge`) / `list` (cloud; `--all` for org-wide) / `remove REF` / `show REF` (remove/show are cloud-only).
 - A REF is a local `.snapshot` file, a `pod:` cloud snapshot on the LocalStack platform (requires auth), or an `s3://bucket/prefix` remote in the user's own bucket (the emulator performs the transfer; S3 supports save/load/list only).
 - A `[[containers]]` block (AWS only) can set `snapshot = "pod:..."` to auto-load after a fresh start; `lstk start --snapshot REF` overrides it for one run, `--no-snapshot` skips it.
 

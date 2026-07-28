@@ -111,6 +111,34 @@ func PodName(value string) error {
 	return nil
 }
 
+// serviceListRegexp matches a comma-delimited list of service-name tokens:
+// letters, digits, underscores, and hyphens, with optional whitespace around
+// each item and separator. Mirrors the legacy CLI's is_comma_delimited_list
+// check. This is syntactic only — lstk has no canonical service registry to
+// validate membership against, and the platform silently drops unrecognized
+// names rather than rejecting them, so a stricter client-side allow-list
+// would only diverge from server behavior.
+var serviceListRegexp = regexp.MustCompile(`^\s*[\w-]+(\s*,\s*[\w-]+)*\s*$`)
+
+// ServiceList validates and parses a comma-separated --services value. An
+// empty string means "no filter" and returns (nil, nil) — equivalent to
+// omitting the flag. Each item is trimmed of surrounding whitespace;
+// duplicates are preserved (not deduplicated), matching the legacy CLI.
+func ServiceList(value string) ([]string, error) {
+	if value == "" {
+		return nil, nil
+	}
+	if !serviceListRegexp.MatchString(value) {
+		return nil, newError("services", RuleFormat, "must be a comma-separated list of service names (letters, digits, hyphens, underscores)")
+	}
+	parts := strings.Split(value, ",")
+	services := make([]string, len(parts))
+	for i, p := range parts {
+		services[i] = strings.TrimSpace(p)
+	}
+	return services, nil
+}
+
 // AuthToken validates a LocalStack auth token. The character set is intentionally
 // not restricted — tokens are opaque — so only clearly malformed values are
 // rejected: control characters, embedded whitespace, or an implausible length. An

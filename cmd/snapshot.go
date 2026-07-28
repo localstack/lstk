@@ -21,6 +21,7 @@ import (
 	"github.com/localstack/lstk/internal/snapshot"
 	"github.com/localstack/lstk/internal/telemetry"
 	"github.com/localstack/lstk/internal/ui"
+	"github.com/localstack/lstk/internal/validate"
 	"github.com/spf13/cobra"
 )
 
@@ -65,7 +66,12 @@ To save to a remote pod on the LocalStack platform, use the pod: prefix:
 To save to your own S3 bucket, pass an s3:// location with an optional pod name (auto-generated when omitted). Credentials are read from AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY, from --profile, or from the profile named by AWS_PROFILE; never put credentials in the URL.
 
   lstk %[1]s my-pod s3://my-bucket/prefix
-  lstk %[1]s my-pod s3://my-bucket/prefix --profile my-aws-profile`, cmdName)
+  lstk %[1]s my-pod s3://my-bucket/prefix --profile my-aws-profile
+
+Use -s/--services to limit the snapshot to a subset of services, for any destination:
+
+  lstk %[1]s --services s3,lambda
+  lstk %[1]s pod:my-baseline --services s3,lambda`, cmdName)
 }
 
 const snapshotLoadCanonical = "snapshot load"
@@ -449,6 +455,12 @@ func addProfileFlag(cmd *cobra.Command) {
 	cmd.Flags().String("profile", "", "AWS profile to read S3 credentials from (defaults to AWS_* env vars, then AWS_PROFILE)")
 }
 
+// addServicesFlag registers the --services flag used to limit a save (local
+// file, pod:, or S3-remote) to a subset of the emulator's services.
+func addServicesFlag(cmd *cobra.Command) {
+	cmd.Flags().StringP("services", "s", "", "Comma-separated list of services to include in the snapshot (all by default)")
+}
+
 // classifyRemoteArgs inspects positional args for an s3:// location. When one is
 // present, it returns the S3 URL and the optional pod name (the other positional);
 // ok is false when no s3:// ref is given, so the caller uses the local/pod path.
@@ -620,6 +632,7 @@ func newSnapshotSaveCmd(cfg *env.Env) *cobra.Command {
 		RunE:    runSnapshotSave(cfg),
 	}
 	addProfileFlag(cmd)
+	addServicesFlag(cmd)
 	return cmd
 }
 
@@ -634,12 +647,21 @@ func newSaveCmd(cfg *env.Env) *cobra.Command {
 		Annotations: map[string]string{canonicalCommandAnnotation: snapshotSaveCanonical},
 	}
 	addProfileFlag(cmd)
+	addServicesFlag(cmd)
 	return cmd
 }
 
 func runSnapshotSave(cfg *env.Env) func(*cobra.Command, []string) error {
 	return func(cmd *cobra.Command, args []string) error {
 		profile, err := cmd.Flags().GetString("profile")
+		if err != nil {
+			return err
+		}
+		servicesFlag, err := cmd.Flags().GetString("services")
+		if err != nil {
+			return err
+		}
+		services, err := validate.ServiceList(servicesFlag)
 		if err != nil {
 			return err
 		}
@@ -673,10 +695,10 @@ func runSnapshotSave(cfg *env.Env) func(*cobra.Command, []string) error {
 				return err
 			}
 			if isInteractiveMode(cfg) {
-				return ui.RunSnapshotSaveRemoteS3(cmd.Context(), rt, containers, client, host, podName, dest.Value, creds, cfg.AuthToken)
+				return ui.RunSnapshotSaveRemoteS3(cmd.Context(), rt, containers, client, host, podName, dest.Value, creds, cfg.AuthToken, services)
 			}
 			sink := output.NewPlainSink(os.Stdout)
-			return snapshot.SaveRemoteS3(cmd.Context(), rt, containers, client, host, podName, dest.Value, creds, cfg.AuthToken, sink)
+			return snapshot.SaveRemoteS3(cmd.Context(), rt, containers, client, host, podName, dest.Value, creds, cfg.AuthToken, services, sink)
 		}
 
 		var destArg string
@@ -694,14 +716,14 @@ func runSnapshotSave(cfg *env.Env) func(*cobra.Command, []string) error {
 		}
 
 		if isInteractiveMode(cfg) {
-			return ui.RunSnapshotSave(cmd.Context(), rt, containers, client, host, dest, cfg.AuthToken)
+			return ui.RunSnapshotSave(cmd.Context(), rt, containers, client, host, dest, cfg.AuthToken, services)
 		}
 		sink := output.NewPlainSink(os.Stdout)
 		switch dest.Kind {
 		case snapshot.KindPod:
-			return snapshot.SavePod(cmd.Context(), rt, containers, client, host, dest.Value, cfg.AuthToken, sink)
+			return snapshot.SavePod(cmd.Context(), rt, containers, client, host, dest.Value, cfg.AuthToken, services, sink)
 		default:
-			return snapshot.SaveLocal(cmd.Context(), rt, containers, client, host, dest.Value, sink)
+			return snapshot.SaveLocal(cmd.Context(), rt, containers, client, host, dest.Value, services, sink)
 		}
 	}
 }

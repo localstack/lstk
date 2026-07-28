@@ -47,6 +47,8 @@ func FormatEventLine(event Event) (string, bool) {
 		return formatResourceSummary(e), true
 	case PodSnapshotSavedEvent:
 		return formatPodSnapshotSaved(e), true
+	case LocalSnapshotSavedEvent:
+		return formatLocalSnapshotSaved(e), true
 	case RemoteSnapshotSavedEvent:
 		return formatRemoteSnapshotSaved(e), true
 	case SnapshotLoadedEvent:
@@ -277,6 +279,18 @@ func formatPodSnapshotSaved(e PodSnapshotSavedEvent) string {
 	if e.Version > 0 {
 		sb.WriteString(fmt.Sprintf("\n• Version: %d", e.Version))
 	}
+	if len(e.Services) > 0 {
+		sb.WriteString("\n• Services: " + strings.Join(e.Services, ", "))
+	}
+	if e.Size > 0 {
+		sb.WriteString("\n• Size: " + formatBytes(e.Size))
+	}
+	return sb.String()
+}
+
+func formatLocalSnapshotSaved(e LocalSnapshotSavedEvent) string {
+	var sb strings.Builder
+	sb.WriteString(SuccessMarker() + fmt.Sprintf(" Snapshot saved to %s", e.Path))
 	if len(e.Services) > 0 {
 		sb.WriteString("\n• Services: " + strings.Join(e.Services, ", "))
 	}
