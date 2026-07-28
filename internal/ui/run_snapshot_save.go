@@ -16,13 +16,13 @@ type SnapshotClient interface {
 	snapshot.PodSaver
 }
 
-func RunSnapshotSave(parentCtx context.Context, rt runtime.Runtime, containers []config.ContainerConfig, client SnapshotClient, host string, dest snapshot.Destination, authToken string) error {
+func RunSnapshotSave(parentCtx context.Context, rt runtime.Runtime, containers []config.ContainerConfig, client SnapshotClient, host string, dest snapshot.Destination, authToken string, services []string) error {
 	return runWithTUI(parentCtx, withoutHeader(), func(ctx context.Context, sink output.Sink) error {
 		switch dest.Kind {
 		case snapshot.KindPod:
-			return snapshot.SavePod(ctx, rt, containers, client, host, dest.Value, authToken, sink)
+			return snapshot.SavePod(ctx, rt, containers, client, host, dest.Value, authToken, services, sink)
 		default:
-			return snapshot.SaveLocal(ctx, rt, containers, client, host, dest.Value, sink)
+			return snapshot.SaveLocal(ctx, rt, containers, client, host, dest.Value, services, sink)
 		}
 	})
 }

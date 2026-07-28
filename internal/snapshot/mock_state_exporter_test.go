@@ -43,17 +43,18 @@ func (m *MockStateExporter) EXPECT() *MockStateExporterMockRecorder {
 }
 
 // ExportState mocks base method.
-func (m *MockStateExporter) ExportState(ctx context.Context, host string, dst io.Writer) error {
+func (m *MockStateExporter) ExportState(ctx context.Context, host string, services []string, dst io.Writer) ([]string, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ExportState", ctx, host, dst)
-	ret0, _ := ret[0].(error)
-	return ret0
+	ret := m.ctrl.Call(m, "ExportState", ctx, host, services, dst)
+	ret0, _ := ret[0].([]string)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
 }
 
 // ExportState indicates an expected call of ExportState.
-func (mr *MockStateExporterMockRecorder) ExportState(ctx, host, dst any) *gomock.Call {
+func (mr *MockStateExporterMockRecorder) ExportState(ctx, host, services, dst any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ExportState", reflect.TypeOf((*MockStateExporter)(nil).ExportState), ctx, host, dst)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ExportState", reflect.TypeOf((*MockStateExporter)(nil).ExportState), ctx, host, services, dst)
 }
 
 // MockPodSaver is a mock of PodSaver interface.
@@ -81,16 +82,16 @@ func (m *MockPodSaver) EXPECT() *MockPodSaverMockRecorder {
 }
 
 // SavePodSnapshot mocks base method.
-func (m *MockPodSaver) SavePodSnapshot(ctx context.Context, host, podName, authToken string) (snapshot.PodSaveResult, error) {
+func (m *MockPodSaver) SavePodSnapshot(ctx context.Context, host, podName, authToken string, services []string) (snapshot.PodSaveResult, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "SavePodSnapshot", ctx, host, podName, authToken)
+	ret := m.ctrl.Call(m, "SavePodSnapshot", ctx, host, podName, authToken, services)
 	ret0, _ := ret[0].(snapshot.PodSaveResult)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // SavePodSnapshot indicates an expected call of SavePodSnapshot.
-func (mr *MockPodSaverMockRecorder) SavePodSnapshot(ctx, host, podName, authToken any) *gomock.Call {
+func (mr *MockPodSaverMockRecorder) SavePodSnapshot(ctx, host, podName, authToken, services any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SavePodSnapshot", reflect.TypeOf((*MockPodSaver)(nil).SavePodSnapshot), ctx, host, podName, authToken)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SavePodSnapshot", reflect.TypeOf((*MockPodSaver)(nil).SavePodSnapshot), ctx, host, podName, authToken, services)
 }

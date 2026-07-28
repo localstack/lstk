@@ -58,17 +58,20 @@ func TestSaveRemoteS3_RegistersAndSaves(t *testing.T) {
 			return nil
 		},
 	)
-	client.EXPECT().SavePodRemote(gomock.Any(), gomock.Any(), "my-pod", wantName, gomock.Any(), "").DoAndReturn(
-		func(_ context.Context, _, _, _ string, params map[string]string, _ string) (snapshot.PodSaveResult, error) {
+	var gotServices []string
+	client.EXPECT().SavePodRemote(gomock.Any(), gomock.Any(), "my-pod", wantName, gomock.Any(), "", []string{"s3", "dynamodb"}).DoAndReturn(
+		func(_ context.Context, _, _, _ string, params map[string]string, _ string, services []string) (snapshot.PodSaveResult, error) {
 			gotParams = params
+			gotServices = services
 			return snapshot.PodSaveResult{Version: 1, Services: []string{"s3"}, Size: 42}, nil
 		},
 	)
 
 	creds := snapshot.S3Credentials{AccessKeyID: "AKIA123", SecretAccessKey: "supersecret"}
 	sink, getEvents := captureEvents(t)
-	err := snapshot.SaveRemoteS3(context.Background(), healthyRunningMock(t), awsContainers, client, "", "my-pod", s3URL, creds, "", sink)
+	err := snapshot.SaveRemoteS3(context.Background(), healthyRunningMock(t), awsContainers, client, "", "my-pod", s3URL, creds, "", []string{"s3", "dynamodb"}, sink)
 	require.NoError(t, err)
+	assert.Equal(t, []string{"s3", "dynamodb"}, gotServices, "the services filter must reach the client unchanged")
 
 	// The registered URL must carry placeholders, never the secret values.
 	assert.Contains(t, gotURL, "{access_key_id}")
@@ -104,15 +107,15 @@ func TestSaveRemoteS3_SessionTokenIncluded(t *testing.T) {
 			return nil
 		},
 	)
-	client.EXPECT().SavePodRemote(gomock.Any(), gomock.Any(), "my-pod", gomock.Any(), gomock.Any(), "").DoAndReturn(
-		func(_ context.Context, _, _, _ string, params map[string]string, _ string) (snapshot.PodSaveResult, error) {
+	client.EXPECT().SavePodRemote(gomock.Any(), gomock.Any(), "my-pod", gomock.Any(), gomock.Any(), "", gomock.Any()).DoAndReturn(
+		func(_ context.Context, _, _, _ string, params map[string]string, _ string, _ []string) (snapshot.PodSaveResult, error) {
 			assert.Equal(t, "tok", params["session_token"])
 			return snapshot.PodSaveResult{}, nil
 		},
 	)
 
 	creds := snapshot.S3Credentials{AccessKeyID: "a", SecretAccessKey: "b", SessionToken: "tok"}
-	err := snapshot.SaveRemoteS3(context.Background(), healthyRunningMock(t), awsContainers, client, "", "my-pod", "s3://bucket", creds, "", output.NewPlainSink(io.Discard))
+	err := snapshot.SaveRemoteS3(context.Background(), healthyRunningMock(t), awsContainers, client, "", "my-pod", "s3://bucket", creds, "", nil, output.NewPlainSink(io.Discard))
 	require.NoError(t, err)
 	assert.Contains(t, gotURL, "session_token={session_token}")
 }
@@ -124,7 +127,7 @@ func TestSaveRemoteS3_RegisterError(t *testing.T) {
 	client.EXPECT().S3BucketExists(gomock.Any(), "bucket").Return(true, nil)
 	client.EXPECT().RegisterRemote(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(fmt.Errorf("boom"))
 
-	err := snapshot.SaveRemoteS3(context.Background(), healthyRunningMock(t), awsContainers, client, "", "my-pod", "s3://bucket", snapshot.S3Credentials{AccessKeyID: "a", SecretAccessKey: "b"}, "", output.NewPlainSink(io.Discard))
+	err := snapshot.SaveRemoteS3(context.Background(), healthyRunningMock(t), awsContainers, client, "", "my-pod", "s3://bucket", snapshot.S3Credentials{AccessKeyID: "a", SecretAccessKey: "b"}, "", nil, output.NewPlainSink(io.Discard))
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "register S3 remote")
 }
@@ -137,7 +140,7 @@ func TestSaveRemoteS3_BucketMissingFails(t *testing.T) {
 	// The check runs before any runtime interaction, so a bare runtime mock is used.
 	client.EXPECT().S3BucketExists(gomock.Any(), "missing-bucket").Return(false, nil)
 
-	err := snapshot.SaveRemoteS3(context.Background(), runtime.NewMockRuntime(ctrl), awsContainers, client, "", "my-pod", "s3://missing-bucket", snapshot.S3Credentials{AccessKeyID: "a", SecretAccessKey: "b"}, "", output.NewPlainSink(io.Discard))
+	err := snapshot.SaveRemoteS3(context.Background(), runtime.NewMockRuntime(ctrl), awsContainers, client, "", "my-pod", "s3://missing-bucket", snapshot.S3Credentials{AccessKeyID: "a", SecretAccessKey: "b"}, "", nil, output.NewPlainSink(io.Discard))
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "does not exist")
 }
@@ -148,9 +151,9 @@ func TestSaveRemoteS3_LocalEndpointSkipsBucketCheck(t *testing.T) {
 	client := NewMockRemoteClient(ctrl)
 	// No S3BucketExists expectation: the local-testing endpoint must skip the check.
 	client.EXPECT().RegisterRemote(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-	client.EXPECT().SavePodRemote(gomock.Any(), gomock.Any(), "my-pod", gomock.Any(), gomock.Any(), "").Return(snapshot.PodSaveResult{}, nil)
+	client.EXPECT().SavePodRemote(gomock.Any(), gomock.Any(), "my-pod", gomock.Any(), gomock.Any(), "", gomock.Any()).Return(snapshot.PodSaveResult{}, nil)
 
-	err := snapshot.SaveRemoteS3(context.Background(), healthyRunningMock(t), awsContainers, client, "", "my-pod", "s3://host.docker.internal:4566/my-bucket", snapshot.S3Credentials{AccessKeyID: "a", SecretAccessKey: "b"}, "", output.NewPlainSink(io.Discard))
+	err := snapshot.SaveRemoteS3(context.Background(), healthyRunningMock(t), awsContainers, client, "", "my-pod", "s3://host.docker.internal:4566/my-bucket", snapshot.S3Credentials{AccessKeyID: "a", SecretAccessKey: "b"}, "", nil, output.NewPlainSink(io.Discard))
 	require.NoError(t, err)
 }
 
@@ -161,10 +164,10 @@ func TestSaveRemoteS3_CheckErrorWarnsAndProceeds(t *testing.T) {
 	// A check that cannot be performed degrades to a warning, not a hard failure.
 	client.EXPECT().S3BucketExists(gomock.Any(), "bucket").Return(false, fmt.Errorf("no network"))
 	client.EXPECT().RegisterRemote(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-	client.EXPECT().SavePodRemote(gomock.Any(), gomock.Any(), "my-pod", gomock.Any(), gomock.Any(), "").Return(snapshot.PodSaveResult{}, nil)
+	client.EXPECT().SavePodRemote(gomock.Any(), gomock.Any(), "my-pod", gomock.Any(), gomock.Any(), "", gomock.Any()).Return(snapshot.PodSaveResult{}, nil)
 
 	sink, getEvents := captureEvents(t)
-	err := snapshot.SaveRemoteS3(context.Background(), healthyRunningMock(t), awsContainers, client, "", "my-pod", "s3://bucket", snapshot.S3Credentials{AccessKeyID: "a", SecretAccessKey: "b"}, "", sink)
+	err := snapshot.SaveRemoteS3(context.Background(), healthyRunningMock(t), awsContainers, client, "", "my-pod", "s3://bucket", snapshot.S3Credentials{AccessKeyID: "a", SecretAccessKey: "b"}, "", nil, sink)
 	require.NoError(t, err)
 
 	var warned bool

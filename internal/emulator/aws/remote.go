@@ -20,18 +20,29 @@ type remotePayload struct {
 	RemoteParams map[string]string `json:"remote_params,omitempty"`
 }
 
+// podAttributes carries pod-save request options that aren't part of the
+// remote targeting, e.g. a services filter.
+type podAttributes struct {
+	Services []string `json:"services,omitempty"`
+}
+
 // podRequestBody is the JSON body for pod save/load/list. Remote is omitted for
 // platform (pod:) operations, in which case the body is "{}".
 type podRequestBody struct {
-	Remote *remotePayload `json:"remote,omitempty"`
+	Remote     *remotePayload `json:"remote,omitempty"`
+	Attributes *podAttributes `json:"attributes,omitempty"`
 }
 
 // marshalPodBody builds the request body for a pod operation. When remoteName is
-// empty it returns "{}" (the platform default remote).
-func marshalPodBody(remoteName string, params map[string]string) ([]byte, error) {
+// empty it returns "{}" (the platform default remote). services, when non-empty,
+// limits a save to that subset of services.
+func marshalPodBody(remoteName string, params map[string]string, services []string) ([]byte, error) {
 	body := podRequestBody{}
 	if remoteName != "" {
 		body.Remote = &remotePayload{RemoteName: remoteName, RemoteParams: params}
+	}
+	if len(services) > 0 {
+		body.Attributes = &podAttributes{Services: services}
 	}
 	return json.Marshal(body)
 }
@@ -99,8 +110,9 @@ func (c *Client) RegisterRemote(ctx context.Context, host, name, remoteURL strin
 }
 
 // SavePodRemote saves the running state to podName on the named remote.
-func (c *Client) SavePodRemote(ctx context.Context, host, podName, remoteName string, params map[string]string, authToken string) (snapshot.PodSaveResult, error) {
-	body, err := marshalPodBody(remoteName, params)
+// services, when non-empty, limits the save to that subset of services.
+func (c *Client) SavePodRemote(ctx context.Context, host, podName, remoteName string, params map[string]string, authToken string, services []string) (snapshot.PodSaveResult, error) {
+	body, err := marshalPodBody(remoteName, params, services)
 	if err != nil {
 		return snapshot.PodSaveResult{}, fmt.Errorf("marshal request: %w", err)
 	}
@@ -109,7 +121,7 @@ func (c *Client) SavePodRemote(ctx context.Context, host, podName, remoteName st
 
 // LoadPodRemote loads podName from the named remote with the given merge strategy.
 func (c *Client) LoadPodRemote(ctx context.Context, host, podName, remoteName string, params map[string]string, authToken, strategy string) ([]string, error) {
-	body, err := marshalPodBody(remoteName, params)
+	body, err := marshalPodBody(remoteName, params, nil)
 	if err != nil {
 		return nil, fmt.Errorf("marshal request: %w", err)
 	}
@@ -123,7 +135,7 @@ func (c *Client) ListPodsRemote(ctx context.Context, host, remoteName string, pa
 	if creator != "" {
 		url += "?creator=" + creator
 	}
-	body, err := marshalPodBody(remoteName, params)
+	body, err := marshalPodBody(remoteName, params, nil)
 	if err != nil {
 		return nil, fmt.Errorf("marshal request: %w", err)
 	}

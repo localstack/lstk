@@ -125,7 +125,7 @@ func TestExportState(t *testing.T) {
 
 		var buf bytes.Buffer
 		c := NewClient()
-		err := c.ExportState(context.Background(), srv.Listener.Addr().String(), &buf)
+		_, err := c.ExportState(context.Background(), srv.Listener.Addr().String(), nil, &buf)
 		require.NoError(t, err)
 		assert.Equal(t, "ZIP_DATA", buf.String())
 	})
@@ -138,7 +138,7 @@ func TestExportState(t *testing.T) {
 		defer srv.Close()
 
 		c := NewClient()
-		err := c.ExportState(context.Background(), srv.Listener.Addr().String(), io.Discard)
+		_, err := c.ExportState(context.Background(), srv.Listener.Addr().String(), nil, io.Discard)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "500")
 	})
@@ -151,7 +151,7 @@ func TestExportState(t *testing.T) {
 		defer srv.Close()
 
 		c := NewClient()
-		err := c.ExportState(context.Background(), srv.Listener.Addr().String(), io.Discard)
+		_, err := c.ExportState(context.Background(), srv.Listener.Addr().String(), nil, io.Discard)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "404")
 	})
@@ -163,7 +163,7 @@ func TestExportState(t *testing.T) {
 		srv.Close()
 
 		c := NewClient()
-		err := c.ExportState(context.Background(), addr, io.Discard)
+		_, err := c.ExportState(context.Background(), addr, nil, io.Discard)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "connect to LocalStack")
 	})
@@ -182,7 +182,8 @@ func TestExportState(t *testing.T) {
 
 		errCh := make(chan error, 1)
 		go func() {
-			errCh <- c.ExportState(ctx, srv.Listener.Addr().String(), io.Discard)
+			_, exportErr := c.ExportState(ctx, srv.Listener.Addr().String(), nil, io.Discard)
+			errCh <- exportErr
 		}()
 
 		<-started
@@ -205,9 +206,49 @@ func TestExportState(t *testing.T) {
 
 		var buf bytes.Buffer
 		c := NewClient()
-		err := c.ExportState(context.Background(), srv.Listener.Addr().String(), &buf)
+		_, err := c.ExportState(context.Background(), srv.Listener.Addr().String(), nil, &buf)
 		require.NoError(t, err)
 		assert.Equal(t, size, buf.Len())
+	})
+
+	t.Run("sends services query param and parses extracted services header", func(t *testing.T) {
+		t.Parallel()
+		var gotQuery string
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			gotQuery = r.URL.RawQuery
+			w.Header().Set("x-localstack-pod-services", "s3,dynamodb")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte("ZIP_DATA"))
+		}))
+		defer srv.Close()
+
+		var buf bytes.Buffer
+		c := NewClient()
+		extracted, err := c.ExportState(context.Background(), srv.Listener.Addr().String(), []string{"s3", "dynamodb"}, &buf)
+		require.NoError(t, err)
+		assert.Equal(t, "services=s3,dynamodb", gotQuery)
+		assert.Equal(t, []string{"s3", "dynamodb"}, extracted)
+	})
+
+	t.Run("no services filter omits query param and extracted list", func(t *testing.T) {
+		t.Parallel()
+		var gotQuery string
+		var hadQuery bool
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			gotQuery = r.URL.RawQuery
+			hadQuery = r.URL.Query().Has("services")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte("ZIP_DATA"))
+		}))
+		defer srv.Close()
+
+		var buf bytes.Buffer
+		c := NewClient()
+		extracted, err := c.ExportState(context.Background(), srv.Listener.Addr().String(), nil, &buf)
+		require.NoError(t, err)
+		assert.Equal(t, "", gotQuery)
+		assert.False(t, hadQuery)
+		assert.Nil(t, extracted)
 	})
 }
 

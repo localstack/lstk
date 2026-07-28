@@ -155,27 +155,40 @@ func (c *Client) ResetState(ctx context.Context, host string) error {
 	return nil
 }
 
-func (c *Client) ExportState(ctx context.Context, host string, dst io.Writer) error {
+// ExportState streams the running instance's state into dst as a zip. services,
+// when non-empty, limits the export to that subset of services. It returns the
+// services actually captured, reported by LocalStack via a response header.
+func (c *Client) ExportState(ctx context.Context, host string, services []string, dst io.Writer) ([]string, error) {
 	url := fmt.Sprintf("http://%s/_localstack/pods/state", host)
+	if len(services) > 0 {
+		// Safe to concatenate unescaped: validate.ServiceList restricts each
+		// item to [\w-]+, which contains no query-string metacharacters.
+		url += "?services=" + strings.Join(services, ",")
+	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
-		return fmt.Errorf("create request: %w", err)
+		return nil, fmt.Errorf("create request: %w", err)
 	}
 
 	resp, err := c.http.Do(req)
 	if err != nil {
-		return fmt.Errorf("connect to LocalStack: %w", err)
+		return nil, fmt.Errorf("connect to LocalStack: %w", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("LocalStack returned status %d", resp.StatusCode)
+		return nil, fmt.Errorf("LocalStack returned status %d", resp.StatusCode)
 	}
 
 	if _, err := io.Copy(dst, resp.Body); err != nil {
-		return fmt.Errorf("stream state: %w", err)
+		return nil, fmt.Errorf("stream state: %w", err)
 	}
-	return nil
+
+	var extracted []string
+	if v := resp.Header.Get("x-localstack-pod-services"); v != "" {
+		extracted = strings.Split(v, ",")
+	}
+	return extracted, nil
 }
 
 func (c *Client) ImportState(ctx context.Context, host string, src io.Reader, strategy string) error {
@@ -329,8 +342,14 @@ func (c *Client) DiffPodSnapshot(ctx context.Context, host, podName, authToken s
 	return result, nil
 }
 
-func (c *Client) SavePodSnapshot(ctx context.Context, host, podName, authToken string) (snapshot.PodSaveResult, error) {
-	return c.doPodSave(ctx, host, podName, authToken, []byte("{}"))
+// SavePodSnapshot saves the running state to a platform-hosted pod. services,
+// when non-empty, limits the save to that subset of services.
+func (c *Client) SavePodSnapshot(ctx context.Context, host, podName, authToken string, services []string) (snapshot.PodSaveResult, error) {
+	body, err := marshalPodBody("", nil, services)
+	if err != nil {
+		return snapshot.PodSaveResult{}, fmt.Errorf("marshal request: %w", err)
+	}
+	return c.doPodSave(ctx, host, podName, authToken, body)
 }
 
 func (c *Client) RemovePodSnapshot(ctx context.Context, host, podName, authToken string) error {

@@ -14,9 +14,11 @@ import (
 	"github.com/localstack/lstk/internal/runtime"
 )
 
-// StateExporter retrieves state from the running LocalStack instance.
+// StateExporter retrieves state from the running LocalStack instance. services,
+// when non-empty, limits the export to that subset of services; the returned
+// []string reports what was actually captured.
 type StateExporter interface {
-	ExportState(ctx context.Context, host string, dst io.Writer) error
+	ExportState(ctx context.Context, host string, services []string, dst io.Writer) ([]string, error)
 }
 
 // PodSaveResult holds the metadata returned by the platform after a successful pod save.
@@ -27,8 +29,9 @@ type PodSaveResult struct {
 }
 
 // PodSaver triggers a remote pod snapshot save on the running LocalStack instance.
+// services, when non-empty, limits the save to that subset of services.
 type PodSaver interface {
-	SavePodSnapshot(ctx context.Context, host, podName, authToken string) (PodSaveResult, error)
+	SavePodSnapshot(ctx context.Context, host, podName, authToken string, services []string) (PodSaveResult, error)
 }
 
 func save(ctx context.Context, rt runtime.Runtime, containers []config.ContainerConfig, sink output.Sink, spinnerText string, onSuccess func(), do func() error) (retErr error) {
@@ -65,30 +68,51 @@ func save(ctx context.Context, rt runtime.Runtime, containers []config.Container
 	return do()
 }
 
-func SaveLocal(ctx context.Context, rt runtime.Runtime, containers []config.ContainerConfig, exporter StateExporter, host, dest string, sink output.Sink) error {
+// SaveLocal saves the running emulator's state to a local file. services, when
+// non-empty, limits the save to that subset of services.
+func SaveLocal(ctx context.Context, rt runtime.Runtime, containers []config.ContainerConfig, exporter StateExporter, host, dest string, services []string, sink output.Sink) error {
 	cwd, _ := os.Getwd()
 	home, _ := os.UserHomeDir()
+	var extracted []string
 	return save(ctx, rt, containers, sink,
 		"Saving snapshot...",
 		func() {
-			sink.Emit(output.MessageEvent{Severity: output.SeveritySuccess, Text: fmt.Sprintf("Snapshot saved to %s", displayPath(dest, cwd, home))})
+			sink.Emit(output.LocalSnapshotSavedEvent{
+				Path:     displayPath(dest, cwd, home),
+				Services: extracted,
+				Size:     fileSize(dest),
+			})
 		},
 		func() error {
 			w, err := os.Create(dest)
 			if err != nil {
 				return fmt.Errorf("save to %s: %w", dest, err)
 			}
-			if err := exporter.ExportState(ctx, host, w); err != nil {
+			var exportErr error
+			extracted, exportErr = exporter.ExportState(ctx, host, services, w)
+			if exportErr != nil {
 				_ = w.Close()
 				_ = os.Remove(dest)
-				return fmt.Errorf("export state from LocalStack: %w", err)
+				return fmt.Errorf("export state from LocalStack: %w", exportErr)
 			}
 			return w.Close()
 		},
 	)
 }
 
-func SavePod(ctx context.Context, rt runtime.Runtime, containers []config.ContainerConfig, saver PodSaver, host, podName, authToken string, sink output.Sink) error {
+// fileSize returns dest's size on disk, or 0 if it can't be stat'd. Used for
+// best-effort size reporting after a save has already succeeded.
+func fileSize(dest string) int64 {
+	info, err := os.Stat(dest)
+	if err != nil {
+		return 0
+	}
+	return info.Size()
+}
+
+// SavePod saves the running emulator's state to a platform-hosted pod.
+// services, when non-empty, limits the save to that subset of services.
+func SavePod(ctx context.Context, rt runtime.Runtime, containers []config.ContainerConfig, saver PodSaver, host, podName, authToken string, services []string, sink output.Sink) error {
 	if authToken == "" {
 		return fmt.Errorf("pod snapshots require authentication — set LOCALSTACK_AUTH_TOKEN or run %q", "lstk login")
 	}
@@ -105,7 +129,7 @@ func SavePod(ctx context.Context, rt runtime.Runtime, containers []config.Contai
 		},
 		func() error {
 			var err error
-			result, err = saver.SavePodSnapshot(ctx, host, podName, authToken)
+			result, err = saver.SavePodSnapshot(ctx, host, podName, authToken, services)
 			return err
 		},
 	)

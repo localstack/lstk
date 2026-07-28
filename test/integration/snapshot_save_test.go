@@ -4,6 +4,7 @@ import (
 	"archive/zip"
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -45,6 +46,53 @@ func mockStateServer(t *testing.T) *httptest.Server {
 
 func lsHost(srv *httptest.Server) string {
 	return strings.TrimPrefix(srv.URL, "http://")
+}
+
+// mockStateServerCapturing behaves like mockStateServer but also captures the
+// request's raw query string and echoes any requested "services" param back as
+// the x-localstack-pod-services response header (defaulting to a full list when
+// none was requested), mirroring how mockPodSaveServerCapturing verifies
+// --services for pod saves. It's still a mock: it doesn't prove real backend
+// filtering, only that lstk's client-side --services wiring reaches the request.
+func mockStateServerCapturing(t *testing.T) (*httptest.Server, func() string) {
+	t.Helper()
+	var zipBuf bytes.Buffer
+	zw := zip.NewWriter(&zipBuf)
+	f, err := zw.Create("state.json")
+	require.NoError(t, err)
+	_, err = f.Write([]byte(`{"services":{}}`))
+	require.NoError(t, err)
+	require.NoError(t, zw.Close())
+	zipData := zipBuf.Bytes()
+
+	var (
+		mu       sync.Mutex
+		rawQuery string
+	)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/_localstack/pods/state" {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		mu.Lock()
+		rawQuery = r.URL.RawQuery
+		mu.Unlock()
+
+		services := r.URL.Query().Get("services")
+		if services == "" {
+			services = "dynamodb,s3"
+		}
+		w.Header().Set("x-localstack-pod-services", services)
+		w.Header().Set("Content-Type", "application/zip")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write(zipData)
+	}))
+	t.Cleanup(srv.Close)
+	return srv, func() string {
+		mu.Lock()
+		defer mu.Unlock()
+		return rawQuery
+	}
 }
 
 func TestSnapshotSaveDefaultDestination(t *testing.T) {
@@ -384,6 +432,190 @@ func TestSnapshotSavePodInvalidName(t *testing.T) {
 			assert.Contains(t, stderr, "invalid pod name")
 		})
 	}
+}
+
+// mockPodSaveServerCapturing behaves like mockPodSaveServer but also captures
+// the raw request body, and — when respondOK is true — echoes any requested
+// "attributes.services" back in the completion event's "services" list (falling
+// back to a default full list when none was requested). This lets tests assert
+// both the outgoing request body and the CLI's reported result. It is still a
+// mock: it does not prove real backend enforcement of the filter (that is
+// localstack-pro's own test surface, e.g. test_selective_push) — it verifies
+// lstk's client-side wiring of --services end to end through the CLI.
+func mockPodSaveServerCapturing(t *testing.T, respondOK bool) (*httptest.Server, func() []byte) {
+	t.Helper()
+	var (
+		mu   sync.Mutex
+		body []byte
+	)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !strings.HasPrefix(r.URL.Path, "/_localstack/pods/") || r.Method != http.MethodPost {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		b, _ := io.ReadAll(r.Body)
+		mu.Lock()
+		body = b
+		mu.Unlock()
+
+		w.Header().Set("Content-Type", "application/x-ndjson")
+		w.WriteHeader(http.StatusOK)
+		if !respondOK {
+			_, _ = w.Write([]byte(`{"event":"completion","status":"error","message":"platform error"}` + "\n"))
+			return
+		}
+		var parsed struct {
+			Attributes struct {
+				Services []string `json:"services"`
+			} `json:"attributes"`
+		}
+		_ = json.Unmarshal(b, &parsed)
+		services := parsed.Attributes.Services
+		if len(services) == 0 {
+			services = []string{"dynamodb", "s3"}
+		}
+		servicesJSON, _ := json.Marshal(services)
+		_, _ = w.Write([]byte(fmt.Sprintf(
+			`{"event":"completion","status":"ok","operation":"save","info":{"name":"my-baseline","version":1,"remote":"platform","services":%s,"size":1048576}}`,
+			servicesJSON) + "\n"))
+	}))
+	t.Cleanup(srv.Close)
+	return srv, func() []byte {
+		mu.Lock()
+		defer mu.Unlock()
+		return body
+	}
+}
+
+func TestSnapshotSavePodWithServices(t *testing.T) {
+	requireDocker(t)
+	cleanup()
+	t.Cleanup(cleanup)
+
+	ctx := testContext(t)
+	startTestContainer(t, ctx)
+	srv, capturedBody := mockPodSaveServerCapturing(t, true)
+
+	stdout, stderr, err := runLstk(t, ctx, t.TempDir(),
+		env.Environ(testEnvWithHome(t.TempDir(), "")).
+			With(env.LocalStackHost, lsHost(srv)).
+			With(env.AuthToken, "test-token"),
+		"--non-interactive", "snapshot", "save", "pod:my-baseline", "--services", "s3,dynamodb",
+	)
+	require.NoError(t, err, "lstk snapshot save pod:my-baseline --services failed: %s", stderr)
+
+	var parsed struct {
+		Attributes struct {
+			Services []string `json:"services"`
+		} `json:"attributes"`
+	}
+	require.NoError(t, json.Unmarshal(capturedBody(), &parsed))
+	assert.Equal(t, []string{"s3", "dynamodb"}, parsed.Attributes.Services, "request body must carry exactly the requested services")
+
+	assert.Contains(t, stdout, "Snapshot saved")
+	assert.Contains(t, stdout, "Services: s3, dynamodb")
+}
+
+func TestSnapshotSavePodServicesSingleValue(t *testing.T) {
+	requireDocker(t)
+	cleanup()
+	t.Cleanup(cleanup)
+
+	ctx := testContext(t)
+	startTestContainer(t, ctx)
+	srv, capturedBody := mockPodSaveServerCapturing(t, true)
+
+	_, stderr, err := runLstk(t, ctx, t.TempDir(),
+		env.Environ(testEnvWithHome(t.TempDir(), "")).
+			With(env.LocalStackHost, lsHost(srv)).
+			With(env.AuthToken, "test-token"),
+		"--non-interactive", "snapshot", "save", "pod:my-baseline", "-s", "s3",
+	)
+	require.NoError(t, err, "lstk snapshot save pod:my-baseline -s s3 failed: %s", stderr)
+
+	var parsed struct {
+		Attributes struct {
+			Services []string `json:"services"`
+		} `json:"attributes"`
+	}
+	require.NoError(t, json.Unmarshal(capturedBody(), &parsed))
+	assert.Equal(t, []string{"s3"}, parsed.Attributes.Services)
+}
+
+func TestSnapshotSavePodServicesInvalidFormat(t *testing.T) {
+	t.Parallel()
+	for _, value := range []string{
+		"s3,,lambda",
+		"s3;lambda",
+		"   ",
+		"s3,",
+	} {
+		t.Run(value, func(t *testing.T) {
+			t.Parallel()
+			ctx := testContext(t)
+
+			_, stderr, err := runLstk(t, ctx, t.TempDir(),
+				testEnvWithHome(t.TempDir(), ""),
+				"--non-interactive", "snapshot", "save", "pod:my-baseline", "--services", value,
+			)
+			requireExitCode(t, 1, err)
+			assert.Contains(t, stderr, "comma-separated list of service names")
+		})
+	}
+}
+
+func TestSnapshotSaveLocalWithServices(t *testing.T) {
+	requireDocker(t)
+	cleanup()
+	t.Cleanup(cleanup)
+
+	ctx := testContext(t)
+	startTestContainer(t, ctx)
+	srv, capturedQuery := mockStateServerCapturing(t)
+	dir := t.TempDir()
+	dest := filepath.Join(dir, "snap.snapshot")
+
+	stdout, stderr, err := runLstk(t, ctx, dir,
+		env.Environ(testEnvWithHome(t.TempDir(), "")).With(env.LocalStackHost, lsHost(srv)),
+		"--non-interactive", "snapshot", "save", dest, "--services", "s3,dynamodb",
+	)
+	require.NoError(t, err, "lstk snapshot save --services failed: %s", stderr)
+
+	assert.Equal(t, "services=s3,dynamodb", capturedQuery(), "request must carry exactly the requested services")
+	assert.Contains(t, stdout, "Snapshot saved")
+	assert.Contains(t, stdout, "Services: s3, dynamodb")
+
+	_, statErr := os.Stat(dest)
+	require.NoError(t, statErr, "snapshot file should have been created")
+}
+
+func TestSnapshotSaveS3WithServices(t *testing.T) {
+	requireDocker(t)
+	cleanup()
+	t.Cleanup(cleanup)
+
+	ctx := testContext(t)
+	startTestContainer(t, ctx)
+	srv, captured := mockPodS3Server(t)
+
+	const s3URL = "s3://host.docker.internal:4566/my-bucket"
+	_, stderr, err := runLstk(t, ctx, t.TempDir(),
+		env.Environ(testEnvWithHome(t.TempDir(), "")).
+			With(env.LocalStackHost, lsHost(srv)).
+			With(env.AWSAccessKeyID, "AKIAEXAMPLE").
+			With(env.AWSSecretAccessKey, "topsecret"),
+		"--non-interactive", "snapshot", "save", "my-pod", s3URL, "--services", "s3,lambda",
+	)
+	require.NoError(t, err, "lstk snapshot save to s3 with --services failed: %s", stderr)
+
+	_, saveBody := captured()
+	var parsed struct {
+		Attributes struct {
+			Services []string `json:"services"`
+		} `json:"attributes"`
+	}
+	require.NoError(t, json.Unmarshal(saveBody, &parsed))
+	assert.Equal(t, []string{"s3", "lambda"}, parsed.Attributes.Services)
 }
 
 func TestSnapshotSaveEmulatorNotRunning(t *testing.T) {

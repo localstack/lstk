@@ -55,7 +55,7 @@ func TestSavePodSnapshot_HandlesLongLine(t *testing.T) {
 	defer server.Close()
 
 	c := NewClient()
-	res, err := c.SavePodSnapshot(context.Background(), server.Listener.Addr().String(), "my-pod", "the-token")
+	res, err := c.SavePodSnapshot(context.Background(), server.Listener.Addr().String(), "my-pod", "the-token", nil)
 	require.NoError(t, err)
 	assert.Equal(t, 1, res.Version)
 }
