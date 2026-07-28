@@ -43,7 +43,7 @@ Running `lstk` will automatically handle authentication, configuration, and cont
 
 - **Start / stop / status / logs** — manage the full LocalStack emulator lifecycle with a single command
 - **Interactive TUI** — a Bubble Tea-powered terminal UI in interactive terminals, plain output for CI/CD and scripting
-- **Browser-based login** — authenticate via browser and store credentials securely in the system keyring, or use `LOCALSTACK_AUTH_TOKEN` for CI
+- **Browser-based login** — authenticate via browser and store credentials securely in the system keyring, or use `LOCALSTACK_AUTH_TOKEN` for CI (it takes precedence over stored credentials)
 - **Snapshots** — save, load, and manage emulator state as local files, cloud snapshots, or in your own S3 bucket
 - **Cloud CLI proxies** — run `aws`, `az`, `terraform`, `cdk`, and `sam` commands against LocalStack with the endpoint, credentials, and region pre-configured
 - **Target an external emulator** — pass `--endpoint-url <url>` (or set `LSTK_ENDPOINT_URL`) to point most commands at an already-running LocalStack instance — docker compose, host-network mode, CI, a different machine, or a cloud-hosted ephemeral instance (`https://` is supported) — instead of one lstk manages locally
