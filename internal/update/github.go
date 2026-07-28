@@ -68,8 +68,11 @@ func fetchLatestVersion(ctx context.Context, token string) (string, error) {
 
 // binaryUpdater performs the direct-binary update path: download the release
 // archive, verify its SHA-256 against the release's checksums.txt, and replace
-// the running executable. Fields exist so tests can point downloads at a local
-// server and resolve a fake executable.
+// the running executable. Because the manifest is served from the same
+// releases/download origin as the archive, this guards against download
+// corruption and partial/CDN-level tampering — not a fully compromised release
+// (that would require artifact signing, e.g. cosign). Fields exist so tests
+// can point downloads at a local server and resolve a fake executable.
 type binaryUpdater struct {
 	downloadBase string
 	resolveExe   func() (string, error)
