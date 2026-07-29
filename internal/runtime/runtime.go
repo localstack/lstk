@@ -23,6 +23,11 @@ type PortMapping struct {
 	ContainerPort string
 	HostPort      string
 	Protocol      string // "tcp" (default) or "udp"
+	// Optional marks a best-effort publication: when the host port is already
+	// taken, the mapping is dropped with a warning instead of failing the start.
+	// Used for ports lstk adds on its own (e.g. 443 from the default
+	// GATEWAY_LISTEN) — ports the user asked for explicitly are never optional.
+	Optional bool
 }
 
 type ContainerConfig struct {
@@ -53,6 +58,18 @@ type RunningContainer struct {
 	BoundPort string // host port bound to the queried container port
 }
 
+// ContainerBrief describes an existing container for pre-start checks, so
+// callers can tell an lstk leftover (safe to self-heal) from a foreign
+// container that happens to use the same name.
+type ContainerBrief struct {
+	Exists     bool
+	Running    bool
+	Created    bool   // state "created": created but never started
+	AutoRemove bool   // created with --rm: removes itself once it exits
+	Image      string // full image the container was created from
+	Managed    bool   // carries the label Start stamps on every lstk container
+}
+
 // ExitResult reports a container's exit as observed by the exit wait that
 // Start registers.
 type ExitResult struct {
@@ -75,6 +92,10 @@ type Runtime interface {
 	Stop(ctx context.Context, containerName string) error
 	Remove(ctx context.Context, containerName string) error
 	IsRunning(ctx context.Context, containerID string) (bool, error)
+	// InspectBrief reports whether a container with the given name exists and
+	// the facts pre-start checks need about it. A missing container is
+	// (ContainerBrief{}, nil), not an error.
+	InspectBrief(ctx context.Context, containerName string) (ContainerBrief, error)
 	ContainerStartedAt(ctx context.Context, containerName string) (time.Time, error)
 	ContainerEnv(ctx context.Context, containerName string) ([]string, error)
 	Logs(ctx context.Context, containerID string, tail int) (string, error)
@@ -86,4 +107,8 @@ type Runtime interface {
 	GetBoundPort(ctx context.Context, containerName string, containerPort string) (string, error)
 	FindRunningByImage(ctx context.Context, imageRepos []string, containerPort string) (*RunningContainer, error)
 	SocketPath() string
+	// Flavor identifies the runtime backing the daemon connection (one of the
+	// Flavor* constants, e.g. FlavorRancherDesktop) so callers can tailor
+	// user-facing messages. FlavorUnknown (empty) when unrecognized.
+	Flavor() string
 }

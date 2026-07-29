@@ -5,6 +5,7 @@ go 1.25.0
 toolchain go1.26.5
 
 require (
+	github.com/Microsoft/go-winio v0.6.2
 	github.com/charmbracelet/bubbles v1.0.0
 	github.com/charmbracelet/bubbletea v1.3.10
 	github.com/charmbracelet/lipgloss v1.1.0
@@ -37,7 +38,6 @@ require (
 )
 
 require (
-	github.com/Microsoft/go-winio v0.6.2 // indirect
 	github.com/agext/levenshtein v1.2.1 // indirect
 	github.com/apparentlymart/go-textseg/v15 v15.0.0 // indirect
 	github.com/apparentlymart/go-textseg/v17 v17.0.1 // indirect
