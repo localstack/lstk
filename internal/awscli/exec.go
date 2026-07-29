@@ -44,7 +44,11 @@ func IsHelp(args []string) bool {
 	return false
 }
 
-func Exec(ctx context.Context, endpointURL string, useProfile bool, stdout, stderr io.Writer, args []string) error {
+// Exec runs `aws <args...>` against endpointURL. When usePTY is true (lstk's
+// stdout and stderr are both terminals), the child's output goes through a
+// pseudo-terminal merged into stdout — see proc.RunInPTY for why; otherwise
+// stdout/stderr are wired as given.
+func Exec(ctx context.Context, endpointURL string, useProfile, usePTY bool, stdout, stderr io.Writer, args []string) error {
 	ctx, span := otel.Tracer("github.com/localstack/lstk/internal/awscli").Start(ctx, "aws cli")
 	defer span.End()
 
@@ -75,13 +79,22 @@ func Exec(ctx context.Context, endpointURL string, useProfile bool, stdout, stde
 
 	cmd := exec.CommandContext(ctx, awsBin, cmdArgs...)
 	cmd.Stdin = os.Stdin
-	cmd.Stdout = stdout
-	cmd.Stderr = stderr
-	if !useProfile {
-		cmd.Env = BuildEnv(os.Environ())
+	cmd.Env = execEnv(os.Environ(), useProfile)
+
+	var runErr error
+	started := false
+	if usePTY {
+		started, runErr = proc.RunInPTY(cmd, stdout)
+	}
+	if !started {
+		// No PTY requested or none could be allocated (e.g. on Windows): plain
+		// writer wiring, as before.
+		cmd.Stdout = stdout
+		cmd.Stderr = stderr
+		runErr = proc.Run(cmd)
 	}
 
-	if err := proc.Run(cmd); err != nil {
+	if err := runErr; err != nil {
 		var exitErr *exec.ExitError
 		if errors.As(err, &exitErr) {
 			span.SetAttributes(attribute.Int("aws.exit_code", exitErr.ExitCode()))
@@ -93,6 +106,23 @@ func Exec(ctx context.Context, endpointURL string, useProfile bool, stdout, stde
 		return err
 	}
 	return nil
+}
+
+// execEnv builds the child environment for the aws CLI. PYTHONUNBUFFERED stops
+// a pip-installed (non-frozen) aws CLI from block-buffering stdout when it gets
+// a pipe instead of a terminal (DEVX-1026); the official frozen v2 binary
+// ignores it — that build's buffering is what the PTY in Exec fixes. (Python
+// treats any non-empty value as enabled, so a user-set value is left alone.)
+func execEnv(base []string, useProfile bool) []string {
+	var env []string
+	if useProfile {
+		env = make([]string, len(base), len(base)+1)
+		copy(env, base)
+	} else {
+		env = BuildEnv(base)
+	}
+	setIfAbsent(&env, "PYTHONUNBUFFERED", "1")
+	return env
 }
 
 func BuildEnv(base []string) []string {
