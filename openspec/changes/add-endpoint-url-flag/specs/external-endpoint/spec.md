@@ -1,0 +1,116 @@
+## ADDED Requirements
+
+### Requirement: Global endpoint URL flag and precedence
+
+The system SHALL provide a global `--endpoint-url <url>` persistent flag and an `LSTK_ENDPOINT_URL` environment variable that let `aws`, `az`, `terraform`/`tf`, `cdk`, `sam`, `snapshot save`/`load` (including the `lstk save`/`lstk load` aliases), `snapshot remove`, `snapshot list` (when given an `s3://...` argument), `reset`, and `status` target an emulator at an arbitrary URL instead of one discovered via local Docker inspection. The value SHALL include a scheme (e.g. `http://host:4566`) and SHALL be validated as a URL at the command boundary.
+
+When more than one source provides an endpoint URL, the system SHALL apply this precedence: the `--endpoint-url` flag, then the `LSTK_ENDPOINT_URL` environment variable, then the `AWS_ENDPOINT_URL` environment variable, then (if none are set) the existing Docker-based discovery. `AWS_ENDPOINT_URL` SHALL be treated as a full synonym for `LSTK_ENDPOINT_URL` (one precedence tier lower when both are set) and SHALL be consulted for every command listed above, not only the AWS-specific ones — the reachability/type probe (see the emulator type detection requirement below) is what protects non-AWS commands from an unrelated ambient `AWS_ENDPOINT_URL`, not a restriction on which commands consult it.
+
+#### Scenario: Flag targets an arbitrary endpoint
+
+- **WHEN** a user runs `lstk aws s3 ls --endpoint-url http://localhost:4566`
+- **THEN** lstk uses `http://localhost:4566` as the emulator endpoint without performing Docker container discovery
+
+#### Scenario: Environment variable is honored
+
+- **WHEN** `LSTK_ENDPOINT_URL` is set and no `--endpoint-url` flag is passed
+- **THEN** lstk resolves the endpoint from the environment variable
+
+#### Scenario: AWS_ENDPOINT_URL is honored as a backup for every in-scope command
+
+- **WHEN** `AWS_ENDPOINT_URL` is set, and neither `--endpoint-url` nor `LSTK_ENDPOINT_URL` is set, and the user runs `lstk aws s3 ls`, `lstk az ...`, `lstk status`, `lstk reset`, or an in-scope `lstk snapshot` form
+- **THEN** lstk resolves the endpoint from `AWS_ENDPOINT_URL` without performing Docker container discovery, in every one of those cases
+
+#### Scenario: AWS_ENDPOINT_URL pointing at a non-LocalStack endpoint fails closed
+
+- **WHEN** `AWS_ENDPOINT_URL` is set to a real AWS endpoint or an unrelated service, and neither `--endpoint-url` nor `LSTK_ENDPOINT_URL` is set, and the user runs `lstk status`
+- **THEN** the reachability/type probe rejects it with a "doesn't look like a LocalStack emulator" error rather than silently proceeding against it
+
+#### Scenario: Flag takes precedence over environment sources
+
+- **WHEN** `--endpoint-url` is passed and `LSTK_ENDPOINT_URL` and/or `AWS_ENDPOINT_URL` are also set
+- **THEN** the flag's value is used
+
+#### Scenario: LSTK_ENDPOINT_URL takes precedence over AWS_ENDPOINT_URL
+
+- **WHEN** both `LSTK_ENDPOINT_URL` and `AWS_ENDPOINT_URL` are set, and no `--endpoint-url` flag is passed
+- **THEN** `LSTK_ENDPOINT_URL`'s value is used
+
+#### Scenario: Malformed endpoint URL
+
+- **WHEN** `--endpoint-url` (or `LSTK_ENDPOINT_URL`/`AWS_ENDPOINT_URL`, where applicable) is set to a value that is not a valid absolute URL with a scheme
+- **THEN** the command fails immediately with an actionable error and does not attempt any network call
+
+### Requirement: Emulator type detection for externally-managed endpoints
+
+When an endpoint URL is resolved for a command that needs to know the emulator type (e.g. to enforce an AWS-only requirement, or to render it in `status`), the system SHALL determine the type by probing the endpoint's `/_localstack/health` (falling back to `/_localstack/info` when the health response lacks a `version` field) rather than reading a local config `type`. There SHALL be no manual override flag or config setting for the type — detection is the only mechanism.
+
+#### Scenario: Type detected from health probe
+
+- **WHEN** an endpoint URL is resolved
+- **THEN** lstk determines the emulator type by inspecting the endpoint's health/info response before proceeding
+
+#### Scenario: Detection is inconclusive
+
+- **WHEN** the endpoint's health/info response cannot be classified as aws, azure, or snowflake
+- **THEN** the command fails with an actionable error stating that the emulator type could not be determined from the endpoint's health response, without suggesting a flag or setting to force a type
+
+### Requirement: Docker preflight is skipped for externally-managed endpoints
+
+When an endpoint URL is resolved for `aws`, `az`, `terraform`/`tf`, `cdk`, `sam`, `snapshot save`/`load`, `snapshot remove`, `snapshot list s3://...`, `reset`, or `status`, the system SHALL NOT construct a Docker runtime, check Docker health, or look up a running container by name or image. Instead it SHALL verify the given endpoint is reachable and responds with a recognizable LocalStack health payload before proceeding.
+
+#### Scenario: No Docker required
+
+- **WHEN** a user runs `lstk status --endpoint-url http://localhost:4566` on a machine with no Docker daemon running
+- **THEN** the command does not fail due to Docker being unavailable, and instead probes the given URL directly
+
+#### Scenario: Unreachable externally-managed endpoint
+
+- **WHEN** an endpoint URL is resolved and the endpoint does not respond, or responds with something that isn't a recognizable LocalStack health payload
+- **THEN** the command fails with an actionable error naming the given URL and the failure cause, and does not suggest running `lstk start` or mention Docker
+
+### Requirement: snapshot load does not auto-start a container for externally-managed endpoints
+
+`lstk snapshot load` (and its `lstk load` alias) SHALL NOT fall back to auto-starting a local Docker container when an endpoint URL is resolved, even if that endpoint is currently unreachable.
+
+#### Scenario: Auto-start suppressed
+
+- **WHEN** a user runs `lstk snapshot load some.snapshot --endpoint-url http://localhost:4566` and nothing responds at that URL
+- **THEN** lstk fails with the unreachable-endpoint error rather than starting a local Docker container
+
+### Requirement: status reports reduced detail for externally-managed endpoints
+
+When `lstk status` resolves an endpoint URL instead of a Docker-managed container, it SHALL report reachability and the detected emulator type and version reported by the endpoint's own health payload, and SHALL NOT report Docker-derived facts (container uptime, image, bound port) that don't exist for an emulator lstk didn't start.
+
+#### Scenario: Status for an externally-managed endpoint
+
+- **WHEN** a user runs `lstk status --endpoint-url http://localhost:4566` against a reachable emulator
+- **THEN** the output shows the endpoint, detected type, and reported version, without container uptime/image fields
+
+### Requirement: Docker-lifecycle and filesystem commands reject an explicit endpoint URL
+
+`lstk logs`, `lstk stop`, `lstk restart`, and `lstk volume` SHALL reject an explicit `--endpoint-url` flag with an actionable error explaining that this command operates on a local Docker container or local filesystem state with no remote equivalent. Silently ignoring the flag here is not acceptable because it would act on the *local* target while the user's flag said "I mean the remote one" — a wrong-target risk (streaming or clearing the wrong thing), not a harmless no-op. An `LSTK_ENDPOINT_URL` or `AWS_ENDPOINT_URL` set in the environment for other purposes SHALL be silently ignored by these four commands (since the environment/config may be shared across a whole session or project), but an explicit flag on the command line SHALL be treated as user intent the command must refuse rather than silently mishandle.
+
+#### Scenario: Explicit flag on an excluded command is rejected
+
+- **WHEN** a user runs `lstk logs --endpoint-url http://localhost:4566`
+- **THEN** lstk fails immediately with an actionable error stating `logs` does not support `--endpoint-url`, and does not read any container logs
+
+#### Scenario: Ambient environment variable does not affect excluded commands
+
+- **WHEN** `LSTK_ENDPOINT_URL` is set in the environment (e.g. for use by other commands in the same session) and the user runs `lstk stop` with no `--endpoint-url` flag
+- **THEN** lstk ignores the environment variable and continues to operate on locally discovered Docker containers as it does today
+
+### Requirement: Platform-only snapshot forms silently ignore endpoint URL sources
+
+`lstk snapshot show` and `lstk snapshot list` when given no `s3://` argument SHALL silently ignore `--endpoint-url`, `LSTK_ENDPOINT_URL`, and `AWS_ENDPOINT_URL` (whether set via flag or environment) and proceed exactly as they would without any endpoint URL resolved. Both forms only ever query the LocalStack platform API, which is account-scoped rather than emulator-scoped, so no endpoint source could change their result — unlike the Docker-lifecycle commands, ignoring these sources carries no wrong-target risk, so an explicit flag is accepted without error rather than rejected.
+
+#### Scenario: Explicit flag on snapshot show has no effect
+
+- **WHEN** a user runs `lstk snapshot show pod:my-baseline --endpoint-url http://localhost:4566`
+- **THEN** lstk shows the pod's metadata exactly as it would without the flag, and does not fail or attempt to reach the given URL
+
+#### Scenario: Explicit flag on bare snapshot list has no effect
+
+- **WHEN** a user runs `lstk snapshot list --endpoint-url http://localhost:4566` with no `s3://` argument
+- **THEN** lstk lists the user's cloud snapshots exactly as it would without the flag, and does not fail or attempt to reach the given URL
