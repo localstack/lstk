@@ -258,6 +258,29 @@ func TestLogsTailWithFollowStartsFromTail(t *testing.T) {
 	}
 }
 
+// Interactive lstk logs must preserve full scrollback like docker logs, not
+// just whatever fit in the TUI's capped history. Runs under a real PTY so the
+// TUI/RunLogs path is exercised.
+func TestLogsInteractivePreservesFullScrollback(t *testing.T) {
+	requireDocker(t)
+	cleanup()
+	t.Cleanup(cleanup)
+
+	ctx := testContext(t)
+	startTestContainer(t, ctx)
+
+	const lineCount = 550
+	writeNumberedLogLines(t, ctx, lineCount)
+
+	configFile := writeAwsConfig(t)
+	out, err := runLstkInPTY(t, ctx, env.Without(), "--config", configFile, "logs")
+	require.NoError(t, err, "lstk logs should exit cleanly in interactive mode, output: %s", out)
+
+	for i := 1; i <= lineCount; i++ {
+		assert.Contains(t, out, fmt.Sprintf("tail-marker-%d", i), "expected tail-marker-%d to survive scrollback", i)
+	}
+}
+
 func TestLogsFollowStreamsOutput(t *testing.T) {
 	requireDocker(t)
 	cleanup()
