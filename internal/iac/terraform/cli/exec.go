@@ -88,11 +88,10 @@ func Run(ctx context.Context, endpointURL, region, account, chdir string, sink o
 		return runTerraform(ctx, span, tfBin, args)
 	}
 
+	// endpointURL is already fully resolved by the command boundary
+	// (--endpoint-url/LSTK_ENDPOINT_URL/AWS_ENDPOINT_URL precedence, see
+	// internal/endpoint.Resolve), so it's used as-is here.
 	resolvedEndpoint := endpointURL
-	if override := endpointURLOverride(); override != "" {
-		resolvedEndpoint = override
-		logger.Info("terraform: using AWS_ENDPOINT_URL override %s", override)
-	}
 
 	form := endpointForm{region: region, account: account}
 	form.pathStyle, form.s3Endpoint = endpoint.S3Addressing(resolvedEndpoint)

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/localstack/lstk/internal/config"
 	"github.com/localstack/lstk/internal/endpoint"
 	"github.com/localstack/lstk/internal/env"
 	cdkcli "github.com/localstack/lstk/internal/iac/cdk/cli"
@@ -30,7 +31,8 @@ lstk-specific flags (must appear before the cdk action):
 CDK always targets the default LocalStack account 000000000000; there is no --account flag.
 
 Supported environment variables:
-  AWS_ENDPOINT_URL      Override the auto-resolved LocalStack endpoint
+  LSTK_ENDPOINT_URL     Target an externally-managed emulator
+  AWS_ENDPOINT_URL      Same as LSTK_ENDPOINT_URL (lower precedence if both are set)
   AWS_ENDPOINT_URL_S3   Override the auto-derived S3 endpoint
   LSTK_CDK_CMD          CDK binary to invoke (default cdk)
   AWS_REGION            Fallback for --region
@@ -41,6 +43,15 @@ Examples:
   lstk cdk synth`,
 		DisableFlagParsing: true,
 		PreRunE: func(cmd *cobra.Command, args []string) error {
+			// --endpoint-url is recognized only when it precedes "cdk", the
+			// same pre-command-only placement --json already gets here.
+			if strippedArgs, v, ok := stripPreCommandEndpointURL(cmd.CalledAs()); ok {
+				if err := cmd.Flags().Set(endpoint.FlagName, v); err != nil {
+					return err
+				}
+				args = strippedArgs
+			}
+
 			var gf globalFlags
 			passthrough, gf = stripGlobalFlags(args)
 			if gf.nonInteractive {
@@ -79,14 +90,32 @@ Examples:
 
 			region := resolveRegion(regionFlag)
 
+			target, err := endpoint.Resolve(cmd.Context(), cmd)
+			if err != nil {
+				return emitValidationError(sink, err)
+			}
+			if target != nil && target.Type != config.EmulatorAWS {
+				return emitValidationError(sink, fmt.Errorf("lstk cdk requires the AWS emulator, but the endpoint at %s is a %s emulator", target.URL, target.Type.DisplayName()))
+			}
+
 			awsContainer := resolveAWSContainer()
 
 			// Offline subcommands never contact AWS, so they run without a
-			// running emulator. We still resolve the endpoint (DNS only) and
-			// inject it, so a synth-time context lookup routes to LocalStack.
+			// running emulator. We still resolve the endpoint (DNS only, or the
+			// externally-managed target) and inject it, so a synth-time context
+			// lookup routes to LocalStack.
 			if cdkcli.IsOffline(cdkArgs) {
-				host, _ := endpoint.ResolveHost(cmd.Context(), awsContainer.Port, cfg.LocalStackHost)
+				host := ""
+				if target != nil {
+					host = target.HostPort()
+				} else {
+					host, _ = endpoint.ResolveHost(cmd.Context(), awsContainer.Port, cfg.LocalStackHost)
+				}
 				return cdkcli.Run(cmd.Context(), "http://"+host, region, sink, logger, cdkArgs)
+			}
+
+			if target != nil {
+				return cdkcli.Run(cmd.Context(), "http://"+target.HostPort(), region, sink, logger, cdkArgs)
 			}
 
 			rt, err := runtime.NewDockerRuntime(cfg.DockerHost)

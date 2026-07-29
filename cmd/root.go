@@ -130,6 +130,7 @@ func NewRootCmd(cfg *env.Env, tel *telemetry.Client, logger log.Logger) *cobra.C
 	root.PersistentFlags().String("config", "", "Path to config file")
 	root.PersistentFlags().BoolVar(&cfg.NonInteractive, "non-interactive", false, "Disable interactive mode")
 	root.PersistentFlags().BoolVar(&cfg.JSON, "json", false, "Output in JSON format (only supported by some commands)")
+	root.PersistentFlags().String("endpoint-url", "", "Target an existing, externally-managed emulator at this URL")
 	root.Flags().Bool("persist", false, "Persist emulator state across restarts")
 	addEmulatorTypeFlag(root)
 	addSnapshotStartFlags(root)

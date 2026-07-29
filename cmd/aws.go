@@ -39,6 +39,16 @@ Examples:
   lstk aws s3 mb s3://my-bucket`,
 		DisableFlagParsing: true,
 		PreRunE: func(cmd *cobra.Command, args []string) error {
+			// --endpoint-url is recognized only when it precedes "aws" (like
+			// --json below): the aws CLI has its own native --endpoint-url flag,
+			// so a post-command one must reach it untouched.
+			if strippedArgs, v, ok := stripPreCommandEndpointURL(cmd.CalledAs()); ok {
+				if err := cmd.Flags().Set(endpoint.FlagName, v); err != nil {
+					return err
+				}
+				args = strippedArgs
+			}
+
 			var gf globalFlags
 			passthrough, gf = stripGlobalFlags(args)
 			if gf.nonInteractive {
@@ -72,38 +82,51 @@ Examples:
 				return awscli.Exec(cmd.Context(), "", false, false, os.Stdout, os.Stderr, passthrough)
 			}
 
-			rt, err := runtime.NewDockerRuntime(cfg.DockerHost)
+			target, err := endpoint.Resolve(cmd.Context(), cmd)
 			if err != nil {
-				return err
+				return emitValidationError(sink, err)
 			}
 
-			appCfg, err := config.Get()
-			if err != nil {
-				return fmt.Errorf("failed to get config: %w", err)
-			}
-
-			awsContainer := config.ContainerConfig{Type: config.EmulatorAWS, Port: config.DefaultPort}
-			for _, c := range appCfg.Containers {
-				if c.Type == config.EmulatorAWS {
-					awsContainer = c
-					break
+			var host string
+			if target != nil {
+				if target.Type != config.EmulatorAWS {
+					return emitValidationError(sink, fmt.Errorf("lstk aws requires the AWS emulator, but the endpoint at %s is a %s emulator", target.URL, target.Type.DisplayName()))
 				}
-			}
+				host = target.HostPort()
+			} else {
+				rt, err := runtime.NewDockerRuntime(cfg.DockerHost)
+				if err != nil {
+					return err
+				}
 
-			if err := rt.IsHealthy(cmd.Context()); err != nil {
-				rt.EmitUnhealthyError(sink, err)
-				return output.NewSilentError(fmt.Errorf("runtime not healthy: %w", err))
-			}
+				appCfg, err := config.Get()
+				if err != nil {
+					return fmt.Errorf("failed to get config: %w", err)
+				}
 
-			runningName, err := container.ResolveRunningContainerName(cmd.Context(), rt, awsContainer)
-			if err != nil {
-				return fmt.Errorf("checking emulator status: %w", err)
-			}
-			if runningName == "" {
-				return container.HandleNoRunningContainer(sink, awsContainer)
-			}
+				awsContainer := config.ContainerConfig{Type: config.EmulatorAWS, Port: config.DefaultPort}
+				for _, c := range appCfg.Containers {
+					if c.Type == config.EmulatorAWS {
+						awsContainer = c
+						break
+					}
+				}
 
-			host, _ := endpoint.ResolveHost(cmd.Context(), awsContainer.Port, cfg.LocalStackHost)
+				if err := rt.IsHealthy(cmd.Context()); err != nil {
+					rt.EmitUnhealthyError(sink, err)
+					return output.NewSilentError(fmt.Errorf("runtime not healthy: %w", err))
+				}
+
+				runningName, err := container.ResolveRunningContainerName(cmd.Context(), rt, awsContainer)
+				if err != nil {
+					return fmt.Errorf("checking emulator status: %w", err)
+				}
+				if runningName == "" {
+					return container.HandleNoRunningContainer(sink, awsContainer)
+				}
+
+				host, _ = endpoint.ResolveHost(cmd.Context(), awsContainer.Port, cfg.LocalStackHost)
+			}
 
 			profileExists, _ := awsconfig.ProfileExists(cmd.Context())
 			if !profileExists {

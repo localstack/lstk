@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/localstack/lstk/internal/config"
 	"github.com/localstack/lstk/internal/endpoint"
 	"github.com/localstack/lstk/internal/env"
 	samcli "github.com/localstack/lstk/internal/iac/sam/cli"
@@ -29,7 +30,8 @@ lstk-specific flags (must appear before the sam action):
   --account <id>       Target AWS account id, 12 digits (default 000000000000)
 
 Supported environment variables:
-  AWS_ENDPOINT_URL      Override the auto-resolved LocalStack endpoint
+  LSTK_ENDPOINT_URL     Target an externally-managed emulator
+  AWS_ENDPOINT_URL      Same as LSTK_ENDPOINT_URL (lower precedence if both are set)
   AWS_ENDPOINT_URL_S3   Override S3 endpoint
   LSTK_SAM_CMD          SAM binary to invoke (default sam)
   AWS_REGION            Fallback for --region
@@ -43,6 +45,15 @@ Examples:
   lstk sam validate`,
 		DisableFlagParsing: true,
 		PreRunE: func(cmd *cobra.Command, args []string) error {
+			// --endpoint-url is recognized only when it precedes "sam", the
+			// same pre-command-only placement --json already gets here.
+			if strippedArgs, v, ok := stripPreCommandEndpointURL(cmd.CalledAs()); ok {
+				if err := cmd.Flags().Set(endpoint.FlagName, v); err != nil {
+					return err
+				}
+				args = strippedArgs
+			}
+
 			var gf globalFlags
 			passthrough, gf = stripGlobalFlags(args)
 			if gf.nonInteractive {
@@ -76,14 +87,32 @@ Examples:
 				return emitValidationError(sink, err)
 			}
 
+			target, err := endpoint.Resolve(cmd.Context(), cmd)
+			if err != nil {
+				return emitValidationError(sink, err)
+			}
+			if target != nil && target.Type != config.EmulatorAWS {
+				return emitValidationError(sink, fmt.Errorf("lstk sam requires the AWS emulator, but the endpoint at %s is a %s emulator", target.URL, target.Type.DisplayName()))
+			}
+
 			awsContainer := resolveAWSContainer()
 
 			// Offline subcommands never contact AWS, so they run without a
-			// running emulator. We still resolve the endpoint (DNS only) and
-			// inject it, so any incidental API call routes to LocalStack.
+			// running emulator. We still resolve the endpoint (DNS only, or the
+			// externally-managed target) and inject it, so any incidental API
+			// call routes to LocalStack.
 			if samcli.IsOffline(samArgs) {
-				host, _ := endpoint.ResolveHost(cmd.Context(), awsContainer.Port, cfg.LocalStackHost)
+				host := ""
+				if target != nil {
+					host = target.HostPort()
+				} else {
+					host, _ = endpoint.ResolveHost(cmd.Context(), awsContainer.Port, cfg.LocalStackHost)
+				}
 				return samcli.Run(cmd.Context(), "http://"+host, account, region, sink, logger, samArgs)
+			}
+
+			if target != nil {
+				return samcli.Run(cmd.Context(), "http://"+target.HostPort(), account, region, sink, logger, samArgs)
 			}
 
 			rt, err := runtime.NewDockerRuntime(cfg.DockerHost)

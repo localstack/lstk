@@ -18,12 +18,6 @@ func samCmd() string {
 	return "sam"
 }
 
-// endpointURLOverride returns AWS_ENDPOINT_URL, which takes precedence over the
-// auto-resolved LocalStack endpoint.
-func endpointURLOverride() string {
-	return os.Getenv("AWS_ENDPOINT_URL")
-}
-
 // strippedKeys are ambient AWS configuration variables removed from the SAM
 // subprocess environment. A named profile, default profile, or stale session
 // token could otherwise resolve real credentials/region and silently redirect a

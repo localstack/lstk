@@ -4,12 +4,17 @@
 
 The system SHALL provide a global `--endpoint-url <url>` persistent flag and an `LSTK_ENDPOINT_URL` environment variable that let `aws`, `az`, `terraform`/`tf`, `cdk`, `sam`, `snapshot save`/`load` (including the `lstk save`/`lstk load` aliases), `snapshot remove`, `snapshot list` (when given an `s3://...` argument), `reset`, and `status` target an emulator at an arbitrary URL instead of one discovered via local Docker inspection. The value SHALL include a scheme (e.g. `http://host:4566`) and SHALL be validated as a URL at the command boundary.
 
-When more than one source provides an endpoint URL, the system SHALL apply this precedence: the `--endpoint-url` flag, then the `LSTK_ENDPOINT_URL` environment variable, then the `AWS_ENDPOINT_URL` environment variable, then (if none are set) the existing Docker-based discovery. `AWS_ENDPOINT_URL` SHALL be treated as a full synonym for `LSTK_ENDPOINT_URL` (one precedence tier lower when both are set) and SHALL be consulted for every command listed above, not only the AWS-specific ones — the reachability/type probe (see the emulator type detection requirement below) is what protects non-AWS commands from an unrelated ambient `AWS_ENDPOINT_URL`, not a restriction on which commands consult it.
+For `aws`, `az`, `terraform`/`tf`, `cdk`, and `sam` (which forward unrecognized arguments to a wrapped binary and disable lstk's own flag parsing for their args), the `--endpoint-url` flag SHALL be recognized only when it precedes the subcommand name (e.g. `lstk --endpoint-url http://localhost:4566 aws s3 ls`), the same placement rule already applied to `--json` for these five commands. This is required because the `aws` CLI itself has a native `--endpoint-url` flag: placed after the subcommand name (`lstk aws --endpoint-url http://localhost:4566 s3 ls`), it SHALL be forwarded to the wrapped binary unchanged rather than intercepted by lstk, so a user's own `aws --endpoint-url` usage keeps working identically under `lstk aws`. The other four (`az`, `terraform`/`tf`, `cdk`, `sam`) have no such collision but get the identical pre-command-only rule for consistency. `snapshot`, `reset`, and `status` have ordinary Cobra flag parsing and accept `--endpoint-url` in the normal position after the command name.
 
 #### Scenario: Flag targets an arbitrary endpoint
 
-- **WHEN** a user runs `lstk aws s3 ls --endpoint-url http://localhost:4566`
+- **WHEN** a user runs `lstk --endpoint-url http://localhost:4566 aws s3 ls`
 - **THEN** lstk uses `http://localhost:4566` as the emulator endpoint without performing Docker container discovery
+
+#### Scenario: Post-command --endpoint-url on aws passes through untouched
+
+- **WHEN** a user runs `lstk aws --endpoint-url http://localhost:4566 s3 ls`
+- **THEN** lstk does not treat `--endpoint-url` as its own flag — it forwards `--endpoint-url http://localhost:4566 s3 ls` to the `aws` binary unchanged, and resolves its own emulator endpoint via existing Docker discovery (or another endpoint source) as if no `--endpoint-url` were given
 
 #### Scenario: Environment variable is honored
 

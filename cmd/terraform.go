@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/localstack/lstk/internal/config"
 	"github.com/localstack/lstk/internal/endpoint"
 	"github.com/localstack/lstk/internal/env"
 	tfcli "github.com/localstack/lstk/internal/iac/terraform/cli"
@@ -28,7 +29,8 @@ lstk-specific flags (must appear before the terraform action):
   --account <id>       Target AWS account id, 12 digits (default test)
 
 Supported environment variables:
-  AWS_ENDPOINT_URL            Override the auto-resolved LocalStack endpoint
+  LSTK_ENDPOINT_URL           Target an externally-managed emulator
+  AWS_ENDPOINT_URL            Same as LSTK_ENDPOINT_URL (lower precedence if both are set)
   LSTK_TF_CMD                 Terraform binary to invoke (e.g. tofu; default terraform)
   LSTK_TF_OVERRIDE_FILE_NAME  Override file name (default localstack_providers_override.tf)
   LSTK_TF_DRY_RUN             Generate the override file but do not run terraform
@@ -41,6 +43,16 @@ Examples:
   lstk tf apply`,
 		DisableFlagParsing: true,
 		PreRunE: func(cmd *cobra.Command, args []string) error {
+			// --endpoint-url is recognized only when it precedes
+			// "terraform"/"tf", the same pre-command-only placement --json
+			// already gets here.
+			if strippedArgs, v, ok := stripPreCommandEndpointURL(cmd.CalledAs()); ok {
+				if err := cmd.Flags().Set(endpoint.FlagName, v); err != nil {
+					return err
+				}
+				args = strippedArgs
+			}
+
 			var gf globalFlags
 			passthrough, gf = stripGlobalFlags(args)
 			if gf.nonInteractive {
@@ -96,23 +108,36 @@ Examples:
 				return tfcli.Run(cmd.Context(), "", region, account, chdir, sink, logger, tfArgs)
 			}
 
-			rt, err := runtime.NewDockerRuntime(cfg.DockerHost)
+			target, err := endpoint.Resolve(cmd.Context(), cmd)
 			if err != nil {
-				return err
+				return emitValidationError(sink, err)
 			}
 
-			awsContainer := resolveAWSContainer()
+			var host string
+			if target != nil {
+				if target.Type != config.EmulatorAWS {
+					return emitValidationError(sink, fmt.Errorf("lstk terraform requires the AWS emulator, but the endpoint at %s is a %s emulator", target.URL, target.Type.DisplayName()))
+				}
+				host = target.HostPort()
+			} else {
+				rt, err := runtime.NewDockerRuntime(cfg.DockerHost)
+				if err != nil {
+					return err
+				}
 
-			if err := rt.IsHealthy(cmd.Context()); err != nil {
-				rt.EmitUnhealthyError(sink, err)
-				return output.NewSilentError(fmt.Errorf("runtime not healthy: %w", err))
+				awsContainer := resolveAWSContainer()
+
+				if err := rt.IsHealthy(cmd.Context()); err != nil {
+					rt.EmitUnhealthyError(sink, err)
+					return output.NewSilentError(fmt.Errorf("runtime not healthy: %w", err))
+				}
+
+				if err := requireRunningAWSEmulator(cmd.Context(), rt, sink, awsContainer, "terraform"); err != nil {
+					return err
+				}
+
+				host, _ = endpoint.ResolveHost(cmd.Context(), awsContainer.Port, cfg.LocalStackHost)
 			}
-
-			if err := requireRunningAWSEmulator(cmd.Context(), rt, sink, awsContainer, "terraform"); err != nil {
-				return err
-			}
-
-			host, _ := endpoint.ResolveHost(cmd.Context(), awsContainer.Port, cfg.LocalStackHost)
 
 			return tfcli.Run(cmd.Context(), "http://"+host, region, account, chdir, sink, logger, tfArgs)
 		},

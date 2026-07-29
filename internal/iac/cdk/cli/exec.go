@@ -53,11 +53,10 @@ func Run(ctx context.Context, endpointURL, region string, sink output.Sink, logg
 		return output.NewSilentError(err)
 	}
 
+	// endpointURL is already fully resolved by the command boundary
+	// (--endpoint-url/LSTK_ENDPOINT_URL/AWS_ENDPOINT_URL precedence, see
+	// internal/endpoint.Resolve), so it's used as-is here.
 	effectiveEndpoint := endpointURL
-	if override := endpointURLOverride(); override != "" {
-		effectiveEndpoint = override
-		logger.Info("cdk: using AWS_ENDPOINT_URL override %s", override)
-	}
 
 	_, s3Endpoint := endpoint.S3Addressing(effectiveEndpoint)
 	if override := s3EndpointOverride(); override != "" {
