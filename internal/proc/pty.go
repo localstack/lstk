@@ -8,23 +8,15 @@ import (
 	"github.com/creack/pty"
 )
 
-// RunInPTY runs cmd like Run, but with the child's stdout and stderr connected
-// to the slave side of a newly allocated pseudo-terminal, copying everything
-// the child writes to out. Wrapped CLIs then detect a terminal and keep
-// line-buffered, colored, interactive output even though lstk sits between them
-// and the user's terminal — with a plain io.Writer, os/exec hands the child a
-// pipe, and e.g. the frozen Python aws CLI block-buffers stdout (8 KB, and it
-// ignores PYTHONUNBUFFERED), holding back streaming commands like
-// `logs tail --follow` until exit (DEVX-1026).
+// RunInPTY runs cmd like Run, but gives the child a pseudo-terminal instead of
+// a plain pipe for stdout/stderr, copying its output to out. Over a pipe,
+// e.g. the Python aws CLI block-buffers stdout (ignoring PYTHONUNBUFFERED),
+// holding back streaming commands like `logs tail --follow` until exit; a PTY
+// makes it detect a terminal and stay line-buffered (DEVX-1026).
 //
-// stdout and stderr share the one PTY, exactly as they would share the user's
-// terminal. cmd.Stdin is left untouched, and no new session is created, so the
-// child stays in lstk's process group and still receives Ctrl-C from the
-// terminal directly. The PTY size is inherited from lstk's terminal once at
-// startup; resizes are not propagated.
-//
-// started reports whether the child ran: false means no PTY could be allocated
-// (e.g. on Windows) and the caller should fall back to Run with plain writers.
+// No new session is created, so the child stays in lstk's process group and
+// still gets Ctrl-C directly. started is false if no PTY could be allocated
+// (e.g. Windows); the caller should fall back to Run.
 func RunInPTY(cmd *exec.Cmd, out io.Writer) (started bool, err error) {
 	ptmx, tty, err := pty.Open()
 	if err != nil {
@@ -47,9 +39,7 @@ func RunInPTY(cmd *exec.Cmd, out io.Writer) (started bool, err error) {
 
 	runErr := Run(cmd)
 
-	// Closing the parent's slave FD leaves no slave side open (the child's dup
-	// died with it), so the copy goroutine drains what's buffered and gets
-	// EOF/EIO; wait for it so out has everything before returning.
+	// Wait for the copy goroutine to drain remaining output and hit EOF/EIO.
 	_ = tty.Close()
 	<-copied
 	return true, runErr
