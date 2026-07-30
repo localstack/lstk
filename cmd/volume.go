@@ -29,7 +29,7 @@ func newVolumePathCmd(cfg *env.Env) *cobra.Command {
 		Short:   "Print the volume directory path",
 		PreRunE: initConfigDeferCreate(nil),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if err := rejectExplicitEndpointURL(cmd, output.NewPlainSink(os.Stdout), "volume path"); err != nil {
+			if err := rejectEndpointURL(cmd, output.NewPlainSink(os.Stdout), "volume path"); err != nil {
 				return err
 			}
 
@@ -63,7 +63,7 @@ func newVolumeClearCmd(cfg *env.Env) *cobra.Command {
 		Long:    "Remove all data from the emulator volume directory. This resets cached state such as certificates, downloaded tools, and persistence data.",
 		PreRunE: initConfigDeferCreate(nil),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if err := rejectExplicitEndpointURL(cmd, output.NewPlainSink(os.Stdout), "volume clear"); err != nil {
+			if err := rejectEndpointURL(cmd, output.NewPlainSink(os.Stdout), "volume clear"); err != nil {
 				return err
 			}
 

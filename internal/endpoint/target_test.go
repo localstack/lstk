@@ -84,6 +84,76 @@ func TestResolve_Precedence(t *testing.T) {
 	})
 }
 
+func TestResolvedSource(t *testing.T) {
+	t.Run("no source present", func(t *testing.T) {
+		cmd := cmdWithEndpointFlag(t)
+		source, value, ok := ResolvedSource(cmd)
+		assert.False(t, ok)
+		assert.Empty(t, source)
+		assert.Empty(t, value)
+	})
+
+	t.Run("nil cmd with no env vars set", func(t *testing.T) {
+		_, _, ok := ResolvedSource(nil)
+		assert.False(t, ok)
+	})
+
+	t.Run("explicit flag is reported by name, not by value alone", func(t *testing.T) {
+		cmd := cmdWithEndpointFlag(t)
+		require.NoError(t, cmd.Flags().Set(FlagName, "http://localhost:4566"))
+		source, value, ok := ResolvedSource(cmd)
+		assert.True(t, ok)
+		assert.Equal(t, "--"+FlagName, source)
+		assert.Equal(t, "http://localhost:4566", value)
+	})
+
+	t.Run("LSTK_ENDPOINT_URL is reported when no flag is set", func(t *testing.T) {
+		t.Setenv("LSTK_ENDPOINT_URL", "http://localhost:4566")
+		cmd := cmdWithEndpointFlag(t)
+		source, value, ok := ResolvedSource(cmd)
+		assert.True(t, ok)
+		assert.Equal(t, "LSTK_ENDPOINT_URL", source)
+		assert.Equal(t, "http://localhost:4566", value)
+	})
+
+	t.Run("AWS_ENDPOINT_URL is reported when neither the flag nor LSTK_ENDPOINT_URL is set", func(t *testing.T) {
+		t.Setenv("AWS_ENDPOINT_URL", "http://localhost:4566")
+		cmd := cmdWithEndpointFlag(t)
+		source, value, ok := ResolvedSource(cmd)
+		assert.True(t, ok)
+		assert.Equal(t, "AWS_ENDPOINT_URL", source)
+		assert.Equal(t, "http://localhost:4566", value)
+	})
+
+	t.Run("flag takes precedence over both env vars in the reported source", func(t *testing.T) {
+		t.Setenv("LSTK_ENDPOINT_URL", "http://should-not-be-reported:4566")
+		t.Setenv("AWS_ENDPOINT_URL", "http://should-not-be-reported-either:4566")
+		cmd := cmdWithEndpointFlag(t)
+		require.NoError(t, cmd.Flags().Set(FlagName, "http://localhost:4566"))
+		source, _, ok := ResolvedSource(cmd)
+		assert.True(t, ok)
+		assert.Equal(t, "--"+FlagName, source)
+	})
+
+	t.Run("LSTK_ENDPOINT_URL takes precedence over AWS_ENDPOINT_URL in the reported source", func(t *testing.T) {
+		t.Setenv("LSTK_ENDPOINT_URL", "http://localhost:4566")
+		t.Setenv("AWS_ENDPOINT_URL", "http://should-not-be-reported:4566")
+		cmd := cmdWithEndpointFlag(t)
+		source, _, ok := ResolvedSource(cmd)
+		assert.True(t, ok)
+		assert.Equal(t, "LSTK_ENDPOINT_URL", source)
+	})
+
+	t.Run("no ok is reported for an unrelated flag not set", func(t *testing.T) {
+		// A flag that exists but wasn't Changed must not be mistaken for a
+		// present source, mirroring rawURL's existing .Changed guard.
+		cmd := cmdWithEndpointFlag(t)
+		source, _, ok := ResolvedSource(cmd)
+		assert.False(t, ok)
+		assert.Empty(t, source)
+	})
+}
+
 func TestValidateURL(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -92,10 +162,13 @@ func TestValidateURL(t *testing.T) {
 	}{
 		{"valid http url", "http://localhost:4566", false},
 		{"valid http url with trailing slash trimmed", "http://localhost:4566/", false},
+		{"valid https url", "https://my-instance.ephemeral-instances.localstack.cloud", false},
+		{"valid https url with trailing slash trimmed", "https://localhost:4566/", false},
 		{"missing scheme", "localhost:4566", true},
 		{"missing host", "http://", true},
 		{"not a url at all", "not a url", true},
-		{"https is rejected", "https://localhost:4566", true},
+		{"ftp scheme is rejected", "ftp://localhost:4566", true},
+		{"ws scheme is rejected", "ws://localhost:4566", true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -107,6 +180,12 @@ func TestValidateURL(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestValidateURL_PreservesScheme(t *testing.T) {
+	normalized, err := validateURL("https://localhost:4566/")
+	require.NoError(t, err)
+	assert.Equal(t, "https://localhost:4566", normalized)
 }
 
 func TestResolve_MalformedURLFailsFast(t *testing.T) {

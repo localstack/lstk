@@ -2,9 +2,11 @@ package cmd
 
 import (
 	"fmt"
+	"os"
 
 	"github.com/localstack/lstk/internal/env"
 	"github.com/localstack/lstk/internal/log"
+	"github.com/localstack/lstk/internal/output"
 	"github.com/localstack/lstk/internal/runtime"
 	"github.com/localstack/lstk/internal/telemetry"
 	"github.com/spf13/cobra"
@@ -30,6 +32,10 @@ If a snapshot is configured for the AWS emulator (the snapshot field in [[contai
 		},
 		PreRunE: initConfigDeferCreate(&firstRun),
 		RunE: func(c *cobra.Command, args []string) error {
+			if err := rejectEndpointURL(c, output.NewPlainSink(os.Stdout), "start"); err != nil {
+				return err
+			}
+
 			rt, err := runtime.NewDockerRuntime(cfg.DockerHost)
 			if err != nil {
 				return err

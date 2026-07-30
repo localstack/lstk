@@ -57,15 +57,16 @@ func Status(ctx context.Context, rt runtime.Runtime, containers []config.Contain
 		var version string
 		var rows []emulator.Resource
 		if client, ok := clients[c.Type]; ok {
+			baseURL := "http://" + host
 			sink.Emit(output.SpinnerStart("Fetching LocalStack status"))
-			if v, err := client.FetchVersion(ctx, host); err != nil {
+			if v, err := client.FetchVersion(ctx, baseURL); err != nil {
 				sink.Emit(output.MessageEvent{Severity: output.SeverityWarning, Text: fmt.Sprintf("Could not fetch version: %v", err)})
 			} else {
 				version = v
 			}
 
 			var fetchErr error
-			rows, fetchErr = client.FetchResources(ctx, host)
+			rows, fetchErr = client.FetchResources(ctx, baseURL)
 			sink.Emit(output.SpinnerStop())
 			if fetchErr != nil {
 				return fetchErr

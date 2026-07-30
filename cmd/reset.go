@@ -55,7 +55,7 @@ To wipe the on-disk volume (certificates, persistence data, cached tools) instea
 				}
 				awsContainer = config.ContainerConfig{Type: config.EmulatorAWS, Port: config.DefaultPort}
 				rt = runtime.NewExternalRuntime(awsContainer.Name())
-				host = target.HostPort()
+				host = target.URL
 			} else {
 				appConfig, err := config.Get()
 				if err != nil {
@@ -78,7 +78,8 @@ To wipe the on-disk volume (certificates, persistence data, cached tools) instea
 				if err != nil {
 					return err
 				}
-				host, _ = endpoint.ResolveHost(cmd.Context(), awsContainer.Port, cfg.LocalStackHost)
+				resolvedHost, _ := endpoint.ResolveHost(cmd.Context(), awsContainer.Port, cfg.LocalStackHost)
+				host = "http://" + resolvedHost
 			}
 
 			interactive := isInteractiveMode(cfg)

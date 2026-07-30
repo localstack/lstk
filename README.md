@@ -46,7 +46,7 @@ Running `lstk` will automatically handle authentication, configuration, and cont
 - **Browser-based login** — authenticate via browser and store credentials securely in the system keyring, or use `LOCALSTACK_AUTH_TOKEN` for CI
 - **Snapshots** — save, load, and manage emulator state as local files, cloud snapshots, or in your own S3 bucket
 - **Cloud CLI proxies** — run `aws`, `az`, `terraform`, `cdk`, and `sam` commands against LocalStack with the endpoint, credentials, and region pre-configured
-- **Target an external emulator** — pass `--endpoint-url <url>` (or set `LSTK_ENDPOINT_URL`) to point most commands at an already-running LocalStack instance — docker compose, host-network mode, CI, or a different machine — instead of one lstk manages locally
+- **Target an external emulator** — pass `--endpoint-url <url>` (or set `LSTK_ENDPOINT_URL`) to point most commands at an already-running LocalStack instance — docker compose, host-network mode, CI, a different machine, or a cloud-hosted ephemeral instance (`https://` is supported) — instead of one lstk manages locally
 - **Extensions** — Git-style `lstk-<name>` executables extend the CLI with new commands; see [docs/extensions-authoring.md](docs/extensions-authoring.md)
 - **Self-update** — `lstk update` checks for and installs the latest release
 - **Structured JSON output** — pass `--json` to a supported command for a machine-readable envelope instead of formatted text; see [docs/structured-output.md](docs/structured-output.md)

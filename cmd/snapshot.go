@@ -446,7 +446,7 @@ func resolveSnapshotDeps(ctx context.Context, cmd *cobra.Command, cfg *env.Env) 
 	}
 	if target != nil {
 		c := config.ContainerConfig{Type: target.Type, Port: config.DefaultPort}
-		return runtime.NewExternalRuntime(c.Name()), aws.NewClient(), target.HostPort(), []config.ContainerConfig{c}, appConfig, true, nil
+		return runtime.NewExternalRuntime(c.Name()), aws.NewClient(), target.URL, []config.ContainerConfig{c}, appConfig, true, nil
 	}
 
 	if len(appConfig.Containers) == 0 {
@@ -469,7 +469,7 @@ func resolveSnapshotDeps(ctx context.Context, cmd *cobra.Command, cfg *env.Env) 
 	}
 
 	host, _ = endpoint.ResolveHost(ctx, dockerContainer.Port, cfg.LocalStackHost)
-	return rt, aws.NewClient(), host, []config.ContainerConfig{dockerContainer}, appConfig, false, nil
+	return rt, aws.NewClient(), "http://" + host, []config.ContainerConfig{dockerContainer}, appConfig, false, nil
 }
 
 // addProfileFlag registers the --profile flag used to source AWS credentials for

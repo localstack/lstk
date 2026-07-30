@@ -37,7 +37,7 @@ func newLogsCmd(cfg *env.Env) *cobra.Command {
 				return err
 			}
 			sink := output.NewPlainSink(os.Stdout)
-			if err := rejectExplicitEndpointURL(cmd, sink, "logs"); err != nil {
+			if err := rejectEndpointURL(cmd, sink, "logs"); err != nil {
 				return err
 			}
 			rt, err := runtime.NewDockerRuntime(cfg.DockerHost)

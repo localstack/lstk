@@ -113,12 +113,12 @@ Examples:
 				return emitValidationError(sink, err)
 			}
 
-			var host string
+			var endpointURL string
 			if target != nil {
 				if target.Type != config.EmulatorAWS {
 					return emitValidationError(sink, fmt.Errorf("lstk terraform requires the AWS emulator, but the endpoint at %s is a %s emulator", target.URL, target.Type.DisplayName()))
 				}
-				host = target.HostPort()
+				endpointURL = target.URL
 			} else {
 				rt, err := runtime.NewDockerRuntime(cfg.DockerHost)
 				if err != nil {
@@ -136,10 +136,11 @@ Examples:
 					return err
 				}
 
-				host, _ = endpoint.ResolveHost(cmd.Context(), awsContainer.Port, cfg.LocalStackHost)
+				host, _ := endpoint.ResolveHost(cmd.Context(), awsContainer.Port, cfg.LocalStackHost)
+				endpointURL = "http://" + host
 			}
 
-			return tfcli.Run(cmd.Context(), "http://"+host, region, account, chdir, sink, logger, tfArgs)
+			return tfcli.Run(cmd.Context(), endpointURL, region, account, chdir, sink, logger, tfArgs)
 		},
 	}
 }

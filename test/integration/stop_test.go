@@ -35,6 +35,30 @@ func TestStopCommandSucceeds(t *testing.T) {
 	assert.Contains(t, byName, "lstk_command")
 }
 
+// TestStopCommandRejectsAmbientEndpointURLEvenWithLocalContainerRunning
+// proves the corrected behavior (design.md's Decision 5 for
+// add-endpoint-url-flag): an ambient LSTK_ENDPOINT_URL rejects `stop`
+// unconditionally, even though a local Docker-managed emulator is genuinely
+// running and reachable — the original (buggy) behavior silently proceeded
+// to stop this exact container instead.
+func TestStopCommandRejectsAmbientEndpointURLEvenWithLocalContainerRunning(t *testing.T) {
+	requireDocker(t)
+	cleanup()
+	t.Cleanup(cleanup)
+
+	ctx := testContext(t)
+	startTestContainer(t, ctx)
+
+	stdout, _, err := runLstk(t, ctx, "", env.With(env.DisableEvents, "1").With("LSTK_ENDPOINT_URL", "http://127.0.0.1:1"), "stop")
+	require.Error(t, err)
+	assert.Contains(t, stdout, "does not support LSTK_ENDPOINT_URL")
+	assert.Contains(t, stdout, "LSTK_ENDPOINT_URL is set")
+
+	inspect, err := dockerClient.ContainerInspect(ctx, containerName, client.ContainerInspectOptions{})
+	require.NoError(t, err, "container should still exist — stop must reject before ever touching it")
+	assert.True(t, inspect.Container.State.Running, "container should still be running")
+}
+
 func TestStopCommandFailsWhenNotRunning(t *testing.T) {
 	requireDocker(t)
 	cleanup()

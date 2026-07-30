@@ -44,10 +44,13 @@ type Target struct {
 	Type config.EmulatorType
 }
 
-// HostPort returns the bare host:port of the target, matching the shape
-// ResolveHost returns for a Docker-discovered emulator (no scheme) — the
-// existing call sites across the codebase all build "http://"+host
-// themselves.
+// HostPort returns the bare host:port of the target, discarding the scheme.
+// Every other consumer of a resolved Target now uses the full URL (see
+// Target.URL) to preserve the caller's scheme end-to-end; the sole remaining
+// use is cmd/az.go's azPreflight, which feeds this into
+// azureconfig.BuildEndpoint — that helper always constructs its own
+// "https://<subdomain>.<host>" Azure gateway address regardless of the
+// original scheme, so discarding it there is correct, not a scheme leak.
 func (t *Target) HostPort() string {
 	u, err := url.Parse(t.URL)
 	if err != nil {
@@ -114,34 +117,44 @@ func Resolve(ctx context.Context, cmd *cobra.Command) (*Target, error) {
 // rawURL applies the source precedence: --endpoint-url flag, LSTK_ENDPOINT_URL,
 // AWS_ENDPOINT_URL (a full synonym for LSTK_ENDPOINT_URL, one tier lower).
 func rawURL(cmd *cobra.Command) (string, bool) {
+	_, v, ok := ResolvedSource(cmd)
+	return v, ok
+}
+
+// ResolvedSource reports which endpoint URL source (if any) is present for
+// this invocation — the flag itself if passed, else "LSTK_ENDPOINT_URL" or
+// "AWS_ENDPOINT_URL" if set in the environment, in the same precedence order
+// as Resolve — without validating or probing it.
+func ResolvedSource(cmd *cobra.Command) (source, value string, ok bool) {
 	if cmd != nil {
 		if f := cmd.Flags().Lookup(FlagName); f != nil && f.Changed {
 			if v, err := cmd.Flags().GetString(FlagName); err == nil && v != "" {
-				return v, true
+				return "--" + FlagName, v, true
 			}
 		}
 	}
 	if v := os.Getenv(EnvVar); v != "" {
-		return v, true
+		return EnvVar, v, true
 	}
 	if v := os.Getenv(awsEnvVar); v != "" {
-		return v, true
+		return awsEnvVar, v, true
 	}
-	return "", false
+	return "", "", false
 }
 
-// validateURL requires an absolute URL with a host. Only http is currently
-// supported: every existing call site across the codebase builds requests as
-// "http://"+host, so an https endpoint would silently be downgraded rather
-// than actually used — rejecting it here is clearer than a silent
-// misconfiguration.
+// validateURL requires an absolute http or https URL with a host. The
+// resolved scheme is preserved end-to-end by every downstream consumer (see
+// Target.URL) rather than normalized to http — https is required for
+// LocalStack's cloud-hosted ephemeral instances, which are real TLS
+// endpoints. Any other scheme (e.g. ftp://, ws://) is rejected here rather
+// than passed through to a probe that would just fail confusingly.
 func validateURL(raw string) (string, error) {
 	u, err := url.Parse(raw)
 	if err != nil || u.Host == "" || u.Scheme == "" {
 		return "", fmt.Errorf("invalid --endpoint-url %q: must be an absolute URL with a scheme and host (e.g. http://localhost:4566)", raw)
 	}
-	if u.Scheme != "http" {
-		return "", fmt.Errorf("invalid --endpoint-url %q: only the http scheme is currently supported", raw)
+	if u.Scheme != "http" && u.Scheme != "https" {
+		return "", fmt.Errorf("invalid --endpoint-url %q: only the http and https schemes are supported, got %q", raw, u.Scheme)
 	}
 	return strings.TrimRight(u.String(), "/"), nil
 }

@@ -2,7 +2,7 @@
 
 ### Requirement: Global endpoint URL flag and precedence
 
-The system SHALL provide a global `--endpoint-url <url>` persistent flag and an `LSTK_ENDPOINT_URL` environment variable that let `aws`, `az`, `terraform`/`tf`, `cdk`, `sam`, `snapshot save`/`load` (including the `lstk save`/`lstk load` aliases), `snapshot remove`, `snapshot list` (when given an `s3://...` argument), `reset`, and `status` target an emulator at an arbitrary URL instead of one discovered via local Docker inspection. The value SHALL include a scheme (e.g. `http://host:4566`) and SHALL be validated as a URL at the command boundary.
+The system SHALL provide a global `--endpoint-url <url>` persistent flag and an `LSTK_ENDPOINT_URL` environment variable that let `aws`, `az`, `terraform`/`tf`, `cdk`, `sam`, `snapshot save`/`load` (including the `lstk save`/`lstk load` aliases), `snapshot remove`, `snapshot list` (when given an `s3://...` argument), `reset`, and `status` target an emulator at an arbitrary URL instead of one discovered via local Docker inspection. The value SHALL include a scheme — `http` or `https` (e.g. `http://host:4566` or `https://host`) — and SHALL be validated as a URL at the command boundary; any other scheme is rejected. The resolved scheme SHALL be preserved unchanged all the way to whatever ultimately makes the request (the wrapped `aws`/`terraform`/`cdk`/`sam` tools, and the emulator API calls behind `snapshot`/`reset`/`status`), never normalized to `http`. Certificate trust for `https` endpoints follows standard TLS verification; there is no option to skip certificate verification.
 
 For `aws`, `az`, `terraform`/`tf`, `cdk`, and `sam` (which forward unrecognized arguments to a wrapped binary and disable lstk's own flag parsing for their args), the `--endpoint-url` flag SHALL be recognized only when it precedes the subcommand name (e.g. `lstk --endpoint-url http://localhost:4566 aws s3 ls`), the same placement rule already applied to `--json` for these five commands. This is required because the `aws` CLI itself has a native `--endpoint-url` flag: placed after the subcommand name (`lstk aws --endpoint-url http://localhost:4566 s3 ls`), it SHALL be forwarded to the wrapped binary unchanged rather than intercepted by lstk, so a user's own `aws --endpoint-url` usage keeps working identically under `lstk aws`. The other four (`az`, `terraform`/`tf`, `cdk`, `sam`) have no such collision but get the identical pre-command-only rule for consistency. `snapshot`, `reset`, and `status` have ordinary Cobra flag parsing and accept `--endpoint-url` in the normal position after the command name.
 
@@ -46,6 +46,21 @@ For `aws`, `az`, `terraform`/`tf`, `cdk`, and `sam` (which forward unrecognized 
 - **WHEN** `--endpoint-url` (or `LSTK_ENDPOINT_URL`/`AWS_ENDPOINT_URL`, where applicable) is set to a value that is not a valid absolute URL with a scheme
 - **THEN** the command fails immediately with an actionable error and does not attempt any network call
 
+#### Scenario: An unsupported scheme is rejected
+
+- **WHEN** `--endpoint-url` is set to a value with a scheme other than `http` or `https` (e.g. `ftp://host:4566`)
+- **THEN** the command fails immediately with an actionable error naming the unsupported scheme and does not attempt any network call
+
+#### Scenario: https endpoint is accepted and used as-is
+
+- **WHEN** a user runs `lstk --endpoint-url https://my-instance.ephemeral-instances.localstack.cloud aws s3 ls`
+- **THEN** lstk probes and targets that `https://` URL directly, with no local Docker involvement, and the `aws` binary receives `https://my-instance.ephemeral-instances.localstack.cloud` as its endpoint — not a value rewritten to `http://`
+
+#### Scenario: https endpoint reaches the emulator API layer unchanged
+
+- **WHEN** a user runs `lstk snapshot save --endpoint-url https://my-instance.ephemeral-instances.localstack.cloud my-baseline`
+- **THEN** the save request is made against the given `https://` endpoint, not downgraded to `http://`
+
 ### Requirement: Emulator type detection for externally-managed endpoints
 
 When an endpoint URL is resolved for a command that needs to know the emulator type (e.g. to enforce an AWS-only requirement, or to render it in `status`), the system SHALL determine the type by probing the endpoint's `/_localstack/health` (falling back to `/_localstack/info` when the health response lacks a `version` field) rather than reading a local config `type`. There SHALL be no manual override flag or config setting for the type — detection is the only mechanism.
@@ -85,26 +100,41 @@ When an endpoint URL is resolved for `aws`, `az`, `terraform`/`tf`, `cdk`, `sam`
 
 ### Requirement: status reports reduced detail for externally-managed endpoints
 
-When `lstk status` resolves an endpoint URL instead of a Docker-managed container, it SHALL report reachability and the detected emulator type and version reported by the endpoint's own health payload, and SHALL NOT report Docker-derived facts (container uptime, image, bound port) that don't exist for an emulator lstk didn't start.
+When `lstk status` resolves an endpoint URL instead of a Docker-managed container, it SHALL report reachability, the detected emulator type and version reported by the endpoint's own health payload, and — for an AWS-typed target — deployed resources exactly as it does for a Docker-managed emulator: deployed resources are reported via the emulator's own `/_localstack/resources` API, not derived from Docker, so there is no reason to omit them. It SHALL NOT report Docker-derived facts (container uptime, image, bound port) that don't exist for an emulator lstk didn't start.
 
 #### Scenario: Status for an externally-managed endpoint
 
 - **WHEN** a user runs `lstk status --endpoint-url http://localhost:4566` against a reachable emulator
 - **THEN** the output shows the endpoint, detected type, and reported version, without container uptime/image fields
 
-### Requirement: Docker-lifecycle and filesystem commands reject an explicit endpoint URL
+#### Scenario: Status for an externally-managed AWS endpoint reports deployed resources
 
-`lstk logs`, `lstk stop`, `lstk restart`, and `lstk volume` SHALL reject an explicit `--endpoint-url` flag with an actionable error explaining that this command operates on a local Docker container or local filesystem state with no remote equivalent. Silently ignoring the flag here is not acceptable because it would act on the *local* target while the user's flag said "I mean the remote one" — a wrong-target risk (streaming or clearing the wrong thing), not a harmless no-op. An `LSTK_ENDPOINT_URL` or `AWS_ENDPOINT_URL` set in the environment for other purposes SHALL be silently ignored by these four commands (since the environment/config may be shared across a whole session or project), but an explicit flag on the command line SHALL be treated as user intent the command must refuse rather than silently mishandle.
+- **WHEN** a user runs `lstk status --endpoint-url http://localhost:4566` against a reachable AWS-typed emulator with deployed resources
+- **THEN** the output includes the resource summary and table, the same as it would for a Docker-managed AWS emulator
+
+### Requirement: Docker-lifecycle and filesystem commands reject any resolved endpoint URL source
+
+`lstk logs`, `lstk stop`, `lstk restart`, `lstk volume`, and `lstk start` SHALL reject with an actionable error whenever an endpoint URL is resolved for the invocation — whether from an explicit `--endpoint-url` flag, `LSTK_ENDPOINT_URL`, or `AWS_ENDPOINT_URL` — explaining that the command operates on a local Docker container or local filesystem state with no remote equivalent. This SHALL apply even when a local emulator is currently running and reachable: proceeding against it while an endpoint source signals the user's actual target is elsewhere is a wrong-target risk (stopping, restarting, streaming logs from, clearing the volume of, or starting a redundant instance of the wrong emulator), not a harmless no-op — and that risk is identical whether the endpoint source is an explicit flag on this command line or an environment variable set earlier in the session. lstk SHALL NOT check whether a local emulator is running before rejecting.
 
 #### Scenario: Explicit flag on an excluded command is rejected
 
 - **WHEN** a user runs `lstk logs --endpoint-url http://localhost:4566`
 - **THEN** lstk fails immediately with an actionable error stating `logs` does not support `--endpoint-url`, and does not read any container logs
 
-#### Scenario: Ambient environment variable does not affect excluded commands
+#### Scenario: start rejects an explicit endpoint URL
 
-- **WHEN** `LSTK_ENDPOINT_URL` is set in the environment (e.g. for use by other commands in the same session) and the user runs `lstk stop` with no `--endpoint-url` flag
-- **THEN** lstk ignores the environment variable and continues to operate on locally discovered Docker containers as it does today
+- **WHEN** a user runs `lstk start --endpoint-url http://localhost:4566`
+- **THEN** lstk fails immediately with an actionable error stating `start` does not support `--endpoint-url`, and does not attempt to start any emulator
+
+#### Scenario: Ambient environment variable is rejected too, even with no explicit flag
+
+- **WHEN** `LSTK_ENDPOINT_URL` (or `AWS_ENDPOINT_URL`) is set in the environment and the user runs `lstk stop` with no `--endpoint-url` flag
+- **THEN** lstk fails immediately with the same actionable error as the explicit-flag case, naming the environment variable that triggered it
+
+#### Scenario: Rejection happens even when a local emulator is running
+
+- **WHEN** `LSTK_ENDPOINT_URL` is set in the environment, a local Docker-managed emulator is currently running and reachable, and the user runs `lstk restart` with no `--endpoint-url` flag
+- **THEN** lstk still rejects the command with the actionable error rather than restarting the local emulator, without ever checking whether a local emulator is running
 
 ### Requirement: Platform-only snapshot forms silently ignore endpoint URL sources
 

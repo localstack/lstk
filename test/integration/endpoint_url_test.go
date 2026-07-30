@@ -131,6 +131,89 @@ func TestVolumePathRejectsExplicitEndpointURL(t *testing.T) {
 	assert.Contains(t, stdout, "does not support --endpoint-url")
 }
 
+// TestStartRejectsExplicitEndpointURL proves `start` (previously missing from
+// the exclusion list entirely) rejects an explicit --endpoint-url before ever
+// touching Docker, exactly like logs/stop/restart/volume.
+func TestStartRejectsExplicitEndpointURL(t *testing.T) {
+	t.Parallel()
+	e := env.With(env.DisableEvents, "1").With(env.Home, t.TempDir())
+	e = append(e, unreachableDockerHost)
+
+	stdout, _, err := runLstk(t, testContext(t), t.TempDir(), e, "start", "--endpoint-url", "http://localhost:4566")
+	require.Error(t, err)
+	assert.Contains(t, stdout, "start")
+	assert.Contains(t, stdout, "does not support --endpoint-url")
+}
+
+// The following tests prove the corrected behavior from design.md's Decision
+// 5: an *ambient* LSTK_ENDPOINT_URL/AWS_ENDPOINT_URL (no explicit flag) is now
+// rejected too, not silently ignored — for every Docker-lifecycle/filesystem
+// command, including the newly-added `start`. None of these touch Docker (a
+// broken DOCKER_HOST proves it), matching the requirement that rejection
+// never depends on checking local emulator state first.
+
+func TestLogsRejectsAmbientEndpointURL(t *testing.T) {
+	t.Parallel()
+	e := env.With(env.DisableEvents, "1").With(env.Home, t.TempDir()).With("LSTK_ENDPOINT_URL", "http://localhost:4566")
+	e = append(e, unreachableDockerHost)
+
+	stdout, _, err := runLstk(t, testContext(t), t.TempDir(), e, "logs")
+	require.Error(t, err)
+	assert.Contains(t, stdout, "logs")
+	assert.Contains(t, stdout, "does not support LSTK_ENDPOINT_URL")
+	assert.Contains(t, stdout, "LSTK_ENDPOINT_URL is set")
+}
+
+func TestStopRejectsAmbientEndpointURL(t *testing.T) {
+	t.Parallel()
+	e := env.With(env.DisableEvents, "1").With(env.Home, t.TempDir()).With("LSTK_ENDPOINT_URL", "http://localhost:4566")
+	e = append(e, unreachableDockerHost)
+
+	stdout, _, err := runLstk(t, testContext(t), t.TempDir(), e, "stop")
+	require.Error(t, err)
+	assert.Contains(t, stdout, "does not support LSTK_ENDPOINT_URL")
+}
+
+func TestRestartRejectsAmbientEndpointURL(t *testing.T) {
+	t.Parallel()
+	e := env.With(env.DisableEvents, "1").With(env.Home, t.TempDir()).With("AWS_ENDPOINT_URL", "http://localhost:4566")
+	e = append(e, unreachableDockerHost)
+
+	stdout, _, err := runLstk(t, testContext(t), t.TempDir(), e, "restart")
+	require.Error(t, err)
+	assert.Contains(t, stdout, "does not support AWS_ENDPOINT_URL")
+	assert.Contains(t, stdout, "AWS_ENDPOINT_URL is set")
+}
+
+func TestVolumePathRejectsAmbientEndpointURL(t *testing.T) {
+	t.Parallel()
+	e := env.With(env.DisableEvents, "1").With(env.Home, t.TempDir()).With("LSTK_ENDPOINT_URL", "http://localhost:4566")
+
+	stdout, _, err := runLstk(t, testContext(t), t.TempDir(), e, "volume", "path")
+	require.Error(t, err)
+	assert.Contains(t, stdout, "does not support LSTK_ENDPOINT_URL")
+}
+
+func TestVolumeClearRejectsAmbientEndpointURL(t *testing.T) {
+	t.Parallel()
+	e := env.With(env.DisableEvents, "1").With(env.Home, t.TempDir()).With("LSTK_ENDPOINT_URL", "http://localhost:4566")
+
+	stdout, _, err := runLstk(t, testContext(t), t.TempDir(), e, "volume", "clear")
+	require.Error(t, err)
+	assert.Contains(t, stdout, "does not support LSTK_ENDPOINT_URL")
+}
+
+func TestStartRejectsAmbientEndpointURL(t *testing.T) {
+	t.Parallel()
+	e := env.With(env.DisableEvents, "1").With(env.Home, t.TempDir()).With("LSTK_ENDPOINT_URL", "http://localhost:4566")
+	e = append(e, unreachableDockerHost)
+
+	stdout, _, err := runLstk(t, testContext(t), t.TempDir(), e, "start")
+	require.Error(t, err)
+	assert.Contains(t, stdout, "start")
+	assert.Contains(t, stdout, "does not support LSTK_ENDPOINT_URL")
+}
+
 // TestSnapshotShowIgnoresEndpointURL proves `snapshot show` silently ignores
 // --endpoint-url (it only ever talks to the LocalStack platform API, which is
 // account-scoped rather than emulator-scoped) rather than rejecting it: with
@@ -176,6 +259,42 @@ func TestStatusEndpointURLRendersReducedOutput(t *testing.T) {
 	assert.Contains(t, stdout, "3.0.2")
 	assert.NotContains(t, stdout, "Container:")
 	assert.NotContains(t, stdout, "Uptime:")
+}
+
+// TestStatusEndpointURLShowsResources proves the resources bug fix: `status`
+// against an externally-managed endpoint reports deployed resources for an
+// AWS-typed target exactly as it does for a Docker-managed one — deployed
+// resources are an ordinary emulator API call (/_localstack/resources), not
+// Docker-derived, so there was no reason the initial cut of this change
+// omitted them entirely.
+func TestStatusEndpointURLShowsResources(t *testing.T) {
+	t.Parallel()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/_localstack/health":
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"version":  "3.0.2",
+				"services": map[string]string{"s3": "available", "sqs": "available"},
+			})
+		case "/_localstack/resources":
+			w.Header().Set("Content-Type", "application/x-ndjson")
+			_, _ = fmt.Fprintln(w, `{"AWS::S3::Bucket": [{"region_name": "us-east-1", "account_id": "000000000000", "id": "my-test-bucket"}]}`)
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer srv.Close()
+
+	e := env.With(env.DisableEvents, "1").With(env.Home, t.TempDir())
+	e = append(e, unreachableDockerHost)
+
+	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), e, "--endpoint-url", srv.URL, "status")
+	require.NoError(t, err, "stderr: %s", stderr)
+	assert.Contains(t, stdout, "SERVICE")
+	assert.Contains(t, stdout, "RESOURCE")
+	assert.Contains(t, stdout, "S3")
+	assert.Contains(t, stdout, "my-test-bucket")
 }
 
 // TestStatusUnreachableEndpointURLFailsClosed proves an endpoint that

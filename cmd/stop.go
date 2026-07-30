@@ -22,7 +22,7 @@ func newStopCmd(cfg *env.Env, tel *telemetry.Client) *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			sink := jsonAwareSink(cmd, cfg, os.Stdout)
 
-			if err := rejectExplicitEndpointURL(cmd, sink, "stop"); err != nil {
+			if err := rejectEndpointURL(cmd, sink, "stop"); err != nil {
 				return err
 			}
 

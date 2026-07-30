@@ -87,12 +87,12 @@ Examples:
 				return emitValidationError(sink, err)
 			}
 
-			var host string
+			var endpointURL string
 			if target != nil {
 				if target.Type != config.EmulatorAWS {
 					return emitValidationError(sink, fmt.Errorf("lstk aws requires the AWS emulator, but the endpoint at %s is a %s emulator", target.URL, target.Type.DisplayName()))
 				}
-				host = target.HostPort()
+				endpointURL = target.URL
 			} else {
 				rt, err := runtime.NewDockerRuntime(cfg.DockerHost)
 				if err != nil {
@@ -125,7 +125,8 @@ Examples:
 					return container.HandleNoRunningContainer(sink, awsContainer)
 				}
 
-				host, _ = endpoint.ResolveHost(cmd.Context(), awsContainer.Port, cfg.LocalStackHost)
+				host, _ := endpoint.ResolveHost(cmd.Context(), awsContainer.Port, cfg.LocalStackHost)
+				endpointURL = "http://" + host
 			}
 
 			profileExists, _ := awsconfig.ProfileExists(cmd.Context())
@@ -148,7 +149,7 @@ Examples:
 			// into the pipeline.
 			usePTY := !cfg.NonInteractive && terminal.IsTerminal(os.Stdout) && terminal.IsTerminal(os.Stderr)
 
-			return awscli.Exec(cmd.Context(), "http://"+host, profileExists, usePTY, stdout, stderr, passthrough)
+			return awscli.Exec(cmd.Context(), endpointURL, profileExists, usePTY, stdout, stderr, passthrough)
 		},
 	}
 }

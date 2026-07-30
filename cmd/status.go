@@ -59,13 +59,17 @@ func newStatusCmd(cfg *env.Env) *cobra.Command {
 
 // statusExternal renders status for an externally-managed endpoint
 // (--endpoint-url/LSTK_ENDPOINT_URL/AWS_ENDPOINT_URL): reachability, detected
-// type, and reported version, without the Docker-derived facts (container
-// uptime, bound port) that don't exist for an emulator lstk didn't start.
-// Always renders via the plain sink, regardless of interactive mode — there's
-// no lifecycle/progress to show interactively here, just a few lines of info.
+// type, reported version, and — for an AWS-typed target — deployed resources,
+// without the Docker-derived facts (container uptime, bound port) that don't
+// exist for an emulator lstk didn't start. Deployed resources are not
+// Docker-derived (they're an ordinary emulator API call via FetchResources,
+// identical to the Docker-managed path in internal/container/status.go), so
+// there's no reason to omit them here. Always renders via the plain sink,
+// regardless of interactive mode — there's no lifecycle/progress to show
+// interactively here, just a few lines of info.
 func statusExternal(ctx context.Context, target *endpoint.Target) error {
 	sink := output.NewPlainSink(os.Stdout)
-	host := target.HostPort()
+	host := target.URL
 
 	clients := map[config.EmulatorType]emulator.Client{
 		config.EmulatorAWS:       aws.NewClient(),
@@ -74,11 +78,18 @@ func statusExternal(ctx context.Context, target *endpoint.Target) error {
 	}
 
 	var version string
+	var rows []emulator.Resource
 	if client, ok := clients[target.Type]; ok {
 		if v, err := client.FetchVersion(ctx, host); err != nil {
 			sink.Emit(output.MessageEvent{Severity: output.SeverityWarning, Text: fmt.Sprintf("Could not fetch version: %v", err)})
 		} else {
 			version = v
+		}
+
+		var fetchErr error
+		rows, fetchErr = client.FetchResources(ctx, host)
+		if fetchErr != nil {
+			return fetchErr
 		}
 	}
 
@@ -87,5 +98,25 @@ func statusExternal(ctx context.Context, target *endpoint.Target) error {
 		Version:      version,
 		Host:         host,
 	})
+
+	if target.Type == config.EmulatorAWS {
+		if len(rows) == 0 {
+			sink.Emit(output.MessageEvent{Severity: output.SeverityNote, Text: "No resources deployed"})
+			return nil
+		}
+
+		tableRows := make([][]string, len(rows))
+		services := map[string]struct{}{}
+		for i, r := range rows {
+			tableRows[i] = []string{r.Service, r.Name, r.Region, r.Account}
+			services[r.Service] = struct{}{}
+		}
+
+		sink.Emit(output.ResourceSummaryEvent{Resources: len(rows), Services: len(services)})
+		sink.Emit(output.TableEvent{
+			Headers: []string{"Service", "Resource", "Region", "Account"},
+			Rows:    tableRows,
+		})
+	}
 	return nil
 }

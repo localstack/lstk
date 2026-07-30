@@ -66,6 +66,12 @@ func NewRootCmd(cfg *env.Env, tel *telemetry.Client, logger log.Logger) *cobra.C
 			if len(args) > 0 {
 				return dispatchExtension(cmd.Context(), cfg, tel, logger, args)
 			}
+			// The bare root command starts the emulator via the same
+			// startEmulator path as `lstk start` below, so it rejects
+			// --endpoint-url the same way.
+			if err := rejectEndpointURL(cmd, output.NewPlainSink(os.Stdout), "start"); err != nil {
+				return err
+			}
 			rt, err := runtime.NewDockerRuntime(cfg.DockerHost)
 			if err != nil {
 				return err

@@ -105,17 +105,18 @@ Examples:
 			// externally-managed target) and inject it, so a synth-time context
 			// lookup routes to LocalStack.
 			if cdkcli.IsOffline(cdkArgs) {
-				host := ""
+				endpointURL := ""
 				if target != nil {
-					host = target.HostPort()
+					endpointURL = target.URL
 				} else {
-					host, _ = endpoint.ResolveHost(cmd.Context(), awsContainer.Port, cfg.LocalStackHost)
+					host, _ := endpoint.ResolveHost(cmd.Context(), awsContainer.Port, cfg.LocalStackHost)
+					endpointURL = "http://" + host
 				}
-				return cdkcli.Run(cmd.Context(), "http://"+host, region, sink, logger, cdkArgs)
+				return cdkcli.Run(cmd.Context(), endpointURL, region, sink, logger, cdkArgs)
 			}
 
 			if target != nil {
-				return cdkcli.Run(cmd.Context(), "http://"+target.HostPort(), region, sink, logger, cdkArgs)
+				return cdkcli.Run(cmd.Context(), target.URL, region, sink, logger, cdkArgs)
 			}
 
 			rt, err := runtime.NewDockerRuntime(cfg.DockerHost)

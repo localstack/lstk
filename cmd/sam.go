@@ -102,17 +102,18 @@ Examples:
 			// externally-managed target) and inject it, so any incidental API
 			// call routes to LocalStack.
 			if samcli.IsOffline(samArgs) {
-				host := ""
+				endpointURL := ""
 				if target != nil {
-					host = target.HostPort()
+					endpointURL = target.URL
 				} else {
-					host, _ = endpoint.ResolveHost(cmd.Context(), awsContainer.Port, cfg.LocalStackHost)
+					host, _ := endpoint.ResolveHost(cmd.Context(), awsContainer.Port, cfg.LocalStackHost)
+					endpointURL = "http://" + host
 				}
-				return samcli.Run(cmd.Context(), "http://"+host, account, region, sink, logger, samArgs)
+				return samcli.Run(cmd.Context(), endpointURL, account, region, sink, logger, samArgs)
 			}
 
 			if target != nil {
-				return samcli.Run(cmd.Context(), "http://"+target.HostPort(), account, region, sink, logger, samArgs)
+				return samcli.Run(cmd.Context(), target.URL, account, region, sink, logger, samArgs)
 			}
 
 			rt, err := runtime.NewDockerRuntime(cfg.DockerHost)

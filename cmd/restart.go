@@ -22,7 +22,7 @@ func newRestartCmd(cfg *env.Env, tel *telemetry.Client, logger log.Logger) *cobr
 		Long:    "Stop and restart emulator and services.",
 		PreRunE: initConfigDeferCreate(nil),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if err := rejectExplicitEndpointURL(cmd, output.NewPlainSink(os.Stdout), "restart"); err != nil {
+			if err := rejectEndpointURL(cmd, output.NewPlainSink(os.Stdout), "restart"); err != nil {
 				return err
 			}
 
