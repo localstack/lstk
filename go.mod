@@ -11,6 +11,7 @@ require (
 	github.com/charmbracelet/lipgloss v1.1.0
 	github.com/charmbracelet/x/exp/teatest v0.0.0-20260216111343-536eb63c1f4c
 	github.com/containerd/errdefs v1.0.0
+	github.com/creack/pty v1.1.24
 	github.com/docker/go-units v0.5.0
 	github.com/google/uuid v1.6.0
 	github.com/hashicorp/hcl/v2 v2.24.0

@@ -69,7 +69,7 @@ Examples:
 			// --help/-h never contacts LocalStack, so it runs directly without
 			// requiring Docker or a running emulator (DEVX-1002).
 			if awscli.IsHelp(passthrough) {
-				return awscli.Exec(cmd.Context(), "", false, os.Stdout, os.Stderr, passthrough)
+				return awscli.Exec(cmd.Context(), "", false, false, os.Stdout, os.Stderr, passthrough)
 			}
 
 			rt, err := runtime.NewDockerRuntime(cfg.DockerHost)
@@ -119,7 +119,13 @@ Examples:
 				stderr = &terminal.StopOnWriteWriter{W: os.Stderr, Spinner: s}
 			}
 
-			return awscli.Exec(cmd.Context(), "http://"+host, profileExists, stdout, stderr, passthrough)
+			// Only hand the aws CLI a PTY when both of lstk's output streams
+			// are the terminal: with stdout piped (`lstk aws ... | grep`) the
+			// child must keep seeing a pipe, or it would emit colors and CRLF
+			// into the pipeline.
+			usePTY := !cfg.NonInteractive && terminal.IsTerminal(os.Stdout) && terminal.IsTerminal(os.Stderr)
+
+			return awscli.Exec(cmd.Context(), "http://"+host, profileExists, usePTY, stdout, stderr, passthrough)
 		},
 	}
 }

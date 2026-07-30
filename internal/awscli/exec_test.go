@@ -63,3 +63,34 @@ func TestBuildEnvPartialOverride(t *testing.T) {
 	assert.Contains(t, env, "AWS_SECRET_ACCESS_KEY=test")
 	assert.Contains(t, env, "AWS_DEFAULT_REGION=us-east-1")
 }
+
+func TestExecEnvForcesUnbufferedPython(t *testing.T) {
+	base := []string{"PATH=/usr/bin"}
+
+	withProfile := execEnv(base, true)
+	assert.Contains(t, withProfile, "PYTHONUNBUFFERED=1")
+	assert.NotContains(t, withProfile, "AWS_ACCESS_KEY_ID=test")
+
+	withoutProfile := execEnv(base, false)
+	assert.Contains(t, withoutProfile, "PYTHONUNBUFFERED=1")
+	assert.Contains(t, withoutProfile, "AWS_ACCESS_KEY_ID=test")
+}
+
+func TestExecEnvPreservesUserPythonUnbuffered(t *testing.T) {
+	base := []string{"PYTHONUNBUFFERED=x"}
+	env := execEnv(base, true)
+
+	assert.Contains(t, env, "PYTHONUNBUFFERED=x")
+	assert.NotContains(t, env, "PYTHONUNBUFFERED=1")
+}
+
+func TestExecEnvDoesNotMutateInput(t *testing.T) {
+	base := []string{"PATH=/usr/bin"}
+	original := make([]string, len(base))
+	copy(original, base)
+
+	execEnv(base, true)
+	execEnv(base, false)
+
+	assert.Equal(t, original, base)
+}
