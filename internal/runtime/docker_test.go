@@ -6,6 +6,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	stdruntime "runtime"
 	"testing"
 	"time"
 
@@ -247,7 +248,11 @@ func TestFindDockerSocket_ProbesVMSockets(t *testing.T) {
 			listenUnixSocket(t, sock)
 			t.Setenv("HOME", home)
 
-			assert.Equal(t, sock, findDockerSocket())
+			// An absent native socket, so this exercises the VM probe order rather than the
+			// Linux native-socket preference - otherwise the result would depend on whether
+			// the machine running the tests happens to have a live Docker daemon.
+			absentNative := filepath.Join(shortTempDir(t), "no-docker.sock")
+			assert.Equal(t, sock, findDockerSocketFor("", home, absentNative, stdruntime.GOOS))
 		})
 	}
 }
@@ -266,7 +271,10 @@ func TestFindDockerSocket_FallsThroughToNativeRootlessPodman(t *testing.T) {
 	listenUnixSocket(t, rootless)
 	t.Setenv("XDG_RUNTIME_DIR", xdgRuntimeDir)
 
-	assert.Equal(t, rootless, findDockerSocket())
+	// Absent native socket, so the fallback under test is reached on a machine that does have
+	// a live Docker daemon (which would otherwise be preferred on Linux).
+	absentNative := filepath.Join(shortTempDir(t), "no-docker.sock")
+	assert.Equal(t, rootless, findDockerSocketFor("", home, absentNative, stdruntime.GOOS))
 }
 
 func TestNativeSocketPaths_IncludesRootfulAlways(t *testing.T) {

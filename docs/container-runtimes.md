@@ -8,8 +8,11 @@
 
 1. **`DOCKER_HOST`**, if set. This always wins — `lstk` never overrides an explicit environment configuration.
 2. **`DOCKER_CONTEXT`, or otherwise your current Docker CLI context**, if it isn't `default`. Rancher Desktop and OrbStack both register themselves as a context, so this self-maintains as you switch runtimes. `lstk` double-checks the context's socket is actually reachable before using it, so a stale context (e.g. pointing at a VM you deleted, or a `DOCKER_CONTEXT` naming one) is skipped rather than causing a hard failure.
-3. **A list of known socket locations**, probed in this order: Docker Desktop, Rancher Desktop, Colima, OrbStack, Podman machine (macOS), Lima, then native Podman on Linux (rootful, then rootless).
-4. **The Docker SDK's own default** (`/var/run/docker.sock`, or the default named pipe on Windows), if nothing above matched.
+3. **A live `/var/run/docker.sock`, on Linux.** Where Docker and another runtime are both installed — Podman ships on many CI images and on plenty of workstations — Docker is the one a Docker-API tool should use by default. On macOS and Windows this path belongs to whichever VM runtime is active, so it is left to step 4 there.
+4. **A list of known socket locations**, probed in this order: Docker Desktop, Rancher Desktop, Colima, OrbStack, Podman machine (macOS), Lima, then native Podman on Linux (rootful, then rootless).
+5. **The Docker SDK's own default** (`/var/run/docker.sock`, or the default named pipe on Windows), if nothing above matched.
+
+A socket is only used if something is actually listening on it, so a leftover socket file from an uninstalled runtime never shadows a live one.
 
 You can always force a specific endpoint by setting `DOCKER_HOST` yourself.
 

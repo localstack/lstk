@@ -28,6 +28,11 @@ import (
 	"github.com/localstack/lstk/internal/output"
 )
 
+// dockerNativeSocket is the well-known path of a host-local Docker daemon socket. It is also
+// the path a container sees for a VM-backed daemon, which is why SocketPath returns it for
+// those too.
+const dockerNativeSocket = "/var/run/docker.sock"
+
 // managedLabelKey/-Value mark every container lstk creates, so pre-start checks
 // can positively identify an lstk leftover instead of guessing from the image
 // or name — self-healing must never remove a container lstk didn't create.
@@ -55,7 +60,15 @@ func NewDockerRuntime(dockerHost string) (*DockerRuntime, error) {
 	// register) since that self-maintains as new runtimes are installed. Fall back
 	// to probing known alternative socket locations (e.g. Colima, Podman), then to
 	// the Docker SDK's default (/var/run/docker.sock).
-	if dockerHost == "" {
+	//
+	// DOCKER_HOST is checked here as well as via client.FromEnv above: the WithHost
+	// appended below is applied after FromEnv and would otherwise silently replace the
+	// daemon the operator named. That is reachable whenever another runtime's socket is
+	// live alongside the one in use - a CI image that ships Podman, or a workstation
+	// with Rancher Desktop installed but Docker selected - and sends lstk to a daemon
+	// where the emulator's container does not exist, so it reports a running emulator
+	// as absent.
+	if dockerHost == "" && os.Getenv("DOCKER_HOST") == "" {
 		if host := resolveDockerContextHost(os.Getenv, defaultDockerConfigDir(os.Getenv)); host != "" {
 			opts = append(opts, client.WithHost(host))
 		} else if sock := findDockerSocket(); sock != "" {
@@ -119,12 +132,37 @@ func nativeSocketPaths() []string {
 }
 
 func findDockerSocket() string {
+	home, _ := os.UserHomeDir()
+	return findDockerSocketFor(os.Getenv("LIMA_INSTANCE"), home, dockerNativeSocket, stdruntime.GOOS)
+}
+
+// findDockerSocketFor is findDockerSocket with its environment injected, following the same
+// style as resolveDockerContextHost: the native socket path and GOOS are parameters so the
+// ordering can be tested without a real daemon or a writable /var/run.
+func findDockerSocketFor(limaInstance, home, nativeSocket, goos string) string {
 	// Lima sets LIMA_INSTANCE inside the VM; the socket is at the standard path natively.
-	if os.Getenv("LIMA_INSTANCE") != "" {
-		return "/var/run/docker.sock"
+	if limaInstance != "" {
+		return nativeSocket
 	}
 
-	home, _ := os.UserHomeDir()
+	// On Linux a live Docker socket is unambiguously the Docker daemon, so it is preferred
+	// over the alternative-runtime probes. Another runtime's socket can be live alongside it
+	// - Podman ships on many CI images and on plenty of workstations - and picking that one
+	// sends lstk to a daemon where the emulator's container does not exist, so a running
+	// emulator is reported as absent. Docker losing to a co-installed runtime is the wrong
+	// default for a tool that speaks the Docker API; an operator who wants the other one
+	// still has DOCKER_HOST and the Docker CLI context, both honoured ahead of this probe.
+	//
+	// Linux only: on macOS and Windows the same path is a symlink owned by whichever VM
+	// runtime is active, and the VM probes must stay first there so isVM/Flavor keep
+	// classifying it as VM-backed - that drives both the bind-mount rewrite and the
+	// tailored "start Docker Desktop" hints.
+	if goos == "linux" {
+		if sock := probeSocket(nativeSocket); sock != "" {
+			return sock
+		}
+	}
+
 	if sock := probeSocket(vmSocketPaths(home)...); sock != "" {
 		return sock
 	}
