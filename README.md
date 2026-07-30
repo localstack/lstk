@@ -10,7 +10,7 @@ See [Installation](#installation) for other install methods.
 
 ## Prerequisites
 
-- [Docker](https://docs.docker.com/get-docker/) — required as a container engine.
+- A Docker-API-compatible container engine — [Docker](https://docs.docker.com/get-docker/), Rancher Desktop, Colima, OrbStack, Lima, and Podman are all auto-detected; see [container runtimes](docs/container-runtimes.md) for details.
 - [LocalStack account](https://app.localstack.cloud) — required for credentials, the CLI will guide you through authentication.
 
 ## Installation
