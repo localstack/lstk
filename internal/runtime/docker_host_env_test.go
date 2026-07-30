@@ -20,7 +20,7 @@ import (
 // images that ship Podman, or a workstation with Rancher Desktop installed but Docker in use.
 func TestNewDockerRuntime_DockerHostEnvBeatsSocketProbe(t *testing.T) {
 	// A live socket at a probed VM path - what the auto-detection would latch onto.
-	home := t.TempDir()
+	home := shortTempDir(t)
 	probed := filepath.Join(home, ".docker", "run", "docker.sock")
 	require.NoError(t, os.MkdirAll(filepath.Dir(probed), 0o700))
 	listenUnixSocket(t, probed)
@@ -31,7 +31,7 @@ func TestNewDockerRuntime_DockerHostEnvBeatsSocketProbe(t *testing.T) {
 	t.Setenv("DOCKER_CONTEXT", "")
 
 	// The daemon the operator explicitly asked for.
-	chosen := filepath.Join(t.TempDir(), "chosen.sock")
+	chosen := filepath.Join(shortTempDir(t), "chosen.sock")
 	listenUnixSocket(t, chosen)
 	t.Setenv("DOCKER_HOST", "unix://"+chosen)
 
@@ -48,7 +48,7 @@ func TestNewDockerRuntime_DockerHostEnvBeatsSocketProbe(t *testing.T) {
 // live Docker daemon prefers it over the temp socket created here; see the ordering tests in
 // docker_socket_priority_test.go, which cover that choice deterministically).
 func TestNewDockerRuntime_SocketProbeUsedWhenNoDockerHost(t *testing.T) {
-	home := t.TempDir()
+	home := shortTempDir(t)
 	probed := filepath.Join(home, ".docker", "run", "docker.sock")
 	require.NoError(t, os.MkdirAll(filepath.Dir(probed), 0o700))
 	listenUnixSocket(t, probed)

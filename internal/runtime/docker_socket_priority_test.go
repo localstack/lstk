@@ -26,8 +26,8 @@ func liveSocketAt(t *testing.T, home, relPath string) string {
 // picked first, sending lstk to a daemon with no emulator container. The user then sees
 // "LocalStack ... Emulator is not running" while the container is demonstrably up.
 func TestFindDockerSocket_LinuxPrefersDockerOverCoinstalledRuntime(t *testing.T) {
-	home := t.TempDir()
-	native := liveSocketAt(t, t.TempDir(), "docker.sock")
+	home := shortTempDir(t)
+	native := liveSocketAt(t, shortTempDir(t), "docker.sock")
 	liveSocketAt(t, home, ".docker/run/docker.sock") // a competing runtime, also live
 
 	assert.Equal(t, native, findDockerSocketFor("", home, native, "linux"),
@@ -37,7 +37,7 @@ func TestFindDockerSocket_LinuxPrefersDockerOverCoinstalledRuntime(t *testing.T)
 // Without a Docker daemon the alternative-runtime probes must still work - auto-detecting
 // Rancher Desktop, Colima, OrbStack and Podman is the point of that list.
 func TestFindDockerSocket_LinuxFallsBackWhenDockerIsAbsent(t *testing.T) {
-	home := t.TempDir()
+	home := shortTempDir(t)
 	rancher := liveSocketAt(t, home, ".rd/docker.sock")
 	absent := filepath.Join(t.TempDir(), "not-listening.sock")
 
@@ -47,7 +47,7 @@ func TestFindDockerSocket_LinuxFallsBackWhenDockerIsAbsent(t *testing.T) {
 
 // A socket file that exists but has no listener must not shadow a live alternative.
 func TestFindDockerSocket_LinuxIgnoresStaleDockerSocket(t *testing.T) {
-	home := t.TempDir()
+	home := shortTempDir(t)
 	rancher := liveSocketAt(t, home, ".rd/docker.sock")
 
 	stale := filepath.Join(t.TempDir(), "stale.sock")
@@ -60,8 +60,8 @@ func TestFindDockerSocket_LinuxIgnoresStaleDockerSocket(t *testing.T) {
 // On macOS/Windows the native path is a symlink owned by whichever VM runtime is active, so
 // the VM probes stay first to keep isVM/Flavor classification (and the bind-mount rewrite) right.
 func TestFindDockerSocket_NonLinuxKeepsVMProbesFirst(t *testing.T) {
-	home := t.TempDir()
-	native := liveSocketAt(t, t.TempDir(), "docker.sock")
+	home := shortTempDir(t)
+	native := liveSocketAt(t, shortTempDir(t), "docker.sock")
 	desktop := liveSocketAt(t, home, ".docker/run/docker.sock")
 
 	assert.Equal(t, desktop, findDockerSocketFor("", home, native, "darwin"),
@@ -70,7 +70,7 @@ func TestFindDockerSocket_NonLinuxKeepsVMProbesFirst(t *testing.T) {
 
 // Lima reports the socket at the native path inside its VM, regardless of the probe order.
 func TestFindDockerSocket_LimaShortCircuits(t *testing.T) {
-	home := t.TempDir()
+	home := shortTempDir(t)
 	liveSocketAt(t, home, ".rd/docker.sock")
 	native := filepath.Join(t.TempDir(), "never-probed.sock")
 
