@@ -104,7 +104,10 @@ func (c *Client) RegisterRemote(ctx context.Context, baseURL, name, remoteURL st
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("register remote failed (HTTP %d): %s", resp.StatusCode, strings.TrimSpace(string(body)))
+		if isFeatureUnavailableResponse(resp.StatusCode, body) {
+			return snapshot.ErrSnapshotFeatureUnavailable
+		}
+		return emulatorStatusError(fmt.Sprintf("register remote failed (HTTP %d)", resp.StatusCode), body)
 	}
 	return nil
 }
@@ -154,7 +157,10 @@ func (c *Client) ListPodsRemote(ctx context.Context, baseURL, remoteName string,
 
 	if resp.StatusCode != http.StatusOK {
 		respBody, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("list pods failed (HTTP %d): %s", resp.StatusCode, strings.TrimSpace(string(respBody)))
+		if isFeatureUnavailableResponse(resp.StatusCode, respBody) {
+			return nil, snapshot.ErrSnapshotFeatureUnavailable
+		}
+		return nil, emulatorStatusError(fmt.Sprintf("list pods failed (HTTP %d)", resp.StatusCode), respBody)
 	}
 
 	var parsed struct {
@@ -192,7 +198,10 @@ func (c *Client) doPodSave(ctx context.Context, baseURL, podName, authToken stri
 
 	if resp.StatusCode != http.StatusOK {
 		respBody, _ := io.ReadAll(resp.Body)
-		return snapshot.PodSaveResult{}, fmt.Errorf("pod save failed (HTTP %d): %s", resp.StatusCode, strings.TrimSpace(string(respBody)))
+		if isFeatureUnavailableResponse(resp.StatusCode, respBody) {
+			return snapshot.PodSaveResult{}, snapshot.ErrSnapshotFeatureUnavailable
+		}
+		return snapshot.PodSaveResult{}, emulatorStatusError(fmt.Sprintf("pod save failed (HTTP %d)", resp.StatusCode), respBody)
 	}
 
 	// The response is a newline-delimited JSON stream. We scan until we find a
@@ -259,7 +268,10 @@ func (c *Client) doPodLoad(ctx context.Context, baseURL, podName, authToken, str
 	}
 	if resp.StatusCode != http.StatusOK {
 		respBody, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("pod load failed (HTTP %d): %s", resp.StatusCode, strings.TrimSpace(string(respBody)))
+		if isFeatureUnavailableResponse(resp.StatusCode, respBody) {
+			return nil, snapshot.ErrSnapshotFeatureUnavailable
+		}
+		return nil, emulatorStatusError(fmt.Sprintf("pod load failed (HTTP %d)", resp.StatusCode), respBody)
 	}
 
 	var services []string

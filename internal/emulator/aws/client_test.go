@@ -12,6 +12,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/localstack/lstk/internal/snapshot"
 )
 
 func TestFetchVersion(t *testing.T) {
@@ -143,7 +145,7 @@ func TestExportState(t *testing.T) {
 		assert.Contains(t, err.Error(), "500")
 	})
 
-	t.Run("returns error on 404", func(t *testing.T) {
+	t.Run("translates an empty-body 404 into the feature-unavailable sentinel", func(t *testing.T) {
 		t.Parallel()
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 			w.WriteHeader(http.StatusNotFound)
@@ -152,8 +154,23 @@ func TestExportState(t *testing.T) {
 
 		c := NewClient()
 		_, err := c.ExportState(context.Background(), srv.URL, nil, io.Discard)
+		require.ErrorIs(t, err, snapshot.ErrSnapshotFeatureUnavailable)
+	})
+
+	t.Run("keeps a 404 that carries a body as a generic error", func(t *testing.T) {
+		t.Parallel()
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusNotFound)
+			_, _ = w.Write([]byte("no such route"))
+		}))
+		defer srv.Close()
+
+		c := NewClient()
+		_, err := c.ExportState(context.Background(), srv.URL, nil, io.Discard)
 		require.Error(t, err)
+		assert.NotErrorIs(t, err, snapshot.ErrSnapshotFeatureUnavailable)
 		assert.Contains(t, err.Error(), "404")
+		assert.Contains(t, err.Error(), "no such route")
 	})
 
 	t.Run("returns error on connection refused", func(t *testing.T) {
@@ -282,7 +299,7 @@ func TestResetState(t *testing.T) {
 		assert.Contains(t, err.Error(), "500")
 	})
 
-	t.Run("returns error on 404", func(t *testing.T) {
+	t.Run("translates an empty-body 404 into the feature-unavailable sentinel", func(t *testing.T) {
 		t.Parallel()
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 			w.WriteHeader(http.StatusNotFound)
@@ -291,7 +308,21 @@ func TestResetState(t *testing.T) {
 
 		c := NewClient()
 		err := c.ResetState(context.Background(), srv.URL)
+		require.ErrorIs(t, err, snapshot.ErrSnapshotFeatureUnavailable)
+	})
+
+	t.Run("keeps a 404 that carries a body as a generic error", func(t *testing.T) {
+		t.Parallel()
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusNotFound)
+			_, _ = w.Write([]byte("no such route"))
+		}))
+		defer srv.Close()
+
+		c := NewClient()
+		err := c.ResetState(context.Background(), srv.URL)
 		require.Error(t, err)
+		assert.NotErrorIs(t, err, snapshot.ErrSnapshotFeatureUnavailable)
 		assert.Contains(t, err.Error(), "404")
 	})
 
@@ -332,3 +363,111 @@ func TestResetState(t *testing.T) {
 	})
 }
 
+
+// snapshotOps invokes every snapshot-related endpoint the emulator gates behind
+// the Cloud Pods license, so the empty-body-404 translation is asserted for all
+// of them at once. A method missing from this table is a method that would still
+// surface the raw "status 404" error (DEVX-1009).
+func snapshotOps() map[string]func(context.Context, *Client, string) error {
+	return map[string]func(context.Context, *Client, string) error{
+		"ExportState": func(ctx context.Context, c *Client, host string) error {
+			_, err := c.ExportState(ctx, host, nil, io.Discard)
+			return err
+		},
+		"ImportState": func(ctx context.Context, c *Client, host string) error {
+			return c.ImportState(ctx, host, strings.NewReader("zip"), "")
+		},
+		"ResetState": func(ctx context.Context, c *Client, host string) error {
+			return c.ResetState(ctx, host)
+		},
+		"DiffPodSnapshot": func(ctx context.Context, c *Client, host string) error {
+			_, err := c.DiffPodSnapshot(ctx, host, "pod", "tok")
+			return err
+		},
+		"RemovePodSnapshot": func(ctx context.Context, c *Client, host string) error {
+			return c.RemovePodSnapshot(ctx, host, "pod", "tok")
+		},
+		"SavePodSnapshot": func(ctx context.Context, c *Client, host string) error {
+			_, err := c.SavePodSnapshot(ctx, host, "pod", "tok", nil)
+			return err
+		},
+		"LoadPodSnapshot": func(ctx context.Context, c *Client, host string) error {
+			_, err := c.LoadPodSnapshot(ctx, host, "pod", "tok", "")
+			return err
+		},
+		"RegisterRemote": func(ctx context.Context, c *Client, host string) error {
+			return c.RegisterRemote(ctx, host, "remote", "s3://bucket/prefix")
+		},
+		"ListPodsRemote": func(ctx context.Context, c *Client, host string) error {
+			_, err := c.ListPodsRemote(ctx, host, "remote", nil, "tok", "")
+			return err
+		},
+		"SavePodRemote": func(ctx context.Context, c *Client, host string) error {
+			_, err := c.SavePodRemote(ctx, host, "pod", "remote", nil, "tok", nil)
+			return err
+		},
+		"LoadPodRemote": func(ctx context.Context, c *Client, host string) error {
+			_, err := c.LoadPodRemote(ctx, host, "pod", "remote", nil, "tok", "")
+			return err
+		},
+	}
+}
+
+// An unentitled emulator never registers the pods routes, so every one of them
+// falls through to the router's bare 404 with no body.
+func TestSnapshotEndpointsTranslateEmptyBody404(t *testing.T) {
+	t.Parallel()
+
+	for name, invoke := range snapshotOps() {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(http.StatusNotFound)
+			}))
+			defer srv.Close()
+
+			err := invoke(context.Background(), NewClient(), srv.URL)
+			require.ErrorIs(t, err, snapshot.ErrSnapshotFeatureUnavailable)
+		})
+	}
+}
+
+// The discriminator must stay narrow: a 404 carrying a message is a real error
+// from a route that does exist, not a licensing verdict.
+func TestSnapshotEndpointsKeep404WithBodyGeneric(t *testing.T) {
+	t.Parallel()
+
+	for name, invoke := range snapshotOps() {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(http.StatusNotFound)
+				_, _ = w.Write([]byte("something specific went wrong"))
+			}))
+			defer srv.Close()
+
+			err := invoke(context.Background(), NewClient(), srv.URL)
+			require.Error(t, err)
+			assert.NotErrorIs(t, err, snapshot.ErrSnapshotFeatureUnavailable)
+		})
+	}
+}
+
+func TestEmulatorStatusError(t *testing.T) {
+	t.Parallel()
+
+	t.Run("omits the body segment when the body is empty", func(t *testing.T) {
+		t.Parallel()
+		err := emulatorStatusError("LocalStack returned status 404", nil)
+		require.Error(t, err)
+		assert.Equal(t, "LocalStack returned status 404", err.Error())
+		assert.NotContains(t, err.Error(), ": ")
+	})
+
+	t.Run("appends a non-empty body", func(t *testing.T) {
+		t.Parallel()
+		err := emulatorStatusError("pod save failed (HTTP 500)", []byte("  boom  "))
+		require.Error(t, err)
+		assert.Equal(t, "pod save failed (HTTP 500): boom", err.Error())
+	})
+}

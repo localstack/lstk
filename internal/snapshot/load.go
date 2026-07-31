@@ -28,6 +28,32 @@ var ErrIncompatibleSnapshot = errors.New("snapshot is incompatible with the runn
 // archive format from the user-facing message.
 var ErrInvalidSnapshotFile = errors.New("not a valid snapshot file")
 
+// ErrSnapshotFeatureUnavailable indicates the running emulator's license does
+// not include Cloud Pods, so its /_localstack/pods* routes were never
+// registered. The emulator reports that as a bare 404 with an empty body (its
+// generic unmatched-route reply), which the aws client translates into this
+// sentinel — see isFeatureUnavailableResponse.
+//
+// The message deliberately says nothing about snapshots: aws.Client.ResetState
+// is shared with `lstk reset`, which surfaces this error text directly, so
+// naming snapshots here would mislabel a non-snapshot command. Snapshot-specific
+// wording belongs in emitFeatureUnavailableError.
+var ErrSnapshotFeatureUnavailable = errors.New("feature not available on this plan")
+
+// emitFeatureUnavailableError renders the shared "requires a paid plan" message
+// and returns the silent error the top-level handler expects. Every snapshot
+// operation funnels through here so the wording and CTAs live in one place.
+func emitFeatureUnavailableError(sink output.Sink) error {
+	sink.Emit(output.ErrorEvent{
+		Title:   "Snapshots require a paid LocalStack plan",
+		Summary: "Your plan does not include the snapshot feature.",
+		Actions: []output.ErrorAction{
+			{Label: "Compare plans:", Value: "https://www.localstack.cloud/pricing"},
+		},
+	})
+	return output.NewSilentError(ErrSnapshotFeatureUnavailable)
+}
+
 func ValidateMergeStrategy(strategy string) error {
 	switch strategy {
 	case MergeStrategyAccountRegion, MergeStrategyOverwrite, MergeStrategyService:
@@ -97,6 +123,9 @@ func load(ctx context.Context, rt runtime.Runtime, containers []config.Container
 	}()
 
 	err = do()
+	if errors.Is(err, ErrSnapshotFeatureUnavailable) {
+		return emitFeatureUnavailableError(sink)
+	}
 	if errors.Is(err, ErrIncompatibleSnapshot) {
 		sink.Emit(output.ErrorEvent{
 			Title:   "Could not load snapshot",
