@@ -39,8 +39,10 @@ func stockBash(t *testing.T) string {
 // in particular the bash-completion package — can leak in. That bare shell is
 // exactly what DEVX-950 reproduces: stock macOS ships bash 3.2 with no
 // bash-completion, so the generated script must be self-contained. The driver
-// receives the completion script path as $1.
-func runBashCompletionDriver(t *testing.T, driver string) (stdout, stderr string, err error) {
+// receives the completion script path as $1. Any extraPath dirs are prepended
+// to the PATH the driver runs with, for tests that need a stand-in binary
+// (e.g. aws_completer) visible to the `lstk __complete` subprocess.
+func runBashCompletionDriver(t *testing.T, driver string, extraPath ...string) (stdout, stderr string, err error) {
 	t.Helper()
 	bashPath := stockBash(t)
 
@@ -61,9 +63,10 @@ func runBashCompletionDriver(t *testing.T, driver string) (stdout, stderr string
 	cmd.Dir = dir
 	// The driver invokes `lstk __complete ...`; force the file keyring so
 	// that subprocess never probes the developer's system keyring.
+	pathDirs := append(append([]string{}, extraPath...), binDir, "/usr/bin", "/bin")
 	cmd.Env = []string{
 		"HOME=" + tmpHome,
-		"PATH=" + binDir + ":/usr/bin:/bin",
+		"PATH=" + strings.Join(pathDirs, string(os.PathListSeparator)),
 		fmt.Sprintf("%s=file", env.Keyring),
 	}
 	var outBuf, errBuf strings.Builder
