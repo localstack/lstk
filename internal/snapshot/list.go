@@ -2,6 +2,7 @@ package snapshot
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/localstack/lstk/internal/api"
@@ -27,6 +28,9 @@ func List(ctx context.Context, lister CloudPodLister, authToken, creator string,
 	sink.Emit(output.SpinnerStart("Fetching snapshots"))
 	pods, err := lister.ListCloudPods(ctx, authToken, creator)
 	sink.Emit(output.SpinnerStop())
+	if errors.Is(err, api.ErrCloudPodsForbidden) {
+		return emitFeatureUnavailableError(sink)
+	}
 	if err != nil {
 		return fmt.Errorf("list snapshots: %w", err)
 	}

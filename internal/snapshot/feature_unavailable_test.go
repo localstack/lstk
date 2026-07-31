@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/localstack/lstk/internal/api"
+
 	"github.com/localstack/lstk/internal/output"
 	"github.com/localstack/lstk/internal/runtime"
 	"github.com/localstack/lstk/internal/snapshot"
@@ -141,5 +143,37 @@ func TestSaveRemoteS3_FeatureUnavailableOnRegisterRemote(t *testing.T) {
 
 	err := snapshot.SaveRemoteS3(context.Background(), healthyRunningMock(t), awsContainers, client, "", "my-pod", "s3://bucket",
 		snapshot.S3Credentials{AccessKeyID: "a", SecretAccessKey: "b"}, "", nil, sink)
+	assertFeatureUnavailable(t, err, getEvents())
+}
+
+// stubLister/stubInspector stand in for the platform client on the list/show
+// paths, which take a plain interface rather than a generated mock.
+type stubLister struct{ err error }
+
+func (s stubLister) ListCloudPods(context.Context, string, string) ([]api.CloudPod, error) {
+	return nil, s.err
+}
+
+type stubInspector struct{ err error }
+
+func (s stubInspector) GetCloudPod(context.Context, string, string) (*api.CloudPodDetails, error) {
+	return nil, s.err
+}
+
+// list/show query the platform, which reports a plan without Cloud Pods as a
+// 403 rather than the emulator's empty 404 — same message, different signal.
+func TestList_FeatureUnavailable(t *testing.T) {
+	t.Parallel()
+	sink, getEvents := captureEvents(t)
+
+	err := snapshot.List(context.Background(), stubLister{err: api.ErrCloudPodsForbidden}, "test-token", "me", sink)
+	assertFeatureUnavailable(t, err, getEvents())
+}
+
+func TestShow_FeatureUnavailable(t *testing.T) {
+	t.Parallel()
+	sink, getEvents := captureEvents(t)
+
+	err := snapshot.Show(context.Background(), stubInspector{err: api.ErrCloudPodsForbidden}, "test-token", "my-baseline", sink)
 	assertFeatureUnavailable(t, err, getEvents())
 }
