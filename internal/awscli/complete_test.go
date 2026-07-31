@@ -2,6 +2,7 @@ package awscli
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -104,16 +105,22 @@ func TestCompleteErrsWhenCompleterAbsent(t *testing.T) {
 	assert.ErrorIs(t, err, ErrCompleterNotFound)
 }
 
-// TestCompleteHonorsContextDeadline covers the caller-owned bound on how long
-// a Tab press may block: Complete sets no deadline of its own, so a wedged
-// completer must be killed by the context the command boundary supplies.
+// TestCompleteHonorsContextDeadline covers the caller-owned bound on how long a
+// Tab press may block: Complete sets no deadline of its own, so a wedged
+// completer must be cut off by the context the command boundary supplies.
+//
+// The completer here leaves the sleep as a grandchild — on Linux /bin/sh is
+// dash, which forks rather than execs it — so the sleep inherits the stdout
+// pipe and outlives the kill. Without cmd.WaitDelay, Output() blocked for the
+// sleep's full 30s despite the deadline being 100ms.
 func TestCompleteHonorsContextDeadline(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("fake completer script not supported on Windows")
 	}
+	const sleepSeconds = 30
 	dir := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(dir, completerBinary),
-		[]byte("#!/bin/sh\nsleep 30\n"), 0o755))
+		fmt.Appendf(nil, "#!/bin/sh\nsleep %d &\nwait\n", sleepSeconds), 0o755))
 	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
 
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
@@ -121,8 +128,11 @@ func TestCompleteHonorsContextDeadline(t *testing.T) {
 
 	start := time.Now()
 	_, err := Complete(ctx, nil, "")
+	elapsed := time.Since(start)
+
 	assert.Error(t, err)
-	assert.Less(t, time.Since(start), 25*time.Second)
+	assert.Less(t, elapsed, 5*time.Second,
+		"Complete blocked for %v past a 100ms deadline; the grandchild holding stdout was not cut off", elapsed)
 }
 
 func TestCompleteErrsWhenCompleterFails(t *testing.T) {

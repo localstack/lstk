@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 	"unicode/utf8"
 )
 
@@ -16,6 +17,14 @@ import (
 // bash's `complete -C`: read the command line from COMP_LINE/COMP_POINT, print
 // candidates to stdout one per line.
 const completerBinary = "aws_completer"
+
+// completerWaitDelay bounds how long Wait keeps draining the completer's output
+// after its context is done. Killing the completer does not close a pipe its own
+// children still hold, so without this a completer that leaves a grandchild on
+// stdout — a wrapper script that does not exec its payload, say — makes
+// cmd.Output() block until that grandchild exits, long past the caller's
+// deadline. Whatever arrives after the deadline is discarded anyway.
+const completerWaitDelay = 100 * time.Millisecond
 
 var ErrCompleterNotFound = errors.New("aws_completer not found")
 
@@ -58,6 +67,7 @@ func Complete(ctx context.Context, args []string, toComplete string) ([]string, 
 	line := buildCompLine(args, toComplete)
 
 	cmd := exec.CommandContext(ctx, completer)
+	cmd.WaitDelay = completerWaitDelay
 	cmd.Env = append(os.Environ(),
 		"COMP_LINE="+line,
 		// COMP_POINT is a character offset into COMP_LINE (the completer slices
