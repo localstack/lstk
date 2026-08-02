@@ -9,9 +9,20 @@ import (
 	"github.com/localstack/lstk/internal/config"
 	"github.com/localstack/lstk/internal/container"
 	"github.com/localstack/lstk/internal/emulator"
+	"github.com/localstack/lstk/internal/endpoint"
 	"github.com/localstack/lstk/internal/output"
 	"github.com/localstack/lstk/internal/runtime"
 )
+
+// RunStatusExternal is RunStatus for an externally-managed endpoint
+// (--endpoint-url and friends). Targeting an emulator lstk didn't start
+// changes which facts are available, not how they're rendered, so the
+// interactive path stays the TUI here too.
+func RunStatusExternal(parentCtx context.Context, target *endpoint.Target, clients map[config.EmulatorType]emulator.Client) error {
+	return runWithTUI(parentCtx, withoutHeader(), func(ctx context.Context, sink output.Sink) error {
+		return container.StatusExternal(ctx, target, clients, sink)
+	})
+}
 
 func RunStatus(parentCtx context.Context, rt runtime.Runtime, containers []config.ContainerConfig, localStackHost string, clients map[config.EmulatorType]emulator.Client) error {
 	ctx, cancel := context.WithCancel(parentCtx)

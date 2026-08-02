@@ -83,25 +83,70 @@ func Status(ctx context.Context, rt runtime.Runtime, containers []config.Contain
 		})
 
 		if c.Type == config.EmulatorAWS {
-			if len(rows) == 0 {
-				sink.Emit(output.MessageEvent{Severity: output.SeverityNote, Text: "No resources deployed"})
-				continue
-			}
-
-			tableRows := make([][]string, len(rows))
-			services := map[string]struct{}{}
-			for i, r := range rows {
-				tableRows[i] = []string{r.Service, r.Name, r.Region, r.Account}
-				services[r.Service] = struct{}{}
-			}
-
-			sink.Emit(output.ResourceSummaryEvent{Resources: len(rows), Services: len(services)})
-			sink.Emit(output.TableEvent{
-				Headers: []string{"Service", "Resource", "Region", "Account"},
-				Rows:    tableRows,
-			})
+			emitResources(sink, rows)
 		}
 	}
 
 	return nil
+}
+
+// StatusExternal renders status for an externally-managed endpoint
+// (--endpoint-url/LSTK_ENDPOINT_URL/AWS_ENDPOINT_URL): reachability, detected
+// type, reported version, and — for an AWS-typed target — deployed resources,
+// without the Docker-derived facts (container name, uptime, persistence, bound
+// port) that don't exist for an emulator lstk didn't start. Deployed resources
+// are not Docker-derived (they're an ordinary emulator API call via
+// FetchResources, identical to Status above), so there's no reason to omit
+// them here. It emits the same events in the same order as Status, so both
+// paths render identically through whichever sink the caller picked.
+func StatusExternal(ctx context.Context, target *endpoint.Target, clients map[config.EmulatorType]emulator.Client, sink output.Sink) error {
+	var version string
+	var rows []emulator.Resource
+	if client, ok := clients[target.Type]; ok {
+		sink.Emit(output.SpinnerStart("Fetching LocalStack status"))
+		if v, err := client.FetchVersion(ctx, target.URL); err != nil {
+			sink.Emit(output.MessageEvent{Severity: output.SeverityWarning, Text: fmt.Sprintf("Could not fetch version: %v", err)})
+		} else {
+			version = v
+		}
+
+		var fetchErr error
+		rows, fetchErr = client.FetchResources(ctx, target.URL)
+		sink.Emit(output.SpinnerStop())
+		if fetchErr != nil {
+			return fetchErr
+		}
+	}
+
+	sink.Emit(output.InstanceInfoEvent{
+		EmulatorName: target.Type.DisplayName(),
+		Version:      version,
+		Host:         target.URL,
+	})
+
+	if target.Type == config.EmulatorAWS {
+		emitResources(sink, rows)
+	}
+
+	return nil
+}
+
+func emitResources(sink output.Sink, rows []emulator.Resource) {
+	if len(rows) == 0 {
+		sink.Emit(output.MessageEvent{Severity: output.SeverityNote, Text: "No resources deployed"})
+		return
+	}
+
+	tableRows := make([][]string, len(rows))
+	services := map[string]struct{}{}
+	for i, r := range rows {
+		tableRows[i] = []string{r.Service, r.Name, r.Region, r.Account}
+		services[r.Service] = struct{}{}
+	}
+
+	sink.Emit(output.ResourceSummaryEvent{Resources: len(rows), Services: len(services)})
+	sink.Emit(output.TableEvent{
+		Headers: []string{"Service", "Resource", "Region", "Account"},
+		Rows:    tableRows,
+	})
 }

@@ -3,13 +3,18 @@ package integration_test
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
+	"strings"
 	"testing"
 
+	"github.com/creack/pty"
 	"github.com/localstack/lstk/test/integration/env"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -24,20 +29,26 @@ const unreachableDockerHost = "DOCKER_HOST=unix:///nonexistent/docker.sock"
 
 // awsHealthServer starts an httptest.Server that answers /_localstack/health
 // like a real AWS-flavored LocalStack emulator (see the community image
-// payload recorded in design.md's research for add-endpoint-url-flag).
+// payload recorded in design.md's research for add-endpoint-url-flag). It also
+// answers /_localstack/resources with an empty listing, since a real emulator
+// serves that endpoint and `status` treats a failure to fetch resources as
+// fatal — on either the Docker or the --endpoint-url path.
 func awsHealthServer(t *testing.T) *httptest.Server {
 	t.Helper()
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/_localstack/health" {
+		switch r.URL.Path {
+		case "/_localstack/health":
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"version":  "3.0.2",
+				"edition":  "community",
+				"services": map[string]string{"s3": "available", "sqs": "available"},
+			})
+		case "/_localstack/resources":
+			w.Header().Set("Content-Type", "application/x-ndjson")
+		default:
 			w.WriteHeader(http.StatusNotFound)
-			return
 		}
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{
-			"version":  "3.0.2",
-			"edition":  "community",
-			"services": map[string]string{"s3": "available", "sqs": "available"},
-		})
 	}))
 }
 
@@ -296,6 +307,86 @@ func TestStatusEndpointURLShowsResources(t *testing.T) {
 	assert.Contains(t, stdout, "S3")
 	assert.Contains(t, stdout, "my-test-bucket")
 }
+
+// TestStatusEndpointURLInteractiveRendersTUI proves `status` against an
+// externally-managed endpoint renders through the same Bubble Tea TUI as the
+// Docker-managed path when attached to a terminal. It used to hardcode the
+// plain sink regardless of interactive mode, so `--endpoint-url status` came
+// out unstyled and without the blank lines the TUI puts around the resource
+// summary — visibly different output for the same command.
+func TestStatusEndpointURLInteractiveRendersTUI(t *testing.T) {
+	t.Parallel()
+	if runtime.GOOS == "windows" {
+		t.Skip("PTY not supported on Windows")
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/_localstack/health":
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"version":  "3.0.2",
+				"services": map[string]string{"s3": "available"},
+			})
+		case "/_localstack/resources":
+			w.Header().Set("Content-Type", "application/x-ndjson")
+			_, _ = fmt.Fprintln(w, `{"AWS::S3::Bucket": [{"region_name": "us-east-1", "account_id": "000000000000", "id": "my-test-bucket"}]}`)
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer srv.Close()
+
+	binPath, err := filepath.Abs(binaryPath())
+	require.NoError(t, err)
+
+	cmd := exec.CommandContext(testContext(t), binPath, "--endpoint-url", srv.URL, "status")
+	cmd.Env = append(env.Environ(testEnvWithHome(t.TempDir(), "")).With(env.DisableEvents, "1"), unreachableDockerHost)
+	ptmx, err := pty.Start(cmd)
+	require.NoError(t, err, "failed to start command in PTY")
+	t.Cleanup(func() { _ = ptmx.Close() })
+
+	out := &syncBuffer{}
+	outputCh := make(chan struct{})
+	go func() {
+		_, _ = io.Copy(out, ptmx)
+		close(outputCh)
+	}()
+	require.NoError(t, cmd.Wait())
+	<-outputCh
+
+	lines := ptyLines(out.String())
+	summary := -1
+	for i, line := range lines {
+		if strings.Contains(line, "resources ·") {
+			summary = i
+			break
+		}
+	}
+	require.NotEqual(t, -1, summary, "resource summary should be rendered, got:\n%s", strings.Join(lines, "\n"))
+	require.Greater(t, summary, 0)
+	assert.Empty(t, lines[summary-1], "TUI puts a blank line before the resource summary")
+	assert.Empty(t, lines[summary+1], "TUI puts a blank line after the resource summary")
+
+	joined := strings.Join(lines, "\n")
+	assert.Contains(t, joined, "my-test-bucket")
+	assert.NotContains(t, joined, "Container:")
+	assert.NotContains(t, joined, "Uptime:")
+}
+
+// ptyLines splits raw PTY output into display lines, dropping ANSI escape
+// sequences and carriage returns so tests can assert on layout (blank lines,
+// ordering) without depending on whether the terminal advertised colour.
+func ptyLines(raw string) []string {
+	stripped := ansiEscape.ReplaceAllString(raw, "")
+	stripped = strings.ReplaceAll(stripped, "\r", "")
+	lines := strings.Split(stripped, "\n")
+	for i, line := range lines {
+		lines[i] = strings.TrimRight(line, " \t")
+	}
+	return lines
+}
+
+var ansiEscape = regexp.MustCompile(`\x1b(\[[0-9;?]*[ -/]*[@-~]|\][^\x07\x1b]*(\x07|\x1b\\)|[@-Z\\-_])`)
 
 // TestStatusUnreachableEndpointURLFailsClosed proves an endpoint that
 // doesn't look like a genuine LocalStack instance is rejected with a clear

@@ -102,6 +102,8 @@ When an endpoint URL is resolved for `aws`, `az`, `terraform`/`tf`, `cdk`, `sam`
 
 When `lstk status` resolves an endpoint URL instead of a Docker-managed container, it SHALL report reachability, the detected emulator type and version reported by the endpoint's own health payload, and — for an AWS-typed target — deployed resources exactly as it does for a Docker-managed emulator: deployed resources are reported via the emulator's own `/_localstack/resources` API, not derived from Docker, so there is no reason to omit them. It SHALL NOT report Docker-derived facts (container uptime, image, bound port) that don't exist for an emulator lstk didn't start.
 
+Targeting an external endpoint changes which facts are available, not how they are rendered: `status` SHALL select its output mode the same way as the Docker-managed path — the interactive TUI on a terminal, the plain sink otherwise — so styling and spacing are identical between the two paths.
+
 #### Scenario: Status for an externally-managed endpoint
 
 - **WHEN** a user runs `lstk status --endpoint-url http://localhost:4566` against a reachable emulator
@@ -111,6 +113,11 @@ When `lstk status` resolves an endpoint URL instead of a Docker-managed containe
 
 - **WHEN** a user runs `lstk status --endpoint-url http://localhost:4566` against a reachable AWS-typed emulator with deployed resources
 - **THEN** the output includes the resource summary and table, the same as it would for a Docker-managed AWS emulator
+
+#### Scenario: Status for an externally-managed endpoint renders through the TUI on a terminal
+
+- **WHEN** a user runs `lstk status --endpoint-url http://localhost:4566` attached to a terminal
+- **THEN** the output is rendered by the interactive TUI, with the same styling and spacing a Docker-managed `lstk status` produces
 
 ### Requirement: Docker-lifecycle and filesystem commands reject any resolved endpoint URL source
 
