@@ -89,6 +89,11 @@ When an endpoint URL is resolved for `aws`, `az`, `terraform`/`tf`, `cdk`, `sam`
 - **WHEN** an endpoint URL is resolved and the endpoint does not respond, or responds with something that isn't a recognizable LocalStack health payload
 - **THEN** the command fails with an actionable error naming the given URL and the failure cause, and does not suggest running `lstk start` or mention Docker
 
+#### Scenario: The same endpoint responds under the other scheme
+
+- **WHEN** an endpoint URL is unreachable, but the same host and port respond as a LocalStack emulator under the other scheme — e.g. `http://<instance>.localstack.cloud` given for a TLS-terminated cloud-hosted instance, where the raw failure is only "no route to host" against port 80
+- **THEN** the error additionally names the URL under the scheme that did respond and tells the user to retry with it, and lstk does not silently substitute that scheme for the one the user gave
+
 ### Requirement: snapshot load does not auto-start a container for externally-managed endpoints
 
 `lstk snapshot load` (and its `lstk load` alias) SHALL NOT fall back to auto-starting a local Docker container when an endpoint URL is resolved, even if that endpoint is currently unreachable.

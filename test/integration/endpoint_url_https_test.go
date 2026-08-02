@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 
 	"github.com/localstack/lstk/test/integration/env"
@@ -154,6 +155,51 @@ func TestSnapshotSaveEndpointURLHTTPSNoDockerRequired(t *testing.T) {
 	require.NoError(t, err, "stderr: %s", stderr)
 	assert.Contains(t, stdout, "Snapshot saved")
 	assert.Equal(t, "/_localstack/pods/state", gotPath)
+}
+
+// TestStatusEndpointURLHTTPSchemeMismatchSuggestsHTTPS covers the confusing
+// error a user hit when pointing at a cloud-hosted instance with `http://`:
+// nothing listens on port 80 there, so the only thing reported was a raw "no
+// route to host" that never hinted the scheme was the problem. lstk now
+// re-probes the other scheme on the failure path and names the URL to retry.
+func TestStatusEndpointURLHTTPSchemeMismatchSuggestsHTTPS(t *testing.T) {
+	t.Parallel()
+	requireLinuxForSSLCertFileTrust(t)
+
+	srv := awsHealthTLSServer(t)
+	defer srv.Close()
+
+	httpURL := strings.Replace(srv.URL, "https://", "http://", 1)
+	e := env.With(env.DisableEvents, "1").With(env.Home, t.TempDir())
+	e = append(e, unreachableDockerHost, httpsCertFileEnv(t, srv))
+
+	_, stderr, err := runLstk(t, testContext(t), t.TempDir(), e, "--endpoint-url", httpURL, "status")
+	require.Error(t, err)
+	assert.Contains(t, stderr, "could not reach LocalStack emulator at "+httpURL)
+	assert.Contains(t, stderr, srv.URL+" responded")
+	assert.Contains(t, stderr, "retry with that URL")
+	assert.NotContains(t, stderr, "lstk start")
+}
+
+// TestStatusEndpointURLHTTPSSchemeMismatchSuggestsHTTP is the mirror image:
+// an `https://` URL aimed at a plain-HTTP emulator fails on the TLS handshake,
+// which is just as opaque, and gets the same treatment. No certificate trust
+// is involved, so unlike its siblings here this one runs on every platform.
+func TestStatusEndpointURLHTTPSSchemeMismatchSuggestsHTTP(t *testing.T) {
+	t.Parallel()
+
+	srv := awsHealthServer(t)
+	defer srv.Close()
+
+	httpsURL := strings.Replace(srv.URL, "http://", "https://", 1)
+	e := env.With(env.DisableEvents, "1").With(env.Home, t.TempDir())
+	e = append(e, unreachableDockerHost)
+
+	_, stderr, err := runLstk(t, testContext(t), t.TempDir(), e, "--endpoint-url", httpsURL, "status")
+	require.Error(t, err)
+	assert.Contains(t, stderr, "could not reach LocalStack emulator at "+httpsURL)
+	assert.Contains(t, stderr, srv.URL+" responded")
+	assert.Contains(t, stderr, "retry with that URL")
 }
 
 // TestStatusEndpointURLHTTPSRendersReducedOutput is the https counterpart of

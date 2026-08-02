@@ -74,6 +74,27 @@ func (e *UnreachableError) Error() string {
 
 func (e *UnreachableError) Unwrap() error { return e.Cause }
 
+// SchemeMismatchError reports that a resolved endpoint URL did not respond,
+// but the very same host and port answered as a LocalStack emulator under the
+// other scheme. The common shape is pointing at a cloud-hosted (TLS-terminated)
+// instance with `http://`, where the raw transport error is a bare "no route to
+// host" against port 80 that gives no hint the scheme is what's wrong.
+//
+// It unwraps to the *UnreachableError it replaces, so callers matching on that
+// type still match.
+type SchemeMismatchError struct {
+	// AltURL is the same endpoint under the other scheme, which did respond.
+	AltURL string
+	// Unreachable is the failure for the URL the user actually gave.
+	Unreachable *UnreachableError
+}
+
+func (e *SchemeMismatchError) Error() string {
+	return fmt.Sprintf("%s, but %s responded — retry with that URL", e.Unreachable.Error(), e.AltURL)
+}
+
+func (e *SchemeMismatchError) Unwrap() error { return e.Unreachable }
+
 // IndeterminateTypeError reports that a resolved endpoint responded, but its
 // health/info payload could not be classified as aws, azure, or snowflake.
 // There is no override flag or config setting for the type — detection is the
@@ -191,7 +212,7 @@ var awsSignatureServices = []string{"s3", "sqs", "sts", "iam", "lambda", "dynamo
 func probeType(ctx context.Context, endpointURL string) (config.EmulatorType, error) {
 	health, err := fetchJSON[healthResponse](ctx, endpointURL+"/_localstack/health")
 	if err != nil {
-		return "", &UnreachableError{URL: endpointURL, Cause: err}
+		return "", unreachable(ctx, endpointURL, err)
 	}
 
 	if health.Version != "" {
@@ -210,6 +231,46 @@ func probeType(ctx context.Context, endpointURL string) (config.EmulatorType, er
 		return "", &IndeterminateTypeError{URL: endpointURL}
 	}
 	return config.EmulatorAzure, nil
+}
+
+// unreachable builds the error for a failed health probe. Before giving up it
+// re-probes the same host and port under the other scheme, so the far more
+// useful "you used the wrong scheme" diagnosis replaces a raw transport error
+// that only reports the symptom ("no route to host" against port 80 for a
+// cloud-hosted https instance, "first record does not look like a TLS
+// handshake" for an https:// URL pointed at a plain local gateway). The extra
+// probe runs only on the failure path, and only long enough for the caller to
+// be told which URL to retry — the scheme the user gave is never silently
+// swapped for them.
+func unreachable(ctx context.Context, endpointURL string, cause error) error {
+	base := &UnreachableError{URL: endpointURL, Cause: cause}
+	alt, ok := swapScheme(endpointURL)
+	if !ok {
+		return base
+	}
+	if _, err := fetchJSON[healthResponse](ctx, alt+"/_localstack/health"); err != nil {
+		return base
+	}
+	return &SchemeMismatchError{AltURL: alt, Unreachable: base}
+}
+
+// swapScheme returns endpointURL with http and https exchanged. Host and port
+// are left untouched: an explicit port is equally valid under either scheme,
+// and an implicit one correctly becomes the other scheme's default.
+func swapScheme(endpointURL string) (string, bool) {
+	u, err := url.Parse(endpointURL)
+	if err != nil {
+		return "", false
+	}
+	switch u.Scheme {
+	case "http":
+		u.Scheme = "https"
+	case "https":
+		u.Scheme = "http"
+	default:
+		return "", false
+	}
+	return u.String(), true
 }
 
 // classifyByServices inspects a health response's "services" map for a

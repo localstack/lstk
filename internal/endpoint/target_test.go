@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/localstack/lstk/internal/config"
@@ -282,6 +283,58 @@ func TestProbeType(t *testing.T) {
 		require.Error(t, err)
 		var unreachable *UnreachableError
 		assert.ErrorAs(t, err, &unreachable)
+	})
+}
+
+func TestSwapScheme(t *testing.T) {
+	tests := []struct {
+		name string
+		in   string
+		want string
+		ok   bool
+	}{
+		{"http gains a scheme's worth of TLS", "http://ls-abc.sandbox.localstack.cloud", "https://ls-abc.sandbox.localstack.cloud", true},
+		{"https drops to http", "https://localhost:4566", "http://localhost:4566", true},
+		{"explicit port is preserved", "http://localhost:4566", "https://localhost:4566", true},
+		{"other schemes are not swapped", "ftp://localhost:4566", "", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, ok := swapScheme(tt.in)
+			assert.Equal(t, tt.ok, ok)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func TestProbeType_SchemeMismatch(t *testing.T) {
+	t.Run("https URL against a plain http emulator suggests the http URL", func(t *testing.T) {
+		srv := healthServer(t, `{"version":"3.0.2","services":{"s3":"available"}}`)
+		defer srv.Close()
+
+		httpsURL := strings.Replace(srv.URL, "http://", "https://", 1)
+		_, err := probeType(context.Background(), httpsURL)
+		require.Error(t, err)
+
+		var mismatch *SchemeMismatchError
+		require.ErrorAs(t, err, &mismatch)
+		assert.Equal(t, srv.URL, mismatch.AltURL)
+		assert.Contains(t, err.Error(), "could not reach LocalStack emulator at "+httpsURL)
+		assert.Contains(t, err.Error(), "but "+srv.URL+" responded — retry with that URL")
+
+		// Callers matching the plain unreachable error still match.
+		var unreachableErr *UnreachableError
+		assert.ErrorAs(t, err, &unreachableErr)
+	})
+
+	t.Run("no suggestion when the other scheme is equally unreachable", func(t *testing.T) {
+		_, err := probeType(context.Background(), "http://127.0.0.1:1")
+		require.Error(t, err)
+
+		var mismatch *SchemeMismatchError
+		assert.NotErrorAs(t, err, &mismatch)
+		var unreachableErr *UnreachableError
+		assert.ErrorAs(t, err, &unreachableErr)
 	})
 }
 
