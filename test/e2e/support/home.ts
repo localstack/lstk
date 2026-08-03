@@ -89,23 +89,34 @@ const PASSTHROUGH = [
 const UNREACHABLE_ANALYTICS_ENDPOINT = "http://127.0.0.1:1";
 
 /**
- * Removes a temp home, tolerating files the current user cannot delete.
+ * Removes a temp home, tolerating the two ways that legitimately fails.
  *
- * A test that starts a real emulator gets a volume directory under this home that
- * LocalStack populates as root inside the container (`cache/certs` and friends), so
- * a plain rm fails with EACCES for the user running the tests. Deleting those needs
- * root, which a throwaway container has; if that is unavailable the leftovers are
- * left in the OS temp dir rather than failing a test that already passed — teardown
- * must never decide a test's verdict.
+ * A test that starts a real emulator gets a volume directory LocalStack populates as
+ * root inside the container (`cache/certs` and friends), so a plain rm fails with
+ * EACCES for the user running the tests; deleting those needs root, which a throwaway
+ * container has. On Windows a just-killed child can still hold a handle for a moment,
+ * giving EBUSY, so the removal is retried briefly first.
+ *
+ * If it still cannot be removed, the leftovers stay in the OS temp dir rather than
+ * failing a test that already passed — teardown must never decide a verdict.
  */
 async function removeHomeDir(root: string): Promise<void> {
-  try {
-    await rm(root, { recursive: true, force: true });
-    return;
-  } catch (error) {
-    const code = (error as NodeJS.ErrnoException).code;
-    if (code !== "EACCES" && code !== "EPERM") throw error;
+  const retryable = new Set(["EBUSY", "ENOTEMPTY", "EPERM", "EACCES"]);
+  let lastCode: string | undefined;
+
+  for (let attempt = 0; attempt < 5; attempt++) {
+    try {
+      await rm(root, { recursive: true, force: true });
+      return;
+    } catch (error) {
+      lastCode = (error as NodeJS.ErrnoException).code;
+      if (lastCode === undefined || !retryable.has(lastCode)) throw error;
+      await new Promise((resolve) => setTimeout(resolve, 100 * (attempt + 1)));
+    }
   }
+
+  // Only root-owned container output is worth the cost of a container to delete.
+  if (lastCode !== "EACCES" && lastCode !== "EPERM") return;
 
   const { execa } = await import("execa");
   const rooted = await execa(
