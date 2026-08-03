@@ -15,8 +15,12 @@ export default defineConfig({
     // Starting a real emulator can take a while on a cold image pull.
     testTimeout: 120_000,
     hookTimeout: 120_000,
+    // "default" is kept on CI alongside the annotations reporter: on its own,
+    // github-actions emits only inline annotations, leaving the job log with no
+    // pass/fail/skip summary and forcing anyone diagnosing a run to fetch and parse
+    // the JUnit artifact instead of just reading the log.
     reporters: [
-      process.env.CI ? "github-actions" : "default",
+      ...(process.env.CI ? (["github-actions", "default"] as const) : (["default"] as const)),
       ...junit,
     ],
   },

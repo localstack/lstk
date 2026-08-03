@@ -42,13 +42,21 @@ export interface TempHomeOptions {
  * Whether tests may use the real OS keyring.
  *
  * The service and account the binary stores under are hardcoded
- * (internal/auth/token_storage.go), so there is exactly one slot per machine: a
- * test that logs in overwrites the developer's own credential, and the logout it
- * asserts on then deletes it. Opt in explicitly with LSTK_E2E_REAL_KEYRING=1, or
- * let CI (disposable runners) do it.
+ * (internal/auth/token_storage.go), so there is exactly one slot per machine: a test
+ * that logs in overwrites the developer's own credential, and the logout it asserts on
+ * then deletes it. So this is opt-in — explicitly via LSTK_E2E_REAL_KEYRING=1, or
+ * implicitly on CI, whose runners are disposable.
+ *
+ * Never implicitly on macOS, though: a headless runner's login keychain is locked, so
+ * a keychain write *blocks* instead of failing and the test dies on the suite timeout
+ * two minutes later. scripts/test-integration.sh forces LSTK_KEYRING=file for the Go
+ * suite on macOS for the same reason. An explicit opt-in still wins, for a developer
+ * with an unlocked keychain who accepts the prompt.
  */
 export function realKeyringAllowed(): boolean {
-  return process.env.LSTK_E2E_REAL_KEYRING === "1" || process.env.CI === "true";
+  if (process.env.LSTK_E2E_REAL_KEYRING === "1") return true;
+  if (process.platform === "darwin") return false;
+  return process.env.CI === "true";
 }
 
 /** Env vars that must survive into the child for the binary to work at all. */
