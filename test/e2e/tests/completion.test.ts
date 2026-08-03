@@ -84,9 +84,26 @@ async function runCompletionDriver(driver: string): Promise<DriverResult> {
 
   return {
     stdout: (result.stdout ?? "").toString().trim(),
-    stderr: (result.stderr ?? "").toString().trim(),
+    stderr: withoutDriverArtifacts((result.stderr ?? "").toString()),
     exitCode: result.exitCode ?? (result.failed ? 1 : 0),
   };
+}
+
+/**
+ * Drops warnings caused by this driver rather than by the completion script.
+ *
+ * The driver calls the completion function directly instead of pressing Tab, so bash
+ * is not "executing a completion function" as far as `compopt` is concerned and warns
+ * — on Linux, where bash has `compopt` at all; macOS bash 3.2 has no such builtin, so
+ * the warning never appears there. Real Tab-completion never hits this, and filtering
+ * it keeps the rest of stderr asserted, so a genuine script error still fails.
+ */
+function withoutDriverArtifacts(stderr: string): string {
+  return stderr
+    .split("\n")
+    .filter((line) => !/compopt: not currently executing completion function/.test(line))
+    .join("\n")
+    .trim();
 }
 
 /**

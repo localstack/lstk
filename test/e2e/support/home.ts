@@ -88,10 +88,40 @@ const PASSTHROUGH = [
  */
 const UNREACHABLE_ANALYTICS_ENDPOINT = "http://127.0.0.1:1";
 
+/**
+ * Removes a temp home, tolerating files the current user cannot delete.
+ *
+ * A test that starts a real emulator gets a volume directory under this home that
+ * LocalStack populates as root inside the container (`cache/certs` and friends), so
+ * a plain rm fails with EACCES for the user running the tests. Deleting those needs
+ * root, which a throwaway container has; if that is unavailable the leftovers are
+ * left in the OS temp dir rather than failing a test that already passed — teardown
+ * must never decide a test's verdict.
+ */
+async function removeHomeDir(root: string): Promise<void> {
+  try {
+    await rm(root, { recursive: true, force: true });
+    return;
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code !== "EACCES" && code !== "EPERM") throw error;
+  }
+
+  const { execa } = await import("execa");
+  const rooted = await execa(
+    "docker",
+    ["run", "--rm", "-v", `${root}:/target`, "alpine:latest", "sh", "-c", "rm -rf /target/* /target/.[!.]*"],
+    { reject: false },
+  );
+  if (rooted.exitCode === 0) {
+    await rm(root, { recursive: true, force: true }).catch(() => {});
+  }
+}
+
 export async function tempHome(options: TempHomeOptions = {}): Promise<Home> {
   const root = await mkdtemp(path.join(os.tmpdir(), "lstk-e2e-"));
   onTestFinished(async () => {
-    await rm(root, { recursive: true, force: true });
+    await removeHomeDir(root);
   });
 
   if (options.xdgConfigDir ?? true) {

@@ -61,13 +61,25 @@ async function login({ home, browser }: Fixture): Promise<string> {
   return term.output();
 }
 
+/**
+ * Asserts that `start` cannot authenticate on its own.
+ *
+ * `start` checks the container runtime *before* auth, so on a machine without one it
+ * fails with "Docker is not available" and says nothing about credentials — which
+ * makes it useless as an auth probe there. Skipped rather than weakened, so the
+ * assertion stays exact where it can run at all.
+ */
+async function expectCannotAuthenticate(home: Home, when: string): Promise<void> {
+  if (noDocker) return;
+  const run = await lstk(["start", "--non-interactive"], { home });
+  expect(run, when).toFail();
+  expect(run, when).toPrint("authentication required");
+}
+
 async function assertLoginSticks(fixture: Fixture): Promise<void> {
   const { home } = fixture;
 
-  // Before logging in, a non-interactive command cannot authenticate at all.
-  const beforeLogin = await lstk(["start", "--non-interactive"], { home });
-  expect(beforeLogin).toFail();
-  expect(beforeLogin).toPrint("authentication required");
+  await expectCannotAuthenticate(home, "before logging in");
 
   expect(await login(fixture)).toContain("Login successful");
 
@@ -87,9 +99,7 @@ async function assertLoginSticks(fixture: Fixture): Promise<void> {
   expect(loggedOut).toPrint("Logged out successfully");
 
   // And the credential is gone for good, not just forgotten by `logout`.
-  const afterwards = await lstk(["start", "--non-interactive"], { home });
-  expect(afterwards).toFail();
-  expect(afterwards).toPrint("authentication required");
+  await expectCannotAuthenticate(home, "after logging out");
   expect(await lstk(["logout"], { home })).toPrint("Not currently logged in");
 }
 

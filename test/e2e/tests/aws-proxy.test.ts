@@ -89,8 +89,11 @@ describe("lstk aws without a reachable daemon", () => {
     // — see the runtime-discovery notes in the repo's CLAUDE.md.
     expect(run).toExitWith(1);
     expect(run).toPrint("Docker is not available");
+    // The endpoint is echoed back so the user can see what was tried. Only the
+    // distinctive tail is asserted: the scheme and separators differ per platform
+    // (unix:// socket path vs npipe://./pipe/...).
     expect(run, "the unreachable endpoint is named so the user can see what was tried").toPrint(
-      unreachableDockerHost.replace("unix://", ""),
+      "nonexistent-lstk-test",
     );
     expect(await aws.calls(), "aws must never be invoked once Docker is unreachable").toEqual([]);
   });

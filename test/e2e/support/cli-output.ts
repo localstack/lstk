@@ -11,6 +11,12 @@ import type { Home } from "./home.ts";
 export interface NormalizeOptions {
   /** Replaces this home's temp directory with `<home>`. */
   home?: Home;
+  /**
+   * Rewrites `\` as `/`, so a path-bearing message can be asserted with one
+   * expectation on every platform. Only for output whose separators are incidental —
+   * if the separator itself is what a test is about, assert it directly.
+   */
+  posixSeparators?: boolean;
   /** Replaces each `[find, replace]` pair, applied after the built-in masks. */
   extra?: Array<[RegExp | string, string]>;
 }
@@ -27,6 +33,10 @@ export function normalizeCliOutput(text: string, options: NormalizeOptions = {})
     for (const variant of [...new Set(variants)].sort((a, b) => b.length - a.length)) {
       out = out.split(variant).join("<home>");
     }
+  }
+
+  if (options.posixSeparators) {
+    out = out.split("\\").join("/");
   }
 
   for (const [find, replace] of options.extra ?? []) {

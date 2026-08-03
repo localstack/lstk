@@ -3,6 +3,7 @@ import path from "node:path";
 import { describe, expect, test } from "vitest";
 import { lstk, normalizeCliOutput, tempHome, unreachableDockerHost } from "../support/index.ts";
 import { osConfigDir, xdgConfigDir } from "../support/os-config-dir.ts";
+import { canonicalPath } from "../support/paths.ts";
 
 // Ported from test/integration/config_test.go.
 //
@@ -61,7 +62,7 @@ describe("lstk config path", () => {
     // binary's os.Getwd() sees the real, symlink-resolved path (/private/var/...)
     // even though we chdir'd via the unresolved /var/... alias; resolve on our
     // side too before comparing, same as the Go suite's own normalizedPath helper.
-    expect(run.stdout).toBe(await realpath(localConfig));
+    expect(await canonicalPath(run.stdout)).toBe(await canonicalPath(localConfig));
   });
 
   test("the $HOME/.config/lstk location wins over the OS-default location", async () => {
@@ -145,7 +146,7 @@ describe("lstk config parsing", () => {
     const run = await lstk(["logout", "--non-interactive"], { home });
 
     expect(run).toFail();
-    expect(normalizeCliOutput(run.stderr, { home })).toPrintExactly("Error: <home>/.config/lstk/config.yaml is from an old lstk version; lstk now uses TOML format — remove it or replace it with a config.toml file");
+    expect(normalizeCliOutput(run.stderr, { home, posixSeparators: true })).toPrintExactly("Error: <home>/.config/lstk/config.yaml is from an old lstk version; lstk now uses TOML format — remove it or replace it with a config.toml file");
   });
 });
 

@@ -11,9 +11,15 @@ import { onTestFinished } from "vitest";
  * `lstk()` returns, and it answers with a small, test-declared set of
  * canned responses.
  *
- * This is a `#!/bin/sh` script, so it covers macOS and Linux only — there is no
- * Windows equivalent here (see `platform.ts`'s `fakeBrowser` for the same
- * caveat on the same two platforms).
+ * The recording/response logic is a single Node script (Node is guaranteed
+ * present -- it is running the tests) shared by both platforms; only the
+ * on-PATH launcher differs. On POSIX it is a `#!/usr/bin/env node` file named
+ * exactly `options.name` with mode 0o755. On Windows, where a shebang can't
+ * make a file executable, it is a same-named `.cmd` shim that forwards `%*`
+ * to `node <script>` -- `exec.LookPath` on Windows resolves bare names via
+ * PATHEXT, so a `.cmd` in this fixture's directory shadows a real `.exe`
+ * elsewhere on PATH the same way the extension `.cmd` shim in
+ * `extension-fixture.ts` does.
  */
 export interface FakeBinaryOptions {
   /** Executable name to create on PATH, e.g. "aws", "terraform", "tofu". */
@@ -70,21 +76,64 @@ export interface FakeBinary {
   lastCall(): Promise<FakeCall | undefined>;
 }
 
-// Unit separator: delimits fields within a recorded line. Chosen because it
-// cannot appear in a normal argv/env value, so no escaping is needed on write.
-const FS = "\x1f";
-const BEGIN = "@@lstk-fake-binary-begin@@";
-const END = "@@lstk-fake-binary-end@@";
+/** Config the runner script reads back off disk; the part of FakeBinaryOptions it needs, minus `name`. */
+interface RunnerConfig {
+  responses: FakeBinaryResponse[];
+  captureFiles: string[];
+}
+
+/**
+ * The recorder/responder, run under `node` on both platforms. It writes one
+ * JSON object per invocation to `calls.log` (so an argv/env/file value
+ * containing a newline is just an escaped character in the JSON, not a
+ * parsing hazard), then answers according to `config.json` sitting next to
+ * it. `process.argv[1]` is the script's own path on both the POSIX shebang
+ * path and the Windows `.cmd` -> `node <script>` path, so it locates its
+ * sibling files without needing an out-of-band argument. Written in plain
+ * CommonJS (no `import`/`export`) so it runs correctly regardless of
+ * extension or any ambient `package.json` "type" field.
+ */
+const RUNNER_SCRIPT = `
+const fs = require("node:fs");
+const path = require("node:path");
+
+const selfPath = process.argv[1];
+const dir = path.dirname(selfPath);
+const config = JSON.parse(fs.readFileSync(path.join(dir, "config.json"), "utf8"));
+const logPath = path.join(dir, "calls.log");
+
+const args = process.argv.slice(2);
+const cwd = process.cwd();
+const env = { ...process.env };
+const files = {};
+for (const file of config.captureFiles || []) {
+  const filePath = path.resolve(cwd, file);
+  if (fs.existsSync(filePath)) {
+    files[file] = fs.readFileSync(filePath, "utf8");
+  }
+}
+
+fs.appendFileSync(logPath, JSON.stringify({ cwd, args, env, files }) + "\\n");
+
+const responses = config.responses || [];
+const conditional = responses.filter((r) => r.when && r.when.length > 0);
+const fallback = responses.find((r) => !r.when || r.when.length === 0) || { exitCode: 0 };
+let rule = fallback;
+for (const candidate of conditional) {
+  if (candidate.when.every((v, i) => args[i] === v)) {
+    rule = candidate;
+    break;
+  }
+}
+
+if (rule.stdout) process.stdout.write(rule.stdout);
+if (rule.stderr) process.stderr.write(rule.stderr);
+process.exit(rule.exitCode || 0);
+`;
 
 /**
  * Creates a fake executable named `options.name` on its own PATH-ready
  * directory. Prepend `fake.path` onto the environment given to `lstk()`.
- *
- * Caveats inherited from the one-line-per-field log format: an argv or env
- * value containing a newline will corrupt parsing, and env values are read
- * via the `env` builtin, so an embedded newline there breaks it too. Neither
- * comes up in the tool invocations this suite drives (endpoints, credentials,
- * region names, file paths).
  */
 export async function fakeBinary(options: FakeBinaryOptions): Promise<FakeBinary> {
   const dir = await mkdtemp(path.join(os.tmpdir(), `lstk-e2e-${options.name}-`));
@@ -93,8 +142,23 @@ export async function fakeBinary(options: FakeBinaryOptions): Promise<FakeBinary
   });
 
   const logPath = path.join(dir, "calls.log");
-  const scriptPath = path.join(dir, options.name);
-  await writeFile(scriptPath, buildScript(options, logPath), { mode: 0o755 });
+  const config: RunnerConfig = { responses: options.responses ?? [], captureFiles: options.captureFiles ?? [] };
+  await writeFile(path.join(dir, "config.json"), JSON.stringify(config));
+
+  if (process.platform === "win32") {
+    // A .cmd can't carry a shebang, so it can't run RUNNER_SCRIPT directly;
+    // it re-invokes it through node instead. `%*` forwards this shim's own
+    // argv verbatim (see the module doc for why that preserves quoting,
+    // spaces, and `=` in arguments across the round trip).
+    const scriptPath = path.join(dir, `${options.name}.cjs`);
+    await writeFile(scriptPath, RUNNER_SCRIPT);
+    await writeFile(path.join(dir, `${options.name}.cmd`), `@echo off\r\nnode "${scriptPath}" %*\r\n`);
+  } else {
+    // The shebang line is a comment as far as `node` is concerned, so this
+    // same script content runs fine when node is invoked on it explicitly too.
+    const scriptPath = path.join(dir, options.name);
+    await writeFile(scriptPath, `#!/usr/bin/env node\n${RUNNER_SCRIPT}`, { mode: 0o755 });
+  }
 
   return {
     dir,
@@ -109,50 +173,6 @@ export async function fakeBinary(options: FakeBinaryOptions): Promise<FakeBinary
   };
 }
 
-function shQuote(value: string): string {
-  return `'${value.replace(/'/g, `'\\''`)}'`;
-}
-
-function buildCondition(when: string[]): string {
-  return when.map((value, i) => `[ "$${i + 1}" = ${shQuote(value)} ]`).join(" && ");
-}
-
-function buildScript(options: FakeBinaryOptions, logPath: string): string {
-  const lines: string[] = ["#!/bin/sh"];
-
-  lines.push(`LOG=${shQuote(logPath)}`);
-  lines.push("{");
-  lines.push(`  printf '%s\\n' ${shQuote(BEGIN)}`);
-  lines.push(`  printf 'CWD${FS}%s\\n' "$(pwd)"`);
-  lines.push(`  for a in "$@"; do printf 'ARG${FS}%s\\n' "$a"; done`);
-  lines.push(`  env | while IFS= read -r line; do printf 'ENV${FS}%s\\n' "$line"; done`);
-  for (const file of options.captureFiles ?? []) {
-    lines.push(
-      `  if [ -f ${shQuote(file)} ]; then printf 'FILE${FS}%s${FS}%s\\n' ${shQuote(file)} "$(base64 < ${shQuote(file)} | tr -d '\\n')"; fi`,
-    );
-  }
-  lines.push(`  printf '%s\\n' ${shQuote(END)}`);
-  lines.push(`} >> "$LOG"`);
-  lines.push("");
-
-  const responses = options.responses ?? [];
-  const conditional = responses.filter((r) => r.when && r.when.length > 0);
-  const fallback = responses.find((r) => !r.when || r.when.length === 0) ?? { exitCode: 0 };
-
-  for (const rule of conditional) {
-    lines.push(`if ${buildCondition(rule.when as string[])}; then`);
-    if (rule.stdout) lines.push(`  printf '%s' ${shQuote(rule.stdout)}`);
-    if (rule.stderr) lines.push(`  printf '%s' ${shQuote(rule.stderr)} >&2`);
-    lines.push(`  exit ${rule.exitCode ?? 0}`);
-    lines.push("fi");
-  }
-  if (fallback.stdout) lines.push(`printf '%s' ${shQuote(fallback.stdout)}`);
-  if (fallback.stderr) lines.push(`printf '%s' ${shQuote(fallback.stderr)} >&2`);
-  lines.push(`exit ${fallback.exitCode ?? 0}`);
-
-  return `${lines.join("\n")}\n`;
-}
-
 async function readCalls(logPath: string): Promise<FakeCall[]> {
   let content: string;
   try {
@@ -161,38 +181,8 @@ async function readCalls(logPath: string): Promise<FakeCall[]> {
     return [];
   }
 
-  const calls: FakeCall[] = [];
-  for (const block of content.split(`${BEGIN}\n`).slice(1)) {
-    const body = block.split(`${END}\n`)[0] ?? "";
-    let cwd = "";
-    const args: string[] = [];
-    const env: Record<string, string> = {};
-    const files: Record<string, string> = {};
-
-    for (const line of body.split("\n")) {
-      if (line.length === 0) continue;
-      const sep = line.indexOf(FS);
-      if (sep === -1) continue;
-      const kind = line.slice(0, sep);
-      const rest = line.slice(sep + 1);
-
-      if (kind === "CWD") {
-        cwd = rest;
-      } else if (kind === "ARG") {
-        args.push(rest);
-      } else if (kind === "ENV") {
-        const eq = rest.indexOf("=");
-        if (eq !== -1) env[rest.slice(0, eq)] = rest.slice(eq + 1);
-      } else if (kind === "FILE") {
-        const sep2 = rest.indexOf(FS);
-        if (sep2 !== -1) {
-          const filePath = rest.slice(0, sep2);
-          files[filePath] = Buffer.from(rest.slice(sep2 + 1), "base64").toString("utf8");
-        }
-      }
-    }
-
-    calls.push({ args, env, cwd, files });
-  }
-  return calls;
+  return content
+    .split("\n")
+    .filter((line) => line.length > 0)
+    .map((line) => JSON.parse(line) as FakeCall);
 }
