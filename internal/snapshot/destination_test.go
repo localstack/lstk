@@ -183,11 +183,26 @@ func TestParseVersionable(t *testing.T) {
 		assert.Contains(t, err.Error(), "list versions of local snapshots")
 	})
 
-	t.Run("rejects s3 remote", func(t *testing.T) {
+	// S3 remotes are fully supported by save/load/list, so the generic
+	// "coming soon" wording would be misleading — only version history is pod-only.
+	t.Run("rejects s3 remote with a versions-specific message", func(t *testing.T) {
 		t.Parallel()
 		_, err := snapshot.ParseVersionable("s3://bucket/prefix", cwd, home)
 		require.Error(t, err)
+		assert.ErrorIs(t, err, snapshot.ErrVersionsRemoteUnsupported)
+		assert.NotErrorIs(t, err, snapshot.ErrRemoteNotSupported)
+		assert.NotContains(t, err.Error(), "coming soon")
+		assert.Contains(t, err.Error(), "S3 remotes")
+	})
+
+	// oras:// is unimplemented for every command, so "coming soon" is accurate
+	// there and the two errors must stay distinct.
+	t.Run("keeps coming-soon wording for oras", func(t *testing.T) {
+		t.Parallel()
+		_, err := snapshot.ParseVersionable("oras://registry/image", cwd, home)
+		require.Error(t, err)
 		assert.ErrorIs(t, err, snapshot.ErrRemoteNotSupported)
+		assert.NotErrorIs(t, err, snapshot.ErrVersionsRemoteUnsupported)
 	})
 
 	t.Run("rejects invalid pod name", func(t *testing.T) {

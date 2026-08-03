@@ -30,6 +30,11 @@ var (
 	// suffix in a context that can only ever address the latest version (save,
 	// show, remove, versions, and S3 remotes).
 	ErrPodVersionNotSupported = errors.New("a specific snapshot version is not supported here")
+	// ErrVersionsRemoteUnsupported is returned when `snapshot versions` is given an
+	// s3:// ref. Version history comes from the LocalStack platform, which tracks it
+	// for pod: snapshots only, so this is a scope limit of the command rather than a
+	// missing feature — hence not ErrRemoteNotSupported's "coming soon" wording.
+	ErrVersionsRemoteUnsupported = errors.New("snapshot versions is only supported for Cloud Pods (pod: refs), not S3 remotes")
 )
 
 const (
@@ -228,9 +233,18 @@ func parseCloudOnly(ref, cwd, home, action string, allowVersion bool) (Destinati
 }
 
 // ParseVersionable parses a ref for snapshot versions. Only cloud (pod:) refs are
-// accepted; local snapshots and S3 remotes have no version history. A
-// ":<version>" suffix is rejected because this command lists every version.
+// accepted. A ":<version>" suffix is rejected because this command lists every
+// version.
+//
+// An s3:// ref gets its own error rather than parseCloudOnly's
+// ErrRemoteNotSupported: that sentinel says "coming soon", which is right for
+// oras:// (unimplemented everywhere) but misleading here, since S3 remotes are
+// fully supported by save/load/list and it is only version history that is
+// pod-only.
 func ParseVersionable(ref, cwd, home string) (Destination, error) {
+	if IsS3Ref(ref) {
+		return Destination{}, ErrVersionsRemoteUnsupported
+	}
 	return parseCloudOnly(ref, cwd, home, "list versions of local snapshots", false)
 }
 

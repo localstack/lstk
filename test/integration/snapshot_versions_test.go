@@ -152,6 +152,10 @@ func TestSnapshotVersionsRejectsLocalPath(t *testing.T) {
 	assert.Contains(t, stderr, "list versions of local snapshots")
 }
 
+// TestSnapshotVersionsRejectsS3Ref: S3 remotes are fully supported by
+// save/load/list, so the generic "coming soon" wording used for unimplemented
+// remotes would wrongly imply versions-on-S3 is merely pending. Only version
+// history is pod-only, and the message has to say so.
 func TestSnapshotVersionsRejectsS3Ref(t *testing.T) {
 	t.Parallel()
 
@@ -162,7 +166,25 @@ func TestSnapshotVersionsRejectsS3Ref(t *testing.T) {
 		"--non-interactive", "snapshot", "versions", "s3://bucket/prefix",
 	)
 	requireExitCode(t, 1, err)
-	assert.Contains(t, stderr, "not yet supported")
+	assert.Contains(t, stderr, "only supported for Cloud Pods")
+	assert.Contains(t, stderr, "S3 remotes")
+	assert.NotContains(t, stderr, "coming soon")
+}
+
+// TestSnapshotVersionsOrasKeepsComingSoon: oras:// is unimplemented for every
+// command, so the generic wording is correct there — the S3 fix must not have
+// changed it.
+func TestSnapshotVersionsOrasKeepsComingSoon(t *testing.T) {
+	t.Parallel()
+
+	srv := mockNeverCalledPlatform(t)
+
+	_, stderr, err := runLstk(t, testContext(t), t.TempDir(),
+		listEnv(t, srv, "test-token"),
+		"--non-interactive", "snapshot", "versions", "oras://registry/image",
+	)
+	requireExitCode(t, 1, err)
+	assert.Contains(t, stderr, "coming soon")
 }
 
 // TestSnapshotShowPinnedVersion: show is read-only and the platform returns every
