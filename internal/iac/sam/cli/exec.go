@@ -53,11 +53,10 @@ func Run(ctx context.Context, endpointURL, account, region string, sink output.S
 		return output.NewSilentError(err)
 	}
 
+	// endpointURL is already fully resolved by the command boundary
+	// (--endpoint-url/LSTK_ENDPOINT_URL/AWS_ENDPOINT_URL precedence, see
+	// internal/endpoint.Resolve), so it's used as-is here.
 	effectiveEndpoint := endpointURL
-	if override := endpointURLOverride(); override != "" {
-		effectiveEndpoint = override
-		logger.Info("sam: using AWS_ENDPOINT_URL override %s", override)
-	}
 
 	span.SetAttributes(
 		attribute.StringSlice("sam.args", args),

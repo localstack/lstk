@@ -34,13 +34,6 @@ func dryRun() bool {
 	return isTruthy(os.Getenv("LSTK_TF_DRY_RUN"))
 }
 
-// endpointURLOverride returns the value of AWS_ENDPOINT_URL, which takes
-// precedence over the auto-resolved LocalStack endpoint when building the
-// override.
-func endpointURLOverride() string {
-	return os.Getenv("AWS_ENDPOINT_URL")
-}
-
 func isTruthy(v string) bool {
 	switch strings.ToLower(v) {
 	case "", "0", "false", "no", "off":

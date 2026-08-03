@@ -24,7 +24,7 @@ func TestFetchVersion(t *testing.T) {
 		defer server.Close()
 
 		c := NewClient()
-		version, err := c.FetchVersion(context.Background(), server.Listener.Addr().String())
+		version, err := c.FetchVersion(context.Background(), server.URL)
 		require.NoError(t, err)
 		assert.Equal(t, "2026.6.0.dev112:17a29a966", version)
 	})
@@ -37,7 +37,7 @@ func TestFetchVersion(t *testing.T) {
 		defer server.Close()
 
 		c := NewClient()
-		_, err := c.FetchVersion(context.Background(), server.Listener.Addr().String())
+		_, err := c.FetchVersion(context.Background(), server.URL)
 		require.Error(t, err)
 	})
 }

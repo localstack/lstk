@@ -133,6 +133,14 @@ Each `[[containers]]` block may set an optional `image` (override the default Do
 
 There is no `--offline` flag. Instead `container.Start` degrades gracefully when internet requests fail (Docker Hub unreachable, proxy/TLS interception, license server unreachable): local images are used when pulls fail, and the license pre-flight is skipped on transport-level failures, non-definitive server responses (5xx/407), or unsupported-tag rejections so the container validates its own bundled license. Definitive license rejections (HTTP 400/401/403) drop the cached license and offer an in-place re-login instead of requiring a manual `lstk logout` (DEVX-658). The exact fallback and retry rules live in `internal/container/CLAUDE.md`; pair them with a custom `image` in the config to point at a locally loaded image or an internal-registry mirror.
 
+# Targeting an External Emulator (`--endpoint-url`)
+
+`--endpoint-url <url>` (a root persistent flag) lets `aws`, `az`, `terraform`/`tf`, `cdk`, `sam`, `snapshot save`/`load` (incl. the `lstk save`/`lstk load` aliases), `snapshot remove`, `snapshot list s3://...`, `reset`, and `status` target an emulator lstk did not start — docker compose, host-network mode, CI, a different machine, or a LocalStack cloud-hosted **ephemeral instance** — instead of discovering one via local Docker. `LSTK_ENDPOINT_URL` is the equivalent environment variable. Both `http://` and `https://` are accepted (any other scheme is rejected); the resolved scheme is preserved end-to-end all the way to whatever ultimately makes the request — the wrapped `aws`/`terraform`/`cdk`/`sam` tools, and the emulator API calls behind `snapshot`/`reset`/`status` — never normalized to `http`, which is what makes `https://` ephemeral instances work. 
+
+`lstk logs`, `stop`, `restart`, `volume` (`path`/`clear`), `start`, and the bare `lstk` root command (which starts the emulator the same way `start` does) have no remote equivalent and reject *any* resolved endpoint source.
+
+Emulator type (aws/azure/snowflake) is always auto-detected by probing `/_localstack/health` (falling back to `/_localstack/info` for Azure, whose health response omits `version`) — there is no manual override flag or config setting; an inconclusive result is a hard failure. `terraform`/`cdk`/`sam` (AWS-only) reject a detected non-AWS type with the same error shape used for a wrong locally-running emulator.
+
 # Emulator Setup Commands
 
 Use `lstk setup <emulator>` to set up CLI integration for an emulator type:
@@ -166,9 +174,11 @@ When lstk's stdout and stderr are both terminals, `lstk aws` runs the child via 
 
 `lstk snapshot` captures and restores the running emulator's state (for Snowflake and Azure a heads-up is shown that results may be incomplete). Domain logic lives in `internal/snapshot/`; `cmd/snapshot.go` is wiring + output-mode selection. Top-level `lstk save` / `lstk load` are aliases for the save/load subcommands.
 
-- `lstk snapshot save [destination]` (`-s`/`--services`: comma-separated list to limit a save to a subset of services; applies uniformly to local files, `pod:` cloud snapshots, and S3-remote saves) / `lstk snapshot load REF` (`--merge`: `account-region-merge` default, `overwrite`, `service-merge`) / `list` (cloud; `--all` for org-wide) / `remove REF` / `show REF` (remove/show are cloud-only).
+- `lstk snapshot save [destination]` (`-s`/`--services`: comma-separated list to limit a save to a subset of services; applies uniformly to local files, `pod:` cloud snapshots, and S3-remote saves) / `lstk snapshot load REF` (`--merge`: `account-region-merge` default, `overwrite`, `service-merge`) / `list` (cloud; `--all` for org-wide) / `remove REF` / `show REF`.
+- `show` and bare `list` (no `s3://` arg) only ever call the LocalStack platform API — never the emulator. `remove`, by contrast, proxies its delete through the running emulator despite being a "cloud" (`pod:`) concept, so it still requires one to be reachable; don't conflate "operates on cloud-hosted storage" with "never touches the emulator" — they're different axes.
 - A REF is a local `.snapshot` file, a `pod:` cloud snapshot on the LocalStack platform (requires auth), or an `s3://bucket/prefix` remote in the user's own bucket (the emulator performs the transfer; S3 supports save/load/list only).
 - A `[[containers]]` block (AWS only) can set `snapshot = "pod:..."` to auto-load after a fresh start; `lstk start --snapshot REF` overrides it for one run, `--no-snapshot` skips it.
+- `save`/`load`/`remove` and `list s3://...` support the global `--endpoint-url` targeting described under "Targeting an External Emulator"; `show` and bare `list` silently ignore it (they never touch the emulator regardless).
 
 REF parsing helpers, S3 credential precedence and remote-upsert mechanics, and the auto-load wiring are documented in `internal/snapshot/CLAUDE.md`.
 

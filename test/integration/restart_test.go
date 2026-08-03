@@ -46,6 +46,32 @@ func TestRestartCommandSucceeds(t *testing.T) {
 	}
 }
 
+// TestRestartCommandRejectsAmbientEndpointURLEvenWithLocalContainerRunning is
+// the exact bug scenario reported: `lstk restart` with LSTK_ENDPOINT_URL
+// ambiently set used to silently proceed against a running local container
+// and, when none was running, surfaced a confusing generic "not running"
+// error unrelated to the env var. It must now reject outright — and, per
+// design.md's Decision 5, that rejection must not depend on whether a local
+// emulator happens to be running: it fires here even though one genuinely
+// is.
+func TestRestartCommandRejectsAmbientEndpointURLEvenWithLocalContainerRunning(t *testing.T) {
+	requireDocker(t)
+	cleanup()
+	t.Cleanup(cleanup)
+
+	ctx := testContext(t)
+	startTestContainer(t, ctx)
+
+	stdout, _, err := runLstk(t, ctx, "", env.With(env.DisableEvents, "1").With("LSTK_ENDPOINT_URL", "http://127.0.0.1:1"), "restart")
+	require.Error(t, err)
+	assert.Contains(t, stdout, "does not support LSTK_ENDPOINT_URL")
+	assert.Contains(t, stdout, "LSTK_ENDPOINT_URL is set")
+
+	inspect, err := dockerClient.ContainerInspect(ctx, containerName, client.ContainerInspectOptions{})
+	require.NoError(t, err, "container should still exist — restart must reject before stopping/restarting it")
+	assert.True(t, inspect.Container.State.Running, "container should still be running, untouched")
+}
+
 func TestRestartCommandPersistFlagSetsPersistenceEnv(t *testing.T) {
 	requireDocker(t)
 	_ = env.Require(t, env.AuthToken)

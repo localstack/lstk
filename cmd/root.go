@@ -66,6 +66,12 @@ func NewRootCmd(cfg *env.Env, tel *telemetry.Client, logger log.Logger) *cobra.C
 			if len(args) > 0 {
 				return dispatchExtension(cmd.Context(), cfg, tel, logger, args)
 			}
+			// The bare root command starts the emulator via the same
+			// startEmulator path as `lstk start` below, so it rejects
+			// --endpoint-url the same way.
+			if err := rejectEndpointURL(cmd, output.NewPlainSink(os.Stdout), "start"); err != nil {
+				return err
+			}
 			rt, err := runtime.NewDockerRuntime(cfg.DockerHost)
 			if err != nil {
 				return err
@@ -130,6 +136,7 @@ func NewRootCmd(cfg *env.Env, tel *telemetry.Client, logger log.Logger) *cobra.C
 	root.PersistentFlags().String("config", "", "Path to config file")
 	root.PersistentFlags().BoolVar(&cfg.NonInteractive, "non-interactive", false, "Disable interactive mode")
 	root.PersistentFlags().BoolVar(&cfg.JSON, "json", false, "Output in JSON format (only supported by some commands)")
+	root.PersistentFlags().String("endpoint-url", "", "Target an existing, externally-managed emulator at this URL")
 	root.Flags().Bool("persist", false, "Persist emulator state across restarts")
 	addEmulatorTypeFlag(root)
 	addSnapshotStartFlags(root)
