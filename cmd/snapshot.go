@@ -184,11 +184,14 @@ func newSnapshotAutoLoader(cfg *env.Env, rt runtime.Runtime, appConfig *config.C
 	containers := []config.ContainerConfig{awsContainer}
 	return func(ctx context.Context, sink output.Sink) error {
 		host, _ := endpoint.ResolveHost(ctx, awsContainer.Port, cfg.LocalStackHost)
+		// Always http://: auto-load only ever runs after a local Docker start,
+		// which rejects every endpoint URL source up front.
+		baseURL := "http://" + host
 		switch src.Kind {
 		case snapshot.KindPod:
-			return snapshot.LoadPod(ctx, rt, containers, client, host, src.Value, cfg.AuthToken, "", nil, sink)
+			return snapshot.LoadPod(ctx, rt, containers, client, baseURL, src.Value, cfg.AuthToken, "", nil, sink)
 		default:
-			return snapshot.LoadLocal(ctx, rt, containers, client, host, src.Value, "", nil, sink)
+			return snapshot.LoadLocal(ctx, rt, containers, client, baseURL, src.Value, "", nil, sink)
 		}
 	}, nil
 }

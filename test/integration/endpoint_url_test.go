@@ -27,15 +27,15 @@ import (
 // Docker daemon to be unavailable in the test environment.
 const unreachableDockerHost = "DOCKER_HOST=unix:///nonexistent/docker.sock"
 
-// awsHealthServer starts an httptest.Server that answers /_localstack/health
-// like a real AWS-flavored LocalStack emulator (see the community image
-// payload recorded in design.md's research for add-endpoint-url-flag). It also
-// answers /_localstack/resources with an empty listing, since a real emulator
-// serves that endpoint and `status` treats a failure to fetch resources as
-// fatal — on either the Docker or the --endpoint-url path.
-func awsHealthServer(t *testing.T) *httptest.Server {
-	t.Helper()
-	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+// awsHealthHandler answers /_localstack/health like a real AWS-flavored
+// LocalStack emulator (see the community image payload recorded in design.md's
+// research for add-endpoint-url-flag). It also answers /_localstack/resources
+// with an empty listing, since a real emulator serves that endpoint and
+// `status` treats a failure to fetch resources as fatal — on either the Docker
+// or the --endpoint-url path. Shared by awsHealthServer and awsHealthTLSServer
+// so the http and https mocks cannot drift apart.
+func awsHealthHandler() http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/_localstack/health":
 			w.Header().Set("Content-Type", "application/json")
@@ -49,7 +49,13 @@ func awsHealthServer(t *testing.T) *httptest.Server {
 		default:
 			w.WriteHeader(http.StatusNotFound)
 		}
-	}))
+	})
+}
+
+// awsHealthServer starts an httptest.Server serving awsHealthHandler.
+func awsHealthServer(t *testing.T) *httptest.Server {
+	t.Helper()
+	return httptest.NewServer(awsHealthHandler())
 }
 
 func writeFakeAWSEcho(t *testing.T) string {

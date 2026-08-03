@@ -60,21 +60,11 @@ func requireLinuxForSSLCertFileTrust(t *testing.T) {
 }
 
 // awsHealthTLSServer is awsHealthServer's https counterpart, simulating a
-// LocalStack cloud-hosted ephemeral instance.
+// LocalStack cloud-hosted ephemeral instance. It serves the same handler, so
+// every route the http mock answers is answered here too.
 func awsHealthTLSServer(t *testing.T) *httptest.Server {
 	t.Helper()
-	return httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/_localstack/health" {
-			w.WriteHeader(http.StatusNotFound)
-			return
-		}
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{
-			"version":  "3.0.2",
-			"edition":  "community",
-			"services": map[string]string{"s3": "available", "sqs": "available"},
-		})
-	}))
+	return httptest.NewTLSServer(awsHealthHandler())
 }
 
 // TestAWSCommandEndpointURLHTTPSNoDockerRequired mirrors
