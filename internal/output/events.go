@@ -140,6 +140,7 @@ type SnapshotResourceLine struct {
 // platform has no value for them; the formatter omits those sections.
 type SnapshotShownEvent struct {
 	Name              string
+	Version           int
 	Created           *time.Time
 	Size              int64
 	LocalStackVersion string
@@ -207,8 +208,11 @@ type SnapshotDiffServiceResult struct {
 	Modifications int
 }
 
+// SnapshotDiffEvent reports a dry-run diff between a cloud snapshot and the
+// running state. Version is the pinned snapshot version, or 0 for the latest.
 type SnapshotDiffEvent struct {
 	PodName  string
+	Version  int
 	Strategy string
 	Services map[string]SnapshotDiffServiceResult
 }

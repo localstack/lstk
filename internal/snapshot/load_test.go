@@ -133,11 +133,11 @@ func TestLoadPod_IncompatibleSnapshot_StructuredError(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	loader := NewMockPodLoader(ctrl)
 	loadErr := fmt.Errorf("%w: Pod state is incompatible with the current LocalStack version", snapshot.ErrIncompatibleSnapshot)
-	loader.EXPECT().LoadPodSnapshot(gomock.Any(), gomock.Any(), "my-baseline", "test-token", gomock.Any()).
+	loader.EXPECT().LoadPodSnapshot(gomock.Any(), gomock.Any(), "my-baseline", 0, "test-token", gomock.Any()).
 		Return(nil, loadErr)
 
 	sink, getEvents := captureEvents(t)
-	err := snapshot.LoadPod(context.Background(), healthyRunningMock(t), awsContainers, loader, "", "my-baseline", "test-token", "", nopStarter, sink)
+	err := snapshot.LoadPod(context.Background(), healthyRunningMock(t), awsContainers, loader, "", "my-baseline", 0, "test-token", "", nopStarter, sink)
 	require.Error(t, err)
 	assert.True(t, output.IsSilent(err))
 
@@ -150,6 +150,80 @@ func TestLoadPod_IncompatibleSnapshot_StructuredError(t *testing.T) {
 	require.NotNil(t, errEvent, "a structured ErrorEvent should have been emitted")
 	assert.Equal(t, "Could not load snapshot", errEvent.Title)
 	assert.Equal(t, "Snapshot is incompatible with the running LocalStack version", errEvent.Summary)
+}
+
+// TestLoadPod_PinnedVersion: a version from the REF must reach the loader and be
+// reflected back in the source the user sees.
+func TestLoadPod_PinnedVersion(t *testing.T) {
+	t.Parallel()
+	ctrl := gomock.NewController(t)
+	loader := NewMockPodLoader(ctrl)
+	loader.EXPECT().LoadPodSnapshot(gomock.Any(), gomock.Any(), "my-baseline", 3, "test-token", snapshot.MergeStrategyAccountRegion).
+		Return([]string{"s3"}, nil)
+
+	sink, getEvents := captureEvents(t)
+	err := snapshot.LoadPod(context.Background(), healthyRunningMock(t), awsContainers, loader, "", "my-baseline", 3, "test-token", snapshot.MergeStrategyAccountRegion, nopStarter, sink)
+	require.NoError(t, err)
+
+	var loaded *output.SnapshotLoadedEvent
+	for _, e := range getEvents() {
+		if ev, ok := e.(output.SnapshotLoadedEvent); ok {
+			loaded = &ev
+		}
+	}
+	require.NotNil(t, loaded, "SnapshotLoadedEvent should have been emitted")
+	assert.Equal(t, "pod:my-baseline:3", loaded.Source)
+}
+
+func TestLoadPod_UnpinnedVersionOmitsSuffix(t *testing.T) {
+	t.Parallel()
+	ctrl := gomock.NewController(t)
+	loader := NewMockPodLoader(ctrl)
+	loader.EXPECT().LoadPodSnapshot(gomock.Any(), gomock.Any(), "my-baseline", 0, "test-token", gomock.Any()).
+		Return([]string{"s3"}, nil)
+
+	sink, getEvents := captureEvents(t)
+	err := snapshot.LoadPod(context.Background(), healthyRunningMock(t), awsContainers, loader, "", "my-baseline", 0, "test-token", "", nopStarter, sink)
+	require.NoError(t, err)
+
+	var loaded *output.SnapshotLoadedEvent
+	for _, e := range getEvents() {
+		if ev, ok := e.(output.SnapshotLoadedEvent); ok {
+			loaded = &ev
+		}
+	}
+	require.NotNil(t, loaded)
+	assert.Equal(t, "pod:my-baseline", loaded.Source)
+}
+
+// TestLoadPod_VersionNotFound: the emulator's message already names the highest
+// available version, so it is surfaced verbatim rather than restated, alongside
+// the command that lists the valid versions.
+func TestLoadPod_VersionNotFound(t *testing.T) {
+	t.Parallel()
+	ctrl := gomock.NewController(t)
+	loader := NewMockPodLoader(ctrl)
+	const serverMsg = "Unable to load pod my-baseline with version 9. The maximum version available in the remote storage is 3"
+	loader.EXPECT().LoadPodSnapshot(gomock.Any(), gomock.Any(), "my-baseline", 9, "test-token", gomock.Any()).
+		Return(nil, fmt.Errorf("%w: %s", snapshot.ErrPodVersionNotFound, serverMsg))
+
+	sink, getEvents := captureEvents(t)
+	err := snapshot.LoadPod(context.Background(), healthyRunningMock(t), awsContainers, loader, "", "my-baseline", 9, "test-token", "", nopStarter, sink)
+	require.Error(t, err)
+	assert.True(t, output.IsSilent(err))
+	assert.ErrorIs(t, err, snapshot.ErrPodVersionNotFound)
+
+	var errEvent *output.ErrorEvent
+	for _, e := range getEvents() {
+		if ev, ok := e.(output.ErrorEvent); ok {
+			errEvent = &ev
+		}
+	}
+	require.NotNil(t, errEvent, "a structured ErrorEvent should have been emitted")
+	assert.Equal(t, "Could not load snapshot", errEvent.Title)
+	assert.Equal(t, serverMsg, errEvent.Summary)
+	require.NotEmpty(t, errEvent.Actions)
+	assert.Equal(t, "lstk snapshot versions pod:my-baseline", errEvent.Actions[0].Value)
 }
 
 func TestLoadLocal_FileNotFound(t *testing.T) {
@@ -233,11 +307,11 @@ func TestLoadPod_Success(t *testing.T) {
 	t.Parallel()
 	ctrl := gomock.NewController(t)
 	loader := NewMockPodLoader(ctrl)
-	loader.EXPECT().LoadPodSnapshot(gomock.Any(), gomock.Any(), "my-baseline", "test-token", "").
+	loader.EXPECT().LoadPodSnapshot(gomock.Any(), gomock.Any(), "my-baseline", 0, "test-token", "").
 		Return([]string{"s3", "dynamodb"}, nil)
 
 	sink, getEvents := captureEvents(t)
-	err := snapshot.LoadPod(context.Background(), healthyRunningMock(t), awsContainers, loader, "", "my-baseline", "test-token", "", nopStarter, sink)
+	err := snapshot.LoadPod(context.Background(), healthyRunningMock(t), awsContainers, loader, "", "my-baseline", 0, "test-token", "", nopStarter, sink)
 	require.NoError(t, err)
 
 	events := getEvents()
@@ -268,7 +342,7 @@ func TestLoadPod_NoAuthToken(t *testing.T) {
 	loader := NewMockPodLoader(ctrl)
 	sink := output.NewPlainSink(io.Discard)
 
-	err := snapshot.LoadPod(context.Background(), runtime.NewMockRuntime(ctrl), awsContainers, loader, "", "my-baseline", "", "", nopStarter, sink)
+	err := snapshot.LoadPod(context.Background(), runtime.NewMockRuntime(ctrl), awsContainers, loader, "", "my-baseline", 0, "", "", nopStarter, sink)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "authentication")
 }
@@ -277,11 +351,11 @@ func TestLoadPod_LoaderError(t *testing.T) {
 	t.Parallel()
 	ctrl := gomock.NewController(t)
 	loader := NewMockPodLoader(ctrl)
-	loader.EXPECT().LoadPodSnapshot(gomock.Any(), gomock.Any(), "my-baseline", "test-token", gomock.Any()).
+	loader.EXPECT().LoadPodSnapshot(gomock.Any(), gomock.Any(), "my-baseline", 0, "test-token", gomock.Any()).
 		Return(nil, fmt.Errorf("platform unreachable"))
 
 	sink, _ := captureEvents(t)
-	err := snapshot.LoadPod(context.Background(), healthyRunningMock(t), awsContainers, loader, "", "my-baseline", "test-token", "", nopStarter, sink)
+	err := snapshot.LoadPod(context.Background(), healthyRunningMock(t), awsContainers, loader, "", "my-baseline", 0, "test-token", "", nopStarter, sink)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "platform unreachable")
 }
@@ -290,11 +364,11 @@ func TestLoadPod_WithMergeStrategy(t *testing.T) {
 	t.Parallel()
 	ctrl := gomock.NewController(t)
 	loader := NewMockPodLoader(ctrl)
-	loader.EXPECT().LoadPodSnapshot(gomock.Any(), gomock.Any(), "my-pod", "tok", snapshot.MergeStrategyService).
+	loader.EXPECT().LoadPodSnapshot(gomock.Any(), gomock.Any(), "my-pod", 0, "tok", snapshot.MergeStrategyService).
 		Return([]string{"s3"}, nil)
 
 	sink := output.NewPlainSink(io.Discard)
-	err := snapshot.LoadPod(context.Background(), healthyRunningMock(t), awsContainers, loader, "", "my-pod", "tok", snapshot.MergeStrategyService, nopStarter, sink)
+	err := snapshot.LoadPod(context.Background(), healthyRunningMock(t), awsContainers, loader, "", "my-pod", 0, "tok", snapshot.MergeStrategyService, nopStarter, sink)
 	require.NoError(t, err)
 }
 
@@ -307,7 +381,7 @@ func TestLoadPod_EmulatorNotRunning_AutoStarts(t *testing.T) {
 	mockRT.EXPECT().FindRunningByImage(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil)
 
 	loader := NewMockPodLoader(ctrl)
-	loader.EXPECT().LoadPodSnapshot(gomock.Any(), gomock.Any(), "my-pod", "tok", gomock.Any()).
+	loader.EXPECT().LoadPodSnapshot(gomock.Any(), gomock.Any(), "my-pod", 0, "tok", gomock.Any()).
 		Return([]string{"s3"}, nil)
 
 	var starterCalled bool
@@ -317,7 +391,7 @@ func TestLoadPod_EmulatorNotRunning_AutoStarts(t *testing.T) {
 	}
 
 	sink := output.NewPlainSink(io.Discard)
-	err := snapshot.LoadPod(context.Background(), mockRT, awsContainers, loader, "", "my-pod", "tok", "", starter, sink)
+	err := snapshot.LoadPod(context.Background(), mockRT, awsContainers, loader, "", "my-pod", 0, "tok", "", starter, sink)
 	require.NoError(t, err)
 	assert.True(t, starterCalled, "starter should have been called when emulator is not running")
 }

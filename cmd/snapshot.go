@@ -36,9 +36,21 @@ To list snapshots in your own S3 bucket, pass an s3:// location (requires a runn
   lstk snapshot list s3://my-bucket/prefix
   lstk snapshot list s3://my-bucket/prefix --profile my-aws-profile`
 
-const snapshotShowLong = `Show metadata for a cloud snapshot on the LocalStack platform.
+const snapshotShowLong = `Show metadata for a cloud snapshot on the LocalStack platform. Defaults to the latest version; append a version to inspect an older one.
 
-  lstk snapshot show pod:my-baseline    # prints name, created date, size, version, services, and resource counts`
+  lstk snapshot show pod:my-baseline      # prints name, version, created date, size, services, and resource counts
+  lstk snapshot show pod:my-baseline:3    # the same, for version 3 specifically
+
+Use "lstk snapshot versions pod:my-baseline" to see which versions exist.`
+
+const snapshotVersionsLong = `List the version history of a Cloud Pod. Every save to an existing pod adds a new version.
+
+  lstk snapshot versions pod:my-baseline    # prints version, created date, LocalStack version, services, and description
+
+Only Cloud Pods (pod: prefix) have versions; local files and s3:// remotes do not. Append a version to a reference to act on that one specifically:
+
+  lstk snapshot load pod:my-baseline:3
+  lstk snapshot show pod:my-baseline:3`
 
 const snapshotRemoveLong = `Delete a cloud snapshot from the LocalStack platform.
 
@@ -83,7 +95,8 @@ REF identifies the snapshot to load:
 
   lstk %[1]s my-baseline             # loads ./my-baseline or ./my-baseline.snapshot
   lstk %[1]s ./checkpoint.snapshot   # loads from explicit path
-  lstk %[1]s pod:my-baseline         # loads from LocalStack Cloud
+  lstk %[1]s pod:my-baseline         # loads from LocalStack Cloud Pods
+  lstk %[1]s pod:my-baseline:3       # loads version 3 from LocalStack Cloud Pods
 
 To load from your own S3 bucket, pass the pod name and an s3:// location. Credentials are read from AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY, from --profile, or from the profile named by AWS_PROFILE:
 
@@ -110,6 +123,7 @@ func newSnapshotCmd(cfg *env.Env, tel *telemetry.Client, logger log.Logger) *cob
 	cmd.AddCommand(newSnapshotListCmd(cfg, logger))
 	cmd.AddCommand(newSnapshotRemoveCmd(cfg))
 	cmd.AddCommand(newSnapshotShowCmd(cfg, logger))
+	cmd.AddCommand(newSnapshotVersionsCmd(cfg, logger))
 	return cmd
 }
 
@@ -189,7 +203,7 @@ func newSnapshotAutoLoader(cfg *env.Env, rt runtime.Runtime, appConfig *config.C
 		baseURL := "http://" + host
 		switch src.Kind {
 		case snapshot.KindPod:
-			return snapshot.LoadPod(ctx, rt, containers, client, baseURL, src.Value, cfg.AuthToken, "", nil, sink)
+			return snapshot.LoadPod(ctx, rt, containers, client, baseURL, src.Value, src.Version, cfg.AuthToken, "", nil, sink)
 		default:
 			return snapshot.LoadLocal(ctx, rt, containers, client, baseURL, src.Value, "", nil, sink)
 		}
@@ -302,7 +316,7 @@ func runSnapshotLoad(cfg *env.Env, tel *telemetry.Client, logger log.Logger) fun
 				invocation := strings.TrimPrefix(cmd.CommandPath(), cmd.Root().Name()+" ")
 				return fmt.Errorf("a pod name is required to load from S3: lstk %s <pod-name> %s", invocation, s3URL)
 			}
-			if err := snapshot.ValidatePodName(podName); err != nil {
+			if err := snapshot.ValidateRemotePodName(podName); err != nil {
 				return err
 			}
 			src, err := snapshot.ParseSource(s3URL, home)
@@ -337,7 +351,7 @@ func runSnapshotLoad(cfg *env.Env, tel *telemetry.Client, logger log.Logger) fun
 			if src.Kind != snapshot.KindPod {
 				return fmt.Errorf("--dry-run is only supported for pod refs — use the \"pod:\" prefix (e.g. pod:my-baseline --dry-run)")
 			}
-			return execDiff(cmd, cfg, src.Value, strategy)
+			return execDiff(cmd, cfg, src.Value, src.Version, strategy)
 		}
 
 		rt, client, host, containers, appConfig, external, err := resolveSnapshotDeps(cmd.Context(), cmd, cfg)
@@ -356,7 +370,7 @@ func runSnapshotLoad(cfg *env.Env, tel *telemetry.Client, logger log.Logger) fun
 		sink := output.NewPlainSink(os.Stdout)
 		switch src.Kind {
 		case snapshot.KindPod:
-			return snapshot.LoadPod(cmd.Context(), rt, containers, client, host, src.Value, cfg.AuthToken, strategy, starter, sink)
+			return snapshot.LoadPod(cmd.Context(), rt, containers, client, host, src.Value, src.Version, cfg.AuthToken, strategy, starter, sink)
 		default:
 			return snapshot.LoadLocal(cmd.Context(), rt, containers, client, host, src.Value, strategy, starter, sink)
 		}
@@ -416,17 +430,17 @@ func runSnapshotRemove(cfg *env.Env) func(*cobra.Command, []string) error {
 	}
 }
 
-func execDiff(cmd *cobra.Command, cfg *env.Env, podName, strategy string) error {
+func execDiff(cmd *cobra.Command, cfg *env.Env, podName string, version int, strategy string) error {
 	rt, client, host, containers, _, _, err := resolveSnapshotDeps(cmd.Context(), cmd, cfg)
 	if err != nil {
 		return err
 	}
 
 	if isInteractiveMode(cfg) {
-		return ui.RunSnapshotDiff(cmd.Context(), rt, containers, client, host, podName, cfg.AuthToken, strategy)
+		return ui.RunSnapshotDiff(cmd.Context(), rt, containers, client, host, podName, version, cfg.AuthToken, strategy)
 	}
 	sink := output.NewPlainSink(os.Stdout)
-	return snapshot.DiffPod(cmd.Context(), rt, containers, client, host, podName, cfg.AuthToken, strategy, sink)
+	return snapshot.DiffPod(cmd.Context(), rt, containers, client, host, podName, version, cfg.AuthToken, strategy, sink)
 }
 
 // resolveSnapshotDeps resolves the runtime, host, and target container(s) for
@@ -641,10 +655,46 @@ func runSnapshotShow(cfg *env.Env, logger log.Logger) func(*cobra.Command, []str
 
 		client := api.NewPlatformClient(cfg.APIEndpoint, logger)
 		if isInteractiveMode(cfg) {
-			return ui.RunSnapshotShow(cmd.Context(), client, cfg.AuthToken, ref.Value)
+			return ui.RunSnapshotShow(cmd.Context(), client, cfg.AuthToken, ref.Value, ref.Version)
 		}
 		sink := output.NewPlainSink(os.Stdout)
-		return snapshot.Show(cmd.Context(), client, cfg.AuthToken, ref.Value, sink)
+		return snapshot.Show(cmd.Context(), client, cfg.AuthToken, ref.Value, ref.Version, sink)
+	}
+}
+
+func newSnapshotVersionsCmd(cfg *env.Env, logger log.Logger) *cobra.Command {
+	return &cobra.Command{
+		Use:     "versions REF",
+		Short:   "List the version history of a cloud snapshot",
+		Long:    snapshotVersionsLong,
+		Args:    cobra.ExactArgs(1),
+		PreRunE: initConfigDeferCreate(nil),
+		RunE:    runSnapshotVersions(cfg, logger),
+	}
+}
+
+func runSnapshotVersions(cfg *env.Env, logger log.Logger) func(*cobra.Command, []string) error {
+	return func(cmd *cobra.Command, args []string) error {
+		cwd, err := os.Getwd()
+		if err != nil {
+			return err
+		}
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return err
+		}
+
+		ref, err := snapshot.ParseVersionable(args[0], cwd, home)
+		if err != nil {
+			return err
+		}
+
+		client := api.NewPlatformClient(cfg.APIEndpoint, logger)
+		if isInteractiveMode(cfg) {
+			return ui.RunSnapshotVersions(cmd.Context(), client, cfg.AuthToken, ref.Value)
+		}
+		sink := output.NewPlainSink(os.Stdout)
+		return snapshot.Versions(cmd.Context(), client, cfg.AuthToken, ref.Value, sink)
 	}
 }
 
@@ -709,7 +759,7 @@ func runSnapshotSave(cfg *env.Env) func(*cobra.Command, []string) error {
 			}
 			if podName == "" {
 				podName = snapshot.DefaultRemotePodName(time.Now())
-			} else if err := snapshot.ValidatePodName(podName); err != nil {
+			} else if err := snapshot.ValidateRemotePodName(podName); err != nil {
 				return err
 			}
 			creds, err := resolveS3Credentials(profile)

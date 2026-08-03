@@ -14,7 +14,227 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// TestParseSourcePodVersion covers the Docker-like "pod:<name>:<version>" load
+// grammar. A colon is never legal in a pod name, so an unparseable suffix must
+// report a bad version rather than being folded back into the name (which is
+// what the legacy CLI did, surfacing as a confusing "invalid pod name").
+func TestParseSourcePodVersion(t *testing.T) {
+	t.Parallel()
+	home := t.TempDir()
 
+	t.Run("accepted", func(t *testing.T) {
+		t.Parallel()
+		for _, tc := range []struct {
+			input       string
+			wantPodName string
+			wantVersion int
+		}{
+			{"pod:my-baseline", "my-baseline", 0},
+			{"pod:my-baseline:1", "my-baseline", 1},
+			{"pod:my-baseline:3", "my-baseline", 3},
+			{"pod:my-baseline:42", "my-baseline", 42},
+			{"pod:my_pod-2:7", "my_pod-2", 7},
+		} {
+			t.Run(tc.input, func(t *testing.T) {
+				t.Parallel()
+				dest, err := snapshot.ParseSource(tc.input, home)
+				require.NoError(t, err)
+				assert.Equal(t, snapshot.KindPod, dest.Kind)
+				assert.Equal(t, tc.wantPodName, dest.Value)
+				assert.Equal(t, tc.wantVersion, dest.Version)
+			})
+		}
+	})
+
+	t.Run("rejected as a bad version", func(t *testing.T) {
+		t.Parallel()
+		// Every one of these has a colon, so the suffix is unambiguously meant as
+		// a version and the error must say so — not "invalid pod name".
+		for _, input := range []string{
+			"pod:my-baseline:abc",
+			"pod:my-baseline:",
+			"pod:my-baseline:0",
+			"pod:my-baseline:-1",
+			"pod:my-baseline:+3",
+			"pod:my-baseline:3.0",
+			"pod:my-baseline: 3",
+			"pod:my-baseline:99999999999999999999", // beyond the 31-bit limit
+		} {
+			t.Run(input, func(t *testing.T) {
+				t.Parallel()
+				_, err := snapshot.ParseSource(input, home)
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), "invalid version")
+				assert.NotContains(t, err.Error(), "invalid pod name")
+			})
+		}
+	})
+
+	t.Run("only the last colon separates the version", func(t *testing.T) {
+		t.Parallel()
+		// "a:b" is not a legal pod name, so this fails validation on the name —
+		// the version itself parsed fine.
+		_, err := snapshot.ParseSource("pod:a:b:3", home)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "invalid pod name")
+	})
+
+	t.Run("pod:// hint still wins over version parsing", func(t *testing.T) {
+		t.Parallel()
+		_, err := snapshot.ParseSource("pod://my-baseline:3", home)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "single colon")
+	})
+}
+
+// TestParseSourceLocalPathWithColon guards the version split against escaping
+// the "pod:" branch — a Windows drive letter or a colon in a filename must never
+// be read as a version.
+func TestParseSourceLocalPathWithColon(t *testing.T) {
+	t.Parallel()
+	if runtime.GOOS == "windows" {
+		t.Skip("colons are not legal in Windows filenames")
+	}
+	dir := t.TempDir()
+	weird := filepath.Join(dir, "snap:2.snapshot")
+	require.NoError(t, os.WriteFile(weird, []byte("data"), 0600))
+
+	dest, err := snapshot.ParseSource(weird, t.TempDir())
+	require.NoError(t, err)
+	assert.Equal(t, snapshot.KindLocal, dest.Kind)
+	assert.Equal(t, weird, dest.Value)
+	assert.Zero(t, dest.Version, "a local path must never be split on a colon")
+}
+
+// TestParseDestinationRejectsPodVersion: saving always creates a new version, so
+// a pinned destination is meaningless. The message must explain that rather than
+// falling through to "invalid pod name".
+func TestParseDestinationRejectsPodVersion(t *testing.T) {
+	t.Parallel()
+	_, err := snapshot.ParseDestination("pod:my-baseline:3", t.TempDir(), time.Now())
+	require.Error(t, err)
+	assert.ErrorIs(t, err, snapshot.ErrPodVersionNotSupported)
+	assert.Contains(t, err.Error(), "pod:my-baseline")
+	assert.NotContains(t, err.Error(), "invalid pod name")
+}
+
+// TestParseCloudOnlyRejectsPodVersion: remove and versions operate on a whole
+// pod, so a version they cannot honour must fail rather than be ignored —
+// otherwise "remove pod:x:3" silently deletes every version of the pod, and
+// "versions pod:x:3" looks like it filtered the listing.
+func TestParseCloudOnlyRejectsPodVersion(t *testing.T) {
+	t.Parallel()
+	home := t.TempDir()
+	cwd, err := os.Getwd()
+	require.NoError(t, err)
+
+	for name, parse := range map[string]func(string, string, string) (snapshot.Destination, error){
+		"remove":   snapshot.ParseRemovable,
+		"versions": snapshot.ParseVersionable,
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			_, err := parse("pod:my-baseline:3", cwd, home)
+			require.Error(t, err)
+			assert.ErrorIs(t, err, snapshot.ErrPodVersionNotSupported)
+		})
+	}
+}
+
+// TestParseShowableAcceptsPodVersion: show is read-only and every field it
+// renders is per-version in the platform response, so it can address one
+// directly.
+func TestParseShowableAcceptsPodVersion(t *testing.T) {
+	t.Parallel()
+	home := t.TempDir()
+	cwd, err := os.Getwd()
+	require.NoError(t, err)
+
+	dest, err := snapshot.ParseShowable("pod:my-baseline:3", cwd, home)
+	require.NoError(t, err)
+	assert.Equal(t, snapshot.KindPod, dest.Kind)
+	assert.Equal(t, "my-baseline", dest.Value)
+	assert.Equal(t, 3, dest.Version)
+
+	// Still rejects a malformed version rather than folding it into the name.
+	_, err = snapshot.ParseShowable("pod:my-baseline:abc", cwd, home)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "invalid version")
+}
+
+func TestParseVersionable(t *testing.T) {
+	t.Parallel()
+	home := t.TempDir()
+	cwd, err := os.Getwd()
+	require.NoError(t, err)
+
+	t.Run("accepts pod ref", func(t *testing.T) {
+		t.Parallel()
+		dest, err := snapshot.ParseVersionable("pod:my-baseline", cwd, home)
+		require.NoError(t, err)
+		assert.Equal(t, snapshot.KindPod, dest.Kind)
+		assert.Equal(t, "my-baseline", dest.Value)
+	})
+
+	t.Run("rejects local path", func(t *testing.T) {
+		t.Parallel()
+		_, err := snapshot.ParseVersionable("./my-snapshot", cwd, home)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "list versions of local snapshots")
+	})
+
+	t.Run("rejects s3 remote", func(t *testing.T) {
+		t.Parallel()
+		_, err := snapshot.ParseVersionable("s3://bucket/prefix", cwd, home)
+		require.Error(t, err)
+		assert.ErrorIs(t, err, snapshot.ErrRemoteNotSupported)
+	})
+
+	t.Run("rejects invalid pod name", func(t *testing.T) {
+		t.Parallel()
+		_, err := snapshot.ParseVersionable("pod:bad name", cwd, home)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "invalid pod name")
+	})
+}
+
+func TestValidateRemotePodName(t *testing.T) {
+	t.Parallel()
+
+	t.Run("accepts a plain name", func(t *testing.T) {
+		t.Parallel()
+		require.NoError(t, snapshot.ValidateRemotePodName("my-pod"))
+	})
+
+	t.Run("rejects a version suffix", func(t *testing.T) {
+		t.Parallel()
+		err := snapshot.ValidateRemotePodName("my-pod:3")
+		require.Error(t, err)
+		assert.ErrorIs(t, err, snapshot.ErrPodVersionNotSupported)
+		assert.Contains(t, err.Error(), "S3 remotes do not support snapshot versions")
+	})
+
+	t.Run("reports a malformed version as a bad version", func(t *testing.T) {
+		t.Parallel()
+		err := snapshot.ValidateRemotePodName("my-pod:abc")
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "invalid version")
+	})
+
+	t.Run("rejects an invalid name", func(t *testing.T) {
+		t.Parallel()
+		err := snapshot.ValidateRemotePodName("bad name")
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "invalid pod name")
+	})
+}
+
+func TestPodRef(t *testing.T) {
+	t.Parallel()
+	assert.Equal(t, "pod:my-baseline", snapshot.PodRef("my-baseline", 0))
+	assert.Equal(t, "pod:my-baseline", snapshot.PodRef("my-baseline", -1))
+	assert.Equal(t, "pod:my-baseline:3", snapshot.PodRef("my-baseline", 3))
+}
 
 func TestParseShowable(t *testing.T) {
 	t.Parallel()

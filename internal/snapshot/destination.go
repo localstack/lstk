@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -25,6 +26,10 @@ var (
 	// ErrCredentialsInS3URL is returned when an s3:// ref embeds credential query
 	// params. Credentials must come from the environment or --profile, never the URL.
 	ErrCredentialsInS3URL = errors.New("do not put credentials in the s3:// URL; use AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY or --profile")
+	// ErrPodVersionNotSupported is returned when a pod ref carries a ":<version>"
+	// suffix in a context that can only ever address the latest version (save,
+	// show, remove, versions, and S3 remotes).
+	ErrPodVersionNotSupported = errors.New("a specific snapshot version is not supported here")
 )
 
 const (
@@ -58,6 +63,11 @@ const (
 type Destination struct {
 	Kind  DestinationKind
 	Value string
+	// Version is the requested version of a KindPod snapshot; 0 means "latest".
+	// It is only ever non-zero for KindPod: local paths are never split on ":"
+	// (that would break Windows drive letters) and S3 remotes have no version
+	// addressing.
+	Version int
 }
 
 // IsS3Ref reports whether ref is an s3:// reference. Used at the command boundary
@@ -73,6 +83,74 @@ func ValidatePodName(name string) error {
 		return fmt.Errorf("invalid pod name %q: %w", name, err)
 	}
 	return nil
+}
+
+// ValidateRemotePodName validates a pod name given as a positional alongside an
+// s3:// location. S3 remotes have no version addressing, so a ":<version>"
+// suffix is rejected with a message that explains why, rather than falling
+// through to ValidatePodName's opaque "invalid pod name".
+func ValidateRemotePodName(name string) error {
+	_, version, err := splitPodRef(name, name)
+	if err != nil {
+		return err
+	}
+	if version != 0 {
+		return fmt.Errorf("%w: %q — S3 remotes do not support snapshot versions", ErrPodVersionNotSupported, name)
+	}
+	return ValidatePodName(name)
+}
+
+// PodRef renders a pod name and version back into the reference syntax the user
+// types: "pod:name" for the latest version, "pod:name:N" for a pinned one.
+func PodRef(name string, version int) string {
+	if version <= 0 {
+		return "pod:" + name
+	}
+	return "pod:" + name + ":" + strconv.Itoa(version)
+}
+
+// splitPodRef splits a pod identifier into a name and an optional ":<version>"
+// suffix. A colon is never legal in a pod name (validate.PodName allows only
+// letters, digits, hyphens, and underscores), so any colon is unambiguously a
+// version separator: an unparseable suffix is reported as a bad version rather
+// than folded back into the name. The legacy CLI did the latter, which surfaced
+// as a confusing "invalid pod name".
+//
+// displayRef is what the user actually typed, used only in the error message —
+// it is the full "pod:..." ref on the load/save path but a bare name on the S3
+// positional path, so it cannot be reconstructed from raw.
+func splitPodRef(raw, displayRef string) (name string, version int, err error) {
+	i := strings.LastIndex(raw, ":")
+	if i < 0 {
+		return raw, 0, nil
+	}
+	name, suffix := raw[:i], raw[i+1:]
+	// ParseUint rather than Atoi so a sign prefix ("+3", "-3") is rejected, with
+	// a 31-bit limit so an oversized number fails here instead of wrapping.
+	// Version 0 does not exist on the platform, which also covers a trailing ":".
+	v, perr := strconv.ParseUint(suffix, 10, 31)
+	if perr != nil || v == 0 {
+		return "", 0, fmt.Errorf("invalid version %q in %q: use a positive integer", suffix, displayRef)
+	}
+	return name, int(v), nil
+}
+
+// parsePodRef parses the shared "pod:" branch of ParseSource and ParseDestination.
+// ref includes the "pod:" prefix. allowVersion is false for save, which can only
+// ever write a new version (the platform assigns it).
+func parsePodRef(ref string, allowVersion bool) (Destination, error) {
+	name, version, err := splitPodRef(ref[len("pod:"):], ref)
+	if err != nil {
+		return Destination{}, err
+	}
+	if err := ValidatePodName(name); err != nil {
+		return Destination{}, err
+	}
+	if version != 0 && !allowVersion {
+		return Destination{}, fmt.Errorf("%w: 'pod:%s:%d' — the platform assigns the version on each save; use 'pod:%s'",
+			ErrPodVersionNotSupported, name, version, name)
+	}
+	return Destination{Kind: KindPod, Value: name, Version: version}, nil
 }
 
 // DefaultRemotePodName generates a timestamped pod name used when saving to a
@@ -104,21 +182,28 @@ func parseS3(ref string) (Destination, error) {
 
 // ParseRemovable parses a ref for snapshot remove. Only cloud (pod:) refs are accepted;
 // local file paths are rejected because the CLI cannot delete local files.
+// A ":<version>" suffix is rejected: remove deletes the whole pod, so honouring
+// only part of the ref would silently destroy more than the user asked for.
 // cwd and home are used to produce a human-readable path in error messages.
 func ParseRemovable(ref, cwd, home string) (Destination, error) {
-	return parseCloudOnly(ref, cwd, home, "delete local files")
+	return parseCloudOnly(ref, cwd, home, "delete local files", false)
 }
 
 // ParseShowable parses a ref for snapshot show. Only cloud (pod:) refs are accepted;
 // local file paths are rejected because show only inspects cloud snapshots.
+// A ":<version>" suffix is allowed — show is read-only and every field it renders
+// is per-version in the platform response.
 // cwd and home are used to produce a human-readable path in error messages.
 func ParseShowable(ref, cwd, home string) (Destination, error) {
-	return parseCloudOnly(ref, cwd, home, "show local snapshots")
+	return parseCloudOnly(ref, cwd, home, "show local snapshots", true)
 }
 
 // parseCloudOnly validates that ref is a cloud (pod:) reference, rejecting local
 // file paths with a message naming the unsupported action (e.g. "delete local files").
-func parseCloudOnly(ref, cwd, home, action string) (Destination, error) {
+// allowVersion is true only for read-only commands that can meaningfully report a
+// single version (show). It is false where a version would be ignored, which must
+// fail loudly rather than silently widen the operation.
+func parseCloudOnly(ref, cwd, home, action string, allowVersion bool) (Destination, error) {
 	lower := strings.ToLower(ref)
 	if !strings.HasPrefix(lower, "pod:") && !strings.Contains(lower, "://") {
 		abs, _ := filepath.Abs(ref)
@@ -129,11 +214,24 @@ func parseCloudOnly(ref, cwd, home, action string) (Destination, error) {
 	if err != nil {
 		return Destination{}, err
 	}
-	// remove/show are cloud (pod:) only; S3 remotes are not yet supported here.
+	// remove/show/versions are cloud (pod:) only; S3 remotes are not yet supported here.
 	if dest.Kind == KindS3 {
 		return Destination{}, ErrRemoteNotSupported
 	}
+	// Where a version cannot be honoured it must fail loudly rather than be
+	// ignored: silently dropping it would make "remove pod:x:3" delete the whole
+	// pod, and would make "versions pod:x:3" look like it filtered the listing.
+	if dest.Version != 0 && !allowVersion {
+		return Destination{}, fmt.Errorf("%w: drop the ':%d' from %q", ErrPodVersionNotSupported, dest.Version, ref)
+	}
 	return dest, nil
+}
+
+// ParseVersionable parses a ref for snapshot versions. Only cloud (pod:) refs are
+// accepted; local snapshots and S3 remotes have no version history. A
+// ":<version>" suffix is rejected because this command lists every version.
+func ParseVersionable(ref, cwd, home string) (Destination, error) {
+	return parseCloudOnly(ref, cwd, home, "list versions of local snapshots", false)
 }
 
 // displayPath shortens abs for human-readable output:
@@ -168,11 +266,7 @@ func ParseSource(ref, home string) (Destination, error) {
 		podName := ref[len("pod://"):]
 		return Destination{}, fmt.Errorf("'%s' is not a valid reference. Aliases use a single colon. Did you mean:\npod:%s", ref, podName)
 	case strings.HasPrefix(lower, "pod:"):
-		podName := ref[len("pod:"):]
-		if err := ValidatePodName(podName); err != nil {
-			return Destination{}, err
-		}
-		return Destination{Kind: KindPod, Value: podName}, nil
+		return parsePodRef(ref, true)
 	case strings.HasPrefix(lower, "s3://"):
 		return parseS3(ref)
 	case strings.HasPrefix(lower, "oras://"):
@@ -245,11 +339,7 @@ func ParseDestination(dest, home string, now time.Time) (Destination, error) {
 			podName := dest[len("pod://"):]
 			return Destination{}, fmt.Errorf("'%s' is not a valid reference. Aliases use a single colon. Did you mean:\npod:%s", dest, podName)
 		case strings.HasPrefix(lower, "pod:"):
-			podName := dest[len("pod:"):]
-			if err := ValidatePodName(podName); err != nil {
-				return Destination{}, err
-			}
-			return Destination{Kind: KindPod, Value: podName}, nil
+			return parsePodRef(dest, false)
 		case strings.HasPrefix(lower, "s3://"):
 			return parseS3(dest)
 		case strings.HasPrefix(lower, "oras://"):

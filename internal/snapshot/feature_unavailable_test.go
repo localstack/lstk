@@ -56,11 +56,11 @@ func TestLoadPod_FeatureUnavailable(t *testing.T) {
 	t.Parallel()
 	ctrl := gomock.NewController(t)
 	loader := NewMockPodLoader(ctrl)
-	loader.EXPECT().LoadPodSnapshot(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+	loader.EXPECT().LoadPodSnapshot(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 		Return(nil, snapshot.ErrSnapshotFeatureUnavailable)
 	sink, getEvents := captureEvents(t)
 
-	err := snapshot.LoadPod(context.Background(), healthyRunningMock(t), awsContainers, loader, "", "my-baseline", "test-token", "", nopStarter, sink)
+	err := snapshot.LoadPod(context.Background(), healthyRunningMock(t), awsContainers, loader, "", "my-baseline", 0, "test-token", "", nopStarter, sink)
 	assertFeatureUnavailable(t, err, getEvents())
 }
 
@@ -92,11 +92,11 @@ func TestDiffPod_FeatureUnavailable(t *testing.T) {
 	t.Parallel()
 	ctrl := gomock.NewController(t)
 	differ := NewMockPodDiffer(ctrl)
-	differ.EXPECT().DiffPodSnapshot(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+	differ.EXPECT().DiffPodSnapshot(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 		Return(nil, snapshot.ErrSnapshotFeatureUnavailable)
 	sink, getEvents := captureEvents(t)
 
-	err := snapshot.DiffPod(context.Background(), healthyRunningMock(t), awsContainers, differ, "", "my-baseline", "test-token", "", sink)
+	err := snapshot.DiffPod(context.Background(), healthyRunningMock(t), awsContainers, differ, "", "my-baseline", 0, "test-token", "", sink)
 	assertFeatureUnavailable(t, err, getEvents())
 }
 
@@ -156,7 +156,7 @@ func (s stubLister) ListCloudPods(context.Context, string, string) ([]api.CloudP
 
 type stubInspector struct{ err error }
 
-func (s stubInspector) GetCloudPod(context.Context, string, string) (*api.CloudPodDetails, error) {
+func (s stubInspector) GetCloudPod(context.Context, string, string, int) (*api.CloudPodDetails, error) {
 	return nil, s.err
 }
 
@@ -174,6 +174,6 @@ func TestShow_FeatureUnavailable(t *testing.T) {
 	t.Parallel()
 	sink, getEvents := captureEvents(t)
 
-	err := snapshot.Show(context.Background(), stubInspector{err: api.ErrCloudPodsForbidden}, "test-token", "my-baseline", sink)
+	err := snapshot.Show(context.Background(), stubInspector{err: api.ErrCloudPodsForbidden}, "test-token", "my-baseline", 0, sink)
 	assertFeatureUnavailable(t, err, getEvents())
 }

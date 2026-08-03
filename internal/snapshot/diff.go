@@ -24,12 +24,15 @@ type DiffResult map[string]ServiceDiffCounts
 
 // PodDiffer is satisfied by aws.Client.
 type PodDiffer interface {
-	DiffPodSnapshot(ctx context.Context, host, podName, authToken string) (DiffResult, error)
+	// DiffPodSnapshot issues GET /_localstack/pods/{name}/diff. version 0 diffs
+	// against the pod's latest version.
+	DiffPodSnapshot(ctx context.Context, host, podName string, version int, authToken string) (DiffResult, error)
 }
 
 // DiffPod calls the diff endpoint for a named pod and emits a SnapshotDiffEvent.
 // It requires the emulator to already be running (unlike LoadPod, there is no auto-start).
-func DiffPod(ctx context.Context, rt runtime.Runtime, containers []config.ContainerConfig, differ PodDiffer, host, podName, authToken, strategy string, sink output.Sink) error {
+// version 0 diffs against the pod's latest version.
+func DiffPod(ctx context.Context, rt runtime.Runtime, containers []config.ContainerConfig, differ PodDiffer, host, podName string, version int, authToken, strategy string, sink output.Sink) error {
 	if authToken == "" {
 		return fmt.Errorf("pod snapshots require authentication — set LOCALSTACK_AUTH_TOKEN or run %q", "lstk login")
 	}
@@ -55,11 +58,18 @@ func DiffPod(ctx context.Context, rt runtime.Runtime, containers []config.Contai
 		return output.NewSilentError(fmt.Errorf("LocalStack is not running"))
 	}
 
-	sink.Emit(output.SpinnerStart(fmt.Sprintf("Checking diff for pod %q...", podName)))
-	result, err := differ.DiffPodSnapshot(ctx, host, podName, authToken)
+	spinnerText := fmt.Sprintf("Checking diff for pod %q...", podName)
+	if version > 0 {
+		spinnerText = fmt.Sprintf("Checking diff for pod %q (version %d)...", podName, version)
+	}
+	sink.Emit(output.SpinnerStart(spinnerText))
+	result, err := differ.DiffPodSnapshot(ctx, host, podName, version, authToken)
 	sink.Emit(output.SpinnerStop())
 	if errors.Is(err, ErrSnapshotFeatureUnavailable) {
 		return emitFeatureUnavailableError(sink)
+	}
+	if errors.Is(err, ErrPodVersionNotFound) {
+		return emitPodVersionNotFound(err, podName, "Could not check pod diff", sink)
 	}
 	if errors.Is(err, ErrPodNotFound) {
 		sink.Emit(output.ErrorEvent{
@@ -84,6 +94,7 @@ func DiffPod(ctx context.Context, rt runtime.Runtime, containers []config.Contai
 	}
 	sink.Emit(output.SnapshotDiffEvent{
 		PodName:  podName,
+		Version:  version,
 		Strategy: strategy,
 		Services: services,
 	})

@@ -513,7 +513,7 @@ Codes: `VALIDATION_ERROR` (`--cloud` not a registered cloud).
   "error": null
 }
 ```
-Codes: `SNAPSHOT_NOT_FOUND`, `SNAPSHOT_INVALID_REF`, `SNAPSHOT_REMOTE_ERROR`, `SNAPSHOT_BUCKET_NOT_FOUND`, `CREDENTIALS_MISSING`, `AUTH_REQUIRED`, `RUNTIME_UNAVAILABLE`, `EMULATOR_START_FAILED`, `VALIDATION_ERROR` (bad `--merge`).
+(`source` carries the version suffix when the REF pinned one, e.g. `"pod:my-baseline:3"`.) Codes: `SNAPSHOT_NOT_FOUND` (unknown pod, or a version above the pod's maximum), `SNAPSHOT_INVALID_REF` (incl. a malformed `:<version>` suffix), `SNAPSHOT_REMOTE_ERROR`, `SNAPSHOT_BUCKET_NOT_FOUND`, `CREDENTIALS_MISSING`, `AUTH_REQUIRED`, `RUNTIME_UNAVAILABLE`, `EMULATOR_START_FAILED`, `VALIDATION_ERROR` (bad `--merge`).
 
 **`lstk snapshot list`** — the platform or S3 location queried, and the snapshots found.
 ```json
@@ -548,7 +548,28 @@ Codes: `AUTH_REQUIRED` (platform), `CREDENTIALS_MISSING`/`SNAPSHOT_BUCKET_NOT_FO
   "error": null
 }
 ```
-Codes: `AUTH_REQUIRED`, `SNAPSHOT_NOT_FOUND`, `SNAPSHOT_INVALID_REF`, `SNAPSHOT_REMOTE_ERROR`.
+(`version` reflects the version actually reported: the latest, or the one pinned by a `pod:<name>:<version>` REF.) Codes: `AUTH_REQUIRED`, `SNAPSHOT_NOT_FOUND` (unknown pod, or a pinned version that does not exist), `SNAPSHOT_INVALID_REF`, `SNAPSHOT_REMOTE_ERROR`.
+
+**`lstk snapshot versions`** — the version history of one cloud snapshot, newest first. Versions the platform marked deleted are omitted.
+```json
+{
+  "schemaVersion": 1,
+  "command": "snapshot versions",
+  "status": "ok",
+  "data": {
+    "podName": "my-baseline",
+    "versions": [
+      {"version": 3, "created": "2026-07-01T12:00:00Z", "sizeBytes": 245678,
+       "localstackVersion": "3.9.0", "description": "nightly baseline", "services": ["s3", "lambda"]},
+      {"version": 2, "created": "2026-06-20T09:14:00Z", "sizeBytes": 2048,
+       "localstackVersion": "3.9.0", "description": "", "services": ["s3"]}
+    ]
+  },
+  "warnings": [],
+  "error": null
+}
+```
+(`versions` is `[]` for a pod with no live versions — that is `status: "ok"`, not an error.) Codes: `AUTH_REQUIRED`, `SNAPSHOT_NOT_FOUND`, `SNAPSHOT_INVALID_REF` (a local path, an `s3://` ref, or a `:<version>` suffix — this command lists them all), `SNAPSHOT_REMOTE_ERROR`.
 
 **`lstk snapshot remove`** — confirmation of deletion.
 ```json

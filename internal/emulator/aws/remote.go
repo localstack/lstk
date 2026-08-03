@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	neturl "net/url"
+	"strconv"
 	"strings"
 
 	"github.com/localstack/lstk/internal/snapshot"
@@ -123,12 +125,13 @@ func (c *Client) SavePodRemote(ctx context.Context, baseURL, podName, remoteName
 }
 
 // LoadPodRemote loads podName from the named remote with the given merge strategy.
+// S3 remotes have no version addressing, so version 0 is always passed.
 func (c *Client) LoadPodRemote(ctx context.Context, baseURL, podName, remoteName string, params map[string]string, authToken, strategy string) ([]string, error) {
 	body, err := marshalPodBody(remoteName, params, nil)
 	if err != nil {
 		return nil, fmt.Errorf("marshal request: %w", err)
 	}
-	return c.doPodLoad(ctx, baseURL, podName, authToken, strategy, body)
+	return c.doPodLoad(ctx, baseURL, podName, 0, authToken, strategy, body)
 }
 
 // ListPodsRemote lists the snapshots stored on the named remote via
@@ -242,14 +245,23 @@ func (c *Client) doPodSave(ctx context.Context, baseURL, podName, authToken stri
 	return snapshot.PodSaveResult{}, fmt.Errorf("pod save: server closed stream without a completion event")
 }
 
-// doPodLoad issues PUT /_localstack/pods/{name}[?merge=strategy] with the given
-// JSON body and parses the NDJSON response stream into the list of services.
-func (c *Client) doPodLoad(ctx context.Context, baseURL, podName, authToken, strategy string, body []byte) ([]string, error) {
-	url := strings.TrimRight(baseURL, "/") + "/_localstack/pods/" + podName
+// doPodLoad issues PUT /_localstack/pods/{name}[?merge=strategy][&version=N] with
+// the given JSON body and parses the NDJSON response stream into the list of
+// services. version 0 omits the parameter, which makes the emulator load the
+// pod's latest version.
+func (c *Client) doPodLoad(ctx context.Context, baseURL, podName string, version int, authToken, strategy string, body []byte) ([]string, error) {
+	reqURL := strings.TrimRight(baseURL, "/") + "/_localstack/pods/" + podName
+	query := neturl.Values{}
 	if strategy != "" {
-		url += "?merge=" + strategy
+		query.Set("merge", strategy)
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPut, url, bytes.NewReader(body))
+	if version > 0 {
+		query.Set("version", strconv.Itoa(version))
+	}
+	if len(query) > 0 {
+		reqURL += "?" + query.Encode()
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPut, reqURL, bytes.NewReader(body))
 	if err != nil {
 		return nil, fmt.Errorf("create request: %w", err)
 	}
@@ -270,6 +282,9 @@ func (c *Client) doPodLoad(ctx context.Context, baseURL, podName, authToken, str
 		respBody, _ := io.ReadAll(resp.Body)
 		if isFeatureUnavailableResponse(resp.StatusCode, respBody) {
 			return nil, snapshot.ErrSnapshotFeatureUnavailable
+		}
+		if bodyStr := strings.TrimSpace(string(respBody)); isPodVersionNotFoundMsg(bodyStr) {
+			return nil, fmt.Errorf("%w: %s", snapshot.ErrPodVersionNotFound, bodyStr)
 		}
 		return nil, emulatorStatusError(fmt.Sprintf("pod load failed (HTTP %d)", resp.StatusCode), respBody)
 	}
@@ -308,6 +323,9 @@ func (c *Client) doPodLoad(ctx context.Context, baseURL, podName, authToken, str
 			if event.Status != "ok" {
 				if isInvalidSnapshotFileMsg(event.Message) {
 					return nil, snapshot.ErrInvalidSnapshotFile
+				}
+				if isPodVersionNotFoundMsg(event.Message) {
+					return nil, fmt.Errorf("%w: %s", snapshot.ErrPodVersionNotFound, event.Message)
 				}
 				if isPodNotFoundMsg(event.Message) {
 					return nil, snapshot.ErrPodNotFound

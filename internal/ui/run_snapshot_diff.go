@@ -9,8 +9,8 @@ import (
 	"github.com/localstack/lstk/internal/snapshot"
 )
 
-func RunSnapshotDiff(parentCtx context.Context, rt runtime.Runtime, containers []config.ContainerConfig, client snapshot.PodDiffer, host, podName, authToken, strategy string) error {
+func RunSnapshotDiff(parentCtx context.Context, rt runtime.Runtime, containers []config.ContainerConfig, client snapshot.PodDiffer, host, podName string, version int, authToken, strategy string) error {
 	return runWithTUI(parentCtx, withoutHeader(), func(ctx context.Context, sink output.Sink) error {
-		return snapshot.DiffPod(ctx, rt, containers, client, host, podName, authToken, strategy, sink)
+		return snapshot.DiffPod(ctx, rt, containers, client, host, podName, version, authToken, strategy, sink)
 	})
 }

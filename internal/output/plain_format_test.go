@@ -407,6 +407,19 @@ func TestFormatEventLine(t *testing.T) {
 			want:   "Dry-run results for pod:empty-pod\n\n  No changes — pod state matches running state.\n\n" + SuccessMarker() + " No state was modified.",
 			wantOK: true,
 		},
+		{
+			name: "snapshot diff against a pinned version",
+			event: SnapshotDiffEvent{
+				PodName:  "my-baseline",
+				Version:  3,
+				Strategy: "account-region-merge",
+				Services: map[string]SnapshotDiffServiceResult{
+					"dynamodb": {Additions: 2},
+				},
+			},
+			want:   "Dry-run results for pod:my-baseline:3\n\n  dynamodb  + 2 additions\n\n" + SuccessMarker() + " No state was modified.",
+			wantOK: true,
+		},
 	}
 
 	for _, tt := range tests {
@@ -493,6 +506,7 @@ func TestFormatSnapshotShown(t *testing.T) {
 			name: "full detail with resources",
 			event: SnapshotShownEvent{
 				Name:              "my-baseline",
+				Version:           4,
 				Created:           &created,
 				Size:              49597645,
 				LocalStackVersion: "2026.03",
@@ -507,6 +521,7 @@ func TestFormatSnapshotShown(t *testing.T) {
 			},
 			want: strings.Join([]string{
 				label("Name") + "my-baseline",
+				label("Version") + "4",
 				label("Created") + "2026-04-15 14:32 UTC",
 				label("Size") + "47.3 MB",
 				label("LocalStack") + "2026.03",
