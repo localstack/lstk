@@ -110,31 +110,41 @@ describe.skipIf(noBrowserShim)("the login journey", () => {
     },
   );
 
-  test("a later start authenticates on its own, with no token in the environment", async () => {
-    const fixture = await freshHome();
-    await login(fixture);
+  // Holds the exclusive lock: this is one of the few tests that starts a container
+  // from a real `localstack/*` image reference. Emulator discovery falls back to
+  // matching any known localstack image exposing port 4566 when the configured name
+  // is absent (internal/container/running.go), and the internal port is always 4566
+  // whatever the config says — so such a container is visible to every other test's
+  // "is an emulator running" check, private tag or not.
+  describe("with a container built from a real emulator image reference", () => {
+    useExclusiveEmulator();
 
-    // A pinned tag whose image is present locally skips the pull and the license
-    // pre-flight, so the run reaches the container without needing a real license —
-    // far enough to show that auth was satisfied from what login stored.
-    const pinnedTag = "login-journey-test";
-    const pinnedImage = `localstack/localstack-pro:${pinnedTag}`;
-    if (!noDocker) {
-      await docker.pull("alpine:latest");
-      await docker.tag("alpine:latest", pinnedImage);
-    }
-    await fixture.home.writeConfig(
-      `[[containers]]\ntype = "aws"\ntag = "${pinnedTag}"\nport = "4598"\n`,
-    );
+    test("a later start authenticates on its own, with no token in the environment", async () => {
+      const fixture = await freshHome();
+      await login(fixture);
 
-    const run = await lstk(["start", "--non-interactive"], { home: fixture.home });
+      // A pinned tag whose image is present locally skips the pull and the license
+      // pre-flight, so the run reaches the container without needing a real license —
+      // far enough to show that auth was satisfied from what login stored.
+      const pinnedTag = "login-journey-test";
+      const pinnedImage = `localstack/localstack-pro:${pinnedTag}`;
+      if (!noDocker) {
+        await docker.pull("alpine:latest");
+        await docker.tag("alpine:latest", pinnedImage);
+      }
+      await fixture.home.writeConfig(
+        `[[containers]]\ntype = "aws"\ntag = "${pinnedTag}"\nport = "4598"\n`,
+      );
 
-    expect(run, "start must not ask for credentials again").not.toPrint(
-      "authentication required",
-    );
-    if (!noDocker) {
-      await docker.removeContainer(`localstack-aws-${pinnedTag}`);
-    }
+      const run = await lstk(["start", "--non-interactive"], { home: fixture.home });
+
+      expect(run, "start must not ask for credentials again").not.toPrint(
+        "authentication required",
+      );
+      if (!noDocker) {
+        await docker.removeContainer(`localstack-aws-${pinnedTag}`);
+      }
+    });
   });
 
   // The journey with a real license: the mock platform hands back the real token

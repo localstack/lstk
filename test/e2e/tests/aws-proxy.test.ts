@@ -1,7 +1,6 @@
-import { execa } from "execa";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { afterEach, describe, expect, test } from "vitest";
+import { describe, expect, test } from "vitest";
 import {
   docker,
   dockerIsAvailable,
@@ -12,6 +11,7 @@ import {
   useExclusiveEmulator,
 } from "../support/index.ts";
 import { fakeBinary } from "../support/fake-binary.ts";
+import { privateEmulator, startStubEmulator } from "../support/emulator-stub.ts";
 
 // Ported from test/integration/aws_cmd_test.go.
 //
@@ -37,36 +37,6 @@ const noDocker = requirement(
 );
 
 const AWS_CONTAINER = "localstack-aws";
-
-/**
- * Starts a placeholder container under `name` so lstk's name-based
- * "is it running" check matches it. Not a real emulator: nothing inside it
- * answers on any port, and `lstk aws`/`lstk terraform` never notice, since
- * that check only looks at the container's running state (or, for the
- * image/port fallback used with `image`+`publish`, at the image reference and
- * exposed port).
- *
- * Force-removes any leftover container under the same name first:
- * `useExclusiveEmulator()` only serializes against other e2e test files, not
- * against unrelated Docker users on the same machine (e.g. the Go integration
- * suite, which uses the same container names with no knowledge of this lock).
- */
-async function startPlaceholderEmulator(
-  name: string,
-  options: { image?: string; publish?: string } = {},
-): Promise<void> {
-  const image = options.image ?? "alpine:latest";
-  if (image === "alpine:latest") await docker.pull("alpine:latest");
-  await docker.removeContainer(name);
-  const args = ["run", "-d", "--name", name];
-  if (options.publish) args.push("--publish", options.publish);
-  args.push(image, "sleep", "infinity");
-
-  const result = await execa("docker", args, { reject: false });
-  if (result.exitCode !== 0) {
-    throw new Error(`docker run --name ${name} failed: ${result.stderr}`);
-  }
-}
 
 /**
  * argv as recorded by the fake tool, with the resolved endpoint URL replaced by a
@@ -139,35 +109,51 @@ describe("lstk aws without a reachable daemon", () => {
 });
 
 describe.skipIf(noDocker)("lstk aws with a running emulator", () => {
-  useExclusiveEmulator();
+  // Each test below only needs "an emulator is running" under some name, not
+  // specifically the canonical `localstack-aws` one, so privateEmulator()
+  // gives it a container and config no other test shares — no machine-wide
+  // lock needed. The two tests that genuinely need the canonical name and
+  // shared identity (the default-port-with-no-config case, and the image/port
+  // discovery fallback) live in the locked describe below.
 
-  afterEach(async () => {
-    await docker.removeContainer(AWS_CONTAINER);
-  });
+  describe("with no emulator of its own running", () => {
+    // Holds the exclusive lock even though it starts nothing: a private tag only
+    // makes the container *name* unique, and lstk falls back to matching any
+    // known localstack image exposing port 4566 when that name is absent
+    // (internal/container/running.go). A concurrent fallback test would
+    // otherwise make this one see an emulator that is not its own.
+    useExclusiveEmulator();
 
-  test("fails with a clear message when no emulator is running", async () => {
-    const aws = await fakeBinary({ name: "aws" });
-    const home = await tempHome();
+    test("fails with a clear message when no emulator is running", async () => {
+      // No stub is started for emu.name, and the surrounding lock keeps any
+      // image/port-fallback test from standing in for it.
+      const aws = await fakeBinary({ name: "aws" });
+      const emu = privateEmulator();
+      const home = await tempHome();
+      await home.writeConfig(emu.config);
 
-    const run = await lstk(["aws", "s3", "ls"], { home, env: { PATH: aws.path } });
+      const run = await lstk(["aws", "s3", "ls"], { home, env: { PATH: aws.path } });
 
-    // Snapshotted rather than substring-matched: the promise here is the whole
-    // error UX — it names the emulator and offers a way forward — so the diff a
-    // reviewer sees on a copy change is exactly what users will read.
-    expect(run).toExitWith(1);
-    expect(run.stderr, "the failure is rendered through the sink, not raw on stderr").toBe("");
-    expect(run.stdout).toPrintExactly(`
-      Error: LocalStack AWS Emulator is not running
-        ==> Start LocalStack: lstk
-        ==> See help: lstk -h
-    `);
-    expect(await aws.calls(), "aws must never be invoked when nothing is running").toEqual([]);
+      // Snapshotted rather than substring-matched: the promise here is the whole
+      // error UX — it names the emulator and offers a way forward — so the diff a
+      // reviewer sees on a copy change is exactly what users will read.
+      expect(run).toExitWith(1);
+      expect(run.stderr, "the failure is rendered through the sink, not raw on stderr").toBe("");
+      expect(run.stdout).toPrintExactly(`
+        Error: LocalStack AWS Emulator is not running
+          ==> Start LocalStack: lstk
+          ==> See help: lstk -h
+      `);
+      expect(await aws.calls(), "aws must never be invoked when nothing is running").toEqual([]);
+    });
   });
 
   test("injects the endpoint and forwards args unchanged", async () => {
-    await startPlaceholderEmulator(AWS_CONTAINER);
+    const emu = privateEmulator();
+    await startStubEmulator(emu.name);
     const aws = await fakeBinary({ name: "aws" });
     const home = await tempHome();
+    await home.writeConfig(emu.config);
 
     const run = await lstk(["aws", "s3", "ls"], { home, env: { PATH: aws.path } });
 
@@ -180,22 +166,12 @@ describe.skipIf(noDocker)("lstk aws with a running emulator", () => {
     ]);
   });
 
-  test("uses the default port (4566) when no config overrides it", async () => {
-    await startPlaceholderEmulator(AWS_CONTAINER);
-    const aws = await fakeBinary({ name: "aws" });
-    const home = await tempHome();
-
-    const run = await lstk(["aws", "s3", "ls"], { home, env: { PATH: aws.path } });
-
-    expect(run).toSucceed();
-    expect((await aws.lastCall())?.args[1]).toContain(":4566");
-  });
-
   test("uses the port configured in config.toml", async () => {
-    await startPlaceholderEmulator(AWS_CONTAINER);
+    const emu = privateEmulator("aws", { port: "4599" });
+    await startStubEmulator(emu.name);
     const aws = await fakeBinary({ name: "aws" });
     const home = await tempHome();
-    await home.writeConfig(`[[containers]]\ntype = "aws"\ntag = "latest"\nport = "4599"\n`);
+    await home.writeConfig(emu.config);
 
     const run = await lstk(["aws", "s3", "ls"], { home, env: { PATH: aws.path } });
 
@@ -204,14 +180,17 @@ describe.skipIf(noDocker)("lstk aws with a running emulator", () => {
   });
 
   test("strips lstk's own flags from passthrough and uses the localstack profile", async () => {
-    await startPlaceholderEmulator(AWS_CONTAINER);
+    const emu = privateEmulator();
+    await startStubEmulator(emu.name);
     const aws = await fakeBinary({ name: "aws" });
     const home = await tempHome();
     await writeAWSProfile(home.path);
-    // An explicit --config path, distinct from the home's own resolved config
-    // file, proves the flag is consumed by lstk itself rather than forwarded.
+    // An explicit --config path, distinct from the home's own (unwritten,
+    // default) resolved config file, proves the flag is consumed by lstk
+    // itself rather than forwarded. It carries the private emulator's config
+    // so the started stub is discovered.
     const configPath = path.join(home.path, "custom-config.toml");
-    await writeFile(configPath, "# lstk test config\n");
+    await writeFile(configPath, emu.config);
 
     const run = await lstk(["--config", configPath, "--non-interactive", "aws", "s3", "ls"], {
       home,
@@ -230,9 +209,11 @@ describe.skipIf(noDocker)("lstk aws with a running emulator", () => {
   });
 
   test("injects env credentials when no aws profile exists", async () => {
-    await startPlaceholderEmulator(AWS_CONTAINER);
+    const emu = privateEmulator();
+    await startStubEmulator(emu.name);
     const aws = await fakeBinary({ name: "aws" });
     const home = await tempHome();
+    await home.writeConfig(emu.config);
 
     const run = await lstk(["aws", "sts", "get-caller-identity"], { home, env: { PATH: aws.path } });
 
@@ -245,9 +226,11 @@ describe.skipIf(noDocker)("lstk aws with a running emulator", () => {
   });
 
   test("respects credentials the user already has set", async () => {
-    await startPlaceholderEmulator(AWS_CONTAINER);
+    const emu = privateEmulator();
+    await startStubEmulator(emu.name);
     const aws = await fakeBinary({ name: "aws" });
     const home = await tempHome();
+    await home.writeConfig(emu.config);
 
     const run = await lstk(["aws", "s3", "ls"], {
       home,
@@ -271,9 +254,11 @@ describe.skipIf(noDocker)("lstk aws with a running emulator", () => {
   });
 
   test("uses the profile instead of injected credentials when one exists", async () => {
-    await startPlaceholderEmulator(AWS_CONTAINER);
+    const emu = privateEmulator();
+    await startStubEmulator(emu.name);
     const aws = await fakeBinary({ name: "aws" });
     const home = await tempHome();
+    await home.writeConfig(emu.config);
     await writeAWSProfile(home.path);
 
     const run = await lstk(["aws", "s3", "ls"], { home, env: { PATH: aws.path } });
@@ -285,9 +270,11 @@ describe.skipIf(noDocker)("lstk aws with a running emulator", () => {
   });
 
   test("hints at `lstk setup aws` when no profile is configured", async () => {
-    await startPlaceholderEmulator(AWS_CONTAINER);
+    const emu = privateEmulator();
+    await startStubEmulator(emu.name);
     const aws = await fakeBinary({ name: "aws" });
     const home = await tempHome();
+    await home.writeConfig(emu.config);
 
     const run = await lstk(["aws", "s3", "ls"], { home, env: { PATH: aws.path } });
 
@@ -296,9 +283,11 @@ describe.skipIf(noDocker)("lstk aws with a running emulator", () => {
   });
 
   test("suppresses the setup hint once a profile exists", async () => {
-    await startPlaceholderEmulator(AWS_CONTAINER);
+    const emu = privateEmulator();
+    await startStubEmulator(emu.name);
     const aws = await fakeBinary({ name: "aws" });
     const home = await tempHome();
+    await home.writeConfig(emu.config);
     await writeAWSProfile(home.path);
 
     const run = await lstk(["aws", "s3", "ls"], { home, env: { PATH: aws.path } });
@@ -309,36 +298,57 @@ describe.skipIf(noDocker)("lstk aws with a running emulator", () => {
   });
 
   test("propagates the wrapped tool's exit code and stderr", async () => {
-    await startPlaceholderEmulator(AWS_CONTAINER);
+    const emu = privateEmulator();
+    await startStubEmulator(emu.name);
     const aws = await fakeBinary({
       name: "aws",
       responses: [{ exitCode: 42, stderr: "aws: error: simulated failure" }],
     });
     const home = await tempHome();
+    await home.writeConfig(emu.config);
 
     const run = await lstk(["aws", "s3", "ls"], { home, env: { PATH: aws.path } });
 
     expect(run).toExitWith(42);
     expect(run.stderr).toPrintExactly("aws: error: simulated failure");
   });
+});
+
+describe.skipIf(noDocker)("lstk aws with a running emulator (canonical name)", () => {
+  // Both tests below depend on the shared, config-derived `localstack-aws`
+  // container name rather than a private one, so they keep the machine-wide
+  // lock instead of privateEmulator():
+  //
+  // - the default-port assertion is specifically about what happens with *no*
+  //   config file at all, which resolves to tag "latest" and the canonical name;
+  // - the image/port fallback matches any running container tagged as a known
+  //   `localstack/*` image on the internal port, which can cross-match another
+  //   test's container regardless of name -- see support/emulator-stub.ts.
+  useExclusiveEmulator();
+
+  test("uses the default port (4566) when no config overrides it", async () => {
+    await startStubEmulator(AWS_CONTAINER);
+    const aws = await fakeBinary({ name: "aws" });
+    const home = await tempHome();
+
+    const run = await lstk(["aws", "s3", "ls"], { home, env: { PATH: aws.path } });
+
+    expect(run).toSucceed();
+    expect((await aws.lastCall())?.args[1]).toContain(":4566");
+  });
 
   test("discovers an externally-started container by image and port, not just by name", async () => {
     const fakeImage = "localstack/localstack-pro:e2e-test-fake";
     await docker.pull("alpine:latest");
     await docker.tag("alpine:latest", fakeImage);
-    await startPlaceholderEmulator("localstack-main", { image: fakeImage, publish: "4566:4566" });
-    // The external container is named "localstack-main", not AWS_CONTAINER; clean
-    // it up itself since afterEach above only removes AWS_CONTAINER.
-    try {
-      const aws = await fakeBinary({ name: "aws" });
-      const home = await tempHome();
+    // The external container is named "localstack-main", not AWS_CONTAINER.
+    await startStubEmulator("localstack-main", { image: fakeImage, dockerArgs: ["-p", "4566"] });
+    const aws = await fakeBinary({ name: "aws" });
+    const home = await tempHome();
 
-      const run = await lstk(["aws", "s3", "ls"], { home, env: { PATH: aws.path } });
+    const run = await lstk(["aws", "s3", "ls"], { home, env: { PATH: aws.path } });
 
-      expect(run).toSucceed();
-      expect((await aws.lastCall())?.args[1]).toMatch(/^https?:\/\//);
-    } finally {
-      await docker.removeContainer("localstack-main");
-    }
+    expect(run).toSucceed();
+    expect((await aws.lastCall())?.args[1]).toMatch(/^https?:\/\//);
   });
 });

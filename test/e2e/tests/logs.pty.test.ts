@@ -11,11 +11,7 @@ import {
   type Home,
 } from "../support/index.ts";
 import { lstkBinary } from "../support/binary.ts";
-import {
-  defaultEmulatorName,
-  startStubEmulator,
-  writeContainerLogLines,
-} from "../support/emulator-stub.ts";
+import { privateEmulator, startStubEmulator, writeContainerLogLines } from "../support/emulator-stub.ts";
 
 // Ported from test/integration/logs_test.go.
 //
@@ -61,61 +57,65 @@ describe("lstk logs", () => {
 });
 
 describe.skipIf(noDocker)("lstk logs with a running emulator", () => {
-  useExclusiveEmulator();
+  // Each test below only needs "an emulator is running" under some name, not
+  // specifically the canonical `localstack-aws` one, so privateEmulator()
+  // gives it a container and config no other test shares — no machine-wide
+  // lock needed. The one test that genuinely needs the canonical name (the
+  // image/port discovery fallback below) keeps useExclusiveEmulator().
 
   test("exits cleanly once the backlog is printed, without --follow", async () => {
-    await startStubEmulator();
-    const home = await homeWithAwsConfig();
+    const emu = privateEmulator();
+    await startStubEmulator(emu.name);
+    const home = await tempHome();
+    await home.writeConfig(emu.config);
 
     const run = await lstk(["logs"], { home });
 
     expect(run).toSucceed();
   });
 
-  test("fails with a clear message when the emulator is not running", async () => {
-    const home = await homeWithAwsConfig();
+  describe("with no emulator of its own running", () => {
+    // Holds the exclusive lock even though it starts nothing: a private tag only
+    // makes the container *name* unique, and lstk falls back to matching any
+    // known localstack image exposing port 4566 when that name is absent
+    // (internal/container/running.go). A concurrent fallback test would
+    // otherwise make this one see an emulator that is not its own.
+    useExclusiveEmulator();
 
-    const run = await lstk(["logs", "--follow"], { home });
+    test("fails with a clear message when the emulator is not running", async () => {
+      // No stub is started for emu.name, and the surrounding lock keeps any
+      // image/port-fallback test from standing in for it.
+      const emu = privateEmulator();
+      const home = await tempHome();
+      await home.writeConfig(emu.config);
 
-    expect(run).toExitWith(1);
-    expect(run.stderr, "the failure is rendered through the sink, not raw on stderr").toBe("");
-    expect(run.stdout).toPrintExactly(`
-      Error: LocalStack AWS Emulator is not running
-        ==> Start LocalStack: lstk
-        ==> See help: lstk -h
-    `);
-  });
+      const run = await lstk(["logs", "--follow"], { home });
 
-  // lstk must find the emulator even when it is running under a name other
-  // than the config-derived canonical one (e.g. started outside lstk),
-  // falling back to matching by known image + internal port.
-  test("finds the emulator when it was started outside lstk under a different name", async () => {
-    await docker.pull("alpine:latest");
-    await docker.tag("alpine:latest", "localstack/localstack-pro:logs-e2e-test-fake");
-    await startStubEmulator("localstack-main", {
-      image: "localstack/localstack-pro:logs-e2e-test-fake",
-      dockerArgs: ["-p", "4566"],
+      expect(run).toExitWith(1);
+      expect(run.stderr, "the failure is rendered through the sink, not raw on stderr").toBe("");
+      expect(run.stdout).toPrintExactly(`
+        Error: LocalStack AWS Emulator is not running
+          ==> Start LocalStack: lstk
+          ==> See help: lstk -h
+      `);
     });
-    const home = await homeWithAwsConfig();
-
-    const run = await lstk(["logs"], { home });
-
-    expect(run).toSucceed();
   });
 
   // Regression: --tail counts the lines lstk prints, not raw container lines.
   // A burst of filtered request logs after the newest visible line used to
   // consume the whole limit, so `lstk logs --tail 1` printed nothing at all.
   test("--tail counts the lines lstk prints, not the raw container lines it filters out", async () => {
-    await startStubEmulator();
+    const emu = privateEmulator();
+    await startStubEmulator(emu.name);
     const visible = "2026-07-07T10:05:11.240  INFO --- [  MainThread] l.foo : tail-visible-marker";
     const filtered = Array.from(
       { length: 5 },
       (_, i) =>
         `2026-07-07T10:05:${String(12 + i).padStart(2, "0")}.240  INFO --- [et.reactor-0] localstack.request.http : GET /_localstack/tail-filtered-marker => 200`,
     );
-    await writeContainerLogLines(defaultEmulatorName, [visible, ...filtered]);
-    const home = await homeWithAwsConfig();
+    await writeContainerLogLines(emu.name, [visible, ...filtered]);
+    const home = await tempHome();
+    await home.writeConfig(emu.config);
 
     const run = await lstk(["logs", "--tail", "1"], { home });
 
@@ -126,10 +126,12 @@ describe.skipIf(noDocker)("lstk logs with a running emulator", () => {
   });
 
   test("--tail / -n limits output to the last N visible lines", async () => {
-    await startStubEmulator();
+    const emu = privateEmulator();
+    await startStubEmulator(emu.name);
     const lines = Array.from({ length: 10 }, (_, i) => `tail-marker-${i + 1}`);
-    await writeContainerLogLines(defaultEmulatorName, lines);
-    const home = await homeWithAwsConfig();
+    await writeContainerLogLines(emu.name, lines);
+    const home = await tempHome();
+    await home.writeConfig(emu.config);
 
     for (const flag of ["--tail", "-n"]) {
       const run = await lstk(["logs", flag, "3"], { home });
@@ -144,10 +146,12 @@ describe.skipIf(noDocker)("lstk logs with a running emulator", () => {
   });
 
   test("shows every line when --tail is not given", async () => {
-    await startStubEmulator();
+    const emu = privateEmulator();
+    await startStubEmulator(emu.name);
     const lines = Array.from({ length: 10 }, (_, i) => `tail-marker-${i + 1}`);
-    await writeContainerLogLines(defaultEmulatorName, lines);
-    const home = await homeWithAwsConfig();
+    await writeContainerLogLines(emu.name, lines);
+    const home = await tempHome();
+    await home.writeConfig(emu.config);
 
     const run = await lstk(["logs"], { home });
 
@@ -158,10 +162,12 @@ describe.skipIf(noDocker)("lstk logs with a running emulator", () => {
   });
 
   test("--follow --tail starts streaming from the tail, not the whole backlog", async () => {
-    await startStubEmulator();
+    const emu = privateEmulator();
+    await startStubEmulator(emu.name);
     const lines = Array.from({ length: 10 }, (_, i) => `tail-marker-${i + 1}`);
-    await writeContainerLogLines(defaultEmulatorName, lines);
-    const home = await homeWithAwsConfig();
+    await writeContainerLogLines(emu.name, lines);
+    const home = await tempHome();
+    await home.writeConfig(emu.config);
 
     const subprocess = execa(lstkBinary, ["logs", "--follow", "--tail", "3"], {
       cwd: home.path,
@@ -182,8 +188,10 @@ describe.skipIf(noDocker)("lstk logs with a running emulator", () => {
   });
 
   test("--follow streams new lines as they are written", async () => {
-    await startStubEmulator();
-    const home = await homeWithAwsConfig();
+    const emu = privateEmulator();
+    await startStubEmulator(emu.name);
+    const home = await tempHome();
+    await home.writeConfig(emu.config);
     const marker = "lstk-logs-test-marker";
 
     const subprocess = execa(lstkBinary, ["logs", "--follow"], {
@@ -198,7 +206,7 @@ describe.skipIf(noDocker)("lstk logs with a running emulator", () => {
       const found = waitForOutputLine(subprocess, marker, 15_000);
       // Give lstk logs a moment to attach before generating output.
       await sleep(500);
-      await execa("docker", ["exec", defaultEmulatorName, "sh", "-c", `echo ${marker} >/proc/1/fd/1`]);
+      await execa("docker", ["exec", emu.name, "sh", "-c", `echo ${marker} >/proc/1/fd/1`]);
 
       await found;
     } finally {
@@ -212,11 +220,13 @@ describe.skipIf(noDocker)("lstk logs with a running emulator", () => {
   // lines permanently above the program instead of into the redrawn frame, so
   // they must all still be present once the run exits.
   test("interactive logs preserve full scrollback, not just the capped TUI history", async () => {
-    await startStubEmulator();
+    const emu = privateEmulator();
+    await startStubEmulator(emu.name);
     const lineCount = 550;
     const lines = Array.from({ length: lineCount }, (_, i) => `tail-marker-${i + 1}`);
-    await writeContainerLogLines(defaultEmulatorName, lines);
-    const home = await homeWithAwsConfig();
+    await writeContainerLogLines(emu.name, lines);
+    const home = await tempHome();
+    await home.writeConfig(emu.config);
 
     const term = lstkPty(["logs"], { home });
     const exitCode = await term.exitCode();
@@ -226,6 +236,31 @@ describe.skipIf(noDocker)("lstk logs with a running emulator", () => {
     for (let i = 1; i <= lineCount; i++) {
       expect(output, `tail-marker-${i} should survive scrollback`).toContain(`tail-marker-${i}`);
     }
+  });
+});
+
+describe.skipIf(noDocker)("lstk logs with a container under a different name", () => {
+  // Exercises the image/internal-port discovery fallback, which matches any
+  // container running a known `localstack/*` image on the internal port —
+  // unlike the name-first path, that can cross-match another test's container,
+  // so this keeps the machine-wide lock.
+  useExclusiveEmulator();
+
+  // lstk must find the emulator even when it is running under a name other
+  // than the config-derived canonical one (e.g. started outside lstk),
+  // falling back to matching by known image + internal port.
+  test("finds the emulator when it was started outside lstk under a different name", async () => {
+    await docker.pull("alpine:latest");
+    await docker.tag("alpine:latest", "localstack/localstack-pro:logs-e2e-test-fake");
+    await startStubEmulator("localstack-main", {
+      image: "localstack/localstack-pro:logs-e2e-test-fake",
+      dockerArgs: ["-p", "4566"],
+    });
+    const home = await homeWithAwsConfig();
+
+    const run = await lstk(["logs"], { home });
+
+    expect(run).toSucceed();
   });
 });
 

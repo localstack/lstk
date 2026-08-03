@@ -58,6 +58,11 @@ export interface PrivateEmulator {
  * references, so a shared port cannot cross-match a plain stand-in container. Tests
  * that deliberately exercise that fallback — or that must use the canonical
  * `localstack-<type>` name — still need the lock.
+ *
+ * Just as useful for asserting the *absence* of an emulator: write the config and
+ * never start a stub for it, and "not running" holds no matter what any concurrent
+ * test is doing. That is stronger than the lock, which only kept other well-behaved
+ * tests away rather than guaranteeing the name was free.
  */
 export function privateEmulator(
   type: "aws" | "snowflake" | "azure" = "aws",

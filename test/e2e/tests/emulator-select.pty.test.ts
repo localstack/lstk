@@ -30,6 +30,10 @@ describe("first-run emulator selection", () => {
     await term.expectNever("Which emulator would you like to use?", { within: 2_000 });
   });
 
+  // The picker only appears when no config file exists yet, which is also
+  // exactly the state that gives the started emulator the canonical
+  // `localstack-aws` name (no tag to privatize with) -- so this case keeps
+  // the machine-wide lock rather than a private emulator identity.
   describe.skipIf(noDocker)("on a fresh install", () => {
     useExclusiveEmulator();
 

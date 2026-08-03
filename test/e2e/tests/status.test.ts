@@ -11,7 +11,7 @@ import {
   tempHome,
   useExclusiveEmulator,
 } from "../support/index.ts";
-import { startStubEmulator } from "../support/emulator-stub.ts";
+import { privateEmulator, startStubEmulator } from "../support/emulator-stub.ts";
 
 // Ported from test/integration/status_test.go.
 //
@@ -24,6 +24,13 @@ import { startStubEmulator } from "../support/emulator-stub.ts";
 // `/_localstack/resources` endpoints, reached via the `LOCALSTACK_HOST` env
 // var lstk itself honors as a host override. This exercises the real output
 // parsing/rendering without pulling a multi-hundred-MB licensed image.
+//
+// Most of these only need "an emulator is running" under some name, so they
+// give themselves a private container name/tag via `privateEmulator()`
+// instead of the canonical `localstack-<type>` name, and need no lock. A
+// small subset genuinely depends on the canonical name or a real published
+// port; those stay under `useExclusiveEmulator()` below, with a comment on
+// why each one can't be privatized.
 
 const noDocker = requirement(
   "a container runtime",
@@ -63,59 +70,13 @@ function mockLocalStackServer(opts: {
 }
 
 describe.skipIf(noDocker)("lstk status", () => {
-  useExclusiveEmulator();
-
-  test("fails with a not-running message and a help pointer when nothing is running", async () => {
-    const home = await tempHome();
-
-    const run = await lstk(["status"], { home });
-
-    expect(run).toExitWith(1);
-    expect(run.stdout).toPrintExactly(`
-      Error: LocalStack AWS Emulator is not running
-        ==> Start LocalStack: lstk
-        ==> See help: lstk -h
-    `);
-  });
-
-  // NOTE: test/integration/status_test.go also covers "status uses the actual
-  // bound port rather than a stale configured one" by publishing a placeholder
-  // container's port on a second loopback alias (127.0.0.2) so a mock server
-  // can occupy the same port number on 127.0.0.1. That relies on Docker being
-  // able to publish to an arbitrary loopback address, which Docker Desktop's
-  // VM-backed networking on this machine rejects ("bind: can't assign
-  // requested address"), unlike the native Linux daemon the Go suite runs
-  // against in CI. Not reproducible deterministically across contributor
-  // machines here, so it is dropped rather than left flaky.
-
-  test("works with a container started outside lstk", async () => {
-    const mock = await mockLocalStackServer({ version: "3.5.0" });
-
-    const fakeImage = "localstack/localstack-pro:test-fake";
-    await docker.pull("alpine:latest");
-    await docker.tag("alpine:latest", fakeImage);
-    await startStubEmulator("localstack-external", {
-      image: fakeImage,
-      hostBinding: { hostPort: "4566" },
-    });
-
-    const home = await tempHome({ env: { LOCALSTACK_HOST: mock.hostPort } });
-
-    const run = await lstk(["status"], { home });
-
-    // Not snapshotted: the full status output also carries the mock server's
-    // ephemeral port (Endpoint) and an Uptime that ticks between runs, per the
-    // README's note on `lstk status` output. The version is the one stable,
-    // load-bearing fact here.
-    expect(run).toSucceed();
-    expect(run).toPrint("3.5.0");
-  });
-
   test("shows no resources when the emulator reports an empty environment", async () => {
     const mock = await mockLocalStackServer({ version: "4.14.1" });
-    await startStubEmulator("localstack-aws");
+    const emu = privateEmulator();
+    await startStubEmulator(emu.name);
 
     const home = await tempHome({ env: { LOCALSTACK_HOST: mock.hostPort } });
+    await home.writeConfig(emu.config);
 
     const run = await lstk(["status"], { home });
 
@@ -125,10 +86,11 @@ describe.skipIf(noDocker)("lstk status", () => {
   });
 
   test("reports no resource table for a running Snowflake emulator", async () => {
-    await startStubEmulator("localstack-snowflake");
+    const emu = privateEmulator("snowflake");
+    await startStubEmulator(emu.name);
 
     const home = await tempHome();
-    await home.writeConfig(`[[containers]]\ntype = "snowflake"\ntag = "latest"\nport = "4566"\n`);
+    await home.writeConfig(emu.config);
 
     const run = await lstk(["status"], { home });
 
@@ -146,29 +108,92 @@ describe.skipIf(noDocker)("lstk status", () => {
     expect(run).not.toPrint("No resources deployed");
   });
 
-  test.skipIf(!authToken())(
-    "shows the version reported by a running Snowflake emulator",
-    async () => {
-      const home = await tempHome({
-        env: { LOCALSTACK_AUTH_TOKEN: requireAuthToken() },
-      });
-      await home.writeConfig(`[[containers]]\ntype = "snowflake"\ntag = "latest"\nport = "4566"\n`);
+  // These cannot use a private emulator identity, so they keep the
+  // machine-wide lock instead:
+  describe("against the canonical name or a real published port", () => {
+    useExclusiveEmulator();
 
-      const start = await lstk(["start", "--non-interactive"], { home });
-      expect(start).toSucceed();
-
-      const health = (await fetch("http://localhost:4566/_localstack/health").then((r) =>
-        r.json(),
-      )) as { version: string };
-      expect(health.version).toBeTruthy();
+    test("fails with a not-running message and a help pointer when nothing is running", async () => {
+      // No config is written at all, so this exercises the true zero-config
+      // default (AWS, canonical name `localstack-aws`, port 4566). A private
+      // tag would sidestep that default entirely, and a real `localstack-aws`
+      // started concurrently elsewhere would make "not running" flaky.
+      const home = await tempHome();
 
       const run = await lstk(["status"], { home });
 
+      expect(run).toExitWith(1);
+      expect(run.stdout).toPrintExactly(`
+        Error: LocalStack AWS Emulator is not running
+          ==> Start LocalStack: lstk
+          ==> See help: lstk -h
+      `);
+    });
+
+    // NOTE: test/integration/status_test.go also covers "status uses the actual
+    // bound port rather than a stale configured one" by publishing a placeholder
+    // container's port on a second loopback alias (127.0.0.2) so a mock server
+    // can occupy the same port number on 127.0.0.1. That relies on Docker being
+    // able to publish to an arbitrary loopback address, which Docker Desktop's
+    // VM-backed networking on this machine rejects ("bind: can't assign
+    // requested address"), unlike the native Linux daemon the Go suite runs
+    // against in CI. Not reproducible deterministically across contributor
+    // machines here, so it is dropped rather than left flaky.
+
+    test("works with a container started outside lstk", async () => {
+      // Deliberately exercises the image/port discovery fallback: a foreign
+      // container tagged as a real `localstack/*` image repo and published on
+      // the canonical port 4566, which only lstk's fallback discovery -- not a
+      // container name -- distinguishes from another emulator on that port.
+      const mock = await mockLocalStackServer({ version: "3.5.0" });
+
+      const fakeImage = "localstack/localstack-pro:test-fake";
+      await docker.pull("alpine:latest");
+      await docker.tag("alpine:latest", fakeImage);
+      await startStubEmulator("localstack-external", {
+        image: fakeImage,
+        hostBinding: { hostPort: "4566" },
+      });
+
+      const home = await tempHome({ env: { LOCALSTACK_HOST: mock.hostPort } });
+
+      const run = await lstk(["status"], { home });
+
+      // Not snapshotted: the full status output also carries the mock server's
+      // ephemeral port (Endpoint) and an Uptime that ticks between runs, per the
+      // README's note on `lstk status` output. The version is the one stable,
+      // load-bearing fact here.
       expect(run).toSucceed();
-      expect(
-        run,
-        "snowflake status should display the version reported by /_localstack/health",
-      ).toPrint(`• Version: ${health.version}`);
-    },
-  );
+      expect(run).toPrint("3.5.0");
+    });
+
+    test.skipIf(!authToken())(
+      "shows the version reported by a running Snowflake emulator",
+      async () => {
+        // Starts a real, license-validated emulator via `lstk start`, which
+        // always uses the canonical name -- not a stub under a private tag --
+        // and requires LOCALSTACK_AUTH_TOKEN (absent here, so this skips).
+        const home = await tempHome({
+          env: { LOCALSTACK_AUTH_TOKEN: requireAuthToken() },
+        });
+        await home.writeConfig(`[[containers]]\ntype = "snowflake"\ntag = "latest"\nport = "4566"\n`);
+
+        const start = await lstk(["start", "--non-interactive"], { home });
+        expect(start).toSucceed();
+
+        const health = (await fetch("http://localhost:4566/_localstack/health").then((r) =>
+          r.json(),
+        )) as { version: string };
+        expect(health.version).toBeTruthy();
+
+        const run = await lstk(["status"], { home });
+
+        expect(run).toSucceed();
+        expect(
+          run,
+          "snowflake status should display the version reported by /_localstack/health",
+        ).toPrint(`• Version: ${health.version}`);
+      },
+    );
+  });
 });

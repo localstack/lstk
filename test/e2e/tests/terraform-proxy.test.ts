@@ -1,9 +1,7 @@
-import { execa } from "execa";
 import { access, mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { afterEach, describe, expect, test } from "vitest";
+import { describe, expect, test } from "vitest";
 import {
-  docker,
   dockerIsAvailable,
   lstk,
   normalizeCliOutput,
@@ -12,6 +10,7 @@ import {
   useExclusiveEmulator,
 } from "../support/index.ts";
 import { fakeBinary, type FakeBinary, type FakeCall } from "../support/fake-binary.ts";
+import { privateEmulator, startStubEmulator } from "../support/emulator-stub.ts";
 
 // Ported from test/integration/terraform_cmd_test.go.
 //
@@ -35,7 +34,6 @@ const noDocker = requirement(
   "Start a container runtime (Docker Desktop, Colima, Rancher Desktop, ...) so `docker info` succeeds.",
 );
 
-const AWS_CONTAINER = "localstack-aws";
 const SNOWFLAKE_CONTAINER = "localstack-snowflake";
 const OVERRIDE_FILE = "localstack_providers_override.tf";
 
@@ -63,24 +61,6 @@ async function fakeTerraform(options: { name?: string; captureOverride?: boolean
     responses: [{ when: ["providers", "schema"], stdout: awsSchemaJSON }],
     captureFiles: options.captureOverride ? [OVERRIDE_FILE] : [],
   });
-}
-
-/**
- * Starts a placeholder container so lstk's name-based "is it running" check
- * matches it. Force-removes any leftover container under the same name first:
- * `useExclusiveEmulator()` only serializes against other e2e test files, not
- * against unrelated Docker users on the same machine (e.g. the Go integration
- * suite, which uses the same container names with no knowledge of this lock).
- */
-async function startPlaceholderEmulator(name: string): Promise<void> {
-  await docker.pull("alpine:latest");
-  await docker.removeContainer(name);
-  const result = await execa("docker", ["run", "-d", "--name", name, "alpine:latest", "sleep", "infinity"], {
-    reject: false,
-  });
-  if (result.exitCode !== 0) {
-    throw new Error(`docker run --name ${name} failed: ${result.stderr}`);
-  }
 }
 
 async function fileExists(file: string): Promise<boolean> {
@@ -240,48 +220,49 @@ describe("lstk terraform without an emulator", () => {
 });
 
 describe.skipIf(noDocker)("lstk terraform with a running emulator", () => {
-  useExclusiveEmulator();
+  // Each test below only needs "the AWS emulator is running" under some name,
+  // not specifically the canonical `localstack-aws` one, so privateEmulator()
+  // gives it a container and config no other test shares — no machine-wide
+  // lock needed. The one test that genuinely needs the canonical name (the
+  // Snowflake-conflict case below) keeps useExclusiveEmulator() in its own
+  // describe, because `runningNonAWSEmulator` (cmd/iac.go) always probes the
+  // canonical `localstack-<type>` name for the *other* emulator types,
+  // regardless of what is in the test's own config.
 
-  afterEach(async () => {
-    await docker.removeContainer(AWS_CONTAINER);
-    await docker.removeContainer(SNOWFLAKE_CONTAINER);
-  });
+  describe("with no emulator of its own running", () => {
+    // Holds the exclusive lock even though it starts nothing: a private tag only
+    // makes the container *name* unique, and lstk falls back to matching any
+    // known localstack image exposing port 4566 when that name is absent
+    // (internal/container/running.go). A concurrent fallback test would
+    // otherwise make this one see an emulator that is not its own.
+    useExclusiveEmulator();
 
-  test("fails with a clear message when no emulator is running", async () => {
-    const terraform = await fakeTerraform();
-    const home = await tempHome();
+    test("fails with a clear message when no emulator is running", async () => {
+      // No stub is started for emu.name, and the surrounding lock keeps any
+      // image/port-fallback test from standing in for it.
+      const terraform = await fakeTerraform();
+      const emu = privateEmulator();
+      const home = await tempHome();
+      await home.writeConfig(emu.config);
 
-    const run = await lstk(["terraform", "plan"], { home, env: { PATH: terraform.path } });
+      const run = await lstk(["terraform", "plan"], { home, env: { PATH: terraform.path } });
 
-    expect(run).toFail();
-    expect(run.stdout).toPrintExactly(`
-      Error: LocalStack AWS Emulator is not running
-        ==> Start LocalStack: lstk
-        ==> See help: lstk -h
-    `);
-    expect(await terraform.calls(), "terraform must never be invoked when nothing is running").toEqual([]);
-  });
-
-  test("requires the AWS emulator: fails clearly when Snowflake is running instead", async () => {
-    await startPlaceholderEmulator(SNOWFLAKE_CONTAINER);
-    const terraform = await fakeTerraform();
-    const home = await tempHome();
-    await home.writeConfig(`[[containers]]\ntype = "snowflake"\ntag = "latest"\nport = "4566"\n`);
-
-    const run = await lstk(["terraform", "plan"], { home, env: { PATH: terraform.path } });
-
-    expect(run).toFail();
-    expect(run.stdout).toPrintExactly(`
-      Error: lstk terraform requires the LocalStack AWS Emulator, but the LocalStack Snowflake Emulator is running
-        ==> Start the AWS emulator: lstk
-    `);
-    expect(await terraform.calls()).toEqual([]);
+      expect(run).toFail();
+      expect(run.stdout).toPrintExactly(`
+        Error: LocalStack AWS Emulator is not running
+          ==> Start LocalStack: lstk
+          ==> See help: lstk -h
+      `);
+      expect(await terraform.calls(), "terraform must never be invoked when nothing is running").toEqual([]);
+    });
   });
 
   test("a chdir target that does not exist fails before terraform is invoked", async () => {
-    await startPlaceholderEmulator(AWS_CONTAINER);
+    const emu = privateEmulator();
+    await startStubEmulator(emu.name);
     const terraform = await fakeTerraform();
     const home = await tempHome();
+    await home.writeConfig(emu.config);
 
     const run = await lstk(["terraform", "-chdir=does-not-exist", "plan"], {
       home,
@@ -295,7 +276,8 @@ describe.skipIf(noDocker)("lstk terraform with a running emulator", () => {
   });
 
   test("a provider schema that requires `terraform init` fails clearly and invokes terraform only once", async () => {
-    await startPlaceholderEmulator(AWS_CONTAINER);
+    const emu = privateEmulator();
+    await startStubEmulator(emu.name);
     const terraform = await fakeBinary({
       name: "terraform",
       responses: [
@@ -303,6 +285,7 @@ describe.skipIf(noDocker)("lstk terraform with a running emulator", () => {
       ],
     });
     const home = await tempHome();
+    await home.writeConfig(emu.config);
 
     const run = await lstk(["terraform", "plan"], { home, env: { PATH: terraform.path } });
 
@@ -316,9 +299,11 @@ describe.skipIf(noDocker)("lstk terraform with a running emulator", () => {
   });
 
   test("a pre-existing override file is refused, not overwritten", async () => {
-    await startPlaceholderEmulator(AWS_CONTAINER);
+    const emu = privateEmulator();
+    await startStubEmulator(emu.name);
     const terraform = await fakeTerraform();
     const home = await tempHome();
+    await home.writeConfig(emu.config);
     const overridePath = path.join(home.path, OVERRIDE_FILE);
     await writeFile(overridePath, "# my own override\n");
 
@@ -342,9 +327,11 @@ describe.skipIf(noDocker)("lstk terraform with a running emulator", () => {
   });
 
   test("LSTK_TF_DRY_RUN generates the override with resolved region/account and skips terraform", async () => {
-    await startPlaceholderEmulator(AWS_CONTAINER);
+    const emu = privateEmulator();
+    await startStubEmulator(emu.name);
     const terraform = await fakeTerraform();
     const home = await tempHome({ env: { LSTK_TF_DRY_RUN: "1" } });
+    await home.writeConfig(emu.config);
 
     const run = await lstk(
       ["terraform", "--region", "us-west-2", "--account", "111111111111", "plan"],
@@ -362,9 +349,11 @@ describe.skipIf(noDocker)("lstk terraform with a running emulator", () => {
   });
 
   test("a proxied plan generates the override and removes it once terraform exits", async () => {
-    await startPlaceholderEmulator(AWS_CONTAINER);
+    const emu = privateEmulator();
+    await startStubEmulator(emu.name);
     const terraform = await fakeTerraform({ captureOverride: true });
     const home = await tempHome();
+    await home.writeConfig(emu.config);
 
     const run = await lstk(["terraform", "plan"], { home, env: { PATH: terraform.path } });
 
@@ -377,9 +366,11 @@ describe.skipIf(noDocker)("lstk terraform with a running emulator", () => {
 
   describe("-chdir anchors the override to the target directory", () => {
     test("a dry run writes the override inside the chdir dir, not the process cwd", async () => {
-      await startPlaceholderEmulator(AWS_CONTAINER);
+      const emu = privateEmulator();
+      await startStubEmulator(emu.name);
       const terraform = await fakeTerraform();
       const home = await tempHome({ env: { LSTK_TF_DRY_RUN: "1" } });
+      await home.writeConfig(emu.config);
       await mkdir(path.join(home.path, "infra"));
 
       const run = await lstk(["terraform", "-chdir=infra", "plan"], { home, env: { PATH: terraform.path } });
@@ -391,9 +382,11 @@ describe.skipIf(noDocker)("lstk terraform with a running emulator", () => {
     });
 
     test("a live run forwards -chdir to terraform and cleans up the override afterwards", async () => {
-      await startPlaceholderEmulator(AWS_CONTAINER);
+      const emu = privateEmulator();
+      await startStubEmulator(emu.name);
       const terraform = await fakeTerraform({ captureOverride: true });
       const home = await tempHome();
+      await home.writeConfig(emu.config);
       await mkdir(path.join(home.path, "infra"));
 
       const run = await lstk(["terraform", "-chdir=infra", "plan"], { home, env: { PATH: terraform.path } });
@@ -404,5 +397,30 @@ describe.skipIf(noDocker)("lstk terraform with a running emulator", () => {
       expect(await fileExists(path.join(home.path, "infra", OVERRIDE_FILE))).toBe(false);
       expect(await fileExists(path.join(home.path, OVERRIDE_FILE))).toBe(false);
     });
+  });
+});
+
+describe.skipIf(noDocker)("lstk terraform with a running emulator (canonical name)", () => {
+  // `runningNonAWSEmulator` (cmd/iac.go) checks for a running "other" emulator
+  // by probing the hardcoded canonical `localstack-<type>` name at the default
+  // port for every non-AWS type -- it never reads the test's own config for
+  // that check. So the Snowflake side of this test cannot use a private tag;
+  // it keeps the machine-wide lock instead.
+  useExclusiveEmulator();
+
+  test("requires the AWS emulator: fails clearly when Snowflake is running instead", async () => {
+    await startStubEmulator(SNOWFLAKE_CONTAINER);
+    const terraform = await fakeTerraform();
+    const home = await tempHome();
+    await home.writeConfig(`[[containers]]\ntype = "snowflake"\ntag = "latest"\nport = "4566"\n`);
+
+    const run = await lstk(["terraform", "plan"], { home, env: { PATH: terraform.path } });
+
+    expect(run).toFail();
+    expect(run.stdout).toPrintExactly(`
+      Error: lstk terraform requires the LocalStack AWS Emulator, but the LocalStack Snowflake Emulator is running
+        ==> Start the AWS emulator: lstk
+    `);
+    expect(await terraform.calls()).toEqual([]);
   });
 });
