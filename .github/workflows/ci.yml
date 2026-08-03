@@ -293,8 +293,12 @@ jobs:
           go-version-file: go.mod
           cache-dependency-path: go.sum
 
+      # The action reads its version from a package.json's "packageManager" field,
+      # and this repo has none at the root — the suite's lives in test/e2e.
       - name: Set up pnpm
         uses: pnpm/action-setup@v4
+        with:
+          package_json_file: test/e2e/package.json
 
       # Node 26: the suite is type-erasable TypeScript, matching what Node itself
       # can run by stripping types.
@@ -336,6 +340,9 @@ jobs:
           name: e2e-test-results-${{ matrix.os }}
           path: test-e2e-results.xml
 
+      # fail-on-error is off so a setup failure — which produces no report at all —
+      # surfaces as the one real failure instead of also failing here, where the
+      # message would be "no files found" rather than the actual cause.
       - name: Test report
         uses: dorny/test-reporter@v3
         if: always()
@@ -343,6 +350,7 @@ jobs:
           name: E2E Test Results (${{ matrix.os }})
           path: test-e2e-results.xml
           reporter: java-junit
+          fail-on-error: false
 
   test-launcher:
     name: Launcher Tests
