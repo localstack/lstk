@@ -11,6 +11,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/google/uuid"
 	"github.com/localstack/lstk/test/integration/env"
 	"github.com/stretchr/testify/require"
 )
@@ -243,6 +244,73 @@ func TestExtensionInvocationRecordedInTelemetry(t *testing.T) {
 	// The invocation is recorded in product telemetry as ext:<name>, so the
 	// warehouse tracks which extension ran — and is NOT mislabeled as "start".
 	assertCommandTelemetry(t, events, "ext:hello", 0)
+}
+
+// The conveyed sessionId exists so an extension emitting its own telemetry can be
+// joined to lstk's ext:<name> event for the same invocation. Asserting the value
+// is a UUID is not enough — the join is only exact if it is *lstk's* session id,
+// so this compares it against the session id on the event lstk actually sent.
+func TestExtensionSessionIDConveyedAndMatchesCommandEvent(t *testing.T) {
+	t.Parallel()
+	extDir := t.TempDir()
+	installExtension(t, extDir, "ref")
+
+	analyticsSrv, events := mockAnalyticsServer(t)
+
+	tmpHome := t.TempDir()
+	environ := env.Environ(envWithPath(tmpHome, extDir)).
+		With(env.AnalyticsEndpoint, analyticsSrv.URL).
+		// Dead DOCKER_HOST: emulator discovery is deterministically skipped.
+		With(env.Key("DOCKER_HOST"), "tcp://127.0.0.1:1")
+
+	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), environ, "ref")
+	require.NoError(t, err, stderr)
+
+	conveyed := echoedValue(t, stdout, "SESSION_ID")
+	_, parseErr := uuid.Parse(conveyed)
+	require.NoError(t, parseErr, "conveyed sessionId must be a UUID, got %q", conveyed)
+
+	event := receiveEventByName(t, events, "lstk_command")
+	metadata, ok := event["metadata"].(map[string]any)
+	require.True(t, ok, "event has no metadata object: %v", event)
+	require.Equal(t, conveyed, metadata["session_id"],
+		"conveyed sessionId must equal the session id on the ext:<name> event")
+}
+
+func TestExtensionSessionIDOmittedWhenTelemetryDisabled(t *testing.T) {
+	t.Parallel()
+	extDir := t.TempDir()
+	installExtension(t, extDir, "ref")
+
+	tmpHome := t.TempDir()
+	environ := env.Environ(envWithPath(tmpHome, extDir)).
+		With(env.DisableEvents, "1").
+		With(env.Key("DOCKER_HOST"), "tcp://127.0.0.1:1")
+
+	// `exit 7` also proves the extension still runs and still propagates its exit
+	// code when there is no session to convey.
+	stdout, _, err := runLstk(t, testContext(t), t.TempDir(), environ, "ref", "exit", "7")
+	requireExitCode(t, 7, err)
+
+	// No session exists, so the field is omitted rather than conveyed empty (the
+	// JSON-level omission is asserted in internal/extension).
+	require.NotContains(t, stdout, "SESSION_ID=",
+		"no sessionId may be conveyed when telemetry is disabled")
+	require.Contains(t, stdout, "API_VERSION=1")
+	require.Contains(t, stdout, "ARGS=[exit 7]")
+}
+
+// echoedValue returns the value of a `KEY=value` line the reference extension
+// printed, failing the test when no such line is present.
+func echoedValue(t *testing.T, stdout, key string) string {
+	t.Helper()
+	for _, line := range strings.Split(stdout, "\n") {
+		if v, ok := strings.CutPrefix(strings.TrimSpace(line), key+"="); ok {
+			return v
+		}
+	}
+	t.Fatalf("no %s= line in extension output:\n%s", key, stdout)
+	return ""
 }
 
 func TestExtensionEndpointConveyedWhenEmulatorRunning(t *testing.T) {

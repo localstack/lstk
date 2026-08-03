@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -85,6 +86,24 @@ func TestNew_DisabledClientIsDisabled(t *testing.T) {
 	t.Parallel()
 	c := New("http://localhost", true)
 	assert.False(t, c.enabled)
+}
+
+// The session id is conveyed to extension processes (see internal/extension.Context),
+// so it must be readable from outside the package and must be the same value that
+// is stamped on the events this client emits.
+func TestSessionID_MatchesEmittedEventsAndIsEmptyWhenDisabled(t *testing.T) {
+	t.Parallel()
+
+	c := New("http://localhost", false)
+	_, err := uuid.Parse(c.SessionID())
+	assert.NoError(t, err, "session id should be a valid UUID")
+
+	c.Emit(context.Background(), "cli_cmd", map[string]any{"cmd": "lstk ref"})
+	require.Len(t, c.pending, 1)
+	assert.Equal(t, c.SessionID(), c.pending[0].Metadata.SessionID)
+
+	// A disabled client has no session, so there is nothing to correlate.
+	assert.Empty(t, New("http://localhost", true).SessionID())
 }
 
 func TestEmit_DropsOldestWhenFull(t *testing.T) {
