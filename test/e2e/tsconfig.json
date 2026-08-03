@@ -1,0 +1,27 @@
+{
+  "compilerOptions": {
+    "target": "ESNext",
+    "lib": ["ESNext"],
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+
+    // Every @types/* dependency must be listed here. Global types otherwise arrive
+    // by accident — @types/node's globals reach this project transitively through
+    // execa and vitest, so dropping "node" would typecheck today and break the day
+    // a dependency stops referencing it.
+    "types": ["node", "vitest/globals"],
+
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+
+    // Node 26 runs TypeScript by erasing types, nothing more: no syntax here may
+    // need a transform. Enums, namespaces, parameter properties and import
+    // aliases are therefore compile errors, and imports name the real `.ts` file.
+    "erasableSyntaxOnly": true,
+    "verbatimModuleSyntax": true,
+    "allowImportingTsExtensions": true
+  },
+  "include": ["support/**/*.ts", "tests/**/*.ts", "vitest.config.ts"]
+}

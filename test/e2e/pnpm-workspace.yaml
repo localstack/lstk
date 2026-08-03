@@ -1,0 +1,8 @@
+# pnpm 11 reads project settings from here, not from package.json's "pnpm" field.
+#
+# Install scripts are blocked by default. node-pty unpacks or compiles a native
+# binary — terminal tests are mandatory, so it must be allowed to run — and esbuild
+# links vitest's platform binary. Nothing else in the tree may run a script.
+allowBuilds:
+  node-pty: true
+  esbuild: true

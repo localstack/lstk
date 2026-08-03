@@ -5,7 +5,7 @@ endif
 BUILD_DIR=bin
 export CGO_ENABLED=0
 
-.PHONY: build clean test test-integration lint govulncheck mock-generate otel
+.PHONY: build clean test test-integration test-e2e lint govulncheck mock-generate otel
 
 # Always invoke `go build` and let Go's build cache handle incrementality; a
 # file target on bin/lstk would be skipped when the binary exists, even with
@@ -22,6 +22,9 @@ test:
 
 test-integration: build
 	@RUN="$(RUN)" ./scripts/test-integration.sh
+
+test-e2e: build
+	@RUN="$(RUN)" ./scripts/test-e2e.sh
 
 otel:
 	docker compose -f docker-compose.tracing.yaml up -d

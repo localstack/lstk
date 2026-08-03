@@ -12,3 +12,5 @@ test/integration/test-samples/**/.terraform/
 test/integration/test-samples/**/.terraform.lock.hcl
 test/integration/test-samples/**/*.tfstate
 test/integration/test-samples/**/*.tfstate.*
+test/e2e/node_modules/
+test-e2e-results.xml
