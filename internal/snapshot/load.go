@@ -28,16 +28,15 @@ var ErrIncompatibleSnapshot = errors.New("snapshot is incompatible with the runn
 // archive format from the user-facing message.
 var ErrInvalidSnapshotFile = errors.New("not a valid snapshot file")
 
-// ErrSnapshotFeatureUnavailable indicates the running emulator's license does
-// not include Cloud Pods, so its /_localstack/pods* routes were never
-// registered. The emulator reports that as a bare 404 with an empty body (its
-// generic unmatched-route reply), which the aws client translates into this
-// sentinel — see isFeatureUnavailableResponse.
+// ErrSnapshotFeatureUnavailable indicates the emulator's license lacks the
+// paid entitlement for snapshots (branded "Cloud Pods", but required for
+// local-file and S3-remote saves too, not just platform pods). Its
+// /_localstack/pods* routes are then never registered, so the emulator
+// replies with a bare, empty-body 404 — see isFeatureUnavailableResponse.
 //
-// The message deliberately says nothing about snapshots: aws.Client.ResetState
-// is shared with `lstk reset`, which surfaces this error text directly, so
-// naming snapshots here would mislabel a non-snapshot command. Snapshot-specific
-// wording belongs in emitFeatureUnavailableError.
+// Kept feature-neutral since aws.Client.ResetState is shared with `lstk
+// reset`, which surfaces this text directly; snapshot-specific wording lives
+// in emitFeatureUnavailableError instead.
 var ErrSnapshotFeatureUnavailable = errors.New("feature not available on this plan")
 
 // emitFeatureUnavailableError renders the shared "requires a paid plan" message
