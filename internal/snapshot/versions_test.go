@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"strings"
 	"testing"
 	"time"
 
@@ -59,10 +60,46 @@ func TestVersions_RendersTable(t *testing.T) {
 	assert.Equal(t, "my-baseline", lister.gotPod)
 
 	table := firstTable(t, getEvents())
-	assert.Equal(t, []string{"Version", "Created", "LocalStack", "Services", "Description"}, table.Headers)
+	assert.Equal(t, []string{"Version", "Created", "LocalStack", "Services"}, table.Headers)
 	require.Len(t, table.Rows, 2)
-	assert.Equal(t, []string{"2", "2026-07-01 12:00 UTC", "2026.06", "s3, lambda", "nightly"}, table.Rows[0])
-	assert.Equal(t, []string{"1", "-", "-", "-", "-"}, table.Rows[1], "missing values render as a dash")
+	assert.Equal(t, []string{"2", "2026-07-01 12:00 UTC", "2026.06", "s3, lambda"}, table.Rows[0])
+	assert.Equal(t, []string{"1", "-", "-", "-"}, table.Rows[1], "missing values render as a dash")
+}
+
+// TestVersions_ServicesNotTruncated: the services cell is emitted in full and is
+// the table's widest column, so formatTableWidth is the only thing that shortens
+// it — which means a wide terminal shows every name and a redirected stdout shows
+// them all untruncated. Capping in the domain layer would defeat both.
+func TestVersions_ServicesNotTruncated(t *testing.T) {
+	t.Parallel()
+	services := []string{"s3", "sqs", "sns", "iam", "ec2", "rds", "lambda", "dynamodb", "cloudformation", "apigateway"}
+	lister := &fakeVersionLister{versions: []api.CloudPodVersion{{Version: 1, Services: services}}}
+
+	sink, getEvents := captureEvents(t)
+	require.NoError(t, snapshot.Versions(context.Background(), lister, "tok", "p", sink))
+
+	table := firstTable(t, getEvents())
+	require.Len(t, table.Rows, 1)
+	assert.Equal(t, strings.Join(services, ", "), table.Rows[0][3])
+	assert.NotContains(t, table.Rows[0][3], "more", "no domain-side summarisation")
+	assert.NotContains(t, table.Rows[0][3], "…", "no domain-side ellipsis")
+}
+
+// TestVersions_DescriptionIsNotAColumn pins the deliberate omission: nothing in
+// lstk sets the platform's description field, so a column for it rendered "-" on
+// every row. The space goes to service names instead.
+func TestVersions_DescriptionIsNotAColumn(t *testing.T) {
+	t.Parallel()
+	lister := &fakeVersionLister{versions: []api.CloudPodVersion{
+		{Version: 1, Services: []string{"s3"}, Description: "should-not-render"},
+	}}
+
+	sink, getEvents := captureEvents(t)
+	require.NoError(t, snapshot.Versions(context.Background(), lister, "tok", "p", sink))
+
+	table := firstTable(t, getEvents())
+	assert.NotContains(t, table.Headers, "Description")
+	assert.NotContains(t, table.Rows[0], "should-not-render")
 }
 
 func TestVersions_CountLinePluralization(t *testing.T) {
@@ -164,70 +201,4 @@ func TestVersions_ListerError(t *testing.T) {
 	require.Error(t, err)
 	assert.False(t, output.IsSilent(err), "an unexpected transport error should fall through to the generic handler")
 	assert.Contains(t, err.Error(), "platform unreachable")
-}
-
-func TestTruncateServices(t *testing.T) {
-	t.Parallel()
-
-	t.Run("fits within the budget", func(t *testing.T) {
-		t.Parallel()
-		assert.Equal(t, "", snapshot.TruncateServices(nil, 20))
-		assert.Equal(t, "s3", snapshot.TruncateServices([]string{"s3"}, 20))
-		assert.Equal(t, "s3, sqs, sns", snapshot.TruncateServices([]string{"s3", "sqs", "sns"}, 20))
-	})
-
-	t.Run("summarises the overflow", func(t *testing.T) {
-		t.Parallel()
-		assert.Equal(t, "s3, sqs, sns +3 more",
-			snapshot.TruncateServices([]string{"s3", "sqs", "sns", "iam", "ec2", "rds"}, 20))
-	})
-
-	t.Run("always shows at least one name", func(t *testing.T) {
-		t.Parallel()
-		got := snapshot.TruncateServices([]string{"an-extremely-long-service-name", "s3"}, 20)
-		assert.Equal(t, "an-extremel… +1 more", got)
-		assert.Len(t, []rune(got), 20, "the cell should fill, but not exceed, the budget")
-	})
-
-	// The whole point of the budget is that the rendered cell stays bounded, so
-	// assert that directly across a range of shapes and budgets. This is a hard
-	// bound: the "+N more" suffix and the ellipsis both count against it.
-	t.Run("never exceeds the budget", func(t *testing.T) {
-		t.Parallel()
-		inputs := [][]string{
-			{"s3"},
-			{"s3", "sqs"},
-			{"s3", "sqs", "sns", "iam", "ec2", "rds", "lambda", "dynamodb"},
-			{"a-really-quite-long-service-name", "another-long-one", "s3"},
-			{"αβγδεζηθικλμνξοπρστυφχψω", "s3"},
-		}
-		for _, max := range []int{1, 3, 8, 15, 20, 30} {
-			for _, services := range inputs {
-				got := snapshot.TruncateServices(services, max)
-				assert.LessOrEqual(t, len([]rune(got)), max,
-					"budget %d exceeded for %v: %q", max, services, got)
-			}
-		}
-	})
-}
-
-// TestTruncateDescription: max is a hard bound on the rendered width, so the
-// ellipsis marking the cut counts against it.
-func TestTruncateDescription(t *testing.T) {
-	t.Parallel()
-	assert.Equal(t, "", snapshot.TruncateDescription("", 10))
-	assert.Equal(t, "short", snapshot.TruncateDescription("short", 10))
-	assert.Equal(t, "exactly-10", snapshot.TruncateDescription("exactly-10", 10))
-	assert.Equal(t, "012345678…", snapshot.TruncateDescription("0123456789abc", 10))
-	assert.Equal(t, "trailing…", snapshot.TruncateDescription("trailing  space", 10), "the cut should not leave trailing spaces")
-	// Multi-byte input must be cut on rune boundaries, never mid-character.
-	assert.Equal(t, "αααα…", snapshot.TruncateDescription("αααααααα", 5))
-	// Degenerate budgets still produce something bounded rather than panicking.
-	assert.Equal(t, "…", snapshot.TruncateDescription("abcdef", 1))
-	assert.Equal(t, "", snapshot.TruncateDescription("abcdef", 0))
-
-	for _, max := range []int{0, 1, 2, 5, 40} {
-		got := snapshot.TruncateDescription("a description long enough to need cutting at every budget", max)
-		assert.LessOrEqual(t, len([]rune(got)), max, "budget %d exceeded: %q", max, got)
-	}
 }

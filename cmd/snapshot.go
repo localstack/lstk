@@ -45,7 +45,7 @@ Use "lstk snapshot versions pod:my-baseline" to see which versions exist.`
 
 const snapshotVersionsLong = `List the version history of a Cloud Pod. Every save to an existing pod adds a new version.
 
-  lstk snapshot versions pod:my-baseline    # prints version, created date, LocalStack version, services, and description
+  lstk snapshot versions pod:my-baseline    # prints version, created date, LocalStack version, and services
 
 Only Cloud Pods (pod: prefix) have versions; local files and s3:// remotes do not. Append a version to a reference to act on that one specifically:
 

@@ -54,12 +54,13 @@ func TestSnapshotVersionsSuccessWithoutDocker(t *testing.T) {
 	assert.Equal(t, "/v1/cloudpods/my-baseline", path)
 
 	assert.Contains(t, stdout, "~ 3 versions")
-	for _, header := range []string{"VERSION", "CREATED", "LOCALSTACK", "SERVICES", "DESCRIPTION"} {
+	for _, header := range []string{"VERSION", "CREATED", "LOCALSTACK", "SERVICES"} {
 		assert.Contains(t, stdout, header)
 	}
+	assert.NotContains(t, stdout, "DESCRIPTION", "the description column was dropped in favour of more service names")
 	assert.Contains(t, stdout, "2026-04-15 14:32 UTC")
 	assert.Contains(t, stdout, "s3, lambda")
-	assert.Contains(t, stdout, "nightly baseline")
+	assert.NotContains(t, stdout, "nightly baseline", "the description is no longer rendered")
 
 	// Newest first: version 3's row must precede version 1's.
 	assert.Less(t, strings.Index(stdout, "2026.06"), strings.Index(stdout, "2026.05"),

@@ -6,8 +6,3 @@ var (
 	TemplatedRemoteURL = templatedRemoteURL
 	RemoteName         = remoteName
 )
-
-var (
-	TruncateServices    = truncateServices
-	TruncateDescription = truncateDescription
-)
