@@ -26,7 +26,7 @@ func TestFetchResources_HandlesLongLine(t *testing.T) {
 	defer server.Close()
 
 	c := NewClient()
-	rows, err := c.FetchResources(context.Background(), server.Listener.Addr().String())
+	rows, err := c.FetchResources(context.Background(), server.URL)
 	require.NoError(t, err)
 	require.Len(t, rows, 1)
 	assert.Equal(t, hugeValue, rows[0].Name)
@@ -41,7 +41,7 @@ func TestImportState_HandlesLongLine(t *testing.T) {
 	defer server.Close()
 
 	c := NewClient()
-	err := c.ImportState(context.Background(), server.Listener.Addr().String(), bytes.NewReader([]byte("{}")), "")
+	err := c.ImportState(context.Background(), server.URL, bytes.NewReader([]byte("{}")), "")
 	require.NoError(t, err)
 }
 
@@ -55,7 +55,7 @@ func TestSavePodSnapshot_HandlesLongLine(t *testing.T) {
 	defer server.Close()
 
 	c := NewClient()
-	res, err := c.SavePodSnapshot(context.Background(), server.Listener.Addr().String(), "my-pod", "the-token", nil)
+	res, err := c.SavePodSnapshot(context.Background(), server.URL, "my-pod", "the-token", nil)
 	require.NoError(t, err)
 	assert.Equal(t, 1, res.Version)
 }
@@ -70,7 +70,7 @@ func TestLoadPodSnapshot_HandlesLongLine(t *testing.T) {
 	defer server.Close()
 
 	c := NewClient()
-	services, err := c.LoadPodSnapshot(context.Background(), server.Listener.Addr().String(), "my-pod", "the-token", "")
+	services, err := c.LoadPodSnapshot(context.Background(), server.URL, "my-pod", "the-token", "")
 	require.NoError(t, err)
 	require.Len(t, services, 1)
 	assert.Equal(t, hugeValue, services[0])

@@ -38,6 +38,14 @@ func (c *Client) SetAuthToken(token string) {
 	c.authToken = token
 }
 
+// SessionID is the per-process correlation id stamped on every event this client
+// emits. It is conveyed to extension processes through the runtime context so an
+// extension's own telemetry joins to the lstk invocation that dispatched it.
+// Empty when telemetry is disabled, since a disabled client has no session.
+func (c *Client) SessionID() string {
+	return c.sessionID
+}
+
 func New(endpoint string, disabled bool) *Client {
 	if disabled {
 		return &Client{enabled: false}

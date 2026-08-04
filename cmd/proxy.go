@@ -94,3 +94,56 @@ func jsonPrecedesCommandName(calledAs string) bool {
 	}
 	return result
 }
+
+// stripPreCommandEndpointURL returns the value of a --endpoint-url (or
+// --endpoint-url=<value>) that precedes the literal token calledAs in the raw
+// command line, along with a corrected args slice (equivalent to what Cobra
+// hands PreRunE/RunE for a DisableFlagParsing command) with that occurrence
+// removed. An occurrence AFTER calledAs is left untouched in the returned
+// args — for `aws` specifically, this preserves the aws CLI's own native
+// --endpoint-url flag (a post-command one must reach the wrapped binary
+// unchanged); for the other four proxy commands there's no such collision,
+// but the same pre-command-only rule applies for consistency, mirroring
+// --json's existing treatment.
+//
+// This must actually remove the pre-command occurrence, not just detect it
+// (unlike jsonPrecedesCommandName, which leaves --json in place since it's a
+// bare boolean signal): Cobra's own command resolution strips only the
+// matched command token for a DisableFlagParsing command, regardless of
+// where a flag appeared relative to it — so an unstripped pre-command
+// --endpoint-url would leak into the forwarded args, duplicating alongside
+// lstk's own injected --endpoint-url built from the resolved target.
+func stripPreCommandEndpointURL(calledAs string) (args []string, value string, found bool) {
+	cmdIdx := -1
+	for i, a := range os.Args {
+		if a == calledAs {
+			cmdIdx = i
+			break
+		}
+	}
+	if cmdIdx <= 0 {
+		return os.Args[1:], "", false
+	}
+
+	before := os.Args[1:cmdIdx]
+	after := os.Args[cmdIdx+1:]
+
+	stripped := make([]string, 0, len(before))
+	for i := 0; i < len(before); i++ {
+		a := before[i]
+		switch {
+		case a == "--endpoint-url":
+			if i+1 < len(before) {
+				value, found = before[i+1], true
+				i++
+				continue
+			}
+			stripped = append(stripped, a)
+		case strings.HasPrefix(a, "--endpoint-url="):
+			value, found = strings.TrimPrefix(a, "--endpoint-url="), true
+		default:
+			stripped = append(stripped, a)
+		}
+	}
+	return append(stripped, after...), value, found
+}

@@ -21,6 +21,12 @@ import (
 )
 
 func newAzCmd(cfg *env.Env) *cobra.Command {
+	// DisableFlagParsing means Cobra won't strip a pre-command --endpoint-url;
+	// PreRunE does that and stashes the corrected args here for RunE to
+	// forward, mirroring aws.go/terraform.go/cdk.go/sam.go's passthrough
+	// pattern (RunE's own args parameter is NOT updated by PreRunE's local
+	// changes — Cobra calls each independently with its own resolved args).
+	var passthrough []string
 	cmd := &cobra.Command{
 		Use:   "az [args...]",
 		Short: "Run Azure CLI commands against LocalStack",
@@ -40,9 +46,19 @@ Examples:
 			if jsonPrecedesCommandName(cmd.CalledAs()) {
 				cfg.JSON = true
 			}
+			// --endpoint-url is recognized only when it precedes "az", the same
+			// pre-command-only placement --json already gets here.
+			if strippedArgs, v, ok := stripPreCommandEndpointURL(cmd.CalledAs()); ok {
+				if err := cmd.Flags().Set(endpoint.FlagName, v); err != nil {
+					return err
+				}
+				args = strippedArgs
+			}
+			passthrough = args
 			return initConfigDeferCreate(nil)(cmd, args)
 		},
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			args := passthrough
 			sink := output.NewPlainSink(os.Stdout)
 
 			configDir, err := config.ConfigDir()
@@ -60,7 +76,12 @@ Examples:
 				return output.NewSilentError(fmt.Errorf("azure CLI integration not set up"))
 			}
 
-			if _, err := azPreflight(cmd.Context(), cfg, sink); err != nil {
+			target, err := endpoint.Resolve(cmd.Context(), cmd)
+			if err != nil {
+				return emitValidationError(sink, err)
+			}
+
+			if _, err := azPreflight(cmd.Context(), cfg, sink, target); err != nil {
 				return err
 			}
 
@@ -93,7 +114,9 @@ func newAzStartInterceptionCmd(cfg *env.Env) *cobra.Command {
 		PreRunE: initConfigDeferCreate(nil),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			preflight := func(ctx context.Context, sink output.Sink) (string, error) {
-				return azPreflight(ctx, cfg, sink)
+				// --endpoint-url is out of scope for start-interception (see
+				// design.md's Non-Goals) — always resolve via Docker.
+				return azPreflight(ctx, cfg, sink, nil)
 			}
 
 			// Run preflight under the same sink as the operation so its errors render
@@ -136,13 +159,28 @@ func newAzStopInterceptionCmd(cfg *env.Env) *cobra.Command {
 // running, and *.localhost.localstack.cloud resolves. On failure it emits the matching
 // ErrorEvent and returns a silent error. On success it returns the resolved LocalStack
 // Azure endpoint URL.
-func azPreflight(ctx context.Context, cfg *env.Env, sink output.Sink) (string, error) {
+//
+// target, when non-nil, is an already-resolved externally-managed endpoint
+// (--endpoint-url/LSTK_ENDPOINT_URL/AWS_ENDPOINT_URL): all of the Docker/DNS
+// checks below are skipped in favor of it. 'start-interception'/
+// 'stop-interception' always pass nil — they are out of scope for
+// --endpoint-url (see design.md's Non-Goals).
+func azPreflight(ctx context.Context, cfg *env.Env, sink output.Sink, target *endpoint.Target) (string, error) {
 	if err := azurecli.CheckInstalled(); err != nil {
 		sink.Emit(output.ErrorEvent{
 			Title:   "az CLI not found in PATH",
 			Actions: []output.ErrorAction{{Label: "Install Azure CLI:", Value: azurecli.InstallURL}},
 		})
 		return "", output.NewSilentError(err)
+	}
+
+	if target != nil {
+		if target.Type != config.EmulatorAzure {
+			err := fmt.Errorf("lstk az requires the Azure emulator, but the endpoint at %s is a %s emulator", target.URL, target.Type.DisplayName())
+			sink.Emit(output.ErrorEvent{Title: err.Error()})
+			return "", output.NewSilentError(err)
+		}
+		return azureconfig.BuildEndpoint(target.HostPort()), nil
 	}
 
 	appCfg, err := config.Get()

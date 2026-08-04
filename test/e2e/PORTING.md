@@ -8,8 +8,8 @@ does not go away wholesale; it shrinks as areas move across.
 **Status: 174 tests across 23 files** (166 pass, 8 skip on this machine — the skips are
 the whole of `start.test.ts`, which needs an auth token). Full-suite wall clock ≈ 33s.
 
-The Go integration suite has been trimmed accordingly: **388 → 272** test functions across
-**52 → 42** files, 13,675 → 10,740 lines.
+The Go integration suite has been trimmed accordingly: against `main` it goes from **417
+→ 301** test functions across **54 → 44** files, 14,467 → 11,533 lines.
 
 ## What "ported" means here
 
@@ -51,6 +51,10 @@ really calls `config.Get()`.
 Deleted outright: `json_envelope`, `exit_code`, `non_interactive`, `completion`, `docs`,
 `terraform_cmd`, `logs`, `reset`, `volume`, `stop`, `restart`.
 
+`stop_test.go` and `restart_test.go` each gained an `LSTK_ENDPOINT_URL` rejection test on
+`main` after this port was written. Those two moved into `endpoint_url_test.go` alongside
+their 27 siblings rather than being deleted with the rest of their files.
+
 Trimmed, with the reason each remainder stayed:
 
 | Go file | Kept | Why it could not move |
@@ -74,7 +78,8 @@ Trimmed, with the reason each remainder stayed:
 | `start` remainder | `start_test.go`, `docker_unhealthy`, `docker_windows` | 40 | Never-healthy image via `docker commit`; bind/port introspection |
 | Trimmed leftovers | `emulator_type`, `emulator_select`, `logout`, `login`, `aws_cmd`, `status`, `json_flag`, `config` | 29 | See the table above — each has its own blocker |
 | `az` proxy, `setup azure`, `awsconfig` | `az_*`, `setup_azure`, `awsconfig` | 22 | Isolated `~/.azure` assertions; `setup azure` completion marker |
-| Extensions, signal forwarding | `extension`, `signal_forwarding` | 20 | Reference extension build; process-group signalling |
+| `--endpoint-url` / `LSTK_ENDPOINT_URL` | `endpoint_url`, `endpoint_url_https` | 27 | Landed after the port. It spans commands this suite owns (`logs`, `volume`, `stop`, `restart`, `start`, `status`, `aws`) but is one feature with one design doc, and several cases assert container state through the Docker SDK — splitting it across two suites would cost more than it buys. Port it as a unit or not at all. |
+| Extensions, signal forwarding | `extension`, `signal_forwarding` | 22 | Reference extension build; process-group signalling |
 | Update & install | `update`, `multiple_installs`, `version_resolution` | 16 | Mock GitHub releases API; fake Homebrew/npm layouts |
 | Telemetry, license, logging | `telemetry`, `license`, `logging`, `command_telemetry` | 15 | Mechanism by design — a mock analytics server and a mock license API, neither of which is user-observable |
 

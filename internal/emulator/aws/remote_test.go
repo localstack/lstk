@@ -26,7 +26,7 @@ func TestRegisterRemote(t *testing.T) {
 	defer server.Close()
 
 	c := NewClient()
-	err := c.RegisterRemote(context.Background(), server.Listener.Addr().String(), "lstk-s3-abc", "s3://bucket/?access_key_id={access_key_id}")
+	err := c.RegisterRemote(context.Background(), server.URL, "lstk-s3-abc", "s3://bucket/?access_key_id={access_key_id}")
 	require.NoError(t, err)
 	assert.Equal(t, "/_localstack/pods/remotes/lstk-s3-abc", gotPath)
 	assert.Equal(t, []any{"s3"}, gotBody["protocols"])
@@ -46,7 +46,7 @@ func TestSavePodRemote_SendsRemoteBody(t *testing.T) {
 
 	c := NewClient()
 	params := map[string]string{"access_key_id": "AKIA", "secret_access_key": "shh"}
-	res, err := c.SavePodRemote(context.Background(), server.Listener.Addr().String(), "my-pod", "lstk-s3-abc", params, "", nil)
+	res, err := c.SavePodRemote(context.Background(), server.URL, "my-pod", "lstk-s3-abc", params, "", nil)
 	require.NoError(t, err)
 	assert.Equal(t, 1, res.Version)
 	require.NotNil(t, gotBody.Remote)
@@ -69,7 +69,7 @@ func TestSavePodRemote_SendsServicesFilter(t *testing.T) {
 
 	c := NewClient()
 	params := map[string]string{"access_key_id": "AKIA", "secret_access_key": "shh"}
-	_, err := c.SavePodRemote(context.Background(), server.Listener.Addr().String(), "my-pod", "lstk-s3-abc", params, "", []string{"s3", "dynamodb"})
+	_, err := c.SavePodRemote(context.Background(), server.URL, "my-pod", "lstk-s3-abc", params, "", []string{"s3", "dynamodb"})
 	require.NoError(t, err)
 	require.NotNil(t, gotBody.Remote)
 	require.NotNil(t, gotBody.Attributes)
@@ -89,7 +89,7 @@ func TestSavePodSnapshot_SendsEmptyRemote(t *testing.T) {
 	defer server.Close()
 
 	c := NewClient()
-	_, err := c.SavePodSnapshot(context.Background(), server.Listener.Addr().String(), "my-pod", "the-token", nil)
+	_, err := c.SavePodSnapshot(context.Background(), server.URL, "my-pod", "the-token", nil)
 	require.NoError(t, err)
 	assert.Nil(t, gotBody.Remote, "platform pod save must not include a remote payload")
 	assert.Nil(t, gotBody.Attributes, "no services filter passed, so attributes should be omitted")
@@ -107,7 +107,7 @@ func TestSavePodSnapshot_SendsServicesFilter(t *testing.T) {
 	defer server.Close()
 
 	c := NewClient()
-	_, err := c.SavePodSnapshot(context.Background(), server.Listener.Addr().String(), "my-pod", "the-token", []string{"s3", "lambda"})
+	_, err := c.SavePodSnapshot(context.Background(), server.URL, "my-pod", "the-token", []string{"s3", "lambda"})
 	require.NoError(t, err)
 	assert.Nil(t, gotBody.Remote, "platform pod save must not include a remote payload")
 	require.NotNil(t, gotBody.Attributes)
@@ -148,7 +148,7 @@ func TestListPodsRemote(t *testing.T) {
 	defer server.Close()
 
 	c := NewClient()
-	pods, err := c.ListPodsRemote(context.Background(), server.Listener.Addr().String(), "lstk-s3-abc", map[string]string{"access_key_id": "x"}, "", "")
+	pods, err := c.ListPodsRemote(context.Background(), server.URL, "lstk-s3-abc", map[string]string{"access_key_id": "x"}, "", "")
 	require.NoError(t, err)
 	require.Len(t, pods, 2)
 	assert.Equal(t, "a", pods[0].Name)

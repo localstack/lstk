@@ -80,8 +80,8 @@ func (c *Client) S3BucketExists(ctx context.Context, bucket string) (bool, error
 // RegisterRemote upserts a named remote on the running emulator. The emulator
 // persists it (idempotently replacing any same-named entry) so subsequent
 // save/load/list calls can reference it by name.
-func (c *Client) RegisterRemote(ctx context.Context, host, name, remoteURL string) error {
-	url := fmt.Sprintf("http://%s/_localstack/pods/remotes/%s", host, name)
+func (c *Client) RegisterRemote(ctx context.Context, baseURL, name, remoteURL string) error {
+	url := strings.TrimRight(baseURL, "/") + "/_localstack/pods/remotes/" + name
 	payload, err := json.Marshal(map[string]any{
 		"name":       name,
 		"protocols":  []string{"s3"},
@@ -111,27 +111,27 @@ func (c *Client) RegisterRemote(ctx context.Context, host, name, remoteURL strin
 
 // SavePodRemote saves the running state to podName on the named remote.
 // services, when non-empty, limits the save to that subset of services.
-func (c *Client) SavePodRemote(ctx context.Context, host, podName, remoteName string, params map[string]string, authToken string, services []string) (snapshot.PodSaveResult, error) {
+func (c *Client) SavePodRemote(ctx context.Context, baseURL, podName, remoteName string, params map[string]string, authToken string, services []string) (snapshot.PodSaveResult, error) {
 	body, err := marshalPodBody(remoteName, params, services)
 	if err != nil {
 		return snapshot.PodSaveResult{}, fmt.Errorf("marshal request: %w", err)
 	}
-	return c.doPodSave(ctx, host, podName, authToken, body)
+	return c.doPodSave(ctx, baseURL, podName, authToken, body)
 }
 
 // LoadPodRemote loads podName from the named remote with the given merge strategy.
-func (c *Client) LoadPodRemote(ctx context.Context, host, podName, remoteName string, params map[string]string, authToken, strategy string) ([]string, error) {
+func (c *Client) LoadPodRemote(ctx context.Context, baseURL, podName, remoteName string, params map[string]string, authToken, strategy string) ([]string, error) {
 	body, err := marshalPodBody(remoteName, params, nil)
 	if err != nil {
 		return nil, fmt.Errorf("marshal request: %w", err)
 	}
-	return c.doPodLoad(ctx, host, podName, authToken, strategy, body)
+	return c.doPodLoad(ctx, baseURL, podName, authToken, strategy, body)
 }
 
 // ListPodsRemote lists the snapshots stored on the named remote via
 // GET /_localstack/pods (with the remote passed in the request body).
-func (c *Client) ListPodsRemote(ctx context.Context, host, remoteName string, params map[string]string, authToken, creator string) ([]snapshot.RemotePod, error) {
-	url := fmt.Sprintf("http://%s/_localstack/pods", host)
+func (c *Client) ListPodsRemote(ctx context.Context, baseURL, remoteName string, params map[string]string, authToken, creator string) ([]snapshot.RemotePod, error) {
+	url := strings.TrimRight(baseURL, "/") + "/_localstack/pods"
 	if creator != "" {
 		url += "?creator=" + creator
 	}
@@ -175,8 +175,8 @@ func (c *Client) ListPodsRemote(ctx context.Context, host, remoteName string, pa
 
 // doPodSave issues POST /_localstack/pods/{name} with the given JSON body and
 // parses the NDJSON response stream into a PodSaveResult.
-func (c *Client) doPodSave(ctx context.Context, host, podName, authToken string, body []byte) (snapshot.PodSaveResult, error) {
-	url := fmt.Sprintf("http://%s/_localstack/pods/%s", host, podName)
+func (c *Client) doPodSave(ctx context.Context, baseURL, podName, authToken string, body []byte) (snapshot.PodSaveResult, error) {
+	url := strings.TrimRight(baseURL, "/") + "/_localstack/pods/" + podName
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
 	if err != nil {
 		return snapshot.PodSaveResult{}, fmt.Errorf("create request: %w", err)
@@ -235,8 +235,8 @@ func (c *Client) doPodSave(ctx context.Context, host, podName, authToken string,
 
 // doPodLoad issues PUT /_localstack/pods/{name}[?merge=strategy] with the given
 // JSON body and parses the NDJSON response stream into the list of services.
-func (c *Client) doPodLoad(ctx context.Context, host, podName, authToken, strategy string, body []byte) ([]string, error) {
-	url := fmt.Sprintf("http://%s/_localstack/pods/%s", host, podName)
+func (c *Client) doPodLoad(ctx context.Context, baseURL, podName, authToken, strategy string, body []byte) ([]string, error) {
+	url := strings.TrimRight(baseURL, "/") + "/_localstack/pods/" + podName
 	if strategy != "" {
 		url += "?merge=" + strategy
 	}

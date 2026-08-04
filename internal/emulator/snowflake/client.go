@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 
@@ -32,8 +33,8 @@ type healthResponse struct {
 	Version string `json:"version"`
 }
 
-func (c *Client) FetchVersion(ctx context.Context, host string) (string, error) {
-	url := fmt.Sprintf("http://%s/_localstack/health", host)
+func (c *Client) FetchVersion(ctx context.Context, baseURL string) (string, error) {
+	url := strings.TrimRight(baseURL, "/") + "/_localstack/health"
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return "", fmt.Errorf("failed to create health request: %w", err)

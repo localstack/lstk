@@ -36,6 +36,10 @@ func newLogsCmd(cfg *env.Env) *cobra.Command {
 			if err := validateTail(tail); err != nil {
 				return err
 			}
+			sink := output.NewPlainSink(os.Stdout)
+			if err := rejectEndpointURL(cmd, sink, "logs"); err != nil {
+				return err
+			}
 			rt, err := runtime.NewDockerRuntime(cfg.DockerHost)
 			if err != nil {
 				return err
@@ -47,7 +51,7 @@ func newLogsCmd(cfg *env.Env) *cobra.Command {
 			if isInteractiveMode(cfg) {
 				return ui.RunLogs(cmd.Context(), rt, appConfig.Containers, follow, tail, verbose)
 			}
-			return container.Logs(cmd.Context(), rt, output.NewPlainSink(os.Stdout), appConfig.Containers, follow, tail, verbose)
+			return container.Logs(cmd.Context(), rt, sink, appConfig.Containers, follow, tail, verbose)
 		},
 	}
 	cmd.Flags().BoolP("follow", "f", false, "Follow log output")
