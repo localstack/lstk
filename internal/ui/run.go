@@ -129,8 +129,12 @@ func Run(parentCtx context.Context, runOpts RunOptions) error {
 			}
 		}
 		// Empty resolvedVersion means the container was already running and Start
-		// returned early — use the cached label rather than re-resolving.
-		if resolvedVersion == "" {
+		// returned early — use the cached label rather than re-resolving. Self-
+		// validating emulators never resolve a version; their label comes from the
+		// license file in the container volume, so re-resolve it on every start.
+		containers := runOpts.StartOptions.Containers
+		selfValidating := len(containers) > 0 && containers[0].Type.SelfValidatesLicense()
+		if resolvedVersion == "" && !selfValidating {
 			go func() { labelCh <- config.CachedPlanLabel() }()
 		} else {
 			go container.ResolveAndCacheLabel(ctx, runOpts.StartOptions, resolvedVersion, labelCh)

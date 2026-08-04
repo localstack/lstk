@@ -2,7 +2,9 @@ package container
 
 import (
 	"context"
+	"encoding/json"
 	"os"
+	"path/filepath"
 	stdruntime "runtime"
 	"time"
 
@@ -36,6 +38,16 @@ func ResolveEmulatorLabel(ctx context.Context, client api.PlatformAPI, container
 
 	c := containers[0]
 
+	// Self-validating emulators never hit the license API (it has no catalog
+	// entry for their products); their plan comes from the license the
+	// container activated itself.
+	if c.Type.SelfValidatesLicense() {
+		if label, ok := activatedLicenseLabel(c, logger); ok {
+			return label, true
+		}
+		return "LocalStack", false
+	}
+
 	productName, err := c.ProductName()
 	if err != nil {
 		return NoLicenseLabel, false
@@ -43,9 +55,6 @@ func ResolveEmulatorLabel(ctx context.Context, client api.PlatformAPI, container
 
 	tag := c.Tag
 	if tag == "" || tag == "latest" {
-		if c.Type.SelfValidatesLicense() {
-			return "LocalStack", false
-		}
 		if resolvedVersion == "" {
 			return NoLicenseLabel, false
 		}
@@ -71,4 +80,30 @@ func ResolveEmulatorLabel(ctx context.Context, client api.PlatformAPI, container
 		return "LocalStack " + plan, true
 	}
 	return NoLicenseLabel, false
+}
+
+// activatedLicenseLabel reads the license a self-validating emulator activated
+// under /var/lib/localstack/cache/license.json, which lstk bind-mounts from the
+// configured host volume.
+func activatedLicenseLabel(c config.ContainerConfig, logger log.Logger) (string, bool) {
+	volumeDir, err := c.VolumeDir()
+	if err != nil {
+		logger.Info("could not resolve emulator volume for header: %v", err)
+		return "", false
+	}
+	licensePath := filepath.Join(volumeDir, "cache", "license.json")
+	data, err := os.ReadFile(licensePath)
+	if err != nil {
+		logger.Info("could not read activated license for header: %v", err)
+		return "", false
+	}
+	var lic api.LicenseResponse
+	if err := json.Unmarshal(data, &lic); err != nil {
+		logger.Info("could not parse activated license %s: %v", licensePath, err)
+		return "", false
+	}
+	if plan := lic.PlanDisplayName(); plan != "" {
+		return "LocalStack " + plan, true
+	}
+	return "", false
 }

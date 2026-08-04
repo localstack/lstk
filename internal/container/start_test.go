@@ -65,6 +65,38 @@ func TestCheckSingleContainer(t *testing.T) {
 	assert.Contains(t, err.Error(), "only one is supported at a time")
 }
 
+func TestResolvedPinnedVersion(t *testing.T) {
+	tests := []struct {
+		name       string
+		containers []runtime.ContainerConfig
+		want       string
+	}{
+		{
+			name:       "platform-validated AWS tag",
+			containers: []runtime.ContainerConfig{{EmulatorType: config.EmulatorAWS, Tag: "2026.7"}},
+			want:       "2026.7",
+		},
+		{
+			name:       "latest AWS tag",
+			containers: []runtime.ContainerConfig{{EmulatorType: config.EmulatorAWS, Tag: "latest"}},
+		},
+		{
+			name:       "self-validating Snowflake tag",
+			containers: []runtime.ContainerConfig{{EmulatorType: config.EmulatorSnowflake, Tag: "2026.7"}},
+		},
+		{
+			name:       "self-validating Azure tag",
+			containers: []runtime.ContainerConfig{{EmulatorType: config.EmulatorAzure, Tag: "2026.7"}},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, resolvedPinnedVersion(tt.containers))
+		})
+	}
+}
+
 func TestStart_ReturnsEarlyIfRuntimeUnhealthy(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	mockRT := runtime.NewMockRuntime(ctrl)
