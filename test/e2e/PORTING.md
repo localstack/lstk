@@ -5,11 +5,11 @@
 with no CLI surface. `test/integration` keeps everything under "Still owned by Go" and
 does not go away wholesale; it shrinks as areas move across.
 
-**Status: 174 tests across 23 files** (166 pass, 8 skip on this machine — the skips are
+**Status: 175 tests across 23 files** (167 pass, 8 skip on this machine — the skips are
 the whole of `start.test.ts`, which needs an auth token). Full-suite wall clock ≈ 33s.
 
-The Go integration suite has been trimmed accordingly: against `main` it goes from **417
-→ 301** test functions across **54 → 44** files, 14,467 → 11,533 lines.
+The Go integration suite has been trimmed accordingly: against `main` it goes from **419
+→ 302** test functions across **54 → 44** files, 14,552 → 11,598 lines.
 
 ## What "ported" means here
 
@@ -42,7 +42,7 @@ really calls `config.Get()`.
 | `--json` envelope, exit codes, `--non-interactive` | `json-envelope`(+`.pty`), `json-flag`, `exit-codes`, `non-interactive.pty` | 42 |
 | Lifecycle (`stop`, `restart`, `status`, `reset`) | `stop-restart`, `status`, `reset.pty` | 22 |
 | `logs`, `volume` | `logs.pty`, `volume.pty` | 20 |
-| Config, completion, docs | `config`, `completion`, `docs` | 20 |
+| Config, completion, docs | `config`, `completion`, `docs` | 21 |
 | Start paths, emulator selection, login journey, TUI | `start`, `start-local-image`, `emulator-select.pty`, `emulator-type`, `login-journey.pty`, `tui-runtime-error.pty` | 17 |
 | Harness self-tests (not product behaviour) | `harness/strip-ansi`, `harness/print-exactly` | 12 |
 
@@ -55,6 +55,12 @@ Deleted outright: `json_envelope`, `exit_code`, `non_interactive`, `completion`,
 `main` after this port was written. Those two moved into `endpoint_url_test.go` alongside
 their 27 siblings rather than being deleted with the rest of their files.
 
+`config_test.go` likewise gained `TestConfigWithInvalidContainerNameFails` on `main`
+(custom `container_name`). That one is pure CLI output rejected at config load — no
+daemon, no token — so it was ported to `tests/config.test.ts` next to its `port is
+required` sibling rather than kept. Its companion `TestStartCommandUsesCustomContainerName`
+stays in Go: it needs a real start plus a container inspect.
+
 Trimmed, with the reason each remainder stayed:
 
 | Go file | Kept | Why it could not move |
@@ -62,7 +68,7 @@ Trimmed, with the reason each remainder stayed:
 | `json_flag` | 2 of 7 | Both are table-driven proxy tests covering `az`, which TypeScript cannot reach without a completed `lstk setup azure` |
 | `aws_cmd` | 3 of 18 | Spinner timing under a PTY |
 | `status` | 2 of 7 | `ShowsResourcesWhenRunning` needs an AWS SDK client; `WorksWithNonDefaultPort` binds the `127.0.0.2` loopback alias, which Docker Desktop rejects and a native Linux daemon accepts |
-| `config` | 1 of 11 | `TestConfigFlagEnvVarsPassedToContainer` inspects the container's environment |
+| `config` | 1 of 12 | `TestConfigFlagEnvVarsPassedToContainer` inspects the container's environment |
 | `emulator_type` | 7 of 10 | |
 | `emulator_select` | 7 of 9 | |
 | `start` | 33 of 35 | |

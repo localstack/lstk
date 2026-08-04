@@ -15,8 +15,8 @@ import (
 	"testing"
 
 	"github.com/creack/pty"
-	"github.com/moby/moby/client"
 	"github.com/localstack/lstk/test/integration/env"
+	"github.com/moby/moby/client"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

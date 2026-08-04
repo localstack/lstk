@@ -11,6 +11,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/localstack/lstk/internal/validate"
 )
 
 type EmulatorType string
@@ -122,6 +124,12 @@ type ContainerConfig struct {
 	// the default localstack image from Docker Hub. If it carries no tag, Tag (or "latest")
 	// is appended; if it already carries a tag, Tag is dropped.
 	CustomImage string `mapstructure:"image"`
+	// CustomName overrides the derived container name (see Name). It is also exported into
+	// the container as MAIN_CONTAINER_NAME, which the emulator uses to introspect itself over
+	// the Docker socket and to name the containers it spawns (e.g. Lambda). Set it when
+	// something outside lstk has to address the emulator by a fixed name, such as a sidecar
+	// proxy on a CI agent.
+	CustomName string `mapstructure:"container_name"`
 	// Volume is the legacy single-host-directory knob for the persistence mount
 	// (target /var/lib/localstack). It is still honored; new configs can express the
 	// same mount as a Volumes entry targeting persistenceTarget instead.
@@ -274,7 +282,11 @@ func (c *ContainerConfig) ExtraVolumes() ([]VolumeMount, error) {
 // (the mount targeting /var/lib/localstack). Resolution precedence:
 //  1. A Volumes entry targeting persistenceTarget — its resolved host source.
 //  2. The legacy Volume field, if set — returned as-is.
-//  3. The default os.UserCacheDir()/lstk/volume/<container-name>.
+//  3. The default os.UserCacheDir()/lstk/volume/<derived container name>.
+//
+// The default deliberately uses defaultName rather than Name: keying it to the derived name
+// means setting or changing the container's `container_name` never silently orphans existing state.
+// Per-instance state is still expressible explicitly via Volume/Volumes.
 func (c *ContainerConfig) VolumeDir() (string, error) {
 	mounts, err := c.parsedVolumes()
 	if err != nil {
@@ -292,7 +304,7 @@ func (c *ContainerConfig) VolumeDir() (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("failed to determine cache directory: %w", err)
 	}
-	return filepath.Join(cacheDir, "lstk", "volume", c.Name()), nil
+	return filepath.Join(cacheDir, "lstk", "volume", c.defaultName()), nil
 }
 
 // TagSuggestion returns an actionable hint naming a recent calendar tag and
@@ -338,6 +350,11 @@ func validateTag(tag string) error {
 func (c *ContainerConfig) Validate() error {
 	if err := validateTag(c.Tag); err != nil {
 		return err
+	}
+	if c.CustomName != "" {
+		if err := validate.ContainerName(c.CustomName); err != nil {
+			return fmt.Errorf("invalid container name %q: %w", c.CustomName, err)
+		}
 	}
 	if c.Port == "" {
 		return fmt.Errorf("port is required for %s emulator", c.Type)
@@ -424,8 +441,16 @@ func imageHasTag(image string) bool {
 	return strings.Contains(lastSegment, ":")
 }
 
-// Name returns the container name: "localstack-{type}" or "localstack-{type}-{tag}" if tag != latest
+// Name returns the container name: CustomName when set, otherwise the derived defaultName.
 func (c *ContainerConfig) Name() string {
+	if c.CustomName != "" {
+		return c.CustomName
+	}
+	return c.defaultName()
+}
+
+// defaultName is the derived container name: "localstack-{type}" or "localstack-{type}-{tag}" if tag != latest
+func (c *ContainerConfig) defaultName() string {
 	tag := c.Tag
 	if tag == "" || tag == "latest" {
 		return fmt.Sprintf("localstack-%s", c.Type)

@@ -10,6 +10,10 @@
 type = "aws"     # Emulator type. Currently supported: "aws", "snowflake", "azure"
 tag  = "latest"  # Docker image tag, e.g. "latest", "2026.4"
 port = "4566"    # Host port the emulator will be accessible on
+# container_name = ""   # Container name (default: "localstack-<type>", plus "-<tag>"
+#                # when tag is not "latest"). Set it when something outside lstk
+#                # addresses the emulator by a fixed name, e.g. a sidecar proxy on a
+#                # CI agent. It is also what the emulator reports as MAIN_CONTAINER_NAME.
 # image = ""     # Custom image to use instead of the default Docker Hub image, e.g.
 #                # an internal registry mirror or a locally loaded offline image.
 #                # If it carries no tag, 'tag' above is appended; if it already

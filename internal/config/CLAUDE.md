@@ -2,6 +2,16 @@
 
 Detail moved out of the root CLAUDE.md; see the root file for the config search order and creation policy.
 
+## Container name
+
+Each `[[containers]]` block may set an optional `container_name` to override the derived container name. The key is `container_name` rather than a bare `name` because a `[[containers]]` block already carries several names (the image, the emulator type) and an unqualified `name` reads ambiguously against them. The struct field is `CustomName` (not `Name`) because `ContainerConfig.Name()` is already a method — the same pairing as `CustomImage`/`Image()`. `Name()` returns `CustomName` when set, otherwise `defaultName()` (`localstack-{type}`, or `localstack-{type}-{tag}` when the tag is set and not `latest`).
+
+The name is load-bearing, not cosmetic: `start.go` exports it as `MAIN_CONTAINER_NAME`, which the emulator uses to introspect itself over the Docker socket and to derive the names of containers it spawns (e.g. `<main-container-name>-lambda-<fn>-<id>`). Setting `MAIN_CONTAINER_NAME` in an `[env.*]` profile instead is a trap — it never reached `docker run --name`, so the container's real and self-reported names disagreed; `startOnce` now warns and points at this field.
+
+`VolumeDir()`'s default deliberately uses `defaultName()`, **not** `Name()`, so setting or changing `container_name` never silently orphans the persistence directory (and the path stays byte-identical to what existing users already have). Per-instance state is expressible explicitly via `volume`/`volumes`.
+
+Validation is `validate.ContainerName` (`internal/validate`), called from `ContainerConfig.Validate()`; it mirrors Docker's own `^[a-zA-Z0-9][a-zA-Z0-9_.-]*$` rule so an invalid name fails at config load rather than at container creation. A custom `container_name` survives a `lstk start --type` switch silently (like `port`/`env`/`snapshot`) — it identifies the user's container, it does not pin a product the way `image` does.
+
 ## Container image override
 
 Each `[[containers]]` block may set an optional `image` to override the default Docker Hub image (e.g. an internal registry mirror or a locally loaded offline image). `ContainerConfig.Image()` returns `image` as-is when it already carries a tag (so the separately-configured `tag` is dropped in that case), otherwise it appends `tag` (or `latest`); the default `localstack/<product>:<tag>` is used when `image` is unset.

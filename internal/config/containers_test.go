@@ -174,6 +174,77 @@ func TestImage_DefaultWhenNoCustomImage(t *testing.T) {
 	assert.Equal(t, "localstack/localstack-pro:latest", image)
 }
 
+func TestName_DerivedWhenNoCustomName(t *testing.T) {
+	tests := []struct {
+		name         string
+		emulatorType EmulatorType
+		tag          string
+		want         string
+	}{
+		{"aws latest", EmulatorAWS, "latest", "localstack-aws"},
+		{"aws empty tag", EmulatorAWS, "", "localstack-aws"},
+		{"aws pinned tag", EmulatorAWS, "2026.4", "localstack-aws-2026.4"},
+		{"snowflake latest", EmulatorSnowflake, "latest", "localstack-snowflake"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c := &ContainerConfig{Type: tt.emulatorType, Port: "4566", Tag: tt.tag}
+			assert.Equal(t, tt.want, c.Name())
+		})
+	}
+}
+
+func TestName_CustomNameWins(t *testing.T) {
+	c := &ContainerConfig{Type: EmulatorAWS, Port: "4566", Tag: "2026.4", CustomName: "ls-jenkins"}
+	assert.Equal(t, "ls-jenkins", c.Name())
+}
+
+// A custom name must not move the default persistence directory: renaming the
+// container would otherwise silently start the emulator from empty state.
+func TestVolumeDir_DefaultIgnoresCustomName(t *testing.T) {
+	cacheDir, err := os.UserCacheDir()
+	require.NoError(t, err)
+	want := filepath.Join(cacheDir, "lstk", "volume", "localstack-aws")
+
+	plain := &ContainerConfig{Type: EmulatorAWS, Port: "4566", Tag: "latest"}
+	plainDir, err := plain.VolumeDir()
+	require.NoError(t, err)
+	assert.Equal(t, want, plainDir)
+
+	renamed := &ContainerConfig{Type: EmulatorAWS, Port: "4566", Tag: "latest", CustomName: "ls-jenkins"}
+	renamedDir, err := renamed.VolumeDir()
+	require.NoError(t, err)
+	assert.Equal(t, want, renamedDir)
+}
+
+func TestValidate_ContainerName(t *testing.T) {
+	tests := []struct {
+		name       string
+		customName string
+		wantErr    bool
+	}{
+		{"unset is allowed", "", false},
+		{"simple name", "ls-jenkins", false},
+		{"dots and underscores", "ls.jenkins_1", false},
+		{"leading hyphen rejected", "-ls", true},
+		{"slash rejected", "team/ls", true},
+		{"shell metachar rejected", "ls;rm -rf /", true},
+		{"space rejected", "my emulator", true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c := &ContainerConfig{Type: EmulatorAWS, Port: "4566", Tag: "latest", CustomName: tt.customName}
+			err := c.Validate()
+			if tt.wantErr {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), "invalid container name")
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
+}
+
 func TestSelfValidatesLicense(t *testing.T) {
 	// Snowflake and Azure containers activate their own license against the
 	// licensing server, so lstk skips its pre-flight platform license check.

@@ -111,6 +111,36 @@ func PodName(value string) error {
 	return nil
 }
 
+// containerNameRegexp mirrors Docker's own container-name rule: the first character
+// must be alphanumeric, the rest may also include underscores, dots, and hyphens.
+// The daemon rejects anything else with "Invalid container name", so accepting it
+// here would only defer the failure to container creation.
+var containerNameRegexp = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_.-]*$`)
+
+// ContainerName validates a user-supplied Docker container name. Like PodName it runs
+// ordered deny-checks so the most specific reason wins, then the allow-list. The
+// 128-character cap is a local sanity limit against absurd inputs, not a Docker rule.
+func ContainerName(value string) error {
+	const field = "container name"
+	switch {
+	case value == "":
+		return newError(field, RuleEmpty, "must not be empty")
+	case containsControlChars(value):
+		return newError(field, RuleControlChars, "contains control characters")
+	case strings.Contains(value, "%"):
+		return newError(field, RuleEncoding, "contains percent-encoding (pass the decoded value)")
+	case strings.ContainsAny(value, "/?#"):
+		return newError(field, RuleEmbedded, "contains path or query characters (/, ?, #)")
+	case strings.ContainsAny(value, shellMetaChars):
+		return newError(field, RuleMetachars, "contains shell metacharacters")
+	case len(value) > 128:
+		return newError(field, RuleRange, "must be 128 characters or fewer")
+	case !containerNameRegexp.MatchString(value):
+		return newError(field, RuleFormat, "must start with a letter or digit and use only letters, digits, dots, hyphens, and underscores")
+	}
+	return nil
+}
+
 // serviceListRegexp matches a comma-delimited list of service-name tokens:
 // letters, digits, underscores, and hyphens, with optional whitespace around
 // each item and separator. Mirrors the legacy CLI's is_comma_delimited_list

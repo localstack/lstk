@@ -238,4 +238,3 @@ func TestLoginShortCircuitsWhenEnvTokenSet(t *testing.T) {
 	assert.NotContains(t, out, "Opening browser")
 	assert.NotContains(t, out, "Waiting for authorization")
 }
-

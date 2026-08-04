@@ -195,6 +195,18 @@ func startOnce(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts S
 		gatewayDefaulted := strings.TrimSpace(gatewayValue) == ""
 
 		containerName := c.Name()
+
+		// MAIN_CONTAINER_NAME is derived from the container's name, not taken from an
+		// [env.*] profile: the profile value never reached `docker run --name`, so setting
+		// it there produced a container whose real name and self-reported name disagreed.
+		// lstk's value is appended after resolvedEnv and wins; say so rather than let the
+		// user's value vanish silently.
+		if envHasKey(resolvedEnv, "MAIN_CONTAINER_NAME") {
+			sink.Emit(output.MessageEvent{
+				Severity: output.SeverityWarning,
+				Text:     fmt.Sprintf("Ignoring MAIN_CONTAINER_NAME from your env profile — the emulator is named %q. Set 'container_name' in the [[containers]] block to rename it.", containerName),
+			})
+		}
 		env := append(resolvedEnv,
 			"LOCALSTACK_AUTH_TOKEN="+token,
 			"GATEWAY_LISTEN="+gateway.containerEnvValue(),

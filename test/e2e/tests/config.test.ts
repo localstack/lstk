@@ -137,6 +137,20 @@ describe("lstk config parsing", () => {
     expect(run.stderr).toPrintExactly("Error: failed to get config: invalid container config: port is required for aws emulator");
   });
 
+  // Rejected at config load, so this needs neither a daemon nor a token.
+  test("fails with a helpful message when container_name is not a legal Docker name", async () => {
+    const home = await tempHome();
+    const configFile = path.join(home.path, "config.toml");
+    await writeFile(configFile, `[[containers]]\ntype = "aws"\ntag = "latest"\nport = "4566"\ncontainer_name = "my emulator"\n`);
+
+    const run = await lstk(["--config", configFile, "stop", "--non-interactive"], { home, ...noDaemon });
+
+    expect(run).toFail();
+    expect(run.stderr).toPrintExactly(
+      `Error: failed to get config: invalid container config: invalid container name "my emulator": must start with a letter or digit and use only letters, digits, dots, hyphens, and underscores`,
+    );
+  });
+
   test("a legacy config.yaml gives a helpful TOML migration error", async () => {
     const home = await tempHome();
     const legacyConfigDir = path.join(home.path, ".config", "lstk");
