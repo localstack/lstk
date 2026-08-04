@@ -14,9 +14,9 @@ import (
 // TestCommandTelemetryPerCommand preserves the per-command telemetry coverage
 // that used to live alongside behavioural assertions in logs_test.go,
 // reset_test.go, volume_test.go, stop_test.go, restart_test.go, status_test.go,
-// and config_test.go, before those behavioural cases were ported to
-// test/e2e (which deliberately does not assert against a mock analytics
-// server — see each *.pty.test.ts/*.test.ts file's "Dropped" note).
+// config_test.go, logout_test.go, and aws_cmd_test.go, before those behavioural
+// cases were ported to test/e2e (which deliberately does not assert against a
+// mock analytics server — see each *.pty.test.ts/*.test.ts file's "Dropped" note).
 //
 // telemetry_test.go already covers the telemetry *mechanism* (disabled,
 // unreachable endpoint, detached flusher, OTel); this test only proves each
@@ -26,6 +26,10 @@ import (
 // already covered by TestStopCommandSendsTelemetryEvents in telemetry_test.go,
 // and the latter by TestStatusCommandShowsResourcesWhenRunning, which stays in
 // status_test.go (it needs an AWS SDK client, not just telemetry).
+//
+// "login" is likewise absent: its telemetry assertion lives in
+// TestDeviceFlowSuccess, entangled with the PTY device flow (mock platform plus
+// a fake browser opener), which is not worth reproducing here.
 func TestCommandTelemetryPerCommand(t *testing.T) {
 	type telemetryCase struct {
 		name             string
@@ -186,6 +190,60 @@ func TestCommandTelemetryPerCommand(t *testing.T) {
 				return runLstk(t, ctx, "", env.With(env.AnalyticsEndpoint, analyticsURL), "status")
 			},
 			wantCommand:  "status",
+			wantExitCode: 1,
+		},
+		{
+			name: "logout removes a stored token",
+			run: func(t *testing.T, ctx context.Context, analyticsURL string) (string, string, error) {
+				_ = DeleteAuthTokenFromKeyring()
+				t.Cleanup(func() { _ = DeleteAuthTokenFromKeyring() })
+				require.NoError(t, SetAuthTokenInKeyring("test-token"), "failed to store token in keyring")
+
+				return runLstk(t, ctx, "", env.With(env.AnalyticsEndpoint, analyticsURL), "logout")
+			},
+			wantCommand:  "logout",
+			wantExitCode: 0,
+		},
+		{
+			name: "logout with nothing stored",
+			run: func(t *testing.T, ctx context.Context, analyticsURL string) (string, string, error) {
+				_ = DeleteAuthTokenFromKeyring()
+
+				e := env.Without(env.AuthToken).With(env.AnalyticsEndpoint, analyticsURL)
+				return runLstk(t, ctx, "", e, "logout")
+			},
+			wantCommand:  "logout",
+			wantExitCode: 0,
+		},
+		{
+			name:          "aws succeeds against a running emulator",
+			requireDocker: true,
+			run: func(t *testing.T, ctx context.Context, analyticsURL string) (string, string, error) {
+				cleanup()
+				t.Cleanup(cleanup)
+				startTestContainer(t, ctx)
+
+				// The fake `aws` keeps the real AWS CLI out of the picture; a fresh
+				// HOME keeps a developer's own localstack profile out of it too.
+				e := env.With(env.Path, writeFakeAWS(t)).
+					With(env.Home, t.TempDir()).
+					With(env.AnalyticsEndpoint, analyticsURL)
+				return runLstk(t, ctx, t.TempDir(), e, "aws", "s3", "ls")
+			},
+			wantCommand:  "aws",
+			wantExitCode: 0,
+		},
+		{
+			name:          "aws fails when the emulator is not running",
+			requireDocker: true,
+			run: func(t *testing.T, ctx context.Context, analyticsURL string) (string, string, error) {
+				cleanup()
+				t.Cleanup(cleanup)
+
+				e := env.With(env.Path, writeFakeAWS(t)).With(env.AnalyticsEndpoint, analyticsURL)
+				return runLstk(t, ctx, t.TempDir(), e, "aws", "s3", "ls")
+			},
+			wantCommand:  "aws",
 			wantExitCode: 1,
 		},
 		{

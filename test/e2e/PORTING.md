@@ -1,11 +1,15 @@
 # Porting status: Go integration suite → TypeScript e2e suite
 
-**Intent:** this suite replaces `test/integration/`. Go **unit** tests (`cmd/`,
-`internal/`) stay as they are — they are the right tool for logic with no CLI surface.
-`test/integration` and its separate Go module go away once the port lands.
+**Intent:** this suite owns the CLI boundary for the areas listed under "Covered". Go
+**unit** tests (`cmd/`, `internal/`) stay as they are — they are the right tool for logic
+with no CLI surface. `test/integration` keeps everything under "Still owned by Go" and
+does not go away wholesale; it shrinks as areas move across.
 
-**Status: 167 tests across 22 files** (159 pass, 8 skip on this machine), covering
-roughly **130 of 384** Go test functions. Full-suite wall clock ≈ 165s.
+**Status: 174 tests across 23 files** (166 pass, 8 skip on this machine — the skips are
+the whole of `start.test.ts`, which needs an auth token). Full-suite wall clock ≈ 33s.
+
+The Go integration suite has been trimmed accordingly: **388 → 272** test functions across
+**52 → 42** files, 13,675 → 10,740 lines.
 
 ## What "ported" means here
 
@@ -13,7 +17,10 @@ Not a line-by-line translation. Many Go integration tests assert mechanism rathe
 than behaviour, and those were deliberately **not** carried across:
 
 - **Telemetry assertions** (`assertCommandTelemetry`, `mockAnalyticsServer`) — dropped
-  throughout. What lstk sends to analytics is not something a CLI user observes.
+  throughout. What lstk sends to analytics is not something a CLI user observes. Per-command
+  telemetry stays in Go, consolidated into one table in
+  `test/integration/command_telemetry_test.go` rather than scattered across the tests whose
+  behavioural halves moved here.
 - **Container introspection** (`docker inspect` of `Config.Env`, `HostConfig.Binds`)
   — replaced by the CLI-observable equivalent where one exists, e.g. `restart
   --persist` is asserted through the `• Persistence: Enabled` line rather than the
@@ -23,9 +30,9 @@ than behaviour, and those were deliberately **not** carried across:
 
 Two Go tests turned out to be **vacuous** and were re-targeted rather than copied:
 `TestConfigWithUnknownFieldsIsAccepted` and `TestConfigWithMissingOptionalTagSucceeds`
-assert config acceptance through `lstk config path`, which never parses the file —
-they pass against a nonexistent path. The ports use `lstk logout`, which really calls
-`config.Get()`.
+assert config acceptance through `lstk config path`, which never parses the file (see
+`cmd/config.go`) — they pass against a nonexistent path. The ports use `lstk logout`, which
+really calls `config.Get()`.
 
 ## Covered
 
@@ -37,19 +44,39 @@ they pass against a nonexistent path. The ports use `lstk logout`, which really 
 | `logs`, `volume` | `logs.pty`, `volume.pty` | 20 |
 | Config, completion, docs | `config`, `completion`, `docs` | 20 |
 | Start paths, emulator selection, login journey, TUI | `start`, `start-local-image`, `emulator-select.pty`, `emulator-type`, `login-journey.pty`, `tui-runtime-error.pty` | 17 |
-| Harness self-tests (not product behaviour) | `harness/strip-ansi` | 5 |
+| Harness self-tests (not product behaviour) | `harness/strip-ansi`, `harness/print-exactly` | 12 |
 
-## Not yet ported
+### What that removed from the Go suite
 
-| Area | Go files | Cases | Needs |
+Deleted outright: `json_envelope`, `exit_code`, `non_interactive`, `completion`, `docs`,
+`terraform_cmd`, `logs`, `reset`, `volume`, `stop`, `restart`.
+
+Trimmed, with the reason each remainder stayed:
+
+| Go file | Kept | Why it could not move |
+| --- | --- | --- |
+| `json_flag` | 2 of 7 | Both are table-driven proxy tests covering `az`, which TypeScript cannot reach without a completed `lstk setup azure` |
+| `aws_cmd` | 3 of 18 | Spinner timing under a PTY |
+| `status` | 2 of 7 | `ShowsResourcesWhenRunning` needs an AWS SDK client; `WorksWithNonDefaultPort` binds the `127.0.0.2` loopback alias, which Docker Desktop rejects and a native Linux daemon accepts |
+| `config` | 1 of 11 | `TestConfigFlagEnvVarsPassedToContainer` inspects the container's environment |
+| `emulator_type` | 7 of 10 | |
+| `emulator_select` | 7 of 9 | |
+| `start` | 33 of 35 | |
+| `login` | 3 of 4 | |
+| `logout` | 4 of 6 | |
+
+## Still owned by Go
+
+| Area | Go files | Cases | Would need |
 | --- | --- | --- | --- |
 | Snapshots | `snapshot_*_test.go`, `start_snapshot_test.go` | 78 | Mock cloud/S3 remotes; AWS SDK assertions against a live emulator |
-| IaC end-to-end | `terraform_e2e`, `terraform_s3backend_e2e`, `cdk_*`, `sam_*` | ~46 | Real terraform/cdk/sam installs (the `_cmd` half is done) |
-| `start` remainder | `start_test.go`, `docker_unhealthy`, `docker_windows` | ~38 | Never-healthy image via `docker commit`; bind/port introspection |
-| `az` proxy, `setup azure`, `awsconfig` | `az_*`, `setup_azure`, `awsconfig` | ~23 | Isolated `~/.azure` assertions; `setup azure` completion marker |
+| IaC end-to-end | `terraform_e2e`, `terraform_s3backend_e2e`, `cdk_*`, `sam_*` | 46 | Real terraform/cdk/sam installs (the `_cmd` half of terraform is done) |
+| `start` remainder | `start_test.go`, `docker_unhealthy`, `docker_windows` | 40 | Never-healthy image via `docker commit`; bind/port introspection |
+| Trimmed leftovers | `emulator_type`, `emulator_select`, `logout`, `login`, `aws_cmd`, `status`, `json_flag`, `config` | 29 | See the table above — each has its own blocker |
+| `az` proxy, `setup azure`, `awsconfig` | `az_*`, `setup_azure`, `awsconfig` | 22 | Isolated `~/.azure` assertions; `setup azure` completion marker |
 | Extensions, signal forwarding | `extension`, `signal_forwarding` | 20 | Reference extension build; process-group signalling |
 | Update & install | `update`, `multiple_installs`, `version_resolution` | 16 | Mock GitHub releases API; fake Homebrew/npm layouts |
-| Telemetry, license, logging | `telemetry`, `license`, `logging` | 14 | Mostly mechanism — decide per test what user-visible behaviour is worth keeping |
+| Telemetry, license, logging | `telemetry`, `license`, `logging`, `command_telemetry` | 15 | Mechanism by design — a mock analytics server and a mock license API, neither of which is user-observable |
 
 Two individually dropped cases worth revisiting:
 
@@ -69,8 +96,8 @@ Two individually dropped cases worth revisiting:
 
 ## Consequences worth accepting deliberately
 
-- **The CLI boundary ends up covered only by Node.** The e2e job has to be a required
-  check before `test-integration` is deleted, not after.
+- **The CLI boundary for the ported areas is now covered only by Node.** The e2e job has
+  to be a required check.
 - **Windows loses the login journey.** `pkg/browser` invokes `rundll32` there rather
   than a shimmable script. No loss against today: `login_test.go` already skips Windows.
 - **Windows terminal coverage may improve** — node-pty drives ConPTY, where
@@ -78,3 +105,8 @@ Two individually dropped cases worth revisiting:
 - **Real-keyring coverage narrows to one journey run** (`keyring: "system"`, CI or
   opt-in). The adapter logic below it stays covered by the mocked unit tests in
   `internal/auth/token_storage_test.go`.
+- **Container behaviour is verified on exactly one CI leg.** Ubuntu has Docker and the
+  auth token, and `LSTK_E2E_REQUIRE_ALL=1` turns a missing prerequisite into a hard
+  failure there; macOS and Windows runners cannot run Linux containers, so 63 and 72
+  tests respectively skip. Roughly 51 tests could stop running on those legs without
+  anything going red. A per-platform skip budget asserted in CI would close that gap.

@@ -18,6 +18,7 @@ This installs a [gitleaks](https://github.com/gitleaks/gitleaks) hook that scans
 make build              # Compiles to bin/lstk
 make test               # Run unit tests (cmd/ and internal/) via gotestsum
 make test-integration   # Run integration tests (rebuilds bin/lstk via `build`, requires Docker)
+make test-e2e           # Run the TypeScript e2e suite (rebuilds bin/lstk; requires Node >= 26, pnpm, Docker)
 make lint               # Run golangci-lint (version pinned via .tool-versions)
 make govulncheck        # Run govulncheck (reachability-based vuln scan)
 make mock-generate      # Regenerate mocks (mockgen via go:generate)
@@ -34,9 +35,15 @@ Run a single integration test:
 make test-integration RUN=TestStartCommandSucceedsWithValidToken
 ```
 
+Run a subset of the e2e suite (`RUN` is a substring match on the test name):
+```bash
+make test-e2e RUN="injects the endpoint"
+```
+
 Notes:
 - Integration tests require `LOCALSTACK_AUTH_TOKEN` environment variable for valid token tests.
 - `test/integration` is a **separate Go module** (own `go.mod`); `make lint` runs golangci-lint twice — repo root and `test/integration` — and fails if the installed golangci-lint version doesn't match `.tool-versions`. `golangci-lint run --fix` auto-fixes many findings.
+- `test/e2e` is a **third** self-contained tree after the repo root and `test/integration`, and the only one that isn't Go: a Node/pnpm workspace running TypeScript under vitest. It drives the built `bin/lstk` and imports no lstk source, so nothing there is covered by `make lint`/`make govulncheck`.
 - `make govulncheck` also runs twice for the same reason (root + `test/integration`). It complements the dependency-version scan in `trivy.yml` with call-graph reachability analysis — it only flags known vulnerabilities in code actually called from the repo. It has no severity filter (most Go vulnerability reports carry no CVSS data), so it gates on reachability alone: any reachable known vulnerability fails the job. CI (`ci.yml`'s `govulncheck` job) runs it on every push/PR and uploads a SARIF report to the Security tab, same pattern as Trivy, but it is **not yet** in `release`'s `needs:` — it's a new check on a staged rollout and should be promoted to a hard release gate once it's proven false-positive-free.
 - Mocks are generated with mockgen (go.uber.org/mock) via per-file `//go:generate mockgen ...` directives (e.g. `internal/snapshot/remote.go`); adding a mock means adding a directive, then `make mock-generate`.
 - Set `CREATE_JUNIT_REPORT=1` to get a JUnit XML report from `make test` / `make test-integration`.
@@ -208,8 +215,17 @@ When drafting Slack messages, PR descriptions, review replies, release notes, or
 
 # Testing
 
-- Prefer integration tests to cover most cases. Use unit tests when integration tests are not practical.
-- **When fixing a bug, always add an integration test** that fails before the fix and passes after. This prevents regressions and documents the exact scenario that was broken.
+Three suites, and the first question for any new test is which one owns the area:
+
+- **`test/e2e/` (TypeScript/vitest)** owns CLI-level behaviour for the areas ported to it: the proxy commands `aws` and `terraform`, `--json` envelopes, exit codes, `--non-interactive`, lifecycle (`stop`/`restart`/`status`/`reset`), `logs`, `volume`, config resolution, completion, `docs`, the login journey, and the TUI paths. It drives the built binary and asserts whole output (`toPrintExactly`), never a substring and never a recorded snapshot. Conventions: [test/e2e/README.md](test/e2e/README.md); the coverage map against the Go suite: [test/e2e/PORTING.md](test/e2e/PORTING.md).
+- **`test/integration/` (Go)** still owns snapshots, IaC end-to-end (`terraform_e2e`, `cdk`, `sam`), most of `start`, extensions and signal forwarding, update/install, license, telemetry, `az` / `setup azure` / `awsconfig`, and anything needing Docker-SDK-level setup or the real OS keyring.
+- **Go unit tests** under `cmd/` and `internal/` are unaffected by the split and remain the right tool for logic with no CLI surface.
+
+- Prefer an end-to-end/integration test to a unit test where one is practical, in whichever of the two suites owns the area.
+- **When fixing a bug, always add a test** that fails before the fix and passes after, in the suite that owns the area. This prevents regressions and documents the exact scenario that was broken.
+
+The rest of this section is specific to the Go integration suite.
+
 - Integration tests that run the CLI binary with Bubble Tea must use a PTY (`github.com/creack/pty`) since Bubble Tea requires a terminal. Use `pty.Start(cmd)` instead of `cmd.CombinedOutput()`, read output with `io.Copy()`, and send keystrokes by writing to the PTY (e.g., `ptmx.Write([]byte("\r"))` for Enter).
 - Mark every integration test with `t.Parallel()` unless it shares external state with other tests. Today the main blocker is the Docker daemon: tests that start LocalStack containers cannot run concurrently because lstk's container discovery matches by `(image, internal port)`, so two parallel runs would cross-contaminate. Tests that only touch the filesystem, mock servers, or the CLI binary itself should be parallel.
 - Never let an integration test inherit the developer's real `$HOME`. Pass an isolated env via `testEnvWithHome(t.TempDir(), "")` (or build on top of it with `env.With(...)`) instead of `nil` or `os.Environ()`. Inheriting HOME pollutes the user's `~/.config/lstk/`, `~/.aws/`, and `~/.cache/lstk/`, and makes parallel runs interfere through shared `lstk.log`, license cache, and file-keyring fallback.

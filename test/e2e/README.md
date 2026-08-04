@@ -1,11 +1,13 @@
-# lstk e2e tests (TypeScript / Vitest prototype)
+# lstk e2e tests (TypeScript / Vitest)
 
 End-to-end tests that drive the **built binary** (`bin/lstk`) as a user would: no lstk
-source code is imported, nothing is stubbed inside the process. This is a prototype
-running alongside the Go suite in `test/integration/`, not a replacement for it.
+source code is imported, nothing is stubbed inside the process.
 
-Coverage against the Go suite is tracked in [PORTING.md](PORTING.md) — currently a
-sample (11 of 384 cases), one per shape of test, not a migration in progress.
+This suite owns the CLI boundary for the areas it covers — the proxy commands, `--json`,
+exit codes, lifecycle, `logs`, `volume`, config, completion, `docs`, login and the TUI —
+and the Go tests for those areas have been removed. The Go suite in `test/integration/`
+keeps everything else. Which suite owns what, and why each remaining Go test could not
+move, is tracked in [PORTING.md](PORTING.md).
 
 ## Toolchain
 
@@ -257,8 +259,9 @@ handles by not marking those tests parallel.
 
 The `test-e2e` job in `.github/workflows/ci.yml` runs on ubuntu / macOS / windows,
 writes JUnit XML (`CREATE_JUNIT_REPORT=1`), uploads it, and renders it through
-`dorny/test-reporter` — same reporting as the Go suite. It is intentionally **not** in
-the release job's `needs:` while the prototype is being evaluated.
+`dorny/test-reporter` — same reporting as the Go suite. It is **not** in the release
+job's `needs:` yet; it has to be promoted to a required check, since it is now the only
+suite covering the CLI boundary for the areas it owns.
 
 Vitest shards natively if the suite grows enough to need it: set `SHARD_INDEX` /
 `SHARD_TOTAL` (`scripts/test-e2e.sh` forwards them to `--shard`).
