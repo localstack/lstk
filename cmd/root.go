@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -288,13 +289,7 @@ func Execute(ctx context.Context) error {
 	root := NewRootCmd(cfg, tel, logger)
 	root.SilenceErrors = true
 	root.SilenceUsage = true
-	requireJSONSupport(root, cfg)
-	instrumentCommands(root, tel)
-	if cfg.TracesEnabled {
-		wrapCommandsWithTracing(root)
-	}
-	wrapCommandsWithJSONEnvelope(root, cfg, os.Stdout)
-	wrapPreRunEForJSON(root, cfg, os.Stdout)
+	configureCommandExecution(root, cfg, tel, os.Stdout)
 
 	if err := root.ExecuteContext(ctx); err != nil {
 		if !output.IsSilent(err) {
@@ -303,6 +298,20 @@ func Execute(ctx context.Context) error {
 		return err
 	}
 	return nil
+}
+
+// configureCommandExecution installs command middleware from innermost to
+// outermost. Telemetry must be installed last so it observes the final error
+// after JSON output has attached its process exit code; tracing sits outside
+// that translation for the same reason.
+func configureCommandExecution(root *cobra.Command, cfg *env.Env, tel *telemetry.Client, stdout io.Writer) {
+	requireJSONSupport(root, cfg)
+	wrapCommandsWithJSONEnvelope(root, cfg, stdout)
+	if cfg.TracesEnabled {
+		wrapCommandsWithTracing(root)
+	}
+	instrumentCommands(root, tel)
+	wrapPreRunEForJSON(root, cfg, stdout)
 }
 
 func buildStartOptions(cfg *env.Env, appConfig *config.Config, logger log.Logger, tel *telemetry.Client, persist bool) container.StartOptions {
@@ -538,11 +547,17 @@ func instrumentCommands(cmd *cobra.Command, tel *telemetry.Client) {
 			})
 
 			// Proxy commands disable flag parsing, so their wrapped tool's
-			// subcommand is invisible in the command path; record its leading
-			// tokens so failures are attributable to a service/operation.
+			// subcommand is invisible in the command path; record its safe
+			// leading command-path tokens so failures are attributable.
 			subcommand := ""
 			if c.DisableFlagParsing {
-				subcommand = proxySubcommand(args)
+				// Cobra leaves a root flag that preceded a DisableFlagParsing
+				// command in args. Use the same corrected view as the proxy's
+				// PreRunE so a global --endpoint-url does not hide the command.
+				if stripped, _, found := stripPreCommandEndpointURL(c.CalledAs()); found {
+					args = stripped
+				}
+				subcommand = proxySubcommand(c.Name(), args)
 			}
 
 			exitCode := ExitCode(runErr)
@@ -617,13 +632,12 @@ func wrapCommandsWithTracing(cmd *cobra.Command) {
 			c.SetContext(ctx)
 
 			err := original(c, args)
+			exitCode := ExitCode(err)
 			if err != nil {
 				span.RecordError(err)
 				span.SetStatus(codes.Error, err.Error())
-				span.SetAttributes(attribute.Int("lstk.exit_code", 1))
-			} else {
-				span.SetAttributes(attribute.Int("lstk.exit_code", 0))
 			}
+			span.SetAttributes(attribute.Int("lstk.exit_code", exitCode))
 			return err
 		}
 	})

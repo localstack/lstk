@@ -55,15 +55,20 @@ func stripGlobalFlags(args []string) ([]string, globalFlags) {
 	return out, gf
 }
 
-// proxySubcommand returns the leading subcommand tokens of a proxy command's
-// raw args for telemetry, e.g. "s3 ls" for `lstk aws s3 ls s3://bucket`. Only
-// leading non-flag tokens are collected: collection stops at the first
-// flag-like arg so a flag's value can never be mistaken for a subcommand, and
-// is capped at two tokens of at most 64 runes each so free-form values are
-// never recorded.
-func proxySubcommand(args []string) string {
+// proxySubcommand returns the safe leading command-path tokens of a proxy
+// command's raw args for telemetry, e.g. "s3 ls" for `lstk aws s3 ls
+// s3://bucket`. Only leading non-flag tokens are collected: collection stops at
+// the first flag-like arg so a flag's value can never be mistaken for a
+// subcommand. The token limit follows each CLI's grammar so a positional value
+// is not recorded for flat commands such as `cdk deploy MyStack` or `terraform
+// import ADDRESS ID`; each recorded token is capped at 64 runes.
+func proxySubcommand(command string, args []string) string {
 	args, _ = stripGlobalFlags(args)
-	tokens := make([]string, 0, 2)
+	limit := 1
+	if len(args) > 0 {
+		limit = proxySubcommandTokenLimit(command, args[0])
+	}
+	tokens := make([]string, 0, limit)
 	for _, arg := range args {
 		if strings.HasPrefix(arg, "-") {
 			break
@@ -72,11 +77,31 @@ func proxySubcommand(args []string) string {
 			arg = string(r[:64])
 		}
 		tokens = append(tokens, arg)
-		if len(tokens) == 2 {
+		if len(tokens) == limit {
 			break
 		}
 	}
 	return strings.Join(tokens, " ")
+}
+
+func proxySubcommandTokenLimit(command, firstToken string) int {
+	switch command {
+	case "aws":
+		// AWS reserves its first two positions for the service and operation;
+		// user-supplied values come later.
+		return 2
+	case "terraform":
+		switch firstToken {
+		case "metadata", "providers", "state", "workspace":
+			return 2
+		}
+	case "sam":
+		switch firstToken {
+		case "local", "pipeline", "remote":
+			return 2
+		}
+	}
+	return 1
 }
 
 // jsonPrecedesCommandName reports whether --json (or --json=<value>) appears in

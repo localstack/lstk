@@ -39,8 +39,8 @@ type CommandEvent struct {
 }
 
 // CommandParameters holds the command name and set flags. Subcommand carries
-// the leading service/operation tokens of a proxied tool invocation (e.g.
-// "s3 ls" for `lstk aws s3 ls`); empty for lstk's own commands.
+// the safe leading command-path tokens of a proxied tool invocation (e.g. "s3
+// ls" for `lstk aws s3 ls`); empty for lstk's own commands.
 type CommandParameters struct {
 	Command    string   `json:"command"`
 	Subcommand string   `json:"subcommand,omitempty"`
@@ -77,12 +77,12 @@ const (
 
 // Error codes for start_error lifecycle events.
 const (
-	ErrCodePortConflict      = "port_conflict"
-	ErrCodeImagePullFailed   = "image_pull_failed"
-	ErrCodeLicenseInvalid = "license_invalid"
-	ErrCodeStartFailed       = "start_failed"
-	ErrCodeStartTimeout      = "start_timeout"
-	ErrCodeEmulatorMismatch  = "emulator_mismatch"
+	ErrCodePortConflict     = "port_conflict"
+	ErrCodeImagePullFailed  = "image_pull_failed"
+	ErrCodeLicenseInvalid   = "license_invalid"
+	ErrCodeStartFailed      = "start_failed"
+	ErrCodeStartTimeout     = "start_timeout"
+	ErrCodeEmulatorMismatch = "emulator_mismatch"
 )
 
 // ToMap converts a telemetry event struct to a map[string]any for use with Emit.

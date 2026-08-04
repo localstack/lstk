@@ -219,12 +219,10 @@ func TestAWSProxyTelemetryRecordsExitCodeAndSubcommand(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("fake aws shell script not supported on Windows")
 	}
-	requireDocker(t)
-	cleanup()
-	t.Cleanup(cleanup)
+	t.Parallel()
 
-	ctx := testContext(t)
-	startTestContainer(t, ctx)
+	emulatorSrv := awsHealthServer(t)
+	defer emulatorSrv.Close()
 
 	analyticsSrv, events := mockAnalyticsServer(t)
 
@@ -236,8 +234,10 @@ func TestAWSProxyTelemetryRecordsExitCodeAndSubcommand(t *testing.T) {
 	environ := env.Environ(testEnvWithHome(t.TempDir(), "")).
 		With(env.AnalyticsEndpoint, analyticsSrv.URL).
 		With(env.Path, fakeBinDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	environ = append(environ, unreachableDockerHost)
 
-	_, _, err := runLstk(t, ctx, "", environ, "aws", "s3", "lss")
+	_, _, err := runLstk(t, testContext(t), "", environ,
+		"--endpoint-url", emulatorSrv.URL, "aws", "s3", "lss")
 	require.Error(t, err)
 	requireExitCode(t, 252, err)
 
