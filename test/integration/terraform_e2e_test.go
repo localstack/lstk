@@ -28,6 +28,10 @@ import (
 // the generated override, so a successful apply proves the endpoint override
 // routed to LocalStack end-to-end.
 
+// tfOverrideFile is the name lstk generates for a proxied terraform command's
+// endpoint override; also used by terraform_s3backend_e2e_test.go.
+const tfOverrideFile = "localstack_providers_override.tf"
+
 func requireTerraform(t *testing.T) {
 	t.Helper()
 	if _, err := exec.LookPath("terraform"); err != nil {

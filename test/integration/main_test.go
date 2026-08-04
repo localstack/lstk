@@ -3,6 +3,7 @@ package integration_test
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -27,6 +28,41 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/zalando/go-keyring"
 )
+
+// jsonEnvelope mirrors the shape documented in output-envelope/spec.md and
+// design.md's Command Catalog, decoded loosely (Data stays raw so each test
+// unmarshals it into its own command-specific shape).
+type jsonEnvelope struct {
+	SchemaVersion int             `json:"schemaVersion"`
+	Command       string          `json:"command"`
+	Status        string          `json:"status"`
+	Data          json.RawMessage `json:"data"`
+	Warnings      []jsonWarning   `json:"warnings"`
+	Error         *jsonError      `json:"error"`
+}
+
+type jsonWarning struct {
+	Code    string `json:"code"`
+	Message string `json:"message"`
+}
+
+type jsonError struct {
+	Code      string         `json:"code"`
+	Category  string         `json:"category"`
+	Message   string         `json:"message"`
+	Retryable bool           `json:"retryable"`
+	Details   map[string]any `json:"details"`
+}
+
+// decodeEnvelope requires stdout to be exactly one well-formed JSON object,
+// per the "never emits unstructured output" guarantee in output-envelope/spec.md.
+func decodeEnvelope(t *testing.T, stdout string) jsonEnvelope {
+	t.Helper()
+	var envelope jsonEnvelope
+	require.NoError(t, json.Unmarshal([]byte(stdout), &envelope), "stdout should be exactly one JSON object: %s", stdout)
+	require.NotNil(t, envelope.Warnings, "warnings should always be an array, never omitted/null")
+	return envelope
+}
 
 // syncBuffer is a thread-safe buffer for concurrent read/write access.
 type syncBuffer struct {
@@ -388,6 +424,11 @@ func createMockLicenseServer(success bool) *httptest.Server {
 		}
 		w.WriteHeader(http.StatusNotFound)
 	}))
+}
+
+// escapeTomlPath escapes backslashes for Windows paths in TOML quoted strings.
+func escapeTomlPath(path string) string {
+	return strings.ReplaceAll(path, `\`, `\\`)
 }
 
 func createMockLicenseServerWithBody(body string) *httptest.Server {

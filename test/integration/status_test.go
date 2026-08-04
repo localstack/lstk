@@ -1,10 +1,7 @@
 package integration_test
 
 import (
-	"context"
-	"encoding/json"
 	"fmt"
-	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -17,26 +14,19 @@ import (
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/sqs"
-	"github.com/moby/moby/client"
 	"github.com/localstack/lstk/test/integration/env"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-func TestStatusCommandFailsWhenNotRunning(t *testing.T) {
-	requireDocker(t)
-	cleanup()
-	t.Cleanup(cleanup)
-
-	analyticsSrv, events := mockAnalyticsServer(t)
-	stdout, _, err := runLstk(t, testContext(t), "", env.With(env.AnalyticsEndpoint, analyticsSrv.URL), "status")
-	require.Error(t, err, "expected lstk status to fail when emulator not running")
-	requireExitCode(t, 1, err)
-	assert.Contains(t, stdout, "is not running")
-	assert.Contains(t, stdout, "Start LocalStack:")
-	assert.Contains(t, stdout, "See help:")
-	assertCommandTelemetry(t, events, "status", 1)
-}
+// TestStatusCommandShowsResourcesWhenRunning and TestStatusCommandWorksWithNonDefaultPort
+// are the only cases kept here: the rest of the original test/integration/status_test.go
+// was ported to test/e2e/tests/status.test.ts. These two were not:
+//   - this one needs a real AWS SDK client to create S3/SQS resources so `lstk status`
+//     has something to report — not just a mock health/resources HTTP endpoint.
+//   - TestStatusCommandWorksWithNonDefaultPort (below) publishes on the 127.0.0.2
+//     loopback alias, which Docker Desktop's VM-backed networking rejects but a
+//     native Linux daemon (as used in CI) accepts.
 
 func TestStatusCommandShowsResourcesWhenRunning(t *testing.T) {
 	requireDocker(t)
@@ -118,132 +108,4 @@ func TestStatusCommandWorksWithNonDefaultPort(t *testing.T) {
 	stdout, stderr, err := runLstk(t, ctx, "", testEnvWithHome(t.TempDir(), ""), "--config", configFile, "status")
 	require.NoError(t, err, "lstk status failed: %s", stderr)
 	assert.Contains(t, stdout, "4.14.1")
-}
-
-func TestStatusCommandWorksWithExternalContainer(t *testing.T) {
-	requireDocker(t)
-	cleanup()
-	t.Cleanup(cleanup)
-
-	ctx := testContext(t)
-
-	const fakeImage = "localstack/localstack-pro:test-fake"
-	_, err := dockerClient.ImageTag(ctx, client.ImageTagOptions{Source: testImage, Target: fakeImage})
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		_, _ = dockerClient.ImageRemove(context.Background(), fakeImage, client.ImageRemoveOptions{})
-	})
-
-	startExternalContainer(t, ctx, fakeImage, "localstack-external", "4566")
-
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch r.URL.Path {
-		case "/_localstack/health":
-			w.Header().Set("Content-Type", "application/json")
-			_, _ = fmt.Fprintln(w, `{"version": "3.5.0", "services": {}}`)
-		case "/_localstack/resources":
-			w.Header().Set("Content-Type", "application/x-ndjson")
-		default:
-			w.WriteHeader(http.StatusNotFound)
-		}
-	}))
-	defer server.Close()
-
-	stdout, stderr, err := runLstk(t, ctx, "", env.With(env.LocalStackHost, lsHost(server)), "status")
-	require.NoError(t, err, "lstk status should work with external container: %s", stderr)
-	requireExitCode(t, 0, err)
-	assert.Contains(t, stdout, "3.5.0")
-}
-
-func TestStatusCommandForSnowflakeShowsNoResources(t *testing.T) {
-	requireDocker(t)
-	cleanupSnowflake()
-	t.Cleanup(cleanupSnowflake)
-
-	ctx := testContext(t)
-	startTestSnowflakeContainer(t, ctx)
-
-	stdout, stderr, err := runLstk(t, ctx, "", testEnvWithHome(t.TempDir(), ""), "--config", writeSnowflakeConfig(t, "4566"), "status")
-	require.NoError(t, err, "lstk status failed for snowflake: %s", stderr)
-	requireExitCode(t, 0, err)
-
-	assert.Contains(t, stdout, "Snowflake")
-	assert.Contains(t, stdout, "running")
-	assert.Contains(t, stdout, "snowflake.localhost.localstack.cloud:4566",
-		"snowflake status should display the snowflake-routed host clients use to connect")
-	// Snowflake does not expose AWS resources — no resource table or empty-state message.
-	assert.NotContains(t, stdout, "SERVICE")
-	assert.NotContains(t, stdout, "No resources deployed")
-}
-
-func TestStatusCommandForSnowflakeShowsVersion(t *testing.T) {
-	requireDocker(t)
-	_ = env.Require(t, env.AuthToken)
-
-	cleanup()
-	cleanupSnowflake()
-	t.Cleanup(cleanup)
-	t.Cleanup(cleanupSnowflake)
-
-	mockServer := createMockLicenseServer(true)
-	defer mockServer.Close()
-
-	const hostPort = "4566"
-	configFile := writeSnowflakeConfig(t, hostPort)
-
-	ctx := testContext(t)
-	_, stderr, err := runLstk(t, ctx, "", env.With(env.APIEndpoint, mockServer.URL), "--config", configFile, "start")
-	require.NoError(t, err, "lstk start failed: %s", stderr)
-	requireExitCode(t, 0, err)
-
-	expectedVersion := fetchSnowflakeVersion(t, hostPort)
-
-	stdout, stderr, err := runLstk(t, ctx, "", testEnvWithHome(t.TempDir(), ""), "--config", configFile, "status")
-	require.NoError(t, err, "lstk status failed: %s", stderr)
-	requireExitCode(t, 0, err)
-
-	assert.Contains(t, stdout, "• Version: "+expectedVersion,
-		"snowflake status should display the version reported by /_localstack/health")
-}
-
-func TestStatusCommandShowsNoResourcesWhenEmpty(t *testing.T) {
-	requireDocker(t)
-	cleanup()
-	t.Cleanup(cleanup)
-
-	ctx := testContext(t)
-	startTestContainer(t, ctx)
-
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch r.URL.Path {
-		case "/_localstack/health":
-			w.Header().Set("Content-Type", "application/json")
-			_, _ = fmt.Fprintln(w, `{"version": "4.14.1", "services": {}}`)
-		case "/_localstack/resources":
-			w.Header().Set("Content-Type", "application/x-ndjson")
-		default:
-			w.WriteHeader(http.StatusNotFound)
-		}
-	}))
-	defer server.Close()
-
-	stdout, stderr, err := runLstk(t, ctx, "", env.With(env.LocalStackHost, lsHost(server)), "status")
-	require.NoError(t, err, "lstk status failed: %s", stderr)
-	requireExitCode(t, 0, err)
-	assert.Contains(t, stdout, "No resources deployed")
-}
-
-func fetchSnowflakeVersion(t *testing.T, hostPort string) string {
-	t.Helper()
-	resp, err := http.Get(fmt.Sprintf("http://localhost:%s/_localstack/health", hostPort))
-	require.NoError(t, err, "failed to fetch snowflake health")
-	t.Cleanup(func() { _ = resp.Body.Close() })
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err, "failed to read snowflake health body")
-	var h struct {
-		Version string `json:"version"`
-	}
-	require.NoError(t, json.Unmarshal(body, &h), "failed to decode snowflake health: %s", body)
-	require.NotEmpty(t, h.Version, "snowflake health response missing version field")
-	return h.Version
 }

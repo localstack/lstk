@@ -239,23 +239,3 @@ func TestLoginShortCircuitsWhenEnvTokenSet(t *testing.T) {
 	assert.NotContains(t, out, "Waiting for authorization")
 }
 
-func TestLoginShortCircuitsWhenStoredTokenExists(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("PTY not supported on Windows")
-	}
-	t.Parallel()
-
-	tmpHome := t.TempDir()
-	tokenDir := filepath.Join(tmpHome, ".config", "lstk")
-	require.NoError(t, os.MkdirAll(tokenDir, 0700))
-	require.NoError(t, os.WriteFile(filepath.Join(tokenDir, "auth-token"), []byte("stored-token"), 0600))
-
-	environ := env.Environ(testEnvWithHome(tmpHome, "")).Without(env.AuthToken)
-
-	out, err := runLstkInPTY(t, testContext(t), environ, "login")
-	require.NoError(t, err, "login should succeed when stored token exists: %s", out)
-	requireExitCode(t, 0, err)
-	assert.Contains(t, out, "You're already logged in")
-	assert.NotContains(t, out, "Opening browser")
-	assert.NotContains(t, out, "Waiting for authorization")
-}

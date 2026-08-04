@@ -1,7 +1,6 @@
 package integration_test
 
 import (
-	"runtime"
 	"testing"
 
 	"github.com/localstack/lstk/test/integration/env"
@@ -14,45 +13,14 @@ import (
 // exercises the rejection gate (requireJSONSupport in cmd/root.go), which
 // itself renders as a JSON envelope on stdout (error.code = NOT_JSON_CAPABLE)
 // since that's the one guaranteed-universal response to --json.
-
-func TestJSONFlagRejectsUnannotatedBuiltinCommand(t *testing.T) {
-	t.Parallel()
-	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), testEnvWithHome(t.TempDir(), ""), "status", "--json")
-	requireExitCode(t, 1, err)
-	envelope := decodeEnvelope(t, stdout)
-	assert.Equal(t, "status", envelope.Command)
-	assert.Equal(t, "error", envelope.Status)
-	require.NotNil(t, envelope.Error)
-	assert.Equal(t, "NOT_JSON_CAPABLE", envelope.Error.Code)
-	assert.Contains(t, envelope.Error.Message, "status")
-	assert.Empty(t, stderr, "the rejection is rendered as JSON on stdout, not plain text on stderr")
-}
-
-func TestJSONFlagRejectsDefaultStartBehavior(t *testing.T) {
-	t.Parallel()
-	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), testEnvWithHome(t.TempDir(), ""), "--json")
-	requireExitCode(t, 1, err)
-	envelope := decodeEnvelope(t, stdout)
-	assert.Equal(t, "start", envelope.Command)
-	assert.Equal(t, "error", envelope.Status)
-	require.NotNil(t, envelope.Error)
-	assert.Equal(t, "NOT_JSON_CAPABLE", envelope.Error.Code)
-	assert.Empty(t, stderr, "the rejection is rendered as JSON on stdout, not plain text on stderr")
-}
-
-func TestJSONFlagDoesNotLaunchTUIOnPTY(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("PTY not supported on Windows")
-	}
-	t.Parallel()
-
-	out, err := runLstkInPTY(t, testContext(t), testEnvWithHome(t.TempDir(), ""), "start", "--json")
-	requireExitCode(t, 1, err)
-	require.Contains(t, out, "start")
-	// If the TUI had launched, it would have shown the auth prompt (start with
-	// no auth token requires interactive login) rather than exiting immediately.
-	require.NotContains(t, out, "Press any key")
-}
+//
+// TestJSONFlagRejectsUnannotatedBuiltinCommand, TestJSONFlagRejectsDefaultStartBehavior,
+// TestJSONFlagDoesNotLaunchTUIOnPTY, TestJSONFlagBeforeCommandNameBooleanValues, and
+// TestExtensionReceivesJSONFlagInContext were ported to
+// test/e2e/tests/json-flag.test.ts, json-envelope.test.ts, and
+// json-envelope.pty.test.ts and removed from here. The az sub-case of the two
+// table-driven proxy tests below stays: reaching a real `az` invocation needs a
+// completed `lstk setup azure`, which the TS suite does not attempt.
 
 // proxyCase describes one proxy command's forwarding/rejection setup, shared
 // across the before/after-command-name test tables below.
@@ -148,61 +116,4 @@ func TestJSONFlagProxyCommandsRejectBeforeCommandName(t *testing.T) {
 			assert.Empty(t, stderr, "the rejection is rendered as JSON on stdout, not plain text on stderr")
 		})
 	}
-}
-
-// TestJSONFlagBeforeCommandNameBooleanValues exercises the boolean-aware
-// parsing jsonPrecedesCommandName applies (mirroring stripGlobalFlags's
-// existing --non-interactive=<value> handling), using aws as a representative
-// proxy command since it has no leading IaC-flag tier of its own to interact
-// with.
-func TestJSONFlagBeforeCommandNameBooleanValues(t *testing.T) {
-	t.Parallel()
-
-	t.Run("--json=true before the command name is rejected", func(t *testing.T) {
-		t.Parallel()
-		stdout, _, err := runLstk(t, testContext(t), t.TempDir(), env.With(env.DisableEvents, "1").With("PATH", t.TempDir()).With(env.Home, t.TempDir()), "--json=true", "aws", "s3", "ls")
-		requireExitCode(t, 1, err)
-		envelope := decodeEnvelope(t, stdout)
-		assert.Equal(t, "aws", envelope.Command)
-		require.NotNil(t, envelope.Error)
-		assert.Equal(t, "NOT_JSON_CAPABLE", envelope.Error.Code)
-	})
-
-	t.Run("--json=false before the command name is not rejected", func(t *testing.T) {
-		t.Parallel()
-		stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), env.With(env.DisableEvents, "1").With("PATH", t.TempDir()).With(env.Home, t.TempDir()), "--json=false", "aws", "s3", "ls")
-		require.Error(t, err)
-		combined := stdout + stderr
-		require.Contains(t, combined, "not found in PATH", "the wrapped tool should have run (and failed for its own, unrelated reason)")
-		require.NotContains(t, combined, "is not able to provide output in JSON format")
-	})
-
-	t.Run("a malformed value before the command name is rejected", func(t *testing.T) {
-		t.Parallel()
-		stdout, _, err := runLstk(t, testContext(t), t.TempDir(), env.With(env.DisableEvents, "1").With("PATH", t.TempDir()).With(env.Home, t.TempDir()), "--json=notabool", "aws", "s3", "ls")
-		requireExitCode(t, 1, err)
-		envelope := decodeEnvelope(t, stdout)
-		assert.Equal(t, "aws", envelope.Command)
-		require.NotNil(t, envelope.Error)
-		assert.Equal(t, "NOT_JSON_CAPABLE", envelope.Error.Code)
-	})
-}
-
-func TestExtensionReceivesJSONFlagInContext(t *testing.T) {
-	t.Parallel()
-	extDir := t.TempDir()
-	installExtension(t, extDir, "hello")
-	tmpHome := t.TempDir()
-	environ := envWithPath(tmpHome, extDir)
-
-	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), environ, "--json", "hello", "--foo")
-	require.NoError(t, err, stderr)
-	require.Contains(t, stdout, "ARGS=[--foo]", "--json is consumed by lstk and conveyed via env, not forwarded")
-	require.Contains(t, stdout, "JSON=true")
-	// --json forces non-interactive rendering, so the extension sees that too.
-	require.Contains(t, stdout, "NON_INTERACTIVE=true")
-
-	stdoutDefault, stderrDefault, errDefault := runLstk(t, testContext(t), t.TempDir(), environ, "hello", "--foo")
-	require.NoError(t, errDefault, stderrDefault)
-	require.Contains(t, stdoutDefault, "JSON=false")
 }
