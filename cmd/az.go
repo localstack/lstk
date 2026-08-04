@@ -21,11 +21,12 @@ import (
 )
 
 func newAzCmd(cfg *env.Env) *cobra.Command {
-	// DisableFlagParsing means Cobra won't strip a pre-command --endpoint-url;
-	// PreRunE does that and stashes the corrected args here for RunE to
-	// forward, mirroring aws.go/terraform.go/cdk.go/sam.go's passthrough
-	// pattern (RunE's own args parameter is NOT updated by PreRunE's local
-	// changes — Cobra calls each independently with its own resolved args).
+	// DisableFlagParsing means Cobra won't strip lstk's own flags (a pre-command
+	// --endpoint-url, --non-interactive, --config); PreRunE does that and
+	// stashes the remaining args here for RunE to forward, mirroring
+	// aws.go/terraform.go/cdk.go/sam.go's passthrough pattern (RunE's own args
+	// parameter is NOT updated by PreRunE's local changes — Cobra calls each
+	// independently with its own resolved args).
 	var passthrough []string
 	cmd := &cobra.Command{
 		Use:   "az [args...]",
@@ -54,7 +55,18 @@ Examples:
 				}
 				args = strippedArgs
 			}
-			passthrough = args
+
+			var gf globalFlags
+			passthrough, gf = stripGlobalFlags(args)
+			if gf.nonInteractive {
+				cfg.NonInteractive = true
+			}
+			if gf.configPath != "" {
+				// initConfigDeferCreate reads the "config" flag, so feed the value back to it.
+				if err := cmd.Flags().Set("config", gf.configPath); err != nil {
+					return err
+				}
+			}
 			return initConfigDeferCreate(nil)(cmd, args)
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
