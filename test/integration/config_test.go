@@ -166,6 +166,25 @@ tag = "latest"
 	assert.Contains(t, stderr, "port is required")
 }
 
+func TestConfigWithInvalidContainerNameFails(t *testing.T) {
+	t.Parallel()
+	configContent := `
+[[containers]]
+type = "aws"
+tag = "latest"
+port = "4566"
+container_name = "my emulator"
+`
+	configFile := filepath.Join(t.TempDir(), "config.toml")
+	require.NoError(t, os.WriteFile(configFile, []byte(configContent), 0644))
+
+	// Rejected at config load, so the failure needs no Docker daemon and no token.
+	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), testEnvWithHome(t.TempDir(), ""), "--config", configFile, "stop")
+	require.Error(t, err)
+	requireExitCode(t, 1, err)
+	assert.Contains(t, stdout+stderr, `invalid container name "my emulator"`)
+}
+
 func TestStartWithMultipleContainersFailsFast(t *testing.T) {
 	t.Parallel()
 	configContent := `
