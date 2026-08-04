@@ -160,6 +160,12 @@ func (s stubInspector) GetCloudPod(context.Context, string, string, int) (*api.C
 	return nil, s.err
 }
 
+type stubVersionLister struct{ err error }
+
+func (s stubVersionLister) GetCloudPodVersions(context.Context, string, string) ([]api.CloudPodVersion, error) {
+	return nil, s.err
+}
+
 // list/show query the platform, which reports a plan without Cloud Pods as a
 // 403 rather than the emulator's empty 404 — same message, different signal.
 func TestList_FeatureUnavailable(t *testing.T) {
@@ -175,5 +181,15 @@ func TestShow_FeatureUnavailable(t *testing.T) {
 	sink, getEvents := captureEvents(t)
 
 	err := snapshot.Show(context.Background(), stubInspector{err: api.ErrCloudPodsForbidden}, "test-token", "my-baseline", 0, sink)
+	assertFeatureUnavailable(t, err, getEvents())
+}
+
+// versions is the third platform-API command, so it needs the same 403 handling
+// as list/show — it was added before that handling existed.
+func TestVersions_FeatureUnavailable(t *testing.T) {
+	t.Parallel()
+	sink, getEvents := captureEvents(t)
+
+	err := snapshot.Versions(context.Background(), stubVersionLister{err: api.ErrCloudPodsForbidden}, "test-token", "my-baseline", sink)
 	assertFeatureUnavailable(t, err, getEvents())
 }

@@ -35,6 +35,12 @@ func Versions(ctx context.Context, lister CloudPodVersionLister, authToken, podN
 	versions, err := lister.GetCloudPodVersions(ctx, authToken, podName)
 	sink.Emit(output.SpinnerStop())
 	if err != nil {
+		// The platform reports a plan without Cloud Pods as a 403, same as it does
+		// for list/show — this is the third platform-API command and needs the
+		// identical message rather than a raw error.
+		if errors.Is(err, api.ErrCloudPodsForbidden) {
+			return emitFeatureUnavailableError(sink)
+		}
 		if errors.Is(err, api.ErrCloudPodNotFound) {
 			sink.Emit(output.ErrorEvent{
 				Title: fmt.Sprintf("Snapshot 'pod:%s' not found", podName),
