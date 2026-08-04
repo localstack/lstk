@@ -30,54 +30,84 @@ const noDocker = requirement(
 /** Environment for a command that must never reach a container runtime. */
 const noDaemon = { env: { DOCKER_HOST: unreachableDockerHost } };
 
-/**
- * lstk's own `--endpoint-url` is spelled the same as the AWS CLI's, so lstk only
- * claims the occurrence *before* the subcommand. `LSTK_ENDPOINT_URL` and
- * `AWS_ENDPOINT_URL` are the ambient equivalents, and an ambient value is rejected
- * just as loudly as an explicit flag: silently proceeding against a local
- * container was the reported bug.
- */
-const sources = [
-  { label: "--endpoint-url", named: "--endpoint-url", suffix: "--endpoint-url was passed" },
-  { label: "LSTK_ENDPOINT_URL", named: "LSTK_ENDPOINT_URL", suffix: "LSTK_ENDPOINT_URL is set" },
-  { label: "AWS_ENDPOINT_URL", named: "AWS_ENDPOINT_URL", suffix: "AWS_ENDPOINT_URL is set" },
-] as const;
+const url = "http://localhost:4566";
 
-type Source = (typeof sources)[number];
-
-function withSource(source: Source, args: string[]): { args: string[]; env: Record<string, string> } {
-  if (source.named === "--endpoint-url") {
-    return { args: [...args, "--endpoint-url", "http://localhost:4566"], env: {} };
-  }
-  return { args, env: { [source.named]: "http://localhost:4566" } };
+// logs/stop/restart/start/volume act on a local container or on local filesystem
+// state, so there is nothing for an endpoint to mean. Rejecting is the whole
+// behaviour, and each is rejected identically however the endpoint arrived:
+// lstk's own `--endpoint-url` flag, or the ambient LSTK_ENDPOINT_URL /
+// AWS_ENDPOINT_URL. An ambient value is refused just as loudly as an explicit
+// flag — silently proceeding against a local container was the reported bug.
+//
+// Spelled out per row rather than assembled from a command list and a source
+// list: every row shows the exact argv and environment it runs with, which is
+// what a reader needs, and the differences between rows (`volume clear` wants
+// --force, `start` wants --non-interactive) stay visible instead of hiding in a
+// helper.
+interface Rejection {
+  /** Command name as lstk names it back in the error. */
+  command: string;
+  /** How the endpoint reached lstk, spelled as the error spells it. */
+  source: string;
+  /** The parenthetical the error ends with. */
+  suffix: string;
+  args: string[];
+  env: Record<string, string>;
 }
 
+const rejections: Rejection[] = [
+  { command: "logs", source: "--endpoint-url", suffix: "--endpoint-url was passed",
+    args: ["logs", "--endpoint-url", url], env: {} },
+  { command: "logs", source: "LSTK_ENDPOINT_URL", suffix: "LSTK_ENDPOINT_URL is set",
+    args: ["logs"], env: { LSTK_ENDPOINT_URL: url } },
+  { command: "logs", source: "AWS_ENDPOINT_URL", suffix: "AWS_ENDPOINT_URL is set",
+    args: ["logs"], env: { AWS_ENDPOINT_URL: url } },
+
+  { command: "stop", source: "--endpoint-url", suffix: "--endpoint-url was passed",
+    args: ["stop", "--endpoint-url", url], env: {} },
+  { command: "stop", source: "LSTK_ENDPOINT_URL", suffix: "LSTK_ENDPOINT_URL is set",
+    args: ["stop"], env: { LSTK_ENDPOINT_URL: url } },
+  { command: "stop", source: "AWS_ENDPOINT_URL", suffix: "AWS_ENDPOINT_URL is set",
+    args: ["stop"], env: { AWS_ENDPOINT_URL: url } },
+
+  { command: "restart", source: "--endpoint-url", suffix: "--endpoint-url was passed",
+    args: ["restart", "--endpoint-url", url], env: {} },
+  { command: "restart", source: "LSTK_ENDPOINT_URL", suffix: "LSTK_ENDPOINT_URL is set",
+    args: ["restart"], env: { LSTK_ENDPOINT_URL: url } },
+  { command: "restart", source: "AWS_ENDPOINT_URL", suffix: "AWS_ENDPOINT_URL is set",
+    args: ["restart"], env: { AWS_ENDPOINT_URL: url } },
+
+  { command: "start", source: "--endpoint-url", suffix: "--endpoint-url was passed",
+    args: ["start", "--non-interactive", "--endpoint-url", url], env: {} },
+  { command: "start", source: "LSTK_ENDPOINT_URL", suffix: "LSTK_ENDPOINT_URL is set",
+    args: ["start", "--non-interactive"], env: { LSTK_ENDPOINT_URL: url } },
+  { command: "start", source: "AWS_ENDPOINT_URL", suffix: "AWS_ENDPOINT_URL is set",
+    args: ["start", "--non-interactive"], env: { AWS_ENDPOINT_URL: url } },
+
+  { command: "volume path", source: "--endpoint-url", suffix: "--endpoint-url was passed",
+    args: ["volume", "path", "--endpoint-url", url], env: {} },
+  { command: "volume path", source: "LSTK_ENDPOINT_URL", suffix: "LSTK_ENDPOINT_URL is set",
+    args: ["volume", "path"], env: { LSTK_ENDPOINT_URL: url } },
+  { command: "volume path", source: "AWS_ENDPOINT_URL", suffix: "AWS_ENDPOINT_URL is set",
+    args: ["volume", "path"], env: { AWS_ENDPOINT_URL: url } },
+
+  { command: "volume clear", source: "--endpoint-url", suffix: "--endpoint-url was passed",
+    args: ["volume", "clear", "--force", "--endpoint-url", url], env: {} },
+  { command: "volume clear", source: "LSTK_ENDPOINT_URL", suffix: "LSTK_ENDPOINT_URL is set",
+    args: ["volume", "clear", "--force"], env: { LSTK_ENDPOINT_URL: url } },
+  { command: "volume clear", source: "AWS_ENDPOINT_URL", suffix: "AWS_ENDPOINT_URL is set",
+    args: ["volume", "clear", "--force"], env: { AWS_ENDPOINT_URL: url } },
+];
+
 describe("commands with no remote equivalent", () => {
-  // logs/stop/restart/start/volume act on a local container or on local
-  // filesystem state, so there is nothing for an endpoint to mean. Rejecting is
-  // the whole behaviour; each is rejected identically from all three sources.
-  const localOnly = [
-    { name: "logs", args: ["logs"] },
-    { name: "stop", args: ["stop"] },
-    { name: "restart", args: ["restart"] },
-    { name: "start", args: ["start", "--non-interactive"] },
-    { name: "volume path", args: ["volume", "path"] },
-    { name: "volume clear", args: ["volume", "clear", "--force"] },
-  ];
-
-  const cases = localOnly.flatMap((command) =>
-    sources.map((source) => ({ command, source })),
-  );
-
-  test.each(cases)("$command.name rejects $source.label", async ({ command, source }) => {
+  test.each(rejections)("$command rejects $source", async ({ command, source, suffix, args, env }) => {
     const home = await tempHome();
-    const { args, env } = withSource(source, command.args);
 
     const run = await lstk(args, { home, env: { ...noDaemon.env, ...env } });
 
     expect(run).toExitWith(1);
     expect(run.stdout).toPrintExactly(
-      `Error: ${command.name} does not support ${source.label}: it operates on a local Docker container or local filesystem state with no remote equivalent (${source.suffix})`,
+      `Error: ${command} does not support ${source}: it operates on a local Docker container or local filesystem state with no remote equivalent (${suffix})`,
     );
     expect(run.stderr, "the rejection is rendered once, through the sink").toPrintExactly("");
   });
