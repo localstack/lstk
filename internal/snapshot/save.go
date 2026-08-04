@@ -4,6 +4,7 @@ package snapshot
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -65,7 +66,13 @@ func save(ctx context.Context, rt runtime.Runtime, containers []config.Container
 		}
 	}()
 
-	return do()
+	if err := do(); err != nil {
+		if errors.Is(err, ErrSnapshotFeatureUnavailable) {
+			return emitFeatureUnavailableError(sink)
+		}
+		return err
+	}
+	return nil
 }
 
 // SaveLocal saves the running emulator's state to a local file. services, when

@@ -5,12 +5,12 @@
 with no CLI surface. `test/integration` keeps everything under "Still owned by Go" and
 does not go away wholesale; it shrinks as areas move across.
 
-**Status: 219 tests across 26 files** (204 pass, 15 skip on this machine — an auth token,
+**Status: 225 tests across 26 files** (210 pass, 15 skip on this machine — an auth token,
 a native Linux daemon and SSL_CERT_FILE certificate trust are the prerequisites not met
 here). Full-suite wall clock ≈ 75s.
 
-The Go integration suite has been trimmed accordingly: against `main` it goes from **419
-→ 267** test functions across **54 → 40** files, 14,552 → 10,561 lines.
+The Go integration suite has been trimmed accordingly: against `main` it goes from **427
+→ 269** test functions across **55 → 40** files, 14,758 → 10,623 lines.
 
 ## What "ported" means here
 
@@ -50,16 +50,21 @@ really calls `config.Get()`.
 | `--json` envelope, exit codes, `--non-interactive` | `json-envelope`(+`.pty`), `json-flag`, `exit-codes`, `non-interactive.pty` | 42 |
 | Lifecycle (`stop`, `restart`, `status`, `reset`) | `stop-restart`, `status`, `reset.pty` | 28 |
 | `logs`, `volume` | `logs.pty`, `volume.pty` | 21 |
-| Config, completion, docs | `config`, `completion`, `docs` | 21 |
+| Config, completion, docs | `config`, `completion`, `docs` | 27 |
 | Start paths, emulator selection, login journey, TUI | `start`, `start-local-image`, `emulator-select.pty`, `emulator-type`, `login-journey.pty`, `tui-runtime-error.pty` | 18 |
 | `--endpoint-url` / `LSTK_ENDPOINT_URL` | `endpoint-url`(+`.pty`), `endpoint-url-https` | 36 |
 | Harness self-tests (not product behaviour) | `harness/strip-ansi`, `harness/print-exactly` | 12 |
 
 ### What that removed from the Go suite
 
-Deleted outright: `json_envelope`, `exit_code`, `non_interactive`, `completion`, `docs`,
-`terraform_cmd`, `logs`, `reset`, `volume`, `stop`, `restart`, `logout`, `status`,
-`endpoint_url`, `endpoint_url_https`.
+Deleted outright: `json_envelope`, `exit_code`, `non_interactive`, `completion`,
+`aws_completion`, `docs`, `terraform_cmd`, `logs`, `reset`, `volume`, `stop`, `restart`,
+`logout`, `status`, `endpoint_url`, `endpoint_url_https`.
+
+`aws_completion_test.go` arrived on `main` (#424) after this port, and its one bash-driver
+case depends on a helper inside the `completion_test.go` this branch deletes. Both files
+move: `lstk aws <TAB>` delegating to `aws_completer` is CLI-observable, and
+`completion.test.ts` already drives the generated script under a bare bash.
 
 `config_test.go` likewise gained `TestConfigWithInvalidContainerNameFails` on `main`
 (custom `container_name`). That one is pure CLI output rejected at config load — no

@@ -28,6 +28,31 @@ var ErrIncompatibleSnapshot = errors.New("snapshot is incompatible with the runn
 // archive format from the user-facing message.
 var ErrInvalidSnapshotFile = errors.New("not a valid snapshot file")
 
+// ErrSnapshotFeatureUnavailable indicates the emulator's license lacks the
+// paid entitlement for snapshots (branded "Cloud Pods", but required for
+// local-file and S3-remote saves too, not just platform pods). Its
+// /_localstack/pods* routes are then never registered, so the emulator
+// replies with a bare, empty-body 404 — see isFeatureUnavailableResponse.
+//
+// Kept feature-neutral since aws.Client.ResetState is shared with `lstk
+// reset`, which surfaces this text directly; snapshot-specific wording lives
+// in emitFeatureUnavailableError instead.
+var ErrSnapshotFeatureUnavailable = errors.New("feature not available on this plan")
+
+// emitFeatureUnavailableError renders the shared "requires a paid plan" message
+// and returns the silent error the top-level handler expects. Every snapshot
+// operation funnels through here so the wording and CTAs live in one place.
+func emitFeatureUnavailableError(sink output.Sink) error {
+	sink.Emit(output.ErrorEvent{
+		Title:   "Snapshots require a paid LocalStack plan",
+		Summary: "Your plan does not include the snapshot feature.",
+		Actions: []output.ErrorAction{
+			{Label: "Compare plans:", Value: "https://www.localstack.cloud/pricing"},
+		},
+	})
+	return output.NewSilentError(ErrSnapshotFeatureUnavailable)
+}
+
 func ValidateMergeStrategy(strategy string) error {
 	switch strategy {
 	case MergeStrategyAccountRegion, MergeStrategyOverwrite, MergeStrategyService:
@@ -97,6 +122,9 @@ func load(ctx context.Context, rt runtime.Runtime, containers []config.Container
 	}()
 
 	err = do()
+	if errors.Is(err, ErrSnapshotFeatureUnavailable) {
+		return emitFeatureUnavailableError(sink)
+	}
 	if errors.Is(err, ErrIncompatibleSnapshot) {
 		sink.Emit(output.ErrorEvent{
 			Title:   "Could not load snapshot",

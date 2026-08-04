@@ -1,3 +1,5 @@
+//go:generate mockgen -source=remove.go -destination=mock_remove_client_test.go -package=snapshot_test
+
 package snapshot
 
 import (
@@ -79,6 +81,9 @@ func remove(ctx context.Context, podName, authToken string, remover PodRemover, 
 		}
 	}()
 	err := remover.RemovePodSnapshot(ctx, host, podName, authToken)
+	if errors.Is(err, ErrSnapshotFeatureUnavailable) {
+		return emitFeatureUnavailableError(sink)
+	}
 	if errors.Is(err, ErrPodNotFound) {
 		return fmt.Errorf("cloud pod %q not found", podName)
 	}

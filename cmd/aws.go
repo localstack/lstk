@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"os"
@@ -18,6 +19,12 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// awsCompletionTimeout bounds a single Tab press. The frozen aws CLI v2
+// completer answers in ~100ms and a pip-installed v1 one (a Python script) in
+// several hundred; the cap is what keeps a wedged completer from hanging the
+// user's shell instead of just yielding no candidates.
+const awsCompletionTimeout = 2 * time.Second
+
 func newAWSCmd(cfg *env.Env) *cobra.Command {
 	// DisableFlagParsing means Cobra won't strip lstk's own flags; PreRunE does
 	// that and stashes the remaining args here for RunE to forward to aws.
@@ -33,11 +40,40 @@ with AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, and AWS_DEFAULT_REGION set automa
 
 Run 'lstk setup aws' to configure the LocalStack AWS profile for use with CLI and SDKs.
 
+Tab completion of AWS services, operations and parameters comes from the AWS CLI itself, and is enabled by 'lstk completion <shell>' along with the rest of lstk's completion.
+
 Examples:
   lstk aws s3 ls
   lstk aws sqs list-queues
   lstk aws s3 mb s3://my-bucket`,
 		DisableFlagParsing: true,
+		// Shell completion for `lstk aws` is delegated to the aws CLI's own
+		// completer (DEVX-846). Routing it through Cobra's ValidArgsFunction
+		// rather than registering `complete -C aws_completer` means every shell
+		// `lstk completion` supports gets it — the native registration only
+		// ever worked in bash and zsh — and needs no additions to the
+		// self-contained bash fallback in completion.go.
+		//
+		// Cobra does not run PreRunE on the __complete path, so this stays
+		// offline: no config load, no Docker health check, no endpoint
+		// resolution. That matches the aws completer, which completes commands
+		// and parameters only and never contacts an endpoint.
+		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+			ctx, cancel := context.WithTimeout(cmd.Context(), awsCompletionTimeout)
+			defer cancel()
+
+			awsArgs, _ := stripGlobalFlags(args)
+			candidates, err := awscli.Complete(ctx, awsArgs, toComplete)
+			if err != nil || len(candidates) == 0 {
+				// Nothing may be printed here — stray output corrupts the
+				// completion protocol — so a missing or failing completer just
+				// degrades to the shell's file completion, which is also the
+				// useful answer where aws has no candidates of its own (e.g.
+				// `lstk aws s3 cp <TAB>`).
+				return nil, cobra.ShellCompDirectiveDefault
+			}
+			return candidates, cobra.ShellCompDirectiveNoFileComp
+		},
 		PreRunE: func(cmd *cobra.Command, args []string) error {
 			// --endpoint-url is recognized only when it precedes "aws" (like
 			// --json below): the aws CLI has its own native --endpoint-url flag,

@@ -4,6 +4,7 @@ import path from "node:path";
 import { execa } from "execa";
 import { describe, expect, test, onTestFinished } from "vitest";
 import { lstk, tempHome, requirement } from "../support/index.ts";
+import { fakeBinary } from "../support/fake-binary.ts";
 import { lstkBinary } from "../support/binary.ts";
 
 // Ported from test/integration/completion_test.go.
@@ -53,7 +54,7 @@ interface DriverResult {
  * the developer's bash-completion package. Mirrors
  * test/integration/completion_test.go's runBashCompletionDriver.
  */
-async function runCompletionDriver(driver: string): Promise<DriverResult> {
+async function runCompletionDriver(driver: string, extraPath: string[] = []): Promise<DriverResult> {
   const home = await tempHome();
   const genRun = await lstk(["completion", "bash"], { home });
   if (genRun.exitCode !== 0) {
@@ -75,7 +76,7 @@ async function runCompletionDriver(driver: string): Promise<DriverResult> {
     cwd: dir,
     env: {
       HOME: home.path,
-      PATH: `${binDir}:/usr/bin:/bin`,
+      PATH: [...extraPath, binDir, "/usr/bin", "/bin"].join(path.delimiter),
       LSTK_KEYRING: "file",
     },
     extendEnv: false,
@@ -226,5 +227,84 @@ _get_comp_words_by_ref
 
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toPrintExactly("package version");
+  });
+});
+
+// Ported from test/integration/aws_completion_test.go (DEVX-846).
+//
+// `lstk aws <TAB>` hands the line to the AWS CLI's own `aws_completer`. The
+// stand-in records the environment it was invoked with — COMP_LINE is the whole
+// contract — and answers with a fixed candidate list.
+describe("lstk aws completion", () => {
+  const awsCompleter = { name: "aws_completer", responses: [{ stdout: "ls\nlist-buckets\n" }] };
+
+  // Cobra's __complete is the entry point every generated completion script
+  // calls, so exercising it directly covers bash, zsh, fish and powershell at once.
+  test.each([
+    { name: "delegates the line, without lstk's own name in it", args: ["aws", "s3", "l"], line: "aws s3 l" },
+    // The cursor position is conveyed by a trailing space: without it the
+    // completer would offer completions for the previous word instead.
+    { name: "conveys a cursor sitting after a space", args: ["aws", "s3", ""], line: "aws s3 " },
+    // lstk's own persistent flags are stripped, mirroring the exec path.
+    { name: "strips lstk's global flags", args: ["aws", "--non-interactive", "s3", "l"], line: "aws s3 l" },
+  ])("$name", async ({ args, line }) => {
+    const completer = await fakeBinary(awsCompleter);
+    const home = await tempHome();
+
+    const run = await lstk(["__complete", ...args], { home, env: { PATH: completer.path } });
+
+    expect(run).toSucceed();
+    expect((await completer.lastCall())?.env.COMP_LINE).toBe(line);
+    expect(run.stdout.split("\n")).toEqual(expect.arrayContaining(["ls", "list-buckets"]));
+  });
+
+  // What makes Tab usable at all: Cobra does not run PreRunE on the __complete
+  // path, so completing must not load config, contact Docker or resolve an endpoint.
+  test("needs neither Docker nor a running emulator", async () => {
+    const completer = await fakeBinary(awsCompleter);
+    const home = await tempHome();
+
+    const run = await lstk(["__complete", "aws", "s3", "l"], {
+      home,
+      env: { PATH: completer.path, DOCKER_HOST: "tcp://localhost:1" },
+    });
+
+    expect(run).toSucceed();
+    expect(run.stdout.split("\n")).toContain("ls");
+    expect(run).not.toPrint("Docker is not available");
+  });
+
+  // A machine with no aws_completer must no-op silently: anything printed here
+  // would be read by the shell as a candidate.
+  test("degrades to the shell's own file completion when aws_completer is missing", async () => {
+    const empty = await mkdtemp(path.join(os.tmpdir(), "lstk-e2e-nopath-"));
+    onTestFinished(async () => {
+      await rm(empty, { recursive: true, force: true });
+    });
+    const home = await tempHome();
+
+    const run = await lstk(["__complete", "aws", "s3", "l"], { home, env: { PATH: empty } });
+
+    expect(run).toSucceed();
+    // ShellCompDirectiveDefault (0): hand the word back to the shell rather than
+    // offering nothing at all.
+    expect(run.stdout).toPrintExactly(":0");
+  });
+
+  // And through the real generated script, the way a Tab press reaches it.
+  test.skipIf(noBash)("survives the generated bash completion script", async () => {
+    const completer = await fakeBinary(awsCompleter);
+
+    const result = await runCompletionDriver(
+      completeInDriver("lstk aws s3 l", 3, "lstk aws s3 l"),
+      // The driver's PATH is deliberately almost empty, and the fake completer is
+      // a `#!/usr/bin/env node` script, so node's own directory has to come along.
+      [completer.dir, path.dirname(process.execPath)],
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr).not.toContain("command not found");
+    expect(result.stdout.split("\n")).toEqual(expect.arrayContaining(["ls", "list-buckets"]));
+    expect((await completer.lastCall())?.env.COMP_LINE).toBe("aws s3 l");
   });
 });
