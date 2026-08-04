@@ -49,8 +49,8 @@ type instanceResource struct {
 	ID         string `json:"id"`
 }
 
-func (c *Client) FetchVersion(ctx context.Context, host string) (string, error) {
-	url := fmt.Sprintf("http://%s/_localstack/health", host)
+func (c *Client) FetchVersion(ctx context.Context, baseURL string) (string, error) {
+	url := strings.TrimRight(baseURL, "/") + "/_localstack/health"
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return "", fmt.Errorf("failed to create health request: %w", err)
@@ -73,8 +73,8 @@ func (c *Client) FetchVersion(ctx context.Context, host string) (string, error) 
 	return h.Version, nil
 }
 
-func (c *Client) FetchResources(ctx context.Context, host string) ([]emulator.Resource, error) {
-	url := fmt.Sprintf("http://%s/_localstack/resources", host)
+func (c *Client) FetchResources(ctx context.Context, baseURL string) ([]emulator.Resource, error) {
+	url := strings.TrimRight(baseURL, "/") + "/_localstack/resources"
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create resources request: %w", err)
@@ -136,8 +136,8 @@ func (c *Client) FetchResources(ctx context.Context, host string) ([]emulator.Re
 	return rows, nil
 }
 
-func (c *Client) ResetState(ctx context.Context, host string) error {
-	url := fmt.Sprintf("http://%s/_localstack/state/reset", host)
+func (c *Client) ResetState(ctx context.Context, baseURL string) error {
+	url := strings.TrimRight(baseURL, "/") + "/_localstack/state/reset"
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, nil)
 	if err != nil {
 		return fmt.Errorf("create request: %w", err)
@@ -158,8 +158,8 @@ func (c *Client) ResetState(ctx context.Context, host string) error {
 // ExportState streams the running instance's state into dst as a zip. services,
 // when non-empty, limits the export to that subset of services. It returns the
 // services actually captured, reported by LocalStack via a response header.
-func (c *Client) ExportState(ctx context.Context, host string, services []string, dst io.Writer) ([]string, error) {
-	url := fmt.Sprintf("http://%s/_localstack/pods/state", host)
+func (c *Client) ExportState(ctx context.Context, baseURL string, services []string, dst io.Writer) ([]string, error) {
+	url := strings.TrimRight(baseURL, "/") + "/_localstack/pods/state"
 	if len(services) > 0 {
 		// Safe to concatenate unescaped: validate.ServiceList restricts each
 		// item to [\w-]+, which contains no query-string metacharacters.
@@ -191,8 +191,8 @@ func (c *Client) ExportState(ctx context.Context, host string, services []string
 	return extracted, nil
 }
 
-func (c *Client) ImportState(ctx context.Context, host string, src io.Reader, strategy string) error {
-	url := fmt.Sprintf("http://%s/_localstack/pods", host)
+func (c *Client) ImportState(ctx context.Context, baseURL string, src io.Reader, strategy string) error {
+	url := strings.TrimRight(baseURL, "/") + "/_localstack/pods"
 	if strategy != "" {
 		url += "?merge=" + strategy
 	}
@@ -291,12 +291,12 @@ func isPodNotFoundMsg(msg string) bool {
 	return strings.Contains(strings.ToLower(msg), "failed to get version information from platform")
 }
 
-func (c *Client) LoadPodSnapshot(ctx context.Context, host, podName, authToken, strategy string) ([]string, error) {
-	return c.doPodLoad(ctx, host, podName, authToken, strategy, []byte("{}"))
+func (c *Client) LoadPodSnapshot(ctx context.Context, baseURL, podName, authToken, strategy string) ([]string, error) {
+	return c.doPodLoad(ctx, baseURL, podName, authToken, strategy, []byte("{}"))
 }
 
-func (c *Client) DiffPodSnapshot(ctx context.Context, host, podName, authToken string) (snapshot.DiffResult, error) {
-	url := fmt.Sprintf("http://%s/_localstack/pods/%s/diff", host, podName)
+func (c *Client) DiffPodSnapshot(ctx context.Context, baseURL, podName, authToken string) (snapshot.DiffResult, error) {
+	url := strings.TrimRight(baseURL, "/") + "/_localstack/pods/" + podName + "/diff"
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return nil, fmt.Errorf("create request: %w", err)
@@ -344,16 +344,16 @@ func (c *Client) DiffPodSnapshot(ctx context.Context, host, podName, authToken s
 
 // SavePodSnapshot saves the running state to a platform-hosted pod. services,
 // when non-empty, limits the save to that subset of services.
-func (c *Client) SavePodSnapshot(ctx context.Context, host, podName, authToken string, services []string) (snapshot.PodSaveResult, error) {
+func (c *Client) SavePodSnapshot(ctx context.Context, baseURL, podName, authToken string, services []string) (snapshot.PodSaveResult, error) {
 	body, err := marshalPodBody("", nil, services)
 	if err != nil {
 		return snapshot.PodSaveResult{}, fmt.Errorf("marshal request: %w", err)
 	}
-	return c.doPodSave(ctx, host, podName, authToken, body)
+	return c.doPodSave(ctx, baseURL, podName, authToken, body)
 }
 
-func (c *Client) RemovePodSnapshot(ctx context.Context, host, podName, authToken string) error {
-	url := fmt.Sprintf("http://%s/_localstack/pods/%s", host, podName)
+func (c *Client) RemovePodSnapshot(ctx context.Context, baseURL, podName, authToken string) error {
+	url := strings.TrimRight(baseURL, "/") + "/_localstack/pods/" + podName
 	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, url, bytes.NewReader([]byte("{}")))
 	if err != nil {
 		return fmt.Errorf("create request: %w", err)

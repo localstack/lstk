@@ -15,12 +15,6 @@ func cdkCmd() string {
 	return "cdk"
 }
 
-// endpointURLOverride returns AWS_ENDPOINT_URL, which takes precedence over the
-// auto-resolved LocalStack endpoint.
-func endpointURLOverride() string {
-	return os.Getenv("AWS_ENDPOINT_URL")
-}
-
 // s3EndpointOverride returns AWS_ENDPOINT_URL_S3, which takes precedence over
 // the endpoint derived from the base endpoint's host.
 func s3EndpointOverride() string {

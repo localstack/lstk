@@ -84,6 +84,58 @@ func TestPodName(t *testing.T) {
 	}
 }
 
+func TestContainerName(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name     string
+		value    string
+		wantErr  bool
+		wantRule string
+	}{
+		{"default derived name", "localstack-aws", false, ""},
+		{"derived name with tag", "localstack-aws-2026.4", false, ""},
+		{"single char", "a", false, ""},
+		{"digit start", "1st-emulator", false, ""},
+		{"underscore", "ls_jenkins", false, ""},
+		{"period", "ls.jenkins", false, ""},
+		{"maximum length", strings.Repeat("a", 128), false, ""},
+		{"too long", strings.Repeat("a", 129), true, RuleRange},
+		{"empty", "", true, RuleEmpty},
+		{"control char", "ba\x00d", true, RuleControlChars},
+		{"percent encoding", "ls%2Fmain", true, RuleEncoding},
+		{"slash", "team/ls", true, RuleEmbedded},
+		{"path traversal", "../etc", true, RuleEmbedded},
+		{"embedded query", "ls?fields=name", true, RuleEmbedded},
+		{"fragment", "ls#frag", true, RuleEmbedded},
+		{"shell metachar semicolon", "ls;rm", true, RuleMetachars},
+		{"shell metachar subshell", "ls$(id)", true, RuleMetachars},
+		{"shell metachar backtick", "ls`id`", true, RuleMetachars},
+		{"leading hyphen", "-ls", true, RuleFormat},
+		{"leading underscore", "_ls", true, RuleFormat},
+		{"leading dot", ".ls", true, RuleFormat},
+		{"space", "my emulator", true, RuleFormat},
+		{"colon", "ls:1", true, RuleFormat},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			err := ContainerName(tt.value)
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("ContainerName(%q) error = %v, wantErr %v", tt.value, err, tt.wantErr)
+			}
+			if tt.wantRule != "" {
+				var ve *Error
+				if !errors.As(err, &ve) {
+					t.Fatalf("ContainerName(%q) error is not *validate.Error: %v", tt.value, err)
+				}
+				if ve.Rule != tt.wantRule {
+					t.Errorf("ContainerName(%q) Rule = %q, want %q", tt.value, ve.Rule, tt.wantRule)
+				}
+			}
+		})
+	}
+}
+
 func TestAuthToken(t *testing.T) {
 	t.Parallel()
 	tests := []struct {

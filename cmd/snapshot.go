@@ -184,11 +184,14 @@ func newSnapshotAutoLoader(cfg *env.Env, rt runtime.Runtime, appConfig *config.C
 	containers := []config.ContainerConfig{awsContainer}
 	return func(ctx context.Context, sink output.Sink) error {
 		host, _ := endpoint.ResolveHost(ctx, awsContainer.Port, cfg.LocalStackHost)
+		// Always http://: auto-load only ever runs after a local Docker start,
+		// which rejects every endpoint URL source up front.
+		baseURL := "http://" + host
 		switch src.Kind {
 		case snapshot.KindPod:
-			return snapshot.LoadPod(ctx, rt, containers, client, host, src.Value, cfg.AuthToken, "", nil, sink)
+			return snapshot.LoadPod(ctx, rt, containers, client, baseURL, src.Value, cfg.AuthToken, "", nil, sink)
 		default:
-			return snapshot.LoadLocal(ctx, rt, containers, client, host, src.Value, "", nil, sink)
+			return snapshot.LoadLocal(ctx, rt, containers, client, baseURL, src.Value, "", nil, sink)
 		}
 	}, nil
 }
@@ -310,11 +313,14 @@ func runSnapshotLoad(cfg *env.Env, tel *telemetry.Client, logger log.Logger) fun
 			if err != nil {
 				return err
 			}
-			rt, client, host, containers, appConfig, err := resolveSnapshotDeps(cmd.Context(), cfg)
+			rt, client, host, containers, appConfig, external, err := resolveSnapshotDeps(cmd.Context(), cmd, cfg)
 			if err != nil {
 				return err
 			}
-			starter := buildStarter(cfg, rt, appConfig, logger, tel)
+			var starter snapshot.Starter
+			if !external {
+				starter = buildStarter(cfg, rt, appConfig, logger, tel)
+			}
 			if isInteractiveMode(cfg) {
 				return ui.RunSnapshotLoadRemoteS3(cmd.Context(), rt, containers, client, host, podName, src.Value, creds, cfg.AuthToken, strategy, starter)
 			}
@@ -334,12 +340,15 @@ func runSnapshotLoad(cfg *env.Env, tel *telemetry.Client, logger log.Logger) fun
 			return execDiff(cmd, cfg, src.Value, strategy)
 		}
 
-		rt, client, host, containers, appConfig, err := resolveSnapshotDeps(cmd.Context(), cfg)
+		rt, client, host, containers, appConfig, external, err := resolveSnapshotDeps(cmd.Context(), cmd, cfg)
 		if err != nil {
 			return err
 		}
 
-		starter := buildStarter(cfg, rt, appConfig, logger, tel)
+		var starter snapshot.Starter
+		if !external {
+			starter = buildStarter(cfg, rt, appConfig, logger, tel)
+		}
 
 		if isInteractiveMode(cfg) {
 			return ui.RunSnapshotLoad(cmd.Context(), rt, containers, client, host, src, cfg.AuthToken, strategy, starter)
@@ -391,7 +400,7 @@ func runSnapshotRemove(cfg *env.Env) func(*cobra.Command, []string) error {
 			if !force {
 				return fmt.Errorf("snapshot remove requires confirmation; use --force to skip in non-interactive mode")
 			}
-			rt, client, host, containers, _, err := resolveSnapshotDeps(cmd.Context(), cfg)
+			rt, client, host, containers, _, _, err := resolveSnapshotDeps(cmd.Context(), cmd, cfg)
 			if err != nil {
 				return err
 			}
@@ -399,7 +408,7 @@ func runSnapshotRemove(cfg *env.Env) func(*cobra.Command, []string) error {
 			return snapshot.Remove(cmd.Context(), rt, containers, ref.Value, cfg.AuthToken, client, host, force, sink)
 		}
 
-		rt, client, host, containers, _, err := resolveSnapshotDeps(cmd.Context(), cfg)
+		rt, client, host, containers, _, _, err := resolveSnapshotDeps(cmd.Context(), cmd, cfg)
 		if err != nil {
 			return err
 		}
@@ -408,7 +417,7 @@ func runSnapshotRemove(cfg *env.Env) func(*cobra.Command, []string) error {
 }
 
 func execDiff(cmd *cobra.Command, cfg *env.Env, podName, strategy string) error {
-	rt, client, host, containers, _, err := resolveSnapshotDeps(cmd.Context(), cfg)
+	rt, client, host, containers, _, _, err := resolveSnapshotDeps(cmd.Context(), cmd, cfg)
 	if err != nil {
 		return err
 	}
@@ -420,19 +429,36 @@ func execDiff(cmd *cobra.Command, cfg *env.Env, podName, strategy string) error 
 	return snapshot.DiffPod(cmd.Context(), rt, containers, client, host, podName, cfg.AuthToken, strategy, sink)
 }
 
-func resolveSnapshotDeps(ctx context.Context, cfg *env.Env) (rt runtime.Runtime, client *aws.Client, host string, containers []config.ContainerConfig, appConfig *config.Config, err error) {
+// resolveSnapshotDeps resolves the runtime, host, and target container(s) for
+// a snapshot subcommand that contacts the emulator (save/load/remove/list
+// s3://...). When an endpoint URL is resolved (--endpoint-url/
+// LSTK_ENDPOINT_URL/AWS_ENDPOINT_URL), it skips Docker discovery entirely and
+// returns a runtime.NewExternalRuntime stub matching a single synthetic
+// container for the detected type — external reports true so callers can
+// suppress the auto-start fallback that only makes sense for a Docker-managed
+// emulator.
+func resolveSnapshotDeps(ctx context.Context, cmd *cobra.Command, cfg *env.Env) (rt runtime.Runtime, client *aws.Client, host string, containers []config.ContainerConfig, appConfig *config.Config, external bool, err error) {
 	appConfig, err = config.Get()
 	if err != nil {
-		return nil, nil, "", nil, nil, fmt.Errorf("failed to get config: %w", err)
+		return nil, nil, "", nil, nil, false, fmt.Errorf("failed to get config: %w", err)
+	}
+
+	target, err := endpoint.Resolve(ctx, cmd)
+	if err != nil {
+		return nil, nil, "", nil, nil, false, err
+	}
+	if target != nil {
+		c := config.ContainerConfig{Type: target.Type, Port: config.DefaultPort}
+		return runtime.NewExternalRuntime(c.Name()), aws.NewClient(), target.URL, []config.ContainerConfig{c}, appConfig, true, nil
 	}
 
 	if len(appConfig.Containers) == 0 {
-		return nil, nil, "", nil, nil, fmt.Errorf("no emulator is configured")
+		return nil, nil, "", nil, nil, false, fmt.Errorf("no emulator is configured")
 	}
 
 	rt, err = runtime.NewDockerRuntime(cfg.DockerHost)
 	if err != nil {
-		return nil, nil, "", nil, nil, err
+		return nil, nil, "", nil, nil, false, err
 	}
 
 	// Target the first running emulator when one is up, otherwise fall back to the
@@ -440,13 +466,13 @@ func resolveSnapshotDeps(ctx context.Context, cfg *env.Env) (rt runtime.Runtime,
 	// RunningEmulators preserves config order, so "first running" is deterministic
 	// when several emulators are configured. Running-detection errors are ignored
 	// here so the downstream save/load flows surface them with proper messaging.
-	target := appConfig.Containers[0]
+	dockerContainer := appConfig.Containers[0]
 	if running, rerr := container.RunningEmulators(ctx, rt, appConfig.Containers); rerr == nil && len(running) > 0 {
-		target = running[0]
+		dockerContainer = running[0]
 	}
 
-	host, _ = endpoint.ResolveHost(ctx, target.Port, cfg.LocalStackHost)
-	return rt, aws.NewClient(), host, []config.ContainerConfig{target}, appConfig, nil
+	host, _ = endpoint.ResolveHost(ctx, dockerContainer.Port, cfg.LocalStackHost)
+	return rt, aws.NewClient(), "http://" + host, []config.ContainerConfig{dockerContainer}, appConfig, false, nil
 }
 
 // addProfileFlag registers the --profile flag used to source AWS credentials for
@@ -559,7 +585,7 @@ func runSnapshotList(cfg *env.Env, logger log.Logger) func(*cobra.Command, []str
 			if err != nil {
 				return err
 			}
-			rt, client, host, containers, _, err := resolveSnapshotDeps(cmd.Context(), cfg)
+			rt, client, host, containers, _, _, err := resolveSnapshotDeps(cmd.Context(), cmd, cfg)
 			if err != nil {
 				return err
 			}
@@ -690,7 +716,7 @@ func runSnapshotSave(cfg *env.Env) func(*cobra.Command, []string) error {
 			if err != nil {
 				return err
 			}
-			rt, client, host, containers, _, err := resolveSnapshotDeps(cmd.Context(), cfg)
+			rt, client, host, containers, _, _, err := resolveSnapshotDeps(cmd.Context(), cmd, cfg)
 			if err != nil {
 				return err
 			}
@@ -710,7 +736,7 @@ func runSnapshotSave(cfg *env.Env) func(*cobra.Command, []string) error {
 			return err
 		}
 
-		rt, client, host, containers, _, err := resolveSnapshotDeps(cmd.Context(), cfg)
+		rt, client, host, containers, _, _, err := resolveSnapshotDeps(cmd.Context(), cmd, cfg)
 		if err != nil {
 			return err
 		}

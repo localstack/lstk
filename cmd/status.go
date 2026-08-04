@@ -10,6 +10,7 @@ import (
 	"github.com/localstack/lstk/internal/emulator/aws"
 	"github.com/localstack/lstk/internal/emulator/azure"
 	"github.com/localstack/lstk/internal/emulator/snowflake"
+	"github.com/localstack/lstk/internal/endpoint"
 	"github.com/localstack/lstk/internal/env"
 	"github.com/localstack/lstk/internal/output"
 	"github.com/localstack/lstk/internal/runtime"
@@ -24,6 +25,24 @@ func newStatusCmd(cfg *env.Env) *cobra.Command {
 		Long:    "Show the status of a running emulator and its deployed resources",
 		PreRunE: initConfigDeferCreate(nil),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			target, err := endpoint.Resolve(cmd.Context(), cmd)
+			if err != nil {
+				return err
+			}
+
+			clients := map[config.EmulatorType]emulator.Client{
+				config.EmulatorAWS:       aws.NewClient(),
+				config.EmulatorSnowflake: snowflake.NewClient(),
+				config.EmulatorAzure:     azure.NewClient(),
+			}
+
+			if target != nil {
+				if isInteractiveMode(cfg) {
+					return ui.RunStatusExternal(cmd.Context(), target, clients)
+				}
+				return container.StatusExternal(cmd.Context(), target, clients, output.NewPlainSink(os.Stdout))
+			}
+
 			rt, err := runtime.NewDockerRuntime(cfg.DockerHost)
 			if err != nil {
 				return err
@@ -31,12 +50,6 @@ func newStatusCmd(cfg *env.Env) *cobra.Command {
 			appCfg, err := config.Get()
 			if err != nil {
 				return fmt.Errorf("failed to get config: %w", err)
-			}
-
-			clients := map[config.EmulatorType]emulator.Client{
-				config.EmulatorAWS:       aws.NewClient(),
-				config.EmulatorSnowflake: snowflake.NewClient(),
-				config.EmulatorAzure:     azure.NewClient(),
 			}
 
 			if isInteractiveMode(cfg) {

@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"errors"
+	"fmt"
 	"os"
 
 	"github.com/localstack/lstk/internal/config"
@@ -39,22 +40,46 @@ To wipe the on-disk volume (certificates, persistence data, cached tools) instea
 				return output.NewSilentError(bare)
 			}
 
-			appConfig, err := config.Get()
+			target, err := endpoint.Resolve(cmd.Context(), cmd)
 			if err != nil {
-				return failGetConfig(sink, cfg, err)
+				return failWithCode(err.Error(), output.ErrEmulatorNotRunning)
 			}
 
+			var rt runtime.Runtime
+			var host string
 			var awsContainer config.ContainerConfig
-			var found bool
-			for _, c := range appConfig.Containers {
-				if c.Type == config.EmulatorAWS {
-					awsContainer = c
-					found = true
-					break
+
+			if target != nil {
+				if target.Type != config.EmulatorAWS {
+					return failWithCode(fmt.Sprintf("reset is only supported for the AWS emulator, but the endpoint at %s is a %s emulator", target.URL, target.Type.DisplayName()), output.ErrEmulatorWrongType)
 				}
-			}
-			if !found {
-				return failWithCode("reset is only supported for the AWS emulator", output.ErrEmulatorNotConfigured)
+				awsContainer = config.ContainerConfig{Type: config.EmulatorAWS, Port: config.DefaultPort}
+				rt = runtime.NewExternalRuntime(awsContainer.Name())
+				host = target.URL
+			} else {
+				appConfig, err := config.Get()
+				if err != nil {
+					return failGetConfig(sink, cfg, err)
+				}
+
+				var found bool
+				for _, c := range appConfig.Containers {
+					if c.Type == config.EmulatorAWS {
+						awsContainer = c
+						found = true
+						break
+					}
+				}
+				if !found {
+					return failWithCode("reset is only supported for the AWS emulator", output.ErrEmulatorNotConfigured)
+				}
+
+				rt, err = runtime.NewDockerRuntime(cfg.DockerHost)
+				if err != nil {
+					return err
+				}
+				resolvedHost, _ := endpoint.ResolveHost(cmd.Context(), awsContainer.Port, cfg.LocalStackHost)
+				host = "http://" + resolvedHost
 			}
 
 			interactive := isInteractiveMode(cfg)
@@ -62,11 +87,6 @@ To wipe the on-disk volume (certificates, persistence data, cached tools) instea
 				return failWithCode("reset requires confirmation; use --force to skip in non-interactive mode", output.ErrConfirmationRequired)
 			}
 
-			rt, err := runtime.NewDockerRuntime(cfg.DockerHost)
-			if err != nil {
-				return err
-			}
-			host, _ := endpoint.ResolveHost(cmd.Context(), awsContainer.Port, cfg.LocalStackHost)
 			resetter := aws.NewClient()
 
 			if interactive {

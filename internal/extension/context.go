@@ -46,15 +46,25 @@ type Emulator struct {
 
 // Context is the resolved runtime context lstk conveys to an extension, rendered
 // as the LSTK_EXT_CONTEXT JSON object. The command boundary populates it
-// (resolving running emulators, config dir, auth token, interactivity, and the
-// resolved --json flag) and Environ renders it. An empty AuthToken is omitted
-// from the JSON; Emulators is always present, marshalling to [] when no
-// emulator is running so an extension always decodes a list.
+// (resolving running emulators, config dir, auth token, interactivity, the
+// resolved --json flag, and the telemetry session id) and Environ renders it. An
+// empty AuthToken is omitted from the JSON; Emulators is always present,
+// marshalling to [] when no emulator is running so an extension always decodes a
+// list.
+//
+// SessionID is lstk's per-process telemetry correlation id, conveyed so an
+// extension emitting its own telemetry can join it to the ext:<name> event lstk
+// records for the same invocation. It is omitted when lstk telemetry is disabled
+// (there is no session to correlate), which means absence is ambiguous to the
+// extension: it cannot tell a telemetry-disabled lstk from an lstk predating the
+// field. Like every field added after version 1 it is detected by presence, not
+// by LSTK_EXT_API_VERSION.
 type Context struct {
 	ConfigDir      string     `json:"configDir"`
 	AuthToken      string     `json:"authToken,omitempty"`
 	NonInteractive bool       `json:"nonInteractive"`
 	JSON           bool       `json:"json"`
+	SessionID      string     `json:"sessionId,omitempty"`
 	Emulators      []Emulator `json:"emulators"`
 }
 

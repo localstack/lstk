@@ -16,9 +16,14 @@ The system SHALL provide an `lstk sam` command that forwards all of its argument
 - **WHEN** lstk runs a SAM command
 - **THEN** the `sam` subprocess receives `AWS_ENDPOINT_URL` set to the resolved LocalStack endpoint, and lstk does not set `AWS_ENDPOINT_URL_S3` or any S3 path-style configuration (SAM's botocore auto-selects path-style addressing against a `localhost`/IP endpoint)
 
-#### Scenario: Honor an explicit endpoint override
-- **WHEN** `AWS_ENDPOINT_URL` is already set in the environment
+#### Scenario: Honor an explicit endpoint override via AWS_ENDPOINT_URL
+- **WHEN** `AWS_ENDPOINT_URL` is already set in the environment and neither `--endpoint-url` nor `LSTK_ENDPOINT_URL` is set
 - **THEN** lstk uses that value instead of the auto-resolved endpoint
+- **AND** lstk does not perform Docker container discovery, instead verifying the given endpoint is reachable and is an AWS LocalStack emulator via HTTP probing
+
+#### Scenario: --endpoint-url and LSTK_ENDPOINT_URL take precedence over AWS_ENDPOINT_URL
+- **WHEN** `AWS_ENDPOINT_URL` is set together with the global `--endpoint-url` flag or `LSTK_ENDPOINT_URL`
+- **THEN** the higher-precedence source's value is used for the endpoint, and `AWS_ENDPOINT_URL` has no effect
 
 #### Scenario: Honor an explicit S3 endpoint override
 - **WHEN** `AWS_ENDPOINT_URL_S3` is already set in the environment
@@ -100,6 +105,8 @@ The system SHALL accept the lstk-specific `--account` flag in leading position (
 ### Requirement: Emulator gating for AWS-contacting commands
 The system SHALL require a running AWS emulator for SAM subcommands that contact AWS APIs and SHALL run a fixed set of offline subcommands without that requirement.
 
+When a global endpoint URL is resolved (via `--endpoint-url`, `LSTK_ENDPOINT_URL`, or `AWS_ENDPOINT_URL`), AWS-contacting subcommands SHALL skip Docker-based container discovery and instead verify that URL is reachable and is an AWS emulator via HTTP probing.
+
 #### Scenario: AWS-contacting command without a running emulator
 - **WHEN** the user runs an AWS-contacting subcommand (e.g. `lstk sam deploy`) and the AWS emulator is not running
 - **THEN** lstk emits an actionable "LocalStack is not running" error (with a command to start it) and does not invoke `sam`
@@ -111,6 +118,14 @@ The system SHALL require a running AWS emulator for SAM subcommands that contact
 #### Scenario: Offline command without a running emulator
 - **WHEN** the user runs an offline subcommand (e.g. `lstk sam init`, `lstk sam build`, `lstk sam validate`, `lstk sam local generate-event`)
 - **THEN** lstk runs it without requiring a running emulator
+
+#### Scenario: Target an externally-managed emulator via --endpoint-url
+- **WHEN** the user runs an AWS-contacting subcommand (e.g. `lstk sam deploy --endpoint-url http://localhost:4566`) and no local Docker container is running
+- **THEN** lstk skips Docker container discovery, probes the given URL to confirm it is reachable and is an AWS LocalStack emulator, and uses it for the `sam` subprocess's AWS environment
+
+#### Scenario: Externally-managed endpoint is not AWS
+- **WHEN** a global endpoint URL is resolved for an AWS-contacting SAM command and the endpoint is detected as a non-AWS emulator
+- **THEN** lstk fails with the same AWS-specific error as the non-AWS-emulator-running scenario, naming the detected type, and does not invoke `sam`
 
 ### Requirement: Streamed passthrough output
 The system SHALL stream the SAM subprocess's stdin, stdout, and stderr through unobstructed and SHALL NOT display a spinner or capture SAM output into lifecycle events.

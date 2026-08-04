@@ -177,7 +177,7 @@ func TestUpdateBinaryInPlace(t *testing.T) {
 	require.NoError(t, err, "lstk update failed: %s", updateStr)
 	requireExitCode(t, 0, err)
 	assert.Contains(t, updateStr, "Update available: 0.0.1", "should detect update")
-	assert.Contains(t, updateStr, "Downloading update", "should download binary")
+	assert.Contains(t, updateStr, "Downloading and verifying update", "should download and verify binary")
 	assert.Contains(t, updateStr, "Updated to", "should complete the update")
 
 	// Verify the binary was actually replaced

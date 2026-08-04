@@ -688,6 +688,72 @@ func TestStartCommandSetsUpContainerCorrectly(t *testing.T) {
 	})
 }
 
+func TestStartCommandUsesCustomContainerName(t *testing.T) {
+	requireDocker(t)
+	_ = env.Require(t, env.AuthToken)
+
+	const customName = "lstk-custom-name"
+	cleanupCustom := func() {
+		_, _ = dockerClient.ContainerRemove(context.Background(), customName, client.ContainerRemoveOptions{Force: true})
+	}
+	cleanup()
+	cleanupCustom()
+	t.Cleanup(cleanup)
+	t.Cleanup(cleanupCustom)
+
+	mockServer := createMockLicenseServer(true)
+	defer mockServer.Close()
+
+	configContent := fmt.Sprintf(`
+[[containers]]
+type = "aws"
+tag  = "latest"
+port = "4566"
+container_name = %q
+`, customName)
+	configFile := filepath.Join(t.TempDir(), "config.toml")
+	require.NoError(t, os.WriteFile(configFile, []byte(configContent), 0644))
+
+	ctx := testContext(t)
+	testEnv := env.With(env.APIEndpoint, mockServer.URL)
+
+	stdout, stderr, err := runLstk(t, ctx, "", testEnv, "--config", configFile, "start")
+	require.NoError(t, err, "lstk start failed: %s%s", stdout, stderr)
+
+	inspect, err := dockerClient.ContainerInspect(ctx, customName, client.ContainerInspectOptions{})
+	require.NoError(t, err, "expected a container named %q", customName)
+	require.True(t, inspect.Container.State.Running)
+
+	// The name Docker gave the container and the name the emulator reports for itself
+	// (used to introspect itself and to name the containers it spawns) must agree.
+	envVars := containerEnvToMap(inspect.Container.Config.Env)
+	assert.Equal(t, customName, envVars["MAIN_CONTAINER_NAME"])
+
+	_, err = dockerClient.ContainerInspect(ctx, containerName, client.ContainerInspectOptions{})
+	assert.Error(t, err, "the derived name %q must not be used when 'name' is set", containerName)
+
+	// The default persistence directory stays keyed to the derived name, so setting or
+	// changing 'name' never silently orphans existing state.
+	volumePath, stderr, err := runLstk(t, ctx, "", testEnv, "--config", configFile, "volume", "path")
+	require.NoError(t, err, "lstk volume path failed: %s", stderr)
+	assert.Contains(t, volumePath, filepath.Join("lstk", "volume", containerName))
+
+	// Discovery resolves the custom name for the downstream commands.
+	statusOut, stderr, err := runLstk(t, ctx, "", testEnv, "--config", configFile, "status")
+	require.NoError(t, err, "lstk status failed: %s", stderr)
+	assert.Contains(t, statusOut, "Container: "+customName)
+
+	_, stderr, err = runLstk(t, ctx, "", testEnv, "--config", configFile, "stop")
+	require.NoError(t, err, "lstk stop failed: %s", stderr)
+
+	// Removal is asynchronous — the container is created with AutoRemove, so an inspect
+	// immediately after `stop` can still catch it mid-removal. Poll rather than assert once.
+	require.Eventually(t, func() bool {
+		_, err := dockerClient.ContainerInspect(ctx, customName, client.ContainerInspectOptions{})
+		return err != nil
+	}, 30*time.Second, 200*time.Millisecond, "lstk stop should have removed %q", customName)
+}
+
 func TestStartCommandMountsExtraVolumes(t *testing.T) {
 	requireDocker(t)
 	_ = env.Require(t, env.AuthToken)

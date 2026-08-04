@@ -27,7 +27,7 @@ func TestFetchVersion(t *testing.T) {
 		defer server.Close()
 
 		c := NewClient()
-		version, err := c.FetchVersion(context.Background(), server.Listener.Addr().String())
+		version, err := c.FetchVersion(context.Background(), server.URL)
 		require.NoError(t, err)
 		assert.Equal(t, "4.14.1", version)
 	})
@@ -40,7 +40,7 @@ func TestFetchVersion(t *testing.T) {
 		defer server.Close()
 
 		c := NewClient()
-		_, err := c.FetchVersion(context.Background(), server.Listener.Addr().String())
+		_, err := c.FetchVersion(context.Background(), server.URL)
 		require.Error(t, err)
 	})
 }
@@ -58,7 +58,7 @@ func TestFetchResources(t *testing.T) {
 		defer server.Close()
 
 		c := NewClient()
-		rows, err := c.FetchResources(context.Background(), server.Listener.Addr().String())
+		rows, err := c.FetchResources(context.Background(), server.URL)
 		require.NoError(t, err)
 		require.Len(t, rows, 2)
 		assert.Equal(t, "Lambda", rows[0].Service)
@@ -78,7 +78,7 @@ func TestFetchResources(t *testing.T) {
 		defer server.Close()
 
 		c := NewClient()
-		rows, err := c.FetchResources(context.Background(), server.Listener.Addr().String())
+		rows, err := c.FetchResources(context.Background(), server.URL)
 		require.NoError(t, err)
 		require.Len(t, rows, 1)
 		assert.Equal(t, "my-topic", rows[0].Name)
@@ -92,7 +92,7 @@ func TestFetchResources(t *testing.T) {
 		defer server.Close()
 
 		c := NewClient()
-		rows, err := c.FetchResources(context.Background(), server.Listener.Addr().String())
+		rows, err := c.FetchResources(context.Background(), server.URL)
 		require.NoError(t, err)
 		assert.Empty(t, rows)
 	})
@@ -105,7 +105,7 @@ func TestFetchResources(t *testing.T) {
 		defer server.Close()
 
 		c := NewClient()
-		_, err := c.FetchResources(context.Background(), server.Listener.Addr().String())
+		_, err := c.FetchResources(context.Background(), server.URL)
 		require.Error(t, err)
 	})
 }
@@ -125,7 +125,7 @@ func TestExportState(t *testing.T) {
 
 		var buf bytes.Buffer
 		c := NewClient()
-		_, err := c.ExportState(context.Background(), srv.Listener.Addr().String(), nil, &buf)
+		_, err := c.ExportState(context.Background(), srv.URL, nil, &buf)
 		require.NoError(t, err)
 		assert.Equal(t, "ZIP_DATA", buf.String())
 	})
@@ -138,7 +138,7 @@ func TestExportState(t *testing.T) {
 		defer srv.Close()
 
 		c := NewClient()
-		_, err := c.ExportState(context.Background(), srv.Listener.Addr().String(), nil, io.Discard)
+		_, err := c.ExportState(context.Background(), srv.URL, nil, io.Discard)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "500")
 	})
@@ -151,7 +151,7 @@ func TestExportState(t *testing.T) {
 		defer srv.Close()
 
 		c := NewClient()
-		_, err := c.ExportState(context.Background(), srv.Listener.Addr().String(), nil, io.Discard)
+		_, err := c.ExportState(context.Background(), srv.URL, nil, io.Discard)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "404")
 	})
@@ -159,7 +159,7 @@ func TestExportState(t *testing.T) {
 	t.Run("returns error on connection refused", func(t *testing.T) {
 		t.Parallel()
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {}))
-		addr := srv.Listener.Addr().String()
+		addr := srv.URL
 		srv.Close()
 
 		c := NewClient()
@@ -182,7 +182,7 @@ func TestExportState(t *testing.T) {
 
 		errCh := make(chan error, 1)
 		go func() {
-			_, exportErr := c.ExportState(ctx, srv.Listener.Addr().String(), nil, io.Discard)
+			_, exportErr := c.ExportState(ctx, srv.URL, nil, io.Discard)
 			errCh <- exportErr
 		}()
 
@@ -206,7 +206,7 @@ func TestExportState(t *testing.T) {
 
 		var buf bytes.Buffer
 		c := NewClient()
-		_, err := c.ExportState(context.Background(), srv.Listener.Addr().String(), nil, &buf)
+		_, err := c.ExportState(context.Background(), srv.URL, nil, &buf)
 		require.NoError(t, err)
 		assert.Equal(t, size, buf.Len())
 	})
@@ -224,7 +224,7 @@ func TestExportState(t *testing.T) {
 
 		var buf bytes.Buffer
 		c := NewClient()
-		extracted, err := c.ExportState(context.Background(), srv.Listener.Addr().String(), []string{"s3", "dynamodb"}, &buf)
+		extracted, err := c.ExportState(context.Background(), srv.URL, []string{"s3", "dynamodb"}, &buf)
 		require.NoError(t, err)
 		assert.Equal(t, "services=s3,dynamodb", gotQuery)
 		assert.Equal(t, []string{"s3", "dynamodb"}, extracted)
@@ -244,7 +244,7 @@ func TestExportState(t *testing.T) {
 
 		var buf bytes.Buffer
 		c := NewClient()
-		extracted, err := c.ExportState(context.Background(), srv.Listener.Addr().String(), nil, &buf)
+		extracted, err := c.ExportState(context.Background(), srv.URL, nil, &buf)
 		require.NoError(t, err)
 		assert.Equal(t, "", gotQuery)
 		assert.False(t, hadQuery)
@@ -265,7 +265,7 @@ func TestResetState(t *testing.T) {
 		defer srv.Close()
 
 		c := NewClient()
-		err := c.ResetState(context.Background(), srv.Listener.Addr().String())
+		err := c.ResetState(context.Background(), srv.URL)
 		require.NoError(t, err)
 	})
 
@@ -277,7 +277,7 @@ func TestResetState(t *testing.T) {
 		defer srv.Close()
 
 		c := NewClient()
-		err := c.ResetState(context.Background(), srv.Listener.Addr().String())
+		err := c.ResetState(context.Background(), srv.URL)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "500")
 	})
@@ -290,7 +290,7 @@ func TestResetState(t *testing.T) {
 		defer srv.Close()
 
 		c := NewClient()
-		err := c.ResetState(context.Background(), srv.Listener.Addr().String())
+		err := c.ResetState(context.Background(), srv.URL)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "404")
 	})
@@ -298,7 +298,7 @@ func TestResetState(t *testing.T) {
 	t.Run("returns error on connection refused", func(t *testing.T) {
 		t.Parallel()
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {}))
-		addr := srv.Listener.Addr().String()
+		addr := srv.URL
 		srv.Close()
 
 		c := NewClient()
@@ -321,7 +321,7 @@ func TestResetState(t *testing.T) {
 
 		errCh := make(chan error, 1)
 		go func() {
-			errCh <- c.ResetState(ctx, srv.Listener.Addr().String())
+			errCh <- c.ResetState(ctx, srv.URL)
 		}()
 
 		<-started
