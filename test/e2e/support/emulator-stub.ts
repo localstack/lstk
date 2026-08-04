@@ -87,8 +87,13 @@ export interface StubEmulatorOptions {
    * pulled, since it usually exists only locally.
    */
   image?: string;
-  /** Publishes container port 4566/tcp to this host port on 127.0.0.1. */
-  hostBinding?: { hostPort: string };
+  /**
+   * Publishes container port 4566/tcp to this host port, on 127.0.0.1 unless
+   * `hostIp` names another address. A loopback alias such as 127.0.0.2 frees the
+   * same port number on 127.0.0.1 for a mock server — see
+   * `dockerCanBindLoopbackAlias`, since not every daemon allows it.
+   */
+  hostBinding?: { hostPort: string; hostIp?: string };
   /** Extra arguments for `docker run`, inserted before the image. */
   dockerArgs?: string[];
 }
@@ -116,7 +121,8 @@ export async function startStubEmulator(
 
   const args = ["run", "-d", "--name", name, ...(options.dockerArgs ?? [])];
   if (options.hostBinding) {
-    args.push("-p", `127.0.0.1:${options.hostBinding.hostPort}:4566`);
+    const hostIp = options.hostBinding.hostIp ?? "127.0.0.1";
+    args.push("-p", `${hostIp}:${options.hostBinding.hostPort}:4566`);
   }
   args.push(image, ...STAY_UP);
 

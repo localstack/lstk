@@ -1,5 +1,6 @@
 import { execa } from "execa";
 import { mkdir, rm, stat } from "node:fs/promises";
+import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, onTestFinished } from "vitest";
@@ -113,6 +114,53 @@ export const docker = {
     return info?.State.Running === true;
   },
 };
+
+/** A port free on this machine right now, for a bind the caller is about to attempt. */
+function freePort(): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const server = net.createServer();
+    server.on("error", reject);
+    server.listen(0, "127.0.0.1", () => {
+      const address = server.address();
+      if (address === null || typeof address === "string") {
+        reject(new Error("probe socket did not bind to a TCP port"));
+        return;
+      }
+      server.close(() => resolve(address.port));
+    });
+  });
+}
+
+let loopbackAliasProbe: Promise<boolean> | undefined;
+
+/**
+ * Whether this daemon can publish a container port on a loopback alias such as
+ * 127.0.0.2.
+ *
+ * A native Linux daemon can; Docker Desktop's VM-backed networking answers "bind:
+ * can't assign requested address". Tests that need a mock server to hold the same
+ * port number on 127.0.0.1 depend on it, so it is probed rather than assumed —
+ * once per worker, with a throwaway container.
+ */
+export function dockerCanBindLoopbackAlias(): Promise<boolean> {
+  loopbackAliasProbe ??= (async () => {
+    await docker.pull("alpine:latest");
+    // An explicit host port, because that is what the tests do: Docker Desktop
+    // accepts `127.0.0.2:0:...` (it assigns the port itself) and only refuses
+    // the bind once a concrete port is named.
+    const port = await freePort();
+    const name = `lstk-e2e-loopback-probe-${process.pid}`;
+    await docker_(["rm", "--force", name]);
+    const result = await docker_([
+      "run", "-d", "--name", name,
+      "-p", `127.0.0.2:${port}:80`,
+      "alpine:latest", "sleep", "1",
+    ]);
+    await docker_(["rm", "--force", name]);
+    return result.exitCode === 0;
+  })();
+  return loopbackAliasProbe;
+}
 
 export interface ContainerInfo {
   Name: string;

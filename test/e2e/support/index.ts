@@ -12,6 +12,7 @@ export { mockLicenseServer, type LicenseServer } from "./license.ts";
 export {
   docker,
   dockerIsAvailable,
+  dockerCanBindLoopbackAlias,
   useExclusiveEmulator,
   emulatorContainers,
   type ContainerInfo,

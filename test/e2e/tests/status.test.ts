@@ -1,9 +1,12 @@
 import http from "node:http";
 import { onTestFinished } from "vitest";
 import { describe, expect, test } from "vitest";
+import { CreateBucketCommand, S3Client } from "@aws-sdk/client-s3";
+import { CreateQueueCommand, SQSClient } from "@aws-sdk/client-sqs";
 import {
   authToken,
   docker,
+  dockerCanBindLoopbackAlias,
   dockerIsAvailable,
   lstk,
   requireAuthToken,
@@ -37,6 +40,13 @@ const noDocker = requirement(
   await dockerIsAvailable(),
   "Start a container runtime (Docker Desktop, Colima, Rancher Desktop, ...) so `docker info` succeeds.",
 );
+const noLoopbackAlias =
+  noDocker ||
+  requirement(
+    "publishing a container port on a loopback alias",
+    await dockerCanBindLoopbackAlias(),
+    "Use a native Linux daemon: Docker Desktop's VM networking cannot bind 127.0.0.2.",
+  );
 
 /** A stand-in for the emulator's health/resources endpoints. */
 function mockLocalStackServer(opts: {
@@ -130,15 +140,36 @@ describe.skipIf(noDocker)("lstk status", () => {
       `);
     });
 
-    // NOTE: test/integration/status_test.go also covers "status uses the actual
-    // bound port rather than a stale configured one" by publishing a placeholder
-    // container's port on a second loopback alias (127.0.0.2) so a mock server
-    // can occupy the same port number on 127.0.0.1. That relies on Docker being
-    // able to publish to an arbitrary loopback address, which Docker Desktop's
-    // VM-backed networking on this machine rejects ("bind: can't assign
-    // requested address"), unlike the native Linux daemon the Go suite runs
-    // against in CI. Not reproducible deterministically across contributor
-    // machines here, so it is dropped rather than left flaky.
+    // "status uses the port the container is actually bound to, not the one the
+    // config still claims". Publishing on the 127.0.0.2 loopback alias is what
+    // lets a mock server hold the same port number on 127.0.0.1, and Docker
+    // Desktop's VM-backed networking rejects that ("bind: can't assign requested
+    // address") where a native Linux daemon accepts it — so this is gated rather
+    // than dropped or left flaky.
+    test.skipIf(noLoopbackAlias)(
+      "reports the port the container is bound to, not the stale one in config",
+      async () => {
+        const mock = await mockLocalStackServer({ version: "4.14.1" });
+        const mockPort = mock.hostPort.split(":")[1]!;
+
+        await startStubEmulator("localstack-aws", {
+          hostBinding: { hostPort: mockPort, hostIp: "127.0.0.2" },
+        });
+
+        // The config still says 4566 — as it would for a user who edited it
+        // after starting the container.
+        const home = await tempHome();
+        await home.writeConfig(`[[containers]]\ntype = "aws"\ntag = "latest"\nport = "4566"\n`);
+
+        const run = await lstk(["status"], { home });
+
+        expect(run).toSucceed();
+        expect(
+          run,
+          "the version can only come from the mock, which is only reachable on the bound port",
+        ).toPrint("4.14.1");
+      },
+    );
 
     test("works with a container started outside lstk", async () => {
       // Deliberately exercises the image/port discovery fallback: a foreign
@@ -165,6 +196,39 @@ describe.skipIf(noDocker)("lstk status", () => {
       // load-bearing fact here.
       expect(run).toSucceed();
       expect(run).toPrint("3.5.0");
+    });
+
+    // The one test that reports resources a real emulator really holds, rather
+    // than ones a mock claimed: it starts a licensed emulator, creates an S3
+    // bucket and an SQS queue through the AWS SDK, and reads them back out of
+    // `lstk status`. Everything else here mocks /_localstack/resources, which
+    // exercises the rendering but not that the two ends agree.
+    test.skipIf(!authToken())("lists resources a real emulator actually holds", async () => {
+      const home = await tempHome({ env: { LOCALSTACK_AUTH_TOKEN: requireAuthToken() } });
+      await home.writeConfig(`[[containers]]\ntype = "aws"\ntag = "latest"\nport = "4566"\n`);
+
+      const start = await lstk(["start", "--non-interactive"], { home });
+      expect(start).toSucceed();
+
+      const clientConfig = {
+        region: "us-east-1",
+        endpoint: "http://localhost:4566",
+        credentials: { accessKeyId: "test", secretAccessKey: "test" },
+      };
+      await new S3Client({ ...clientConfig, forcePathStyle: true }).send(
+        new CreateBucketCommand({ Bucket: "my-test-bucket" }),
+      );
+      await new SQSClient(clientConfig).send(new CreateQueueCommand({ QueueName: "my-test-queue" }));
+
+      const run = await lstk(["status"], { home });
+
+      expect(run).toSucceed();
+      // Not snapshotted: Uptime ticks, and the emulator's own version varies
+      // with whatever `latest` is today.
+      expect(run).toPrint("running");
+      expect(run).toPrint(/SERVICE\s+RESOURCE/);
+      expect(run).toPrint(/S3\s+my-test-bucket/);
+      expect(run).toPrint(/SQS\s+my-test-queue/);
     });
 
     test.skipIf(!authToken())(

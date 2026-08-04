@@ -5,12 +5,12 @@
 with no CLI surface. `test/integration` keeps everything under "Still owned by Go" and
 does not go away wholesale; it shrinks as areas move across.
 
-**Status: 181 tests across 23 files** (173 pass, 8 skip on this machine; `start.test.ts`'s
-block is skipped whole for want of an auth token, so its cases are never collected).
-Full-suite wall clock ≈ 70s.
+**Status: 219 tests across 26 files** (204 pass, 15 skip on this machine — an auth token,
+a native Linux daemon and SSL_CERT_FILE certificate trust are the prerequisites not met
+here). Full-suite wall clock ≈ 75s.
 
 The Go integration suite has been trimmed accordingly: against `main` it goes from **419
-→ 296** test functions across **54 → 43** files, 14,552 → 11,397 lines.
+→ 267** test functions across **54 → 40** files, 14,552 → 10,561 lines.
 
 ## What "ported" means here
 
@@ -48,20 +48,18 @@ really calls `config.Get()`.
 | --- | --- | --- |
 | Proxy commands (`aws`, `terraform`) | `aws-proxy`, `terraform-proxy` | 41 |
 | `--json` envelope, exit codes, `--non-interactive` | `json-envelope`(+`.pty`), `json-flag`, `exit-codes`, `non-interactive.pty` | 42 |
-| Lifecycle (`stop`, `restart`, `status`, `reset`) | `stop-restart`, `status`, `reset.pty` | 22 |
-| `logs`, `volume` | `logs.pty`, `volume.pty` | 20 |
+| Lifecycle (`stop`, `restart`, `status`, `reset`) | `stop-restart`, `status`, `reset.pty` | 28 |
+| `logs`, `volume` | `logs.pty`, `volume.pty` | 21 |
 | Config, completion, docs | `config`, `completion`, `docs` | 21 |
-| Start paths, emulator selection, login journey, TUI | `start`, `start-local-image`, `emulator-select.pty`, `emulator-type`, `login-journey.pty`, `tui-runtime-error.pty` | 23 |
+| Start paths, emulator selection, login journey, TUI | `start`, `start-local-image`, `emulator-select.pty`, `emulator-type`, `login-journey.pty`, `tui-runtime-error.pty` | 18 |
+| `--endpoint-url` / `LSTK_ENDPOINT_URL` | `endpoint-url`(+`.pty`), `endpoint-url-https` | 36 |
 | Harness self-tests (not product behaviour) | `harness/strip-ansi`, `harness/print-exactly` | 12 |
 
 ### What that removed from the Go suite
 
 Deleted outright: `json_envelope`, `exit_code`, `non_interactive`, `completion`, `docs`,
-`terraform_cmd`, `logs`, `reset`, `volume`, `stop`, `restart`, `logout`.
-
-`stop_test.go` and `restart_test.go` each gained an `LSTK_ENDPOINT_URL` rejection test on
-`main` after this port was written. Those two moved into `endpoint_url_test.go` alongside
-their 27 siblings rather than being deleted with the rest of their files.
+`terraform_cmd`, `logs`, `reset`, `volume`, `stop`, `restart`, `logout`, `status`,
+`endpoint_url`, `endpoint_url_https`.
 
 `config_test.go` likewise gained `TestConfigWithInvalidContainerNameFails` on `main`
 (custom `container_name`). That one is pure CLI output rejected at config load — no
@@ -75,7 +73,6 @@ Trimmed, with the reason each remainder stayed:
 | --- | --- | --- |
 | `json_flag` | 2 of 7 | Both are table-driven proxy tests covering `az`, which TypeScript cannot reach without a completed `lstk setup azure` |
 | `aws_cmd` | 3 of 18 | Spinner timing under a PTY |
-| `status` | 2 of 7 | `ShowsResourcesWhenRunning` needs an AWS SDK client; `WorksWithNonDefaultPort` binds the `127.0.0.2` loopback alias, which Docker Desktop rejects and a native Linux daemon accepts |
 | `config` | 1 of 12 | `TestConfigFlagEnvVarsPassedToContainer` inspects the container's environment |
 | `emulator_type` | 7 of 10 | |
 | `emulator_select` | 7 of 9 | |
@@ -89,20 +86,11 @@ Trimmed, with the reason each remainder stayed:
 | Snapshots | `snapshot_*_test.go`, `start_snapshot_test.go` | 78 | Mock cloud/S3 remotes; AWS SDK assertions against a live emulator |
 | IaC end-to-end | `terraform_e2e`, `terraform_s3backend_e2e`, `cdk_*`, `sam_*` | 46 | Real terraform/cdk/sam installs (the `_cmd` half of terraform is done) |
 | `start` remainder | `start_test.go`, `docker_unhealthy`, `docker_windows` | 41 | Never-healthy image via `docker commit`; bind/port introspection |
-| Trimmed leftovers | `emulator_type`, `emulator_select`, `login`, `aws_cmd`, `status`, `json_flag`, `config` | 23 | See the table above — each has its own blocker |
+| Trimmed leftovers | `emulator_type`, `emulator_select`, `login`, `aws_cmd`, `json_flag`, `config` | 21 | See the table above — each has its own blocker |
 | `az` proxy, `setup azure`, `awsconfig` | `az_*`, `setup_azure`, `awsconfig` | 22 | Isolated `~/.azure` assertions; `setup azure` completion marker |
-| `--endpoint-url` / `LSTK_ENDPOINT_URL` | `endpoint_url`, `endpoint_url_https` | 27 | Landed after the port. It spans commands this suite owns (`logs`, `volume`, `stop`, `restart`, `start`, `status`, `aws`) but is one feature with one design doc, and several cases assert container state through the Docker SDK — splitting it across two suites would cost more than it buys. Port it as a unit or not at all. |
 | Extensions, signal forwarding | `extension`, `signal_forwarding` | 22 | Reference extension build; process-group signalling |
 | Update & install | `update`, `multiple_installs`, `version_resolution` | 16 | Mock GitHub releases API; fake Homebrew/npm layouts |
 | Telemetry, license, logging | `telemetry`, `license`, `logging`, `command_telemetry` | 15 | Mechanism by design — a mock analytics server and a mock license API, neither of which is user-observable |
-
-Two individually dropped cases worth revisiting:
-
-- `TestStatusCommandShowsResourcesWhenRunning` — needs an AWS SDK client to create
-  S3/SQS resources first. Adding `@aws-sdk/client-s3` is the only blocker.
-- `TestStatusCommandWorksWithNonDefaultPort` — publishes a container port on the
-  `127.0.0.2` loopback alias, which Docker Desktop's VM networking rejects while a
-  native Linux daemon accepts it. Better as a `requirement()`-gated test than a drop.
 
 ## Fixtures available for the remaining work
 
@@ -110,6 +98,7 @@ Two individually dropped cases worth revisiting:
 `useExclusiveEmulator()`, `emulator-stub.ts` (stand-in container + log writing),
 `fake-binary.ts` (fake `aws`/`terraform`/… recording argv, env, cwd),
 `extension-fixture.ts`, `platform.ts` (`mockPlatform()` login flow + `fakeBrowser()`),
+`emulator-api.ts` (the emulator's own HTTP API, http or https, for `--endpoint-url`),
 `license.ts`, `os-config-dir.ts`, `envelope.ts`, `requirements.ts`.
 
 ## Consequences worth accepting deliberately
@@ -123,6 +112,12 @@ Two individually dropped cases worth revisiting:
 - **Real-keyring coverage narrows to one journey run** (`keyring: "system"`, CI or
   opt-in). The adapter logic below it stays covered by the mocked unit tests in
   `internal/auth/token_storage_test.go`.
+- **Two prerequisites are gated rather than assumed**, both `requirement()`-checked so a
+  missing one skips instead of failing — and hard-fails on the CI leg that has
+  everything (`LSTK_E2E_REQUIRE_ALL=1`). The https tests need certificate trust an
+  exec'd lstk actually reads, which Go's x509 verifier only takes from SSL_CERT_FILE on
+  Linux; the "status reports the bound port" test needs a daemon that can publish on the
+  127.0.0.2 loopback alias, which Docker Desktop's VM networking refuses.
 - **Container behaviour is verified on exactly one CI leg.** Ubuntu has Docker and the
   auth token, and `LSTK_E2E_REQUIRE_ALL=1` turns a missing prerequisite into a hard
   failure there; macOS and Windows runners cannot run Linux containers, so 63 and 72
