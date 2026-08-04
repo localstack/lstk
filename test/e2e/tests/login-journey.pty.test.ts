@@ -16,7 +16,7 @@ import {
   type Home,
   type MockPlatform,
 } from "../support/index.ts";
-import { privateEmulator, startStubEmulator } from "../support/emulator-stub.ts";
+import { defaultEmulatorName, privateEmulator, startStubEmulator } from "../support/emulator-stub.ts";
 
 // Replaces what test/integration/{login,logout}_test.go assert about token
 // storage. Where a credential is kept is an implementation detail, so nothing
@@ -233,29 +233,30 @@ describe.skipIf(noBrowserShim)("the login journey", () => {
       useExclusiveEmulator();
 
       test("does not report a running emulator of a type the config did not select", async () => {
+        // A real emulator image reference, so a snowflake-typed config reaching
+        // the image fallback still finds nothing to match: the fallback is
+        // scoped to the repos of the configured type.
         const awsImage = "localstack/localstack-pro:logout-journey-test";
         await docker.pull("alpine:latest");
         await docker.tag("alpine:latest", awsImage);
-        // Published, because the image fallback matches on (known repo, container
-        // port 4566) and an unpublished port never appears in the container list.
-        await startStubEmulator("localstack-external-aws", {
-          image: awsImage,
-          hostBinding: { hostPort: "4566" },
-        });
+        await startStubEmulator(defaultEmulatorName, { image: awsImage });
 
-        // Control first: with an AWS config whose container name is absent, that
-        // same container *is* found through the image fallback and reported. The
-        // two runs differ only in the configured emulator type, so without this the
-        // assertion below would pass just as well if nothing were discoverable.
+        // Control first, so the assertion below cannot pass merely because
+        // nothing was discoverable. It resolves by container name, which is the
+        // deterministic half of discovery — the image/port fallback depends on a
+        // published port, and port 4566 is shared machine state even under this
+        // lock.
         const awsFixture = await freshHome();
-        await awsFixture.home.writeConfig(privateEmulator("aws").config);
         await login(awsFixture);
         expect(await lstk(["logout"], { home: awsFixture.home })).toPrint(
           "LocalStack AWS Emulator is still running in the background",
         );
 
+        // Same container, only the configured type differs.
         const fixture = await freshHome();
-        await fixture.home.writeConfig(privateEmulator("snowflake").config);
+        await fixture.home.writeConfig(
+          `[[containers]]\ntype = "snowflake"\ntag = "latest"\nport = "4566"\n`,
+        );
         await login(fixture);
 
         const loggedOut = await lstk(["logout"], { home: fixture.home });

@@ -207,6 +207,13 @@ describe.skipIf(noDocker)("lstk status", () => {
       const home = await tempHome({ env: { LOCALSTACK_AUTH_TOKEN: requireAuthToken() } });
       await home.writeConfig(`[[containers]]\ntype = "aws"\ntag = "latest"\nport = "4566"\n`);
 
+      // The block-level cleanup only runs after the last test in it, so a real
+      // emulator left up here would still be holding port 4566 under the
+      // canonical name when the next test starts one.
+      onTestFinished(async () => {
+        await docker.removeContainer("localstack-aws");
+      });
+
       const start = await lstk(["start", "--non-interactive"], { home });
       expect(start).toSucceed();
 
@@ -228,7 +235,8 @@ describe.skipIf(noDocker)("lstk status", () => {
       expect(run).toPrint("running");
       expect(run).toPrint(/SERVICE\s+RESOURCE/);
       expect(run).toPrint(/S3\s+my-test-bucket/);
-      expect(run).toPrint(/SQS\s+my-test-queue/);
+      // SQS names a queue by its URL, not the bare name it was created with.
+      expect(run).toPrint(/SQS\s+\S*\/my-test-queue\b/);
     });
 
     test.skipIf(!authToken())(
