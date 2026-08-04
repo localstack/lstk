@@ -14,7 +14,9 @@ import {
   useExclusiveEmulator,
   type FakeBrowser,
   type Home,
+  type MockPlatform,
 } from "../support/index.ts";
+import { privateEmulator, startStubEmulator } from "../support/emulator-stub.ts";
 
 // Replaces what test/integration/{login,logout}_test.go assert about token
 // storage. Where a credential is kept is an implementation detail, so nothing
@@ -36,20 +38,28 @@ const noBrowserShim = requirement(
 interface Fixture {
   home: Home;
   browser: FakeBrowser;
+  platform: MockPlatform;
+}
+
+interface FreshHomeOptions {
+  keyring?: "file" | "system";
+  licenseToken?: string;
+  /** false makes the platform never confirm the auth request, so login fails. */
+  confirmed?: boolean;
 }
 
 /** An isolated home wired to a mock platform, with the browser shimmed out. */
-async function freshHome(
-  keyring: "file" | "system" = "file",
-  licenseToken?: string,
-): Promise<Fixture> {
-  const platform = await mockPlatform(licenseToken === undefined ? {} : { licenseToken });
+async function freshHome(options: FreshHomeOptions = {}): Promise<Fixture> {
+  const platform = await mockPlatform({
+    ...(options.licenseToken === undefined ? {} : { licenseToken: options.licenseToken }),
+    ...(options.confirmed === undefined ? {} : { confirmed: options.confirmed }),
+  });
   const browser = await fakeBrowser();
   const home = await tempHome({
-    keyring,
+    keyring: options.keyring ?? "file",
     env: { LSTK_API_ENDPOINT: platform.url, LSTK_WEB_APP_URL: platform.url },
   });
-  return { home, browser };
+  return { home, browser, platform };
 }
 
 /** Drives the browser login flow to completion and returns the terminal output. */
@@ -116,9 +126,147 @@ describe.skipIf(noBrowserShim)("the login journey", () => {
   test.skipIf(!realKeyringAllowed())(
     "logging in sticks when credentials go to the OS keyring",
     async () => {
-      await assertLoginSticks(await freshHome("system"));
+      await assertLoginSticks(await freshHome({ keyring: "system" }));
     },
   );
+
+  // A login the platform never confirms must leave nothing behind. The Go test this
+  // replaces proved that by reading the keyring; the behavioural equivalent is that
+  // both things a stored credential would change are still unchanged afterwards.
+  test("a login the platform never confirms leaves lstk unauthenticated", async () => {
+    const fixture = await freshHome({ confirmed: false });
+    const { home, browser, platform } = fixture;
+
+    const term = lstkPty(["login"], { home, env: { PATH: browser.path } });
+    await term.waitFor("Press any key when complete");
+    term.press("enter");
+
+    expect(await term.exitCode(), term.output()).toBe(1);
+    expect(term.output()).toContain("auth request not confirmed");
+    expect(await browser.openedUrl(), "login still opens the auth URL").toBe(platform.authUrl);
+
+    await expectCannotAuthenticate(home, "after a login that was never confirmed");
+
+    // The second half of "nothing was stored": a retry runs the browser flow again
+    // rather than short-circuiting the way a successful login makes it.
+    const retry = lstkPty(["login"], { home, env: { PATH: browser.path } });
+    await retry.waitFor("Press any key when complete");
+    expect(
+      retry.output(),
+      "a failed login must leave nothing behind for the next one to find",
+    ).not.toContain("You're already logged in");
+    retry.press("enter");
+    expect(await retry.exitCode()).toBe(1);
+  });
+
+  // LOCALSTACK_AUTH_TOKEN is the other way to be authenticated, and lstk treats it as
+  // already-logged-in without touching stored credentials at all.
+  test("LOCALSTACK_AUTH_TOKEN answers login without opening a browser", async () => {
+    const browser = await fakeBrowser();
+    const home = await tempHome({ env: { LOCALSTACK_AUTH_TOKEN: "test-env-token" } });
+
+    const term = lstkPty(["login"], { home, env: { PATH: browser.path } });
+    await term.waitFor("You're already logged in");
+
+    expect(await term.exitCode()).toBe(0);
+    expect(term.output()).not.toContain("Opening browser");
+    expect(await browser.openedUrl(), "no browser tab for a token already in the env").toBe("");
+  });
+
+  test("logout says so when the token came from the environment, and leaves it working", async () => {
+    const browser = await fakeBrowser();
+    const home = await tempHome({ env: { LOCALSTACK_AUTH_TOKEN: "test-env-token" } });
+
+    const loggedOut = await lstk(["logout"], { home });
+    expect(loggedOut).toSucceed();
+    expect(loggedOut).toPrint(
+      "Authenticated via LOCALSTACK_AUTH_TOKEN environment variable; unset it to log out",
+    );
+
+    // Not just a message: logout cannot clear an env var, and the credential is
+    // still in effect afterwards.
+    const term = lstkPty(["login"], { home, env: { PATH: browser.path } });
+    await term.waitFor("You're already logged in");
+    expect(await term.exitCode()).toBe(0);
+  });
+
+  // `logout` ends the session but leaves containers up, so it names what it left
+  // behind. Only when it actually logged someone out: the not-logged-in path returns
+  // before the check (internal/auth/auth.go), so these all log in first.
+  describe.skipIf(noDocker)("logout reports the emulators it leaves running", () => {
+    test("names the one it leaves running", async () => {
+      const fixture = await freshHome();
+      const emulator = privateEmulator("aws");
+      await fixture.home.writeConfig(emulator.config);
+      await startStubEmulator(emulator.name);
+
+      await login(fixture);
+
+      const loggedOut = await lstk(["logout"], { home: fixture.home });
+      expect(loggedOut).toSucceed();
+      expect(loggedOut).toPrint("LocalStack AWS Emulator is still running in the background");
+    });
+
+    // Two enabled [[containers]] blocks are rejected by `start`, but every recovery
+    // command still has to enumerate them — so logout names both, in config order.
+    test("names every one it leaves running", async () => {
+      const fixture = await freshHome();
+      const aws = privateEmulator("aws");
+      const snowflake = privateEmulator("snowflake", { port: "4567" });
+      await fixture.home.writeConfig(aws.config + snowflake.config);
+      await startStubEmulator(aws.name);
+      await startStubEmulator(snowflake.name);
+
+      await login(fixture);
+
+      const loggedOut = await lstk(["logout"], { home: fixture.home });
+      expect(loggedOut).toSucceed();
+      expect(loggedOut).toPrint(
+        "LocalStack AWS Emulator, LocalStack Snowflake Emulator are still running in the background",
+      );
+    });
+
+    // Holds the lock for the same reason as the start test below: a container built
+    // from a real `localstack/*` image reference is visible to every other test's
+    // "is an emulator running" check.
+    describe("with a container built from a real emulator image reference", () => {
+      useExclusiveEmulator();
+
+      test("does not report a running emulator of a type the config did not select", async () => {
+        const awsImage = "localstack/localstack-pro:logout-journey-test";
+        await docker.pull("alpine:latest");
+        await docker.tag("alpine:latest", awsImage);
+        // Published, because the image fallback matches on (known repo, container
+        // port 4566) and an unpublished port never appears in the container list.
+        await startStubEmulator("localstack-external-aws", {
+          image: awsImage,
+          hostBinding: { hostPort: "4566" },
+        });
+
+        // Control first: with an AWS config whose container name is absent, that
+        // same container *is* found through the image fallback and reported. The
+        // two runs differ only in the configured emulator type, so without this the
+        // assertion below would pass just as well if nothing were discoverable.
+        const awsFixture = await freshHome();
+        await awsFixture.home.writeConfig(privateEmulator("aws").config);
+        await login(awsFixture);
+        expect(await lstk(["logout"], { home: awsFixture.home })).toPrint(
+          "LocalStack AWS Emulator is still running in the background",
+        );
+
+        const fixture = await freshHome();
+        await fixture.home.writeConfig(privateEmulator("snowflake").config);
+        await login(fixture);
+
+        const loggedOut = await lstk(["logout"], { home: fixture.home });
+        expect(loggedOut).toSucceed();
+        expect(
+          loggedOut,
+          "an AWS container must not satisfy a snowflake-targeted config",
+        ).not.toPrint("still running");
+      });
+    });
+  });
 
   // Holds the exclusive lock: this is one of the few tests that starts a container
   // from a real `localstack/*` image reference. Emulator discovery falls back to
@@ -164,7 +312,7 @@ describe.skipIf(noBrowserShim)("the login journey", () => {
     useExclusiveEmulator();
 
     test("starts the emulator using only the credential from login", async () => {
-      const fixture = await freshHome("file", authToken());
+      const fixture = await freshHome({ licenseToken: authToken() });
 
       await login(fixture);
       const run = await lstk(["start", "--non-interactive"], { home: fixture.home });

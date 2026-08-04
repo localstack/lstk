@@ -5,11 +5,12 @@
 with no CLI surface. `test/integration` keeps everything under "Still owned by Go" and
 does not go away wholesale; it shrinks as areas move across.
 
-**Status: 175 tests across 23 files** (167 pass, 8 skip on this machine — the skips are
-the whole of `start.test.ts`, which needs an auth token). Full-suite wall clock ≈ 33s.
+**Status: 181 tests across 23 files** (173 pass, 8 skip on this machine; `start.test.ts`'s
+block is skipped whole for want of an auth token, so its cases are never collected).
+Full-suite wall clock ≈ 70s.
 
 The Go integration suite has been trimmed accordingly: against `main` it goes from **419
-→ 302** test functions across **54 → 44** files, 14,552 → 11,598 lines.
+→ 296** test functions across **54 → 43** files, 14,552 → 11,397 lines.
 
 ## What "ported" means here
 
@@ -25,8 +26,15 @@ than behaviour, and those were deliberately **not** carried across:
   — replaced by the CLI-observable equivalent where one exists, e.g. `restart
   --persist` is asserted through the `• Persistence: Enabled` line rather than the
   container's environment.
-- **Token storage** — five keyring assertions across `login_test.go` and
-  `logout_test.go` became one behavioural journey (see the README).
+- **Token storage** — the keyring assertions across `login_test.go` and `logout_test.go`
+  became behavioural ones in `login-journey.pty.test.ts` (see the README). "A failed
+  login stores nothing" is asserted as *`start` still demands credentials and a retry
+  reopens the browser* rather than by reading the store. Nothing in `test/e2e` touches
+  credential storage; `keyring: "file" | "system"` only selects which backend the binary
+  uses. That is not just tidiness — the two Go tests that did reach in
+  (`TestLogoutCommandNotesWhenEmulatorStillRunning` and its multi-emulator sibling)
+  wrote through the *test process's* `$HOME` while running lstk under a temp one, and
+  passed on Linux CI while failing locally.
 
 Two Go tests turned out to be **vacuous** and were re-targeted rather than copied:
 `TestConfigWithUnknownFieldsIsAccepted` and `TestConfigWithMissingOptionalTagSucceeds`
@@ -43,13 +51,13 @@ really calls `config.Get()`.
 | Lifecycle (`stop`, `restart`, `status`, `reset`) | `stop-restart`, `status`, `reset.pty` | 22 |
 | `logs`, `volume` | `logs.pty`, `volume.pty` | 20 |
 | Config, completion, docs | `config`, `completion`, `docs` | 21 |
-| Start paths, emulator selection, login journey, TUI | `start`, `start-local-image`, `emulator-select.pty`, `emulator-type`, `login-journey.pty`, `tui-runtime-error.pty` | 17 |
+| Start paths, emulator selection, login journey, TUI | `start`, `start-local-image`, `emulator-select.pty`, `emulator-type`, `login-journey.pty`, `tui-runtime-error.pty` | 23 |
 | Harness self-tests (not product behaviour) | `harness/strip-ansi`, `harness/print-exactly` | 12 |
 
 ### What that removed from the Go suite
 
 Deleted outright: `json_envelope`, `exit_code`, `non_interactive`, `completion`, `docs`,
-`terraform_cmd`, `logs`, `reset`, `volume`, `stop`, `restart`.
+`terraform_cmd`, `logs`, `reset`, `volume`, `stop`, `restart`, `logout`.
 
 `stop_test.go` and `restart_test.go` each gained an `LSTK_ENDPOINT_URL` rejection test on
 `main` after this port was written. Those two moved into `endpoint_url_test.go` alongside
@@ -71,9 +79,8 @@ Trimmed, with the reason each remainder stayed:
 | `config` | 1 of 12 | `TestConfigFlagEnvVarsPassedToContainer` inspects the container's environment |
 | `emulator_type` | 7 of 10 | |
 | `emulator_select` | 7 of 9 | |
-| `start` | 33 of 35 | |
-| `login` | 3 of 4 | |
-| `logout` | 4 of 6 | |
+| `start` | 34 of 36 | |
+| `login` | 1 of 4 | `TestDeviceFlowSuccess` is the only remaining telemetry assertion for `login` |
 
 ## Still owned by Go
 
@@ -81,8 +88,8 @@ Trimmed, with the reason each remainder stayed:
 | --- | --- | --- | --- |
 | Snapshots | `snapshot_*_test.go`, `start_snapshot_test.go` | 78 | Mock cloud/S3 remotes; AWS SDK assertions against a live emulator |
 | IaC end-to-end | `terraform_e2e`, `terraform_s3backend_e2e`, `cdk_*`, `sam_*` | 46 | Real terraform/cdk/sam installs (the `_cmd` half of terraform is done) |
-| `start` remainder | `start_test.go`, `docker_unhealthy`, `docker_windows` | 40 | Never-healthy image via `docker commit`; bind/port introspection |
-| Trimmed leftovers | `emulator_type`, `emulator_select`, `logout`, `login`, `aws_cmd`, `status`, `json_flag`, `config` | 29 | See the table above — each has its own blocker |
+| `start` remainder | `start_test.go`, `docker_unhealthy`, `docker_windows` | 41 | Never-healthy image via `docker commit`; bind/port introspection |
+| Trimmed leftovers | `emulator_type`, `emulator_select`, `login`, `aws_cmd`, `status`, `json_flag`, `config` | 23 | See the table above — each has its own blocker |
 | `az` proxy, `setup azure`, `awsconfig` | `az_*`, `setup_azure`, `awsconfig` | 22 | Isolated `~/.azure` assertions; `setup azure` completion marker |
 | `--endpoint-url` / `LSTK_ENDPOINT_URL` | `endpoint_url`, `endpoint_url_https` | 27 | Landed after the port. It spans commands this suite owns (`logs`, `volume`, `stop`, `restart`, `start`, `status`, `aws`) but is one feature with one design doc, and several cases assert container state through the Docker SDK — splitting it across two suites would cost more than it buys. Port it as a unit or not at all. |
 | Extensions, signal forwarding | `extension`, `signal_forwarding` | 22 | Reference extension build; process-group signalling |

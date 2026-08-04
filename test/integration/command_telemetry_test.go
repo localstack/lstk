@@ -18,6 +18,11 @@ import (
 // cases were ported to test/e2e (which deliberately does not assert against a
 // mock analytics server — see each *.pty.test.ts/*.test.ts file's "Dropped" note).
 //
+// Every case here arranges its state through the CLI or through an isolated
+// HOME. None of them reach into credential storage: where a credential lives is
+// an implementation detail, and the tests that did reach in were exactly the
+// ones that behaved differently per platform.
+//
 // telemetry_test.go already covers the telemetry *mechanism* (disabled,
 // unreachable endpoint, detached flusher, OTel); this test only proves each
 // command still reports its own command name and exit code via lstk_command.
@@ -193,24 +198,14 @@ func TestCommandTelemetryPerCommand(t *testing.T) {
 			wantExitCode: 1,
 		},
 		{
-			name: "logout removes a stored token",
-			run: func(t *testing.T, ctx context.Context, analyticsURL string) (string, string, error) {
-				_ = DeleteAuthTokenFromKeyring()
-				t.Cleanup(func() { _ = DeleteAuthTokenFromKeyring() })
-				require.NoError(t, SetAuthTokenInKeyring("test-token"), "failed to store token in keyring")
-
-				return runLstk(t, ctx, "", env.With(env.AnalyticsEndpoint, analyticsURL), "logout")
-			},
-			wantCommand:  "logout",
-			wantExitCode: 0,
-		},
-		{
 			name: "logout with nothing stored",
 			run: func(t *testing.T, ctx context.Context, analyticsURL string) (string, string, error) {
-				_ = DeleteAuthTokenFromKeyring()
-
-				e := env.Without(env.AuthToken).With(env.AnalyticsEndpoint, analyticsURL)
-				return runLstk(t, ctx, "", e, "logout")
+				// A fresh HOME on the file keyring holds no credential by
+				// construction, so arranging this needs no reach into storage.
+				e := env.Environ(testEnvWithHome(t.TempDir(), "")).
+					Without(env.AuthToken).
+					With(env.AnalyticsEndpoint, analyticsURL)
+				return runLstk(t, ctx, t.TempDir(), e, "logout")
 			},
 			wantCommand:  "logout",
 			wantExitCode: 0,
