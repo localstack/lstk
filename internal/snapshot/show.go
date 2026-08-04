@@ -31,6 +31,9 @@ func Show(ctx context.Context, inspector CloudPodInspector, authToken, podName s
 	details, err := inspector.GetCloudPod(ctx, authToken, podName)
 	sink.Emit(output.SpinnerStop())
 	if err != nil {
+		if errors.Is(err, api.ErrCloudPodsForbidden) {
+			return emitFeatureUnavailableError(sink)
+		}
 		if errors.Is(err, api.ErrCloudPodNotFound) {
 			sink.Emit(output.ErrorEvent{
 				Title: fmt.Sprintf("Snapshot 'pod:%s' not found", podName),

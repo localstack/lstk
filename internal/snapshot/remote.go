@@ -6,6 +6,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"net"
 	"net/url"
@@ -212,11 +213,17 @@ func ListRemoteS3(ctx context.Context, rt runtime.Runtime, containers []config.C
 	sink.Emit(output.SpinnerStart("Fetching snapshots"))
 	if err := client.RegisterRemote(ctx, host, name, remoteURL); err != nil {
 		sink.Emit(output.SpinnerStop())
+		if errors.Is(err, ErrSnapshotFeatureUnavailable) {
+			return emitFeatureUnavailableError(sink)
+		}
 		return fmt.Errorf("register S3 remote: %w", err)
 	}
 	pods, err := client.ListPodsRemote(ctx, host, name, creds.params(), authToken, "")
 	sink.Emit(output.SpinnerStop())
 	if err != nil {
+		if errors.Is(err, ErrSnapshotFeatureUnavailable) {
+			return emitFeatureUnavailableError(sink)
+		}
 		return fmt.Errorf("list snapshots on %s: %w", s3URL, err)
 	}
 

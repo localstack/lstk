@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -23,6 +24,31 @@ type Client struct {
 	// s3BucketURLTemplate builds the URL for an S3 bucket existence check; it
 	// contains a single %s for the bucket name. Overridable in tests.
 	s3BucketURLTemplate string
+}
+
+// isFeatureUnavailableResponse reports whether a non-2xx response from a
+// /_localstack/pods* endpoint means the snapshot feature itself isn't available
+// (the license doesn't cover it), rather than the operation having failed. When
+// unentitled, the emulator never registers these routes at all, so every method
+// falls through to the generic unmatched-path handler, which replies with a bare
+// 404 and no body — a shape every real pods error can be told apart from, since
+// those always carry a message (or arrive as an NDJSON error event).
+//
+// The paths these calls target are hardcoded, never user-supplied, so a URL typo
+// cannot reach this and be misreported as an entitlement problem.
+func isFeatureUnavailableResponse(statusCode int, body []byte) bool {
+	return statusCode == http.StatusNotFound && len(bytes.TrimSpace(body)) == 0
+}
+
+// emulatorStatusError formats a non-2xx emulator response. header is the whole
+// message up to (but excluding) the body, e.g. "LocalStack returned status 404".
+// The body is appended only when non-empty, so a response with no body never
+// renders a dangling ": ".
+func emulatorStatusError(header string, body []byte) error {
+	if trimmed := strings.TrimSpace(string(body)); trimmed != "" {
+		return fmt.Errorf("%s: %s", header, trimmed)
+	}
+	return errors.New(header)
 }
 
 func NewClient() *Client {
@@ -150,7 +176,11 @@ func (c *Client) ResetState(ctx context.Context, baseURL string) error {
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("LocalStack returned status %d", resp.StatusCode)
+		body, _ := io.ReadAll(resp.Body)
+		if isFeatureUnavailableResponse(resp.StatusCode, body) {
+			return snapshot.ErrSnapshotFeatureUnavailable
+		}
+		return emulatorStatusError(fmt.Sprintf("LocalStack returned status %d", resp.StatusCode), body)
 	}
 	return nil
 }
@@ -177,7 +207,11 @@ func (c *Client) ExportState(ctx context.Context, baseURL string, services []str
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("LocalStack returned status %d", resp.StatusCode)
+		body, _ := io.ReadAll(resp.Body)
+		if isFeatureUnavailableResponse(resp.StatusCode, body) {
+			return nil, snapshot.ErrSnapshotFeatureUnavailable
+		}
+		return nil, emulatorStatusError(fmt.Sprintf("LocalStack returned status %d", resp.StatusCode), body)
 	}
 
 	if _, err := io.Copy(dst, resp.Body); err != nil {
@@ -214,7 +248,10 @@ func (c *Client) ImportState(ctx context.Context, baseURL string, src io.Reader,
 	}
 	if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("LocalStack returned status %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+		if isFeatureUnavailableResponse(resp.StatusCode, body) {
+			return snapshot.ErrSnapshotFeatureUnavailable
+		}
+		return emulatorStatusError(fmt.Sprintf("LocalStack returned status %d", resp.StatusCode), body)
 	}
 
 	nd := newNDJSONReader(resp.Body)
@@ -315,7 +352,10 @@ func (c *Client) DiffPodSnapshot(ctx context.Context, baseURL, podName, authToke
 		if isPodNotFoundMsg(bodyStr) {
 			return nil, fmt.Errorf("%w: %s", snapshot.ErrPodNotFound, bodyStr)
 		}
-		return nil, fmt.Errorf("diff failed (HTTP %d): %s", resp.StatusCode, bodyStr)
+		if isFeatureUnavailableResponse(resp.StatusCode, body) {
+			return nil, snapshot.ErrSnapshotFeatureUnavailable
+		}
+		return nil, emulatorStatusError(fmt.Sprintf("diff failed (HTTP %d)", resp.StatusCode), body)
 	}
 
 	var raw map[string][]struct {
@@ -373,7 +413,10 @@ func (c *Client) RemovePodSnapshot(ctx context.Context, baseURL, podName, authTo
 		if strings.Contains(strings.ToLower(bodyStr), "not found") {
 			return fmt.Errorf("%w: %s", snapshot.ErrPodNotFound, bodyStr)
 		}
-		return fmt.Errorf("pod remove failed (HTTP %d): %s", resp.StatusCode, bodyStr)
+		if isFeatureUnavailableResponse(resp.StatusCode, body) {
+			return snapshot.ErrSnapshotFeatureUnavailable
+		}
+		return emulatorStatusError(fmt.Sprintf("pod remove failed (HTTP %d)", resp.StatusCode), body)
 	}
 	return nil
 }

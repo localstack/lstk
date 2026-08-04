@@ -58,6 +58,9 @@ func DiffPod(ctx context.Context, rt runtime.Runtime, containers []config.Contai
 	sink.Emit(output.SpinnerStart(fmt.Sprintf("Checking diff for pod %q...", podName)))
 	result, err := differ.DiffPodSnapshot(ctx, host, podName, authToken)
 	sink.Emit(output.SpinnerStop())
+	if errors.Is(err, ErrSnapshotFeatureUnavailable) {
+		return emitFeatureUnavailableError(sink)
+	}
 	if errors.Is(err, ErrPodNotFound) {
 		sink.Emit(output.ErrorEvent{
 			Title:   "Could not check pod diff",

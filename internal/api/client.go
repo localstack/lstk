@@ -127,6 +127,14 @@ type CloudPod struct {
 // requested pod does not exist (HTTP 404).
 var ErrCloudPodNotFound = errors.New("cloud pod not found")
 
+// ErrCloudPodsForbidden is returned when the platform refuses a cloud pod
+// request with HTTP 403 ("generic.forbidden"), which is how it reports that the
+// caller's plan does not include Cloud Pods. Only 403 maps here: the token
+// authenticated fine and was then denied. A bad or expired token comes back as
+// 401 and stays a generic error, so re-login problems aren't misreported as a
+// billing problem.
+var ErrCloudPodsForbidden = errors.New("cloud pods not available on this plan")
+
 // CloudPodResourceCount is a count of a single resource kind within a service,
 // e.g. {Noun: "buckets", Count: 3}.
 type CloudPodResourceCount struct {
@@ -405,6 +413,9 @@ func (c *PlatformClient) ListCloudPods(ctx context.Context, authToken, creator s
 		}
 	}()
 
+	if resp.StatusCode == http.StatusForbidden {
+		return nil, ErrCloudPodsForbidden
+	}
 	if resp.StatusCode != http.StatusOK {
 		detail, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
 		return nil, fmt.Errorf("failed to list cloud pods: status %d: %s", resp.StatusCode, strings.TrimSpace(string(detail)))
@@ -484,6 +495,9 @@ func (c *PlatformClient) GetCloudPod(ctx context.Context, authToken, podName str
 
 	if resp.StatusCode == http.StatusNotFound {
 		return nil, ErrCloudPodNotFound
+	}
+	if resp.StatusCode == http.StatusForbidden {
+		return nil, ErrCloudPodsForbidden
 	}
 	if resp.StatusCode != http.StatusOK {
 		detail, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))

@@ -553,3 +553,65 @@ func TestSnapshotLoadDryRunPodNotFound(t *testing.T) {
 	assert.Contains(t, stdout, "not found on the LocalStack platform")
 	assert.NotContains(t, strings.ToLower(stdout+stderr), "version information")
 }
+
+// mockUnlicensedPodsServer mimics an emulator whose license does not include
+// Cloud Pods: the plugin never loads, so its routes are never registered and
+// every request falls through to the router's bare 404 with an empty body.
+func mockUnlicensedPodsServer(t *testing.T) *httptest.Server {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+// TestSnapshotLoadFeatureUnavailable reproduces DEVX-1009: on a plan without
+// Cloud Pods, `lstk snapshot load <file>` used to fail with the raw, meaningless
+// "LocalStack returned status 404: ". It must instead explain that snapshots need
+// a paid plan and point at pricing.
+func TestSnapshotLoadFeatureUnavailable(t *testing.T) {
+	requireDocker(t)
+	cleanup()
+	t.Cleanup(cleanup)
+
+	ctx := testContext(t)
+	startTestContainer(t, ctx)
+	srv := mockUnlicensedPodsServer(t)
+
+	dir := t.TempDir()
+	snapPath := writeTestSnapFile(t, dir, "snap.snapshot")
+
+	stdout, stderr, err := runLstk(t, ctx, dir,
+		env.Environ(testEnvWithHome(t.TempDir(), "")).With(env.LocalStackHost, lsHost(srv)),
+		"--non-interactive", "snapshot", "load", snapPath,
+	)
+	requireExitCode(t, 1, err)
+	// The user-facing error is emitted through the sink (stdout).
+	assert.Contains(t, stdout, "Snapshots require a paid LocalStack plan")
+	assert.Contains(t, stdout, "https://www.localstack.cloud/pricing")
+	assert.NotContains(t, stdout+stderr, "status 404", "the raw HTTP status must not leak to the user")
+}
+
+// The save path funnels through a different shared helper than load, so it needs
+// its own coverage.
+func TestSnapshotSaveFeatureUnavailable(t *testing.T) {
+	requireDocker(t)
+	cleanup()
+	t.Cleanup(cleanup)
+
+	ctx := testContext(t)
+	startTestContainer(t, ctx)
+	srv := mockUnlicensedPodsServer(t)
+
+	dir := t.TempDir()
+
+	stdout, stderr, err := runLstk(t, ctx, dir,
+		env.Environ(testEnvWithHome(t.TempDir(), "")).With(env.LocalStackHost, lsHost(srv)),
+		"--non-interactive", "snapshot", "save", filepath.Join(dir, "out.snapshot"),
+	)
+	requireExitCode(t, 1, err)
+	assert.Contains(t, stdout, "Snapshots require a paid LocalStack plan")
+	assert.Contains(t, stdout, "https://www.localstack.cloud/pricing")
+	assert.NotContains(t, stdout+stderr, "status 404")
+}

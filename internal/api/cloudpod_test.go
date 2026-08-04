@@ -123,3 +123,41 @@ func TestPluralize(t *testing.T) {
 		assert.Equal(t, want, pluralize(in), "pluralize(%q)", in)
 	}
 }
+
+// The platform reports "your plan doesn't include Cloud Pods" as a 403, which
+// callers translate into a friendly upgrade message (DEVX-1009).
+func TestCloudPods_ForbiddenMapsToPlanError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusForbidden)
+		_, _ = w.Write([]byte(`{"error": true, "message": "generic.forbidden"}`))
+	}))
+	defer srv.Close()
+
+	client := NewPlatformClient(srv.URL, log.Nop())
+
+	_, listErr := client.ListCloudPods(context.Background(), "tok", "me")
+	assert.ErrorIs(t, listErr, ErrCloudPodsForbidden)
+
+	_, showErr := client.GetCloudPod(context.Background(), "tok", "any")
+	assert.ErrorIs(t, showErr, ErrCloudPodsForbidden)
+}
+
+// A rejected token is a 401, not a 403 — it must stay a generic error so a
+// re-login problem is never reported as a billing problem.
+func TestCloudPods_UnauthorizedIsNotAPlanError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+		_, _ = w.Write([]byte(`{"error": true, "message": "unauthorized"}`))
+	}))
+	defer srv.Close()
+
+	client := NewPlatformClient(srv.URL, log.Nop())
+
+	_, listErr := client.ListCloudPods(context.Background(), "tok", "me")
+	require.Error(t, listErr)
+	assert.NotErrorIs(t, listErr, ErrCloudPodsForbidden)
+
+	_, showErr := client.GetCloudPod(context.Background(), "tok", "any")
+	require.Error(t, showErr)
+	assert.NotErrorIs(t, showErr, ErrCloudPodsForbidden)
+}
