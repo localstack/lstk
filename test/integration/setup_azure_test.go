@@ -37,9 +37,10 @@ func azTempHome(t *testing.T) string {
 
 // azureWorkDir prepares a fresh workDir with a project-local `.lstk/config.toml`
 // containing an Azure container, and returns its path. Tests run `lstk` with
-// `cmd.Dir = workDir` so the project-local config search finds this file —
-// `lstk az` has `DisableFlagParsing: true`, so a `--config` flag wouldn't reach
-// the parent flag set.
+// `cmd.Dir = workDir` so the project-local config search finds this file. (A
+// `--config` flag works for `lstk az` too — see
+// TestAzCommandConfigFlagSelectsConfigFile — but the project-local file keeps
+// the setup-marker path in `.lstk/azure` alongside it.)
 func azureWorkDir(t *testing.T) string {
 	t.Helper()
 	workDir := t.TempDir()
