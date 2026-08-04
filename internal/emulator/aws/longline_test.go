@@ -70,7 +70,7 @@ func TestLoadPodSnapshot_HandlesLongLine(t *testing.T) {
 	defer server.Close()
 
 	c := NewClient()
-	services, err := c.LoadPodSnapshot(context.Background(), server.URL, "my-pod", "the-token", "")
+	services, err := c.LoadPodSnapshot(context.Background(), server.URL, "my-pod", 0, "the-token", "")
 	require.NoError(t, err)
 	require.Len(t, services, 1)
 	assert.Equal(t, hugeValue, services[0])

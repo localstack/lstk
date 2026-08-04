@@ -7,8 +7,8 @@ import (
 	"github.com/localstack/lstk/internal/snapshot"
 )
 
-func RunSnapshotShow(parentCtx context.Context, inspector snapshot.CloudPodInspector, authToken, podName string, version int) error {
+func RunSnapshotVersions(parentCtx context.Context, lister snapshot.CloudPodVersionLister, authToken, podName string) error {
 	return runWithTUI(parentCtx, withoutHeader(), func(ctx context.Context, sink output.Sink) error {
-		return snapshot.Show(ctx, inspector, authToken, podName, version, sink)
+		return snapshot.Versions(ctx, lister, authToken, podName, sink)
 	})
 }

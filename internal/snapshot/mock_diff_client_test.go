@@ -42,16 +42,16 @@ func (m *MockPodDiffer) EXPECT() *MockPodDifferMockRecorder {
 }
 
 // DiffPodSnapshot mocks base method.
-func (m *MockPodDiffer) DiffPodSnapshot(ctx context.Context, host, podName, authToken string) (snapshot.DiffResult, error) {
+func (m *MockPodDiffer) DiffPodSnapshot(ctx context.Context, host, podName string, version int, authToken string) (snapshot.DiffResult, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "DiffPodSnapshot", ctx, host, podName, authToken)
+	ret := m.ctrl.Call(m, "DiffPodSnapshot", ctx, host, podName, version, authToken)
 	ret0, _ := ret[0].(snapshot.DiffResult)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // DiffPodSnapshot indicates an expected call of DiffPodSnapshot.
-func (mr *MockPodDifferMockRecorder) DiffPodSnapshot(ctx, host, podName, authToken any) *gomock.Call {
+func (mr *MockPodDifferMockRecorder) DiffPodSnapshot(ctx, host, podName, version, authToken any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DiffPodSnapshot", reflect.TypeOf((*MockPodDiffer)(nil).DiffPodSnapshot), ctx, host, podName, authToken)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DiffPodSnapshot", reflect.TypeOf((*MockPodDiffer)(nil).DiffPodSnapshot), ctx, host, podName, version, authToken)
 }

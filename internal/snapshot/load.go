@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 
 	"github.com/localstack/lstk/internal/config"
 	"github.com/localstack/lstk/internal/container"
@@ -22,6 +23,11 @@ const (
 )
 
 var ErrIncompatibleSnapshot = errors.New("snapshot is incompatible with the running LocalStack version")
+
+// ErrPodVersionNotFound indicates the requested version of an existing cloud
+// snapshot does not exist. The emulator reports it with a message naming the
+// highest available version, which is passed through to the user verbatim.
+var ErrPodVersionNotFound = errors.New("snapshot version not found")
 
 // ErrInvalidSnapshotFile indicates the source could not be read as a snapshot
 // (e.g. a non-snapshot file was passed). It deliberately hides the underlying
@@ -78,8 +84,8 @@ type LocalLoadClient interface {
 // PodLoader is satisfied by aws.Client.
 type PodLoader interface {
 	// LoadPodSnapshot issues PUT /_localstack/pods/{name}?merge=strategy and
-	// streams the NDJSON response.
-	LoadPodSnapshot(ctx context.Context, host, podName, authToken, strategy string) ([]string, error)
+	// streams the NDJSON response. version 0 loads the pod's latest version.
+	LoadPodSnapshot(ctx context.Context, host, podName string, version int, authToken, strategy string) ([]string, error)
 }
 
 // load is the shared entry point for both LoadLocal and LoadPod.
@@ -182,24 +188,51 @@ func LoadLocal(ctx context.Context, rt runtime.Runtime, containers []config.Cont
 	)
 }
 
-func LoadPod(ctx context.Context, rt runtime.Runtime, containers []config.ContainerConfig, loader PodLoader, host, podName, authToken, strategy string, starter Starter, sink output.Sink) error {
+// LoadPod loads a platform-hosted cloud snapshot. version 0 loads the pod's
+// latest version; a non-zero version pins the load to that specific one.
+func LoadPod(ctx context.Context, rt runtime.Runtime, containers []config.ContainerConfig, loader PodLoader, host, podName string, version int, authToken, strategy string, starter Starter, sink output.Sink) error {
 	if authToken == "" {
 		return fmt.Errorf("pod snapshots require authentication — set LOCALSTACK_AUTH_TOKEN or run %q", "lstk login")
 	}
 
+	spinnerText := fmt.Sprintf("Loading snapshot from pod %q...", podName)
+	if version > 0 {
+		spinnerText = fmt.Sprintf("Loading snapshot from pod %q (version %d)...", podName, version)
+	}
+
 	var services []string
-	return load(ctx, rt, containers, sink, starter,
-		fmt.Sprintf("Loading snapshot from pod %q...", podName),
+	err := load(ctx, rt, containers, sink, starter,
+		spinnerText,
 		func() {
 			sink.Emit(output.SnapshotLoadedEvent{
-				Source:   "pod:" + podName,
+				Source:   PodRef(podName, version),
 				Services: services,
 			})
 		},
 		func() error {
 			var err error
-			services, err = loader.LoadPodSnapshot(ctx, host, podName, authToken, strategy)
+			services, err = loader.LoadPodSnapshot(ctx, host, podName, version, authToken, strategy)
 			return err
 		},
 	)
+	// Handled here rather than in load(), which is shared with the local and S3
+	// paths and has no pod name to point the user at.
+	if errors.Is(err, ErrPodVersionNotFound) {
+		return emitPodVersionNotFound(err, podName, "Could not load snapshot", sink)
+	}
+	return err
+}
+
+// emitPodVersionNotFound renders a missing-version failure. The emulator's own
+// message already names the highest available version, so it is surfaced verbatim
+// as the summary rather than being restated.
+func emitPodVersionNotFound(err error, podName, title string, sink output.Sink) error {
+	sink.Emit(output.ErrorEvent{
+		Title:   title,
+		Summary: strings.TrimPrefix(err.Error(), ErrPodVersionNotFound.Error()+": "),
+		Actions: []output.ErrorAction{
+			{Label: "List available versions:", Value: "lstk snapshot versions pod:" + podName},
+		},
+	})
+	return output.NewSilentError(err)
 }

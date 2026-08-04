@@ -381,7 +381,7 @@ func snapshotOps() map[string]func(context.Context, *Client, string) error {
 			return c.ResetState(ctx, host)
 		},
 		"DiffPodSnapshot": func(ctx context.Context, c *Client, host string) error {
-			_, err := c.DiffPodSnapshot(ctx, host, "pod", "tok")
+			_, err := c.DiffPodSnapshot(ctx, host, "pod", 0, "tok")
 			return err
 		},
 		"RemovePodSnapshot": func(ctx context.Context, c *Client, host string) error {
@@ -392,7 +392,7 @@ func snapshotOps() map[string]func(context.Context, *Client, string) error {
 			return err
 		},
 		"LoadPodSnapshot": func(ctx context.Context, c *Client, host string) error {
-			_, err := c.LoadPodSnapshot(ctx, host, "pod", "tok", "")
+			_, err := c.LoadPodSnapshot(ctx, host, "pod", 0, "tok", "")
 			return err
 		},
 		"RegisterRemote": func(ctx context.Context, c *Client, host string) error {

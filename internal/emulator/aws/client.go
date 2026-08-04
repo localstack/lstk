@@ -11,6 +11,7 @@ import (
 	"io"
 	"net/http"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/localstack/lstk/internal/snapshot"
@@ -328,12 +329,24 @@ func isPodNotFoundMsg(msg string) bool {
 	return strings.Contains(strings.ToLower(msg), "failed to get version information from platform")
 }
 
-func (c *Client) LoadPodSnapshot(ctx context.Context, baseURL, podName, authToken, strategy string) ([]string, error) {
-	return c.doPodLoad(ctx, baseURL, podName, authToken, strategy, []byte("{}"))
+// isPodVersionNotFoundMsg reports whether an emulator error message indicates the
+// requested version of an existing pod does not exist. The emulator answers with
+// "Unable to load pod X with version N. The maximum version available in the
+// remote storage is M" — we match on the distinctive tail and pass the whole
+// message through, since it already names the highest available version.
+func isPodVersionNotFoundMsg(msg string) bool {
+	return strings.Contains(strings.ToLower(msg), "maximum version available")
 }
 
-func (c *Client) DiffPodSnapshot(ctx context.Context, baseURL, podName, authToken string) (snapshot.DiffResult, error) {
+func (c *Client) LoadPodSnapshot(ctx context.Context, baseURL, podName string, version int, authToken, strategy string) ([]string, error) {
+	return c.doPodLoad(ctx, baseURL, podName, version, authToken, strategy, []byte("{}"))
+}
+
+func (c *Client) DiffPodSnapshot(ctx context.Context, baseURL, podName string, version int, authToken string) (snapshot.DiffResult, error) {
 	url := strings.TrimRight(baseURL, "/") + "/_localstack/pods/" + podName + "/diff"
+	if version > 0 {
+		url += "?version=" + strconv.Itoa(version)
+	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return nil, fmt.Errorf("create request: %w", err)
@@ -349,6 +362,9 @@ func (c *Client) DiffPodSnapshot(ctx context.Context, baseURL, podName, authToke
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
 		bodyStr := strings.TrimSpace(string(body))
+		if isPodVersionNotFoundMsg(bodyStr) {
+			return nil, fmt.Errorf("%w: %s", snapshot.ErrPodVersionNotFound, bodyStr)
+		}
 		if isPodNotFoundMsg(bodyStr) {
 			return nil, fmt.Errorf("%w: %s", snapshot.ErrPodNotFound, bodyStr)
 		}

@@ -3,6 +3,7 @@ package output
 import (
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -335,6 +336,9 @@ func formatSnapshotShown(e SnapshotShownEvent) string {
 	}
 
 	row("Name", e.Name)
+	if e.Version > 0 {
+		row("Version", strconv.Itoa(e.Version))
+	}
 	if e.Created != nil {
 		row("Created", e.Created.UTC().Format("2006-01-02 15:04 UTC"))
 	}
@@ -366,6 +370,9 @@ func formatSnapshotShown(e SnapshotShownEvent) string {
 func formatSnapshotDiff(e SnapshotDiffEvent) string {
 	var sb strings.Builder
 	sb.WriteString(fmt.Sprintf("Dry-run results for pod:%s", e.PodName))
+	if e.Version > 0 {
+		sb.WriteString(fmt.Sprintf(":%d", e.Version))
+	}
 
 	services := make([]string, 0, len(e.Services))
 	for svc := range e.Services {

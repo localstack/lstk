@@ -19,7 +19,7 @@ func RunSnapshotLoad(parentCtx context.Context, rt runtime.Runtime, containers [
 	return runWithTUI(parentCtx, withoutHeader(), func(ctx context.Context, sink output.Sink) error {
 		switch src.Kind {
 		case snapshot.KindPod:
-			return snapshot.LoadPod(ctx, rt, containers, client, host, src.Value, authToken, strategy, starter, sink)
+			return snapshot.LoadPod(ctx, rt, containers, client, host, src.Value, src.Version, authToken, strategy, starter, sink)
 		default:
 			return snapshot.LoadLocal(ctx, rt, containers, client, host, src.Value, strategy, starter, sink)
 		}

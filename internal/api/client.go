@@ -135,6 +135,31 @@ var ErrCloudPodNotFound = errors.New("cloud pod not found")
 // billing problem.
 var ErrCloudPodsForbidden = errors.New("cloud pods not available on this plan")
 
+// ErrCloudPodVersionNotFound is returned by GetCloudPod when the pod exists but
+// the specifically requested version does not. It is distinct from
+// ErrCloudPodNotFound so callers can point the user at the pod's version list
+// rather than at the list of pods. Match it with errors.Is; use errors.As with
+// CloudPodVersionNotFoundError to read the highest available version.
+var ErrCloudPodVersionNotFound = errors.New("cloud pod version not found")
+
+// CloudPodVersionNotFoundError carries which version was asked for and what the
+// highest available one is, so callers can render that without re-parsing a
+// message. It satisfies errors.Is(err, ErrCloudPodVersionNotFound).
+type CloudPodVersionNotFoundError struct {
+	PodName    string
+	Version    int
+	MaxVersion int
+}
+
+func (e *CloudPodVersionNotFoundError) Error() string {
+	return fmt.Sprintf("%s: version %d of %q does not exist (the highest available is %d)",
+		ErrCloudPodVersionNotFound, e.Version, e.PodName, e.MaxVersion)
+}
+
+func (e *CloudPodVersionNotFoundError) Is(target error) bool {
+	return target == ErrCloudPodVersionNotFound
+}
+
 // CloudPodResourceCount is a count of a single resource kind within a service,
 // e.g. {Noun: "buckets", Count: 3}.
 type CloudPodResourceCount struct {
@@ -160,6 +185,17 @@ type CloudPodDetails struct {
 	Message           string
 	Services          []string
 	Resources         []CloudPodResource
+}
+
+// CloudPodVersion is one entry in a cloud snapshot's version history. Created is
+// nil when the platform reports no usable timestamp for the version.
+type CloudPodVersion struct {
+	Version           int
+	Created           *time.Time
+	Size              int64
+	LocalStackVersion string
+	Description       string
+	Services          []string
 }
 
 type PlatformClient struct {
@@ -456,6 +492,7 @@ type rawCloudPodVersion struct {
 	CreatedAt             json.RawMessage `json:"created_at"`
 	LastChange            json.RawMessage `json:"last_change"`
 	CloudControlResources string          `json:"cloud_control_resources"`
+	Deleted               json.RawMessage `json:"deleted"`
 }
 
 // size returns the version's byte size, preferring storage_size.
@@ -466,6 +503,28 @@ func (v rawCloudPodVersion) size() int64 {
 	return v.Size
 }
 
+// deleted reports whether the platform marked this version as deleted. The value
+// is truthy-tested rather than decoded into a bool because the field has carried
+// both a flag and a deletion timestamp — a bool would fail to decode on the
+// latter. This mirrors the legacy CLI's untyped `if version.get("deleted")`.
+func (v rawCloudPodVersion) deleted() bool {
+	switch strings.TrimSpace(string(v.Deleted)) {
+	case "", "null", "false", "0", `""`:
+		return false
+	default:
+		return true
+	}
+}
+
+// created resolves the version's timestamp, preferring created_at and falling
+// back to last_change. Both encodings (Unix epoch or RFC3339) are accepted.
+func (v rawCloudPodVersion) created() *time.Time {
+	if t := parseFlexibleTime(v.CreatedAt); t != nil {
+		return t
+	}
+	return parseFlexibleTime(v.LastChange)
+}
+
 type rawCloudPod struct {
 	PodName     string               `json:"pod_name"`
 	MaxVersion  int                  `json:"max_version"`
@@ -473,9 +532,10 @@ type rawCloudPod struct {
 	Versions    []rawCloudPodVersion `json:"versions"`
 }
 
-// GetCloudPod fetches metadata for a single cloud snapshot from the platform.
-// It returns ErrCloudPodNotFound when the pod does not exist.
-func (c *PlatformClient) GetCloudPod(ctx context.Context, authToken, podName string) (*CloudPodDetails, error) {
+// getRawCloudPod performs GET /v1/cloudpods/{name} and decodes the raw payload.
+// It is shared by GetCloudPod and GetCloudPodVersions, which project the same
+// response differently. Returns ErrCloudPodNotFound when the pod does not exist.
+func (c *PlatformClient) getRawCloudPod(ctx context.Context, authToken, podName string) (*rawCloudPod, error) {
 	u := c.baseURL + "/v1/cloudpods/" + url.PathEscape(podName)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
 	if err != nil {
@@ -508,20 +568,76 @@ func (c *PlatformClient) GetCloudPod(ctx context.Context, authToken, podName str
 	if err := json.NewDecoder(resp.Body).Decode(&raw); err != nil {
 		return nil, fmt.Errorf("failed to decode cloud pod response: %w", err)
 	}
-	return raw.toDetails(podName), nil
+	return &raw, nil
 }
 
-// toDetails projects the latest version's metadata into CloudPodDetails.
-func (r rawCloudPod) toDetails(fallbackName string) *CloudPodDetails {
+// GetCloudPod fetches metadata for a single cloud snapshot from the platform.
+// version 0 reports the latest version; any other value reports that exact one.
+// It returns ErrCloudPodNotFound when the pod does not exist and
+// ErrCloudPodVersionNotFound when the pod exists but that version does not.
+func (c *PlatformClient) GetCloudPod(ctx context.Context, authToken, podName string, version int) (*CloudPodDetails, error) {
+	raw, err := c.getRawCloudPod(ctx, authToken, podName)
+	if err != nil {
+		return nil, err
+	}
+	return raw.toDetails(podName, version)
+}
+
+// GetCloudPodVersions returns the version history of a cloud snapshot, newest
+// first, with versions the platform marked deleted filtered out. It returns
+// ErrCloudPodNotFound when the pod does not exist.
+func (c *PlatformClient) GetCloudPodVersions(ctx context.Context, authToken, podName string) ([]CloudPodVersion, error) {
+	raw, err := c.getRawCloudPod(ctx, authToken, podName)
+	if err != nil {
+		return nil, err
+	}
+	return raw.toVersions(), nil
+}
+
+// toVersions projects every live version into CloudPodVersion, newest first. The
+// order is imposed here rather than trusted from the response, since the
+// platform's array order is not contractual.
+func (r rawCloudPod) toVersions() []CloudPodVersion {
+	versions := make([]CloudPodVersion, 0, len(r.Versions))
+	for _, v := range r.Versions {
+		if v.deleted() {
+			continue
+		}
+		versions = append(versions, CloudPodVersion{
+			Version:           v.Version,
+			Created:           v.created(),
+			Size:              v.size(),
+			LocalStackVersion: v.LocalStackVersion,
+			Description:       v.Description,
+			Services:          v.Services,
+		})
+	}
+	sort.Slice(versions, func(i, j int) bool { return versions[i].Version > versions[j].Version })
+	return versions
+}
+
+// toDetails projects one version's metadata into CloudPodDetails. version 0
+// selects the latest; any other value selects that exact version, returning
+// ErrCloudPodVersionNotFound when it does not exist (or was deleted). Every field
+// here is per-version in the platform response, so a pinned version costs no
+// extra request.
+func (r rawCloudPod) toDetails(fallbackName string, version int) (*CloudPodDetails, error) {
 	name := r.PodName
 	if name == "" {
 		name = fallbackName
 	}
 	details := &CloudPodDetails{Name: name, Version: r.MaxVersion}
 
-	v := r.latestVersion()
+	var v *rawCloudPodVersion
+	if version > 0 {
+		if v = r.findVersion(version); v == nil {
+			return nil, &CloudPodVersionNotFoundError{PodName: name, Version: version, MaxVersion: r.MaxVersion}
+		}
+	} else {
+		v = r.latestVersion()
+	}
 	if v == nil {
-		return details
+		return details, nil
 	}
 	if v.Version != 0 {
 		details.Version = v.Version
@@ -533,13 +649,21 @@ func (r rawCloudPod) toDetails(fallbackName string) *CloudPodDetails {
 	details.LocalStackVersion = v.LocalStackVersion
 	details.Message = v.Description
 	details.Services = v.Services
-	if t := parseFlexibleTime(v.CreatedAt); t != nil {
-		details.Created = t
-	} else if t := parseFlexibleTime(v.LastChange); t != nil {
-		details.Created = t
-	}
+	details.Created = v.created()
 	details.Resources = resourceCountsFromCloudControl(v.CloudControlResources)
-	return details
+	return details, nil
+}
+
+// findVersion returns the requested version, or nil when it does not exist.
+// Versions the platform marked deleted are treated as absent, matching what
+// `snapshot versions` lists as loadable.
+func (r rawCloudPod) findVersion(version int) *rawCloudPodVersion {
+	for i := range r.Versions {
+		if r.Versions[i].Version == version && !r.Versions[i].deleted() {
+			return &r.Versions[i]
+		}
+	}
+	return nil
 }
 
 // latestVersion returns the version matching MaxVersion, falling back to the last

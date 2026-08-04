@@ -94,16 +94,16 @@ func (m *MockPodLoader) EXPECT() *MockPodLoaderMockRecorder {
 }
 
 // LoadPodSnapshot mocks base method.
-func (m *MockPodLoader) LoadPodSnapshot(ctx context.Context, host, podName, authToken, strategy string) ([]string, error) {
+func (m *MockPodLoader) LoadPodSnapshot(ctx context.Context, host, podName string, version int, authToken, strategy string) ([]string, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "LoadPodSnapshot", ctx, host, podName, authToken, strategy)
+	ret := m.ctrl.Call(m, "LoadPodSnapshot", ctx, host, podName, version, authToken, strategy)
 	ret0, _ := ret[0].([]string)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // LoadPodSnapshot indicates an expected call of LoadPodSnapshot.
-func (mr *MockPodLoaderMockRecorder) LoadPodSnapshot(ctx, host, podName, authToken, strategy any) *gomock.Call {
+func (mr *MockPodLoaderMockRecorder) LoadPodSnapshot(ctx, host, podName, version, authToken, strategy any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "LoadPodSnapshot", reflect.TypeOf((*MockPodLoader)(nil).LoadPodSnapshot), ctx, host, podName, authToken, strategy)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "LoadPodSnapshot", reflect.TypeOf((*MockPodLoader)(nil).LoadPodSnapshot), ctx, host, podName, version, authToken, strategy)
 }
