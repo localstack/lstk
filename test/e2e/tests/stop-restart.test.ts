@@ -63,19 +63,6 @@ describe.skipIf(noDocker)("lstk stop", () => {
     expect(run.stdout).toPrintExactly("Error: LocalStack Snowflake Emulator is not running");
   });
 
-  test("is idempotent: a second stop fails once the emulator is already gone", async () => {
-    const emu = privateEmulator();
-    await startStubEmulator(emu.name);
-    const home = await tempHome();
-    await home.writeConfig(emu.config);
-
-    const first = await lstk(["stop"], { home });
-    expect(first).toSucceed();
-
-    const second = await lstk(["stop"], { home });
-    expect(second).toExitWith(1);
-  });
-
   test("--json reports which emulator was stopped", async () => {
     const emu = privateEmulator();
     await startStubEmulator(emu.name);
@@ -106,6 +93,24 @@ describe.skipIf(noDocker)("lstk stop", () => {
   // machine-wide lock instead:
   describe("against the canonical name or a real published port", () => {
     useExclusiveEmulator();
+
+    test("is idempotent: a second stop fails once the emulator is already gone", async () => {
+      // A private identity is not enough here. The second stop finds no
+      // container under the configured name and falls back to matching (known
+      // image repo, port 4566) — so any concurrent test running a real
+      // `localstack/*` image on 4566 would answer it, and the second stop would
+      // succeed. Asserting an absence for an AWS-typed config needs the lock.
+      const emu = privateEmulator();
+      await startStubEmulator(emu.name);
+      const home = await tempHome();
+      await home.writeConfig(emu.config);
+
+      const first = await lstk(["stop"], { home });
+      expect(first).toSucceed();
+
+      const second = await lstk(["stop"], { home });
+      expect(second).toExitWith(1);
+    });
 
     test("fails with a not-running message when nothing is running", async () => {
       // No config is written at all, so this exercises the true zero-config

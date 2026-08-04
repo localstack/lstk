@@ -117,26 +117,41 @@ describe("commands with no remote equivalent", () => {
 // running: with one genuinely up and reachable, `stop` used to proceed and stop
 // this exact container instead of refusing.
 describe.skipIf(noDocker)("with a local emulator genuinely running", () => {
-  test.each([{ command: "stop" }, { command: "restart" }])(
-    "$command still rejects an ambient LSTK_ENDPOINT_URL, and leaves the container untouched",
-    async ({ command }) => {
-      const emulator = privateEmulator();
-      await startStubEmulator(emulator.name);
-      const home = await tempHome({ env: { LSTK_ENDPOINT_URL: "http://127.0.0.1:1" } });
-      await home.writeConfig(emulator.config);
+  test("stop still rejects an ambient LSTK_ENDPOINT_URL, and leaves the container untouched", async () => {
+    const emulator = privateEmulator();
+    await startStubEmulator(emulator.name);
+    const home = await tempHome({ env: { LSTK_ENDPOINT_URL: "http://127.0.0.1:1" } });
+    await home.writeConfig(emulator.config);
 
-      const run = await lstk([command], { home });
+    const run = await lstk(["stop"], { home });
 
-      expect(run).toExitWith(1);
-      expect(run.stdout).toPrintExactly(
-        `Error: ${command} does not support LSTK_ENDPOINT_URL: it operates on a local Docker container or local filesystem state with no remote equivalent (LSTK_ENDPOINT_URL is set)`,
-      );
-      expect(
-        await docker.containerIsRunning(emulator.name),
-        `${command} must reject before ever touching the container`,
-      ).toBe(true);
-    },
-  );
+    expect(run).toExitWith(1);
+    expect(run.stdout).toPrintExactly(
+      "Error: stop does not support LSTK_ENDPOINT_URL: it operates on a local Docker container or local filesystem state with no remote equivalent (LSTK_ENDPOINT_URL is set)",
+    );
+    expect(
+      await docker.containerIsRunning(emulator.name),
+      "stop must reject before ever touching the container",
+    ).toBe(true);
+  });
+
+  test("restart still rejects an ambient LSTK_ENDPOINT_URL, and leaves the container untouched", async () => {
+    const emulator = privateEmulator();
+    await startStubEmulator(emulator.name);
+    const home = await tempHome({ env: { LSTK_ENDPOINT_URL: "http://127.0.0.1:1" } });
+    await home.writeConfig(emulator.config);
+
+    const run = await lstk(["restart"], { home });
+
+    expect(run).toExitWith(1);
+    expect(run.stdout).toPrintExactly(
+      "Error: restart does not support LSTK_ENDPOINT_URL: it operates on a local Docker container or local filesystem state with no remote equivalent (LSTK_ENDPOINT_URL is set)",
+    );
+    expect(
+      await docker.containerIsRunning(emulator.name),
+      "restart must reject before ever touching the container",
+    ).toBe(true);
+  });
 });
 
 describe("lstk aws", () => {
@@ -308,13 +323,22 @@ describe("lstk cdk", () => {
 // reason. Proven by the command failing on its own platform call, not on flag
 // validation.
 describe("snapshot commands that never touch the emulator", () => {
-  test.each([
-    { name: "show", args: ["snapshot", "show", "pod:my-baseline"] },
-    { name: "bare list", args: ["snapshot", "list"] },
-  ])("snapshot $name ignores --endpoint-url rather than rejecting it", async ({ args }) => {
+  test("snapshot show ignores --endpoint-url rather than rejecting it", async () => {
     const home = await tempHome();
 
-    const run = await lstk([...args, "--endpoint-url", "http://localhost:4566"], {
+    const run = await lstk(
+      ["snapshot", "show", "pod:my-baseline", "--endpoint-url", "http://localhost:4566"],
+      { home, env: { ...noDaemon.env, LSTK_API_ENDPOINT: "http://127.0.0.1:1" } },
+    );
+
+    expect(run).toFail();
+    expect(run).not.toPrint("does not support --endpoint-url");
+  });
+
+  test("a bare snapshot list ignores --endpoint-url rather than rejecting it", async () => {
+    const home = await tempHome();
+
+    const run = await lstk(["snapshot", "list", "--endpoint-url", "http://localhost:4566"], {
       home,
       env: { ...noDaemon.env, LSTK_API_ENDPOINT: "http://127.0.0.1:1" },
     });
