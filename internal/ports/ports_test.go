@@ -79,11 +79,11 @@ func TestInspectCommand(t *testing.T) {
 		port string
 		want string
 	}{
-		{"darwin", "443", "sudo lsof -i tcp:443"}, // privileged port -> sudo
-		{"linux", "443", "sudo lsof -i tcp:443"},  // privileged port -> sudo
-		{"linux", "4566", "lsof -i tcp:4566"},     // non-privileged -> plain
-		{"darwin", "4510", "lsof -i tcp:4510"},    // service range -> plain
-		{"windows", "443", "netstat -ano | findstr :443"},
+		{"darwin", "443", "sudo lsof -nP -iTCP:443 -sTCP:LISTEN"},
+		{"linux", "443", "sudo lsof -nP -iTCP:443 -sTCP:LISTEN"},
+		{"linux", "4566", "lsof -nP -iTCP:4566 -sTCP:LISTEN"},
+		{"darwin", "4510", "lsof -nP -iTCP:4510 -sTCP:LISTEN"},
+		{"windows", "443", "netstat -ano -p tcp | findstr LISTENING | findstr :443"},
 	}
 
 	for _, tt := range tests {

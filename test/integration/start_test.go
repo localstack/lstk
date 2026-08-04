@@ -360,12 +360,12 @@ func TestStartCommandFailsWhenPortInUse(t *testing.T) {
 // internal package.
 func inspectCommandFor(port string) string {
 	if runtime.GOOS == "windows" {
-		return "netstat -ano | findstr :" + port
+		return "netstat -ano -p tcp | findstr LISTENING | findstr :" + port
 	}
 	if p, err := strconv.Atoi(port); err == nil && p < 1024 {
-		return "sudo lsof -i tcp:" + port
+		return "sudo lsof -nP -iTCP:" + port + " -sTCP:LISTEN"
 	}
-	return "lsof -i tcp:" + port
+	return "lsof -nP -iTCP:" + port + " -sTCP:LISTEN"
 }
 
 // TestStartCommandFailsWhenExtraPortInUse covers the required extra-port branch
@@ -388,6 +388,7 @@ func TestStartCommandFailsWhenExtraPortInUse(t *testing.T) {
 	assert.Contains(t, stdout, "Another process is already using this port")
 	assert.Contains(t, stdout, "Identify the process using it:")
 	assert.Contains(t, stdout, inspectCommandFor("4510"))
+	assert.NotContains(t, stdout, "use another port in the configuration")
 
 	byName := collectTelemetryByName(t, events, 2)
 	assert.Contains(t, byName, "lstk_lifecycle")

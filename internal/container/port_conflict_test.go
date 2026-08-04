@@ -326,3 +326,14 @@ func TestPortConflictActions(t *testing.T) {
 	assert.Empty(t, portConflictActions(runtime.FlavorDockerDesktop, runtime.FlavorUnknown, "443"))
 	assert.Empty(t, portConflictActions(runtime.FlavorRancherDesktop, runtime.FlavorUnknown, "8443"))
 }
+
+func TestEmitPortInUseErrorOmitsConfigForFixedPort(t *testing.T) {
+	sink := &recordingSink{}
+
+	emitPortInUseError(sink, "4510", false)
+
+	errs := sink.errorEvents()
+	require.Len(t, errs, 1)
+	require.Len(t, errs[0].Actions, 1)
+	assert.Equal(t, "Identify the process using it:", errs[0].Actions[0].Label)
+}
