@@ -179,6 +179,7 @@ func TestEnvironRendersJSONContext(t *testing.T) {
 		ConfigDir:      "/home/u/.config/lstk",
 		AuthToken:      "tok-123",
 		NonInteractive: true,
+		SessionID:      "3f2b0c1e-0000-4000-8000-000000000001",
 		Emulators: []Emulator{
 			{Type: "aws", Endpoint: "http://localhost:4566", Port: "4566"},
 			{Type: "snowflake", Endpoint: "http://localhost:4566", Port: "4566"},
@@ -192,6 +193,9 @@ func TestEnvironRendersJSONContext(t *testing.T) {
 	if c.ConfigDir != "/home/u/.config/lstk" || c.AuthToken != "tok-123" || !c.NonInteractive {
 		t.Errorf("decoded scalars wrong: %+v", c)
 	}
+	if c.SessionID != "3f2b0c1e-0000-4000-8000-000000000001" {
+		t.Errorf("sessionId = %q, want the conveyed telemetry session id", c.SessionID)
+	}
 	if len(c.Emulators) != 2 || c.Emulators[0].Type != "aws" || c.Emulators[1].Type != "snowflake" {
 		t.Errorf("emulators wrong: %+v", c.Emulators)
 	}
@@ -201,7 +205,8 @@ func TestEnvironRendersJSONContext(t *testing.T) {
 }
 
 func TestEnvironOmitsAbsentValues(t *testing.T) {
-	env := mustEnviron(t, Context{ConfigDir: "/cfg"}, nil) // no emulator, no token, interactive
+	// No emulator, no token, interactive, and no telemetry session (telemetry disabled).
+	env := mustEnviron(t, Context{ConfigDir: "/cfg"}, nil)
 
 	if env[EnvAPIVersion] != "1" {
 		t.Error("version must always be set")
@@ -210,12 +215,17 @@ func TestEnvironOmitsAbsentValues(t *testing.T) {
 	if strings.Contains(env[EnvContext], "authToken") {
 		t.Errorf("authToken must be omitted when unauthenticated, got: %s", env[EnvContext])
 	}
+	// Same for sessionId: an extension detects it by presence, so a disabled-telemetry
+	// run must drop the key rather than convey an empty string.
+	if strings.Contains(env[EnvContext], "sessionId") {
+		t.Errorf("sessionId must be omitted when telemetry is disabled, got: %s", env[EnvContext])
+	}
 	c := decodeContext(t, env)
 	if c.ConfigDir != "/cfg" {
 		t.Errorf("configDir = %q, want /cfg", c.ConfigDir)
 	}
-	if c.AuthToken != "" || c.NonInteractive {
-		t.Errorf("token/non-interactive should be zero values: %+v", c)
+	if c.AuthToken != "" || c.NonInteractive || c.SessionID != "" {
+		t.Errorf("token/non-interactive/session should be zero values: %+v", c)
 	}
 	// emulators is always present and an empty (non-nil) array.
 	if c.Emulators == nil || len(c.Emulators) != 0 {

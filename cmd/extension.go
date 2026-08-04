@@ -31,7 +31,9 @@ import (
 // silent, non-zero error. A resolved extension's invocation is recorded as a
 // product-telemetry command event named "ext:<name>" so the analytics pipeline
 // can track which extension ran; this is separate from the OTel span emitted
-// inside extension.Invoke (see internal/extension/exec.go).
+// inside extension.Invoke (see internal/extension/exec.go). That event's session
+// id is also conveyed in the runtime context, so an extension emitting its own
+// telemetry can join it to this invocation exactly.
 func dispatchExtension(ctx context.Context, cfg *env.Env, tel *telemetry.Client, logger log.Logger, args []string) error {
 	name, extArgs := args[0], args[1:]
 
@@ -60,6 +62,7 @@ func dispatchExtension(ctx context.Context, cfg *env.Env, tel *telemetry.Client,
 		AuthToken:      cfg.AuthToken,
 		NonInteractive: !isInteractiveMode(cfg),
 		JSON:           cfg.JSON,
+		SessionID:      tel.SessionID(),
 		Emulators:      emulators,
 	}
 

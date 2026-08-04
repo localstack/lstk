@@ -22,6 +22,7 @@ lstk passes everything you need through two environment variables, so you never 
   "authToken": "ls-...",
   "nonInteractive": true,
   "json": false,
+  "sessionId": "6f1c9a2e-7b4d-4c3a-9f10-2d8e5b7a1c43",
   "emulators": [
     { "type": "aws", "endpoint": "http://localhost.localstack.cloud:4566", "port": "4566" }
   ]
@@ -34,6 +35,7 @@ lstk passes everything you need through two environment variables, so you never 
 | `authToken` | string | The user's resolved LocalStack auth token. **Omitted** when not authenticated. |
 | `nonInteractive` | bool | `true` when the user passed `--non-interactive` or stdout is not a TTY. When true, do not prompt. |
 | `json` | bool | `true` when the user passed `--json`. Setting `--json` also forces `nonInteractive` to `true`. lstk makes no decision about your output format — decide for yourself whether to honor it. |
+| `sessionId` | string | lstk's telemetry session id for this invocation. **Omitted** when lstk's telemetry is disabled. See [Correlating your telemetry with lstk's](#correlating-your-telemetry-with-lstks). |
 | `emulators` | array | One entry per running LocalStack emulator: `{ "type", "endpoint", "port" }`. An **empty array** `[]` when none are running. |
 
 `emulators` can hold **more than one** entry — lstk may run an AWS, a Snowflake, and an Azure emulator at the same time. Don't assume a single endpoint: select the one(s) your extension needs by `type`, and handle the empty case. `authToken` is **omitted, not set empty**, when the user is not authenticated — check for its presence.
@@ -77,6 +79,16 @@ lstk performs **no** compatibility check for you — it runs any resolvable `lst
 ### Conveyance of global flags
 
 Each lstk global flag that affects behavior is conveyed as a field of `LSTK_EXT_CONTEXT` rather than being forwarded on your command line (today: `nonInteractive`, `json`). This is what lets you own your entire flag namespace without colliding with lstk. As lstk adds global flags, they appear as additional fields — additively, under the same `LSTK_EXT_API_VERSION` major version.
+
+### Correlating your telemetry with lstk's
+
+lstk records every extension invocation as its own analytics event (`ext:<name>`, carrying the duration and exit code). If your extension reports analytics too, `sessionId` is what joins the two: it is lstk's session id for the invocation that dispatched you, so stamping it on your own events makes the join exact instead of guessing from a machine id and a timestamp. Note the spelling difference — the context field is `sessionId`, while lstk's analytics wire format calls the same value `session_id`.
+
+```sh
+session_id=$(printf '%s' "$LSTK_EXT_CONTEXT" | jq -r '.sessionId // empty')
+```
+
+**Absence is ambiguous, by design.** The field is omitted when lstk's telemetry is disabled (there is no session to correlate), and it is also absent on an lstk released before the field existed. You cannot tell those two cases apart — so don't try to. Treat absence as "no correlation available" and carry on: generate your own id if you need one, and never make the field a hard requirement.
 
 ## Help descriptions
 
