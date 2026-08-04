@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"strings"
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -33,7 +34,11 @@ func CheckInstalled() error {
 // Exec runs `az <args...>`. extraEnv is appended to the inherited process environment
 // (later entries win), letting callers inject AZURE_CONFIG_DIR, proxy, and CA settings
 // without mutating the user's global Azure CLI configuration.
-func Exec(ctx context.Context, extraEnv []string, stdin io.Reader, stdout, stderr io.Writer, args ...string) error {
+//
+// When usePTY is true (lstk's stdout and stderr are both terminals), the child's
+// output goes through a pseudo-terminal merged into stdout — see proc.RunInPTY
+// for why; otherwise stdout/stderr are wired as given.
+func Exec(ctx context.Context, extraEnv []string, usePTY bool, stdin io.Reader, stdout, stderr io.Writer, args ...string) error {
 	ctx, span := otel.Tracer("github.com/localstack/lstk/internal/azurecli").Start(ctx, "az cli")
 	defer span.End()
 
@@ -48,12 +53,22 @@ func Exec(ctx context.Context, extraEnv []string, stdin io.Reader, stdout, stder
 
 	cmd := exec.CommandContext(ctx, azBin, args...)
 	cmd.Stdin = stdin
-	cmd.Stdout = stdout
-	cmd.Stderr = stderr
-	if len(extraEnv) > 0 {
-		cmd.Env = append(os.Environ(), extraEnv...)
+	cmd.Env = execEnv(os.Environ(), extraEnv)
+
+	var runErr error
+	started := false
+	if usePTY {
+		started, runErr = proc.RunInPTY(cmd, stdout)
 	}
-	if err := proc.Run(cmd); err != nil {
+	if !started {
+		// No PTY requested or none could be allocated (e.g. on Windows): plain
+		// writer wiring, as before.
+		cmd.Stdout = stdout
+		cmd.Stderr = stderr
+		runErr = proc.Run(cmd)
+	}
+
+	if err := runErr; err != nil {
 		var exitErr *exec.ExitError
 		if errors.As(err, &exitErr) {
 			span.SetAttributes(attribute.Int("az.exit_code", exitErr.ExitCode()))
@@ -67,11 +82,40 @@ func Exec(ctx context.Context, extraEnv []string, stdin io.Reader, stdout, stder
 	return nil
 }
 
+// execEnv builds the child environment for the Azure CLI: the inherited
+// environment, then extraEnv (later entries win), then PYTHONUNBUFFERED.
+//
+// The Azure CLI is a Python program, so it block-buffers stdout when it gets a
+// pipe instead of a terminal, holding back streaming output until exit
+// (DEVX-1028, the `lstk az` twin of `lstk aws`'s DEVX-1026). Unlike the frozen
+// aws v2 binary, every az distribution runs a real python interpreter, so
+// PYTHONUNBUFFERED takes effect here; the PTY in Exec additionally lets az see
+// a terminal, so its own terminal-gated output (progress reporting, colors)
+// behaves as it does under a plain `az`. (Python treats any non-empty value as
+// enabled, so a user-set value is left alone.)
+func execEnv(base, extraEnv []string) []string {
+	env := make([]string, 0, len(base)+len(extraEnv)+1)
+	env = append(env, base...)
+	env = append(env, extraEnv...)
+	setIfAbsent(&env, "PYTHONUNBUFFERED", "1")
+	return env
+}
+
+func setIfAbsent(env *[]string, key, value string) {
+	prefix := key + "="
+	for _, e := range *env {
+		if strings.HasPrefix(e, prefix) {
+			return
+		}
+	}
+	*env = append(*env, prefix+value)
+}
+
 // Run executes `az <args...>` with extraEnv and returns the captured stdout, stderr,
 // and any error. On non-zero exit, the error wraps stderr to aid debugging.
 func Run(ctx context.Context, extraEnv []string, args ...string) (stdout, stderr string, err error) {
 	var outBuf, errBuf bytes.Buffer
-	runErr := Exec(ctx, extraEnv, nil, &outBuf, &errBuf, args...)
+	runErr := Exec(ctx, extraEnv, false, nil, &outBuf, &errBuf, args...)
 	stdout = outBuf.String()
 	stderr = errBuf.String()
 	if runErr != nil {

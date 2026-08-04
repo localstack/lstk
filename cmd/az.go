@@ -88,7 +88,7 @@ Examples:
 			azEnv := azureconfig.Env(azureConfigDir)
 
 			stdout, stderr := io.Writer(os.Stdout), io.Writer(os.Stderr)
-			if terminal.IsTerminal(os.Stderr) {
+			if !cfg.NonInteractive && terminal.IsTerminal(os.Stderr) {
 				s := terminal.NewSpinner(os.Stderr, "Loading service...", 4*time.Second)
 				s.Start()
 				defer s.Stop()
@@ -96,7 +96,13 @@ Examples:
 				stderr = &terminal.StopOnWriteWriter{W: os.Stderr, Spinner: s}
 			}
 
-			return azurecli.Exec(cmd.Context(), azEnv, os.Stdin, stdout, stderr, args...)
+			// Only hand the Azure CLI a PTY when both of lstk's output streams
+			// are the terminal: with stdout piped (`lstk az ... | grep`) the
+			// child must keep seeing a pipe, or it would emit colors and CRLF
+			// into the pipeline.
+			usePTY := !cfg.NonInteractive && terminal.IsTerminal(os.Stdout) && terminal.IsTerminal(os.Stderr)
+
+			return azurecli.Exec(cmd.Context(), azEnv, usePTY, os.Stdin, stdout, stderr, args...)
 		},
 	}
 
