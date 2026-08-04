@@ -309,14 +309,10 @@ func startOnce(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts S
 	}
 	licenseRefreshed := prePullRefreshed || postPullRefreshed
 
-	// For pinned containers (postPullContainers was empty), use the tag directly.
+	// For pinned containers that use lstk's platform license flow, use the tag
+	// directly. Self-validating emulators do not resolve a version through that flow.
 	if resolvedVersion == "" {
-		for _, c := range containers {
-			if c.EmulatorType != config.EmulatorSnowflake && c.Tag != "" && c.Tag != "latest" {
-				resolvedVersion = c.Tag
-				break
-			}
-		}
+		resolvedVersion = resolvedPinnedVersion(containers)
 	}
 
 	if err := startWithLicenseRetry(ctx, rt, sink, opts, interactive, containers, pulled, token, licenseFilePath, licenseRefreshed); err != nil {
@@ -329,6 +325,15 @@ func startOnce(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts S
 		config.EmulatorAWS: awsconfig.EnsureProfile,
 	}
 	return resolvedVersion, runPostStartSetups(ctx, rt, sink, opts.Containers, interactive, opts.LocalStackHost, opts.WebAppURL, setups)
+}
+
+func resolvedPinnedVersion(containers []runtime.ContainerConfig) string {
+	for _, c := range containers {
+		if !c.EmulatorType.SelfValidatesLicense() && c.Tag != "" && c.Tag != "latest" {
+			return c.Tag
+		}
+	}
+	return ""
 }
 
 func runPostStartSetups(ctx context.Context, rt runtime.Runtime, sink output.Sink, containers []config.ContainerConfig, interactive bool, localStackHost, webAppURL string, setups map[config.EmulatorType]postStartSetupFunc) error {

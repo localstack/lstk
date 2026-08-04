@@ -83,11 +83,12 @@ func ResolveEmulatorLabel(ctx context.Context, client api.PlatformAPI, container
 }
 
 // activatedLicenseLabel reads the license a self-validating emulator activated
-// during startup and cached at /var/lib/localstack/cache/license.json — inside
-// the volume lstk mounts, so it is readable from the host.
+// under /var/lib/localstack/cache/license.json, which lstk bind-mounts from the
+// configured host volume.
 func activatedLicenseLabel(c config.ContainerConfig, logger log.Logger) (string, bool) {
 	volumeDir, err := c.VolumeDir()
 	if err != nil {
+		logger.Info("could not resolve emulator volume for header: %v", err)
 		return "", false
 	}
 	licensePath := filepath.Join(volumeDir, "cache", "license.json")

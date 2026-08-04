@@ -32,14 +32,18 @@ func TestResolveEmulatorLabelReadsActivatedLicenseForSelfValidating(t *testing.T
 }
 
 func TestResolveEmulatorLabelReadsActivatedLicenseForPinnedTag(t *testing.T) {
-	volumeDir := t.TempDir()
-	writeActivatedLicense(t, volumeDir, `{"license_type":"ultimate"}`)
+	for _, emulatorType := range []config.EmulatorType{config.EmulatorSnowflake, config.EmulatorAzure} {
+		t.Run(string(emulatorType), func(t *testing.T) {
+			volumeDir := t.TempDir()
+			writeActivatedLicense(t, volumeDir, `{"license_type":"ultimate"}`)
 
-	containers := []config.ContainerConfig{{Type: config.EmulatorSnowflake, Tag: "1.2.3", Volume: volumeDir}}
-	label, ok := ResolveEmulatorLabel(context.Background(), nil, containers, "token", "", log.Nop())
+			containers := []config.ContainerConfig{{Type: emulatorType, Tag: "1.2.3", Volume: volumeDir}}
+			label, ok := ResolveEmulatorLabel(context.Background(), nil, containers, "token", "", log.Nop())
 
-	assert.Equal(t, "LocalStack Ultimate", label)
-	assert.True(t, ok)
+			assert.Equal(t, "LocalStack Ultimate", label)
+			assert.True(t, ok)
+		})
+	}
 }
 
 func TestResolveEmulatorLabelFallsBackWhenActivatedLicenseMissing(t *testing.T) {
