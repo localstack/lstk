@@ -1,13 +1,22 @@
 package integration_test
 
 import (
+	"archive/tar"
+	"archive/zip"
 	"bytes"
+	"compress/gzip"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"io"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strings"
 	"testing"
@@ -170,8 +179,11 @@ func TestUpdateBinaryInPlace(t *testing.T) {
 	require.NoError(t, err)
 	assert.Contains(t, string(verOut), "0.0.1")
 
-	// Run update — should download from GitHub and replace itself
+	// Run update — should download the real latest release from GitHub and
+	// replace itself. HOME is a temp dir so config/log side effects stay
+	// isolated; the binary itself lives in a temp dir already.
 	updateCmd := exec.CommandContext(ctx, tmpBinary, "update", "--non-interactive")
+	updateCmd.Env = testEnvWithHome(t.TempDir(), "")
 	updateOut, err := updateCmd.CombinedOutput()
 	updateStr := string(updateOut)
 	require.NoError(t, err, "lstk update failed: %s", updateStr)
@@ -180,10 +192,14 @@ func TestUpdateBinaryInPlace(t *testing.T) {
 	assert.Contains(t, updateStr, "Downloading and verifying update", "should download and verify binary")
 	assert.Contains(t, updateStr, "Updated to", "should complete the update")
 
-	// Verify the binary was actually replaced
+	// Verify the binary was replaced with the release version the update
+	// reported, not just "anything other than 0.0.1".
+	m := regexp.MustCompile(`Updated to v?([0-9]+\.[0-9]+\.[0-9]+\S*)`).FindStringSubmatch(updateStr)
+	require.Len(t, m, 2, "update output should report the installed version: %s", updateStr)
 	verCmd2 := exec.CommandContext(ctx, tmpBinary, "--version")
 	verOut2, err := verCmd2.CombinedOutput()
 	require.NoError(t, err)
+	assert.Contains(t, string(verOut2), m[1], "replaced binary should print the downloaded release version")
 	assert.NotContains(t, string(verOut2), "0.0.1", "binary should no longer be the old version")
 }
 
@@ -214,6 +230,7 @@ func TestUpdateBinaryInPlaceJSON(t *testing.T) {
 	require.NoError(t, err, "go build failed: %s", string(out))
 
 	updateCmd := exec.CommandContext(ctx, tmpBinary, "update", "--non-interactive", "--json")
+	updateCmd.Env = testEnvWithHome(t.TempDir(), "")
 	updateOut, err := updateCmd.CombinedOutput()
 	updateStr := string(updateOut)
 	require.NoError(t, err, "lstk update --json failed: %s", updateStr)
@@ -425,4 +442,243 @@ port = "4566"    # Host port
 
 func npmPlatformPackage() string {
 	return "lstk_" + runtime.GOOS + "_" + runtime.GOARCH
+}
+
+// buildLstkWithVersion builds the lstk binary from the repo root with the
+// given version stamped in, writing it to outPath.
+func buildLstkWithVersion(t *testing.T, ctx context.Context, version, outPath string) {
+	t.Helper()
+	repoRoot, err := filepath.Abs("../..")
+	require.NoError(t, err)
+	buildCmd := exec.CommandContext(ctx, "go", "build",
+		"-ldflags", "-X github.com/localstack/lstk/internal/version.version="+version,
+		"-o", outPath,
+		".",
+	)
+	buildCmd.Dir = repoRoot
+	out, err := buildCmd.CombinedOutput()
+	require.NoError(t, err, "go build failed: %s", string(out))
+}
+
+// releaseAssetName mirrors the goreleaser asset naming the updater expects:
+// lstk_<version>_<goos>_<goarch>.tar.gz (zip on Windows).
+func releaseAssetName(ver string) string {
+	ext := "tar.gz"
+	if runtime.GOOS == "windows" {
+		ext = "zip"
+	}
+	return fmt.Sprintf("lstk_%s_%s_%s.%s", ver, runtime.GOOS, runtime.GOARCH, ext)
+}
+
+// packageReleaseArchive wraps binary bytes into the release archive format the
+// updater extracts: a tar.gz (zip on Windows) with a single executable entry.
+func packageReleaseArchive(t *testing.T, binaryName string, binary []byte) []byte {
+	t.Helper()
+	var buf bytes.Buffer
+	if runtime.GOOS == "windows" {
+		zw := zip.NewWriter(&buf)
+		hdr := &zip.FileHeader{Name: binaryName, Method: zip.Deflate}
+		hdr.SetMode(0o755)
+		w, err := zw.CreateHeader(hdr)
+		require.NoError(t, err)
+		_, err = w.Write(binary)
+		require.NoError(t, err)
+		require.NoError(t, zw.Close())
+		return buf.Bytes()
+	}
+	gw := gzip.NewWriter(&buf)
+	tw := tar.NewWriter(gw)
+	require.NoError(t, tw.WriteHeader(&tar.Header{
+		Name:     binaryName,
+		Mode:     0o755,
+		Size:     int64(len(binary)),
+		Typeflag: tar.TypeReg,
+	}))
+	_, err := tw.Write(binary)
+	require.NoError(t, err)
+	require.NoError(t, tw.Close())
+	require.NoError(t, gw.Close())
+	return buf.Bytes()
+}
+
+// mockGitHubReleaseServer serves the two GitHub endpoints the updater talks
+// to on one host: the releases/latest API (api.github.com in production) and
+// the release asset downloads (github.com). Tests point the binary at it via
+// mockGitHubEnv.
+func mockGitHubReleaseServer(t *testing.T, tag string, assets map[string][]byte) *httptest.Server {
+	t.Helper()
+	downloadPrefix := "/localstack/lstk/releases/download/" + tag + "/"
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/repos/localstack/lstk/releases/latest":
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]any{"tag_name": tag})
+		case strings.HasPrefix(r.URL.Path, downloadPrefix):
+			body, ok := assets[strings.TrimPrefix(r.URL.Path, downloadPrefix)]
+			if !ok {
+				w.WriteHeader(http.StatusNotFound)
+				return
+			}
+			_, _ = w.Write(body)
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+// mockGitHubEnv builds an isolated test environment whose updater GitHub
+// endpoints (release-metadata API and asset downloads) both point at the
+// given mock server.
+func mockGitHubEnv(t *testing.T, srv *httptest.Server) []string {
+	t.Helper()
+	return append(testEnvWithHome(t.TempDir(), ""),
+		string(env.UpdateGitHubAPIEndpoint)+"="+srv.URL,
+		string(env.UpdateGitHubDownloadEndpoint)+"="+srv.URL,
+	)
+}
+
+// TestUpdateBinaryMockGitHubHappyPath exercises the full binary update flow
+// against a mock GitHub: version check, checksums.txt fetch, archive download,
+// SHA-256 verification, and in-place replacement — without touching the
+// network or depending on a real release.
+func TestUpdateBinaryMockGitHubHappyPath(t *testing.T) {
+	t.Parallel()
+	ctx := testContext(t)
+
+	binaryName := "lstk"
+	if runtime.GOOS == "windows" {
+		binaryName = "lstk.exe"
+	}
+	oldBinary := filepath.Join(t.TempDir(), binaryName)
+	buildLstkWithVersion(t, ctx, "0.0.1", oldBinary)
+
+	newBinary := filepath.Join(t.TempDir(), binaryName)
+	buildLstkWithVersion(t, ctx, "0.0.2", newBinary)
+	newBytes, err := os.ReadFile(newBinary)
+	require.NoError(t, err)
+
+	archive := packageReleaseArchive(t, binaryName, newBytes)
+	sum := sha256.Sum256(archive)
+	assetName := releaseAssetName("0.0.2")
+	manifest := fmt.Sprintf("%s  %s\n", hex.EncodeToString(sum[:]), assetName)
+
+	srv := mockGitHubReleaseServer(t, "v0.0.2", map[string][]byte{
+		"checksums.txt": []byte(manifest),
+		assetName:       archive,
+	})
+
+	updateCmd := exec.CommandContext(ctx, oldBinary, "update", "--non-interactive")
+	updateCmd.Env = mockGitHubEnv(t, srv)
+	out, err := updateCmd.CombinedOutput()
+	outStr := string(out)
+	require.NoError(t, err, "lstk update failed: %s", outStr)
+	requireExitCode(t, 0, err)
+	assert.Contains(t, outStr, "Update available: 0.0.1 → v0.0.2", "should detect the mock release")
+	assert.Contains(t, outStr, "Downloading and verifying update", "should take the binary download path")
+	assert.Contains(t, outStr, "Updated to v0.0.2", "should complete the update")
+
+	verOut, err := exec.CommandContext(ctx, oldBinary, "--version").CombinedOutput()
+	require.NoError(t, err)
+	assert.Contains(t, string(verOut), "0.0.2", "binary should be replaced with the mock release")
+
+	leftovers, err := filepath.Glob(filepath.Join(filepath.Dir(oldBinary), "lstk-update-*"))
+	require.NoError(t, err)
+	assert.Empty(t, leftovers, "download temp files should be cleaned up")
+}
+
+// TestUpdateBinaryMockGitHubChecksumMismatch proves the checksum gate: when
+// the downloaded archive does not match checksums.txt, the update aborts with
+// a non-zero exit and the installed binary is left untouched. The mock inputs
+// are fully deterministic, so stdout and stderr are asserted byte-for-byte.
+func TestUpdateBinaryMockGitHubChecksumMismatch(t *testing.T) {
+	t.Parallel()
+	ctx := testContext(t)
+
+	binaryName := "lstk"
+	if runtime.GOOS == "windows" {
+		binaryName = "lstk.exe"
+	}
+	oldBinary := filepath.Join(t.TempDir(), binaryName)
+	buildLstkWithVersion(t, ctx, "0.0.1", oldBinary)
+
+	// The archive never gets extracted, so garbage bytes suffice; the manifest
+	// digest is for different content, so verification must fail.
+	archive := []byte("tampered archive bytes")
+	archiveSum := sha256.Sum256(archive)
+	wrongSum := sha256.Sum256([]byte("what the archive should have been"))
+	assetName := releaseAssetName("0.0.2")
+	manifest := fmt.Sprintf("%s  %s\n", hex.EncodeToString(wrongSum[:]), assetName)
+
+	srv := mockGitHubReleaseServer(t, "v0.0.2", map[string][]byte{
+		"checksums.txt": []byte(manifest),
+		assetName:       archive,
+	})
+
+	updateCmd := exec.CommandContext(ctx, oldBinary, "update", "--non-interactive")
+	// Pin PATH to an empty dir so the multiple-installs warning (which scans
+	// PATH for other lstk binaries) can never inject host-dependent lines
+	// into the output being compared exactly.
+	updateCmd.Env = append(mockGitHubEnv(t, srv), string(env.Path)+"="+t.TempDir())
+	var stdout, stderr bytes.Buffer
+	updateCmd.Stdout = &stdout
+	updateCmd.Stderr = &stderr
+	err := updateCmd.Run()
+	require.Error(t, err, "update must fail on checksum mismatch, output: %s%s", stdout.String(), stderr.String())
+	requireExitCode(t, 1, err)
+
+	wantStdout := "Checking for updates...\n" +
+		"Update available: 0.0.1 → v0.0.2\n" +
+		"Downloading and verifying update...\n" +
+		fmt.Sprintf("Error: update failed: checksum mismatch for %s: expected %s, got %s — the downloaded archive may be corrupted or tampered with; update aborted\n",
+			assetName, hex.EncodeToString(wrongSum[:]), hex.EncodeToString(archiveSum[:]))
+	assert.Equal(t, wantStdout, stdout.String(), "full stdout should be exactly the check/download/error sequence")
+	assert.Empty(t, stderr.String(), "silent-error handling must not print anything to stderr")
+
+	verOut, err := exec.CommandContext(ctx, oldBinary, "--version").CombinedOutput()
+	require.NoError(t, err, "original binary should still run")
+	assert.Contains(t, string(verOut), "0.0.1", "binary must not be replaced on checksum mismatch")
+
+	leftovers, err := filepath.Glob(filepath.Join(filepath.Dir(oldBinary), "lstk-update-*"))
+	require.NoError(t, err)
+	assert.Empty(t, leftovers, "rejected download must not leave temp files behind")
+}
+
+// TestUpdateBinaryMockGitHubMissingChecksums proves the fail-closed contract:
+// a release without a checksums.txt asset must abort the update (never fall
+// back to installing unverified bytes) and leave the installed binary alone.
+func TestUpdateBinaryMockGitHubMissingChecksums(t *testing.T) {
+	t.Parallel()
+	ctx := testContext(t)
+
+	binaryName := "lstk"
+	if runtime.GOOS == "windows" {
+		binaryName = "lstk.exe"
+	}
+	oldBinary := filepath.Join(t.TempDir(), binaryName)
+	buildLstkWithVersion(t, ctx, "0.0.1", oldBinary)
+
+	// The release asset exists and would extract fine — only the manifest is
+	// missing. The updater must refuse before ever downloading the archive.
+	srv := mockGitHubReleaseServer(t, "v0.0.2", map[string][]byte{
+		releaseAssetName("0.0.2"): []byte("plausible archive bytes"),
+	})
+
+	updateCmd := exec.CommandContext(ctx, oldBinary, "update", "--non-interactive")
+	updateCmd.Env = mockGitHubEnv(t, srv)
+	out, err := updateCmd.CombinedOutput()
+	outStr := string(out)
+	require.Error(t, err, "update must fail when checksums.txt is missing, output: %s", outStr)
+	requireExitCode(t, 1, err)
+	assert.Contains(t, outStr, "no checksums.txt asset", "should name the missing manifest")
+	assert.Contains(t, outStr, "refusing to install an unverifiable binary", "should state the fail-closed policy")
+
+	verOut, err := exec.CommandContext(ctx, oldBinary, "--version").CombinedOutput()
+	require.NoError(t, err, "original binary should still run")
+	assert.Contains(t, string(verOut), "0.0.1", "binary must not be replaced without a verifiable manifest")
+
+	leftovers, err := filepath.Glob(filepath.Join(filepath.Dir(oldBinary), "lstk-update-*"))
+	require.NoError(t, err)
+	assert.Empty(t, leftovers, "aborted update must not leave temp files behind")
 }

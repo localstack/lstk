@@ -209,3 +209,14 @@ func TestNewBinaryUpdaterDefaults(t *testing.T) {
 		t.Error("resolveExe() returned empty path")
 	}
 }
+
+func TestGitHubEndpointEnvOverrides(t *testing.T) {
+	t.Setenv(githubAPIEndpointEnv, "http://127.0.0.1:9998")
+	t.Setenv(githubDownloadEndpointEnv, "http://127.0.0.1:9999")
+	if got, want := latestReleaseURL(), "http://127.0.0.1:9998/repos/localstack/lstk/releases/latest"; got != want {
+		t.Errorf("latestReleaseURL() = %q, want %q", got, want)
+	}
+	if got, want := downloadBaseURL(), "http://127.0.0.1:9999/localstack/lstk/releases/download"; got != want {
+		t.Errorf("downloadBaseURL() = %q, want %q", got, want)
+	}
+}
