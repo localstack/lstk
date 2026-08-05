@@ -43,22 +43,21 @@ If the branch name carries no ticket ID, ask whether a Linear issue exists (issu
 Use this structure:
 
 ```markdown
-## Motivation
+## Issue
 
-<Why this change is needed. 1-2 sentences.>
+<High-level description of the issue or feature this PR addresses. 1-3 sentences a reader can follow without opening the diff.>
 
-## Changes
+## Solution
 
-- Bullet point per meaningful change
-- Group related changes together
+<High-level description of the solution — written so a reviewer can read it and thumbs-up or thumbs-down the approach. Bullet points for the meaningful changes; fold in how it was tested (new tests, manual verification) rather than a separate Tests section.>
+
+## Docs
+
+<Context for technical writers to pick up: user-facing changes, new/changed commands, flags, env vars, or behavior worth documenting. Always include this section — when nothing is user-facing, say so explicitly and why (e.g. test-only change, internal refactor), so writers can triage from the PR alone.>
 
 ## Review
 
 <Self-merge candidate — one-line reason. Or: Human review advised — one-line reason.>
-
-## Tests
-
-<How this was tested — new tests added, manual verification, etc.>
 
 ## Todo
 
@@ -72,6 +71,7 @@ Rules:
   - Use `Closes TICKET-ID` if the PR fully resolves the issue
   - Use `Towards TICKET-ID` if it's a partial contribution
 - Keep bullet points concise — what changed, not how every line was modified
+- The Docs section must agree with the docs label: `docs: skip` pairs with an explicit "nothing to document" explanation; `docs: needed` pairs with concrete pointers to what writers should cover.
 - The Review line reflects lstk's review pilot (small PRs/bug fixes may self-merge; bigger or undiscussed work needs a human). Decide it using `/review-pr`'s "Review scope" checklist (run that skill, or apply the checklist inline if it wasn't run), and say so out loud in the session before creating the PR — don't just silently decide.
 - Omit Todo section if there are no follow-up items
 - Don't over-explain; the diff speaks for itself
