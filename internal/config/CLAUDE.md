@@ -16,6 +16,19 @@ Validation is `validate.ContainerName` (`internal/validate`), called from `Conta
 
 Each `[[containers]]` block may set an optional `image` to override the default Docker Hub image (e.g. an internal registry mirror or a locally loaded offline image). `ContainerConfig.Image()` returns `image` as-is when it already carries a tag (so the separately-configured `tag` is dropped in that case), otherwise it appends `tag` (or `latest`); the default `localstack/<product>:<tag>` is used when `image` is unset.
 
+## Exposing additional ports (`expose_ports`)
+
+Each `[[containers]]` block may set `expose_ports` to publish container ports beyond the ones lstk publishes on its own (the edge port, the extra `GATEWAY_LISTEN` ports, the 4510-4559 service range). The motivating case (DEVX-994) is the emulator's DNS server: `expose_ports = [53]` replaces the v1 CLI's `--host-dns` flag. There is deliberately no CLI flag — the ticket asked for a config setting, and every consumer of the value is the start path.
+
+Grammar per entry, parsed by `parseExposePort`/`ExposedPorts` (`internal/config/containers.go`):
+
+- Values may be TOML **integers or strings** in the same list (`expose_ports = [53, "5354:5353/udp"]`). Ints work because viper's decoder sets `WeaklyTypedInput`, so the `[]string` field accepts numbers; the mixed form is pinned by `TestGet_ExposePortsAcceptsIntsAndStrings`.
+- A string is `[host:]container[/proto]`; a bare port publishes host-port == container-port. Ports are canonicalized through `strconv` (`"0053"` → `"53"`), so two spellings of the same port collide as expected.
+- **An entry that names no protocol expands to both tcp and udp.** DNS serves queries over both, so `[53]` alone has to be enough; publishing a protocol nothing listens on costs nothing. An explicit `/tcp` or `/udp` publishes only that protocol.
+- Two entries that would make Docker key the same binding twice — same container port + protocol with different host ports, or the same host port + protocol for different container ports — are a **validation error** (`Validate()` calls `ExposedPorts()`), because Docker would silently keep only one. Exact duplicates are de-duplicated instead.
+
+Consumption is `mergeExposePorts` (`internal/container/expose.go`), appending `runtime.PortMapping`s with `Optional: false` — an explicitly requested port is a demand, so a busy or unbindable host port fails the start (same rule as a user-supplied `GATEWAY_LISTEN`). Entries clashing with a port lstk already publishes are skipped: silently when they ask for exactly what lstk already does, with a warning when the automatic mapping wins over what the user wrote. See `internal/container/CLAUDE.md` for the preflight's UDP exclusion.
+
 ## Volume Mounts
 
 Each `[[containers]]` block accepts a `volumes` list of Docker-style `"host:container[:ro]"` bind specs (e.g. for Snowflake init hooks mounted into `/etc/localstack/init/{boot,start,ready,shutdown}.d`). The persistence/cache mount to `/var/lib/localstack` is folded into this list: the entry whose container target is `/var/lib/localstack` (`persistenceTarget` in `internal/config/containers.go`) defines the host dir backing it, and that path is what `VolumeDir()`, `lstk volume path`, and `lstk volume clear` resolve. Resolution precedence in `VolumeDir()`: a `volumes` entry targeting `/var/lib/localstack` → the legacy singular `volume = "..."` field (still honored for backward compatibility) → the default OS cache dir. Setting the persistence dir via both `volume` and a `volumes` entry with differing sources is a validation error.

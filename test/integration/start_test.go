@@ -594,6 +594,75 @@ GATEWAY_LISTEN = "0.0.0.0:4566,0.0.0.0:443,0.0.0.0:8443"
 	}
 }
 
+// TestStartCommandExposesConfiguredPorts covers the expose_ports config option
+// (DEVX-994): the motivating case is publishing port 53 so the emulator's DNS
+// server can serve the host. Ports 53 and 5353 are avoided here because they are
+// privileged/commonly held on CI hosts; the mechanism is identical.
+func TestStartCommandExposesConfiguredPorts(t *testing.T) {
+	requireDocker(t)
+	_ = env.Require(t, env.AuthToken)
+
+	cleanup()
+	t.Cleanup(cleanup)
+
+	mockServer := createMockLicenseServer(true)
+	defer mockServer.Close()
+
+	configContent := `
+[[containers]]
+type = "aws"
+tag = "latest"
+port = "4566"
+expose_ports = [15353, "15354:15355/udp"]
+`
+	configFile := filepath.Join(t.TempDir(), "config.toml")
+	require.NoError(t, os.WriteFile(configFile, []byte(configContent), 0644))
+
+	ctx := testContext(t)
+	_, stderr, err := runLstk(t, ctx, "", env.With(env.APIEndpoint, mockServer.URL), "--config", configFile, "start")
+	require.NoError(t, err, "lstk start failed: %s", stderr)
+
+	inspect, err := dockerClient.ContainerInspect(ctx, containerName, client.ContainerInspectOptions{})
+	require.NoError(t, err, "failed to inspect container")
+
+	// A bare port is published on the same host port for both protocols (DNS needs
+	// both); an entry with an explicit host port and protocol is published as written.
+	expected := map[string]string{
+		"15353/tcp": "15353",
+		"15353/udp": "15353",
+		"15355/udp": "15354",
+	}
+	for port, hostPort := range expected {
+		bindings := inspect.Container.HostConfig.PortBindings[network.MustParsePort(port)]
+		if assert.NotEmpty(t, bindings, "port %s should be bound", port) {
+			assert.Equal(t, hostPort, bindings[0].HostPort)
+			assert.Equal(t, "127.0.0.1", bindings[0].HostIP.String())
+		}
+	}
+	assert.Empty(t, inspect.Container.HostConfig.PortBindings[network.MustParsePort("15355/tcp")],
+		"an entry that names udp must not also publish tcp")
+}
+
+// TestStartCommandRejectsInvalidExposePorts checks the config surface fails at load
+// time with a clear message rather than at container creation.
+func TestStartCommandRejectsInvalidExposePorts(t *testing.T) {
+	t.Parallel()
+
+	configContent := `
+[[containers]]
+type = "aws"
+tag = "latest"
+port = "4566"
+expose_ports = ["53/sctp"]
+`
+	configFile := filepath.Join(t.TempDir(), "config.toml")
+	require.NoError(t, os.WriteFile(configFile, []byte(configContent), 0644))
+
+	_, stderr, err := runLstk(t, testContext(t), "", testEnvWithHome(t.TempDir(), ""), "--config", configFile, "status")
+	require.Error(t, err)
+	assert.Contains(t, stderr, `protocol must be "tcp" or "udp"`)
+}
+
 func TestStartCommandSetsUpContainerCorrectly(t *testing.T) {
 	requireDocker(t)
 	_ = env.Require(t, env.AuthToken)
