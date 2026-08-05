@@ -643,6 +643,120 @@ expose_ports = [15353, "15354:15355/udp"]
 		"an entry that names udp must not also publish tcp")
 }
 
+// TestStartCommandExposePortsCannotRemapPrimaryEdgePort covers the delicate case
+// where an expose_ports entry names the primary edge port's container side (4566)
+// but a different host port: lstk already owns that container-port/protocol
+// mapping (bound to the configured host port, 4566), so the conflicting entry is
+// dropped with a warning rather than silently rebinding the edge port.
+func TestStartCommandExposePortsCannotRemapPrimaryEdgePort(t *testing.T) {
+	requireDocker(t)
+	_ = env.Require(t, env.AuthToken)
+
+	cleanup()
+	t.Cleanup(cleanup)
+
+	mockServer := createMockLicenseServer(true)
+	defer mockServer.Close()
+
+	configContent := `
+[[containers]]
+type = "aws"
+tag = "latest"
+port = "4566"
+expose_ports = ["8080:4566"]
+`
+	configFile := filepath.Join(t.TempDir(), "config.toml")
+	require.NoError(t, os.WriteFile(configFile, []byte(configContent), 0644))
+
+	ctx := testContext(t)
+	stdout, stderr, err := runLstk(t, ctx, "", env.With(env.APIEndpoint, mockServer.URL), "--config", configFile, "start")
+	require.NoError(t, err, "lstk start failed: %s", stderr)
+	assert.Contains(t, stdout+stderr, "Ignoring expose_ports entry 8080:4566/tcp",
+		"expected a warning explaining why the entry was dropped")
+	assert.Contains(t, stdout+stderr, "already publishes container port 4566/tcp on host port 4566")
+
+	inspect, err := dockerClient.ContainerInspect(ctx, containerName, client.ContainerInspectOptions{})
+	require.NoError(t, err, "failed to inspect container")
+
+	edgeBindings := inspect.Container.HostConfig.PortBindings[network.MustParsePort("4566/tcp")]
+	require.NotEmpty(t, edgeBindings, "the edge port must still be published")
+	assert.Equal(t, "4566", edgeBindings[0].HostPort, "the edge port's host binding must be unchanged")
+	assert.Empty(t, inspect.Container.HostConfig.PortBindings[network.MustParsePort("8080/tcp")],
+		"the conflicting host port must not be published")
+}
+
+// TestStartCommandExposePortsAddsMissingProtocolForPrimaryEdgePort covers the other
+// delicate case: an expose_ports entry names the primary edge port itself but a
+// protocol lstk does not already publish (4566 is tcp-only by default). Since it
+// doesn't collide with the existing tcp/4566 mapping, it is added — no warning.
+func TestStartCommandExposePortsAddsMissingProtocolForPrimaryEdgePort(t *testing.T) {
+	requireDocker(t)
+	_ = env.Require(t, env.AuthToken)
+
+	cleanup()
+	t.Cleanup(cleanup)
+
+	mockServer := createMockLicenseServer(true)
+	defer mockServer.Close()
+
+	configContent := `
+[[containers]]
+type = "aws"
+tag = "latest"
+port = "4566"
+expose_ports = ["4566/udp"]
+`
+	configFile := filepath.Join(t.TempDir(), "config.toml")
+	require.NoError(t, os.WriteFile(configFile, []byte(configContent), 0644))
+
+	ctx := testContext(t)
+	stdout, stderr, err := runLstk(t, ctx, "", env.With(env.APIEndpoint, mockServer.URL), "--config", configFile, "start")
+	require.NoError(t, err, "lstk start failed: %s", stderr)
+	assert.NotContains(t, stdout+stderr, "Ignoring expose_ports entry",
+		"a new protocol on the edge port does not collide with anything and needs no warning")
+
+	inspect, err := dockerClient.ContainerInspect(ctx, containerName, client.ContainerInspectOptions{})
+	require.NoError(t, err, "failed to inspect container")
+
+	udpBindings := inspect.Container.HostConfig.PortBindings[network.MustParsePort("4566/udp")]
+	if assert.NotEmpty(t, udpBindings, "4566/udp should now be published") {
+		assert.Equal(t, "4566", udpBindings[0].HostPort)
+	}
+	tcpBindings := inspect.Container.HostConfig.PortBindings[network.MustParsePort("4566/tcp")]
+	require.NotEmpty(t, tcpBindings, "4566/tcp must remain published")
+	assert.Equal(t, "4566", tcpBindings[0].HostPort)
+}
+
+// TestStartCommandFailsWhenExposedPortIsTaken covers a busy host port requested via
+// expose_ports: unlike lstk's own optional ports (e.g. 443), an expose_ports entry
+// is an explicit request, so a conflict must fail the start rather than degrade
+// silently — the same rule as a user-supplied GATEWAY_LISTEN port.
+func TestStartCommandFailsWhenExposedPortIsTaken(t *testing.T) {
+	requireDocker(t)
+	cleanup()
+	t.Cleanup(cleanup)
+
+	ln, err := net.Listen("tcp", ":15360")
+	require.NoError(t, err, "failed to bind port 15360 for test")
+	defer func() { _ = ln.Close() }()
+
+	configContent := `
+[[containers]]
+type = "aws"
+tag = "latest"
+port = "4566"
+expose_ports = [15360]
+`
+	configFile := filepath.Join(t.TempDir(), "config.toml")
+	require.NoError(t, os.WriteFile(configFile, []byte(configContent), 0644))
+
+	stdout, _, err := runLstk(t, testContext(t), "", env.With(env.AuthToken, "fake-token"), "--config", configFile, "start")
+	require.Error(t, err, "expected lstk start to fail when a requested expose_ports port is in use")
+	requireExitCode(t, 1, err)
+	assert.Contains(t, stdout, "Port 15360 is already in use")
+	assert.Contains(t, stdout, "LocalStack requires this port. Free it before starting.")
+}
+
 // TestStartCommandPublishesOnlyDefaultPortsWhenExposePortsUnset pins the no-op case:
 // with expose_ports absent, the published ports are exactly the default set (edge
 // port, gateway 443, service range 4510-4559) — nothing extra sneaks in.
