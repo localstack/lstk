@@ -643,6 +643,40 @@ expose_ports = [15353, "15354:15355/udp"]
 		"an entry that names udp must not also publish tcp")
 }
 
+// TestStartCommandPublishesOnlyDefaultPortsWhenExposePortsUnset pins the no-op case:
+// with expose_ports absent, the published ports are exactly the default set (edge
+// port, gateway 443, service range 4510-4559) — nothing extra sneaks in.
+func TestStartCommandPublishesOnlyDefaultPortsWhenExposePortsUnset(t *testing.T) {
+	requireDocker(t)
+	_ = env.Require(t, env.AuthToken)
+
+	cleanup()
+	t.Cleanup(cleanup)
+
+	mockServer := createMockLicenseServer(true)
+	defer mockServer.Close()
+
+	ctx := testContext(t)
+	_, stderr, err := runLstk(t, ctx, "", env.With(env.APIEndpoint, mockServer.URL), "start")
+	require.NoError(t, err, "lstk start failed: %s", stderr)
+
+	inspect, err := dockerClient.ContainerInspect(ctx, containerName, client.ContainerInspectOptions{})
+	require.NoError(t, err, "failed to inspect container")
+
+	wantPublished := map[string]bool{"4566/tcp": true, "443/tcp": true}
+	for p := 4510; p <= 4559; p++ {
+		wantPublished[strconv.Itoa(p)+"/tcp"] = true
+	}
+
+	gotPublished := map[string]bool{}
+	for port, bindings := range inspect.Container.HostConfig.PortBindings {
+		if len(bindings) > 0 {
+			gotPublished[port.String()] = true
+		}
+	}
+	assert.Equal(t, wantPublished, gotPublished, "no expose_ports configured should publish exactly the default port set")
+}
+
 // TestStartCommandRejectsInvalidExposePorts checks the config surface fails at load
 // time with a clear message rather than at container creation.
 func TestStartCommandRejectsInvalidExposePorts(t *testing.T) {
