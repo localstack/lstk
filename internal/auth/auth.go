@@ -47,13 +47,26 @@ func New(sink output.Sink, platform api.PlatformAPI, storage AuthTokenStorage, a
 	}
 }
 
-// GetToken tries in order: 1) keyring 2) LOCALSTACK_AUTH_TOKEN env var 3) device flow login
-func (a *Auth) GetToken(ctx context.Context) (string, error) {
-	if token, err := a.tokenStorage.GetAuthToken(); err == nil && token != "" {
-		return token, nil
+// ResolveToken returns a caller-provided token before consulting stored
+// credentials. Storage errors are treated like a missing stored token.
+func ResolveToken(authToken string, storage AuthTokenStorage) string {
+	if authToken != "" {
+		return authToken
 	}
 
-	if token := a.authToken; token != "" {
+	token, err := storage.GetAuthToken()
+	if err != nil {
+		return ""
+	}
+	return token
+}
+
+// GetToken tries in order: 1) LOCALSTACK_AUTH_TOKEN env var 2) keyring 3) device flow login.
+// The environment variable wins over the stored token so a per-invocation
+// override (CI secret, a second account, `LOCALSTACK_AUTH_TOKEN=... lstk start`)
+// takes effect without logging out first — matching how other CLIs behave.
+func (a *Auth) GetToken(ctx context.Context) (string, error) {
+	if token := ResolveToken(a.authToken, a.tokenStorage); token != "" {
 		return token, nil
 	}
 

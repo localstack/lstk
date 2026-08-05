@@ -59,6 +59,44 @@ func TestGetToken_ReturnsTokenWhenKeyringStoreFails(t *testing.T) {
 	})
 }
 
+// The environment token must win over stored credentials (DEVX-1023), so a
+// per-invocation override takes effect without a `lstk logout` first.
+func TestGetToken_EnvTokenOverridesStoredToken(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockStorage := NewMockAuthTokenStorage(ctrl)
+
+	auth := &Auth{
+		tokenStorage: mockStorage,
+		login:        NewMockLoginProvider(ctrl),
+		sink:         output.SinkFunc(func(output.Event) {}),
+		authToken:    "env-token",
+		allowLogin:   true,
+	}
+
+	token, err := auth.GetToken(context.Background())
+
+	assert.NoError(t, err)
+	assert.Equal(t, "env-token", token)
+}
+
+func TestGetToken_FallsBackToStoredTokenWithoutEnvToken(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockStorage := NewMockAuthTokenStorage(ctrl)
+	mockStorage.EXPECT().GetAuthToken().Return("stored-token", nil)
+
+	auth := &Auth{
+		tokenStorage: mockStorage,
+		login:        NewMockLoginProvider(ctrl),
+		sink:         output.SinkFunc(func(output.Event) {}),
+		allowLogin:   true,
+	}
+
+	token, err := auth.GetToken(context.Background())
+
+	assert.NoError(t, err)
+	assert.Equal(t, "stored-token", token)
+}
+
 func TestRelogin_DiscardsTokenAndLicenseThenLogsIn(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	mockStorage := NewMockAuthTokenStorage(ctrl)

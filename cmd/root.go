@@ -265,12 +265,11 @@ func Execute(ctx context.Context) error {
 
 	logger.Info("lstk %s starting", version.Version())
 
-	// Resolve auth token for telemetry: keyring first, then env var.
-	resolvedToken := cfg.AuthToken
+	// Resolve the auth token: LOCALSTACK_AUTH_TOKEN first, then the keyring, so an
+	// explicitly provided token overrides stored credentials (see auth.GetToken).
+	resolvedToken := strings.TrimSpace(cfg.AuthToken)
 	if tokenStorage, err := auth.NewTokenStorage(cfg.ForceFileKeyring, logger); err == nil {
-		if token, err := tokenStorage.GetAuthToken(); err == nil && token != "" {
-			resolvedToken = token
-		}
+		resolvedToken = auth.ResolveToken(resolvedToken, tokenStorage)
 	}
 	// Trim surrounding whitespace: env-injected tokens (e.g. CI secrets) commonly
 	// carry a trailing newline. Then reject clearly malformed tokens before they
