@@ -590,7 +590,8 @@ func TestUpdateBinaryMockGitHubHappyPath(t *testing.T) {
 
 // TestUpdateBinaryMockGitHubChecksumMismatch proves the checksum gate: when
 // the downloaded archive does not match checksums.txt, the update aborts with
-// a non-zero exit and the installed binary is left untouched.
+// a non-zero exit and the installed binary is left untouched. The mock inputs
+// are fully deterministic, so stdout and stderr are asserted byte-for-byte.
 func TestUpdateBinaryMockGitHubChecksumMismatch(t *testing.T) {
 	t.Parallel()
 	ctx := testContext(t)
@@ -605,6 +606,7 @@ func TestUpdateBinaryMockGitHubChecksumMismatch(t *testing.T) {
 	// The archive never gets extracted, so garbage bytes suffice; the manifest
 	// digest is for different content, so verification must fail.
 	archive := []byte("tampered archive bytes")
+	archiveSum := sha256.Sum256(archive)
 	wrongSum := sha256.Sum256([]byte("what the archive should have been"))
 	assetName := releaseAssetName("0.0.2")
 	manifest := fmt.Sprintf("%s  %s\n", hex.EncodeToString(wrongSum[:]), assetName)
@@ -615,12 +617,24 @@ func TestUpdateBinaryMockGitHubChecksumMismatch(t *testing.T) {
 	})
 
 	updateCmd := exec.CommandContext(ctx, oldBinary, "update", "--non-interactive")
-	updateCmd.Env = mockGitHubEnv(t, srv)
-	out, err := updateCmd.CombinedOutput()
-	outStr := string(out)
-	require.Error(t, err, "update must fail on checksum mismatch, output: %s", outStr)
+	// Pin PATH to an empty dir so the multiple-installs warning (which scans
+	// PATH for other lstk binaries) can never inject host-dependent lines
+	// into the output being compared exactly.
+	updateCmd.Env = append(mockGitHubEnv(t, srv), string(env.Path)+"="+t.TempDir())
+	var stdout, stderr bytes.Buffer
+	updateCmd.Stdout = &stdout
+	updateCmd.Stderr = &stderr
+	err := updateCmd.Run()
+	require.Error(t, err, "update must fail on checksum mismatch, output: %s%s", stdout.String(), stderr.String())
 	requireExitCode(t, 1, err)
-	assert.Contains(t, outStr, "checksum mismatch", "should report the checksum failure")
+
+	wantStdout := "Checking for updates...\n" +
+		"Update available: 0.0.1 → v0.0.2\n" +
+		"Downloading and verifying update...\n" +
+		fmt.Sprintf("Error: update failed: checksum mismatch for %s: expected %s, got %s — the downloaded archive may be corrupted or tampered with; update aborted\n",
+			assetName, hex.EncodeToString(wrongSum[:]), hex.EncodeToString(archiveSum[:]))
+	assert.Equal(t, wantStdout, stdout.String(), "full stdout should be exactly the check/download/error sequence")
+	assert.Empty(t, stderr.String(), "silent-error handling must not print anything to stderr")
 
 	verOut, err := exec.CommandContext(ctx, oldBinary, "--version").CombinedOutput()
 	require.NoError(t, err, "original binary should still run")
