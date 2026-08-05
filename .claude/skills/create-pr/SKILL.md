@@ -43,7 +43,7 @@ If the branch name carries no ticket ID, ask whether a Linear issue exists (issu
 Use this structure:
 
 ```markdown
-## Issue
+## Motivation
 
 <High-level description of the issue or feature this PR addresses. 1-3 sentences a reader can follow without opening the diff.>
 
