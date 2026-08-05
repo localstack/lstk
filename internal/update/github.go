@@ -15,7 +15,32 @@ import (
 
 const githubRepo = "localstack/lstk"
 
-const latestReleaseURL = "https://api.github.com/repos/" + githubRepo + "/releases/latest"
+// githubAPIEndpointEnv and githubDownloadEndpointEnv are undocumented,
+// test-only overrides for the two GitHub hosts the updater talks to
+// (api.github.com for release metadata, github.com for asset downloads), so
+// integration tests can point each at a mock server and exercise the
+// download-and-verify flow end to end against the real binary. Same pattern
+// as LSTK_API_ENDPOINT / LSTK_ANALYTICS_ENDPOINT.
+const (
+	githubAPIEndpointEnv      = "LSTK_UPDATE_GITHUB_API_ENDPOINT"
+	githubDownloadEndpointEnv = "LSTK_UPDATE_GITHUB_DOWNLOAD_ENDPOINT"
+)
+
+func latestReleaseURL() string {
+	base := "https://api.github.com"
+	if v := os.Getenv(githubAPIEndpointEnv); v != "" {
+		base = v
+	}
+	return base + "/repos/" + githubRepo + "/releases/latest"
+}
+
+func downloadBaseURL() string {
+	base := "https://github.com"
+	if v := os.Getenv(githubDownloadEndpointEnv); v != "" {
+		base = v
+	}
+	return base + "/" + githubRepo + "/releases/download"
+}
 
 type githubRelease struct {
 	TagName string        `json:"tag_name"`
@@ -40,7 +65,7 @@ func githubRequest(ctx context.Context, url, token string) (*http.Response, erro
 }
 
 func fetchLatestRelease(ctx context.Context, token string) (*githubRelease, error) {
-	resp, err := githubRequest(ctx, latestReleaseURL, token)
+	resp, err := githubRequest(ctx, latestReleaseURL(), token)
 	if err != nil {
 		return nil, err
 	}
@@ -80,7 +105,7 @@ type binaryUpdater struct {
 
 func newBinaryUpdater() *binaryUpdater {
 	return &binaryUpdater{
-		downloadBase: "https://github.com/" + githubRepo + "/releases/download",
+		downloadBase: downloadBaseURL(),
 		resolveExe: func() (string, error) {
 			exe, err := os.Executable()
 			if err != nil {
