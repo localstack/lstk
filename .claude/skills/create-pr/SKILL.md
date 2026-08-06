@@ -49,7 +49,7 @@ Use this structure:
 
 ## Solution
 
-<High-level description of the solution — written so a reviewer can read it and thumbs-up or thumbs-down the approach. Bullet points for the meaningful changes; fold in how it was tested (new tests, manual verification) rather than a separate Tests section.>
+<High-level description of the solution — written so a reviewer can read it and thumbs-up or thumbs-down the approach.>
 
 ## Docs
 
