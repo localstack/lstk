@@ -45,20 +45,22 @@ Use this structure:
 ```markdown
 ## Motivation
 
-<Why this change is needed. 1-2 sentences.>
+<High-level description of the issue or feature this PR addresses. 1-2 sentences a reader can follow without opening the diff.>
 
-## Changes
+## Solution
 
-- Bullet point per meaningful change
-- Group related changes together
+<High-level description of the solution — written so a reviewer can read it and thumbs-up or thumbs-down the approach.>
+
+<details>
+<summary>Docs</summary>
+
+<Context for technical writers to pick up: user-facing changes, new/changed commands, flags, env vars, or behavior worth documenting. Always include this section — when nothing is user-facing, say so explicitly and why (e.g. test-only change, internal refactor), so writers can triage from the PR alone.>
+
+</details>
 
 ## Review
 
 <Self-merge candidate — one-line reason. Or: Human review advised — one-line reason.>
-
-## Tests
-
-<How this was tested — new tests added, manual verification, etc.>
 
 ## Todo
 
