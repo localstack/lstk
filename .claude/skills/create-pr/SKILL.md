@@ -51,9 +51,12 @@ Use this structure:
 
 <High-level description of the solution — written so a reviewer can read it and thumbs-up or thumbs-down the approach.>
 
-## Docs
+<details>
+<summary>Docs</summary>
 
 <Context for technical writers to pick up: user-facing changes, new/changed commands, flags, env vars, or behavior worth documenting. Always include this section — when nothing is user-facing, say so explicitly and why (e.g. test-only change, internal refactor), so writers can triage from the PR alone.>
+
+</details>
 
 ## Review
 
@@ -71,7 +74,6 @@ Rules:
   - Use `Closes TICKET-ID` if the PR fully resolves the issue
   - Use `Towards TICKET-ID` if it's a partial contribution
 - Keep bullet points concise — what changed, not how every line was modified
-- The Docs section must agree with the docs label: `docs: skip` pairs with an explicit "nothing to document" explanation; `docs: needed` pairs with concrete pointers to what writers should cover.
 - The Review line reflects lstk's review pilot (small PRs/bug fixes may self-merge; bigger or undiscussed work needs a human). Decide it using `/review-pr`'s "Review scope" checklist (run that skill, or apply the checklist inline if it wasn't run), and say so out loud in the session before creating the PR — don't just silently decide.
 - Omit Todo section if there are no follow-up items
 - Don't over-explain; the diff speaks for itself
