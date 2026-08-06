@@ -10,7 +10,7 @@ See [Installation](#installation) for other install methods.
 
 ## Prerequisites
 
-- A Docker-API-compatible container engine — [Docker](https://docs.docker.com/get-docker/), Rancher Desktop, Colima, OrbStack, Lima, and Podman are all auto-detected; see [container runtimes](docs/container-runtimes.md) for details.
+- A Docker-API-compatible container engine — [Docker](https://docs.docker.com/get-docker/), Rancher Desktop, Colima, OrbStack, Lima, and Podman are all auto-detected; see [container runtimes](https://github.com/localstack/lstk/blob/main/docs/container-runtimes.md) for details.
 - [LocalStack account](https://app.localstack.cloud) — required for credentials, the CLI will guide you through authentication.
 
 ## Installation
@@ -47,15 +47,15 @@ Running `lstk` will automatically handle authentication, configuration, and cont
 - **Snapshots** — save, load, and manage emulator state as local files, cloud snapshots, or in your own S3 bucket
 - **Cloud CLI proxies** — run `aws`, `az`, `terraform`, `cdk`, and `sam` commands against LocalStack with the endpoint, credentials, and region pre-configured
 - **Target an external emulator** — pass `--endpoint-url <url>` (or set `LSTK_ENDPOINT_URL`) to point most commands at an already-running LocalStack instance — docker compose, host-network mode, CI, a different machine, or a cloud-hosted ephemeral instance (`https://` is supported) — instead of one lstk manages locally
-- **Extensions** — Git-style `lstk-<name>` executables extend the CLI with new commands; see [docs/extensions-authoring.md](docs/extensions-authoring.md)
+- **Extensions** — Git-style `lstk-<name>` executables extend the CLI with new commands; see [extension authoring](https://github.com/localstack/lstk/blob/main/docs/extensions-authoring.md)
 - **Self-update** — `lstk update` checks for and installs the latest release
-- **Structured JSON output** — pass `--json` to a supported command for a machine-readable envelope instead of formatted text; see [docs/structured-output.md](docs/structured-output.md)
+- **Structured JSON output** — pass `--json` to a supported command for a machine-readable envelope instead of formatted text; see [structured output](https://github.com/localstack/lstk/blob/main/docs/structured-output.md)
 
 For the full command reference, configuration options, environment variables, and troubleshooting, see the **[lstk documentation](https://docs.localstack.cloud/aws/developer-tools/running-localstack/lstk/)**.
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup, architecture, and pull request guidelines.
+See [CONTRIBUTING.md](https://github.com/localstack/lstk/blob/main/CONTRIBUTING.md) for development setup, architecture, and pull request guidelines.
 
 ## Reporting bugs
 

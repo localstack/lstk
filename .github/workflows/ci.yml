@@ -347,7 +347,7 @@ jobs:
           --license Apache-2.0
           --description "LocalStack CLI v2 - Start and manage LocalStack emulators"
           --files README.md LICENSE
-          --keywords localstack cli aws emulator docker
+          --keywords cli developer-tools local-development localstack
 
       # Replace the auto-generated wrapper with our launcher, which forwards
       # SIGINT/SIGTERM/SIGHUP to the Go binary (DEVX-942). The generated wrapper
