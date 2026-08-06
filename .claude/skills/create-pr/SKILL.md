@@ -45,7 +45,7 @@ Use this structure:
 ```markdown
 ## Motivation
 
-<High-level description of the issue or feature this PR addresses. 1-3 sentences a reader can follow without opening the diff.>
+<High-level description of the issue or feature this PR addresses. 1-2 sentences a reader can follow without opening the diff.>
 
 ## Solution
 
