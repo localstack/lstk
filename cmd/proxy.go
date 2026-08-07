@@ -55,6 +55,61 @@ func stripGlobalFlags(args []string) ([]string, globalFlags) {
 	return out, gf
 }
 
+// proxySubcommand returns the safe leading command-path tokens of a proxy
+// command's raw args for telemetry, e.g. "s3 ls" for `lstk aws s3 ls
+// s3://bucket`. Only leading non-flag tokens are collected: collection stops at
+// the first flag-like arg so a flag's value can never be mistaken for a
+// subcommand. The token limit follows each CLI's grammar so a positional value
+// is not recorded for flat commands such as `cdk deploy MyStack` or `terraform
+// import ADDRESS ID`; each recorded token is capped at 64 runes.
+//
+// Known limitation: a flag preceding the subcommand tokens (e.g. `aws
+// --profile foo s3 ls`) stops collection immediately, recording an empty
+// subcommand even though "s3 ls" follows. This is accepted as the safer
+// tradeoff over risking a flag or its value being misrecorded as a
+// subcommand token.
+func proxySubcommand(command string, args []string) string {
+	args, _ = stripGlobalFlags(args)
+	limit := 1
+	if len(args) > 0 {
+		limit = proxySubcommandTokenLimit(command, args[0])
+	}
+	tokens := make([]string, 0, limit)
+	for _, arg := range args {
+		if strings.HasPrefix(arg, "-") {
+			break
+		}
+		if r := []rune(arg); len(r) > 64 {
+			arg = string(r[:64])
+		}
+		tokens = append(tokens, arg)
+		if len(tokens) == limit {
+			break
+		}
+	}
+	return strings.Join(tokens, " ")
+}
+
+func proxySubcommandTokenLimit(command, firstToken string) int {
+	switch command {
+	case "aws":
+		// AWS reserves its first two positions for the service and operation;
+		// user-supplied values come later.
+		return 2
+	case "terraform":
+		switch firstToken {
+		case "metadata", "providers", "state", "workspace":
+			return 2
+		}
+	case "sam":
+		switch firstToken {
+		case "local", "pipeline", "remote":
+			return 2
+		}
+	}
+	return 1
+}
+
 // jsonPrecedesCommandName reports whether --json (or --json=<value>) appears in
 // the raw command line before the literal token calledAs — the resolved proxy
 // command's own name/alias (e.g. "aws", "terraform"/"tf", "az"). Proxy commands
