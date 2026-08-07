@@ -251,7 +251,8 @@ func TestSAMFailsWhenEmulatorNotRunning(t *testing.T) {
 	t.Cleanup(cleanup)
 
 	fakeDir := writeFakeSAM(t, "1.95.0")
-	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).With(env.Home, t.TempDir())
+	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).With(env.Home, t.TempDir()).
+		With(env.LocalStackHost, deadLocalStackHost)
 
 	stdout, _, err := runLstk(t, testContext(t), t.TempDir(), e, "sam", "deploy")
 	require.Error(t, err)

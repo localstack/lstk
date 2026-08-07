@@ -22,32 +22,36 @@ import (
 
 var accountIDRe = regexp.MustCompile(`^\d{12}$`)
 
-// requireRunningAWSEmulator verifies the AWS emulator is running before an IaC
-// proxy command (terraform/cdk) that contacts AWS proceeds. When it is not
-// running it emits an actionable error through the sink — an AWS-specific
+// requireRunningAWSEmulator verifies the AWS emulator is reachable before an
+// IaC proxy command (terraform/cdk/sam) that contacts AWS proceeds — a managed
+// container found via Docker, or an already-running instance answering the
+// HTTP probe on host (e.g. LocalStack running from source). When nothing is
+// reachable it emits an actionable error through the sink — an AWS-specific
 // message naming the other emulator when a non-AWS one is up, otherwise the
 // generic "not running" error — and returns a silent error. cmdLabel is the
 // lstk command name used in the message (e.g. "terraform"/"cdk"). It returns nil
-// when the AWS emulator is running.
-func requireRunningAWSEmulator(ctx context.Context, rt runtime.Runtime, sink output.Sink, awsContainer config.ContainerConfig, cmdLabel string) error {
-	runningName, err := container.ResolveRunningContainerName(ctx, rt, awsContainer)
+// when the AWS emulator is reachable.
+func requireRunningAWSEmulator(ctx context.Context, dockerHost string, sink output.Sink, awsContainer config.ContainerConfig, host, cmdLabel string) error {
+	resolved, rt, err := resolveReachableEmulator(ctx, dockerHost, sink, awsContainer, host)
 	if err != nil {
-		return fmt.Errorf("checking emulator status: %w", err)
+		return err
 	}
-	if runningName != "" {
+	if resolved.Found() {
 		return nil
 	}
 	// These commands only work with the AWS emulator. If a different emulator
 	// is running, say so specifically rather than reporting a misleading
-	// "AWS not running".
-	if other := runningNonAWSEmulator(ctx, rt); other != "" {
-		sink.Emit(output.ErrorEvent{
-			Title: fmt.Sprintf("lstk %s requires the %s, but the %s is running", cmdLabel, awsContainer.DisplayName(), other),
-			Actions: []output.ErrorAction{
-				{Label: "Start the AWS emulator:", Value: "lstk"},
-			},
-		})
-		return output.NewSilentError(fmt.Errorf("lstk %s requires the AWS emulator, but the %s is running", cmdLabel, other))
+	// "AWS not running". Skipped when Docker is unavailable (rt == nil).
+	if rt != nil {
+		if other := runningNonAWSEmulator(ctx, rt); other != "" {
+			sink.Emit(output.ErrorEvent{
+				Title: fmt.Sprintf("lstk %s requires the %s, but the %s is running", cmdLabel, awsContainer.DisplayName(), other),
+				Actions: []output.ErrorAction{
+					{Label: "Start the AWS emulator:", Value: "lstk"},
+				},
+			})
+			return output.NewSilentError(fmt.Errorf("lstk %s requires the AWS emulator, but the %s is running", cmdLabel, other))
+		}
 	}
 	return container.HandleNoRunningContainer(sink, awsContainer)
 }

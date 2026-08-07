@@ -142,6 +142,10 @@ There is no `--offline` flag. Instead `container.Start` degrades gracefully when
 
 Emulator type (aws/azure/snowflake) is always auto-detected by probing `/_localstack/health` (falling back to `/_localstack/info` for Azure, whose health response omits `version`) — there is no manual override flag or config setting; an inconclusive result is a hard failure. `terraform`/`cdk`/`sam` (AWS-only) reject a detected non-AWS type with the same error shape used for a wrong locally-running emulator.
 
+# Already-Running / From-Source Instances
+
+The proxies (`aws`, `az`, `terraform`/`cdk`/`sam`) plus `reset` and `snapshot save/load` work against a LocalStack instance lstk did not start — a from-source run, a hand-started container with an unknown image, or a remote host via `LOCALSTACK_HOST`. When Docker discovery finds nothing (or Docker is down), they probe `GET /_localstack/info` on the resolved host and attach silently on a LocalStack-shaped answer. `stop`/`logs`/`restart`/`status` remain Docker-only. Discovery semantics, the wrong-type guard, and the test-pinning rule (`deadLocalStackHost`) are documented in `internal/container/CLAUDE.md`.
+
 # Emulator Setup Commands
 
 Use `lstk setup <emulator>` to set up CLI integration for an emulator type:
