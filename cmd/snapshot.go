@@ -52,6 +52,13 @@ Only Cloud Pods (pod: prefix) have versions; local files and s3:// remotes do no
   lstk snapshot load pod:my-baseline:3
   lstk snapshot show pod:my-baseline:3`
 
+const snapshotInspectLong = `Inspect a local snapshot file, showing its structure and where the bytes go.
+
+This reads the on-disk .snapshot file directly — no running emulator, no platform call, and no authentication. It is the local counterpart to 'snapshot show', which reports metadata for cloud snapshots. Sizes are broken down per service (combining control-plane state and data assets), largest first.
+
+  lstk snapshot inspect ./checkpoint.snapshot   # size breakdown of a local snapshot
+  lstk snapshot inspect ./checkpoint --json      # machine-readable output for scripts and agents`
+
 const snapshotRemoveLong = `Delete a cloud snapshot from the LocalStack platform.
 
 Only cloud snapshots (pod: prefix) can be removed. This operation cannot be undone.
@@ -124,6 +131,7 @@ func newSnapshotCmd(cfg *env.Env, tel *telemetry.Client, logger log.Logger) *cob
 	cmd.AddCommand(newSnapshotRemoveCmd(cfg))
 	cmd.AddCommand(newSnapshotShowCmd(cfg, logger))
 	cmd.AddCommand(newSnapshotVersionsCmd(cfg, logger))
+	cmd.AddCommand(newSnapshotInspectCmd(cfg))
 	return cmd
 }
 
@@ -695,6 +703,45 @@ func runSnapshotVersions(cfg *env.Env, logger log.Logger) func(*cobra.Command, [
 		}
 		sink := output.NewPlainSink(os.Stdout)
 		return snapshot.Versions(cmd.Context(), client, cfg.AuthToken, ref.Value, sink)
+	}
+}
+
+func newSnapshotInspectCmd(cfg *env.Env) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "inspect FILE",
+		Short: "Inspect a local snapshot's structure and size breakdown",
+		Long:  snapshotInspectLong,
+		Args:  cobra.ExactArgs(1),
+		RunE:  runSnapshotInspect(cfg),
+	}
+	cmd.Flags().Bool("json", false, "Output the size breakdown as JSON")
+	return cmd
+}
+
+func runSnapshotInspect(cfg *env.Env) func(*cobra.Command, []string) error {
+	return func(cmd *cobra.Command, args []string) error {
+		jsonOut, err := cmd.Flags().GetBool("json")
+		if err != nil {
+			return err
+		}
+
+		home, _ := os.UserHomeDir()
+		ref, err := snapshot.ParseInspectable(args[0], home)
+		if err != nil {
+			return err
+		}
+
+		if jsonOut {
+			// Machine-output mode: write JSON to stdout, bypassing the event
+			// sink (which renders human output only).
+			return snapshot.InspectJSON(ref.Value, os.Stdout)
+		}
+
+		if isInteractiveMode(cfg) {
+			return ui.RunSnapshotInspect(cmd.Context(), ref.Value)
+		}
+		sink := output.NewPlainSink(os.Stdout)
+		return snapshot.Inspect(ref.Value, sink)
 	}
 }
 
