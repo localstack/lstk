@@ -265,6 +265,13 @@ func startOnce(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts S
 		primaryPort, _, _ := strings.Cut(containerPort, "/")
 		extraPorts := append(gateway.extraGatewayPorts(primaryPort, gatewayDefaulted), servicePortRange()...)
 
+		// Ports the user asked for explicitly (e.g. 53 for DNS) are published on top.
+		exposed, err := c.ExposedPorts()
+		if err != nil {
+			return "", err
+		}
+		extraPorts = mergeExposePorts(sink, extraPorts, primaryPort, c.Port, exposed)
+
 		containers[i] = runtime.ContainerConfig{
 			Image:         image,
 			Name:          containerName,
@@ -901,13 +908,7 @@ func selectContainersToStart(ctx context.Context, rt runtime.Runtime, sink outpu
 		// one. Optional ports (443 from the default GATEWAY_LISTEN) are commonly
 		// squatted by other software — e.g. Rancher Desktop's Traefik ingress — so
 		// a busy one is dropped with a warning instead of blocking the start.
-		var requiredSpecs []string
-		for _, ep := range c.ExtraPorts {
-			if !ep.Optional {
-				requiredSpecs = append(requiredSpecs, ep.HostPort)
-			}
-		}
-		if conflictPort, err := ports.CheckAvailable(requiredSpecs...); err != nil {
+		if conflictPort, err := ports.CheckAvailable(requiredHostPorts(c.ExtraPorts)...); err != nil {
 			sink.Emit(output.ErrorEvent{
 				Title:   fmt.Sprintf("Port %s is already in use", conflictPort),
 				Summary: "LocalStack requires this port. Free it before starting.",
@@ -996,6 +997,20 @@ func healLeftoverContainer(ctx context.Context, rt runtime.Runtime, sink output.
 		})
 	}
 	return nil
+}
+
+// requiredHostPorts returns the host ports whose availability must be verified
+// before the start. UDP publications (only reachable via expose_ports) are left
+// out: the check dials, and a TCP dial says nothing about whether a UDP port is
+// free — a UDP conflict surfaces at container start instead.
+func requiredHostPorts(mappings []runtime.PortMapping) []string {
+	var required []string
+	for _, ep := range mappings {
+		if !ep.Optional && ep.Protocol != "udp" {
+			required = append(required, ep.HostPort)
+		}
+	}
+	return required
 }
 
 // dropBusyOptionalPorts removes optional port mappings whose host port is
@@ -1118,7 +1133,7 @@ func startWithOptionalPortFallback(ctx context.Context, rt runtime.Runtime, sink
 		}
 		i := failedOptionalPortBind(err, c.ExtraPorts)
 		if i < 0 {
-			return "", nil, err
+			return "", nil, annotateRequiredPortBindError(rt, err, c.ExtraPorts)
 		}
 		cause := portBusy
 		if strings.Contains(err.Error(), "permission denied") {
@@ -1138,6 +1153,29 @@ func startWithOptionalPortFallback(ctx context.Context, rt runtime.Runtime, sink
 		}
 		c.ExtraPorts = append(append([]runtime.PortMapping{}, c.ExtraPorts[:i]...), c.ExtraPorts[i+1:]...)
 	}
+}
+
+// annotateRequiredPortBindError appends the runtime-specific remedy when the daemon
+// refuses to bind a *required* published port, which the optional-port fallback above
+// cannot rescue. A port below 1024 requested via expose_ports (e.g. 53 for DNS) is
+// the common case: some runtimes need admin/rootful mode to publish those at all.
+func annotateRequiredPortBindError(rt runtime.Runtime, err error, mappings []runtime.PortMapping) error {
+	if err == nil || !strings.Contains(err.Error(), "bind:") {
+		return err
+	}
+	cause := portBusy
+	if strings.Contains(err.Error(), "permission denied") {
+		cause = portBindDenied
+	}
+	for _, ep := range mappings {
+		if ep.Optional || !strings.Contains(err.Error(), ":"+ep.HostPort+": bind:") {
+			continue
+		}
+		if hint := tailoredPortDropHint(rt.Flavor(), runtime.DetectInstalledFlavor(), ep.HostPort, cause); hint != "" {
+			return fmt.Errorf("%w — %s", err, hint)
+		}
+	}
+	return err
 }
 
 // portConflictActions builds the next-step actions for a fatal extra-port

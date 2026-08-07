@@ -138,6 +138,12 @@ type ContainerConfig struct {
 	// arbitrary mounts (e.g. Snowflake init hooks) and may also contain the persistence
 	// mount (the entry targeting /var/lib/localstack).
 	Volumes []string `mapstructure:"volumes"`
+	// ExposePorts publishes additional container ports on the host, beyond the gateway
+	// and service ports lstk publishes by default — e.g. port 53 so the emulator's DNS
+	// server can be used as the host's resolver. Each entry is a bare port number
+	// (published on the same host port) or a Docker-style "[host:]container[/proto]"
+	// string. See ExposedPorts for the protocol rules.
+	ExposePorts []string `mapstructure:"expose_ports"`
 	// Env is a list of named environment references defined in the top-level [env.*] config sections.
 	Env []string `mapstructure:"env"`
 	// Snapshot is an optional snapshot REF (e.g. "pod:my-baseline" or a local path)
@@ -307,6 +313,111 @@ func (c *ContainerConfig) VolumeDir() (string, error) {
 	return filepath.Join(cacheDir, "lstk", "volume", c.defaultName()), nil
 }
 
+// PortSpec is one parsed expose_ports publication: a host port bound to a container
+// port for a single protocol.
+type PortSpec struct {
+	HostPort      string
+	ContainerPort string
+	Protocol      string // "tcp" or "udp"
+}
+
+func (p PortSpec) String() string {
+	return p.HostPort + ":" + p.ContainerPort + "/" + p.Protocol
+}
+
+// ExposedPorts returns the publications requested via expose_ports, in config order
+// and de-duplicated. An entry that names no protocol expands to both tcp and udp:
+// the motivating case is the emulator's DNS server (port 53), which serves both, and
+// publishing a protocol nothing listens on is harmless.
+func (c *ContainerConfig) ExposedPorts() ([]PortSpec, error) {
+	var specs []PortSpec
+	seen := map[PortSpec]bool{}
+	hostForContainer := map[string]string{}
+	containerForHost := map[string]string{}
+	for _, entry := range c.ExposePorts {
+		parsed, err := parseExposePort(entry)
+		if err != nil {
+			return nil, err
+		}
+		for _, s := range parsed {
+			if seen[s] {
+				continue
+			}
+			// Docker keys published ports by container port and by host port, so either
+			// kind of clash means one of the two entries would be silently discarded.
+			containerKey := s.ContainerPort + "/" + s.Protocol
+			if host, ok := hostForContainer[containerKey]; ok {
+				return nil, fmt.Errorf("invalid expose_ports: container port %s is published on both host port %s and %s", containerKey, host, s.HostPort)
+			}
+			hostKey := s.HostPort + "/" + s.Protocol
+			if container, ok := containerForHost[hostKey]; ok {
+				return nil, fmt.Errorf("invalid expose_ports: host port %s is claimed by both container port %s and %s", hostKey, container, s.ContainerPort)
+			}
+			seen[s] = true
+			hostForContainer[containerKey] = s.HostPort
+			containerForHost[hostKey] = s.ContainerPort
+			specs = append(specs, s)
+		}
+	}
+	return specs, nil
+}
+
+// parseExposePort parses a single expose_ports entry of the form
+// "[host:]container[/proto]"; a bare "53" publishes container port 53 on host port
+// 53. One PortSpec is returned per protocol, so an entry without a protocol yields
+// two (tcp and udp).
+func parseExposePort(entry string) ([]PortSpec, error) {
+	spec := strings.TrimSpace(entry)
+	if spec == "" {
+		return nil, errors.New("invalid expose_ports entry: entry is empty")
+	}
+
+	portPart, proto, hasProto := strings.Cut(spec, "/")
+	protocols := []string{"tcp", "udp"}
+	if hasProto {
+		proto = strings.ToLower(strings.TrimSpace(proto))
+		if proto != "tcp" && proto != "udp" {
+			return nil, fmt.Errorf("invalid expose_ports entry %q: protocol must be \"tcp\" or \"udp\"", entry)
+		}
+		protocols = []string{proto}
+	}
+
+	hostPort, containerPort, hasHost := strings.Cut(portPart, ":")
+	if !hasHost {
+		containerPort = hostPort
+	}
+	if strings.Contains(containerPort, ":") {
+		return nil, fmt.Errorf("invalid expose_ports entry %q: expected \"port\", \"host:container\" or \"host:container/proto\"", entry)
+	}
+	hostPort, err := parsePortNumber(entry, hostPort)
+	if err != nil {
+		return nil, err
+	}
+	containerPort, err = parsePortNumber(entry, containerPort)
+	if err != nil {
+		return nil, err
+	}
+
+	specs := make([]PortSpec, 0, len(protocols))
+	for _, p := range protocols {
+		specs = append(specs, PortSpec{HostPort: hostPort, ContainerPort: containerPort, Protocol: p})
+	}
+	return specs, nil
+}
+
+// parsePortNumber validates a port from an expose_ports entry and returns it in
+// canonical form (so "0053" and "53" produce the same mapping key).
+func parsePortNumber(entry, value string) (string, error) {
+	port, err := strconv.Atoi(strings.TrimSpace(value))
+	if err != nil {
+		return "", fmt.Errorf("invalid expose_ports entry %q: %q is not a valid port number", entry, value)
+	}
+	if port < 1 || port > 65535 {
+		return "", fmt.Errorf("invalid expose_ports entry %q: port %d is out of range (must be 1–65535)", entry, port)
+	}
+	return strconv.Itoa(port), nil
+}
+
 // TagSuggestion returns an actionable hint naming a recent calendar tag and
 // "latest", for messages about tags the license server cannot parse.
 func TagSuggestion() string {
@@ -365,6 +476,9 @@ func (c *ContainerConfig) Validate() error {
 	}
 	if port < 1 || port > 65535 {
 		return fmt.Errorf("port %d is out of range (must be 1–65535)", port)
+	}
+	if _, err := c.ExposedPorts(); err != nil {
+		return err
 	}
 	return c.validateVolumes()
 }
