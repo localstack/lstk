@@ -73,6 +73,59 @@ func TestUpdateCheckDoesNotWarnOnSymlinkedAliases(t *testing.T) {
 	require.NotContains(t, stdout, "Multiple lstk installations found")
 }
 
+func TestUpdateCheckDoesNotWarnOnAsdfShimAlias(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("asdf shell shims are Unix-specific")
+	}
+	t.Parallel()
+	asdfDataDir := t.TempDir()
+	installBin := filepath.Join(asdfDataDir, "installs", "nodejs", "22.22.0", "bin")
+	npmPackage := filepath.Join(asdfDataDir, "installs", "nodejs", "22.22.0", "lib", "node_modules", "@localstack", "lstk")
+	shimsDir := filepath.Join(asdfDataDir, "shims")
+	for _, dir := range []string{installBin, npmPackage, shimsDir} {
+		require.NoError(t, os.MkdirAll(dir, 0o755))
+	}
+
+	npmBinary := copyBinaryTo(t, npmPackage)
+	require.NoError(t, os.Symlink(npmBinary, filepath.Join(installBin, "lstk")))
+	shim := "#!/usr/bin/env bash\n# asdf-plugin: nodejs 22.22.0\nexec asdf exec \"lstk\" \"$@\"\n"
+	require.NoError(t, os.WriteFile(filepath.Join(shimsDir, "lstk"), []byte(shim), 0o755))
+
+	environ := env.Environ(testEnvWithHome(t.TempDir(), "")).
+		With(env.Path, installBin+string(os.PathListSeparator)+shimsDir)
+
+	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), environ, "update", "--check")
+	require.NoError(t, err, stderr)
+	require.NotContains(t, stdout, "Multiple lstk installations found")
+}
+
+func TestUpdateCheckDoesNotWarnOnMiseShimAlias(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("mise symlink shims are Unix-specific")
+	}
+	t.Parallel()
+	miseDataDir := t.TempDir()
+	versionDir := filepath.Join(miseDataDir, "installs", "github-localstack-lstk", "0.18.0")
+	shimsDir := filepath.Join(miseDataDir, "shims")
+	require.NoError(t, os.MkdirAll(versionDir, 0o755))
+	require.NoError(t, os.MkdirAll(shimsDir, 0o755))
+
+	copyBinaryTo(t, versionDir)
+	latestDir := filepath.Join(miseDataDir, "installs", "github-localstack-lstk", "latest")
+	require.NoError(t, os.Symlink("./0.18.0", latestDir))
+	// mise shims are symlinks to the mise binary itself (argv[0] dispatch).
+	miseBinary := filepath.Join(t.TempDir(), "mise")
+	require.NoError(t, os.WriteFile(miseBinary, []byte("#!/bin/sh\nexit 0\n"), 0o755))
+	require.NoError(t, os.Symlink(miseBinary, filepath.Join(shimsDir, "lstk")))
+
+	environ := env.Environ(testEnvWithHome(t.TempDir(), "")).
+		With(env.Path, latestDir+string(os.PathListSeparator)+shimsDir)
+
+	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), environ, "update", "--check")
+	require.NoError(t, err, stderr)
+	require.NotContains(t, stdout, "Multiple lstk installations found")
+}
+
 func TestUpdateCheckJSONReportsMultipleInstallsWarning(t *testing.T) {
 	t.Parallel()
 	dirA, dirB := t.TempDir(), t.TempDir()
