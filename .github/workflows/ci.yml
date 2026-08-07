@@ -80,14 +80,14 @@ jobs:
       # (the scan + gate still run).
       - name: Upload SARIF (root module)
         if: always() && github.event.pull_request.head.repo.fork != true
-        uses: github/codeql-action/upload-sarif@v4.37.5
+        uses: github/codeql-action/upload-sarif@v4.37.6
         with:
           sarif_file: govulncheck-root.sarif
           category: govulncheck-root
 
       - name: Upload SARIF (test/integration module)
         if: always() && github.event.pull_request.head.repo.fork != true
-        uses: github/codeql-action/upload-sarif@v4.37.5
+        uses: github/codeql-action/upload-sarif@v4.37.6
         with:
           sarif_file: govulncheck-integration.sarif
           category: govulncheck-integration
