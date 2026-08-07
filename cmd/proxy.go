@@ -62,6 +62,12 @@ func stripGlobalFlags(args []string) ([]string, globalFlags) {
 // subcommand. The token limit follows each CLI's grammar so a positional value
 // is not recorded for flat commands such as `cdk deploy MyStack` or `terraform
 // import ADDRESS ID`; each recorded token is capped at 64 runes.
+//
+// Known limitation: a flag preceding the subcommand tokens (e.g. `aws
+// --profile foo s3 ls`) stops collection immediately, recording an empty
+// subcommand even though "s3 ls" follows. This is accepted as the safer
+// tradeoff over risking a flag or its value being misrecorded as a
+// subcommand token.
 func proxySubcommand(command string, args []string) string {
 	args, _ = stripGlobalFlags(args)
 	limit := 1
