@@ -70,11 +70,11 @@ Examples:
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			sink := output.NewPlainSink(os.Stdout)
 
-			if err := rejectPreSubcommandFlags(cmd.CalledAs()); err != nil {
+			if err := rejectPreSubcommandFlags(cmd.CalledAs(), "--region", "--account"); err != nil {
 				return emitValidationError(sink, err)
 			}
 
-			cdkArgs, regionFlag, accountFlag, _, err := stripLeadingIaCFlags(passthrough, false)
+			cdkArgs, regionFlag, accountFlag, _, err := stripLeadingProxyFlags(passthrough, leadingFlags{account: true, region: true})
 			if err != nil {
 				return emitValidationError(sink, err)
 			}

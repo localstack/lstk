@@ -75,11 +75,11 @@ Examples:
 			// the subcommand. Cobra consumes flags placed before the subcommand
 			// during command resolution (silently dropping them), so guard
 			// against that explicitly with a clear error rather than a no-op.
-			if err := rejectPreSubcommandFlags(cmd.CalledAs()); err != nil {
+			if err := rejectPreSubcommandFlags(cmd.CalledAs(), "--region", "--account"); err != nil {
 				return emitValidationError(sink, err)
 			}
 
-			tfArgs, regionFlag, accountFlag, chdir, err := stripLeadingIaCFlags(passthrough, true)
+			tfArgs, regionFlag, accountFlag, chdir, err := stripLeadingProxyFlags(passthrough, leadingFlags{account: true, region: true, chdir: true})
 			if err != nil {
 				return emitValidationError(sink, err)
 			}

@@ -29,6 +29,8 @@ lstk-specific flags (must appear before the sam action):
   --region <region>    Deployment region (default us-east-1)
   --account <id>       Target AWS account id, 12 digits (default 000000000000)
 
+When --region is given, it is also passed to sam as '--region' for the subcommands that contact AWS, because a 'region' key in samconfig.toml outranks the environment and would otherwise silently win. Without --region, samconfig.toml keeps deciding the region as it always has.
+
 Supported environment variables:
   LSTK_ENDPOINT_URL     Target an externally-managed emulator
   AWS_ENDPOINT_URL      Same as LSTK_ENDPOINT_URL (lower precedence if both are set)
@@ -72,16 +74,16 @@ Examples:
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			sink := output.NewPlainSink(os.Stdout)
 
-			if err := rejectPreSubcommandFlags(cmd.CalledAs()); err != nil {
+			if err := rejectPreSubcommandFlags(cmd.CalledAs(), "--region", "--account"); err != nil {
 				return emitValidationError(sink, err)
 			}
 
-			samArgs, regionFlag, accountFlag, _, err := stripLeadingIaCFlags(passthrough, false)
+			samArgs, regionFlag, accountFlag, _, err := stripLeadingProxyFlags(passthrough, leadingFlags{account: true, region: true})
 			if err != nil {
 				return emitValidationError(sink, err)
 			}
 
-			region := resolveRegion(regionFlag)
+			region, regionSelected := resolveRegionSelection(regionFlag)
 			account, err := resolveAccount(accountFlag)
 			if err != nil {
 				return emitValidationError(sink, err)
@@ -109,11 +111,11 @@ Examples:
 					host, _ := endpoint.ResolveHost(cmd.Context(), awsContainer.Port, cfg.LocalStackHost)
 					endpointURL = "http://" + host
 				}
-				return samcli.Run(cmd.Context(), endpointURL, account, region, sink, logger, samArgs)
+				return samcli.Run(cmd.Context(), endpointURL, account, region, regionSelected, sink, logger, samArgs)
 			}
 
 			if target != nil {
-				return samcli.Run(cmd.Context(), target.URL, account, region, sink, logger, samArgs)
+				return samcli.Run(cmd.Context(), target.URL, account, region, regionSelected, sink, logger, samArgs)
 			}
 
 			rt, err := runtime.NewDockerRuntime(cfg.DockerHost)
@@ -132,7 +134,7 @@ Examples:
 
 			host, _ := endpoint.ResolveHost(cmd.Context(), awsContainer.Port, cfg.LocalStackHost)
 
-			return samcli.Run(cmd.Context(), "http://"+host, account, region, sink, logger, samArgs)
+			return samcli.Run(cmd.Context(), "http://"+host, account, region, regionSelected, sink, logger, samArgs)
 		},
 	}
 }

@@ -1,9 +1,13 @@
 package cmd
 
 import (
+	"fmt"
 	"os"
 	"strconv"
 	"strings"
+
+	"github.com/localstack/lstk/internal/awsconfig"
+	"github.com/localstack/lstk/internal/validate"
 )
 
 type globalFlags struct {
@@ -201,4 +205,169 @@ func stripPreCommandEndpointURL(calledAs string) (args []string, value string, f
 		}
 	}
 	return append(stripped, after...), value, found
+}
+
+// leadingFlags selects which lstk-specific flags a proxy command recognizes in
+// leading position — between the command's own name and the wrapped tool's
+// action.
+type leadingFlags struct {
+	// account recognizes --account. All four proxies set it; cdk parses the
+	// flag only to reject it at the command boundary with an explanation,
+	// which still requires it to be consumed rather than forwarded.
+	account bool
+	// region recognizes --region. The three IaC proxies set it because their
+	// wrapped tools define no equivalent flag. `lstk aws` leaves it false: the
+	// AWS CLI has its own global --region, which must reach it untouched in
+	// every position. Claiming it there would also be actively harmful — lstk
+	// would have to re-encode it as AWS_DEFAULT_REGION, and an environment
+	// region outranks a localstack profile's own `region`, silently overriding
+	// it (see execEnv in internal/awscli).
+	region bool
+	// chdir reads terraform's global -chdir=DIR without consuming it.
+	chdir bool
+}
+
+// leadingFlagSamples supplies an example value per lstk-specific leading flag.
+// Used only to build the placement error in rejectPreSubcommandFlags.
+var leadingFlagSamples = map[string]string{
+	"--region":  "us-west-2",
+	"--account": "111111111111",
+}
+
+// rejectPreSubcommandFlags returns an error if any of flagNames appears before
+// the subcommand token calledAs:
+//
+//	lstk --account 222222222222 sam deploy   rejected
+//	lstk sam --account 222222222222 deploy   the supported placement
+//
+// The recognized set is per-command (see leadingFlags): a pre-command --region is
+// rejected for terraform but forwarded to the AWS CLI for aws, which claims only
+// --account.
+func rejectPreSubcommandFlags(calledAs string, flagNames ...string) error {
+	cmdIdx := -1
+	for i, a := range os.Args {
+		if a == calledAs {
+			cmdIdx = i
+			break
+		}
+	}
+	if cmdIdx <= 0 {
+		return nil
+	}
+	for _, a := range os.Args[1:cmdIdx] {
+		for _, name := range flagNames {
+			if a == name || strings.HasPrefix(a, name+"=") {
+				return fmt.Errorf("%s must appear after the %s subcommand (e.g. `lstk %s %s %s ...`)",
+					strings.Join(flagNames, " and "), calledAs, calledAs, flagNames[0], leadingFlagSamples[flagNames[0]])
+			}
+		}
+	}
+	return nil
+}
+
+// stripLeadingProxyFlags extracts the lstk flags selected by opts from the
+// leading run — everything before the wrapped tool's action — and forwards every
+// other token unchanged. Both --flag value and --flag=value forms are accepted;
+// a leading lstk flag missing its value is an error.
+//
+// The run ends at the action, not at the first token lstk does not own, so
+// lstk's flags work in any order among the tool's own. Stopping early instead
+// leaked --account to the tool, which rejects it as an unknown option, for an
+// ordering distinction no user could see.
+//
+// Locating the action without knowing every tool's flags rests on one
+// assumption: a bare token after a flag that may still take a value (no "=") is
+// that value. At most one is absorbed per flag, so scanning always halts by the
+// second consecutive bare token. That bound is what protects a genuine
+// --account belonging to the tool: the AWS CLI defines one on ten operations,
+// and every one follows a service and an operation — two bare tokens — so
+// scanning has stopped before lstk could reach it.
+//
+// -chdir is read for lstk's working-directory resolution but kept in the args,
+// since terraform must also see it to switch directories; its "=" marks it
+// self-contained, so the action after it is not mistaken for its value.
+func stripLeadingProxyFlags(args []string, opts leadingFlags) (remaining []string, region, account, chdir string, err error) {
+	i := 0
+	// Set when the previous forwarded token was a wrapped-tool flag that may
+	// still consume a value, so the next bare token belongs to it rather than
+	// being the action.
+	pendingValue := false
+	for i < len(args) {
+		arg := args[i]
+		switch {
+		case opts.region && arg == "--region":
+			if i+1 >= len(args) {
+				return nil, "", "", "", fmt.Errorf("--region requires a value")
+			}
+			region = args[i+1]
+			i += 2
+			pendingValue = false
+		case opts.region && strings.HasPrefix(arg, "--region="):
+			region = strings.TrimPrefix(arg, "--region=")
+			i++
+			pendingValue = false
+		case opts.account && arg == "--account":
+			if i+1 >= len(args) {
+				return nil, "", "", "", fmt.Errorf("--account requires a value")
+			}
+			account = args[i+1]
+			i += 2
+			pendingValue = false
+		case opts.account && strings.HasPrefix(arg, "--account="):
+			account = strings.TrimPrefix(arg, "--account=")
+			i++
+			pendingValue = false
+		case strings.HasPrefix(arg, "-"):
+			// A flag belonging to the wrapped tool: forward it and keep looking
+			// for lstk's flags on the far side of it.
+			if opts.chdir && strings.HasPrefix(arg, "-chdir=") {
+				chdir = strings.TrimPrefix(arg, "-chdir=")
+			}
+			remaining = append(remaining, arg)
+			pendingValue = !strings.Contains(arg, "=")
+			i++
+		case pendingValue:
+			remaining = append(remaining, arg)
+			pendingValue = false
+			i++
+		default:
+			return append(remaining, args[i:]...), region, account, chdir, nil
+		}
+	}
+	return remaining, region, account, chdir, nil
+}
+
+// resolveAccountSelection applies the precedence --account flag →
+// AWS_ACCESS_KEY_ID → test, and reports whether the caller explicitly selected a
+// LocalStack account.
+//
+// A selection is a validated --account, or an ambient AWS_ACCESS_KEY_ID that is
+// itself a 12-digit account id — the documented way to address a specific
+// LocalStack account. An ambient value of any other shape is deliberately not a
+// selection, so a stray real credential in a developer's shell cannot displace a
+// configured profile as the credentials source (see execEnv in internal/awscli).
+//
+// A flag value must be exactly 12 digits. An AWS_ACCESS_KEY_ID value is not
+// validated, but is run through DeactivateAccessKey so a real key (AKIA…/ASIA…)
+// accidentally present in the environment is never written into a generated
+// override or sent to LocalStack; the validated 12-digit flag is used as-is
+// (it cannot begin with "A").
+func resolveAccountSelection(flag string) (account string, selected bool, err error) {
+	if flag != "" {
+		if err := validate.AWSAccountID(flag); err != nil {
+			return "", false, fmt.Errorf("--account must be a 12-digit AWS account id, got %q", flag)
+		}
+		return flag, true, nil
+	}
+	if v := os.Getenv("AWS_ACCESS_KEY_ID"); v != "" {
+		return awsconfig.DeactivateAccessKey(v), validate.AWSAccountID(v) == nil, nil
+	}
+	return "test", false, nil
+}
+
+// resolveAccount is resolveAccountSelection for the callers that always encode
+// the resolved account and do not care how it was chosen (terraform, cdk, sam).
+func resolveAccount(flag string) (string, error) {
+	account, _, err := resolveAccountSelection(flag)
+	return account, err
 }
