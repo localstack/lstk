@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -46,6 +47,27 @@ func awsProfileFixture(t *testing.T) []string {
 	}
 }
 
+// awsProbeEnv returns the environment for a probe: the caller's own, with every
+// AWS_* variable removed, plus the given overrides.
+//
+// Stripping rather than building a minimal environment from scratch is what
+// makes this portable. The assertions only require that nothing but the fixture
+// supplies credentials, a region, or a profile, which removing AWS_* guarantees;
+// meanwhile the frozen AWS CLI needs the platform's own variables to start at
+// all. A hand-built PATH+HOME environment aborted the Windows CLI during import
+// with "Could not determine home directory", because Python resolves the home
+// directory from USERPROFILE there, not HOME.
+func awsProbeEnv(extra ...string) []string {
+	var env []string
+	for _, e := range os.Environ() {
+		if strings.HasPrefix(e, "AWS_") {
+			continue
+		}
+		env = append(env, e)
+	}
+	return append(env, extra...)
+}
+
 // awsConfigureList runs the real `aws configure list` with the given extra
 // environment, skipping the test when no aws binary is installed.
 func awsConfigureList(t *testing.T, extraEnv ...string) string {
@@ -55,9 +77,7 @@ func awsConfigureList(t *testing.T, extraEnv ...string) string {
 	}
 
 	cmd := exec.CommandContext(testContext(t), "aws", "configure", "list")
-	// A minimal environment: anything inherited could supply credentials or a
-	// region and make the assertions meaningless.
-	cmd.Env = append([]string{"PATH=" + os.Getenv("PATH"), "HOME=" + t.TempDir()}, extraEnv...)
+	cmd.Env = awsProbeEnv(extraEnv...)
 
 	out, err := cmd.CombinedOutput()
 	require.NoError(t, err, "aws configure list failed: %s", out)
@@ -95,12 +115,10 @@ func TestAWSProfileFlagSuppressesEnvironmentCredentials(t *testing.T) {
 	}
 
 	cmd := exec.CommandContext(testContext(t), "aws", "configure", "list", "--profile", "localstack")
-	cmd.Env = append([]string{
-		"PATH=" + os.Getenv("PATH"),
-		"HOME=" + t.TempDir(),
+	cmd.Env = awsProbeEnv(append(awsProfileFixture(t),
 		"AWS_ACCESS_KEY_ID=111111111111",
 		"AWS_SECRET_ACCESS_KEY=test",
-	}, awsProfileFixture(t)...)
+	)...)
 
 	out, err := cmd.CombinedOutput()
 	require.NoError(t, err, "aws configure list failed: %s", out)

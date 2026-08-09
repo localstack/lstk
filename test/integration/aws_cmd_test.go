@@ -21,7 +21,12 @@ import (
 // Credential variables are printed with ${VAR-<unset>} rather than plain $VAR so
 // tests can tell "removed from the environment" apart from "present but empty" —
 // the distinction the profile path turns on. lstk no longer passes --profile, so
-// the first two args are always `--endpoint-url <url>`.
+// when an endpoint is injected it is always the first two args.
+//
+// The endpoint is matched rather than assumed: the help path runs the AWS CLI
+// with no --endpoint-url at all, and an unconditional `shift 2` there aborts the
+// script under dash ("can't shift that many"), which is /bin/sh on Ubuntu though
+// not on macOS.
 func writeFakeAWS(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
@@ -31,8 +36,12 @@ func writeFakeAWS(t *testing.T) string {
 	}
 
 	script := `#!/bin/sh
-echo "ENDPOINT:$2"
-shift 2
+if [ "$1" = "--endpoint-url" ]; then
+  echo "ENDPOINT:$2"
+  shift 2
+else
+  echo "ENDPOINT:<none>"
+fi
 echo "ARGS:$@"
 echo "AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID-<unset>}"
 echo "AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY-<unset>}"
