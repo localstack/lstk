@@ -38,6 +38,14 @@ Equivalent to running:
   aws --endpoint-url http://localhost:4566 <args>
 with AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, and AWS_DEFAULT_REGION set automatically.
 
+lstk-specific flags (must appear before the aws subcommand):
+  --account <id>       Target LocalStack account id, 12 digits (default 000000000000)
+
+Supported environment variables:
+  LSTK_ENDPOINT_URL     Target an externally-managed emulator
+  AWS_ENDPOINT_URL      Same as LSTK_ENDPOINT_URL (lower precedence if both are set)
+  AWS_ACCESS_KEY_ID     Fallback for --account
+
 Run 'lstk setup aws' to configure the LocalStack AWS profile for use with CLI and SDKs.
 
 Tab completion of AWS services, operations and parameters comes from the AWS CLI itself, and is enabled by 'lstk completion <shell>' along with the rest of lstk's completion.
@@ -45,7 +53,7 @@ Tab completion of AWS services, operations and parameters comes from the AWS CLI
 Examples:
   lstk aws s3 ls
   lstk aws sqs list-queues
-  lstk aws s3 mb s3://my-bucket`,
+  lstk aws --account 111111111111 s3 mb s3://my-bucket`,
 		DisableFlagParsing: true,
 		// Shell completion for `lstk aws` is delegated to the aws CLI's own
 		// completer (DEVX-846). Routing it through Cobra's ValidArgsFunction
@@ -63,6 +71,15 @@ Examples:
 			defer cancel()
 
 			awsArgs, _ := stripGlobalFlags(args)
+			// The leading --account is lstk's, not the AWS CLI's: left in place
+			// it would become part of the COMP_LINE handed to aws_completer and
+			// suppress every candidate. An incomplete flag (`--account <TAB>`)
+			// errors here and degrades to file completion, which is the right
+			// answer for a value lstk cannot complete.
+			awsArgs, _, _, _, err := stripLeadingProxyFlags(awsArgs, leadingFlags{account: true})
+			if err != nil {
+				return nil, cobra.ShellCompDirectiveDefault
+			}
 			candidates, err := awscli.Complete(ctx, awsArgs, toComplete)
 			if err != nil || len(candidates) == 0 {
 				// Nothing may be printed here — stray output corrupts the
@@ -112,10 +129,26 @@ Examples:
 				return output.NewSilentError(err)
 			}
 
+			if err := rejectPreSubcommandFlags(cmd.CalledAs(), "--account"); err != nil {
+				return emitValidationError(sink, err)
+			}
+
+			// Consumed before the help short-circuit below so that
+			// `lstk aws --account … help` reaches the AWS CLI's help without the
+			// flag, rather than forwarding a flag the AWS CLI does not know.
+			awsArgs, _, accountFlag, _, err := stripLeadingProxyFlags(passthrough, leadingFlags{account: true})
+			if err != nil {
+				return emitValidationError(sink, err)
+			}
+			account, accountSelected, err := resolveAccountSelection(accountFlag)
+			if err != nil {
+				return emitValidationError(sink, err)
+			}
+
 			// --help/-h never contacts LocalStack, so it runs directly without
 			// requiring Docker or a running emulator (DEVX-1002).
-			if awscli.IsHelp(passthrough) {
-				return awscli.Exec(cmd.Context(), "", false, false, os.Stdout, os.Stderr, passthrough)
+			if awscli.IsHelp(awsArgs) {
+				return awscli.Exec(cmd.Context(), awscli.ExecOptions{}, os.Stdout, os.Stderr, awsArgs)
 			}
 
 			target, err := endpoint.Resolve(cmd.Context(), cmd)
@@ -185,7 +218,13 @@ Examples:
 			// into the pipeline.
 			usePTY := !cfg.NonInteractive && terminal.IsTerminal(os.Stdout) && terminal.IsTerminal(os.Stderr)
 
-			return awscli.Exec(cmd.Context(), endpointURL, profileExists, usePTY, stdout, stderr, passthrough)
+			return awscli.Exec(cmd.Context(), awscli.ExecOptions{
+				EndpointURL:     endpointURL,
+				Account:         account,
+				UseProfile:      profileExists,
+				AccountSelected: accountSelected,
+				UsePTY:          usePTY,
+			}, stdout, stderr, awsArgs)
 		},
 	}
 }

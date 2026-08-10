@@ -18,6 +18,29 @@ func TestNeedsLocationConstraint(t *testing.T) {
 	assert.True(t, needsLocationConstraint("eu-west-1"))
 }
 
+// Provisioning must address the same LocalStack account as the generated
+// backend block. LocalStack partitions resources by account, so a bucket
+// created under the ambient environment's account would be invisible to the
+// `terraform init` that follows.
+func TestProvisionEnvUsesResolvedAccount(t *testing.T) {
+	t.Setenv("AWS_ACCESS_KEY_ID", "ambient-key")
+
+	env := provisionEnv("111111111111")
+
+	assert.Contains(t, env, "AWS_ACCESS_KEY_ID=111111111111")
+	assert.NotContains(t, env, "AWS_ACCESS_KEY_ID=ambient-key")
+	assert.Contains(t, env, "AWS_SECRET_ACCESS_KEY=test")
+	assert.Contains(t, env, "AWS_S3_ADDRESSING_STYLE=path")
+}
+
+func TestProvisionEnvDefaultAccount(t *testing.T) {
+	t.Setenv("AWS_ACCESS_KEY_ID", "")
+
+	env := provisionEnv("test")
+
+	assert.Contains(t, env, "AWS_ACCESS_KEY_ID=test")
+}
+
 // recordingRunner captures the args of each aws invocation and returns canned
 // results keyed by the verb (the second arg, e.g. "create-bucket").
 type recordingRunner struct {

@@ -164,6 +164,46 @@ func TestAuthToken(t *testing.T) {
 	}
 }
 
+func TestAWSAccountID(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name     string
+		value    string
+		wantErr  bool
+		wantRule string
+	}{
+		{"valid", "111111111111", false, ""},
+		{"default account", "000000000000", false, ""},
+		{"empty", "", true, RuleEmpty},
+		{"control char", "1111111\x0011111", true, RuleControlChars},
+		{"too short", "11111111111", true, RuleRange},
+		{"too long", "1111111111111", true, RuleRange},
+		{"single digit", "1", true, RuleRange},
+		{"right length with letter", "12345678901a", true, RuleFormat},
+		{"real access key", "AKIAIOSFODNN", true, RuleFormat},
+		{"right length with hyphen", "1234-5678901", true, RuleFormat},
+		{"right length with space", "12345678901 ", true, RuleFormat},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			err := AWSAccountID(tt.value)
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("AWSAccountID(%q) error = %v, wantErr %v", tt.value, err, tt.wantErr)
+			}
+			if tt.wantRule != "" {
+				var ve *Error
+				if !errors.As(err, &ve) {
+					t.Fatalf("AWSAccountID(%q) error is not *Error: %v", tt.value, err)
+				}
+				if ve.Rule != tt.wantRule {
+					t.Errorf("AWSAccountID(%q) rule = %q, want %q", tt.value, ve.Rule, tt.wantRule)
+				}
+			}
+		})
+	}
+}
+
 func TestServiceList(t *testing.T) {
 	t.Parallel()
 	tests := []struct {

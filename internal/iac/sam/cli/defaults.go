@@ -1,5 +1,7 @@
 package cli
 
+import "strings"
+
 // minSAMVersion is the lowest AWS SAM CLI version lstk supports. From this
 // version SAM honors AWS_ENDPOINT_URL (via its bundled botocore), which is how
 // lstk points SAM at LocalStack. Older versions ignore it and would silently
@@ -38,6 +40,39 @@ var valueFlags = map[string]bool{}
 // offline subcommands that need no running emulator, or a help request.
 func IsOffline(args []string) bool {
 	return IsHelp(args) || offlineCommands[subcommand(args)]
+}
+
+// withRegionFlag returns args with `--region <region>` appended, so the region
+// reaches SAM as a command-line option rather than only as AWS_REGION in the
+// environment.
+//
+// This is not redundant with BuildEnv. SAM injects samconfig.toml values as if
+// they had been typed on the command line, so a `region` key there outranks
+// every environment variable — measured: with samconfig.toml naming us-east-1
+// and AWS_REGION/AWS_DEFAULT_REGION both naming ap-northeast-1, SAM signs for
+// us-east-1. Only an actual command-line --region beats it. (The account has no
+// samconfig.toml equivalent, which is why it never suffered the same defeat.)
+//
+// Two guards. Offline subcommands are skipped because `init` and `docs` reject
+// --region outright; every AWS-contacting subcommand accepts it. And an existing
+// --region in args is left alone: it is the user addressing sam directly, and
+// appending ours after theirs would silently outrank it.
+func withRegionFlag(args []string, region string) []string {
+	if region == "" || IsOffline(args) || hasRegionFlag(args) {
+		return args
+	}
+	out := make([]string, 0, len(args)+2)
+	out = append(out, args...)
+	return append(out, "--region", region)
+}
+
+func hasRegionFlag(args []string) bool {
+	for _, a := range args {
+		if a == "--region" || strings.HasPrefix(a, "--region=") {
+			return true
+		}
+	}
+	return false
 }
 
 // helpFlags are the flags sam recognizes as a help request.

@@ -137,9 +137,13 @@ When the resolved host is virtual-host-capable (path style off), the `s3` endpoi
 
 The command SHALL accept two lstk-specific flags, `--region` and `--account`, that set the deployment region and the target AWS account ID for the generated provider override. Because these are not standard `terraform` flags, the command SHALL parse and remove them (together with their values) from the argument list before forwarding the remaining arguments to the `terraform` binary. Both `--flag value` and `--flag=value` forms SHALL be supported.
 
-These flags SHALL be recognized only in leading position — that is, immediately after `terraform`/`tf` and before the terraform action and any other arguments. Parsing SHALL stop at the first argument that is not one of these flags (or their values); any `--region`/`--account` appearing after that point SHALL be treated as ordinary terraform arguments and forwarded unchanged. The flags SHALL NOT be defined as root/persistent flags, so a flag placed before the `terraform` subcommand (e.g. `lstk --account … terraform`) is not accepted.
+These flags SHALL be recognized only in leading position — that is, after `terraform`/`tf` and before the terraform action. The leading run ends at the action, **not** at the first argument lstk does not recognize: an argument belonging to the wrapped tool SHALL be forwarded unchanged and scanning SHALL continue, so lstk's flags are recognized in any order relative to the tool's own. Any `--region`/`--account` appearing after the action SHALL be treated as ordinary arguments for the wrapped tool and forwarded unchanged. The flags SHALL NOT be defined as root/persistent flags, so a flag placed before the `terraform` subcommand (e.g. `lstk --account … terraform`) is not accepted.
 
-The resolved region SHALL be selected with precedence: `--region` flag, then the `AWS_REGION` environment variable, then a default of `us-east-1`. The deprecated `AWS_DEFAULT_REGION` environment variable SHALL NOT be consulted.
+Locating the action without knowledge of every wrapped tool's own flags SHALL rest on a single rule: a bare argument following a flag that may still take a value (one containing no `=`) is that flag's value. At most one bare argument SHALL be absorbed per flag, so scanning always halts at or before the second consecutive bare argument, which bounds it to the wrapped tool's action at the latest. That bound is what prevents lstk from consuming an `--account` that genuinely belongs to the wrapped tool — see the `aws-proxy` capability, where the AWS CLI defines a real `--account` parameter on several operations.
+
+This paragraph is the normative statement of leading-flag parsing for every proxy; `cdk-proxy`, `sam-proxy`, and `aws-proxy` refer to it rather than restating it.
+
+The resolved region SHALL be selected with precedence: `--region` flag, then the `AWS_REGION` environment variable, then a default of `us-east-1`. The deprecated `AWS_DEFAULT_REGION` environment variable SHALL NOT be consulted. The system SHALL additionally record whether the region was named by the flag rather than inherited or defaulted, because `sam-proxy` needs that distinction (see its "Region selection" requirement).
 
 The resolved account (provider `access_key`) SHALL be selected with precedence: `--account` flag, then the `AWS_ACCESS_KEY_ID` environment variable, then a default of `test`.
 
@@ -218,6 +222,18 @@ For unproxied subcommands (`fmt`, `validate`, `version`), both flags SHALL be a 
 
 - **WHEN** the user's own `aws` provider block specifies a `region` or `access_key` and `--region`/`--account` (or their env fallbacks) resolve a value
 - **THEN** the generated override block's encoded `region`/`access_key` take effect over the user's values
+
+#### Scenario: lstk flags are recognized in any order relative to the tool's own
+
+- **WHEN** a user runs `lstk terraform -chdir=infra --account 111111111111 apply`, or places any argument the wrapped tool owns before an lstk flag
+- **THEN** the tool's argument is forwarded unchanged, scanning continues past it, and `--account` is still consumed
+- **AND** the result is identical to placing the lstk flag first
+
+#### Scenario: A bare argument after the action ends the leading run
+
+- **WHEN** a user runs `lstk terraform -chdir=infra plan --region us-west-2`
+- **THEN** `plan` ends the leading run — it is not absorbed as `-chdir`'s value, because `-chdir=infra` carries its value inline
+- **AND** `--region us-west-2` is forwarded to `terraform` unchanged
 
 ### Requirement: Working directory selection (`-chdir`)
 
@@ -324,7 +340,9 @@ Backends other than `s3` SHALL NOT be modified; the system SHALL forward such co
 
 Before initializing an S3 backend, the system SHALL ensure the backend's resources exist in LocalStack, because a fresh LocalStack instance contains no state bucket. The system SHALL create the configured state `bucket` if it does not already exist, honoring the backend's configured region. When the backend configures DynamoDB-based locking via `dynamodb_table`, the system SHALL create that table if it does not already exist, with the lock schema Terraform expects (hash key `LockID`). When the backend uses S3-native locking (`use_lockfile = true`) or configures no locking, the system SHALL NOT create a DynamoDB table.
 
-Provisioning SHALL be idempotent: an already-existing bucket or table SHALL be treated as success, not an error. Provisioning SHALL target the resolved LocalStack endpoint using mock credentials and SHALL occur before `terraform` is invoked.
+Provisioning SHALL be idempotent: an already-existing bucket or table SHALL be treated as success, not an error. Provisioning SHALL target the resolved LocalStack endpoint and SHALL occur before `terraform` is invoked.
+
+Provisioning SHALL use the same resolved account as the generated backend configuration (see "Region and account selection"): the `AWS_ACCESS_KEY_ID` of the provisioning calls SHALL be set to that account, overriding any ambient value, and the secret SHALL remain the mock value. LocalStack partitions resources by account, so a bucket provisioned under a different account than the backend block addresses is invisible to `terraform init`, which would then fail against a bucket lstk had just reported creating.
 
 #### Scenario: State bucket is created when absent
 
@@ -346,6 +364,17 @@ Provisioning SHALL be idempotent: an already-existing bucket or table SHALL be t
 
 - **WHEN** the S3 backend sets `use_lockfile = true` or configures no DynamoDB locking
 - **THEN** the system does not create a DynamoDB table
+
+#### Scenario: Provisioning targets the selected account
+
+- **WHEN** the user runs `lstk terraform --account 111111111111 init` against a configuration declaring an S3 backend
+- **THEN** the state bucket (and lock table, when configured) is provisioned in LocalStack account `111111111111`, the same account the generated backend block's `access_key` addresses
+- **AND** `terraform init` finds the bucket
+
+#### Scenario: Provisioning ignores an ambient access key
+
+- **WHEN** the environment sets `AWS_ACCESS_KEY_ID` and provisioning runs for an S3 backend
+- **THEN** the provisioning calls use the resolved account rather than the ambient value verbatim, so they cannot address a different account than the generated backend block
 
 ### Requirement: terraform_remote_state redirection
 

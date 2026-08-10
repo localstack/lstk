@@ -4,23 +4,21 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"regexp"
-	"strings"
 
 	"github.com/localstack/lstk/internal/config"
 	"github.com/localstack/lstk/internal/container"
-	tfcli "github.com/localstack/lstk/internal/iac/terraform/cli"
 	"github.com/localstack/lstk/internal/output"
 	"github.com/localstack/lstk/internal/runtime"
 )
 
-// Shared command-boundary helpers for the IaC proxy commands (terraform, cdk).
-// These live here rather than in any one command's file because both commands
+// Shared command-boundary helpers for the IaC proxy commands (terraform, cdk,
+// sam). These live here rather than in any one command's file because all three
 // depend on them equally; keeping them in cmd/ (not a domain package) is
 // deliberate — they touch config.Get(), the output.Sink, and the raw CLI args,
 // all of which are command-boundary concerns.
-
-var accountIDRe = regexp.MustCompile(`^\d{12}$`)
+//
+// The leading-flag parsing and account resolution that used to live here now
+// sit in proxy.go: `lstk aws` shares them, so they are no longer IaC-specific.
 
 // requireRunningAWSEmulator verifies the AWS emulator is running before an IaC
 // proxy command (terraform/cdk) that contacts AWS proceeds. When it is not
@@ -95,107 +93,30 @@ func emitValidationError(sink output.Sink, err error) error {
 	return output.NewSilentError(err)
 }
 
-// rejectPreSubcommandFlags returns an error if --region or --account appears in
-// the raw command line before the subcommand token. Such flags are consumed by
-// Cobra during command resolution and would otherwise be silently dropped;
-// calledAs is the name the command was invoked as (e.g. "terraform"/"tf"/"cdk").
-func rejectPreSubcommandFlags(calledAs string) error {
-	cmdIdx := -1
-	for i, a := range os.Args {
-		if a == calledAs {
-			cmdIdx = i
-			break
-		}
-	}
-	if cmdIdx <= 0 {
-		return nil
-	}
-	for _, a := range os.Args[1:cmdIdx] {
-		if a == "--region" || a == "--account" ||
-			strings.HasPrefix(a, "--region=") || strings.HasPrefix(a, "--account=") {
-			return fmt.Errorf("--region and --account must appear after the %s subcommand (e.g. `lstk %s --region us-west-2 ...`)", calledAs, calledAs)
-		}
-	}
-	return nil
-}
-
-// stripLeadingIaCFlags extracts the lstk-specific --region/--account flags, and
-// (when recognizeChdir is set) reads terraform's global -chdir, but only in
-// leading position (between the subcommand alias and the action). It accepts
-// both --flag value and --flag=value forms for the lstk flags and -chdir=DIR for
-// chdir, stops at the first token that is none of these (forwarding the rest
-// verbatim), and errors if a leading lstk flag is missing its value.
+// resolveRegionSelection applies the precedence --region flag → AWS_REGION →
+// us-east-1, and reports whether the region was named by the flag rather than
+// inherited or defaulted.
 //
-// --region/--account are consumed and removed from the returned args; -chdir is
-// read for lstk's own working-directory resolution but kept in the returned
-// args, because terraform itself must also see it to switch directories. Only
-// the -chdir=DIR form is recognized (terraform does not accept a space-separated
-// -chdir DIR); any other spelling falls through and is forwarded verbatim. CDK
-// has no -chdir equivalent, so it calls this with recognizeChdir=false and
-// ignores the returned chdir.
-func stripLeadingIaCFlags(args []string, recognizeChdir bool) (remaining []string, region, account, chdir string, err error) {
-	i := 0
-	for i < len(args) {
-		arg := args[i]
-		switch {
-		case arg == "--region":
-			if i+1 >= len(args) {
-				return nil, "", "", "", fmt.Errorf("--region requires a value")
-			}
-			region = args[i+1]
-			i += 2
-		case strings.HasPrefix(arg, "--region="):
-			region = strings.TrimPrefix(arg, "--region=")
-			i++
-		case arg == "--account":
-			if i+1 >= len(args) {
-				return nil, "", "", "", fmt.Errorf("--account requires a value")
-			}
-			account = args[i+1]
-			i += 2
-		case strings.HasPrefix(arg, "--account="):
-			account = strings.TrimPrefix(arg, "--account=")
-			i++
-		case recognizeChdir && strings.HasPrefix(arg, "-chdir="):
-			// Read the value but keep -chdir in the forwarded args so terraform
-			// also switches into it; continue scanning so leading --region/--account
-			// positioned after -chdir are still consumed.
-			chdir = strings.TrimPrefix(arg, "-chdir=")
-			remaining = append(remaining, arg)
-			i++
-		default:
-			return append(remaining, args[i:]...), region, account, chdir, nil
-		}
-	}
-	return remaining, region, account, chdir, nil
-}
-
-// resolveRegion applies the precedence --region flag → AWS_REGION → us-east-1.
-// The deprecated AWS_DEFAULT_REGION is intentionally not consulted.
-func resolveRegion(flag string) string {
+// Only the flag counts as a selection. `lstk sam` uses the signal to decide
+// whether to put --region on sam's own command line, which is the only way to
+// outrank a region in samconfig.toml; treating an ambient AWS_REGION as a
+// selection would start overriding samconfig.toml for the many developers who
+// export it globally for real-AWS work, and defaulting to us-east-1 would
+// override it for everyone. See withRegionFlag in internal/iac/sam/cli.
+func resolveRegionSelection(flag string) (region string, selected bool) {
 	if flag != "" {
-		return flag
+		return flag, true
 	}
 	if v := os.Getenv("AWS_REGION"); v != "" {
-		return v
+		return v, false
 	}
-	return "us-east-1"
+	return "us-east-1", false
 }
 
-// resolveAccount applies the precedence --account flag → AWS_ACCESS_KEY_ID →
-// test. A flag value must be exactly 12 digits. An AWS_ACCESS_KEY_ID value is
-// run through DeactivateAccessKey so a real key (AKIA…/ASIA…) accidentally
-// present in the environment is never written into the override or sent to
-// LocalStack; the validated 12-digit flag is used as-is.
-func resolveAccount(flag string) (string, error) {
-	if flag != "" {
-		if !accountIDRe.MatchString(flag) {
-			return "", fmt.Errorf("--account must be a 12-digit AWS account id, got %q", flag)
-		}
-		return flag, nil
-	}
-	if v := os.Getenv("AWS_ACCESS_KEY_ID"); v != "" {
-		return tfcli.DeactivateAccessKey(v), nil
-	}
-	return "test", nil
+// resolveRegion is resolveRegionSelection for callers that encode the region
+// into their own configuration and do not care how it was chosen (terraform,
+// cdk). The deprecated AWS_DEFAULT_REGION is intentionally not consulted.
+func resolveRegion(flag string) string {
+	region, _ := resolveRegionSelection(flag)
+	return region
 }
