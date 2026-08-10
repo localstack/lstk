@@ -40,6 +40,12 @@ const (
 	// "false" in every test environment: an enabled `az` spawns a background uploader
 	// that keeps a handle on the test's temp dir, breaking t.TempDir() cleanup on Windows.
 	AzureCollectTelemetry Key = "AZURE_CORE_COLLECT_TELEMETRY"
+	// SamCliTelemetry controls the AWS SAM CLI's usage telemetry. Defaulted to
+	// "0" in every test environment: on a fresh (isolated) home, sam's
+	// first-run telemetry path prints an opt-out notice and phones home, which
+	// made `sam validate` in TestSAME2EValidateOffline hang for minutes and
+	// exit non-zero on the Windows runner.
+	SamCliTelemetry Key = "SAM_CLI_TELEMETRY"
 )
 
 // UnreachableAnalyticsEndpoint is a closed local port used as the default
@@ -69,6 +75,7 @@ func Without(keys ...Key) Environ {
 	return Environ(os.Environ()).
 		With(AnalyticsEndpoint, UnreachableAnalyticsEndpoint).
 		With(AzureCollectTelemetry, "false").
+		With(SamCliTelemetry, "0").
 		Without(keys...)
 }
 
@@ -76,6 +83,7 @@ func With(key Key, value string) Environ {
 	return Environ(os.Environ()).
 		With(AnalyticsEndpoint, UnreachableAnalyticsEndpoint).
 		With(AzureCollectTelemetry, "false").
+		With(SamCliTelemetry, "0").
 		With(key, value)
 }
 

@@ -61,6 +61,28 @@ func TestBaseEnvDisablesAzureTelemetry(t *testing.T) {
 	}
 }
 
+// Guards against the AWS SAM CLI's first-run telemetry path: on a fresh
+// (isolated) home it prints an opt-out notice and phones home, which made
+// `sam validate` hang for minutes and exit non-zero on the Windows runner.
+// The base env helpers must opt out unless a test explicitly overrides it.
+func TestBaseEnvDisablesSamTelemetry(t *testing.T) {
+	cases := map[string]Environ{
+		"With":    With("SOME_VAR", "value"),
+		"Without": Without(AuthToken),
+	}
+	for name, e := range cases {
+		t.Run(name, func(t *testing.T) {
+			got, found := resolve(e, SamCliTelemetry)
+			if !found {
+				t.Fatalf("%s did not set %s", name, SamCliTelemetry)
+			}
+			if got != "0" {
+				t.Fatalf("%s SAM telemetry = %q, want %q", name, got, "0")
+			}
+		})
+	}
+}
+
 func TestExplicitAzureTelemetryOverridesDefault(t *testing.T) {
 	e := With(AzureCollectTelemetry, "true")
 	got, _ := resolve(e, AzureCollectTelemetry)
