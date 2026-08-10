@@ -30,6 +30,10 @@ const (
 	// (github.com) at mock servers (undocumented, test-only).
 	UpdateGitHubAPIEndpoint      Key = "LSTK_UPDATE_GITHUB_API_ENDPOINT"
 	UpdateGitHubDownloadEndpoint Key = "LSTK_UPDATE_GITHUB_DOWNLOAD_ENDPOINT"
+	// BrowserCmd replaces the OS browser launcher for the login flow
+	// (undocumented, test-only): on Windows pkg/browser opens URLs via the
+	// ShellExecute Win32 call, which fake binaries on PATH cannot intercept.
+	BrowserCmd Key = "LSTK_BROWSER_CMD"
 	AWSAccessKeyID     Key = "AWS_ACCESS_KEY_ID"
 	AWSSecretAccessKey Key = "AWS_SECRET_ACCESS_KEY"
 	// AzureCollectTelemetry controls the Azure CLI's usage telemetry. Defaulted to

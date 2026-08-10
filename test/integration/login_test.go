@@ -73,24 +73,27 @@ func createMockAPIServer(t *testing.T, licenseToken string, confirmed bool) *htt
 	}))
 }
 
-// fakeBrowserOpener prepends a temp dir to PATH containing fake browser
-// openers that record the URL they were asked to open instead of spawning a
-// real browser tab. It returns the augmented environment and a reader for the
-// recorded URL. The fakes cover the providers github.com/pkg/browser tries on
-// macOS (open), Linux (xdg-open, x-www-browser, www-browser), and Windows
-// (rundll32 url.dll,FileProtocolHandler <url>).
+// fakeBrowserOpener redirects the login flow's browser launch to a recorder
+// that captures the URL instead of spawning a real browser tab. It returns
+// the augmented environment and a reader for the recorded URL. On unix the
+// fakes sit on PATH under the provider names github.com/pkg/browser shells
+// out to (open on macOS; xdg-open, x-www-browser, www-browser on Linux),
+// exercising the real launcher path. On Windows pkg/browser opens URLs via
+// the ShellExecute Win32 call — no subprocess, no PATH lookup — so the
+// recorder is injected through lstk's test-only LSTK_BROWSER_CMD hook.
 func fakeBrowserOpener(t *testing.T, environ env.Environ) (env.Environ, func() string) {
 	t.Helper()
 	dir := t.TempDir()
 	record := filepath.Join(dir, "opened-url")
-	names, urlArg := []string{"open", "xdg-open", "x-www-browser", "www-browser"}, "{arg1}"
 	if runtime.GOOS == "windows" {
-		names, urlArg = []string{"rundll32"}, "{arg2}"
+		installFakeTool(t, dir, "browser-opener", fakeToolConfig{RecordFile: record, RecordContent: "{arg1}"})
+		environ = environ.With(env.BrowserCmd, filepath.Join(dir, execName("browser-opener")))
+	} else {
+		for _, name := range []string{"open", "xdg-open", "x-www-browser", "www-browser"} {
+			installFakeTool(t, dir, name, fakeToolConfig{RecordFile: record, RecordContent: "{arg1}"})
+		}
+		environ = environ.With(env.Path, dir+string(os.PathListSeparator)+os.Getenv("PATH"))
 	}
-	for _, name := range names {
-		installFakeTool(t, dir, name, fakeToolConfig{RecordFile: record, RecordContent: urlArg})
-	}
-	environ = environ.With(env.Path, dir+string(os.PathListSeparator)+os.Getenv("PATH"))
 	return environ, func() string {
 		b, _ := os.ReadFile(record)
 		return string(b)
