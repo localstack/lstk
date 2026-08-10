@@ -3,7 +3,6 @@ package integration_test
 import (
 	"context"
 	"encoding/json"
-	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -12,7 +11,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/creack/pty"
 	"github.com/localstack/lstk/test/integration/env"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -54,7 +52,7 @@ func TestAzE2ERealCLIOnPTYPreservesOutput(t *testing.T) {
 	requireAzCLI(t)
 	token := requireAuthToken(t)
 	if runtime.GOOS == "windows" {
-		t.Skip("PTY not supported on Windows")
+		t.Skip("lstk runs wrapped tools on a Unix PTY only (proc.RunInPTY falls back to pipes on Windows), so the inner-PTY signature this test asserts never appears there")
 	}
 
 	cleanup()
@@ -75,7 +73,7 @@ func TestAzE2ERealCLIOnPTYPreservesOutput(t *testing.T) {
 	mockServer := createMockLicenseServer(true)
 	defer mockServer.Close()
 
-	baseEnv := env.With(env.DisableEvents, "1").With(env.Home, tmpHome).
+	baseEnv := env.With(env.DisableEvents, "1").WithHome(tmpHome).
 		With(env.AuthToken, token).With(env.APIEndpoint, mockServer.URL)
 	workDir := azureWorkDir(t)
 	ctx := testContext(t)
@@ -132,32 +130,25 @@ func runLstkAzInPTY(t *testing.T, ctx context.Context, workDir string, environ [
 	cmd := exec.CommandContext(ctx, binPath, args...)
 	cmd.Dir = workDir
 	cmd.Env = environ
+	p := startCmdInPTY(t, ctx, cmd)
 
-	ptmx, err := pty.Start(cmd)
-	require.NoError(t, err, "failed to start command in PTY")
-	t.Cleanup(func() { _ = ptmx.Close() })
-
-	out := &syncBuffer{}
-	copied := make(chan struct{})
+	type result struct {
+		out string
+		err error
+	}
+	done := make(chan result, 1)
 	go func() {
-		_, _ = io.Copy(out, ptmx)
-		close(copied)
+		out, err := p.wait()
+		done <- result{out, err}
 	}()
 
-	waitErr := make(chan error, 1)
-	go func() { waitErr <- cmd.Wait() }()
+	var r result
 	select {
-	case err = <-waitErr:
+	case r = <-done:
 	case <-time.After(2 * time.Minute):
-		_ = cmd.Process.Kill()
-		err = <-waitErr
+		_ = p.cmd.Process.Kill()
+		r = <-done
 	}
-	require.NoError(t, err, "lstk %v failed on a PTY; output:\n%s", args, out.String())
-
-	// Let the copier drain the slave's remaining bytes before reading.
-	select {
-	case <-copied:
-	case <-time.After(5 * time.Second):
-	}
-	return out.String()
+	require.NoError(t, r.err, "lstk %v failed on a PTY; output:\n%s", args, r.out)
+	return r.out
 }

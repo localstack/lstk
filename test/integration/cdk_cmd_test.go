@@ -1,10 +1,6 @@
 package integration_test
 
 import (
-	"fmt"
-	"os"
-	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
 
@@ -18,51 +14,38 @@ import (
 // environment it was given so tests can assert what lstk injected/stripped.
 func writeFakeCDK(t *testing.T, version string) string {
 	t.Helper()
-	if runtime.GOOS == "windows" {
-		t.Skip("fake cdk script not supported on Windows")
-	}
-	dir := t.TempDir()
-	script := fmt.Sprintf(`#!/bin/sh
-if [ "$1" = "--version" ]; then
-  echo "%s"
-  exit 0
-fi
-echo "ARGS:$*"
-echo "ENV_AWS_ENDPOINT_URL=$AWS_ENDPOINT_URL"
-echo "ENV_AWS_ENDPOINT_URL_S3=$AWS_ENDPOINT_URL_S3"
-echo "ENV_AWS_REGION=$AWS_REGION"
-echo "ENV_AWS_ACCESS_KEY_ID=$AWS_ACCESS_KEY_ID"
-echo "ENV_AWS_SECRET_ACCESS_KEY=$AWS_SECRET_ACCESS_KEY"
-echo "ENV_AWS_PROFILE=${AWS_PROFILE:-<unset>}"
-echo "ENV_AWS_DEFAULT_PROFILE=${AWS_DEFAULT_PROFILE:-<unset>}"
-echo "ENV_AWS_SESSION_TOKEN=${AWS_SESSION_TOKEN:-<unset>}"
-`, version)
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "cdk"), []byte(script), 0755))
-	return dir
+	return writeFakeTool(t, "cdk", fakeToolConfig{
+		Cases: []fakeToolCase{{Args: []string{"--version"}, Stdout: []string{version}}},
+		Stdout: []string{
+			"ARGS:{args}",
+			"ENV_AWS_ENDPOINT_URL={env:AWS_ENDPOINT_URL}",
+			"ENV_AWS_ENDPOINT_URL_S3={env:AWS_ENDPOINT_URL_S3}",
+			"ENV_AWS_REGION={env:AWS_REGION}",
+			"ENV_AWS_ACCESS_KEY_ID={env:AWS_ACCESS_KEY_ID}",
+			"ENV_AWS_SECRET_ACCESS_KEY={env:AWS_SECRET_ACCESS_KEY}",
+			"ENV_AWS_PROFILE={env:AWS_PROFILE:-<unset>}",
+			"ENV_AWS_DEFAULT_PROFILE={env:AWS_DEFAULT_PROFILE:-<unset>}",
+			"ENV_AWS_SESSION_TOKEN={env:AWS_SESSION_TOKEN:-<unset>}",
+		},
+	})
 }
 
 // writeFakeCDKExit creates a stub `cdk` reporting a supported version but exiting
 // with the given code for any real subcommand.
 func writeFakeCDKExit(t *testing.T, code int) string {
 	t.Helper()
-	if runtime.GOOS == "windows" {
-		t.Skip("fake cdk script not supported on Windows")
-	}
-	dir := t.TempDir()
-	script := fmt.Sprintf(`#!/bin/sh
-if [ "$1" = "--version" ]; then echo "2.177.0"; exit 0; fi
-echo "cdk: simulated failure" >&2
-exit %d
-`, code)
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "cdk"), []byte(script), 0755))
-	return dir
+	return writeFakeTool(t, "cdk", fakeToolConfig{
+		Cases:    []fakeToolCase{{Args: []string{"--version"}, Stdout: []string{"2.177.0"}}},
+		Stderr:   []string{"cdk: simulated failure"},
+		ExitCode: code,
+	})
 }
 
 // 7.1 — forwards args. `synth` is offline, so no emulator/Docker is required.
 func TestCDKForwardsArgs(t *testing.T) {
 	t.Parallel()
 	fakeDir := writeFakeCDK(t, "2.177.0 (build abc123)")
-	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).With(env.Home, t.TempDir())
+	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).WithHome(t.TempDir())
 
 	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), e, "cdk", "synth")
 	require.NoError(t, err, "stderr: %s", stderr)
@@ -73,7 +56,7 @@ func TestCDKForwardsArgs(t *testing.T) {
 func TestCDKPropagatesExitCode(t *testing.T) {
 	t.Parallel()
 	fakeDir := writeFakeCDKExit(t, 7)
-	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).With(env.Home, t.TempDir())
+	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).WithHome(t.TempDir())
 
 	_, stderr, err := runLstk(t, testContext(t), t.TempDir(), e, "cdk", "synth")
 	require.Error(t, err)
@@ -89,7 +72,7 @@ func TestCDKInjectsCleanAWSEnv(t *testing.T) {
 	// A 12-digit AWS_ACCESS_KEY_ID would make LocalStack resolve a custom
 	// account; lstk must override it with "test" so CDK always uses the default
 	// account 000000000000.
-	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).With(env.Home, t.TempDir()).
+	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).WithHome(t.TempDir()).
 		With(env.Key("AWS_PROFILE"), "my-real-profile").
 		With(env.Key("AWS_DEFAULT_PROFILE"), "other").
 		With(env.Key("AWS_SESSION_TOKEN"), "realtoken").
@@ -120,7 +103,7 @@ func TestCDKOfflineCommandsNoEmulator(t *testing.T) {
 		t.Run(sub, func(t *testing.T) {
 			t.Parallel()
 			fakeDir := writeFakeCDK(t, "2.177.0")
-			e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).With(env.Home, t.TempDir())
+			e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).WithHome(t.TempDir())
 
 			stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), e,
 				"cdk", "--region", "us-west-2", sub)
@@ -142,7 +125,7 @@ func TestCDKHelpNoEmulator(t *testing.T) {
 		t.Run(strings.Join(args, "_"), func(t *testing.T) {
 			t.Parallel()
 			fakeDir := writeFakeCDK(t, "2.177.0")
-			e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).With(env.Home, t.TempDir())
+			e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).WithHome(t.TempDir())
 
 			cmdArgs := append([]string{"cdk"}, args...)
 			stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), e, cmdArgs...)
@@ -156,7 +139,7 @@ func TestCDKHelpNoEmulator(t *testing.T) {
 func TestCDKVersionTooOld(t *testing.T) {
 	t.Parallel()
 	fakeDir := writeFakeCDK(t, "2.176.0 (build old)")
-	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).With(env.Home, t.TempDir())
+	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).WithHome(t.TempDir())
 
 	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), e, "cdk", "synth")
 	require.Error(t, err)
@@ -168,7 +151,7 @@ func TestCDKVersionTooOld(t *testing.T) {
 // 7.5 — a missing cdk binary yields the install error.
 func TestCDKMissingBinary(t *testing.T) {
 	t.Parallel()
-	e := env.With(env.DisableEvents, "1").With("PATH", t.TempDir()).With(env.Home, t.TempDir())
+	e := env.With(env.DisableEvents, "1").With("PATH", t.TempDir()).WithHome(t.TempDir())
 
 	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), e, "cdk", "synth")
 	require.Error(t, err)
@@ -184,7 +167,7 @@ func TestCDKAccountRejected(t *testing.T) {
 		t.Run(value, func(t *testing.T) {
 			t.Parallel()
 			fakeDir := writeFakeCDK(t, "2.177.0")
-			e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).With(env.Home, t.TempDir())
+			e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).WithHome(t.TempDir())
 
 			stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), e,
 				"cdk", "--account", value, "synth")
@@ -199,7 +182,7 @@ func TestCDKAccountRejected(t *testing.T) {
 func TestCDKFlagsAfterActionAreForwarded(t *testing.T) {
 	t.Parallel()
 	fakeDir := writeFakeCDK(t, "2.177.0")
-	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).With(env.Home, t.TempDir())
+	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).WithHome(t.TempDir())
 
 	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), e,
 		"cdk", "synth", "--region", "us-west-2")
@@ -211,7 +194,7 @@ func TestCDKFlagsAfterActionAreForwarded(t *testing.T) {
 func TestCDKFlagBeforeSubcommandRejected(t *testing.T) {
 	t.Parallel()
 	fakeDir := writeFakeCDK(t, "2.177.0")
-	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).With(env.Home, t.TempDir())
+	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).WithHome(t.TempDir())
 
 	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), e,
 		"--account", "111111111111", "cdk", "synth")
@@ -222,13 +205,11 @@ func TestCDKFlagBeforeSubcommandRejected(t *testing.T) {
 // 7.7 — LSTK_CDK_CMD selects the binary to invoke.
 func TestCDKHonorsLstkCdkCmd(t *testing.T) {
 	t.Parallel()
-	if runtime.GOOS == "windows" {
-		t.Skip("fake cdk script not supported on Windows")
-	}
-	dir := t.TempDir()
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "mycdk"),
-		[]byte("#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then echo \"2.177.0\"; exit 0; fi\necho \"MYCDK:$*\"\n"), 0755))
-	e := env.With(env.DisableEvents, "1").With("PATH", dir).With(env.Home, t.TempDir()).
+	dir := writeFakeTool(t, "mycdk", fakeToolConfig{
+		Cases:  []fakeToolCase{{Args: []string{"--version"}, Stdout: []string{"2.177.0"}}},
+		Stdout: []string{"MYCDK:{args}"},
+	})
+	e := env.With(env.DisableEvents, "1").With("PATH", dir).WithHome(t.TempDir()).
 		With(env.Key("LSTK_CDK_CMD"), "mycdk")
 
 	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), e, "cdk", "synth")
@@ -244,7 +225,7 @@ func TestCDKFailsWhenEmulatorNotRunning(t *testing.T) {
 	t.Cleanup(cleanup)
 
 	fakeDir := writeFakeCDK(t, "2.177.0")
-	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).With(env.Home, t.TempDir())
+	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).WithHome(t.TempDir())
 
 	stdout, _, err := runLstk(t, testContext(t), t.TempDir(), e, "cdk", "deploy")
 	require.Error(t, err)
@@ -266,7 +247,7 @@ func TestCDKRequiresAWSEmulator(t *testing.T) {
 	startTestSnowflakeContainer(t, ctx)
 
 	fakeDir := writeFakeCDK(t, "2.177.0")
-	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).With(env.Home, t.TempDir())
+	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).WithHome(t.TempDir())
 
 	stdout, _, err := runLstk(t, ctx, t.TempDir(), e, "cdk", "deploy")
 	require.Error(t, err)

@@ -56,7 +56,7 @@ func startRealLocalStackWithConfig(t *testing.T, ctx context.Context, token, con
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = os.RemoveAll(home) })
 
-	e := env.With(env.DisableEvents, "1").With(env.Home, home).With(env.AuthToken, token)
+	e := env.With(env.DisableEvents, "1").WithHome(home).With(env.AuthToken, token)
 	args := []string{}
 	if configPath != "" {
 		args = append(args, "--config", configPath)

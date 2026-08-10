@@ -1,7 +1,6 @@
 package integration_test
 
 import (
-	"bytes"
 	"context"
 	"crypto/tls"
 	"fmt"
@@ -19,7 +18,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/creack/pty"
 	"github.com/localstack/lstk/test/integration/env"
 	"github.com/moby/moby/api/types/network"
 	"github.com/moby/moby/client"
@@ -354,9 +352,6 @@ func TestStartCommandFailsWhenPortInUse(t *testing.T) {
 }
 
 func TestStartDoesNotHangWithExternalContainerAndNoCachedLabel(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("PTY not supported on Windows")
-	}
 	requireDocker(t)
 	cleanup()
 	t.Cleanup(cleanup)
@@ -379,7 +374,7 @@ func TestStartDoesNotHangWithExternalContainerAndNoCachedLabel(t *testing.T) {
 	require.NoError(t, os.WriteFile(configFile, []byte("[[containers]]\ntype = \"aws\"\ntag = \"latest\"\nport = \"4566\"\n"), 0644))
 
 	stdout, err := runLstkInPTY(t, ctx,
-		env.With(env.AuthToken, "fake-token").With(env.Home, home),
+		env.With(env.AuthToken, "fake-token").WithHome(home),
 		"start", "--config", configFile,
 	)
 	require.NoError(t, err, "lstk start hung: TUI did not exit when external container was running and no plan label was cached")
@@ -1279,9 +1274,6 @@ func containerEnvToMap(envList []string) map[string]string {
 }
 
 func TestStartHidesHeaderUntilAuthComplete(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("PTY not supported on Windows")
-	}
 	requireDocker(t)
 
 	cleanup()
@@ -1293,38 +1285,22 @@ func TestStartHidesHeaderUntilAuthComplete(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, binaryPath(), "start")
-	cmd.Env = env.Without(env.AuthToken).With(env.APIEndpoint, mockServer.URL)
-
-	ptmx, err := pty.Start(cmd)
-	require.NoError(t, err, "failed to start command in PTY")
-	defer func() { _ = ptmx.Close() }()
-
-	output := &syncBuffer{}
-	go func() {
-		_, _ = io.Copy(output, ptmx)
-	}()
+	p := startLstkInPTY(t, ctx, env.Without(env.AuthToken).With(env.APIEndpoint, mockServer.URL), "start")
 
 	// Wait for the login prompt — header must not be visible yet.
-	require.Eventually(t, func() bool {
-		return bytes.Contains(output.Bytes(), []byte("Press any key when complete"))
-	}, 10*time.Second, 100*time.Millisecond, "auth prompt should appear")
+	p.waitForOutput("Press any key when complete", "auth prompt should appear")
 
-	assert.NotContains(t, output.String(), "lstk ", "header must be hidden while auth is pending")
+	assert.NotContains(t, p.output(), "lstk ", "header must be hidden while auth is pending")
 
 	// Complete auth by pressing ENTER.
-	_, err = ptmx.Write([]byte("\r"))
-	require.NoError(t, err)
+	p.write("\r")
 
 	// After auth completes, the header must appear. Look for the header's
 	// "lstk " prefix — the version that follows is wrapped in ANSI styling
 	// so a contiguous "lstk (" match would fail under terminal rendering.
-	require.Eventually(t, func() bool {
-		return bytes.Contains(output.Bytes(), []byte("lstk "))
-	}, 10*time.Second, 100*time.Millisecond, "header should appear after auth completes")
+	p.waitForOutput("lstk ", "header should appear after auth completes")
 
-	cancel()
-	_ = cmd.Wait()
+	p.kill()
 }
 
 // TestStartWithCustomImageFailsClearlyWhenUnavailable verifies that a configured
@@ -1784,9 +1760,6 @@ func TestStartCommandSucceedsForAzure(t *testing.T) {
 }
 
 func TestStartCommandForAzureShowsPlanFromActivatedLicense(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("PTY not supported on Windows")
-	}
 	requireDocker(t)
 	cleanup()
 	cleanupAzure()

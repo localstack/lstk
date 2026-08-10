@@ -2,6 +2,7 @@ package env
 
 import (
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -93,4 +94,22 @@ func (e Environ) Without(keys ...Key) Environ {
 
 func (e Environ) With(key Key, value string) Environ {
 	return append(e, string(key)+"="+value)
+}
+
+// WithHome points the process home directory at dir on every OS: HOME (what
+// Unix and most tools read), plus USERPROFILE (what os.UserHomeDir reads on
+// Windows) and APPDATA (os.UserConfigDir on Windows), so the binary under
+// test resolves the same isolated home everywhere. Setting only HOME leaves a
+// Windows binary pointed at the real user profile.
+func (e Environ) WithHome(dir string) Environ {
+	return e.With(Home, dir).
+		With(UserProfile, dir).
+		With(Key("APPDATA"), filepath.Join(dir, "AppData", "Roaming"))
+}
+
+// WithHome is the package-level variant of Environ.WithHome, starting from
+// the current process environment (with the usual test-safe analytics and
+// Azure-telemetry defaults applied).
+func WithHome(dir string) Environ {
+	return Without().WithHome(dir)
 }

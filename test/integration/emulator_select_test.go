@@ -1,17 +1,13 @@
 package integration_test
 
 import (
-	"bytes"
 	"context"
-	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
-	"runtime"
+	"strings"
 	"testing"
 	"time"
 
-	"github.com/creack/pty"
 	"github.com/localstack/lstk/test/integration/env"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -19,9 +15,6 @@ import (
 
 func TestNoEmulatorSelectionWhenConfigExists(t *testing.T) {
 	t.Parallel()
-	if runtime.GOOS == "windows" {
-		t.Skip("PTY not supported on Windows")
-	}
 
 	tmpHome := t.TempDir()
 	require.NoError(t, os.MkdirAll(filepath.Join(tmpHome, ".config"), 0755))
@@ -37,34 +30,18 @@ func TestNoEmulatorSelectionWhenConfigExists(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, binaryPath(), "start")
-	cmd.Env = e
-
-	ptmx, err := pty.Start(cmd)
-	require.NoError(t, err, "failed to start lstk in PTY")
-	defer func() { _ = ptmx.Close() }()
-
-	out := &syncBuffer{}
-	outputCh := make(chan struct{})
-	go func() {
-		_, _ = io.Copy(out, ptmx)
-		close(outputCh)
-	}()
+	p := startLstkInPTY(t, ctx, e, "start")
 
 	assert.Never(t, func() bool {
-		return bytes.Contains(out.Bytes(), []byte("Which emulator would you like to use?"))
+		return strings.Contains(p.output(), "Which emulator would you like to use?")
 	}, 2*time.Second, 100*time.Millisecond, "emulator selection prompt should not appear when config already exists")
 
-	cancel()
-	<-outputCh
+	p.kill()
 }
 
 func TestFirstRunShowsEmulatorSelectionPrompt(t *testing.T) {
 	requireDocker(t)
 	t.Parallel()
-	if runtime.GOOS == "windows" {
-		t.Skip("PTY not supported on Windows")
-	}
 
 	tmpHome := t.TempDir()
 	require.NoError(t, os.MkdirAll(filepath.Join(tmpHome, ".config"), 0755))
@@ -79,31 +56,14 @@ func TestFirstRunShowsEmulatorSelectionPrompt(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, binaryPath(), "start")
-	cmd.Env = e
+	p := startLstkInPTY(t, ctx, e, "start")
 
-	ptmx, err := pty.Start(cmd)
-	require.NoError(t, err, "failed to start lstk in PTY")
-	defer func() { _ = ptmx.Close() }()
-
-	out := &syncBuffer{}
-	outputCh := make(chan struct{})
-	go func() {
-		_, _ = io.Copy(out, ptmx)
-		close(outputCh)
-	}()
-
-	require.Eventually(t, func() bool {
-		return bytes.Contains(out.Bytes(), []byte("Which emulator would you like to use?"))
-	}, 10*time.Second, 100*time.Millisecond, "emulator selection prompt should appear on first run")
+	p.waitForOutput("Which emulator would you like to use?", "emulator selection prompt should appear on first run")
 
 	// Confirm the default-highlighted option (AWS) by pressing Enter.
-	_, err = ptmx.Write([]byte("\r"))
-	require.NoError(t, err)
+	p.write("\r")
 
-	require.Eventually(t, func() bool {
-		return bytes.Contains(out.Bytes(), []byte("AWS emulator selected."))
-	}, 10*time.Second, 100*time.Millisecond, "selection confirmation should appear after pressing Enter")
+	p.waitForOutput("AWS emulator selected.", "selection confirmation should appear after pressing Enter")
 
 	// SetEmulatorType writes the config before emitting the confirmation message,
 	// so the file is guaranteed to exist and contain the selection by this point.
@@ -111,8 +71,7 @@ func TestFirstRunShowsEmulatorSelectionPrompt(t *testing.T) {
 	require.NoError(t, err)
 	assert.Contains(t, string(configData), `type = "aws"`)
 
-	cancel()
-	<-outputCh
+	p.kill()
 }
 
 // Running an unrelated command (one that doesn't itself start the emulator)
@@ -124,9 +83,6 @@ func TestFirstRunShowsEmulatorSelectionPrompt(t *testing.T) {
 func TestFirstRunStillShowsSelectionPromptAfterRunningAnotherCommand(t *testing.T) {
 	requireDocker(t)
 	t.Parallel()
-	if runtime.GOOS == "windows" {
-		t.Skip("PTY not supported on Windows")
-	}
 
 	tmpHome := t.TempDir()
 	require.NoError(t, os.MkdirAll(filepath.Join(tmpHome, ".config"), 0755))
@@ -147,35 +103,17 @@ func TestFirstRunStillShowsSelectionPromptAfterRunningAnotherCommand(t *testing.
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, binaryPath(), "start")
-	cmd.Env = e
+	p := startLstkInPTY(t, ctx, e, "start")
 
-	ptmx, err := pty.Start(cmd)
-	require.NoError(t, err, "failed to start lstk in PTY")
-	defer func() { _ = ptmx.Close() }()
-
-	out := &syncBuffer{}
-	outputCh := make(chan struct{})
-	go func() {
-		_, _ = io.Copy(out, ptmx)
-		close(outputCh)
-	}()
-
-	require.Eventually(t, func() bool {
-		return bytes.Contains(out.Bytes(), []byte("Which emulator would you like to use?"))
-	}, 10*time.Second, 100*time.Millisecond,
+	p.waitForOutput("Which emulator would you like to use?",
 		"emulator selection prompt should still appear on first `start` even after running another command first")
 
-	cancel()
-	<-outputCh
+	p.kill()
 }
 
 func TestFirstRunCanSelectAzureEmulator(t *testing.T) {
 	requireDocker(t)
 	t.Parallel()
-	if runtime.GOOS == "windows" {
-		t.Skip("PTY not supported on Windows")
-	}
 
 	tmpHome := t.TempDir()
 	require.NoError(t, os.MkdirAll(filepath.Join(tmpHome, ".config"), 0755))
@@ -189,48 +127,27 @@ func TestFirstRunCanSelectAzureEmulator(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, binaryPath(), "start")
-	cmd.Env = e
+	p := startLstkInPTY(t, ctx, e, "start")
 
-	ptmx, err := pty.Start(cmd)
-	require.NoError(t, err, "failed to start lstk in PTY")
-	defer func() { _ = ptmx.Close() }()
+	p.waitForOutput("Which emulator would you like to use?", "emulator selection prompt should appear on first run")
 
-	out := &syncBuffer{}
-	outputCh := make(chan struct{})
-	go func() {
-		_, _ = io.Copy(out, ptmx)
-		close(outputCh)
-	}()
-
-	require.Eventually(t, func() bool {
-		return bytes.Contains(out.Bytes(), []byte("Which emulator would you like to use?"))
-	}, 10*time.Second, 100*time.Millisecond, "emulator selection prompt should appear on first run")
-
-	assert.Contains(t, out.String(), "Azure", "Azure should be offered as a selectable emulator")
+	assert.Contains(t, p.output(), "Azure", "Azure should be offered as a selectable emulator")
 
 	// Press the Azure selection key ('z') instead of the default-highlighted AWS.
-	_, err = ptmx.Write([]byte("z"))
-	require.NoError(t, err)
+	p.write("z")
 
-	require.Eventually(t, func() bool {
-		return bytes.Contains(out.Bytes(), []byte("Azure emulator selected."))
-	}, 10*time.Second, 100*time.Millisecond, "Azure selection confirmation should appear")
+	p.waitForOutput("Azure emulator selected.", "Azure selection confirmation should appear")
 
 	configData, err := os.ReadFile(configPath)
 	require.NoError(t, err)
 	assert.Contains(t, string(configData), `type = "azure"`)
 
-	cancel()
-	<-outputCh
+	p.kill()
 }
 
 func TestFirstRunPromptsForLoginBeforeEmulatorSelection(t *testing.T) {
 	requireDocker(t)
 	t.Parallel()
-	if runtime.GOOS == "windows" {
-		t.Skip("PTY not supported on Windows")
-	}
 
 	mockServer := createMockAPIServer(t, "test-license-token", true)
 	defer mockServer.Close()
@@ -250,36 +167,18 @@ func TestFirstRunPromptsForLoginBeforeEmulatorSelection(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, binaryPath(), "start")
-	cmd.Env = e
+	p := startLstkInPTY(t, ctx, e, "start")
 
-	ptmx, err := pty.Start(cmd)
-	require.NoError(t, err, "failed to start lstk in PTY")
-	defer func() { _ = ptmx.Close() }()
+	p.waitForOutput("Press any key when complete", "auth prompt should appear on first run when no token is set")
 
-	out := &syncBuffer{}
-	outputCh := make(chan struct{})
-	go func() {
-		_, _ = io.Copy(out, ptmx)
-		close(outputCh)
-	}()
-
-	require.Eventually(t, func() bool {
-		return bytes.Contains(out.Bytes(), []byte("Press any key when complete"))
-	}, 10*time.Second, 100*time.Millisecond, "auth prompt should appear on first run when no token is set")
-
-	assert.NotContains(t, out.String(), "Which emulator would you like to use?",
+	assert.NotContains(t, p.output(), "Which emulator would you like to use?",
 		"emulator selection prompt must not appear before auth completes")
 
-	_, err = ptmx.Write([]byte("\r"))
-	require.NoError(t, err)
+	p.write("\r")
 
-	require.Eventually(t, func() bool {
-		return bytes.Contains(out.Bytes(), []byte("Which emulator would you like to use?"))
-	}, 10*time.Second, 100*time.Millisecond, "emulator selection prompt should appear after auth completes")
+	p.waitForOutput("Which emulator would you like to use?", "emulator selection prompt should appear after auth completes")
 
-	cancel()
-	<-outputCh
+	p.kill()
 }
 
 func TestFirstRunNonInteractiveEmitsDefaultEmulatorNote(t *testing.T) {
@@ -304,9 +203,6 @@ func TestFirstRunNonInteractiveEmitsDefaultEmulatorNote(t *testing.T) {
 func TestEmulatorSelectionReappearsAfterFailedFirstRun(t *testing.T) {
 	requireDocker(t)
 	t.Parallel()
-	if runtime.GOOS == "windows" {
-		t.Skip("PTY not supported on Windows")
-	}
 
 	tmpHome := t.TempDir()
 	require.NoError(t, os.MkdirAll(filepath.Join(tmpHome, ".config"), 0755))
@@ -316,7 +212,7 @@ func TestEmulatorSelectionReappearsAfterFailedFirstRun(t *testing.T) {
 	require.NoError(t, err)
 	require.NoFileExists(t, configPath)
 
-	noDocker := base.With(env.Key("DOCKER_HOST"), "unix:///var/run/docker-does-not-exist.sock")
+	noDocker := base.With(env.Key("DOCKER_HOST"), "tcp://localhost:1")
 	stdout, _, runErr := runLstk(t, testContext(t), "", noDocker, "--non-interactive")
 	require.Error(t, runErr, "first run should fail when Docker is unavailable")
 	assert.Contains(t, stdout, "Docker is not available")
@@ -325,27 +221,12 @@ func TestEmulatorSelectionReappearsAfterFailedFirstRun(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, binaryPath(), "start")
-	cmd.Env = base
+	p := startLstkInPTY(t, ctx, base, "start")
 
-	ptmx, err := pty.Start(cmd)
-	require.NoError(t, err, "failed to start lstk in PTY")
-	defer func() { _ = ptmx.Close() }()
-
-	out := &syncBuffer{}
-	outputCh := make(chan struct{})
-	go func() {
-		_, _ = io.Copy(out, ptmx)
-		close(outputCh)
-	}()
-
-	require.Eventually(t, func() bool {
-		return bytes.Contains(out.Bytes(), []byte("Which emulator would you like to use?"))
-	}, 10*time.Second, 100*time.Millisecond,
+	p.waitForOutput("Which emulator would you like to use?",
 		"emulator selection prompt should reappear after a first run that failed before selection")
 
-	cancel()
-	<-outputCh
+	p.kill()
 }
 
 // Deleting the config directory after a successful run must trigger the emulator
@@ -354,9 +235,6 @@ func TestEmulatorSelectionReappearsAfterFailedFirstRun(t *testing.T) {
 func TestEmulatorSelectionReappearsAfterConfigDirDeleted(t *testing.T) {
 	requireDocker(t)
 	t.Parallel()
-	if runtime.GOOS == "windows" {
-		t.Skip("PTY not supported on Windows")
-	}
 
 	tmpHome := t.TempDir()
 	require.NoError(t, os.MkdirAll(filepath.Join(tmpHome, ".config"), 0755))
@@ -380,34 +258,16 @@ func TestEmulatorSelectionReappearsAfterConfigDirDeleted(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, binaryPath(), "start")
-	cmd.Env = e
+	p := startLstkInPTY(t, ctx, e, "start")
 
-	ptmx, err := pty.Start(cmd)
-	require.NoError(t, err, "failed to start lstk in PTY")
-	defer func() { _ = ptmx.Close() }()
-
-	out := &syncBuffer{}
-	outputCh := make(chan struct{})
-	go func() {
-		_, _ = io.Copy(out, ptmx)
-		close(outputCh)
-	}()
-
-	require.Eventually(t, func() bool {
-		return bytes.Contains(out.Bytes(), []byte("Which emulator would you like to use?"))
-	}, 10*time.Second, 100*time.Millisecond,
+	p.waitForOutput("Which emulator would you like to use?",
 		"emulator selection prompt should reappear after the config directory is deleted")
 
-	cancel()
-	<-outputCh
+	p.kill()
 }
 
 func TestFirstRunChecksDockerBeforeAuthAndSelection(t *testing.T) {
 	t.Parallel()
-	if runtime.GOOS == "windows" {
-		t.Skip("PTY/Unix socket test")
-	}
 
 	mockServer := createMockAPIServer(t, "test-license-token", true)
 	defer mockServer.Close()
@@ -418,7 +278,7 @@ func TestFirstRunChecksDockerBeforeAuthAndSelection(t *testing.T) {
 		Without(env.AuthToken).
 		With(env.APIEndpoint, mockServer.URL).
 		With(env.DisableEvents, "1").
-		With(env.Key("DOCKER_HOST"), "unix:///var/run/docker-does-not-exist.sock")
+		With(env.Key("DOCKER_HOST"), "tcp://localhost:1")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()

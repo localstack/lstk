@@ -2,12 +2,10 @@ package integration_test
 
 import (
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
-	"runtime"
 	"testing"
 
 	"github.com/localstack/lstk/test/integration/env"
@@ -20,7 +18,7 @@ func TestAzCommandFailsWhenAzureCLINotInstalled(t *testing.T) {
 	workDir := azureWorkDir(t)
 	writeAzureSetupMarker(t, workDir)
 
-	e := env.With(env.DisableEvents, "1").With("PATH", t.TempDir()).With(env.Home, t.TempDir())
+	e := env.With(env.DisableEvents, "1").With("PATH", t.TempDir()).WithHome(t.TempDir())
 
 	stdout, _, err := runLstk(t, testContext(t), workDir, e, "az", "group", "list")
 	require.Error(t, err)
@@ -49,23 +47,15 @@ func azureHealthServer(t *testing.T) *httptest.Server {
 	return srv
 }
 
-// writeFakeAz creates a shell script that mimics `az` by printing its args,
-// sleeping first when sleepSeconds > 0 so PTY-based tests have time to observe
-// the spinner. Returns the directory containing the script (to prepend to PATH).
+// writeFakeAz creates a fake `az` that prints its args, sleeping first when
+// sleepSeconds > 0 so PTY-based tests have time to observe the spinner.
+// Returns the directory containing it (to prepend to PATH).
 func writeFakeAz(t *testing.T, sleepSeconds int) string {
 	t.Helper()
-	if runtime.GOOS == "windows" {
-		t.Skip("fake az script not supported on Windows")
-	}
-	dir := t.TempDir()
-	script := "#!/bin/sh\n"
-	if sleepSeconds > 0 {
-		script += fmt.Sprintf("sleep %d\n", sleepSeconds)
-	}
-	script += `echo "AZ_ARGS:$@"
-`
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "az"), []byte(script), 0755))
-	return dir
+	return writeFakeTool(t, "az", fakeToolConfig{
+		SleepSeconds: sleepSeconds,
+		Stdout:       []string{"AZ_ARGS:{args}"},
+	})
 }
 
 // azureConfigWithSetupMarker writes a config.toml holding an Azure container at
@@ -94,7 +84,7 @@ port = "4566"
 // would fail loudly instead of silently passing on a developer machine.
 func azFakeEnv(t *testing.T, fakeDir, homeDir string) []string {
 	t.Helper()
-	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir+":/bin:/usr/bin").With(env.Home, homeDir)
+	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).WithHome(homeDir)
 	return append(e, unreachableDockerHost)
 }
 

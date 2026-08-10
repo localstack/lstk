@@ -10,7 +10,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -22,7 +21,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/creack/pty"
 	"github.com/localstack/lstk/test/integration/env"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -316,14 +314,11 @@ func TestUpdateHomebrew(t *testing.T) {
 
 func TestUpdateNotification(t *testing.T) {
 	t.Parallel()
-	if runtime.GOOS == "windows" {
-		t.Skip("PTY not supported on Windows")
-	}
 
 	ctx := testContext(t)
 
 	// Build a fake old version to a temp location
-	tmpBinary := filepath.Join(t.TempDir(), "lstk")
+	tmpBinary := filepath.Join(t.TempDir(), execName("lstk"))
 	repoRoot, err := filepath.Abs("../..")
 	require.NoError(t, err)
 
@@ -357,28 +352,12 @@ port = "4566"    # Host port
 		cmd := exec.CommandContext(ctx, tmpBinary, "--config", configFile)
 		cmd.Env = env.Without(env.AuthToken).With(env.AuthToken, "fake-token").With(env.APIEndpoint, mockServer.URL)
 
-		ptmx, err := pty.Start(cmd)
-		require.NoError(t, err, "failed to start command in PTY")
-		defer func() { _ = ptmx.Close() }()
+		p := startCmdInPTY(t, ctx, cmd)
+		p.waitForOutput("New lstk version available", "update notification prompt should appear")
+		p.write("s")
 
-		output := &syncBuffer{}
-		outputCh := make(chan struct{})
-		go func() {
-			_, _ = io.Copy(output, ptmx)
-			close(outputCh)
-		}()
-
-		require.Eventually(t, func() bool {
-			return bytes.Contains(output.Bytes(), []byte("New lstk version available"))
-		}, 10*time.Second, 100*time.Millisecond, "update notification prompt should appear")
-
-		_, err = ptmx.Write([]byte("s"))
-		require.NoError(t, err)
-
-		_ = cmd.Wait()
-		<-outputCh
-
-		assert.Contains(t, output.String(), "New lstk version available")
+		out, _ := p.wait()
+		assert.Contains(t, out, "New lstk version available")
 
 		configData, err := os.ReadFile(configFile)
 		require.NoError(t, err)
@@ -392,7 +371,7 @@ port = "4566"    # Host port
 	t.Run("update", func(t *testing.T) {
 		t.Parallel()
 		// Copy binary since it will be replaced during the update
-		updateBinary := filepath.Join(t.TempDir(), "lstk")
+		updateBinary := filepath.Join(t.TempDir(), execName("lstk"))
 		data, err := os.ReadFile(tmpBinary)
 		require.NoError(t, err)
 		require.NoError(t, os.WriteFile(updateBinary, data, 0o755))
@@ -406,28 +385,11 @@ port = "4566"    # Host port
 		cmd := exec.CommandContext(ctx, updateBinary, "--config", configFile)
 		cmd.Env = env.Without(env.AuthToken).With(env.AuthToken, "fake-token").With(env.APIEndpoint, mockServer.URL)
 
-		ptmx, err := pty.Start(cmd)
-		require.NoError(t, err, "failed to start command in PTY")
-		defer func() { _ = ptmx.Close() }()
+		p := startCmdInPTY(t, ctx, cmd)
+		p.waitForOutput("New lstk version available", "update notification prompt should appear")
+		p.write("u")
 
-		output := &syncBuffer{}
-		outputCh := make(chan struct{})
-		go func() {
-			_, _ = io.Copy(output, ptmx)
-			close(outputCh)
-		}()
-
-		require.Eventually(t, func() bool {
-			return bytes.Contains(output.Bytes(), []byte("New lstk version available"))
-		}, 10*time.Second, 100*time.Millisecond, "update notification prompt should appear")
-
-		_, err = ptmx.Write([]byte("u"))
-		require.NoError(t, err)
-
-		err = cmd.Wait()
-		<-outputCh
-
-		out := output.String()
+		out, err := p.wait()
 		require.NoError(t, err, "update should succeed: %s", out)
 		assert.Contains(t, out, "New lstk version available")
 		assert.Contains(t, out, "Updated to")

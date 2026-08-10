@@ -52,7 +52,7 @@ func runSAM(t *testing.T, ctx context.Context, work string, e env.Environ, args 
 // HOME.
 func samE2EEnv(t *testing.T) env.Environ {
 	t.Helper()
-	return env.With(env.DisableEvents, "1").With(env.Home, t.TempDir())
+	return env.With(env.DisableEvents, "1").WithHome(t.TempDir())
 }
 
 // `sam validate` succeeds offline (no running emulator required).
