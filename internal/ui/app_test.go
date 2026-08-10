@@ -201,6 +201,70 @@ func TestAppEnterRespondsToInputRequest(t *testing.T) {
 	}
 }
 
+// TestAppPendingInputSurvivesDeferredSpinnerStop covers DEVX-1045: a prompt
+// emitted right after a spinner was stopped inside its min duration used to be
+// parked in the spinner's text, and the min-duration tick then erased it. The
+// user saw a blank screen while the domain waited on ResponseCh — `lstk start`
+// looked hung after a rotated auth token was rejected.
+func TestAppPendingInputSurvivesDeferredSpinnerStop(t *testing.T) {
+	t.Parallel()
+
+	app := NewApp("dev", "", "", nil)
+
+	model, _ := app.Update(output.SpinnerStart("Checking license"))
+	app = model.(App)
+
+	// A definitive license rejection comes back in well under the spinner's min
+	// duration, so the stop is deferred and the spinner is still on screen when
+	// the prompt arrives.
+	model, _ = app.Update(output.SpinnerStop())
+	app = model.(App)
+	if !app.spinner.PendingStop() {
+		t.Fatal("expected the spinner stop to be deferred by the min duration")
+	}
+
+	prompt := "License validation failed. Log in again to refresh your credentials?"
+	responseCh := make(chan output.InputResponse, 1)
+	model, _ = app.Update(output.UserInputRequestEvent{
+		Prompt:     prompt,
+		Options:    []output.InputOption{{Key: "enter", Label: "ENTER to log in again"}},
+		ResponseCh: responseCh,
+	})
+	app = model.(App)
+
+	model, _ = app.Update(components.SpinnerMinDurationElapsedMsg{})
+	app = model.(App)
+
+	if app.spinner.Visible() {
+		t.Fatal("expected the spinner to be gone once the min duration elapsed")
+	}
+	if !app.inputPrompt.Visible() {
+		t.Fatal("expected the prompt to survive the spinner it was emitted under")
+	}
+	if view := app.View(); !strings.Contains(view, prompt) {
+		t.Fatalf("expected the prompt to stay on screen, got:\n%s", view)
+	}
+
+	model, cmd := app.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	app = model.(App)
+	if cmd == nil {
+		t.Fatal("expected response command")
+	}
+	cmd()
+
+	select {
+	case resp := <-responseCh:
+		if resp.SelectedKey != "enter" {
+			t.Fatalf("expected enter key, got %q", resp.SelectedKey)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for response on channel")
+	}
+	if app.inputPrompt.Visible() {
+		t.Fatal("expected input prompt to be hidden after response")
+	}
+}
+
 func TestAppCtrlCCancelsPendingInput(t *testing.T) {
 	t.Parallel()
 

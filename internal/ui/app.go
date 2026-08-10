@@ -186,10 +186,16 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, nil
 	case output.UserInputRequestEvent:
 		a.pendingInput = &msg
+		// The prompt always lives in inputPrompt, so a spinner disappearing can
+		// never take it with it: a spinner stopped inside its min-duration stays
+		// visible in pendingStop, and the later SpinnerMinDurationElapsedMsg would
+		// erase a prompt held only in spinner text, leaving the user staring at a
+		// blank screen while the domain waits on ResponseCh (DEVX-1045). The
+		// spinner text is a mirror for as long as the spinner is on screen, since
+		// View renders one or the other.
+		a.inputPrompt = a.inputPrompt.Show(msg.Prompt, msg.Options, msg.Vertical)
 		if a.spinner.Visible() {
 			a.spinner = a.spinner.SetText(output.FormatPrompt(msg.Prompt, msg.Options))
-		} else {
-			a.inputPrompt = a.inputPrompt.Show(msg.Prompt, msg.Options, msg.Vertical)
 		}
 	case output.PullSkippableEvent:
 		msgCopy := msg
