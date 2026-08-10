@@ -29,8 +29,6 @@ lstk-specific flags (must appear before the sam action):
   --region <region>    Deployment region (default us-east-1)
   --account <id>       Target AWS account id, 12 digits (default 000000000000)
 
-When --region is given, it is also passed to sam as '--region' for the subcommands that contact AWS, because a 'region' key in samconfig.toml outranks the environment and would otherwise silently win. Without --region, samconfig.toml keeps deciding the region as it always has.
-
 Supported environment variables:
   LSTK_ENDPOINT_URL     Target an externally-managed emulator
   AWS_ENDPOINT_URL      Same as LSTK_ENDPOINT_URL (lower precedence if both are set)

@@ -72,7 +72,7 @@ The `test` / `us-east-1` seeding is therefore conditional on there being no prof
 
 **Rationale**: the AWS CLI has its own global `--region` and users already know it. Intercepting it would mean re-emitting it, or translating it into `AWS_DEFAULT_REGION`, to arrive at the same place the AWS CLI would have reached on its own — mechanism in exchange for nothing. Under Decision 2 it would be actively harmful: translating `--region` into an environment variable would override the profile's region, which is the trap that decision exists to avoid, whereas the AWS CLI's own `--region` is command-line tier and correctly outranks the profile. It would also make the leading and non-leading spellings of one flag behave differently for no reason the user can see. The three IaC proxies intercept it because their wrapped tools have no equivalent flag, not because interception is the convention.
 
-`--account` is safe to claim in leading position because the AWS CLI has no global flag by that name; the ones that exist (`--account-id` on various services) are service-operation parameters, which by construction appear after the service and operation and are therefore forwarded untouched.
+`--account` is safe to claim in leading position because the AWS CLI has no *global* flag by that name. It does have real `--account` **parameters**: a sweep of all 425 botocore service definitions found ten operations exposing one — `opensearch` and `es` authorize/revoke-vpc-endpoint-access, `redshift` authorize/revoke-endpoint-access and describe-endpoint-authorization, `events` create/delete-partner-event-source, and `macie2` create-member. Every one of them follows a service *and* an operation, so leading-position-only parsing forwards them untouched. This is why lstk must not simply pull `--account` out of anywhere in the argument list, however tempting that is as a way to make placement order-free.
 
 **Consequence**: the leading-flag parser becomes parameterized rather than fixed, and moves next to the other shared proxy-argument helpers, since it is no longer specific to the IaC commands.
 
@@ -93,3 +93,27 @@ This applies on the no-profile path, where the resolved account is written throu
 **Rationale**: the project's validation rule requires user-supplied values to be validated through `internal/validate` rather than local regexps, precisely because parallel copies of one rule drift — the pod-name rules forked this way before being re-unified. A single inline regexp with one caller was a borderline case; `lstk aws` becoming a second caller is not. Routing it through `internal/validate` also attaches rule codes (`empty` / `range` / `format`) to the failure, which is what makes the reason machine-classifiable later.
 
 Keeping the message byte-identical is deliberate: the terraform and sam specs already have scenarios asserting that an invalid `--account` is rejected at the boundary, and this change should not perturb them.
+
+### Decision 6: The leading run ends at the wrapped tool's action, not at the first unrecognized argument
+
+The leading-flag parser forwards an argument belonging to the wrapped tool and keeps scanning, rather than stopping at it. lstk's flags are therefore recognized in any order relative to the tool's own.
+
+**Rationale**: the old rule produced a distinction no user could see. `lstk aws --account 5… --region eu-west-1 sqs …` worked; `lstk aws --region eu-west-1 --account 5… sqs …` leaked `--account` to the AWS CLI, which rejects it as an unknown option. Both put both flags before the service name, which is all the help text asks for. `lstk aws` is worst hit because Decision 3 leaves `--region` — the flag most likely to be typed first — deliberately unclaimed, but the defect is in the shared parser: `lstk sam --debug --account 5… build` failed the same way, silently falling back to the default account.
+
+**How the action is located without a per-tool flag table**: a bare argument following a flag that may still take a value (one containing no `=`) is presumed to be that value. At most one bare argument is absorbed per flag, so scanning always halts at or before the second consecutive bare argument.
+
+That bound is load-bearing, not incidental: it is what keeps the ten genuine `--account` parameters from Decision 3 safe, since each follows a service *and* an operation. It also means the parser only ever *removes* lstk's own flags — every other argument is forwarded in its original order — so a wrong guess about whether a bare argument is a value cannot change what the wrapped tool receives.
+
+**Alternatives considered**: a per-tool table of global flags and their arity (rejected: the AWS CLI's ~18 globals would need to stay in sync, and a newly added one would reintroduce the failure). Consuming `--account` from anywhere in the argument list (rejected on evidence — it steals the ten real parameters). Detecting the leaked flag and failing with "put `--account` first" (rejected: it keeps an arbitrary restriction and merely explains it).
+
+**Known limit**: a tool flag whose *value* is literally the string `--account` — `lstk aws --query --account s3 ls` — is read as lstk's flag. No realistic invocation has that shape, and it is documented rather than engineered around.
+
+### Decision 7: `lstk sam --region` is also passed on sam's command line
+
+When the user names a region with `--region`, lstk passes `--region <region>` to `sam` as well as setting `AWS_REGION`/`AWS_DEFAULT_REGION`, for the AWS-contacting subcommands only.
+
+**Rationale**: the environment is not sufficient. SAM injects `samconfig.toml` values as though they had been typed on the command line, so a `region` key there outranks both environment variables. Measured against SAM 1.163.0 by reading the SigV4 credential scope off the wire: with `samconfig.toml` naming `us-east-1` and both environment variables naming `ap-northeast-1`, SAM signs for `us-east-1`; remove the `samconfig.toml` key and it signs for `ap-northeast-1`; pass `--region eu-west-3` on the command line and it signs for `eu-west-3`. The account never suffered this because `samconfig.toml` has no account concept — which is exactly why the bug presented as "account right, region wrong".
+
+**Only when explicitly named**: an ambient `AWS_REGION` or the `us-east-1` default does not trigger it. Forwarding the default would override the region of every project that configured one in `samconfig.toml`, and `AWS_REGION` is commonly exported globally for real-AWS work. This is the same explicit-versus-inherited distinction `resolveAccountSelection` draws for accounts, and it required splitting `resolveRegion` into a variant that reports how the region was chosen.
+
+**Scoped to AWS-contacting subcommands**: `init` and `docs` reject `--region` outright. Determined by executing each subcommand rather than parsing its help output, which gave false negatives for `list resources` and `remote invoke`. An existing `--region` in the forwarded arguments is left alone — that is the user addressing sam directly.

@@ -37,7 +37,9 @@ lstk SHALL NOT require, read, or inject the LocalStack auth token for AWS CLI ca
 
 The system SHALL accept an lstk-specific `--account <id>` flag on `lstk aws`, mirroring `lstk terraform` and `lstk sam`, because LocalStack derives the AWS account from the access key id it receives. The resolved account SHALL be written to `AWS_ACCESS_KEY_ID` in the `aws` subprocess environment.
 
-The flag SHALL be recognized only in leading position — immediately after the `aws` token and before the AWS service name — and both `--account value` and `--account=value` forms SHALL be supported. Parsing SHALL stop at the first argument that is not the flag or its value; an `--account` appearing after that point SHALL be forwarded to the AWS CLI unchanged, since flags in that position belong to the wrapped tool. The flag SHALL NOT be defined as a root or persistent flag; a `--account` placed before the `aws` token SHALL be rejected with an error explaining the required placement, rather than silently dropped during command resolution.
+The flag SHALL be recognized only in leading position — after the `aws` token and before the AWS service name — and both `--account value` and `--account=value` forms SHALL be supported. Leading-flag parsing is the shared rule stated normatively in the `terraform-proxy` capability's "Region and account selection" requirement: the leading run ends at the service name, not at the first argument lstk does not recognize, so `--account` is recognized in any order relative to the AWS CLI's own global flags. An `--account` appearing after the service name SHALL be forwarded to the AWS CLI unchanged. The flag SHALL NOT be defined as a root or persistent flag; a `--account` placed before the `aws` token SHALL be rejected with an error explaining the required placement, rather than silently dropped during command resolution.
+
+Forwarding a post-service `--account` is not a convenience but a correctness requirement: the AWS CLI defines a real `--account` parameter on several operations — `opensearch` and `es` authorize/revoke-vpc-endpoint-access, `redshift` authorize/revoke-endpoint-access and describe-endpoint-authorization, `events` create/delete-partner-event-source, and `macie2` create-member. Each follows a service *and* an operation, so the shared rule's bound (at most one bare argument absorbed per flag, halting at or before the second consecutive bare argument) guarantees lstk has stopped scanning before reaching them. The system SHALL NOT claim `--account` from anywhere in the argument list, which would silently steal those parameters.
 
 The resolved account SHALL be selected with precedence: the `--account` flag, then the ambient `AWS_ACCESS_KEY_ID` environment variable, then a default of `test` (which LocalStack resolves to account `000000000000`). A `--account` value SHALL be validated to be exactly 12 digits and rejected at the command boundary before the AWS CLI is invoked. An ambient `AWS_ACCESS_KEY_ID` SHALL NOT be validated, but SHALL be subject to the access-key deactivation described in "Credentials for the AWS CLI subprocess".
 
@@ -75,10 +77,22 @@ The system SHALL NOT consume a `--region` flag on `lstk aws` in any position. Un
 - **WHEN** the user runs `lstk --account 111111111111 aws s3 ls`
 - **THEN** lstk fails with an error explaining that `--account` must appear after the `aws` subcommand, and does not invoke the AWS CLI
 
+#### Scenario: Account selection is order-free among the AWS CLI's own flags
+
+- **WHEN** the user runs `lstk aws --region eu-west-1 --account 555555555555 sqs create-queue --queue-name q`
+- **THEN** `--account` is consumed, `--region eu-west-1` is forwarded to the AWS CLI unchanged, and the call reads account `555555555555`
+- **AND** the result is identical to `lstk aws --account 555555555555 --region eu-west-1 sqs create-queue --queue-name q`
+
 #### Scenario: A non-leading account flag belongs to the AWS CLI
 
 - **WHEN** the user runs `lstk aws organizations describe-account --account-id 111111111111`, or any command where `--account` follows the AWS service name
 - **THEN** lstk forwards the argument to the AWS CLI unchanged and does not interpret it as account selection
+
+#### Scenario: A genuine AWS account parameter is never claimed
+
+- **WHEN** the user runs `lstk aws events create-partner-event-source --name x --account 123456789012`, with or without AWS CLI global flags before the service name
+- **THEN** lstk forwards `--account 123456789012` to the AWS CLI as the operation's own parameter
+- **AND** lstk's own account resolution falls back to the ambient value or the default, unaffected
 
 #### Scenario: The region flag is never consumed
 

@@ -13,7 +13,7 @@
 
 - [x] 3.1 Move `rejectPreSubcommandFlags`, `stripLeadingIaCFlags`, and `resolveAccount` from `cmd/iac.go` to `cmd/proxy.go`, which already owns the shared argument surgery the `DisableFlagParsing` proxies need. Leave `resolveRegion` and the emulator/container helpers in `cmd/iac.go` — they stay IaC-only
 - [x] 3.2 Parameterize `rejectPreSubcommandFlags(calledAs string, flagNames ...string)`. terraform/cdk/sam pass `"--region", "--account"`; aws passes `"--account"`. Build the message from the names with a per-flag sample value (`--region`→`us-west-2`, `--account`→`111111111111`) so the existing terraform/sam wording is unchanged
-- [x] 3.3 Rename `stripLeadingIaCFlags` to `stripLeadingProxyFlags(args []string, opts leadingFlags)` with `type leadingFlags struct{ region, chdir bool }`; `--account` is always recognized. terraform passes `{region: true, chdir: true}`, cdk/sam `{region: true}`, aws `{}`. Record in the doc comment why aws opts out of `--region` — the AWS CLI owns that flag in every position, and translating it into an environment variable would override a profile's `region`
+- [x] 3.3 Rename `stripLeadingIaCFlags` to `stripLeadingProxyFlags(args []string, opts leadingFlags)`, with `opts` selecting the flags each proxy recognizes. Record in the doc comment why aws opts out of `--region` — the AWS CLI owns that flag in every position, and translating it into an environment variable would override a profile's `region`. (The struct initially left `--account` implicit and always-on; task 10.4 makes it an explicit field.)
 - [x] 3.4 Add `resolveAccountSelection(flag string) (account string, selected bool, err error)` with today's precedence plus a `selected` signal: true for a validated `--account`, or for an ambient `AWS_ACCESS_KEY_ID` that itself passes `validate.AWSAccountID`. Keep `resolveAccount(flag)` as a thin wrapper so terraform/cdk/sam are untouched
 - [x] 3.5 Move `TestResolveAccount` out of `cmd/terraform_test.go` into `cmd/proxy_test.go` and extend it into a precedence/selection matrix; add cases proving `stripLeadingProxyFlags(args, leadingFlags{})` leaves a leading `--region` in place, and that the single-flag `rejectPreSubcommandFlags` message names only `--account`
 
@@ -71,3 +71,34 @@ The whole design rests on `AWS_PROFILE` leaving the environment credential provi
 
 - [x] 9.1 `cmd/aws.go` `Long` (task 5.4) is the user-facing documentation; `lstk docs` generates from it, so no separate `docs/` file is needed
 - [x] 9.2 Root `CLAUDE.md`: add a short account-selection note covering all four AWS-family proxies — `aws`/`terraform`/`sam` accept `--account` with the shared precedence, `cdk` rejects it — plus the `AWS_PROFILE`-not-`--profile` rule and why it exists, and the relocation of `DeactivateAccessKey`
+
+## 10. End the leading run at the action, not the first unrecognized argument
+
+Found by using the new flag: `lstk aws --region eu-west-1 --account 5… sqs …` failed while the reverse order worked. The parser is shared, so all four proxies were affected.
+
+- [x] 10.1 In `stripLeadingProxyFlags` (`cmd/proxy.go`), forward an argument belonging to the wrapped tool and keep scanning instead of stopping at it. Absorb at most one following bare argument as that flag's presumed value, and only when the flag contains no `=` — the `=` is what stops terraform's `-chdir=DIR` from swallowing the action
+- [x] 10.2 Record the bound in the doc comment (halts at or before the second consecutive bare argument) and why it is load-bearing: it is what keeps the AWS CLI's ten genuine `--account` parameters out of lstk's reach
+- [x] 10.3 Verify by execution — not by parsing help output — which subcommands own a real `--account`; a sweep of all 425 botocore service definitions found ten
+- [x] 10.4 Add `account` to `leadingFlags` and gate the branch on it, so the struct lists every lstk flag rather than leaving the always-on one implicit. All four call sites set it; cdk parses `--account` only to reject it
+- [x] 10.5 Unit tests in `cmd/proxy_test.go`: both orderings equivalent, valueless and multiple tool flags before the flag, the `-chdir=` action-absorption case, the genuine `--account` operations never claimed, and `account: false`
+
+## 11. Pass `lstk sam --region` on sam's command line
+
+- [x] 11.1 Add `withRegionFlag` (`internal/iac/sam/cli/defaults.go`), appending `--region` for AWS-contacting subcommands only, and skipping when the forwarded args already carry one
+- [x] 11.2 Split `resolveRegion` into `resolveRegionSelection` reporting whether the flag named the region, and thread `regionSelected` through `samcli.Run`. An ambient `AWS_REGION` and the default must not override a project's `samconfig.toml`
+- [x] 11.3 Record the measured evidence in the doc comment (samconfig.toml outranks the environment; only a command-line `--region` beats it)
+- [x] 11.4 Unit tests for `withRegionFlag` and `resolveRegionSelection`; five integration cases covering injection, the three non-injection paths, and the user's own flag
+- [x] 11.5 `cmd/sam.go` help text: state that `--region` is also passed to sam and that `samconfig.toml` still decides without it
+
+## 12. Test portability
+
+- [x] 12.1 `aws_profile_precedence_test.go`: inherit the environment and strip `AWS_*` rather than building a minimal `PATH`+`HOME` one. Windows resolves the home directory from `USERPROFILE`, so the frozen AWS CLI aborted during import with "Could not determine home directory"
+- [x] 12.2 `writeFakeAWS`: match `--endpoint-url` before `shift 2`. The help path passes no endpoint, and an unconditional shift aborts under dash (Ubuntu's `/bin/sh`, though not macOS's)
+
+## 13. Spec accuracy
+
+- [x] 13.1 `terraform-proxy` *Region and account selection*: replace the "parsing stops at the first unrecognized argument" rule with the leading-run-ends-at-the-action rule, and state the bound. This is the single normative statement — `cdk-proxy`, `sam-proxy`, and `aws-proxy` refer to it rather than restating it, so one edit propagates
+- [x] 13.2 `sam-proxy` *Region selection*: add the command-line half
+- [x] 13.3 `aws-proxy`: correct the parsing rule and add the genuine-`--account` protection scenario, before archiving makes this delta the canonical spec for a capability that does not exist yet
+- [x] 13.4 `proposal.md`: correct `DeactivateAccessKey`'s destination (`internal/awsconfig`, not `internal/awscli`) and drop the import-cycle rationale, which was disproved — nothing in `internal/awscli` calls it
+- [x] 13.5 `design.md`: correct the claim that the only `--account`-like flags are `--account-id` service parameters
