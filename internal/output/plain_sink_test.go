@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/gkampitakis/go-snaps/snaps"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -155,8 +156,7 @@ func TestPlainSink_EmitsErrorEvent(t *testing.T) {
 		Actions: []ErrorAction{{Label: "Start Docker:", Value: "open -a Docker"}},
 	})
 
-	expected := "Error: Connection failed\n  Cannot connect to Docker\n  ==> Start Docker: open -a Docker\n"
-	assert.Equal(t, expected, out.String())
+	snaps.MatchSnapshot(t, out.String())
 }
 
 func TestPlainSink_EmitsInstanceInfoEvent(t *testing.T) {
@@ -173,8 +173,7 @@ func TestPlainSink_EmitsInstanceInfoEvent(t *testing.T) {
 			Persistence:   true,
 		})
 
-		expected := SuccessMarker() + " LocalStack AWS Emulator is running\n• Endpoint: localhost.localstack.cloud:4566\n• Persistence: Enabled\n• Container: localstack-aws\n• Version: 4.14.1\n• Uptime: 4m 23s\n"
-		assert.Equal(t, expected, out.String())
+		snaps.MatchSnapshot(t, sanitizeSnapshot(out.String()))
 		assert.NoError(t, sink.Err())
 	})
 
@@ -187,8 +186,7 @@ func TestPlainSink_EmitsInstanceInfoEvent(t *testing.T) {
 			Host:         "127.0.0.1:4566",
 		})
 
-		expected := SuccessMarker() + " LocalStack AWS Emulator is running\n• Endpoint: 127.0.0.1:4566\n"
-		assert.Equal(t, expected, out.String())
+		snaps.MatchSnapshot(t, out.String())
 		assert.NoError(t, sink.Err())
 	})
 

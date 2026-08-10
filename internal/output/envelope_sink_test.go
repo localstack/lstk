@@ -3,6 +3,8 @@ package output
 import (
 	"errors"
 	"testing"
+
+	"github.com/shoenig/test/must"
 )
 
 func TestEnvelopeSink_SuccessWithNoEvents(t *testing.T) {
@@ -40,30 +42,13 @@ func TestEnvelopeSink_EmulatorStoppedEventAccumulates(t *testing.T) {
 
 	envelope := sink.Result("stop", nil)
 	data, ok := envelope.Data.(map[string]any)
-	if !ok {
-		t.Fatalf("expected map[string]any data, got %T", envelope.Data)
-	}
+	must.True(t, ok)
 	entries, ok := data["emulators"].([]JsonEmulatorEntry)
-	if !ok {
-		t.Fatalf("expected []JsonEmulatorEntry emulators, got %T", data["emulators"])
-	}
-	if len(entries) != 2 {
-		t.Fatalf("expected 2 emulators, got %d", len(entries))
-	}
-	emulators := make([]JsonStoppedEmulator, len(entries))
-	for i, entry := range entries {
-		stopped, ok := entry.(JsonStoppedEmulator)
-		if !ok {
-			t.Fatalf("expected entry %d to be a JsonStoppedEmulator, got %T", i, entry)
-		}
-		emulators[i] = stopped
-	}
-	if emulators[0].Type != "aws" || emulators[0].Name != "localstack-aws" || !emulators[0].WasRunning {
-		t.Fatalf("unexpected first emulator entry: %+v", emulators[0])
-	}
-	if emulators[1].Type != "snowflake" {
-		t.Fatalf("unexpected second emulator entry: %+v", emulators[1])
-	}
+	must.True(t, ok)
+	must.Eq(t, []JsonEmulatorEntry{
+		JsonStoppedEmulator{JsonEmulatorRef: JsonEmulatorRef{Type: "aws", Name: "localstack-aws"}, WasRunning: true},
+		JsonStoppedEmulator{JsonEmulatorRef: JsonEmulatorRef{Type: "snowflake", Name: "localstack-snowflake"}, WasRunning: true},
+	}, entries)
 }
 
 func TestEnvelopeSink_EmulatorResetEvent(t *testing.T) {
@@ -153,30 +138,16 @@ func TestEnvelopeSink_ErrorEventSetsClassifiedError(t *testing.T) {
 	})
 
 	envelope := sink.Result("reset", errors.New("LocalStack is not running"))
-	if envelope.Status != StatusError {
-		t.Fatalf("expected status %q, got %q", StatusError, envelope.Status)
-	}
-	if envelope.Data != nil {
-		t.Fatalf("expected nil data on error, got %+v", envelope.Data)
-	}
-	if envelope.Error == nil {
-		t.Fatal("expected non-nil error")
-	}
-	if envelope.Error.Code != ErrEmulatorNotRunning {
-		t.Fatalf("expected code %q, got %q", ErrEmulatorNotRunning, envelope.Error.Code)
-	}
-	if envelope.Error.Category != CategoryEmulator {
-		t.Fatalf("expected category %q, got %q", CategoryEmulator, envelope.Error.Category)
-	}
-	if envelope.Error.Retryable != ErrEmulatorNotRunning.Retryable() {
-		t.Fatalf("expected retryable %v to match the code's static classification", ErrEmulatorNotRunning.Retryable())
-	}
-	if envelope.Error.Message != "LocalStack is not running" {
-		t.Fatalf("expected message %q, got %q", "LocalStack is not running", envelope.Error.Message)
-	}
-	if len(envelope.Error.Actions) != 1 || envelope.Error.Actions[0].ID != "start-localstack" || envelope.Error.Actions[0].Command != "lstk" {
-		t.Fatalf("unexpected actions: %+v", envelope.Error.Actions)
-	}
+	must.Eq(t, StatusError, envelope.Status)
+	must.Nil(t, envelope.Data)
+	must.NotNil(t, envelope.Error)
+	must.Eq(t, &EnvelopeError{
+		Code:      ErrEmulatorNotRunning,
+		Category:  CategoryEmulator,
+		Message:   "LocalStack is not running",
+		Retryable: ErrEmulatorNotRunning.Retryable(),
+		Actions:   []EnvelopeAction{{ID: "start-localstack", Command: "lstk"}},
+	}, envelope.Error)
 }
 
 // TestEnvelopeSink_ErrorEventIncludesSummaryInDetails covers PR #374's report
