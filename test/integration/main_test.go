@@ -171,16 +171,30 @@ const (
 	testImage     = "alpine:latest"
 )
 
+// ensureImage makes sure image is present locally, pulling it only when missing.
+// The inspect-first check matters: the stand-in helpers below run ~100 times per
+// suite, and an unconditional ImagePull contacts the registry (manifest/digest
+// resolution, seconds each) even when the image is already local. Stand-in
+// images only need to exist — a stale local copy is fine.
+func ensureImage(t *testing.T, ctx context.Context, image string) {
+	t.Helper()
+
+	if _, err := dockerClient.ImageInspect(ctx, image); err == nil {
+		return
+	}
+	reader, err := dockerClient.ImagePull(ctx, image, client.ImagePullOptions{})
+	require.NoError(t, err, "failed to pull image %s", image)
+	_, _ = io.Copy(io.Discard, reader)
+	_ = reader.Close()
+}
+
 // startTestContainer starts the test container with no port bindings by default.
 // Pass hostPort to bind 4566/tcp to a specific host port (e.g. to test that lstk status
 // uses the actual bound port rather than the port from config).
 func startTestContainer(t *testing.T, ctx context.Context, hostPort ...string) {
 	t.Helper()
 
-	reader, err := dockerClient.ImagePull(ctx, testImage, client.ImagePullOptions{})
-	require.NoError(t, err, "failed to pull test image")
-	_, _ = io.Copy(io.Discard, reader)
-	_ = reader.Close()
+	ensureImage(t, ctx, testImage)
 
 	cfg := &container.Config{
 		Image: testImage,
@@ -234,40 +248,45 @@ func startExternalContainer(t *testing.T, ctx context.Context, imgName, name, ho
 	})
 }
 
-// commitNeverHealthyImage builds a local-only image whose default command stays
+// commitNeverHealthyImage ensures a local-only image whose default command stays
 // running (sleep infinity) but never serves /_localstack/health. Starting it via
 // lstk exercises the failure path where the emulator comes up but never reports
 // healthy. The tag must stay pinned (non-latest): a pinned locally-present image
 // skips both the pull and the license checks, while a "latest" tag is validated
 // post-pull via GetImageVersion, which fails on this image (no
 // LOCALSTACK_BUILD_VERSION) before the health wait is ever reached. Returns the
-// image reference; the image and its source container are removed on test cleanup.
+// image reference. The image is deliberately left in place across runs (it adds
+// no layer data on top of the alpine test image) so repeat runs skip the build;
+// the source container is removed as soon as the commit is done.
 func commitNeverHealthyImage(t *testing.T, ctx context.Context) string {
 	t.Helper()
 
-	reader, err := dockerClient.ImagePull(ctx, testImage, client.ImagePullOptions{})
-	require.NoError(t, err, "failed to pull test image")
-	_, _ = io.Copy(io.Discard, reader)
-	_ = reader.Close()
+	const imageRef = "lstk-never-healthy:test"
+	if _, err := dockerClient.ImageInspect(ctx, imageRef); err == nil {
+		return imageRef
+	}
+
+	ensureImage(t, ctx, testImage)
+
+	const srcName = "lstk-never-healthy-src"
+	// Remove any leftover source container from a previous interrupted run so
+	// the create below never hits a name conflict.
+	_, _ = dockerClient.ContainerRemove(ctx, srcName, client.ContainerRemoveOptions{Force: true})
 
 	resp, err := dockerClient.ContainerCreate(ctx, client.ContainerCreateOptions{
 		Config: &container.Config{Image: testImage},
-		Name:   "lstk-never-healthy-src",
+		Name:   srcName,
 	})
 	require.NoError(t, err, "failed to create source container")
-	t.Cleanup(func() {
+	defer func() {
 		_, _ = dockerClient.ContainerRemove(context.Background(), resp.ID, client.ContainerRemoveOptions{Force: true})
-	})
+	}()
 
-	const imageRef = "lstk-never-healthy:test"
 	_, err = dockerClient.ContainerCommit(ctx, resp.ID, client.ContainerCommitOptions{
 		Reference: imageRef,
 		Changes:   []string{`CMD ["sleep", "infinity"]`},
 	})
 	require.NoError(t, err, "failed to commit never-healthy image")
-	t.Cleanup(func() {
-		_, _ = dockerClient.ImageRemove(context.Background(), imageRef, client.ImageRemoveOptions{Force: true})
-	})
 	return imageRef
 }
 
@@ -286,10 +305,7 @@ func startTestAzureContainer(t *testing.T, ctx context.Context) {
 func startNamedTestContainer(t *testing.T, ctx context.Context, name, label string) {
 	t.Helper()
 
-	reader, err := dockerClient.ImagePull(ctx, testImage, client.ImagePullOptions{})
-	require.NoError(t, err, "failed to pull test image")
-	_, _ = io.Copy(io.Discard, reader)
-	_ = reader.Close()
+	ensureImage(t, ctx, testImage)
 
 	resp, err := dockerClient.ContainerCreate(ctx, client.ContainerCreateOptions{
 		Config: &container.Config{

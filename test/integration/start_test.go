@@ -68,11 +68,8 @@ func TestStartCommandReusesLocalImageWhenPresent(t *testing.T) {
 
 	const pinnedTag = "reuse-local-test"
 	const pinnedImage = "localstack/localstack-pro:" + pinnedTag
-	reader, err := dockerClient.ImagePull(ctx, testImage, client.ImagePullOptions{})
-	require.NoError(t, err, "failed to pull test image")
-	_, _ = io.Copy(io.Discard, reader)
-	_ = reader.Close()
-	_, err = dockerClient.ImageTag(ctx, client.ImageTagOptions{Source: testImage, Target: pinnedImage})
+	ensureImage(t, ctx, testImage)
+	_, err := dockerClient.ImageTag(ctx, client.ImageTagOptions{Source: testImage, Target: pinnedImage})
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		_, _ = dockerClient.ImageRemove(context.Background(), pinnedImage, client.ImageRemoveOptions{})
@@ -108,11 +105,8 @@ func TestStartFailsWhenContainerExitsDuringStartup(t *testing.T) {
 
 	const pinnedTag = "exit-during-startup-test"
 	const pinnedImage = "localstack/localstack-pro:" + pinnedTag
-	reader, err := dockerClient.ImagePull(ctx, testImage, client.ImagePullOptions{})
-	require.NoError(t, err, "failed to pull test image")
-	_, _ = io.Copy(io.Discard, reader)
-	_ = reader.Close()
-	_, err = dockerClient.ImageTag(ctx, client.ImageTagOptions{Source: testImage, Target: pinnedImage})
+	ensureImage(t, ctx, testImage)
+	_, err := dockerClient.ImageTag(ctx, client.ImageTagOptions{Source: testImage, Target: pinnedImage})
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		_, _ = dockerClient.ImageRemove(context.Background(), pinnedImage, client.ImageRemoveOptions{})
@@ -159,11 +153,8 @@ func TestStartFailsWhenContainerNeverBecomesHealthy(t *testing.T) {
 	const standInImage = "nginx:alpine"
 	const pinnedTag = "never-healthy-test"
 	const pinnedImage = "localstack/localstack-pro:" + pinnedTag
-	reader, err := dockerClient.ImagePull(ctx, standInImage, client.ImagePullOptions{})
-	require.NoError(t, err, "failed to pull nginx test image")
-	_, _ = io.Copy(io.Discard, reader)
-	_ = reader.Close()
-	_, err = dockerClient.ImageTag(ctx, client.ImageTagOptions{Source: standInImage, Target: pinnedImage})
+	ensureImage(t, ctx, standInImage)
+	_, err := dockerClient.ImageTag(ctx, client.ImageTagOptions{Source: standInImage, Target: pinnedImage})
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		_, _ = dockerClient.ImageRemove(context.Background(), pinnedImage, client.ImageRemoveOptions{})
@@ -218,11 +209,8 @@ func TestStartEmitsTelemetryWhenInterruptedDuringStartup(t *testing.T) {
 	const standInImage = "nginx:alpine"
 	const pinnedTag = "interrupted-startup-test"
 	const pinnedImage = "localstack/localstack-pro:" + pinnedTag
-	reader, err := dockerClient.ImagePull(ctx, standInImage, client.ImagePullOptions{})
-	require.NoError(t, err, "failed to pull nginx test image")
-	_, _ = io.Copy(io.Discard, reader)
-	_ = reader.Close()
-	_, err = dockerClient.ImageTag(ctx, client.ImageTagOptions{Source: standInImage, Target: pinnedImage})
+	ensureImage(t, ctx, standInImage)
+	_, err := dockerClient.ImageTag(ctx, client.ImageTagOptions{Source: standInImage, Target: pinnedImage})
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		_, _ = dockerClient.ImageRemove(context.Background(), pinnedImage, client.ImageRemoveOptions{})
@@ -1376,8 +1364,7 @@ func TestStartTimesOutWhenEmulatorNeverBecomesHealthy(t *testing.T) {
 	// for inspection, and the pinned tag names it "localstack-aws-<tag>" — a name
 	// the shared cleanup() (which only removes "localstack-aws") never touches.
 	// Remove it explicitly, or it keeps holding port 4566 and breaks every later
-	// test that starts an emulator. Registered after commitNeverHealthyImage's
-	// cleanups so it runs before them (LIFO): the container goes first, then its image.
+	// test that starts an emulator.
 	t.Cleanup(func() {
 		_, _ = dockerClient.ContainerRemove(context.Background(), "localstack-aws-"+imageTag, client.ContainerRemoveOptions{Force: true})
 	})
@@ -1548,11 +1535,8 @@ func TestStartUsesLocalCustomImageWithoutPullOrLicenseCheck(t *testing.T) {
 
 	// Make the custom image present locally without a registry by tagging the
 	// lightweight test image under it.
-	reader, err := dockerClient.ImagePull(ctx, testImage, client.ImagePullOptions{})
-	require.NoError(t, err, "failed to pull test image")
-	_, _ = io.Copy(io.Discard, reader)
-	_ = reader.Close()
-	_, err = dockerClient.ImageTag(ctx, client.ImageTagOptions{Source: testImage, Target: fullRef})
+	ensureImage(t, ctx, testImage)
+	_, err := dockerClient.ImageTag(ctx, client.ImageTagOptions{Source: testImage, Target: fullRef})
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		_, _ = dockerClient.ImageRemove(context.Background(), fullRef, client.ImageRemoveOptions{Force: true})
