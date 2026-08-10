@@ -1624,3 +1624,39 @@ func TestPromptRelogin_FoldsReasonIntoThePromptWithoutASeparateWarning(t *testin
 	assert.Contains(t, req.Prompt, licErr.Message, "the prompt must explain why the user is being asked to log in again")
 	assert.Contains(t, req.Prompt, "Log in again to refresh your credentials?")
 }
+
+// TestPromptRelogin_OffersAnAdvertisedDeclineKey covers DEVX-1045: Ctrl+C was the
+// only way to decline, and it cancels the root context, so the actionable error
+// the decline renders raced the TUI's quit and could be lost entirely.
+func TestPromptRelogin_OffersAnAdvertisedDeclineKey(t *testing.T) {
+	licErr := &api.LicenseError{Message: "invalid, inactive, or expired authentication token or subscription", Status: http.StatusForbidden}
+
+	for _, tc := range []struct {
+		name     string
+		response output.InputResponse
+		accepted bool
+	}{
+		{name: "enter accepts", response: output.InputResponse{SelectedKey: "enter"}, accepted: true},
+		{name: "esc declines", response: output.InputResponse{SelectedKey: "esc"}, accepted: false},
+		{name: "cancel declines", response: output.InputResponse{Cancelled: true}, accepted: false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var req output.UserInputRequestEvent
+			sink := output.SinkFunc(func(event output.Event) {
+				if r, ok := event.(output.UserInputRequestEvent); ok {
+					req = r
+					r.ResponseCh <- tc.response
+				}
+			})
+
+			accepted := promptRelogin(context.Background(), sink, licErr)
+
+			assert.Equal(t, tc.accepted, accepted)
+			keys := make([]string, 0, len(req.Options))
+			for _, opt := range req.Options {
+				keys = append(keys, opt.Key)
+			}
+			assert.Equal(t, []string{"enter", "esc"}, keys, "both the accept and the decline key must be advertised")
+		})
+	}
+}
