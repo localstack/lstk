@@ -265,6 +265,37 @@ func TestAppPendingInputSurvivesDeferredSpinnerStop(t *testing.T) {
 	}
 }
 
+// TestAppPromptWrapsAtTerminalWidth covers the other half of DEVX-1045: a long
+// prompt has to be wrapped to the terminal width, since Bubble Tea's renderer
+// would otherwise truncate the key hints off the right edge.
+func TestAppPromptWrapsAtTerminalWidth(t *testing.T) {
+	t.Parallel()
+
+	const width = 40
+	question := "License validation failed: invalid, inactive, or expired authentication token or subscription. Log in again to refresh your credentials?"
+
+	app := NewApp("dev", "", "", nil)
+	model, _ := app.Update(tea.WindowSizeMsg{Width: width})
+	app = model.(App)
+	model, _ = app.Update(output.UserInputRequestEvent{
+		Prompt: question,
+		Options: []output.InputOption{
+			{Key: "enter", Label: "ENTER to log in again"},
+			{Key: "esc", Label: "ESC to exit"},
+		},
+		ResponseCh: make(chan output.InputResponse, 1),
+	})
+	app = model.(App)
+
+	view := app.View()
+	if !strings.Contains(view, "[ENTER to log in again/ESC to exit]") {
+		t.Errorf("expected the key hints to be rendered, got:\n%s", view)
+	}
+	if strings.Contains(view, question) {
+		t.Errorf("expected the question to be wrapped rather than rendered as one long line, got:\n%s", view)
+	}
+}
+
 func TestAppCtrlCCancelsPendingInput(t *testing.T) {
 	t.Parallel()
 

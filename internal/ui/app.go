@@ -579,7 +579,7 @@ func (a App) View() string {
 			sb.WriteString(pullView)
 			sb.WriteString("\n")
 		}
-	} else if promptView := a.inputPrompt.View(); promptView != "" {
+	} else if promptView := a.inputPrompt.View(a.width); promptView != "" {
 		sb.WriteString(promptView)
 		sb.WriteString("\n")
 	}
