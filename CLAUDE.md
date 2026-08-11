@@ -337,11 +337,11 @@ Custom skills are available in `.claude/skills/`:
 
 # Maintaining This File
 
-When making significant changes to the codebase (new commands, architectural changes, build process updates, new patterns), update this CLAUDE.md file to reflect them — but only when the guidance spans packages. Anything specific to one symbol belongs in that symbol's doc comment, not here.
+When making significant changes to the codebase (new commands, architectural changes, build process updates, new patterns), update this CLAUDE.md file to reflect them — but only when the guidance spans packages. Anything specific to a single declaration — a function, type, method, struct field, or constant — belongs in a doc comment on that declaration, not here.
 
 **This is the only agent-instruction file in the repo.** Where each kind of detail should go instead:
 
-- **Anything about one symbol** (mechanism, rationale, invariants, why an obvious alternative was rejected, upstream/external behaviour it depends on) → a doc comment on that symbol. Negative statements work fine there too: anchor "there is deliberately no X" to the function where X would have gone.
+- **Anything about a single declaration** (mechanism, rationale, invariants, why an obvious alternative was rejected, upstream/external behaviour it depends on) → a doc comment on that function, type, method, field, or constant. Negative statements work fine there too: anchor "there is deliberately no X" to the function where X would have gone.
 - **User-facing config reference** → `internal/config/default_config.toml`, which ships as the user's own commented config.
 - **User-facing command reference** → the command's Cobra `Short`/`Long` in `cmd/`, which is also what `lstk docs` renders.
 - **Design rationale and non-goals for in-flight work** → `openspec/changes/<id>/design.md`.
