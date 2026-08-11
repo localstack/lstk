@@ -50,6 +50,7 @@ func startCmdInPTY(t *testing.T, ctx context.Context, cmd *exec.Cmd) *ptyProc {
 	t.Helper()
 
 	pt := newTestPty(t)
+	makeSessionLeader(cmd)
 	require.NoError(t, pt.Start(cmd), "failed to start command in PTY")
 	if up, ok := pt.(*xpty.UnixPty); ok {
 		// Close the parent's copy of the slave end so reads on the master
@@ -139,12 +140,19 @@ func (p *ptyProc) wait() (string, error) {
 		// process exit. A grandchild that outlives the command (e.g. a
 		// wrapped tool still running after the test killed lstk itself)
 		// would keep the slave open forever, so bound the drain and then
-		// force it by closing the master.
+		// force it by closing the master. The master is a blocking fd
+		// (creack opens /dev/ptmx without O_NONBLOCK, so it is not in the
+		// netpoller), which means even Close cannot interrupt a read already
+		// in flight — abandon the reader goroutine as a last resort rather
+		// than hanging the whole test binary until the -timeout panic.
 		select {
 		case <-p.done:
 		case <-time.After(5 * time.Second):
 			_ = p.pt.Close()
-			<-p.done
+			select {
+			case <-p.done:
+			case <-time.After(2 * time.Second):
+			}
 		}
 	}
 	return strings.TrimSpace(p.output()), err
