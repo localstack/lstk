@@ -128,12 +128,25 @@ func (p *ptyProc) waitForOutputTimeout(want string, timeout time.Duration, msgAn
 func (p *ptyProc) wait() (string, error) {
 	p.t.Helper()
 	err := xpty.WaitProcess(p.ctx, p.cmd)
-	if runtime.GOOS == "windows" {
+	switch runtime.GOOS {
+	case "windows":
 		// ConPTY reads never return EOF on child exit; closing the pty
 		// flushes pending output to the reader and then unblocks it.
 		_ = p.pt.Close()
+		<-p.done
+	default:
+		// EOF arrives when the last slave fd closes — normally right at
+		// process exit. A grandchild that outlives the command (e.g. a
+		// wrapped tool still running after the test killed lstk itself)
+		// would keep the slave open forever, so bound the drain and then
+		// force it by closing the master.
+		select {
+		case <-p.done:
+		case <-time.After(5 * time.Second):
+			_ = p.pt.Close()
+			<-p.done
+		}
 	}
-	<-p.done
 	return strings.TrimSpace(p.output()), err
 }
 
