@@ -339,9 +339,7 @@ Custom skills are available in `.claude/skills/`:
 
 When making significant changes to the codebase (new commands, architectural changes, build process updates, new patterns), update this CLAUDE.md file to reflect them — but only when the guidance spans packages. Anything specific to one symbol belongs in that symbol's doc comment, not here.
 
-**This is the only agent-instruction file in the repo. Do not create nested `CLAUDE.md` or `AGENTS.md` files.** Four existed under `internal/` and were removed: ~75-80% of their content restated the doc comments, error strings, test names, and Cobra help text of the code they described, and the rest had drifted into contradicting it (9 wrong claims, one file disagreeing with itself two sections apart). A nested file loads when an agent touches the directory — i.e. at the same moment as the code that already says the same thing — so the duplication buys nothing and drifts unreviewed, because the PR that changes the behaviour never has the prose in its diff.
-
-Where each kind of detail goes instead:
+**This is the only agent-instruction file in the repo.** Where each kind of detail should go instead:
 
 - **Anything about one symbol** (mechanism, rationale, invariants, why an obvious alternative was rejected, upstream/external behaviour it depends on) → a doc comment on that symbol. Negative statements work fine there too: anchor "there is deliberately no X" to the function where X would have gone.
 - **User-facing config reference** → `internal/config/default_config.toml`, which ships as the user's own commented config.
