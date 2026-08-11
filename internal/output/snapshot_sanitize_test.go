@@ -5,10 +5,10 @@ import (
 	"testing"
 )
 
-// go-snaps supports value placeholders only for MatchJSON (via the match
-// package); plain-text MatchSnapshot has no matcher hook. sanitizeSnapshot
-// fills that gap: it replaces volatile values in rendered CLI output with
-// stable placeholders so text snapshots stay deterministic across runs.
+// snap.MatchJSON masks volatile values via dotted paths, but plain-text
+// snap.Match has no masking hook. sanitizeSnapshot fills that gap: it
+// replaces volatile values in rendered CLI output with stable placeholders
+// so text snapshots stay deterministic across runs.
 //
 // The patterns are label-anchored rather than value-shaped on purpose: Go's
 // RE2 has no lookahead, so a bare semver pattern (\d+\.\d+\.\d+) would also
