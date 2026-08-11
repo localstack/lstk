@@ -1,10 +1,12 @@
 package output
 
 import (
+	"encoding/json"
 	"errors"
 	"testing"
 
 	"github.com/localstack/lstk/internal/must"
+	"github.com/localstack/lstk/internal/snap"
 )
 
 func TestEnvelopeSink_SuccessWithNoEvents(t *testing.T) {
@@ -85,6 +87,19 @@ func TestEnvelopeSink_UpdateCheckedEvent(t *testing.T) {
 	if _, hasApplied := data["updated"]; hasApplied {
 		t.Fatalf("did not expect an 'updated' key from UpdateCheckedEvent: %+v", data)
 	}
+}
+
+// TestEnvelopeSink_UpdateCheckedEnvelopeJSON pins the full serialized
+// envelope shape (schemaVersion, status, data, warnings) as a snapshot,
+// masking the version fields that vary in real runs.
+func TestEnvelopeSink_UpdateCheckedEnvelopeJSON(t *testing.T) {
+	sink := NewEnvelopeSink(FormatJSON)
+	sink.Emit(UpdateCheckedEvent{CurrentVersion: "2.2.1", LatestVersion: "2.3.0", Available: true})
+
+	envelope := sink.Result("update", nil)
+	raw, err := json.Marshal(envelope)
+	must.NoError(t, err)
+	snap.MatchJSON(t, raw, "data.currentVersion", "data.latestVersion")
 }
 
 func TestEnvelopeSink_UpdateAppliedEvent(t *testing.T) {

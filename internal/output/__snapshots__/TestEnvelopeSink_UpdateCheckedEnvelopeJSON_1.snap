@@ -1,0 +1,12 @@
+{
+  "command": "update",
+  "data": {
+    "currentVersion": "<any>",
+    "latestVersion": "<any>",
+    "updateAvailable": true
+  },
+  "error": null,
+  "schemaVersion": 1,
+  "status": "ok",
+  "warnings": []
+}
