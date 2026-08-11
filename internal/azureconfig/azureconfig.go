@@ -61,6 +61,11 @@ func IsHealthy(ctx context.Context, endpointURL string) error {
 	return nil
 }
 
+// Env returns the environment that points `az` at an isolated config dir.
+// AZURE_CONFIG_DIR is the only isolation knob az offers — it has no --endpoint-url and
+// no --profile — so lstk isolates config rather than proxying: az makes direct calls to
+// LocalStack for Azure services, still reaches the real internet for everything else
+// (extension downloads), and there is deliberately no forward proxy in front of it.
 func Env(azureConfigDir string) []string {
 	return []string{"AZURE_CONFIG_DIR=" + azureConfigDir}
 }
@@ -80,6 +85,7 @@ func httpGet(ctx context.Context, url string) (*http.Response, error) {
 }
 
 // BuildCloudConfig returns the JSON payload for `az cloud register/update --cloud-config`.
+// Supporting a new Azure service that needs its own endpoint in az means extending this map.
 func BuildCloudConfig(endpointURL string) (string, error) {
 	base := strings.TrimRight(endpointURL, "/")
 	payload := map[string]any{

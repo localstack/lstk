@@ -37,6 +37,20 @@ type Client struct {
 //
 // The paths these calls target are hardcoded, never user-supplied, so a URL typo
 // cannot reach this and be misreported as an entitlement problem.
+//
+// Emulator-side the entitlement is the licensed plux plugin
+// localstack.platform.plugin/pods ("Cloud Pods" on the license), which raises
+// PluginDisabled at init. That is why there is no 402/403 to key off: nothing
+// per-request ever checks the license. --merge=overwrite trips a separate plugin,
+// localstack.platform.plugin/state-reset.
+//
+// Keep the discriminator narrow, and keep the detection reactive:
+//   - The sibling GET /_localstack/pods/{name}/versions (unused by lstk today) answers
+//     a genuinely missing pod with a bare message-less 404, so widening to it would
+//     report a mistyped pod name as a billing problem.
+//   - Don't pre-check the cached license instead: its products[] list is coarse and the
+//     pods product string can't be verified from either repo, so a local check risks
+//     blocking paying customers.
 func isFeatureUnavailableResponse(statusCode int, body []byte) bool {
 	return statusCode == http.StatusNotFound && len(bytes.TrimSpace(body)) == 0
 }
@@ -189,6 +203,9 @@ func (c *Client) ResetState(ctx context.Context, baseURL string) error {
 // ExportState streams the running instance's state into dst as a zip. services,
 // when non-empty, limits the export to that subset of services. It returns the
 // services actually captured, reported by LocalStack via a response header.
+//
+// The services query param is the same per-service filter the pod endpoints take as
+// attributes.services — a different endpoint, not different emulator behaviour.
 func (c *Client) ExportState(ctx context.Context, baseURL string, services []string, dst io.Writer) ([]string, error) {
 	url := strings.TrimRight(baseURL, "/") + "/_localstack/pods/state"
 	if len(services) > 0 {

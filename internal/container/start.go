@@ -1017,6 +1017,10 @@ func requiredHostPorts(mappings []runtime.PortMapping) []string {
 // already taken, warning about each one, and returns the mappings to publish.
 // Required mappings are passed through untouched — the caller has already
 // verified them.
+//
+// Only the host publication is dropped: the container-side GATEWAY_LISTEN is left
+// untouched on purpose, so the gateway keeps listening on that port inside the
+// container and HTTPS stays reachable over the edge port.
 func dropBusyOptionalPorts(sink output.Sink, activeFlavor, installedFlavor, edgePort string, mappings []runtime.PortMapping) []runtime.PortMapping {
 	var kept []runtime.PortMapping
 	dropped := false
@@ -1208,6 +1212,10 @@ func emitPortInUseError(sink output.Sink, port string) {
 
 // validateLicense runs the license pre-flight and caches the license file on
 // success. The bool reports whether the cached license file was (re)written.
+//
+// Invariant across every skip path below, and in tryPrePullLicenseValidation: the
+// pre-flight is a fail-fast optimization and must never block a start the container
+// itself would accept.
 func validateLicense(ctx context.Context, sink output.Sink, opts StartOptions, containerConfig runtime.ContainerConfig, token, licenseFilePath string) (bool, error) {
 	version := containerConfig.Tag
 	sink.Emit(output.SpinnerStart("Checking license"))

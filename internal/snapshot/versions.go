@@ -18,7 +18,9 @@ type CloudPodVersionLister interface {
 
 // Versions lists a cloud snapshot's version history as a table. Like Show, it is
 // cloud-only, requires authentication, and reads the LocalStack platform API
-// directly — it never contacts the emulator, so no emulator need be running.
+// directly — it never contacts the emulator, so no emulator need be running. (The
+// legacy CLI routed versions through the emulator, whose endpoint only proxies this
+// same platform call, so the extra hop bought nothing.)
 func Versions(ctx context.Context, lister CloudPodVersionLister, authToken, podName string, sink output.Sink) error {
 	if authToken == "" {
 		sink.Emit(output.ErrorEvent{
