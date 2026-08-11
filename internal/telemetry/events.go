@@ -94,17 +94,15 @@ func ToMap(v any) map[string]any {
 }
 
 // GetEnvironment returns the common environment payload for telemetry events,
-// using the auth token set via SetAuthToken.
+// using the auth token set via SetAuthToken. The machine id comes from
+// MachineID, which owns the lazy derivation and its disabled-client guard.
 func (c *Client) GetEnvironment(ctx context.Context) Environment {
-	c.machineIDOnce.Do(func() {
-		c.machineID = LoadOrCreateMachineID(ctx)
-	})
 	return Environment{
 		LstkVersion: version.Version(),
 		AuthTokenID: c.authToken,
 		OS:          runtime.GOOS,
 		Arch:        runtime.GOARCH,
-		MachineID:   c.machineID,
+		MachineID:   c.MachineID(ctx),
 	}
 }
 

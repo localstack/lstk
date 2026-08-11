@@ -57,6 +57,8 @@ type extContext struct {
 	NonInteractive bool       `json:"nonInteractive"`
 	JSON           bool       `json:"json"`
 	SessionID      string     `json:"sessionId"`
+	MachineID      string     `json:"machineId"`
+	EndpointURL    string     `json:"endpointUrl"`
 	Emulators      []emulator `json:"emulators"`
 }
 
@@ -156,6 +158,12 @@ func echo(args []string, c extContext) {
 	fmt.Printf("JSON=%t\n", c.JSON)
 	if c.SessionID != "" {
 		fmt.Printf("SESSION_ID=%s\n", c.SessionID)
+	}
+	if c.MachineID != "" {
+		fmt.Printf("MACHINE_ID=%s\n", c.MachineID)
+	}
+	if c.EndpointURL != "" {
+		fmt.Printf("ENDPOINT_URL=%s\n", c.EndpointURL)
 	}
 	fmt.Printf("EMULATOR_COUNT=%d\n", len(c.Emulators))
 	for _, e := range c.Emulators {

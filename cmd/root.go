@@ -19,6 +19,7 @@ import (
 	"github.com/localstack/lstk/internal/auth"
 	"github.com/localstack/lstk/internal/config"
 	"github.com/localstack/lstk/internal/container"
+	"github.com/localstack/lstk/internal/endpoint"
 	"github.com/localstack/lstk/internal/env"
 	"github.com/localstack/lstk/internal/log"
 	"github.com/localstack/lstk/internal/output"
@@ -67,7 +68,11 @@ func NewRootCmd(cfg *env.Env, tel *telemetry.Client, logger log.Logger) *cobra.C
 			// command (Cobra would have routed those to their own command), so it
 			// is an extension name; everything after it is forwarded verbatim.
 			if len(args) > 0 {
-				return dispatchExtension(cmd.Context(), cfg, tel, logger, args)
+				// Resolved here rather than inside dispatchExtension because only
+				// this scope has the *cobra.Command the flag lives on. The value
+				// is conveyed verbatim, so there is nothing to fail on.
+				_, endpointURL, _ := endpoint.ResolvedSource(cmd)
+				return dispatchExtension(cmd.Context(), cfg, tel, logger, args, endpointURL)
 			}
 			// The bare root command starts the emulator via the same
 			// startEmulator path as `lstk start` below, so it rejects

@@ -180,6 +180,8 @@ func TestEnvironRendersJSONContext(t *testing.T) {
 		AuthToken:      "tok-123",
 		NonInteractive: true,
 		SessionID:      "3f2b0c1e-0000-4000-8000-000000000001",
+		MachineID:      "dkr_0a1b2c3d4e5f",
+		EndpointURL:    "http://localhost:4566",
 		Emulators: []Emulator{
 			{Type: "aws", Endpoint: "http://localhost:4566", Port: "4566"},
 			{Type: "snowflake", Endpoint: "http://localhost:4566", Port: "4566"},
@@ -196,6 +198,12 @@ func TestEnvironRendersJSONContext(t *testing.T) {
 	if c.SessionID != "3f2b0c1e-0000-4000-8000-000000000001" {
 		t.Errorf("sessionId = %q, want the conveyed telemetry session id", c.SessionID)
 	}
+	if c.MachineID != "dkr_0a1b2c3d4e5f" {
+		t.Errorf("machineId = %q, want the conveyed telemetry machine id", c.MachineID)
+	}
+	if c.EndpointURL != "http://localhost:4566" {
+		t.Errorf("endpointUrl = %q, want the conveyed endpoint target", c.EndpointURL)
+	}
 	if len(c.Emulators) != 2 || c.Emulators[0].Type != "aws" || c.Emulators[1].Type != "snowflake" {
 		t.Errorf("emulators wrong: %+v", c.Emulators)
 	}
@@ -205,7 +213,8 @@ func TestEnvironRendersJSONContext(t *testing.T) {
 }
 
 func TestEnvironOmitsAbsentValues(t *testing.T) {
-	// No emulator, no token, interactive, and no telemetry session (telemetry disabled).
+	// No emulator, no token, interactive, no telemetry session or machine id
+	// (telemetry disabled), and no endpoint target (the default local emulator).
 	env := mustEnviron(t, Context{ConfigDir: "/cfg"}, nil)
 
 	if env[EnvAPIVersion] != "1" {
@@ -220,12 +229,20 @@ func TestEnvironOmitsAbsentValues(t *testing.T) {
 	if strings.Contains(env[EnvContext], "sessionId") {
 		t.Errorf("sessionId must be omitted when telemetry is disabled, got: %s", env[EnvContext])
 	}
+	// machineId goes absent with sessionId — a disabled telemetry client computes neither.
+	if strings.Contains(env[EnvContext], "machineId") {
+		t.Errorf("machineId must be omitted when telemetry is disabled, got: %s", env[EnvContext])
+	}
+	// endpointUrl is absent, not empty, when the invocation targets the local emulator.
+	if strings.Contains(env[EnvContext], "endpointUrl") {
+		t.Errorf("endpointUrl must be omitted when no endpoint source is set, got: %s", env[EnvContext])
+	}
 	c := decodeContext(t, env)
 	if c.ConfigDir != "/cfg" {
 		t.Errorf("configDir = %q, want /cfg", c.ConfigDir)
 	}
-	if c.AuthToken != "" || c.NonInteractive || c.SessionID != "" {
-		t.Errorf("token/non-interactive/session should be zero values: %+v", c)
+	if c.AuthToken != "" || c.NonInteractive || c.SessionID != "" || c.MachineID != "" || c.EndpointURL != "" {
+		t.Errorf("token/non-interactive/session/machine/endpoint should be zero values: %+v", c)
 	}
 	// emulators is always present and an empty (non-nil) array.
 	if c.Emulators == nil || len(c.Emulators) != 0 {

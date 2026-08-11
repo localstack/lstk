@@ -31,9 +31,16 @@ import (
 // product-telemetry command event named "ext:<name>" so the analytics pipeline
 // can track which extension ran; this is separate from the OTel span emitted
 // inside extension.Invoke (see internal/extension/exec.go). That event's session
-// id is also conveyed in the runtime context, so an extension emitting its own
-// telemetry can join it to this invocation exactly.
-func dispatchExtension(ctx context.Context, cfg *env.Env, tel *telemetry.Client, logger log.Logger, args []string) error {
+// id and machine id are also conveyed in the runtime context, so an extension
+// emitting its own telemetry can join it to this invocation exactly and report
+// the same machine without re-deriving it.
+//
+// endpointURL is the endpoint source the caller resolved for this invocation
+// (empty when none was set), conveyed verbatim. Unlike the built-ins that reject
+// an endpoint URL outright, dispatch makes no judgment about it: rejecting is for
+// commands with no remote equivalent, whereas what an endpoint target means to an
+// extension is the extension's own business.
+func dispatchExtension(ctx context.Context, cfg *env.Env, tel *telemetry.Client, logger log.Logger, args []string, endpointURL string) error {
 	name, extArgs := args[0], args[1:]
 
 	resolver := extension.NewResolver(logger)
@@ -62,6 +69,8 @@ func dispatchExtension(ctx context.Context, cfg *env.Env, tel *telemetry.Client,
 		NonInteractive: !isInteractiveMode(cfg),
 		JSON:           cfg.JSON,
 		SessionID:      tel.SessionID(),
+		MachineID:      tel.MachineID(ctx),
+		EndpointURL:    endpointURL,
 		Emulators:      emulators,
 	}
 
