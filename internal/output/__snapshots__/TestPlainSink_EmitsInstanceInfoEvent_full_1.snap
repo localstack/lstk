@@ -1,0 +1,6 @@
+✔︎ LocalStack AWS Emulator is running
+• Endpoint: localhost.localstack.cloud:4566
+• Persistence: Enabled
+• Container: localstack-aws
+• Version: <version>
+• Uptime: <time>

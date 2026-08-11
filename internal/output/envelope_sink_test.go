@@ -4,7 +4,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/shoenig/test/must"
+	"github.com/localstack/lstk/internal/must"
 )
 
 func TestEnvelopeSink_SuccessWithNoEvents(t *testing.T) {

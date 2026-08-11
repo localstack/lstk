@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gkampitakis/go-snaps/snaps"
+	"github.com/localstack/lstk/internal/snap"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -156,7 +156,7 @@ func TestPlainSink_EmitsErrorEvent(t *testing.T) {
 		Actions: []ErrorAction{{Label: "Start Docker:", Value: "open -a Docker"}},
 	})
 
-	snaps.MatchSnapshot(t, out.String())
+	snap.Match(t, out.String())
 }
 
 func TestPlainSink_EmitsInstanceInfoEvent(t *testing.T) {
@@ -173,7 +173,7 @@ func TestPlainSink_EmitsInstanceInfoEvent(t *testing.T) {
 			Persistence:   true,
 		})
 
-		snaps.MatchSnapshot(t, sanitizeSnapshot(out.String()))
+		snap.Match(t, sanitizeSnapshot(out.String()))
 		assert.NoError(t, sink.Err())
 	})
 
@@ -186,7 +186,7 @@ func TestPlainSink_EmitsInstanceInfoEvent(t *testing.T) {
 			Host:         "127.0.0.1:4566",
 		})
 
-		snaps.MatchSnapshot(t, out.String())
+		snap.Match(t, out.String())
 		assert.NoError(t, sink.Err())
 	})
 
