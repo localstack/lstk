@@ -61,6 +61,7 @@ Go through each changed file and check for violations. Flag only actual problems
 
 - [ ] New functionality has tests (prefer integration tests)
 - [ ] Bug fixes have an integration test that reproduces the bug (fails before fix, passes after)
+- [ ] E2E/integration tests assert observable behavior only (CLI output, exit codes, files, requests received by mocks) — not internal details; external systems may be mocked at the boundary
 - [ ] Interactive tests use PTY (`github.com/creack/pty`)
 - [ ] No unchecked errors outside of test files
 
