@@ -14,6 +14,8 @@
 package snap
 
 import (
+	"bytes"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -44,14 +46,73 @@ var unsafeChars = regexp.MustCompile(`[^A-Za-z0-9._-]+`)
 // UPDATE_SNAPS=true.
 func Match(t testing.TB, got string) {
 	t.Helper()
-	if n := flagValue("test.count"); n != "" && n != "1" {
-		t.Fatalf("snap: -count > 1 is not supported (snapshot call numbering would repeat)")
+	match(t, got, callerSnapshotDir(t))
+}
+
+// MatchJSON snapshots got (a JSON document) in canonical pretty-printed form
+// (two-space indent, object keys sorted by encoding/json), after replacing
+// the values at the given dotted paths (e.g. "data.currentVersion") with the
+// placeholder "<any>". Use the paths to mask values that legitimately change
+// between runs. A path that doesn't resolve fails the test, so a masked
+// field disappearing is caught rather than silently ignored. Paths traverse
+// JSON objects only; there is no array-index syntax.
+func MatchJSON(t testing.TB, got []byte, maskPaths ...string) {
+	t.Helper()
+	var v any
+	if err := json.Unmarshal(got, &v); err != nil {
+		t.Fatalf("snap: value is not valid JSON: %v", err)
 	}
-	_, file, _, ok := runtime.Caller(1)
+	for _, path := range maskPaths {
+		if !mask(v, strings.Split(path, ".")) {
+			t.Fatalf("snap: mask path %q not found in JSON", path)
+		}
+	}
+	// An Encoder rather than MarshalIndent so the "<any>" placeholder isn't
+	// HTML-escaped (u003c/u003e) in the stored snapshot. Encode appends the
+	// trailing newline.
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	enc.SetEscapeHTML(false)
+	enc.SetIndent("", "  ")
+	if err := enc.Encode(v); err != nil {
+		t.Fatalf("snap: %v", err)
+	}
+	match(t, buf.String(), callerSnapshotDir(t))
+}
+
+// mask walks nested JSON objects along path segments and replaces the final
+// value with "<any>", reporting whether the full path resolved.
+func mask(v any, segs []string) bool {
+	m, ok := v.(map[string]any)
+	if !ok {
+		return false
+	}
+	if len(segs) == 1 {
+		if _, ok := m[segs[0]]; !ok {
+			return false
+		}
+		m[segs[0]] = "<any>"
+		return true
+	}
+	return mask(m[segs[0]], segs[1:])
+}
+
+// callerSnapshotDir resolves the __snapshots__ directory next to the test
+// file that called the exported Match/MatchJSON function (two frames up).
+func callerSnapshotDir(t testing.TB) string {
+	t.Helper()
+	_, file, _, ok := runtime.Caller(2)
 	if !ok {
 		t.Fatal("snap: cannot resolve calling test file")
 	}
-	dir := filepath.Join(filepath.Dir(file), "__snapshots__")
+	return filepath.Join(filepath.Dir(file), "__snapshots__")
+}
+
+func match(t testing.TB, got, dir string) {
+	t.Helper()
+	if n := flagValue("test.count"); n != "" && n != "1" {
+		t.Fatalf("snap: -count > 1 is not supported (snapshot call numbering would repeat)")
+	}
 
 	mu.Lock()
 	key := dir + "|" + t.Name()

@@ -174,6 +174,50 @@ func TestMatchCountsCallsWithinOneTest(t *testing.T) {
 	}
 }
 
+func TestMatchJSONMasksAndCanonicalizes(t *testing.T) {
+	t.Setenv("CI", "")
+	t.Setenv("UPDATE_SNAPS", "")
+	path := snapPath(t, "TestFakeJSON", "1")
+
+	ft := &fakeT{name: "TestFakeJSON"}
+	MatchJSON(ft, []byte(`{"zebra":1,"data":{"version":"4.14.1","name":"aws"}}`), "data.version")
+	if ft.failed {
+		t.Fatalf("unexpected failure: %q", ft.msg)
+	}
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := string(content)
+	if !strings.Contains(got, `"version": "<any>"`) {
+		t.Fatalf("masked value missing: %s", got)
+	}
+	if strings.Contains(got, "4.14.1") {
+		t.Fatalf("volatile value leaked into snapshot: %s", got)
+	}
+	if strings.Index(got, `"data"`) > strings.Index(got, `"zebra"`) {
+		t.Fatalf("keys not sorted: %s", got)
+	}
+}
+
+func TestMatchJSONFailsOnMissingMaskPath(t *testing.T) {
+	t.Setenv("CI", "")
+	ft := &fakeT{name: "TestFakeJSONBadPath"}
+	MatchJSON(ft, []byte(`{"data":{}}`), "data.version")
+	if !ft.fatal {
+		t.Fatal("missing mask path must be fatal")
+	}
+}
+
+func TestMatchJSONFailsOnInvalidJSON(t *testing.T) {
+	t.Setenv("CI", "")
+	ft := &fakeT{name: "TestFakeJSONInvalid"}
+	MatchJSON(ft, []byte(`not json`))
+	if !ft.fatal {
+		t.Fatal("invalid JSON must be fatal")
+	}
+}
+
 func TestReportObsolete(t *testing.T) {
 	dir := t.TempDir()
 	live := filepath.Join(dir, "TestLive_1.snap")
