@@ -275,13 +275,20 @@ func TestLicenseRejectionOffersReloginAndRetries(t *testing.T) {
 //
 // A pinned tag that is never present locally keeps this on the pre-pull
 // validation path: the rejection lands before any image pull, so no container is
-// ever created.
+// ever created. It still shares Docker state with the rest of the suite, so it
+// is not parallel and it clears any running emulator first: container discovery
+// matches by (image repo, internal port), so an emulator already running on 4566
+// makes `lstk start` report that instead of ever reaching the license check.
 func TestLicenseRejectionEscDeclineShowsManualSteps(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("PTY not supported on Windows")
 	}
-	t.Parallel()
 	requireDocker(t)
+
+	// cleanupLicense, not cleanup: the container has to go, but there is no need
+	// to delete the developer's keyring token to run this test.
+	cleanupLicense()
+	t.Cleanup(cleanupLicense)
 
 	mockServer := createMockLicenseServer(false)
 	defer mockServer.Close()
@@ -311,10 +318,17 @@ func TestLicenseRejectionEscDeclineShowsManualSteps(t *testing.T) {
 		_, _ = io.Copy(out, ptmx)
 		close(outputCh)
 	}()
+	// require.Eventually's message args are evaluated before the wait, so the
+	// transcript has to be logged from a cleanup to be of any use.
+	t.Cleanup(func() {
+		if t.Failed() {
+			t.Logf("PTY transcript:\n%s", out.String())
+		}
+	})
 
 	require.Eventually(t, func() bool {
 		return bytes.Contains(out.Bytes(), []byte("ESC to exit"))
-	}, 60*time.Second, 100*time.Millisecond, "the re-login prompt must be on screen, advertising the decline key: %s", out.String())
+	}, 60*time.Second, 100*time.Millisecond, "the re-login prompt must be on screen, advertising the decline key")
 
 	_, err = ptmx.Write([]byte{0x1b})
 	require.NoError(t, err)

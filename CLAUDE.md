@@ -314,6 +314,7 @@ case <-ctx.Done():
 5. `Update()` must stay non-blocking.
 6. UI should consume shared output events directly; add UI-only wrapper/control messages only when needed, and suffix them with `...Msg`.
 7. Keep message/history state bounded (for example, capped line buffer).
+8. A pending `UserInputRequestEvent` must stay visible and readable until it is answered: show it through `inputPrompt` (spinner text is a mirror, never the only home — a spinner stopped inside its min duration erases it) and wrap it to the terminal width (Bubble Tea truncates every line, cutting off the key hint). Either failure leaves the CLI blocked on `ResponseCh` with nothing on screen.
 
 ## Styling Rules
 - Define styles with semantic names in `internal/ui/styles/styles.go`.
