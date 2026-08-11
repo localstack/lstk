@@ -267,6 +267,80 @@ func TestLicenseRejectionOffersReloginAndRetries(t *testing.T) {
 	assert.Equal(t, realToken, storedToken, "the fresh token must replace the rejected one")
 }
 
+// TestLicenseRejectionEscDeclineShowsManualSteps covers DEVX-1045: the re-login
+// offer must be on screen (it used to be swallowed by the spinner it was emitted
+// under, so `lstk start` looked hung), and declining it must print the manual
+// recovery steps and exit right away. Ctrl+C also declines, but it cancels the
+// root context and races the TUI's quit, so ESC is the deterministic path.
+//
+// A pinned tag that is never present locally keeps this on the pre-pull
+// validation path: the rejection lands before any image pull, so no container is
+// ever created. It still shares Docker state with the rest of the suite, so it
+// is not parallel and it clears any running emulator first: container discovery
+// matches by (image repo, internal port), so an emulator already running on 4566
+// makes `lstk start` report that instead of ever reaching the license check.
+func TestLicenseRejectionEscDeclineShowsManualSteps(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("PTY not supported on Windows")
+	}
+	requireDocker(t)
+
+	// cleanupLicense, not cleanup: the container has to go, but there is no need
+	// to delete the developer's keyring token to run this test.
+	cleanupLicense()
+	t.Cleanup(cleanupLicense)
+
+	mockServer := createMockLicenseServer(false)
+	defer mockServer.Close()
+
+	tmpHome := t.TempDir()
+	configFile := filepath.Join(tmpHome, "config.toml")
+	require.NoError(t, os.WriteFile(configFile, []byte("[[containers]]\ntype = \"aws\"\ntag = \"2020.1\"\nport = \"4591\"\n"), 0644))
+
+	environ := append(testEnvWithHome(tmpHome, ""),
+		fmt.Sprintf("%s=%s", env.APIEndpoint, mockServer.URL),
+		fmt.Sprintf("%s=%s", env.AuthToken, "rotated-away-token"),
+		"TERM=xterm-256color",
+	)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	t.Cleanup(cancel)
+
+	cmd := exec.CommandContext(ctx, binaryPath(), "start", "--config", configFile)
+	cmd.Env = environ
+	ptmx, err := pty.Start(cmd)
+	require.NoError(t, err, "failed to start command in PTY")
+	defer func() { _ = ptmx.Close() }()
+
+	out := &syncBuffer{}
+	outputCh := make(chan struct{})
+	go func() {
+		_, _ = io.Copy(out, ptmx)
+		close(outputCh)
+	}()
+	// require.Eventually's message args are evaluated before the wait, so the
+	// transcript has to be logged from a cleanup to be of any use.
+	t.Cleanup(func() {
+		if t.Failed() {
+			t.Logf("PTY transcript:\n%s", out.String())
+		}
+	})
+
+	require.Eventually(t, func() bool {
+		return bytes.Contains(out.Bytes(), []byte("ESC to exit"))
+	}, 60*time.Second, 100*time.Millisecond, "the re-login prompt must be on screen, advertising the decline key")
+
+	_, err = ptmx.Write([]byte{0x1b})
+	require.NoError(t, err)
+
+	err = cmd.Wait()
+	<-outputCh
+	requireExitCode(t, 1, err)
+	assert.Contains(t, out.String(), "License validation failed", "declining must render the failure")
+	assert.Contains(t, out.String(), "lstk logout", "declining must point at the manual recovery")
+	assert.Contains(t, out.String(), "LOCALSTACK_AUTH_TOKEN", "declining must mention the env var alternative")
+}
+
 func licenseFilePath(t *testing.T) string {
 	t.Helper()
 	cacheDir, err := os.UserCacheDir()

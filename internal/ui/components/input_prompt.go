@@ -5,6 +5,7 @@ import (
 
 	"github.com/localstack/lstk/internal/output"
 	"github.com/localstack/lstk/internal/ui/styles"
+	"github.com/localstack/lstk/internal/ui/wrap"
 )
 
 type InputPrompt struct {
@@ -48,25 +49,28 @@ func (p InputPrompt) SetSelectedIndex(idx int) InputPrompt {
 	return p
 }
 
-func (p InputPrompt) View() string {
+// marker prefixes the question; continuation lines are indented past it.
+const marker = "? "
+
+// View renders the prompt, wrapped to width so Bubble Tea's renderer cannot
+// truncate away the part that says which key to press (DEVX-1045). A width of 0
+// (before the first WindowSizeMsg) or a width too narrow for the marker renders
+// unwrapped.
+func (p InputPrompt) View(width int) string {
 	if !p.visible {
 		return ""
 	}
 
 	if p.vertical {
-		return p.viewVertical()
+		return p.viewVertical(width)
 	}
 
 	lines := strings.Split(p.prompt, "\n")
-	firstLine := lines[0]
+	question, suffix := lines[0], output.FormatPromptLabels(p.options)
 
 	var sb strings.Builder
-	sb.WriteString(styles.Secondary.Render("? "))
-	sb.WriteString(styles.Message.Render(firstLine))
-
-	if suffix := output.FormatPromptLabels(p.options); suffix != "" {
-		sb.WriteString(styles.Secondary.Render(suffix))
-	}
+	sb.WriteString(styles.Secondary.Render(marker))
+	sb.WriteString(renderWrappedPrompt(question, suffix, width))
 
 	if len(lines) > 1 {
 		sb.WriteString("\n")
@@ -76,12 +80,45 @@ func (p InputPrompt) View() string {
 	return sb.String()
 }
 
-func (p InputPrompt) viewVertical() string {
+// renderWrappedPrompt wraps the question to the width left of the marker and
+// appends the key hints, keeping them dimmed and on the same line when they fit.
+// The hints are wrapped as a unit rather than word by word, so they never end up
+// split across lines.
+func renderWrappedPrompt(question, suffix string, width int) string {
+	indent := strings.Repeat(" ", len([]rune(marker)))
+	available := width - len([]rune(marker))
+	if available <= 0 {
+		return styles.Message.Render(question) + styles.Secondary.Render(suffix)
+	}
+
+	lines := wrap.SoftWrap(question, available)
+	if len(lines) == 0 {
+		lines = []string{""}
+	}
+
+	rendered := make([]string, 0, len(lines)+1)
+	for _, line := range lines {
+		rendered = append(rendered, styles.Message.Render(line))
+	}
+
+	if suffix != "" {
+		last := len(lines) - 1
+		if len([]rune(lines[last]))+len([]rune(suffix)) <= available {
+			rendered[last] += styles.Secondary.Render(suffix)
+		} else {
+			rendered = append(rendered, styles.Secondary.Render(strings.TrimPrefix(suffix, " ")))
+		}
+	}
+
+	return strings.Join(rendered, "\n"+indent)
+}
+
+func (p InputPrompt) viewVertical(width int) string {
 	var sb strings.Builder
 
 	if p.prompt != "" {
-		sb.WriteString(styles.Secondary.Render("? "))
-		sb.WriteString(styles.Message.Render(p.prompt))
+		sb.WriteString(styles.Secondary.Render(marker))
+		sb.WriteString(renderWrappedPrompt(p.prompt, "", width))
 		sb.WriteString("\n")
 	}
 
