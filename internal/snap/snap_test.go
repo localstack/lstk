@@ -253,3 +253,17 @@ func TestReportObsolete(t *testing.T) {
 		}
 	}
 }
+
+func TestMatchJSONFatalPathsWriteNoSnapshot(t *testing.T) {
+	t.Setenv("CI", "")
+	dir := filepath.Join(filepath.Dir(callerFile(t)), "__snapshots__")
+
+	MatchJSON(&fakeT{name: "TestFakeJSONInvalid"}, []byte(`not json`))
+	MatchJSON(&fakeT{name: "TestFakeJSONBadPath"}, []byte(`{"data":{}}`), "data.version")
+
+	for _, name := range []string{"TestFakeJSONInvalid_1.snap", "TestFakeJSONBadPath_1.snap"} {
+		if _, err := os.Stat(filepath.Join(dir, name)); !os.IsNotExist(err) {
+			t.Fatalf("fatal MatchJSON call must not write %s", name)
+		}
+	}
+}

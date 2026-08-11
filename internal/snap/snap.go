@@ -58,13 +58,18 @@ func Match(t testing.TB, got string) {
 // JSON objects only; there is no array-index syntax.
 func MatchJSON(t testing.TB, got []byte, maskPaths ...string) {
 	t.Helper()
+	// The returns after Fatalf matter: tests exercise this path with a fake
+	// TB whose Fatalf does not stop the goroutine like *testing.T's does,
+	// and a fallthrough would store a bogus snapshot.
 	var v any
 	if err := json.Unmarshal(got, &v); err != nil {
 		t.Fatalf("snap: value is not valid JSON: %v", err)
+		return
 	}
 	for _, path := range maskPaths {
 		if !mask(v, strings.Split(path, ".")) {
 			t.Fatalf("snap: mask path %q not found in JSON", path)
+			return
 		}
 	}
 	// An Encoder rather than MarshalIndent so the "<any>" placeholder isn't
