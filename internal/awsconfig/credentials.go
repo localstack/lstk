@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"gopkg.in/ini.v1"
 )
@@ -124,4 +125,24 @@ func CredentialsFromEnv() (Credentials, error) {
 		SecretAccessKey: secret,
 		SessionToken:    os.Getenv("AWS_SESSION_TOKEN"),
 	}, nil
+}
+
+// DeactivateAccessKey neutralizes a real-looking AWS access key id so a live
+// credential is never baked into a generated IaC override file nor sent to
+// LocalStack (where it could be captured by analytics by accident).
+//
+// AWS access key ids begin with an "A" (e.g. "AKIA…" for long-term keys,
+// "ASIA…" for temporary session keys). Replacing that leading "A" with "L"
+// renders the key inert while leaving obviously-mock values (e.g. "test", or a
+// 12-digit account id) untouched. This mirrors tflocal's deactivate_access_key
+// safeguard — see https://docs.localstack.cloud/references/credentials/.
+//
+// Applied at the command boundary (resolveAccountSelection in cmd/proxy.go) on
+// behalf of every AWS-family proxy that resolves an account — aws, terraform,
+// and sam — which is why it lives here rather than in any one of their packages.
+func DeactivateAccessKey(accessKey string) string {
+	if strings.HasPrefix(accessKey, "A") {
+		return "L" + accessKey[1:]
+	}
+	return accessKey
 }

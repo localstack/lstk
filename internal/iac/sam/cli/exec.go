@@ -28,7 +28,11 @@ const installDocsURL = "https://docs.aws.amazon.com/serverless-application-model
 // region to AWS_REGION/AWS_DEFAULT_REGION. SAM output is streamed unobstructed
 // (no spinner); a non-zero exit is wrapped as a silent error so lstk does not
 // reprint it.
-func Run(ctx context.Context, endpointURL, account, region string, sink output.Sink, logger log.Logger, args []string) error {
+//
+// regionSelected reports that the user named the region with lstk's --region
+// flag; it additionally puts --region on sam's own command line, which is what
+// makes the flag outrank a region in samconfig.toml. See withRegionFlag.
+func Run(ctx context.Context, endpointURL, account, region string, regionSelected bool, sink output.Sink, logger log.Logger, args []string) error {
 	ctx, span := otel.Tracer("github.com/localstack/lstk/internal/iac/sam/cli").Start(ctx, "sam cli")
 	defer span.End()
 
@@ -57,6 +61,10 @@ func Run(ctx context.Context, endpointURL, account, region string, sink output.S
 	// (--endpoint-url/LSTK_ENDPOINT_URL/AWS_ENDPOINT_URL precedence, see
 	// internal/endpoint.Resolve), so it's used as-is here.
 	effectiveEndpoint := endpointURL
+
+	if regionSelected {
+		args = withRegionFlag(args, region)
+	}
 
 	span.SetAttributes(
 		attribute.StringSlice("sam.args", args),

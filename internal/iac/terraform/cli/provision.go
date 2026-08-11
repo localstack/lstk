@@ -25,8 +25,9 @@ type awsRunner func(ctx context.Context, args ...string) (output string, err err
 //
 // Rather than linking the AWS SDK, provisioning shells out to the `aws` CLI
 // (the same tool `lstk aws` proxies), targeting the resolved LocalStack endpoint
-// with forced mock credentials. It is idempotent. Returns awscli.ErrNotInstalled
-// if the `aws` binary is missing so the caller can surface an install hint.
+// under the same resolved account the generated backend block addresses. It is
+// idempotent. Returns awscli.ErrNotInstalled if the `aws` binary is missing so
+// the caller can surface an install hint.
 func provisionBackend(ctx context.Context, backend *s3Backend, e endpointForm, logger log.Logger) error {
 	if backend.bucket == "" {
 		// Terraform requires `bucket`; if it is missing or non-literal we cannot
@@ -44,7 +45,7 @@ func provisionBackend(ctx context.Context, backend *s3Backend, e endpointForm, l
 		region = e.region
 	}
 
-	run := newAWSRunner(e.endpointURL, region)
+	run := newAWSRunner(e.endpointURL, region, e.account)
 	if err := ensureBucket(ctx, run, backend.bucket, region, logger); err != nil {
 		return err
 	}
@@ -57,10 +58,15 @@ func provisionBackend(ctx context.Context, backend *s3Backend, e endpointForm, l
 }
 
 // newAWSRunner builds an awsRunner that invokes the `aws` CLI against the given
-// LocalStack endpoint. Credentials are forced to the mock values (matching the
-// rest of the terraform proxy) via awscli.BuildEnv, and S3 path-style addressing
-// is forced so the bare endpoint is used verbatim (no virtual-host DNS needed).
-func newAWSRunner(endpointURL, region string) awsRunner {
+// LocalStack endpoint under account, with a mock secret, via awscli.BuildEnv.
+// S3 path-style addressing is forced so the bare endpoint is used verbatim (no
+// virtual-host DNS needed).
+//
+// The account must be the same one encoded into the generated backend block:
+// LocalStack partitions resources by account, so provisioning the bucket under
+// the ambient environment's account instead would leave `terraform init` unable
+// to see a bucket lstk had just reported creating.
+func newAWSRunner(endpointURL, region, account string) awsRunner {
 	return func(ctx context.Context, args ...string) (string, error) {
 		full := make([]string, 0, len(args)+4)
 		full = append(full, "--endpoint-url", endpointURL)
@@ -70,13 +76,21 @@ func newAWSRunner(endpointURL, region string) awsRunner {
 		full = append(full, args...)
 
 		cmd := exec.CommandContext(ctx, "aws", full...)
-		cmd.Env = append(awscli.BuildEnv(os.Environ()), "AWS_S3_ADDRESSING_STYLE=path")
+		cmd.Env = provisionEnv(account)
 		var out bytes.Buffer
 		cmd.Stdout = &out
 		cmd.Stderr = &out
 		err := cmd.Run()
 		return out.String(), err
 	}
+}
+
+// provisionEnv is the child environment for a provisioning `aws` call: the
+// resolved account as AWS_ACCESS_KEY_ID (overriding any ambient value, which
+// would otherwise address a different LocalStack account than the backend block
+// does), a mock secret, and forced S3 path-style addressing.
+func provisionEnv(account string) []string {
+	return append(awscli.BuildEnv(os.Environ(), account), "AWS_S3_ADDRESSING_STYLE=path")
 }
 
 // ensureBucket creates the state bucket if it does not already exist. An

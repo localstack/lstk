@@ -262,3 +262,93 @@ func TestSAMRequiresAWSEmulator(t *testing.T) {
 	assert.Contains(t, stdout, "Snowflake")
 	assert.NotContains(t, stdout, "ARGS:deploy")
 }
+
+// The region must reach SAM on its command line, not only through AWS_REGION.
+// SAM injects samconfig.toml values as if typed on the command line, so a
+// `region` key there outranks every environment variable — which silently
+// defeated lstk's --region while --account (which has no samconfig.toml
+// equivalent) kept working.
+func TestSAMPutsSelectedRegionOnTheCommandLine(t *testing.T) {
+	t.Parallel()
+	srv := awsHealthServer(t)
+	fakeDir := writeFakeSAM(t, "1.95.0")
+	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).With(env.Home, t.TempDir())
+
+	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), e,
+		"--endpoint-url", srv.URL, "sam", "--region", "ap-northeast-1", "--account", "121212122323", "deploy")
+	require.NoError(t, err, "stderr: %s", stderr)
+
+	assert.Contains(t, stdout, "--region ap-northeast-1", "the region must be on sam's command line")
+	assert.Contains(t, stdout, "ENV_AWS_REGION=ap-northeast-1")
+	assert.Contains(t, stdout, "ENV_AWS_ACCESS_KEY_ID=121212122323")
+}
+
+// Without lstk's --region there is nothing to assert over samconfig.toml, so
+// lstk must not put one on the command line: injecting the us-east-1 default
+// would override the region of every project that configured its own.
+func TestSAMDoesNotInjectRegionWhenNotSelected(t *testing.T) {
+	t.Parallel()
+	srv := awsHealthServer(t)
+	fakeDir := writeFakeSAM(t, "1.95.0")
+	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).With(env.Home, t.TempDir())
+
+	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), e,
+		"--endpoint-url", srv.URL, "sam", "deploy")
+	require.NoError(t, err, "stderr: %s", stderr)
+
+	assert.NotContains(t, stdout, "--region")
+	// The environment still carries the default, as before.
+	assert.Contains(t, stdout, "ENV_AWS_REGION=us-east-1")
+}
+
+// An ambient AWS_REGION is used but is not a selection: it is commonly exported
+// globally for real-AWS work and must not start overriding samconfig.toml.
+func TestSAMDoesNotInjectAmbientRegion(t *testing.T) {
+	t.Parallel()
+	srv := awsHealthServer(t)
+	fakeDir := writeFakeSAM(t, "1.95.0")
+	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).With(env.Home, t.TempDir()).
+		With(env.Key("AWS_REGION"), "eu-west-1")
+
+	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), e,
+		"--endpoint-url", srv.URL, "sam", "deploy")
+	require.NoError(t, err, "stderr: %s", stderr)
+
+	assert.NotContains(t, stdout, "--region")
+	assert.Contains(t, stdout, "ENV_AWS_REGION=eu-west-1")
+}
+
+// Offline subcommands never get the flag: `init` and `docs` reject --region
+// outright, and an offline command contacts nothing that needs a region.
+func TestSAMDoesNotInjectRegionForOfflineSubcommand(t *testing.T) {
+	t.Parallel()
+	fakeDir := writeFakeSAM(t, "1.95.0")
+	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).With(env.Home, t.TempDir())
+
+	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), e,
+		"sam", "--region", "ap-northeast-1", "build")
+	require.NoError(t, err, "stderr: %s", stderr)
+
+	assert.Contains(t, stdout, "ARGS:build")
+	assert.NotContains(t, stdout, "--region")
+	assert.Contains(t, stdout, "ENV_AWS_REGION=ap-northeast-1")
+}
+
+// A --region the user addressed to sam directly wins: appending lstk's after it
+// would silently outrank it.
+func TestSAMLeavesUserSuppliedRegionFlagAlone(t *testing.T) {
+	t.Parallel()
+	srv := awsHealthServer(t)
+	fakeDir := writeFakeSAM(t, "1.95.0")
+	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).With(env.Home, t.TempDir())
+
+	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), e,
+		"--endpoint-url", srv.URL, "sam", "--region", "ap-northeast-1", "deploy", "--region", "us-west-1")
+	require.NoError(t, err, "stderr: %s", stderr)
+
+	// Pinned to the whole ARGS line: lstk must not append a second --region.
+	assert.Contains(t, stdout, "ARGS:deploy --region us-west-1\n")
+	// The environment still carries lstk's resolved region, as it always has;
+	// sam's own command-line flag is what outranks it.
+	assert.Contains(t, stdout, "ENV_AWS_REGION=ap-northeast-1")
+}

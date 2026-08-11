@@ -141,6 +141,30 @@ func ContainerName(value string) error {
 	return nil
 }
 
+// awsAccountIDRegexp matches an AWS account id: exactly 12 decimal digits. The
+// rule mirrors how LocalStack derives the account from the access key id it
+// receives — a 12-digit key selects that account, anything else falls back to
+// the default 000000000000 — rather than any AWS API contract.
+var awsAccountIDRegexp = regexp.MustCompile(`^\d{12}$`)
+
+// AWSAccountID validates a user-supplied AWS account id. Like PodName it runs
+// ordered deny-checks so the most specific reason wins: a wrong-length value is
+// a range failure, a right-length value with non-digits is a format failure.
+func AWSAccountID(value string) error {
+	const field = "account"
+	switch {
+	case value == "":
+		return newError(field, RuleEmpty, "must not be empty")
+	case containsControlChars(value):
+		return newError(field, RuleControlChars, "contains control characters")
+	case len(value) != 12:
+		return newError(field, RuleRange, "must be exactly 12 digits")
+	case !awsAccountIDRegexp.MatchString(value):
+		return newError(field, RuleFormat, "must contain digits only")
+	}
+	return nil
+}
+
 // serviceListRegexp matches a comma-delimited list of service-name tokens:
 // letters, digits, underscores, and hyphens, with optional whitespace around
 // each item and separator. Mirrors the legacy CLI's is_comma_delimited_list

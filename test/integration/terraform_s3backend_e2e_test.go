@@ -128,6 +128,42 @@ func TestTerraformE2ES3BackendTofu(t *testing.T) {
 	assert.Contains(t, tfStateList(t, ctx, work, e), "aws_s3_bucket.b")
 }
 
+// State-bucket provisioning must address the same LocalStack account as the
+// generated backend block. LocalStack partitions resources by account, so
+// before the fix `--account` produced a bucket in the ambient account while the
+// backend block pointed at the selected one — `init` then failed against a
+// bucket lstk had just reported creating. Verified through `lstk aws --account`,
+// which reads the same account the backend was told to use.
+func TestTerraformE2ES3BackendProvisionsInSelectedAccount(t *testing.T) {
+	requireDocker(t)
+	requireTerraform(t)
+	requireAWSCLI(t)
+	token := requireAuthToken(t)
+	cleanup()
+	t.Cleanup(cleanup)
+	ctx := testContext(t)
+	startRealLocalStack(t, ctx, token)
+
+	const account = "111111111111"
+	work := copySample(t, "s3-backend")
+	e := e2eEnv(t)
+
+	_, stderr, err := runTerraform(t, ctx, work, e, "--account", account, "init", "-no-color")
+	require.NoError(t, err, "init with --account failed: %s", stderr)
+
+	_, stderr, err = runTerraform(t, ctx, work, e, "--account", account, "apply", "-auto-approve", "-no-color")
+	require.NoError(t, err, "apply stderr: %s", stderr)
+
+	selected, stderr, err := runLstk(t, ctx, work, e, "aws", "--account", account, "s3", "ls")
+	require.NoError(t, err, "listing buckets in the selected account failed: %s", stderr)
+	assert.Contains(t, selected, "lstk-tf-state", "the state bucket must exist in the selected account")
+
+	// And not in the default account, which is where it landed before the fix.
+	deflt, stderr, err := runLstk(t, ctx, work, e, "aws", "s3", "ls")
+	require.NoError(t, err, "listing buckets in the default account failed: %s", stderr)
+	assert.NotContains(t, deflt, "lstk-tf-state", "the state bucket must not be in the default account")
+}
+
 // 10.5 — a configuration with no S3 backend still behaves as before: `init`
 // passes through and does NOT require a running emulator (no LocalStack is
 // started here, yet init succeeds).

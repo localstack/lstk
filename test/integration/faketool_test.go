@@ -19,6 +19,7 @@ import (
 // the same tests run on Windows.
 type fakeToolCase struct {
 	Args     []string `json:"args"`
+	Shift    int      `json:"shift,omitempty"`
 	Stdout   []string `json:"stdout,omitempty"`
 	Stderr   []string `json:"stderr,omitempty"`
 	ExitCode int      `json:"exitCode,omitempty"`

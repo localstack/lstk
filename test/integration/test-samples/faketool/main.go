@@ -12,6 +12,9 @@
 //	{args}              all arguments after the first Shift ones, space-joined
 //	{env:NAME}          the value of environment variable NAME
 //	{env:NAME:-fallback} same, but "fallback" when NAME is unset or empty
+//	{env:NAME-fallback}  same, but "fallback" only when NAME is unset — the
+//	                     sh ${NAME-fallback} distinction between "removed from
+//	                     the environment" and "present but empty"
 package main
 
 import (
@@ -28,7 +31,10 @@ import (
 // argCase short-circuits the default behavior when the invocation's arguments
 // start with Args — e.g. a `--version` probe or `providers schema -json`.
 type argCase struct {
-	Args     []string `json:"args"`
+	Args []string `json:"args"`
+	// Shift drops this many leading arguments before the case's {args} is
+	// rendered (the top-level Shift does not apply inside cases).
+	Shift    int      `json:"shift,omitempty"`
 	Stdout   []string `json:"stdout,omitempty"`
 	Stderr   []string `json:"stderr,omitempty"`
 	ExitCode int      `json:"exitCode,omitempty"`
@@ -57,7 +63,7 @@ type config struct {
 	ExitCode   int    `json:"exitCode,omitempty"`
 }
 
-var placeholder = regexp.MustCompile(`\{arg(\d+)\}|\{args\}|\{env:([A-Za-z0-9_]+)(:-([^}]*))?\}`)
+var placeholder = regexp.MustCompile(`\{arg(\d+)\}|\{args\}|\{env:([A-Za-z0-9_]+)((:?-)([^}]*))?\}`)
 
 func expand(line string, args, shifted []string) string {
 	return placeholder.ReplaceAllStringFunc(line, func(m string) string {
@@ -70,15 +76,32 @@ func expand(line string, args, shifted []string) string {
 			}
 			return ""
 		case strings.HasPrefix(m, "{env:"):
-			v := os.Getenv(sub[2])
-			if v == "" && sub[3] != "" {
-				return sub[4]
+			v, set := os.LookupEnv(sub[2])
+			switch sub[4] {
+			case ":-":
+				if v == "" {
+					return sub[5]
+				}
+			case "-":
+				if !set {
+					return sub[5]
+				}
 			}
 			return v
 		default:
 			return strings.Join(shifted, " ")
 		}
 	})
+}
+
+func shiftArgs(args []string, n int) []string {
+	if n <= 0 {
+		return args
+	}
+	if n >= len(args) {
+		return nil
+	}
+	return args[n:]
 }
 
 func hasPrefix(args, prefix []string) bool {
@@ -117,11 +140,12 @@ func main() {
 		if !hasPrefix(args, c.Args) {
 			continue
 		}
+		caseShifted := shiftArgs(args, c.Shift)
 		for _, line := range c.Stdout {
-			fmt.Println(expand(line, args, args))
+			fmt.Println(expand(line, args, caseShifted))
 		}
 		for _, line := range c.Stderr {
-			fmt.Fprintln(os.Stderr, expand(line, args, args))
+			fmt.Fprintln(os.Stderr, expand(line, args, caseShifted))
 		}
 		os.Exit(c.ExitCode)
 	}
@@ -130,14 +154,7 @@ func main() {
 		time.Sleep(time.Duration(cfg.SleepSeconds) * time.Second)
 	}
 
-	shifted := args
-	if cfg.Shift > 0 {
-		if cfg.Shift < len(args) {
-			shifted = args[cfg.Shift:]
-		} else {
-			shifted = nil
-		}
-	}
+	shifted := shiftArgs(args, cfg.Shift)
 
 	if cfg.RecordFile != "" {
 		if err := os.WriteFile(cfg.RecordFile, []byte(expand(cfg.RecordContent, args, shifted)), 0o644); err != nil {

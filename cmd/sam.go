@@ -72,16 +72,16 @@ Examples:
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			sink := output.NewPlainSink(os.Stdout)
 
-			if err := rejectPreSubcommandFlags(cmd.CalledAs()); err != nil {
+			if err := rejectPreSubcommandFlags(cmd.CalledAs(), "--region", "--account"); err != nil {
 				return emitValidationError(sink, err)
 			}
 
-			samArgs, regionFlag, accountFlag, _, err := stripLeadingIaCFlags(passthrough, false)
+			samArgs, regionFlag, accountFlag, _, err := stripLeadingProxyFlags(passthrough, leadingFlags{account: true, region: true})
 			if err != nil {
 				return emitValidationError(sink, err)
 			}
 
-			region := resolveRegion(regionFlag)
+			region, regionSelected := resolveRegionSelection(regionFlag)
 			account, err := resolveAccount(accountFlag)
 			if err != nil {
 				return emitValidationError(sink, err)
@@ -109,11 +109,11 @@ Examples:
 					host, _ := endpoint.ResolveHost(cmd.Context(), awsContainer.Port, cfg.LocalStackHost)
 					endpointURL = "http://" + host
 				}
-				return samcli.Run(cmd.Context(), endpointURL, account, region, sink, logger, samArgs)
+				return samcli.Run(cmd.Context(), endpointURL, account, region, regionSelected, sink, logger, samArgs)
 			}
 
 			if target != nil {
-				return samcli.Run(cmd.Context(), target.URL, account, region, sink, logger, samArgs)
+				return samcli.Run(cmd.Context(), target.URL, account, region, regionSelected, sink, logger, samArgs)
 			}
 
 			rt, err := runtime.NewDockerRuntime(cfg.DockerHost)
@@ -132,7 +132,7 @@ Examples:
 
 			host, _ := endpoint.ResolveHost(cmd.Context(), awsContainer.Port, cfg.LocalStackHost)
 
-			return samcli.Run(cmd.Context(), "http://"+host, account, region, sink, logger, samArgs)
+			return samcli.Run(cmd.Context(), "http://"+host, account, region, regionSelected, sink, logger, samArgs)
 		},
 	}
 }
