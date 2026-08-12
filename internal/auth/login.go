@@ -7,12 +7,23 @@ import (
 	"fmt"
 	"io"
 	"net/url"
+	"os"
+	"os/exec"
 	"strings"
 
 	"github.com/localstack/lstk/internal/api"
 	"github.com/localstack/lstk/internal/output"
 	"github.com/pkg/browser"
 )
+
+// browserCmdEnv is an undocumented, test-only override for how the login flow
+// opens the auth URL: when set, lstk runs `<value> <url>` instead of the OS
+// browser launcher. On unix, tests intercept the launcher with fake
+// open/xdg-open binaries on PATH, but pkg/browser opens URLs on Windows via
+// the ShellExecute Win32 call — no subprocess, no PATH lookup — so this hook
+// is the only way to keep login tests from opening a real browser there.
+// Same pattern as LSTK_UPDATE_GITHUB_API_ENDPOINT.
+const browserCmdEnv = "LSTK_BROWSER_CMD"
 
 type LoginProvider interface {
 	Login(ctx context.Context) (string, error)
@@ -26,6 +37,9 @@ type loginProvider struct {
 }
 
 func defaultOpenBrowser(url string) error {
+	if cmd := os.Getenv(browserCmdEnv); cmd != "" {
+		return exec.Command(cmd, url).Run()
+	}
 	browser.Stdout = io.Discard
 	browser.Stderr = io.Discard
 	return browser.OpenURL(url)

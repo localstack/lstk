@@ -3,7 +3,6 @@ package integration_test
 import (
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -14,7 +13,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/creack/pty"
 	"github.com/localstack/lstk/internal/must"
 	"github.com/localstack/lstk/test/integration/env"
 )
@@ -53,7 +51,7 @@ func azureLikeHealthServer(t *testing.T) *httptest.Server {
 func writeFakeStreamingAz(t *testing.T, marker string, holdFor time.Duration) string {
 	t.Helper()
 	if runtime.GOOS == "windows" {
-		t.Skip("fake az script not supported on Windows")
+		t.Skip("reproduces CPython's unix stdout buffering behind lstk's inner PTY, which proc.RunInPTY does not provide on Windows")
 	}
 	// Absolute interpreter path in the shebang: the test's PATH holds only this
 	// fake az, so a `#!/usr/bin/env python3` line would not resolve.
@@ -94,22 +92,17 @@ func TestAzStreamsInPTY(t *testing.T) {
 	writeAzureSetupMarker(t, workDir)
 	fakeDir := writeFakeStreamingAz(t, marker, hold)
 
-	e := append(env.With(env.DisableEvents, "1").With("PATH", fakeDir).With(env.Home, t.TempDir()),
+	e := append(env.With(env.DisableEvents, "1").With("PATH", fakeDir).WithHome(t.TempDir()),
 		unreachableDockerHost)
 
+	ctx := testContext(t)
 	binPath, err := filepath.Abs(binaryPath())
 	must.NoError(t, err)
 
-	cmd := exec.CommandContext(testContext(t), binPath, "--endpoint-url", srv.URL, "az", "webapp", "log", "tail")
+	cmd := exec.CommandContext(ctx, binPath, "--endpoint-url", srv.URL, "az", "webapp", "log", "tail")
 	cmd.Dir = workDir
 	cmd.Env = e
-
-	ptmx, err := pty.Start(cmd)
-	must.NoError(t, err, "failed to start command in PTY")
-	t.Cleanup(func() { _ = ptmx.Close() })
-
-	out := &syncBuffer{}
-	go func() { _, _ = io.Copy(out, ptmx) }()
+	p := startCmdInPTY(t, ctx, cmd)
 
 	// Poll generously: lipgloss queries the terminal for its background colour on
 	// startup and nothing answers a test PTY, so lstk stalls for that query's
@@ -117,29 +110,29 @@ func TestAzStreamsInPTY(t *testing.T) {
 	deadline := time.Now().Add(30 * time.Second)
 	seen := false
 	for time.Now().Before(deadline) {
-		if strings.Contains(out.String(), marker) {
+		if strings.Contains(p.output(), marker) {
 			seen = true
 			break
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
-	must.True(t, seen, "az produced no output while the child was still running — it was withheld in the CLI's stdout buffer until exit (DEVX-1028); output so far:\n%s", out.String())
+	must.True(t, seen, "az produced no output while the child was still running — it was withheld in the CLI's stdout buffer until exit (DEVX-1028); output so far:\n%s", p.output())
 
 	// The two mechanisms that keep the symptom above from returning, asserted
 	// separately so a regression in either one is named rather than inferred.
-	must.Contains(t, out.String(), "STDOUT_TTY:yes", "the Azure CLI must be handed a terminal, not a pipe (DEVX-1028)")
-	must.Contains(t, out.String(), "PYTHONUNBUFFERED:1")
+	must.Contains(t, p.output(), "STDOUT_TTY:yes", "the Azure CLI must be handed a terminal, not a pipe (DEVX-1028)")
+	must.Contains(t, p.output(), "PYTHONUNBUFFERED:1")
 
 	// Ctrl-C via the PTY reaches the whole foreground process group (lstk and
 	// the az child), matching how a user stops a streaming command.
-	_, _ = ptmx.Write([]byte{3})
-	waitErr := make(chan error, 1)
-	go func() { waitErr <- cmd.Wait() }()
+	p.write("\x03")
+	waited := make(chan struct{})
+	go func() { _, _ = p.wait(); close(waited) }()
 	select {
-	case <-waitErr:
+	case <-waited:
 	case <-time.After(10 * time.Second):
-		_ = cmd.Process.Kill()
-		<-waitErr
+		_ = p.cmd.Process.Kill()
+		<-waited
 	}
 }
 
@@ -154,7 +147,7 @@ func TestAzWithPipedStdoutKeepsPipe(t *testing.T) {
 	writeAzureSetupMarker(t, workDir)
 	fakeDir := writeFakeStreamingAz(t, "piped", 0)
 
-	e := append(env.With(env.DisableEvents, "1").With("PATH", fakeDir).With(env.Home, t.TempDir()),
+	e := append(env.With(env.DisableEvents, "1").With("PATH", fakeDir).WithHome(t.TempDir()),
 		unreachableDockerHost)
 
 	stdout, stderr, err := runLstk(t, testContext(t), workDir, e, "--endpoint-url", srv.URL, "az", "group", "list")

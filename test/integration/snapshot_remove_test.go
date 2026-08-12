@@ -1,19 +1,12 @@
 package integration_test
 
 import (
-	"bytes"
-	"io"
 	"net/http"
 	"net/http/httptest"
-	"os"
-	"os/exec"
-	"path/filepath"
 	"strings"
 	"sync/atomic"
 	"testing"
-	"time"
 
-	"github.com/creack/pty"
 	"github.com/localstack/lstk/internal/must"
 	"github.com/localstack/lstk/test/integration/env"
 )
@@ -206,80 +199,52 @@ func TestSnapshotRemoveInteractive(t *testing.T) {
 
 	startTestContainer(t, testContext(t))
 
-	startRemove := func(t *testing.T, srv *httptest.Server) (*os.File, *syncBuffer, chan struct{}, *exec.Cmd) {
+	startRemove := func(t *testing.T, srv *httptest.Server) *ptyProc {
 		t.Helper()
-		binPath, err := filepath.Abs(binaryPath())
-		must.NoError(t, err)
-
-		cmd := exec.CommandContext(testContext(t), binPath, "snapshot", "remove", "pod:my-baseline")
-		cmd.Env = env.Environ(testEnvWithHome(t.TempDir(), "")).
-			With(env.LocalStackHost, lsHost(srv)).
-			With(env.AuthToken, "test-token")
-		ptmx, err := pty.Start(cmd)
-		must.NoError(t, err, "failed to start command in PTY")
-		t.Cleanup(func() { _ = ptmx.Close() })
-
-		out := &syncBuffer{}
-		outputCh := make(chan struct{})
-		go func() {
-			_, _ = io.Copy(out, ptmx)
-			close(outputCh)
-		}()
-		must.Eventually(t, func() bool {
-			return bytes.Contains(out.Bytes(), []byte("Delete cloud snapshot"))
-		}, 10*time.Second, 100*time.Millisecond, "confirmation prompt should appear")
-		return ptmx, out, outputCh, cmd
+		p := startLstkInPTY(t, testContext(t),
+			env.Environ(testEnvWithHome(t.TempDir(), "")).
+				With(env.LocalStackHost, lsHost(srv)).
+				With(env.AuthToken, "test-token"),
+			"snapshot", "remove", "pod:my-baseline")
+		p.waitForOutput("Delete cloud snapshot", "confirmation prompt should appear")
+		return p
 	}
 
 	t.Run("confirms with y", func(t *testing.T) {
 		srv, calls := mockPodRemoveServer(t, http.StatusOK)
-		ptmx, out, outputCh, cmd := startRemove(t, srv)
-		_, err := ptmx.Write([]byte("y"))
+		p := startRemove(t, srv)
+		p.write("y")
+		out, err := p.wait()
 		must.NoError(t, err)
-		must.NoError(t, cmd.Wait())
-		<-outputCh
 
-		must.Contains(t, out.String(), "deleted")
+		must.Contains(t, out, "deleted")
 		must.Eq(t, int32(1), calls(), "DELETE endpoint should be called after confirmation")
 	})
 
 	t.Run("cancels with n", func(t *testing.T) {
 		srv, calls := mockPodRemoveServer(t, http.StatusOK)
-		ptmx, out, outputCh, cmd := startRemove(t, srv)
-		_, err := ptmx.Write([]byte("n"))
+		p := startRemove(t, srv)
+		p.write("n")
+		out, err := p.wait()
 		must.NoError(t, err)
-		must.NoError(t, cmd.Wait())
-		<-outputCh
 
-		must.Contains(t, out.String(), "Cancelled")
+		must.Contains(t, out, "Cancelled")
 		must.Eq(t, int32(0), calls(), "DELETE endpoint must not be called when user cancels")
 	})
 
 	t.Run("force skips confirmation prompt", func(t *testing.T) {
 		srv, calls := mockPodRemoveServer(t, http.StatusOK)
 
-		binPath, err := filepath.Abs(binaryPath())
+		p := startLstkInPTY(t, testContext(t),
+			env.Environ(testEnvWithHome(t.TempDir(), "")).
+				With(env.LocalStackHost, lsHost(srv)).
+				With(env.AuthToken, "test-token"),
+			"snapshot", "remove", "pod:my-baseline", "--force")
+		out, err := p.wait()
 		must.NoError(t, err)
-		cmd := exec.CommandContext(testContext(t), binPath, "snapshot", "remove", "pod:my-baseline", "--force")
-		cmd.Env = env.Environ(testEnvWithHome(t.TempDir(), "")).
-			With(env.LocalStackHost, lsHost(srv)).
-			With(env.AuthToken, "test-token")
-		ptmx, err := pty.Start(cmd)
-		must.NoError(t, err, "failed to start command in PTY")
-		t.Cleanup(func() { _ = ptmx.Close() })
 
-		out := &syncBuffer{}
-		outputCh := make(chan struct{})
-		go func() {
-			_, _ = io.Copy(out, ptmx)
-			close(outputCh)
-		}()
-
-		must.NoError(t, cmd.Wait())
-		<-outputCh
-
-		must.NotContains(t, out.String(), "Delete cloud snapshot", "confirmation prompt must not appear with --force")
-		must.Contains(t, out.String(), "deleted")
+		must.NotContains(t, out, "Delete cloud snapshot", "confirmation prompt must not appear with --force")
+		must.Contains(t, out, "deleted")
 		must.Eq(t, int32(1), calls(), "DELETE endpoint should be called without confirmation")
 	})
 }

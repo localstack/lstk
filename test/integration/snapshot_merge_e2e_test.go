@@ -218,7 +218,7 @@ func TestSnapshotLoadMergeStrategies(t *testing.T) {
 	must.NoError(t, os.WriteFile(configPath, []byte("[[containers]]\ntype = \"aws\"\ntag = \""+mergeTestAWSTag+"\"\nport = \"4566\"\n"), 0644))
 	startRealLocalStackWithConfig(t, ctx, token, configPath)
 
-	e := env.With(env.DisableEvents, "1").With(env.Home, t.TempDir())
+	e := env.With(env.DisableEvents, "1").WithHome(t.TempDir())
 
 	// lstk aws prints a "No AWS profile found" note on stdout when no profile
 	// exists, which would corrupt the --output json parsing below. Set one up

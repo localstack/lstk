@@ -79,7 +79,7 @@ func TestAWSCommandEndpointURLHTTPSNoDockerRequired(t *testing.T) {
 	defer srv.Close()
 
 	fakeDir := writeFakeAWSEcho(t)
-	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).With(env.Home, t.TempDir())
+	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).WithHome(t.TempDir())
 	e = append(e, unreachableDockerHost, httpsCertFileEnv(t, srv))
 
 	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), e, "--endpoint-url", srv.URL, "aws", "s3", "ls")
@@ -101,7 +101,7 @@ func TestCDKCommandEndpointURLHTTPSNoDockerRequired(t *testing.T) {
 	defer srv.Close()
 
 	fakeDir := writeFakeCDK(t, "2.177.0")
-	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).With(env.Home, t.TempDir())
+	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).WithHome(t.TempDir())
 	e = append(e, unreachableDockerHost, httpsCertFileEnv(t, srv))
 
 	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), e, "--endpoint-url", srv.URL, "cdk", "deploy", "MyStack")
@@ -138,7 +138,7 @@ func TestSnapshotSaveEndpointURLHTTPSNoDockerRequired(t *testing.T) {
 	defer srv.Close()
 
 	dir := t.TempDir()
-	e := env.With(env.DisableEvents, "1").With(env.Home, t.TempDir())
+	e := env.With(env.DisableEvents, "1").WithHome(t.TempDir())
 	e = append(e, unreachableDockerHost, httpsCertFileEnv(t, srv))
 
 	stdout, stderr, err := runLstk(t, testContext(t), dir, e, "--endpoint-url", srv.URL, "snapshot", "save")
@@ -160,7 +160,7 @@ func TestStatusEndpointURLHTTPSchemeMismatchSuggestsHTTPS(t *testing.T) {
 	defer srv.Close()
 
 	httpURL := strings.Replace(srv.URL, "https://", "http://", 1)
-	e := env.With(env.DisableEvents, "1").With(env.Home, t.TempDir())
+	e := env.With(env.DisableEvents, "1").WithHome(t.TempDir())
 	e = append(e, unreachableDockerHost, httpsCertFileEnv(t, srv))
 
 	_, stderr, err := runLstk(t, testContext(t), t.TempDir(), e, "--endpoint-url", httpURL, "status")
@@ -182,7 +182,7 @@ func TestStatusEndpointURLHTTPSSchemeMismatchSuggestsHTTP(t *testing.T) {
 	defer srv.Close()
 
 	httpsURL := strings.Replace(srv.URL, "http://", "https://", 1)
-	e := env.With(env.DisableEvents, "1").With(env.Home, t.TempDir())
+	e := env.With(env.DisableEvents, "1").WithHome(t.TempDir())
 	e = append(e, unreachableDockerHost)
 
 	_, stderr, err := runLstk(t, testContext(t), t.TempDir(), e, "--endpoint-url", httpsURL, "status")
@@ -201,7 +201,7 @@ func TestStatusEndpointURLHTTPSRendersReducedOutput(t *testing.T) {
 	srv := awsHealthTLSServer(t)
 	defer srv.Close()
 
-	e := env.With(env.DisableEvents, "1").With(env.Home, t.TempDir())
+	e := env.With(env.DisableEvents, "1").WithHome(t.TempDir())
 	e = append(e, unreachableDockerHost, httpsCertFileEnv(t, srv))
 
 	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), e, "--endpoint-url", srv.URL, "status")

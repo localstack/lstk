@@ -1017,6 +1017,10 @@ func requiredHostPorts(mappings []runtime.PortMapping) []string {
 // already taken, warning about each one, and returns the mappings to publish.
 // Required mappings are passed through untouched — the caller has already
 // verified them.
+//
+// Only the host publication is dropped: the container-side GATEWAY_LISTEN is left
+// untouched on purpose, so the gateway keeps listening on that port inside the
+// container and HTTPS stays reachable over the edge port.
 func dropBusyOptionalPorts(sink output.Sink, activeFlavor, installedFlavor, edgePort string, mappings []runtime.PortMapping) []runtime.PortMapping {
 	var kept []runtime.PortMapping
 	dropped := false
@@ -1208,6 +1212,10 @@ func emitPortInUseError(sink output.Sink, port string) {
 
 // validateLicense runs the license pre-flight and caches the license file on
 // success. The bool reports whether the cached license file was (re)written.
+//
+// Invariant across every skip path below, and in tryPrePullLicenseValidation: the
+// pre-flight is a fail-fast optimization and must never block a start the container
+// itself would accept.
 func validateLicense(ctx context.Context, sink output.Sink, opts StartOptions, containerConfig runtime.ContainerConfig, token, licenseFilePath string) (bool, error) {
 	version := containerConfig.Tag
 	sink.Emit(output.SpinnerStart("Checking license"))
@@ -1323,16 +1331,24 @@ func isDefinitiveLicenseRejection(status int) bool {
 // folded into the prompt itself (rather than emitted as a separate message
 // first) so a decline doesn't show "License validation failed" twice — once
 // here and again in the final ErrorEvent if the user says no.
+//
+// ESC declines. Ctrl+C would do too, but it also cancels the root context, and
+// the ErrorEvent that the decline renders then races the TUI's own quit — so the
+// manual recovery steps sometimes never reach the terminal (DEVX-1045). An
+// advertised decline key keeps that path deterministic.
 func promptRelogin(ctx context.Context, sink output.Sink, licErr *api.LicenseError) bool {
 	responseCh := make(chan output.InputResponse, 1)
 	sink.Emit(output.UserInputRequestEvent{
-		Prompt:     fmt.Sprintf("License validation failed: %s. Log in again to refresh your credentials?", licErr.Message),
-		Options:    []output.InputOption{{Key: "enter", Label: "Press ENTER to log in again"}},
+		Prompt: fmt.Sprintf("License validation failed: %s. Log in again to refresh your credentials?", licErr.Message),
+		Options: []output.InputOption{
+			{Key: "enter", Label: "ENTER to log in again"},
+			{Key: "esc", Label: "ESC to exit"},
+		},
 		ResponseCh: responseCh,
 	})
 	select {
 	case resp := <-responseCh:
-		return !resp.Cancelled
+		return !resp.Cancelled && resp.SelectedKey != "esc"
 	case <-ctx.Done():
 		return false
 	}

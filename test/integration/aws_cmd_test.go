@@ -2,7 +2,6 @@ package integration_test
 
 import (
 	"context"
-	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -14,43 +13,36 @@ import (
 	"github.com/moby/moby/client"
 )
 
-// writeFakeAWS creates a shell script that mimics `aws` by printing its args and env vars.
-// Returns the directory containing the script (to prepend to PATH).
+// writeFakeAWS creates a fake `aws` that prints its args and env vars.
+// Returns the directory containing it (to prepend to PATH).
 //
-// Credential variables are printed with ${VAR-<unset>} rather than plain $VAR so
-// tests can tell "removed from the environment" apart from "present but empty" —
-// the distinction the profile path turns on. lstk no longer passes --profile, so
-// when an endpoint is injected it is always the first two args.
+// Credential variables are printed with {env:VAR-<unset>} (the sh ${VAR-x}
+// form) rather than plain {env:VAR} so tests can tell "removed from the
+// environment" apart from "present but empty" — the distinction the profile
+// path turns on. lstk no longer passes --profile, so when an endpoint is
+// injected it is always the first two args.
 //
 // The endpoint is matched rather than assumed: the help path runs the AWS CLI
-// with no --endpoint-url at all, and an unconditional `shift 2` there aborts the
-// script under dash ("can't shift that many"), which is /bin/sh on Ubuntu though
-// not on macOS.
+// with no --endpoint-url at all, so the shift only happens on the matching
+// case.
 func writeFakeAWS(t *testing.T) string {
 	t.Helper()
-	dir := t.TempDir()
-
-	if runtime.GOOS == "windows" {
-		t.Skip("fake aws script not supported on Windows")
+	tail := []string{
+		"ARGS:{args}",
+		"AWS_ACCESS_KEY_ID={env:AWS_ACCESS_KEY_ID-<unset>}",
+		"AWS_SECRET_ACCESS_KEY={env:AWS_SECRET_ACCESS_KEY-<unset>}",
+		"AWS_SESSION_TOKEN={env:AWS_SESSION_TOKEN-<unset>}",
+		"AWS_DEFAULT_REGION={env:AWS_DEFAULT_REGION-<unset>}",
+		"AWS_PROFILE={env:AWS_PROFILE-<unset>}",
 	}
-
-	script := `#!/bin/sh
-if [ "$1" = "--endpoint-url" ]; then
-  echo "ENDPOINT:$2"
-  shift 2
-else
-  echo "ENDPOINT:<none>"
-fi
-echo "ARGS:$@"
-echo "AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID-<unset>}"
-echo "AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY-<unset>}"
-echo "AWS_SESSION_TOKEN=${AWS_SESSION_TOKEN-<unset>}"
-echo "AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION-<unset>}"
-echo "AWS_PROFILE=${AWS_PROFILE-<unset>}"
-`
-	path := filepath.Join(dir, "aws")
-	must.NoError(t, os.WriteFile(path, []byte(script), 0755))
-	return dir
+	return writeFakeTool(t, "aws", fakeToolConfig{
+		Cases: []fakeToolCase{{
+			Args:   []string{"--endpoint-url"},
+			Shift:  2,
+			Stdout: append([]string{"ENDPOINT:{arg2}"}, tail...),
+		}},
+		Stdout: append([]string{"ENDPOINT:<none>"}, tail...),
+	})
 }
 
 // writeAWSProfile writes a minimal localstack AWS profile to dir/.aws/{config,credentials}.
@@ -74,7 +66,7 @@ func TestAWSCommandInjectsEndpointAndArgs(t *testing.T) {
 	fakeDir := writeFakeAWS(t)
 	analyticsSrv, events := mockAnalyticsServer(t)
 	// Use a fresh HOME so a real localstack profile doesn't affect the args output.
-	e := env.With("PATH", fakeDir).With(env.Home, t.TempDir()).
+	e := env.With("PATH", fakeDir).WithHome(t.TempDir()).
 		With(env.AnalyticsEndpoint, analyticsSrv.URL)
 
 	stdout, stderr, err := runLstk(t, ctx, t.TempDir(), e, "aws", "s3", "ls")
@@ -100,7 +92,7 @@ func TestAWSCommandStripsGlobalFlagsFromPassthrough(t *testing.T) {
 	configPath := filepath.Join(t.TempDir(), "config.toml")
 	must.NoError(t, os.WriteFile(configPath, []byte("# lstk test config\n"), 0600))
 
-	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).With(env.Home, homeDir)
+	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).WithHome(homeDir)
 
 	stdout, stderr, err := runLstk(t, ctx, t.TempDir(), e, "--config", configPath, "--non-interactive", "aws", "s3", "ls")
 	must.NoError(t, err, "lstk aws failed: %s", stderr)
@@ -119,7 +111,7 @@ func TestAWSCommandInjectsCredentials(t *testing.T) {
 
 	fakeDir := writeFakeAWS(t)
 	// Use a fresh HOME so no localstack profile exists; credentials are injected via env vars.
-	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).With(env.Home, t.TempDir())
+	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).WithHome(t.TempDir())
 
 	stdout, stderr, err := runLstk(t, ctx, t.TempDir(), e, "aws", "sts", "get-caller-identity")
 	must.NoError(t, err, "lstk aws failed: %s", stderr)
@@ -140,7 +132,7 @@ func TestAWSCommandRespectsExistingCredentials(t *testing.T) {
 	// Use a fresh HOME so no localstack profile exists; the user-provided env vars are preserved.
 	e := env.With(env.DisableEvents, "1").
 		With("PATH", fakeDir).
-		With(env.Home, t.TempDir()).
+		WithHome(t.TempDir()).
 		With("AWS_ACCESS_KEY_ID", "custom-key").
 		With("AWS_SECRET_ACCESS_KEY", "custom-secret").
 		With("AWS_DEFAULT_REGION", "eu-west-1")
@@ -167,7 +159,7 @@ func TestAWSCommandUsesProfileWhenAvailable(t *testing.T) {
 	homeDir := t.TempDir()
 	writeAWSProfile(t, homeDir)
 
-	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).With(env.Home, homeDir)
+	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).WithHome(homeDir)
 
 	stdout, stderr, err := runLstk(t, ctx, t.TempDir(), e, "aws", "s3", "ls")
 	must.NoError(t, err, "lstk aws failed: %s", stderr)
@@ -195,7 +187,7 @@ func TestAWSCommandAccountFromEnvWithoutProfile(t *testing.T) {
 	fakeDir := writeFakeAWS(t)
 	e := env.With(env.DisableEvents, "1").
 		With("PATH", fakeDir).
-		With(env.Home, t.TempDir()).
+		WithHome(t.TempDir()).
 		With("AWS_ACCESS_KEY_ID", "111111111111")
 
 	stdout, stderr, err := runLstk(t, ctx, t.TempDir(), e, "aws", "s3", "ls")
@@ -220,7 +212,7 @@ func TestAWSCommandAccountFromEnvWithProfile(t *testing.T) {
 
 	e := env.With(env.DisableEvents, "1").
 		With("PATH", fakeDir).
-		With(env.Home, homeDir).
+		WithHome(homeDir).
 		With("AWS_ACCESS_KEY_ID", "111111111111")
 
 	stdout, stderr, err := runLstk(t, ctx, t.TempDir(), e, "aws", "s3", "ls")
@@ -244,7 +236,7 @@ func TestAWSCommandAccountFlag(t *testing.T) {
 	homeDir := t.TempDir()
 	writeAWSProfile(t, homeDir)
 
-	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).With(env.Home, homeDir)
+	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).WithHome(homeDir)
 
 	stdout, stderr, err := runLstk(t, ctx, t.TempDir(), e, "aws", "--account", "111111111111", "s3", "ls")
 	must.NoError(t, err, "lstk aws failed: %s", stderr)
@@ -270,7 +262,7 @@ func TestAWSCommandAccountFlagBeatsEnv(t *testing.T) {
 	fakeDir := writeFakeAWS(t)
 	e := env.With(env.DisableEvents, "1").
 		With("PATH", fakeDir).
-		With(env.Home, t.TempDir()).
+		WithHome(t.TempDir()).
 		With("AWS_ACCESS_KEY_ID", "111111111111")
 
 	stdout, stderr, err := runLstk(t, ctx, t.TempDir(), e, "aws", "--account=222222222222", "s3", "ls")
@@ -295,7 +287,7 @@ func TestAWSCommandRealAccessKeyDoesNotDisplaceProfile(t *testing.T) {
 
 	e := env.With(env.DisableEvents, "1").
 		With("PATH", fakeDir).
-		With(env.Home, homeDir).
+		WithHome(homeDir).
 		With("AWS_ACCESS_KEY_ID", "AKIAIOSFODNN7EXAMPLE").
 		With("AWS_SECRET_ACCESS_KEY", "realsecret").
 		With("AWS_SESSION_TOKEN", "realtoken")
@@ -323,7 +315,7 @@ func TestAWSCommandDeactivatesRealAccessKeyWithoutProfile(t *testing.T) {
 	fakeDir := writeFakeAWS(t)
 	e := env.With(env.DisableEvents, "1").
 		With("PATH", fakeDir).
-		With(env.Home, t.TempDir()).
+		WithHome(t.TempDir()).
 		With("AWS_ACCESS_KEY_ID", "AKIAIOSFODNN7EXAMPLE").
 		With("AWS_SESSION_TOKEN", "realtoken")
 
@@ -345,7 +337,7 @@ func TestAWSCommandForwardsNonLeadingAccountFlag(t *testing.T) {
 	startTestContainer(t, ctx)
 
 	fakeDir := writeFakeAWS(t)
-	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).With(env.Home, t.TempDir())
+	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).WithHome(t.TempDir())
 
 	stdout, stderr, err := runLstk(t, ctx, t.TempDir(), e, "aws", "s3", "ls", "--account", "111111111111")
 	must.NoError(t, err, "lstk aws failed: %s", stderr)
@@ -364,7 +356,7 @@ func TestAWSCommandForwardsRegionFlag(t *testing.T) {
 	startTestContainer(t, ctx)
 
 	fakeDir := writeFakeAWS(t)
-	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).With(env.Home, t.TempDir())
+	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).WithHome(t.TempDir())
 
 	stdout, stderr, err := runLstk(t, ctx, t.TempDir(), e, "aws", "--region", "us-west-2", "s3", "ls")
 	must.NoError(t, err, "lstk aws failed: %s", stderr)
@@ -378,7 +370,7 @@ func TestAWSCommandRejectsInvalidAccount(t *testing.T) {
 	t.Parallel()
 
 	fakeDir := writeFakeAWS(t)
-	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).With(env.Home, t.TempDir())
+	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).WithHome(t.TempDir())
 
 	stdout, _, err := runLstk(t, testContext(t), t.TempDir(), e, "aws", "--account", "12345", "s3", "ls")
 	must.Error(t, err)
@@ -392,7 +384,7 @@ func TestAWSCommandRejectsAccountWithoutValue(t *testing.T) {
 	t.Parallel()
 
 	fakeDir := writeFakeAWS(t)
-	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).With(env.Home, t.TempDir())
+	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).WithHome(t.TempDir())
 
 	stdout, _, err := runLstk(t, testContext(t), t.TempDir(), e, "aws", "--account")
 	must.Error(t, err)
@@ -406,7 +398,7 @@ func TestAWSCommandRejectsPreSubcommandAccount(t *testing.T) {
 	t.Parallel()
 
 	fakeDir := writeFakeAWS(t)
-	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).With(env.Home, t.TempDir())
+	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).WithHome(t.TempDir())
 
 	stdout, _, err := runLstk(t, testContext(t), t.TempDir(), e, "--account", "111111111111", "aws", "s3", "ls")
 	must.Error(t, err)
@@ -420,7 +412,7 @@ func TestAWSCommandAccountWithHelp(t *testing.T) {
 	t.Parallel()
 
 	fakeDir := writeFakeAWS(t)
-	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).With(env.Home, t.TempDir())
+	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).WithHome(t.TempDir())
 
 	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), e, "aws", "--account", "111111111111", "help")
 	must.NoError(t, err, "lstk aws help failed: %s", stderr)
@@ -430,7 +422,7 @@ func TestAWSCommandAccountWithHelp(t *testing.T) {
 
 func TestAWSCommandFailsWhenAWSCLINotInstalled(t *testing.T) {
 	t.Parallel()
-	e := env.With(env.DisableEvents, "1").With("PATH", t.TempDir()).With(env.Home, t.TempDir())
+	e := env.With(env.DisableEvents, "1").With("PATH", t.TempDir()).WithHome(t.TempDir())
 
 	stdout, _, err := runLstk(t, testContext(t), t.TempDir(), e, "aws", "s3", "ls")
 	must.Error(t, err)
@@ -450,7 +442,7 @@ func TestAWSCommandUsesDefaultPortWithoutConfig(t *testing.T) {
 	workDir := t.TempDir()
 	e := env.With(env.DisableEvents, "1").
 		With("PATH", fakeDir).
-		With(env.Home, t.TempDir()) // isolate from any real config file
+		WithHome(t.TempDir()) // isolate from any real config file
 
 	stdout, stderr, err := runLstk(t, ctx, workDir, e, "aws", "s3", "ls")
 	must.NoError(t, err, "lstk aws failed: %s", stderr)
@@ -486,23 +478,14 @@ port = "4599"
 	must.Contains(t, stdout, ":4599")
 }
 
-// writeFakeAWSFailing creates a shell script that mimics a failing `aws` command.
-// Returns the directory containing the script (to prepend to PATH).
+// writeFakeAWSFailing creates a fake `aws` that mimics a failing command.
+// Returns the directory containing it (to prepend to PATH).
 func writeFakeAWSFailing(t *testing.T, exitCode int) string {
 	t.Helper()
-	dir := t.TempDir()
-
-	if runtime.GOOS == "windows" {
-		t.Skip("fake aws script not supported on Windows")
-	}
-
-	script := fmt.Sprintf(`#!/bin/sh
-echo "aws: error: simulated failure" >&2
-exit %d
-`, exitCode)
-	path := filepath.Join(dir, "aws")
-	must.NoError(t, os.WriteFile(path, []byte(script), 0755))
-	return dir
+	return writeFakeTool(t, "aws", fakeToolConfig{
+		Stderr:   []string{"aws: error: simulated failure"},
+		ExitCode: exitCode,
+	})
 }
 
 func TestAWSCommandPropagatesExitCode(t *testing.T) {
@@ -527,20 +510,14 @@ func TestAWSCommandPropagatesExitCode(t *testing.T) {
 // the command still succeeds and forwards the help request untouched, with no
 // --endpoint-url injected.
 func TestAWSCommandHelpSkipsDockerAndEmulator(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("Windows Docker error tested separately via windowsDockerErrorEnv")
-	}
-
-	dir := t.TempDir()
-	script := "#!/bin/sh\necho \"ARGS:$*\"\n"
-	must.NoError(t, os.WriteFile(filepath.Join(dir, "aws"), []byte(script), 0755))
+	dir := writeFakeTool(t, "aws", fakeToolConfig{Stdout: []string{"ARGS:{args}"}})
 
 	for _, args := range [][]string{{"--help"}, {"-h"}, {"s3", "--help"}, {"help"}, {"s3", "help"}} {
 		args := args
 		t.Run(strings.Join(args, "_"), func(t *testing.T) {
 			e := env.With(env.DisableEvents, "1").
 				With("PATH", dir).
-				With(env.Home, t.TempDir()).
+				WithHome(t.TempDir()).
 				With(env.Key("DOCKER_HOST"), "tcp://localhost:1")
 
 			cmdArgs := append([]string{"aws"}, args...)
@@ -594,7 +571,7 @@ func TestAWSCommandHintsSetupCommandWhenProfileMissing(t *testing.T) {
 	startTestContainer(t, ctx)
 
 	fakeDir := writeFakeAWS(t)
-	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).With(env.Home, t.TempDir())
+	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).WithHome(t.TempDir())
 
 	stdout, _, err := runLstk(t, ctx, t.TempDir(), e, "aws", "s3", "ls")
 	must.NoError(t, err)
@@ -618,32 +595,22 @@ func TestAWSCommandWorksWithExternalContainer(t *testing.T) {
 	startExternalContainer(t, ctx, fakeImage, "localstack-main", "4566")
 
 	fakeDir := writeFakeAWS(t)
-	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).With(env.Home, t.TempDir())
+	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).WithHome(t.TempDir())
 
 	stdout, stderr, err := runLstk(t, ctx, t.TempDir(), e, "aws", "s3", "ls")
 	must.NoError(t, err, "lstk aws should work with externally-named container: %s", stderr)
 	must.Contains(t, stdout, "ENDPOINT:http://")
 }
 
-// writeSlowFakeAWS creates a fake `aws` script that sleeps for the given duration
+// writeSlowFakeAWS creates a fake `aws` that sleeps for the given duration
 // before printing, so the spinner has time to render in PTY-based tests.
 func writeSlowFakeAWS(t *testing.T, sleepSeconds int) string {
 	t.Helper()
-	dir := t.TempDir()
-
-	if runtime.GOOS == "windows" {
-		t.Skip("fake aws script not supported on Windows")
-	}
-
-	script := fmt.Sprintf(`#!/bin/sh
-sleep %d
-echo "ENDPOINT:$2"
-shift 2
-echo "ARGS:$@"
-`, sleepSeconds)
-	path := filepath.Join(dir, "aws")
-	must.NoError(t, os.WriteFile(path, []byte(script), 0755))
-	return dir
+	return writeFakeTool(t, "aws", fakeToolConfig{
+		SleepSeconds: sleepSeconds,
+		Shift:        2,
+		Stdout:       []string{"ENDPOINT:{arg2}", "ARGS:{args}"},
+	})
 }
 
 func TestAWSCommandShowsSpinnerForSlowOperation(t *testing.T) {
@@ -657,8 +624,7 @@ func TestAWSCommandShowsSpinnerForSlowOperation(t *testing.T) {
 	fakeDir := writeSlowFakeAWS(t, 5)
 	homeDir := t.TempDir()
 	writeAWSProfile(t, homeDir)
-	// /bin and /usr/bin are needed so the fake script can invoke `sleep`.
-	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir+":/bin:/usr/bin").With(env.Home, homeDir)
+	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).WithHome(homeDir)
 
 	out, err := runLstkInPTY(t, ctx, e, "aws", "s3", "ls")
 	must.NoError(t, err, "lstk aws failed: %s", out)
@@ -682,7 +648,7 @@ func TestAWSCommandSuppressesSpinnerInNonInteractiveMode(t *testing.T) {
 	fakeDir := writeSlowFakeAWS(t, 5)
 	homeDir := t.TempDir()
 	writeAWSProfile(t, homeDir)
-	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir+":/bin:/usr/bin").With(env.Home, homeDir)
+	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).WithHome(homeDir)
 
 	out, err := runLstkInPTY(t, ctx, e, "--non-interactive", "aws", "s3", "ls")
 	must.NoError(t, err, "lstk aws failed: %s", out)
@@ -704,7 +670,7 @@ func TestAWSCommandSuppressesSpinnerForFastOperation(t *testing.T) {
 	fakeDir := writeFakeAWS(t)
 	homeDir := t.TempDir()
 	writeAWSProfile(t, homeDir)
-	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).With(env.Home, homeDir)
+	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).WithHome(homeDir)
 
 	out, err := runLstkInPTY(t, ctx, e, "aws", "s3", "ls")
 	must.NoError(t, err, "lstk aws failed: %s", out)
@@ -726,7 +692,7 @@ func TestAWSCommandSuppressesHintWhenProfileExists(t *testing.T) {
 	homeDir := t.TempDir()
 	writeAWSProfile(t, homeDir)
 
-	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).With(env.Home, homeDir)
+	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).WithHome(homeDir)
 
 	stdout, _, err := runLstk(t, ctx, t.TempDir(), e, "aws", "s3", "ls")
 	must.NoError(t, err)

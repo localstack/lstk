@@ -10,7 +10,6 @@ import (
 	"net/http/httptest"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"runtime"
 	"strings"
 	"sync"
@@ -215,9 +214,6 @@ func TestStartCommandDoesNotSendTelemetryWhenDisabled(t *testing.T) {
 // exit code and the leading service/operation tokens in telemetry, instead of
 // a flattened exit_code=1 whose only signal is the "exit status 252" string.
 func TestAWSProxyTelemetryRecordsExitCodeAndSubcommand(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("fake aws shell script not supported on Windows")
-	}
 	t.Parallel()
 
 	emulatorSrv := awsHealthServer(t)
@@ -227,8 +223,7 @@ func TestAWSProxyTelemetryRecordsExitCodeAndSubcommand(t *testing.T) {
 
 	// Fake aws on PATH exiting like the real CLI does on a usage error, so the
 	// test needs neither the AWS CLI installed nor a real malformed request.
-	fakeBinDir := t.TempDir()
-	must.NoError(t, os.WriteFile(filepath.Join(fakeBinDir, "aws"), []byte("#!/bin/sh\nexit 252\n"), 0o755))
+	fakeBinDir := writeFakeTool(t, "aws", fakeToolConfig{ExitCode: 252})
 
 	environ := env.Environ(testEnvWithHome(t.TempDir(), "")).
 		With(env.AnalyticsEndpoint, analyticsSrv.URL).

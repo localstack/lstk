@@ -6,7 +6,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
 
@@ -39,7 +38,7 @@ func TestAzStartInterceptionRoutesToSubcommand(t *testing.T) {
 	workDir := azureWorkDir(t) // deliberately no setup marker
 
 	stdout, _, err := runLstk(t, testContext(t), workDir,
-		env.With(env.Home, t.TempDir()).With("PATH", t.TempDir()),
+		env.WithHome(t.TempDir()).With("PATH", t.TempDir()),
 		"az", "start-interception",
 	)
 	must.Error(t, err)
@@ -58,14 +57,14 @@ func TestAzStopInterceptionNoOpWhenNotIntercepting(t *testing.T) {
 	home := azTempHome(t) // fresh ~/.azure: active cloud is the default AzureCloud
 
 	stdout, _, err := runLstk(t, testContext(t), workDir,
-		env.With(env.Home, home),
+		env.WithHome(home),
 		"az", "stop-interception",
 	)
 	must.NoError(t, err, "stop-interception must not fail when LocalStack is not active")
 	must.Contains(t, stdout, "not the active Azure cloud")
 
 	// It must not have switched the active cloud to anything.
-	active, azErr := runAzRaw(t, testContext(t), env.With(env.Home, home), "cloud", "show", "--query", "name", "-o", "tsv")
+	active, azErr := runAzRaw(t, testContext(t), env.WithHome(home), "cloud", "show", "--query", "name", "-o", "tsv")
 	must.NoError(t, azErr)
 	must.Eq(t, "AzureCloud", active)
 }
@@ -75,7 +74,7 @@ func TestAzStopInterceptionFailsWhenAzureCLINotInstalled(t *testing.T) {
 	workDir := azureWorkDir(t)
 
 	stdout, _, err := runLstk(t, testContext(t), workDir,
-		env.With(env.Home, t.TempDir()).With("PATH", t.TempDir()),
+		env.WithHome(t.TempDir()).With("PATH", t.TempDir()),
 		"az", "stop-interception",
 	)
 	must.Error(t, err)
@@ -91,9 +90,6 @@ func TestAzInterception(t *testing.T) {
 	requireDocker(t)
 	requireAzCLI(t)
 	_ = env.Require(t, env.AuthToken)
-	if runtime.GOOS == "windows" {
-		t.Skip("PTY not supported on Windows")
-	}
 
 	cleanup()
 	cleanupAzure()
@@ -113,7 +109,7 @@ func TestAzInterception(t *testing.T) {
 	mockServer := createMockLicenseServer(true)
 	defer mockServer.Close()
 
-	baseEnv := env.With(env.AuthToken, env.Get(env.AuthToken)).With(env.Home, tmpHome).With(env.APIEndpoint, mockServer.URL)
+	baseEnv := env.With(env.AuthToken, env.Get(env.AuthToken)).WithHome(tmpHome).With(env.APIEndpoint, mockServer.URL)
 	workDir := azureWorkDir(t)
 	ctx := testContext(t)
 

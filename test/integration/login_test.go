@@ -1,21 +1,17 @@
 package integration_test
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"runtime"
 	"testing"
 	"time"
 
-	"github.com/creack/pty"
 	"github.com/localstack/lstk/internal/must"
 	"github.com/localstack/lstk/test/integration/env"
 )
@@ -76,20 +72,27 @@ func createMockAPIServer(t *testing.T, licenseToken string, confirmed bool) *htt
 	}))
 }
 
-// fakeBrowserOpener prepends a temp dir to PATH containing fake open/xdg-open
-// scripts that record the URL they were asked to open instead of spawning a real
-// browser tab. It returns the augmented environment and a reader for the recorded
-// URL. The scripts cover the providers github.com/pkg/browser tries on macOS
-// (open) and Linux (xdg-open, x-www-browser, www-browser).
+// fakeBrowserOpener redirects the login flow's browser launch to a recorder
+// that captures the URL instead of spawning a real browser tab. It returns
+// the augmented environment and a reader for the recorded URL. On unix the
+// fakes sit on PATH under the provider names github.com/pkg/browser shells
+// out to (open on macOS; xdg-open, x-www-browser, www-browser on Linux),
+// exercising the real launcher path. On Windows pkg/browser opens URLs via
+// the ShellExecute Win32 call — no subprocess, no PATH lookup — so the
+// recorder is injected through lstk's test-only LSTK_BROWSER_CMD hook.
 func fakeBrowserOpener(t *testing.T, environ env.Environ) (env.Environ, func() string) {
 	t.Helper()
 	dir := t.TempDir()
 	record := filepath.Join(dir, "opened-url")
-	script := fmt.Sprintf("#!/bin/sh\nprintf '%%s' \"$1\" > %q\n", record)
-	for _, name := range []string{"open", "xdg-open", "x-www-browser", "www-browser"} {
-		must.NoError(t, os.WriteFile(filepath.Join(dir, name), []byte(script), 0o755))
+	if runtime.GOOS == "windows" {
+		installFakeTool(t, dir, "browser-opener", fakeToolConfig{RecordFile: record, RecordContent: "{arg1}"})
+		environ = environ.With(env.BrowserCmd, filepath.Join(dir, execName("browser-opener")))
+	} else {
+		for _, name := range []string{"open", "xdg-open", "x-www-browser", "www-browser"} {
+			installFakeTool(t, dir, name, fakeToolConfig{RecordFile: record, RecordContent: "{arg1}"})
+		}
+		environ = environ.With(env.Path, dir+string(os.PathListSeparator)+os.Getenv("PATH"))
 	}
-	environ = environ.With(env.Path, dir+string(os.PathListSeparator)+os.Getenv("PATH"))
 	return environ, func() string {
 		b, _ := os.ReadFile(record)
 		return string(b)
@@ -97,10 +100,6 @@ func fakeBrowserOpener(t *testing.T, environ env.Environ) (env.Environ, func() s
 }
 
 func TestDeviceFlowSuccess(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("PTY not supported on Windows")
-	}
-
 	cleanup()
 	t.Cleanup(cleanup)
 
@@ -117,32 +116,13 @@ func TestDeviceFlowSuccess(t *testing.T) {
 
 	environ, openedURL := fakeBrowserOpener(t, env.Without(env.AuthToken).With(env.APIEndpoint, mockServer.URL).With(env.WebAppURL, mockServer.URL).With(env.AnalyticsEndpoint, analyticsSrv.URL))
 
-	cmd := exec.CommandContext(ctx, binaryPath(), "login")
-	cmd.Env = environ
-
-	ptmx, err := pty.Start(cmd)
-	must.NoError(t, err, "failed to start command in PTY")
-	defer func() { _ = ptmx.Close() }()
-
-	output := &syncBuffer{}
-	outputCh := make(chan struct{})
-	go func() {
-		_, _ = io.Copy(output, ptmx)
-		close(outputCh)
-	}()
+	p := startLstkInPTY(t, ctx, environ, "login")
 
 	// Wait for the auth completion prompt, then press ENTER.
-	must.Eventually(t, func() bool {
-		return bytes.Contains(output.Bytes(), []byte("Press any key when complete"))
-	}, 10*time.Second, 100*time.Millisecond, "auth completion prompt should appear")
-	_, err = ptmx.Write([]byte("\r"))
-	must.NoError(t, err)
+	p.waitForOutput("Press any key when complete", "auth completion prompt should appear")
+	p.write("\r")
 
-	// Wait for process to complete
-	err = cmd.Wait()
-	<-outputCh
-
-	out := output.String()
+	out, err := p.wait()
 	must.NoError(t, err, "login should succeed: %s", out)
 	requireExitCode(t, 0, err)
 	must.Eq(t, mockServer.URL+"/auth/request/test-auth-req-id?code=TEST123", openedURL(), "login should open the auth URL in a browser")
@@ -163,10 +143,6 @@ func TestDeviceFlowSuccess(t *testing.T) {
 }
 
 func TestDeviceFlowFailure_RequestNotConfirmed(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("PTY not supported on Windows")
-	}
-
 	cleanup()
 	t.Cleanup(cleanup)
 
@@ -180,32 +156,13 @@ func TestDeviceFlowFailure_RequestNotConfirmed(t *testing.T) {
 
 	environ, openedURL := fakeBrowserOpener(t, env.Without(env.AuthToken).With(env.APIEndpoint, mockServer.URL).With(env.WebAppURL, mockServer.URL).With(env.AnalyticsEndpoint, analyticsSrv.URL))
 
-	cmd := exec.CommandContext(ctx, binaryPath(), "login")
-	cmd.Env = environ
-
-	ptmx, err := pty.Start(cmd)
-	must.NoError(t, err, "failed to start command in PTY")
-	defer func() { _ = ptmx.Close() }()
-
-	output := &syncBuffer{}
-	outputCh := make(chan struct{})
-	go func() {
-		_, _ = io.Copy(output, ptmx)
-		close(outputCh)
-	}()
+	p := startLstkInPTY(t, ctx, environ, "login")
 
 	// Wait for the auth completion prompt, then press ENTER.
-	must.Eventually(t, func() bool {
-		return bytes.Contains(output.Bytes(), []byte("Press any key when complete"))
-	}, 10*time.Second, 100*time.Millisecond, "auth completion prompt should appear")
-	_, err = ptmx.Write([]byte("\r"))
-	must.NoError(t, err)
+	p.waitForOutput("Press any key when complete", "auth completion prompt should appear")
+	p.write("\r")
 
-	// Wait for process to complete
-	err = cmd.Wait()
-	<-outputCh
-
-	out := output.String()
+	out, err := p.wait()
 	must.Error(t, err, "expected login to fail when request not confirmed")
 	requireExitCode(t, 1, err)
 	must.Eq(t, mockServer.URL+"/auth/request/test-auth-req-id?code=TEST123", openedURL(), "login should open the auth URL in a browser")
@@ -223,9 +180,6 @@ func TestDeviceFlowFailure_RequestNotConfirmed(t *testing.T) {
 }
 
 func TestLoginShortCircuitsWhenEnvTokenSet(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("PTY not supported on Windows")
-	}
 	t.Parallel()
 
 	environ := append(testEnvWithHome(t.TempDir(), ""), string(env.AuthToken)+"=fake-env-token")
@@ -239,9 +193,6 @@ func TestLoginShortCircuitsWhenEnvTokenSet(t *testing.T) {
 }
 
 func TestLoginShortCircuitsWhenStoredTokenExists(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("PTY not supported on Windows")
-	}
 	t.Parallel()
 
 	tmpHome := t.TempDir()

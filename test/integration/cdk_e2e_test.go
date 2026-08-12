@@ -76,7 +76,7 @@ func runCDK(t *testing.T, ctx context.Context, work string, e env.Environ, args 
 // isolated HOME.
 func cdkE2EEnv(t *testing.T) env.Environ {
 	t.Helper()
-	return env.With(env.DisableEvents, "1").With(env.Home, t.TempDir())
+	return env.With(env.DisableEvents, "1").WithHome(t.TempDir())
 }
 
 // 8.4 — `cdk synth` succeeds offline (no running emulator required).

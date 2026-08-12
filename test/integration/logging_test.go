@@ -34,9 +34,6 @@ func TestLogging_NonTTY_WritesToLogFile(t *testing.T) {
 
 func TestLogging_TTY_WritesToLogFile(t *testing.T) {
 	t.Parallel()
-	if runtime.GOOS == "windows" {
-		t.Skip("PTY not supported on Windows")
-	}
 
 	tmpHome := t.TempDir()
 	must.NoError(t, os.MkdirAll(filepath.Join(tmpHome, ".config"), 0755))

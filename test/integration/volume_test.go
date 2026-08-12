@@ -1,17 +1,13 @@
 package integration_test
 
 import (
-	"bytes"
-	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
-	"time"
 
-	"github.com/creack/pty"
 	"github.com/localstack/lstk/internal/must"
 	"github.com/localstack/lstk/test/integration/env"
 )
@@ -274,9 +270,6 @@ volume = "` + escapeTomlPath(volumeDir) + `"
 
 func TestVolumeClearInteractive(t *testing.T) {
 	t.Parallel()
-	if runtime.GOOS == "windows" {
-		t.Skip("PTY not supported on Windows")
-	}
 
 	makeConfig := func(t *testing.T, volumeDir string) string {
 		t.Helper()
@@ -292,25 +285,13 @@ volume = "` + escapeTomlPath(volumeDir) + `"
 		return configFile
 	}
 
-	// startVolumeClear launches lstk volume clear in a PTY and returns the ptmx,
-	// output buffer, and a channel that closes when output draining is done.
-	startVolumeClear := func(t *testing.T, configFile string) (*os.File, *syncBuffer, chan struct{}, *exec.Cmd) {
+	// startVolumeClear launches lstk volume clear in a PTY and waits for the
+	// confirmation prompt.
+	startVolumeClear := func(t *testing.T, configFile string) *ptyProc {
 		t.Helper()
-		cmd := exec.CommandContext(testContext(t), binaryPath(), "--config", configFile, "volume", "clear")
-		cmd.Env = testEnvWithHome(t.TempDir(), "")
-		ptmx, err := pty.Start(cmd)
-		must.NoError(t, err, "failed to start command in PTY")
-		t.Cleanup(func() { _ = ptmx.Close() })
-		out := &syncBuffer{}
-		outputCh := make(chan struct{})
-		go func() {
-			_, _ = io.Copy(out, ptmx)
-			close(outputCh)
-		}()
-		must.Eventually(t, func() bool {
-			return bytes.Contains(out.Bytes(), []byte("Clear volume data?"))
-		}, 10*time.Second, 100*time.Millisecond, "confirmation prompt should appear")
-		return ptmx, out, outputCh, cmd
+		p := startLstkInPTY(t, testContext(t), testEnvWithHome(t.TempDir(), ""), "--config", configFile, "volume", "clear")
+		p.waitForOutput("Clear volume data?", "confirmation prompt should appear")
+		return p
 	}
 
 	t.Run("clears volume when user confirms with y", func(t *testing.T) {
@@ -318,13 +299,12 @@ volume = "` + escapeTomlPath(volumeDir) + `"
 		volumeDir := t.TempDir()
 		must.NoError(t, os.WriteFile(filepath.Join(volumeDir, "data.json"), []byte("{}"), 0644))
 
-		ptmx, out, outputCh, cmd := startVolumeClear(t, makeConfig(t, volumeDir))
-		_, err := ptmx.Write([]byte("y"))
+		p := startVolumeClear(t, makeConfig(t, volumeDir))
+		p.write("y")
+		out, err := p.wait()
 		must.NoError(t, err)
-		must.NoError(t, cmd.Wait())
-		<-outputCh
 
-		must.Contains(t, out.String(), "Volume data cleared")
+		must.Contains(t, out, "Volume data cleared")
 		entries, err := os.ReadDir(volumeDir)
 		must.NoError(t, err)
 		must.Empty(t, entries, "volume directory should be empty after confirm")
@@ -335,13 +315,12 @@ volume = "` + escapeTomlPath(volumeDir) + `"
 		volumeDir := t.TempDir()
 		must.NoError(t, os.WriteFile(filepath.Join(volumeDir, "data.json"), []byte("{}"), 0644))
 
-		ptmx, out, outputCh, cmd := startVolumeClear(t, makeConfig(t, volumeDir))
-		_, err := ptmx.Write([]byte("n"))
+		p := startVolumeClear(t, makeConfig(t, volumeDir))
+		p.write("n")
+		out, err := p.wait()
 		must.NoError(t, err)
-		must.NoError(t, cmd.Wait())
-		<-outputCh
 
-		must.Contains(t, out.String(), "Cancelled")
+		must.Contains(t, out, "Cancelled")
 		entries, err := os.ReadDir(volumeDir)
 		must.NoError(t, err)
 		must.Len(t, entries, 1, "volume directory should be untouched after cancel")

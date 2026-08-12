@@ -1,9 +1,6 @@
 package integration_test
 
 import (
-	"os"
-	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
 
@@ -19,17 +16,9 @@ import (
 // significant trailing space survives the whitespace trim every candidate gets.
 func writeFakeAWSCompleter(t *testing.T) string {
 	t.Helper()
-	if runtime.GOOS == "windows" {
-		t.Skip("fake aws_completer script not supported on Windows")
-	}
-	dir := t.TempDir()
-	script := `#!/bin/sh
-echo "compline=[$COMP_LINE]"
-echo "ls"
-echo "list-buckets"
-`
-	must.NoError(t, os.WriteFile(filepath.Join(dir, "aws_completer"), []byte(script), 0o755))
-	return dir
+	return writeFakeTool(t, "aws_completer", fakeToolConfig{
+		Stdout: []string{"compline=[{env:COMP_LINE}]", "ls", "list-buckets"},
+	})
 }
 
 // TestAWSCompletionDelegatesToAWSCompleter covers DEVX-846: `lstk aws <TAB>`
@@ -40,7 +29,7 @@ func TestAWSCompletionDelegatesToAWSCompleter(t *testing.T) {
 	t.Parallel()
 
 	fakeDir := writeFakeAWSCompleter(t)
-	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).With(env.Home, t.TempDir())
+	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).WithHome(t.TempDir())
 
 	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), e, "__complete", "aws", "s3", "l")
 	must.NoError(t, err, "stderr: %s", stderr)
@@ -62,7 +51,7 @@ func TestAWSCompletionAppendsTrailingSpaceForNewWord(t *testing.T) {
 	t.Parallel()
 
 	fakeDir := writeFakeAWSCompleter(t)
-	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).With(env.Home, t.TempDir())
+	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).WithHome(t.TempDir())
 
 	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), e, "__complete", "aws", "s3", "")
 	must.NoError(t, err, "stderr: %s", stderr)
@@ -77,7 +66,7 @@ func TestAWSCompletionStripsGlobalFlags(t *testing.T) {
 	t.Parallel()
 
 	fakeDir := writeFakeAWSCompleter(t)
-	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).With(env.Home, t.TempDir())
+	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).WithHome(t.TempDir())
 
 	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), e,
 		"__complete", "aws", "--non-interactive", "s3", "l")
@@ -95,7 +84,7 @@ func TestAWSCompletionNeedsNoDockerOrEmulator(t *testing.T) {
 	fakeDir := writeFakeAWSCompleter(t)
 	e := env.With(env.DisableEvents, "1").
 		With("PATH", fakeDir).
-		With(env.Home, t.TempDir()).
+		WithHome(t.TempDir()).
 		With(env.Key("DOCKER_HOST"), "tcp://localhost:1")
 
 	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), e, "__complete", "aws", "s3", "l")
@@ -111,7 +100,7 @@ func TestAWSCompletionNeedsNoDockerOrEmulator(t *testing.T) {
 func TestAWSCompletionDegradesWhenCompleterMissing(t *testing.T) {
 	t.Parallel()
 
-	e := env.With(env.DisableEvents, "1").With("PATH", t.TempDir()).With(env.Home, t.TempDir())
+	e := env.With(env.DisableEvents, "1").With("PATH", t.TempDir()).WithHome(t.TempDir())
 
 	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), e, "__complete", "aws", "s3", "l")
 	must.NoError(t, err, "stderr: %s", stderr)

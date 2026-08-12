@@ -1,15 +1,12 @@
 package integration_test
 
 import (
-	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
 
-	"github.com/creack/pty"
 	"github.com/localstack/lstk/internal/must"
 	"github.com/localstack/lstk/test/integration/env"
 )
@@ -66,7 +63,7 @@ func TestAzCommandErrorsWhenNotSetUp(t *testing.T) {
 	workDir := azureWorkDir(t)
 
 	stdout, _, err := runLstk(t, testContext(t), workDir,
-		env.With(env.Home, t.TempDir()),
+		env.WithHome(t.TempDir()),
 		"az", "group", "list",
 	)
 	must.Error(t, err)
@@ -82,7 +79,7 @@ func TestSetupAzureNonInteractiveRunsWithoutTerminal(t *testing.T) {
 	t.Parallel()
 
 	_, stderr, err := runLstk(t, testContext(t), "",
-		env.With(env.Home, t.TempDir()),
+		env.WithHome(t.TempDir()),
 		"setup", "azure",
 	)
 	must.Error(t, err)
@@ -98,7 +95,7 @@ func TestSetupAzureAliasAz(t *testing.T) {
 	t.Parallel()
 
 	_, stderr, err := runLstk(t, testContext(t), "",
-		env.With(env.Home, t.TempDir()),
+		env.WithHome(t.TempDir()),
 		"setup", "az",
 	)
 	must.Error(t, err)
@@ -113,7 +110,7 @@ func TestSetupAzureReportsMissingAzCLIOnce(t *testing.T) {
 	workDir := azureWorkDir(t)
 
 	stdout, stderr, err := runLstk(t, testContext(t), workDir,
-		env.With(env.Home, t.TempDir()).With("PATH", t.TempDir()),
+		env.WithHome(t.TempDir()).With("PATH", t.TempDir()),
 		"setup", "azure",
 	)
 	must.Error(t, err)
@@ -135,7 +132,7 @@ func TestAzCommandErrorsWhenEmulatorNotRunning(t *testing.T) {
 	writeAzureSetupMarker(t, workDir)
 
 	stdout, _, err := runLstk(t, testContext(t), workDir,
-		env.With(env.Home, t.TempDir()),
+		env.WithHome(t.TempDir()),
 		"az", "group", "list",
 	)
 	must.Error(t, err)
@@ -149,9 +146,6 @@ func TestSetupAzureAndAzCommandSucceed(t *testing.T) {
 	requireDocker(t)
 	requireAzCLI(t)
 	_ = env.Require(t, env.AuthToken)
-	if runtime.GOOS == "windows" {
-		t.Skip("PTY not supported on Windows")
-	}
 
 	cleanup()
 	cleanupAzure()
@@ -168,7 +162,7 @@ func TestSetupAzureAndAzCommandSucceed(t *testing.T) {
 		}
 	})
 
-	baseEnv := env.With(env.AuthToken, env.Get(env.AuthToken)).With(env.Home, tmpHome)
+	baseEnv := env.With(env.AuthToken, env.Get(env.AuthToken)).WithHome(tmpHome)
 	mockServer := createMockLicenseServer(true)
 	defer mockServer.Close()
 
@@ -186,19 +180,10 @@ func TestSetupAzureAndAzCommandSucceed(t *testing.T) {
 	cmd := exec.CommandContext(ctx, binPath, "setup", "azure")
 	cmd.Dir = workDir
 	cmd.Env = baseEnv.With(env.APIEndpoint, mockServer.URL)
-	ptmx, err := pty.Start(cmd)
-	must.NoError(t, err, "failed to start setup azure in PTY")
-	defer func() { _ = ptmx.Close() }()
-
-	out := &syncBuffer{}
-	outputCh := make(chan struct{})
-	go func() {
-		_, _ = io.Copy(out, ptmx)
-		close(outputCh)
-	}()
-	must.NoError(t, cmd.Wait(), "setup azure should succeed; output:\n%s", out.String())
-	<-outputCh
-	must.Contains(t, out.String(), "Azure CLI integration ready")
+	p := startCmdInPTY(t, ctx, cmd)
+	out, err := p.wait()
+	must.NoError(t, err, "setup azure should succeed; output:\n%s", out)
+	must.Contains(t, out, "Azure CLI integration ready")
 
 	markerPath := filepath.Join(workDir, ".lstk", "azure", ".lstk-setup-complete")
 	_, err = os.Stat(markerPath)

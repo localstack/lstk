@@ -190,6 +190,12 @@ func LoadLocal(ctx context.Context, rt runtime.Runtime, containers []config.Cont
 
 // LoadPod loads a platform-hosted cloud snapshot. version 0 loads the pod's
 // latest version; a non-zero version pins the load to that specific one.
+//
+// There is deliberately no client-side check that the version exists: load otherwise
+// never calls the platform API, so a check would add an independent auth/network
+// failure mode — and would fail in exactly the --endpoint-url case where the emulator
+// can reach the platform but lstk cannot. A missing version comes back from the
+// emulator instead (see isPodVersionNotFoundMsg).
 func LoadPod(ctx context.Context, rt runtime.Runtime, containers []config.ContainerConfig, loader PodLoader, host, podName string, version int, authToken, strategy string, starter Starter, sink output.Sink) error {
 	if authToken == "" {
 		return fmt.Errorf("pod snapshots require authentication — set LOCALSTACK_AUTH_TOKEN or run %q", "lstk login")

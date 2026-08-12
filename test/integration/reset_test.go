@@ -1,20 +1,12 @@
 package integration_test
 
 import (
-	"bytes"
 	"encoding/json"
-	"io"
 	"net/http"
 	"net/http/httptest"
-	"os"
-	"os/exec"
-	"path/filepath"
-	"runtime"
 	"sync/atomic"
 	"testing"
-	"time"
 
-	"github.com/creack/pty"
 	"github.com/localstack/lstk/internal/must"
 	"github.com/localstack/lstk/test/integration/env"
 )
@@ -143,59 +135,39 @@ func TestResetTelemetryOnFailure(t *testing.T) {
 }
 
 func TestResetInteractive(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("PTY not supported on Windows")
-	}
 	requireDocker(t)
 	cleanup()
 	t.Cleanup(cleanup)
 
 	startTestContainer(t, testContext(t))
 
-	startReset := func(t *testing.T, srv *httptest.Server) (*os.File, *syncBuffer, chan struct{}, *exec.Cmd) {
+	startReset := func(t *testing.T, srv *httptest.Server) *ptyProc {
 		t.Helper()
-		binPath, err := filepath.Abs(binaryPath())
-		must.NoError(t, err)
-
-		cmd := exec.CommandContext(testContext(t), binPath, "reset")
-		cmd.Env = env.Environ(testEnvWithHome(t.TempDir(), "")).With(env.LocalStackHost, lsHost(srv))
-		ptmx, err := pty.Start(cmd)
-		must.NoError(t, err, "failed to start command in PTY")
-		t.Cleanup(func() { _ = ptmx.Close() })
-
-		out := &syncBuffer{}
-		outputCh := make(chan struct{})
-		go func() {
-			_, _ = io.Copy(out, ptmx)
-			close(outputCh)
-		}()
-		must.Eventually(t, func() bool {
-			return bytes.Contains(out.Bytes(), []byte("Reset emulator state?"))
-		}, 10*time.Second, 100*time.Millisecond, "confirmation prompt should appear")
-		return ptmx, out, outputCh, cmd
+		p := startLstkInPTY(t, testContext(t),
+			env.Environ(testEnvWithHome(t.TempDir(), "")).With(env.LocalStackHost, lsHost(srv)), "reset")
+		p.waitForOutput("Reset emulator state?", "confirmation prompt should appear")
+		return p
 	}
 
 	t.Run("confirms with y", func(t *testing.T) {
 		srv, calls := mockResetServer(t, http.StatusOK)
-		ptmx, out, outputCh, cmd := startReset(t, srv)
-		_, err := ptmx.Write([]byte("y"))
+		p := startReset(t, srv)
+		p.write("y")
+		out, err := p.wait()
 		must.NoError(t, err)
-		must.NoError(t, cmd.Wait())
-		<-outputCh
 
-		must.Contains(t, out.String(), "Emulator state reset")
+		must.Contains(t, out, "Emulator state reset")
 		must.Eq(t, int32(1), calls.Load(), "reset endpoint should be called after confirmation")
 	})
 
 	t.Run("cancels with n", func(t *testing.T) {
 		srv, calls := mockResetServer(t, http.StatusOK)
-		ptmx, out, outputCh, cmd := startReset(t, srv)
-		_, err := ptmx.Write([]byte("n"))
+		p := startReset(t, srv)
+		p.write("n")
+		out, err := p.wait()
 		must.NoError(t, err)
-		must.NoError(t, cmd.Wait())
-		<-outputCh
 
-		must.Contains(t, out.String(), "Cancelled")
+		must.Contains(t, out, "Cancelled")
 		must.Eq(t, int32(0), calls.Load(), "reset endpoint must not be called when user cancels")
 	})
 }

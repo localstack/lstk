@@ -19,7 +19,6 @@ import (
 
 	"net/netip"
 
-	"github.com/creack/pty"
 	"github.com/localstack/lstk/internal/must"
 	"github.com/localstack/lstk/test/integration/env"
 	"github.com/moby/moby/api/types/container"
@@ -335,38 +334,6 @@ func runLstk(t *testing.T, ctx context.Context, dir string, env []string, args .
 
 	err = cmd.Run()
 	return strings.TrimSpace(stdout.String()), strings.TrimSpace(stderr.String()), err
-}
-
-// runs the lstk binary inside a PTY so that ui.IsInteractive() returns true,
-// making --non-interactive the actual condition under test
-func runLstkInPTY(t *testing.T, ctx context.Context, environ []string, args ...string) (string, error) {
-	t.Helper()
-	if runtime.GOOS == "windows" {
-		t.Skip("PTY not supported on Windows")
-	}
-
-	binPath, err := filepath.Abs(binaryPath())
-	must.NoError(t, err)
-
-	cmd := exec.CommandContext(ctx, binPath, args...)
-	if environ != nil {
-		cmd.Env = environ
-	}
-
-	ptmx, err := pty.Start(cmd)
-	must.NoError(t, err, "failed to start command in PTY")
-	defer func() { _ = ptmx.Close() }()
-
-	out := &syncBuffer{}
-	outputCh := make(chan struct{})
-	go func() {
-		_, _ = io.Copy(out, ptmx)
-		close(outputCh)
-	}()
-
-	err = cmd.Wait()
-	<-outputCh
-	return strings.TrimSpace(out.String()), err
 }
 
 func requireExitCode(t *testing.T, expected int, err error) {

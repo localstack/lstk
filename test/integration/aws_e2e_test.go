@@ -2,14 +2,11 @@ package integration_test
 
 import (
 	"fmt"
-	"io"
 	"os/exec"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/creack/pty"
 	"github.com/localstack/lstk/internal/must"
 	"github.com/localstack/lstk/test/integration/env"
 )
@@ -44,7 +41,7 @@ func TestAWSLogsTailFollowStreamsInPTY(t *testing.T) {
 	ctx := testContext(t)
 	startRealLocalStack(t, ctx, token)
 
-	e := env.With(env.DisableEvents, "1").With(env.Home, t.TempDir())
+	e := env.With(env.DisableEvents, "1").WithHome(t.TempDir())
 
 	const logGroup = "/lstk-e2e/tail-follow"
 	const marker = "hello-tail-follow"
@@ -57,16 +54,7 @@ func TestAWSLogsTailFollowStreamsInPTY(t *testing.T) {
 	_, stderr, err = runLstk(t, ctx, "", e, "aws", "logs", "put-log-events", "--log-group-name", logGroup, "--log-stream-name", "s1", "--log-events", events)
 	must.NoError(t, err, "put-log-events failed: %s", stderr)
 
-	binPath, err := filepath.Abs(binaryPath())
-	must.NoError(t, err)
-	cmd := exec.CommandContext(ctx, binPath, "aws", "logs", "tail", logGroup, "--follow", "--since", "1h")
-	cmd.Env = e
-
-	ptmx, err := pty.Start(cmd)
-	must.NoError(t, err, "failed to start command in PTY")
-
-	out := &syncBuffer{}
-	go func() { _, _ = io.Copy(out, ptmx) }()
+	p := startLstkInPTY(t, ctx, e, "aws", "logs", "tail", logGroup, "--follow", "--since", "1h")
 
 	// The event already exists, so a streaming tail prints it on its first
 	// poll — within a couple of seconds. Poll well past that so a slow first
@@ -75,7 +63,7 @@ func TestAWSLogsTailFollowStreamsInPTY(t *testing.T) {
 	deadline := time.Now().Add(30 * time.Second)
 	seen := false
 	for time.Now().Before(deadline) {
-		if strings.Contains(out.String(), marker) {
+		if strings.Contains(p.output(), marker) {
 			seen = true
 			break
 		}
@@ -84,17 +72,16 @@ func TestAWSLogsTailFollowStreamsInPTY(t *testing.T) {
 
 	// Ctrl-C via the PTY reaches the whole foreground process group (lstk and
 	// the aws child), matching what a user does to stop a follow.
-	_, _ = ptmx.Write([]byte{3})
-	waitErr := make(chan error, 1)
-	go func() { waitErr <- cmd.Wait() }()
+	p.write("\x03")
+	waited := make(chan struct{})
+	go func() { _, _ = p.wait(); close(waited) }()
 	select {
-	case <-waitErr:
+	case <-waited:
 	case <-time.After(10 * time.Second):
-		_ = cmd.Process.Kill()
-		<-waitErr
+		_ = p.cmd.Process.Kill()
+		<-waited
 	}
-	_ = ptmx.Close()
 
 	must.True(t, seen,
-		"tail --follow produced no output while running; event appeared only after exit (DEVX-1026). Output after exit:\n%s", out.String())
+		"tail --follow produced no output while running; event appeared only after exit (DEVX-1026). Output after exit:\n%s", p.output())
 }

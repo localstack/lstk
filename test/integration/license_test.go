@@ -18,7 +18,6 @@ import (
 	"time"
 
 	"github.com/creack/pty"
-
 	"github.com/localstack/lstk/internal/must"
 	"github.com/localstack/lstk/test/integration/env"
 	"github.com/moby/moby/client"
@@ -110,9 +109,6 @@ func TestLicenseValidationFailure(t *testing.T) {
 // login in interactive mode and retry the start with the new token, instead of
 // requiring a manual `lstk logout`.
 func TestLicenseRejectionOffersReloginAndRetries(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("PTY not supported on Windows")
-	}
 	requireDocker(t)
 	realToken := env.Require(t, env.AuthToken)
 
@@ -174,33 +170,16 @@ func TestLicenseRejectionOffersReloginAndRetries(t *testing.T) {
 	configFile := filepath.Join(t.TempDir(), "config.toml")
 	must.NoError(t, os.WriteFile(configFile, []byte("[[containers]]\ntype = \"aws\"\ntag = \"latest\"\nport = \"4566\"\n"), 0644))
 
-	cmd := exec.CommandContext(ctx, binaryPath(), "start", "--config", configFile)
-	cmd.Env = environ
-	ptmx, err := pty.Start(cmd)
-	must.NoError(t, err, "failed to start command in PTY")
-	defer func() { _ = ptmx.Close() }()
-
-	out := &syncBuffer{}
-	outputCh := make(chan struct{})
-	go func() {
-		_, _ = io.Copy(out, ptmx)
-		close(outputCh)
-	}()
+	p := startLstkInPTY(t, ctx, environ, "start", "--config", configFile)
 
 	// The stale token is rejected; the re-login prompt appears. Press ENTER.
 	// The wait covers a cold image pull on CI runners.
-	must.Eventually(t, func() bool {
-		return bytes.Contains(out.Bytes(), []byte("Log in again"))
-	}, 3*time.Minute, 100*time.Millisecond, "the re-login prompt should appear after the license rejection")
-	_, err = ptmx.Write([]byte("\r"))
-	must.NoError(t, err)
+	p.waitForOutputTimeout("Log in again", 3*time.Minute, "the re-login prompt should appear after the license rejection")
+	p.write("\r")
 
 	// The login flow runs; confirm it once the completion prompt appears.
-	must.Eventually(t, func() bool {
-		return bytes.Contains(out.Bytes(), []byte("key when complete"))
-	}, 30*time.Second, 100*time.Millisecond, "the login completion prompt should appear")
-	_, err = ptmx.Write([]byte("\r"))
-	must.NoError(t, err)
+	p.waitForOutputTimeout("key when complete", 30*time.Second, "the login completion prompt should appear")
+	p.write("\r")
 
 	// After a successful start, the post-start AWS profile setup asks a Y/n
 	// question when the runner's ~/.aws has no matching profile. It is
@@ -210,19 +189,18 @@ func TestLicenseRejectionOffersReloginAndRetries(t *testing.T) {
 		var answered atomic.Bool
 		for {
 			select {
-			case <-outputCh:
+			case <-p.done:
 				return
 			case <-time.After(200 * time.Millisecond):
-				if !answered.Load() && bytes.Contains(out.Bytes(), []byte("~/.aws? [Y/n]")) {
+				if !answered.Load() && strings.Contains(p.output(), "~/.aws? [Y/n]") {
 					answered.Store(true)
-					_, _ = ptmx.Write([]byte("n"))
+					_, _ = p.pt.Write([]byte("n"))
 				}
 			}
 		}
 	}()
 
-	err = cmd.Wait()
-	<-outputCh
+	out, err := p.wait()
 	if err != nil {
 		// The PTY transcript cannot explain a container that never became
 		// healthy — capture the emulator's own view before cleanup removes it.
@@ -242,9 +220,9 @@ func TestLicenseRejectionOffersReloginAndRetries(t *testing.T) {
 			t.Logf("health endpoint unreachable: %v", herr)
 		}
 	}
-	must.NoError(t, err, "start should succeed after re-login: %s", out.String())
+	must.NoError(t, err, "start should succeed after re-login: %s", out)
 	must.True(t, staleRejected.Load(), "the stale token must have been rejected by the license server first")
-	must.Contains(t, out.String(), "Valid license")
+	must.Contains(t, out, "Valid license")
 
 	inspect, err := dockerClient.ContainerInspect(ctx, containerName, client.ContainerInspectOptions{})
 	must.NoError(t, err, "failed to inspect container")
@@ -264,6 +242,80 @@ func TestLicenseRejectionOffersReloginAndRetries(t *testing.T) {
 		must.NoError(t, err, "the re-logged-in token should be stored in the system keyring")
 	}
 	must.Eq(t, realToken, storedToken, "the fresh token must replace the rejected one")
+}
+
+// TestLicenseRejectionEscDeclineShowsManualSteps covers DEVX-1045: the re-login
+// offer must be on screen (it used to be swallowed by the spinner it was emitted
+// under, so `lstk start` looked hung), and declining it must print the manual
+// recovery steps and exit right away. Ctrl+C also declines, but it cancels the
+// root context and races the TUI's quit, so ESC is the deterministic path.
+//
+// A pinned tag that is never present locally keeps this on the pre-pull
+// validation path: the rejection lands before any image pull, so no container is
+// ever created. It still shares Docker state with the rest of the suite, so it
+// is not parallel and it clears any running emulator first: container discovery
+// matches by (image repo, internal port), so an emulator already running on 4566
+// makes `lstk start` report that instead of ever reaching the license check.
+func TestLicenseRejectionEscDeclineShowsManualSteps(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("PTY not supported on Windows")
+	}
+	requireDocker(t)
+
+	// cleanupLicense, not cleanup: the container has to go, but there is no need
+	// to delete the developer's keyring token to run this test.
+	cleanupLicense()
+	t.Cleanup(cleanupLicense)
+
+	mockServer := createMockLicenseServer(false)
+	defer mockServer.Close()
+
+	tmpHome := t.TempDir()
+	configFile := filepath.Join(tmpHome, "config.toml")
+	must.NoError(t, os.WriteFile(configFile, []byte("[[containers]]\ntype = \"aws\"\ntag = \"2020.1\"\nport = \"4591\"\n"), 0644))
+
+	environ := append(testEnvWithHome(tmpHome, ""),
+		fmt.Sprintf("%s=%s", env.APIEndpoint, mockServer.URL),
+		fmt.Sprintf("%s=%s", env.AuthToken, "rotated-away-token"),
+		"TERM=xterm-256color",
+	)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	t.Cleanup(cancel)
+
+	cmd := exec.CommandContext(ctx, binaryPath(), "start", "--config", configFile)
+	cmd.Env = environ
+	ptmx, err := pty.Start(cmd)
+	must.NoError(t, err, "failed to start command in PTY")
+	defer func() { _ = ptmx.Close() }()
+
+	out := &syncBuffer{}
+	outputCh := make(chan struct{})
+	go func() {
+		_, _ = io.Copy(out, ptmx)
+		close(outputCh)
+	}()
+	// must.Eventually's message args are evaluated before the wait, so the
+	// transcript has to be logged from a cleanup to be of any use.
+	t.Cleanup(func() {
+		if t.Failed() {
+			t.Logf("PTY transcript:\n%s", out.String())
+		}
+	})
+
+	must.Eventually(t, func() bool {
+		return bytes.Contains(out.Bytes(), []byte("ESC to exit"))
+	}, 60*time.Second, 100*time.Millisecond, "the re-login prompt must be on screen, advertising the decline key")
+
+	_, err = ptmx.Write([]byte{0x1b})
+	must.NoError(t, err)
+
+	err = cmd.Wait()
+	<-outputCh
+	requireExitCode(t, 1, err)
+	must.Contains(t, out.String(), "License validation failed", "declining must render the failure")
+	must.Contains(t, out.String(), "lstk logout", "declining must point at the manual recovery")
+	must.Contains(t, out.String(), "LOCALSTACK_AUTH_TOKEN", "declining must mention the env var alternative")
 }
 
 func licenseFilePath(t *testing.T) string {

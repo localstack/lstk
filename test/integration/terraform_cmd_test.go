@@ -1,10 +1,8 @@
 package integration_test
 
 import (
-	"fmt"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
 
@@ -20,62 +18,40 @@ const tfOverrideFile = "localstack_providers_override.tf"
 const awsSchemaJSON = `{"provider_schemas":{"registry.terraform.io/hashicorp/aws":{"provider":{"block":{"block_types":{"endpoints":{"block":{"attributes":{"s3":{"type":"string"},"sqs":{"type":"string"}}}}}}}}}}`
 
 // writeFakeTerraform creates a stub `terraform` that answers `providers schema
-// -json` with awsSchemaJSON and echoes its args for any other invocation.
+// -json` with awsSchemaJSON and echoes its args for any other invocation. On a
+// proxied command the stub also echoes the generated override file so tests
+// can confirm it existed with schema-derived keys during the run.
 func writeFakeTerraform(t *testing.T) string {
 	t.Helper()
-	if runtime.GOOS == "windows" {
-		t.Skip("fake terraform script not supported on Windows")
-	}
-	dir := t.TempDir()
-	// On a proxied command the stub echoes the generated override file (read with
-	// shell builtins only, since PATH is restricted to the stub dir) so tests can
-	// confirm it existed with schema-derived keys during the run.
-	script := fmt.Sprintf(`#!/bin/sh
-if [ "$1" = "providers" ] && [ "$2" = "schema" ]; then
-  printf '%%s' '%s'
-  exit 0
-fi
-echo "ARGS:$*"
-if [ -f localstack_providers_override.tf ]; then
-  while IFS= read -r line; do echo "TF> $line"; done < localstack_providers_override.tf
-fi
-`, awsSchemaJSON)
-	must.NoError(t, os.WriteFile(filepath.Join(dir, "terraform"), []byte(script), 0755))
-	return dir
+	return writeFakeTool(t, "terraform", fakeToolConfig{
+		Cases:      []fakeToolCase{{Args: []string{"providers", "schema"}, Stdout: []string{awsSchemaJSON}}},
+		Stdout:     []string{"ARGS:{args}"},
+		DumpFile:   "localstack_providers_override.tf",
+		DumpPrefix: "TF> ",
+	})
 }
 
 // writeFakeTerraformFailingSchema creates a stub whose `providers schema` call
 // fails (as it would before `terraform init`), echoing args otherwise.
 func writeFakeTerraformFailingSchema(t *testing.T) string {
 	t.Helper()
-	if runtime.GOOS == "windows" {
-		t.Skip("fake terraform script not supported on Windows")
-	}
-	dir := t.TempDir()
-	script := `#!/bin/sh
-if [ "$1" = "providers" ] && [ "$2" = "schema" ]; then
-  echo "Error: required providers not installed" >&2
-  exit 1
-fi
-echo "ARGS:$*"
-`
-	must.NoError(t, os.WriteFile(filepath.Join(dir, "terraform"), []byte(script), 0755))
-	return dir
+	return writeFakeTool(t, "terraform", fakeToolConfig{
+		Cases: []fakeToolCase{{
+			Args:     []string{"providers", "schema"},
+			Stderr:   []string{"Error: required providers not installed"},
+			ExitCode: 1,
+		}},
+		Stdout: []string{"ARGS:{args}"},
+	})
 }
 
 // writeFakeTerraformExit creates a stub that exits with the given code.
 func writeFakeTerraformExit(t *testing.T, code int) string {
 	t.Helper()
-	if runtime.GOOS == "windows" {
-		t.Skip("fake terraform script not supported on Windows")
-	}
-	dir := t.TempDir()
-	script := fmt.Sprintf(`#!/bin/sh
-echo "terraform: simulated failure" >&2
-exit %d
-`, code)
-	must.NoError(t, os.WriteFile(filepath.Join(dir, "terraform"), []byte(script), 0755))
-	return dir
+	return writeFakeTool(t, "terraform", fakeToolConfig{
+		Stderr:   []string{"terraform: simulated failure"},
+		ExitCode: code,
+	})
 }
 
 // 7.1 — forwards args and propagates exit code. Uses unproxied subcommands so
@@ -83,7 +59,7 @@ exit %d
 func TestTerraformForwardsArgs(t *testing.T) {
 	t.Parallel()
 	fakeDir := writeFakeTerraform(t)
-	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).With(env.Home, t.TempDir())
+	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).WithHome(t.TempDir())
 
 	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), e, "terraform", "version")
 	must.NoError(t, err, "stderr: %s", stderr)
@@ -93,7 +69,7 @@ func TestTerraformForwardsArgs(t *testing.T) {
 func TestTerraformAliasTF(t *testing.T) {
 	t.Parallel()
 	fakeDir := writeFakeTerraform(t)
-	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).With(env.Home, t.TempDir())
+	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).WithHome(t.TempDir())
 
 	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), e, "tf", "version")
 	must.NoError(t, err, "stderr: %s", stderr)
@@ -104,13 +80,8 @@ func TestTerraformAliasTF(t *testing.T) {
 // on PATH must be used instead of `terraform`.
 func TestTerraformHonorsLstkTfCmd(t *testing.T) {
 	t.Parallel()
-	if runtime.GOOS == "windows" {
-		t.Skip("fake tofu script not supported on Windows")
-	}
-	dir := t.TempDir()
-	must.NoError(t, os.WriteFile(filepath.Join(dir, "tofu"),
-		[]byte("#!/bin/sh\necho \"TOFU:$*\"\n"), 0755))
-	e := env.With(env.DisableEvents, "1").With("PATH", dir).With(env.Home, t.TempDir()).
+	dir := writeFakeTool(t, "tofu", fakeToolConfig{Stdout: []string{"TOFU:{args}"}})
+	e := env.With(env.DisableEvents, "1").With("PATH", dir).WithHome(t.TempDir()).
 		With(env.Key("LSTK_TF_CMD"), "tofu")
 
 	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), e, "terraform", "version")
@@ -121,7 +92,7 @@ func TestTerraformHonorsLstkTfCmd(t *testing.T) {
 func TestTerraformPropagatesExitCode(t *testing.T) {
 	t.Parallel()
 	fakeDir := writeFakeTerraformExit(t, 5)
-	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).With(env.Home, t.TempDir())
+	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).WithHome(t.TempDir())
 
 	_, stderr, err := runLstk(t, testContext(t), t.TempDir(), e, "terraform", "validate")
 	must.Error(t, err)
@@ -132,7 +103,7 @@ func TestTerraformPropagatesExitCode(t *testing.T) {
 func TestTerraformMissingBinary(t *testing.T) {
 	t.Parallel()
 	// Empty PATH dir → no terraform binary found.
-	e := env.With(env.DisableEvents, "1").With("PATH", t.TempDir()).With(env.Home, t.TempDir())
+	e := env.With(env.DisableEvents, "1").With("PATH", t.TempDir()).WithHome(t.TempDir())
 
 	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), e, "terraform", "version")
 	must.Error(t, err)
@@ -152,7 +123,7 @@ func TestTerraformUnproxiedSkipsOverride(t *testing.T) {
 			t.Parallel()
 			fakeDir := writeFakeTerraform(t)
 			workDir := t.TempDir()
-			e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).With(env.Home, t.TempDir())
+			e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).WithHome(t.TempDir())
 
 			stdout, stderr, err := runLstk(t, testContext(t), workDir, e,
 				"terraform", "--region", "us-west-2", "--account", "111111111111", sub)
@@ -179,7 +150,7 @@ func TestTerraformHelpSkipsOverride(t *testing.T) {
 			t.Parallel()
 			fakeDir := writeFakeTerraform(t)
 			workDir := t.TempDir()
-			e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).With(env.Home, t.TempDir())
+			e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).WithHome(t.TempDir())
 
 			cmdArgs := append([]string{"terraform"}, args...)
 			stdout, stderr, err := runLstk(t, testContext(t), workDir, e, cmdArgs...)
@@ -196,7 +167,7 @@ func TestTerraformHelpSkipsOverride(t *testing.T) {
 func TestTerraformInvalidAccountRejected(t *testing.T) {
 	t.Parallel()
 	fakeDir := writeFakeTerraform(t)
-	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).With(env.Home, t.TempDir())
+	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).WithHome(t.TempDir())
 
 	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), e,
 		"terraform", "--account", "12345", "plan")
@@ -207,7 +178,7 @@ func TestTerraformInvalidAccountRejected(t *testing.T) {
 func TestTerraformMissingFlagValue(t *testing.T) {
 	t.Parallel()
 	fakeDir := writeFakeTerraform(t)
-	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).With(env.Home, t.TempDir())
+	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).WithHome(t.TempDir())
 
 	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), e, "terraform", "--region")
 	must.Error(t, err)
@@ -220,7 +191,7 @@ func TestTerraformMissingFlagValue(t *testing.T) {
 func TestTerraformFlagsAfterActionAreForwarded(t *testing.T) {
 	t.Parallel()
 	fakeDir := writeFakeTerraform(t)
-	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).With(env.Home, t.TempDir())
+	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).WithHome(t.TempDir())
 
 	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), e,
 		"terraform", "version", "--region", "us-west-2")
@@ -231,7 +202,7 @@ func TestTerraformFlagsAfterActionAreForwarded(t *testing.T) {
 func TestTerraformFlagBeforeSubcommandRejected(t *testing.T) {
 	t.Parallel()
 	fakeDir := writeFakeTerraform(t)
-	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).With(env.Home, t.TempDir())
+	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).WithHome(t.TempDir())
 
 	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), e,
 		"--account", "111111111111", "terraform", "version")
@@ -247,7 +218,7 @@ func TestTerraformFailsWhenEmulatorNotRunning(t *testing.T) {
 	t.Cleanup(cleanup)
 
 	fakeDir := writeFakeTerraform(t)
-	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).With(env.Home, t.TempDir())
+	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).WithHome(t.TempDir())
 
 	stdout, _, err := runLstk(t, testContext(t), t.TempDir(), e, "terraform", "plan")
 	must.Error(t, err)
@@ -270,7 +241,7 @@ func TestTerraformRequiresAWSEmulator(t *testing.T) {
 	startTestSnowflakeContainer(t, ctx)
 
 	fakeDir := writeFakeTerraform(t)
-	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).With(env.Home, t.TempDir())
+	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).WithHome(t.TempDir())
 
 	stdout, _, err := runLstk(t, ctx, t.TempDir(), e, "terraform", "plan")
 	must.Error(t, err)
@@ -290,7 +261,7 @@ func TestTerraformDryRunGeneratesOverride(t *testing.T) {
 
 	fakeDir := writeFakeTerraform(t)
 	workDir := t.TempDir()
-	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).With(env.Home, t.TempDir()).
+	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).WithHome(t.TempDir()).
 		With(env.Key("LSTK_TF_DRY_RUN"), "1")
 
 	stdout, stderr, err := runLstk(t, ctx, workDir, e,
@@ -323,7 +294,7 @@ func TestTerraformRefusesPreexistingOverride(t *testing.T) {
 	overridePath := filepath.Join(workDir, tfOverrideFile)
 	must.NoError(t, os.WriteFile(overridePath, []byte("# my own override\n"), 0644))
 
-	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).With(env.Home, t.TempDir())
+	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).WithHome(t.TempDir())
 
 	stdout, stderr, err := runLstk(t, ctx, workDir, e, "terraform", "plan")
 	must.Error(t, err)
@@ -348,7 +319,7 @@ func TestTerraformGeneratesAndRemovesOverride(t *testing.T) {
 
 	fakeDir := writeFakeTerraform(t)
 	workDir := t.TempDir()
-	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).With(env.Home, t.TempDir())
+	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).WithHome(t.TempDir())
 
 	stdout, stderr, err := runLstk(t, ctx, workDir, e, "terraform", "plan")
 	must.NoError(t, err, "stderr: %s", stderr)
@@ -379,7 +350,7 @@ func TestTerraformChdirAnchorsOverrideToDir(t *testing.T) {
 		workDir := t.TempDir()
 		infra := filepath.Join(workDir, "infra")
 		must.NoError(t, os.Mkdir(infra, 0755))
-		e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).With(env.Home, t.TempDir()).
+		e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).WithHome(t.TempDir()).
 			With(env.Key("LSTK_TF_DRY_RUN"), "1")
 
 		_, stderr, err := runLstk(t, ctx, workDir, e, "terraform", "-chdir=infra", "plan")
@@ -399,7 +370,7 @@ func TestTerraformChdirAnchorsOverrideToDir(t *testing.T) {
 		workDir := t.TempDir()
 		infra := filepath.Join(workDir, "infra")
 		must.NoError(t, os.Mkdir(infra, 0755))
-		e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).With(env.Home, t.TempDir())
+		e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).WithHome(t.TempDir())
 
 		stdout, stderr, err := runLstk(t, ctx, workDir, e, "terraform", "-chdir=infra", "plan")
 		must.NoError(t, err, "stderr: %s", stderr)
@@ -421,7 +392,7 @@ func TestTerraformChdirMissingDirFails(t *testing.T) {
 
 	fakeDir := writeFakeTerraform(t)
 	workDir := t.TempDir()
-	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).With(env.Home, t.TempDir())
+	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).WithHome(t.TempDir())
 
 	stdout, _, err := runLstk(t, ctx, workDir, e, "terraform", "-chdir=does-not-exist", "plan")
 	must.Error(t, err)
@@ -441,7 +412,7 @@ func TestTerraformSchemaUnavailableRequiresInit(t *testing.T) {
 
 	fakeDir := writeFakeTerraformFailingSchema(t)
 	workDir := t.TempDir()
-	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).With(env.Home, t.TempDir())
+	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).WithHome(t.TempDir())
 
 	stdout, stderr, err := runLstk(t, ctx, workDir, e, "terraform", "plan")
 	must.Error(t, err)
