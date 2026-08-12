@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -104,6 +105,11 @@ func installLstkBundle(t *testing.T, dir string) string {
 // is touched. Extra DOCKER_HOST etc. can be appended by the caller.
 func envWithPath(tmpHome, extDir string) []string {
 	e := testEnvWithHome(tmpHome, "")
+	// Strip any ambient auth token (set in CI) so extension-context output is
+	// deterministic; a test that wants one appends it explicitly, which wins.
+	e = slices.DeleteFunc(e, func(kv string) bool {
+		return strings.HasPrefix(kv, string(env.AuthToken)+"=")
+	})
 	e = append(e, "PATH="+extDir+string(os.PathListSeparator)+os.Getenv("PATH"))
 	return e
 }
