@@ -11,6 +11,7 @@ import (
 
 	"github.com/localstack/lstk/test/integration/env"
 	"github.com/moby/moby/client"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -274,27 +275,27 @@ func TestSnapshotLoadMergeStrategies(t *testing.T) {
 			_, stderr, err = runLstk(t, ctx, "", e, "snapshot", "load", snap2, "--merge="+tc.strategy)
 			require.NoError(t, err, "loading snapshot2 (merge=%s) failed: %s", tc.strategy, stderr)
 
-			require.ElementsMatch(t, tc.wantUSEastSNS, snsTopicNames(t, ctx, e, "us-east-1"), "us-east-1 SNS topics")
-			require.ElementsMatch(t, tc.wantUSEastS3, s3BucketNames(t, ctx, e), "S3 buckets")
-			require.ElementsMatch(t, tc.wantAPSoutheast2["sns"], snsTopicNames(t, ctx, e, "ap-southeast-2"), "ap-southeast-2 SNS topics")
+			assert.ElementsMatch(t, tc.wantUSEastSNS, snsTopicNames(t, ctx, e, "us-east-1"), "us-east-1 SNS topics")
+			assert.ElementsMatch(t, tc.wantUSEastS3, s3BucketNames(t, ctx, e), "S3 buckets")
+			assert.ElementsMatch(t, tc.wantAPSoutheast2["sns"], snsTopicNames(t, ctx, e, "ap-southeast-2"), "ap-southeast-2 SNS topics")
 
 			usEastQueues := sqsQueueURLsByName(t, ctx, e, "us-east-1")
 			gotUSEastSQS := make([]string, 0, len(usEastQueues))
 			for name := range usEastQueues {
 				gotUSEastSQS = append(gotUSEastSQS, name)
 			}
-			require.ElementsMatch(t, tc.wantUSEastSQS, gotUSEastSQS, "us-east-1 SQS queues")
+			assert.ElementsMatch(t, tc.wantUSEastSQS, gotUSEastSQS, "us-east-1 SQS queues")
 
 			apSoutheastQueues := sqsQueueURLsByName(t, ctx, e, "ap-southeast-2")
 			gotAPSoutheastSQS := make([]string, 0, len(apSoutheastQueues))
 			for name := range apSoutheastQueues {
 				gotAPSoutheastSQS = append(gotAPSoutheastSQS, name)
 			}
-			require.ElementsMatch(t, tc.wantAPSoutheast2["sqs"], gotAPSoutheastSQS, "ap-southeast-2 SQS queues")
+			assert.ElementsMatch(t, tc.wantAPSoutheast2["sqs"], gotAPSoutheastSQS, "ap-southeast-2 SQS queues")
 
 			queueToReplaceURL, ok := usEastQueues["queue-to-replace"]
 			require.True(t, ok, "queue-to-replace should exist in us-east-1 after merge=%s", tc.strategy)
-			require.Equal(t, tc.wantVisibility, sqsQueueVisibilityTimeout(t, ctx, e, "us-east-1", queueToReplaceURL),
+			assert.Equal(t, tc.wantVisibility, sqsQueueVisibilityTimeout(t, ctx, e, "us-east-1", queueToReplaceURL),
 				"queue-to-replace VisibilityTimeout after merge=%s", tc.strategy)
 		})
 	}

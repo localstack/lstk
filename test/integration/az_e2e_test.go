@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/localstack/lstk/test/integration/env"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -89,16 +90,16 @@ func TestAzE2ERealCLIOnPTYPreservesOutput(t *testing.T) {
 	// Pipe path: no PTY, so no CR at all, and the JSON is byte-clean.
 	pipedOut, stderr, err := runLstk(t, ctx, workDir, baseEnv, "az", "cloud", "show", "-o", "json")
 	require.NoError(t, err, "lstk az cloud show failed: %s", stderr)
-	require.NotContains(t, pipedOut, "\r", "a redirected stdout must stay a pipe, so the Azure CLI emits bare LFs")
-	require.Equal(t, "LocalStack", cloudNameFromJSON(t, pipedOut))
+	assert.NotContains(t, pipedOut, "\r", "a redirected stdout must stay a pipe, so the Azure CLI emits bare LFs")
+	assert.Equal(t, "LocalStack", cloudNameFromJSON(t, pipedOut))
 
 	// PTY path: the real az ran on a terminal, and its output is still valid JSON
 	// once the PTY's CRs are stripped — the property a `lstk az ... -o json`
 	// consumer depends on.
 	ptyOut := runLstkAzInPTY(t, ctx, workDir, baseEnv, "az", "cloud", "show", "-o", "json")
-	require.True(t, hasInnerPTYLineEndings(ptyOut),
+	assert.True(t, hasInnerPTYLineEndings(ptyOut),
 		"the real Azure CLI must run on a PTY when lstk's stdout and stderr are terminals (DEVX-1028); got:\n%q", ptyOut)
-	require.Equal(t, "LocalStack", cloudNameFromJSON(t, ptyOut))
+	assert.Equal(t, "LocalStack", cloudNameFromJSON(t, ptyOut))
 }
 
 // cloudNameFromJSON extracts .name from an `az cloud show -o json` payload,

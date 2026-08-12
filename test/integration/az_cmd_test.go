@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/localstack/lstk/test/integration/env"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -21,9 +22,9 @@ func TestAzCommandFailsWhenAzureCLINotInstalled(t *testing.T) {
 
 	stdout, _, err := runLstk(t, testContext(t), workDir, e, "az", "group", "list")
 	require.Error(t, err)
-	require.Contains(t, stdout, "az CLI not found in PATH")
-	require.Contains(t, stdout, "Install Azure CLI:")
-	require.Contains(t, stdout, "https://learn.microsoft.com/en-us/cli/azure/")
+	assert.Contains(t, stdout, "az CLI not found in PATH")
+	assert.Contains(t, stdout, "Install Azure CLI:")
+	assert.Contains(t, stdout, "https://learn.microsoft.com/en-us/cli/azure/")
 }
 
 // azureHealthServer answers like an Azure-flavored emulator: /_localstack/health
@@ -118,9 +119,9 @@ func TestAzCommandStripsGlobalFlagsFromPassthrough(t *testing.T) {
 		"--endpoint-url", srv.URL, "--config", configPath, "--non-interactive", "az", "group", "list")
 	require.NoError(t, err, "stderr: %s", stderr)
 
-	require.Contains(t, stdout, "AZ_ARGS:group list")
-	require.NotContains(t, stdout, "--non-interactive")
-	require.NotContains(t, stdout, "--config")
+	assert.Contains(t, stdout, "AZ_ARGS:group list")
+	assert.NotContains(t, stdout, "--non-interactive")
+	assert.NotContains(t, stdout, "--config")
 }
 
 // --config must select the given config file for `lstk az` too: the Azure setup
@@ -136,12 +137,12 @@ func TestAzCommandConfigFlagSelectsConfigFile(t *testing.T) {
 	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), e,
 		"--endpoint-url", srv.URL, "--config", configPath, "az", "group", "list")
 	require.NoError(t, err, "stderr: %s", stderr)
-	require.Contains(t, stdout, "AZ_ARGS:group list")
+	assert.Contains(t, stdout, "AZ_ARGS:group list")
 
 	stdout, _, err = runLstk(t, testContext(t), t.TempDir(), e,
 		"--endpoint-url", srv.URL, "az", "group", "list")
 	require.Error(t, err, "without --config the azure setup marker must not be found")
-	require.Contains(t, stdout, "Azure CLI integration is not set up")
+	assert.Contains(t, stdout, "Azure CLI integration is not set up")
 }
 
 func TestAzCommandShowsSpinnerForSlowOperation(t *testing.T) {
@@ -153,8 +154,8 @@ func TestAzCommandShowsSpinnerForSlowOperation(t *testing.T) {
 		"--endpoint-url", srv.URL, "az", "group", "list")
 	require.NoError(t, err, "lstk az failed: %s", out)
 
-	require.Contains(t, out, "Loading service")
-	require.Contains(t, out, "AZ_ARGS:group list")
+	assert.Contains(t, out, "Loading service")
+	assert.Contains(t, out, "AZ_ARGS:group list")
 }
 
 // --non-interactive must suppress the spinner: before the flag was stripped in
@@ -168,6 +169,6 @@ func TestAzCommandSuppressesSpinnerInNonInteractiveMode(t *testing.T) {
 		"--endpoint-url", srv.URL, "--non-interactive", "az", "group", "list")
 	require.NoError(t, err, "lstk az failed: %s", out)
 
-	require.NotContains(t, out, "Loading service")
-	require.Contains(t, out, "AZ_ARGS:group list")
+	assert.NotContains(t, out, "Loading service")
+	assert.Contains(t, out, "AZ_ARGS:group list")
 }

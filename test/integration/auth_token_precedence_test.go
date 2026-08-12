@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/localstack/lstk/test/integration/env"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -47,7 +48,7 @@ func TestEnvAuthTokenOverridesStoredToken(t *testing.T) {
 
 	called, _, auth := cap.get()
 	require.True(t, called, "the platform list endpoint should have been called")
-	require.Equal(t, basicAuthHeader("env-token"), auth, "LOCALSTACK_AUTH_TOKEN should override the stored token")
+	assert.Equal(t, basicAuthHeader("env-token"), auth, "LOCALSTACK_AUTH_TOKEN should override the stored token")
 }
 
 func TestStoredTokenUsedWithoutEnvAuthToken(t *testing.T) {
@@ -70,7 +71,7 @@ func TestStoredTokenUsedWithoutEnvAuthToken(t *testing.T) {
 
 	called, _, auth := cap.get()
 	require.True(t, called, "the platform list endpoint should have been called")
-	require.Equal(t, basicAuthHeader("stored-token"), auth, "the stored token should be used when no env token is set")
+	assert.Equal(t, basicAuthHeader("stored-token"), auth, "the stored token should be used when no env token is set")
 }
 
 func TestEnvAuthTokenOverridesStoredTokenForExternalEmulator(t *testing.T) {
@@ -105,7 +106,7 @@ func TestEnvAuthTokenOverridesStoredTokenForExternalEmulator(t *testing.T) {
 
 	select {
 	case auth := <-authHeader:
-		require.Equal(t, basicAuthHeader("env-token"), auth, "LOCALSTACK_AUTH_TOKEN should override the stored token")
+		assert.Equal(t, basicAuthHeader("env-token"), auth, "LOCALSTACK_AUTH_TOKEN should override the stored token")
 	default:
 		t.Fatal("the external emulator pod endpoint should have been called")
 	}

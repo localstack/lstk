@@ -15,6 +15,7 @@ import (
 	"testing"
 
 	"github.com/localstack/lstk/test/integration/env"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -109,7 +110,7 @@ func TestSnapshotSaveDefaultDestination(t *testing.T) {
 		"--non-interactive", "snapshot", "save",
 	)
 	require.NoError(t, err, "lstk snapshot save failed: %s", stderr)
-	require.Contains(t, stdout, "Snapshot saved")
+	assert.Contains(t, stdout, "Snapshot saved")
 
 	entries, readErr := os.ReadDir(dir)
 	require.NoError(t, readErr)
@@ -120,7 +121,7 @@ func TestSnapshotSaveDefaultDestination(t *testing.T) {
 			break
 		}
 	}
-	require.True(t, found, "default snapshot file (snapshot-*.snapshot) should exist in %s", dir)
+	assert.True(t, found, "default snapshot file (snapshot-*.snapshot) should exist in %s", dir)
 }
 
 func TestSnapshotSaveCustomPath(t *testing.T) {
@@ -139,16 +140,16 @@ func TestSnapshotSaveCustomPath(t *testing.T) {
 		"--non-interactive", "snapshot", "save", outPath,
 	)
 	require.NoError(t, err, "lstk snapshot save failed: %s", stderr)
-	require.Contains(t, stdout, "Snapshot saved")
-	require.Contains(t, stdout, "./my-snap.snapshot")
+	assert.Contains(t, stdout, "Snapshot saved")
+	assert.Contains(t, stdout, "./my-snap.snapshot")
 
 	data, err := os.ReadFile(outPath)
 	require.NoError(t, err, "output file should exist")
-	require.True(t, len(data) > 0, "output file should be non-empty")
+	assert.True(t, len(data) > 0, "output file should be non-empty")
 
 	r, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
 	require.NoError(t, err, "output file should be a valid ZIP")
-	require.NotEmpty(t, r.File)
+	assert.NotEmpty(t, r.File)
 }
 
 func TestSnapshotSaveRelativePath(t *testing.T) {
@@ -166,10 +167,10 @@ func TestSnapshotSaveRelativePath(t *testing.T) {
 		"--non-interactive", "snapshot", "save", "./my-state",
 	)
 	require.NoError(t, err, "lstk snapshot save failed: %s", stderr)
-	require.Contains(t, stdout, "Snapshot saved")
+	assert.Contains(t, stdout, "Snapshot saved")
 
 	_, statErr := os.Stat(filepath.Join(dir, "my-state.snapshot"))
-	require.NoError(t, statErr, "relative output file should exist")
+	assert.NoError(t, statErr, "relative output file should exist")
 }
 
 // TestSnapshotSaveForcesSnapshotExtension verifies that a user-supplied extension
@@ -189,12 +190,12 @@ func TestSnapshotSaveForcesSnapshotExtension(t *testing.T) {
 		"--non-interactive", "snapshot", "save", "./x.zip",
 	)
 	require.NoError(t, err, "lstk snapshot save failed: %s", stderr)
-	require.Contains(t, stdout, "./x.snapshot")
+	assert.Contains(t, stdout, "./x.snapshot")
 
 	_, statErr := os.Stat(filepath.Join(dir, "x.snapshot"))
-	require.NoError(t, statErr, "extension should be forced to .snapshot")
+	assert.NoError(t, statErr, "extension should be forced to .snapshot")
 	_, zipErr := os.Stat(filepath.Join(dir, "x.zip"))
-	require.True(t, os.IsNotExist(zipErr), "the user-supplied .zip path should not be created")
+	assert.True(t, os.IsNotExist(zipErr), "the user-supplied .zip path should not be created")
 }
 
 func TestSnapshotSaveOverwritesExistingFile(t *testing.T) {
@@ -217,7 +218,7 @@ func TestSnapshotSaveOverwritesExistingFile(t *testing.T) {
 
 	data, err := os.ReadFile(outPath)
 	require.NoError(t, err)
-	require.NotEqual(t, "OLD", string(data), "file should have been overwritten")
+	assert.NotEqual(t, "OLD", string(data), "file should have been overwritten")
 }
 
 func TestSnapshotSaveRemoteRejected(t *testing.T) {
@@ -231,7 +232,7 @@ func TestSnapshotSaveRemoteRejected(t *testing.T) {
 
 			_, stderr, err := runLstk(t, ctx, t.TempDir(), testEnvWithHome(t.TempDir(), ""), "--non-interactive", "snapshot", "save", dest)
 			requireExitCode(t, 1, err)
-			require.Contains(t, stderr, "not yet supported")
+			assert.Contains(t, stderr, "not yet supported")
 		})
 	}
 }
@@ -247,7 +248,7 @@ func TestSnapshotSaveS3MissingCredentials(t *testing.T) {
 		"--non-interactive", "snapshot", "save", "my-pod", "s3://my-bucket/prefix",
 	)
 	requireExitCode(t, 1, err)
-	require.Contains(t, stderr, "AWS credentials required")
+	assert.Contains(t, stderr, "AWS credentials required")
 }
 
 func TestSnapshotSaveS3CredentialsInURLRejected(t *testing.T) {
@@ -261,7 +262,7 @@ func TestSnapshotSaveS3CredentialsInURLRejected(t *testing.T) {
 		"--non-interactive", "snapshot", "save", "my-pod", "s3://my-bucket/prefix?access_key_id=AKIA&secret_access_key=secret",
 	)
 	requireExitCode(t, 1, err)
-	require.Contains(t, stderr, "do not put credentials")
+	assert.Contains(t, stderr, "do not put credentials")
 }
 
 // mockPodS3Server handles the remote registration plus pod save against an S3
@@ -327,17 +328,17 @@ func TestSnapshotSaveS3Success(t *testing.T) {
 		"--non-interactive", "snapshot", "save", "my-pod", s3URL,
 	)
 	require.NoError(t, err, "lstk snapshot save to s3 failed: %s", stderr)
-	require.Contains(t, stdout, "Snapshot saved to "+s3URL)
-	require.Contains(t, stdout, "my-pod")
+	assert.Contains(t, stdout, "Snapshot saved to "+s3URL)
+	assert.Contains(t, stdout, "my-pod")
 
 	remoteURL, saveBody := captured()
 	// The registered URL carries placeholders, never the secret values.
-	require.Contains(t, remoteURL, "{access_key_id}")
-	require.NotContains(t, remoteURL, "topsecret")
-	require.NotContains(t, remoteURL, "AKIAEXAMPLE")
+	assert.Contains(t, remoteURL, "{access_key_id}")
+	assert.NotContains(t, remoteURL, "topsecret")
+	assert.NotContains(t, remoteURL, "AKIAEXAMPLE")
 	// The secrets travel only in the ephemeral save params.
-	require.Contains(t, string(saveBody), "topsecret")
-	require.Contains(t, string(saveBody), "remote_params")
+	assert.Contains(t, string(saveBody), "topsecret")
+	assert.Contains(t, string(saveBody), "remote_params")
 }
 
 // mockPodSaveServer returns a test server that handles POST /_localstack/pods/{name}
@@ -378,10 +379,10 @@ func TestSnapshotSavePodSuccess(t *testing.T) {
 		"--non-interactive", "snapshot", "save", "pod:my-baseline",
 	)
 	require.NoError(t, err, "lstk snapshot save pod:my-baseline failed: %s", stderr)
-	require.Contains(t, stdout, "Snapshot saved")
-	require.Contains(t, stdout, "my-baseline")
-	require.Contains(t, stdout, "Version: 1")
-	require.Contains(t, stdout, "dynamodb, s3")
+	assert.Contains(t, stdout, "Snapshot saved")
+	assert.Contains(t, stdout, "my-baseline")
+	assert.Contains(t, stdout, "Version: 1")
+	assert.Contains(t, stdout, "dynamodb, s3")
 }
 
 func TestSnapshotSavePodServerError(t *testing.T) {
@@ -400,7 +401,7 @@ func TestSnapshotSavePodServerError(t *testing.T) {
 		"--non-interactive", "snapshot", "save", "pod:my-baseline",
 	)
 	requireExitCode(t, 1, err)
-	require.Contains(t, stderr, "platform error")
+	assert.Contains(t, stderr, "platform error")
 }
 
 func TestSnapshotSavePodNoAuthToken(t *testing.T) {
@@ -412,7 +413,7 @@ func TestSnapshotSavePodNoAuthToken(t *testing.T) {
 		"--non-interactive", "snapshot", "save", "pod:my-baseline",
 	)
 	requireExitCode(t, 1, err)
-	require.Contains(t, stderr, "authentication")
+	assert.Contains(t, stderr, "authentication")
 }
 
 func TestSnapshotSavePodInvalidName(t *testing.T) {
@@ -428,7 +429,7 @@ func TestSnapshotSavePodInvalidName(t *testing.T) {
 
 			_, stderr, err := runLstk(t, ctx, t.TempDir(), testEnvWithHome(t.TempDir(), ""), "--non-interactive", "snapshot", "save", dest)
 			requireExitCode(t, 1, err)
-			require.Contains(t, stderr, "invalid pod name")
+			assert.Contains(t, stderr, "invalid pod name")
 		})
 	}
 }
@@ -509,10 +510,10 @@ func TestSnapshotSavePodWithServices(t *testing.T) {
 		} `json:"attributes"`
 	}
 	require.NoError(t, json.Unmarshal(capturedBody(), &parsed))
-	require.Equal(t, []string{"s3", "dynamodb"}, parsed.Attributes.Services, "request body must carry exactly the requested services")
+	assert.Equal(t, []string{"s3", "dynamodb"}, parsed.Attributes.Services, "request body must carry exactly the requested services")
 
-	require.Contains(t, stdout, "Snapshot saved")
-	require.Contains(t, stdout, "Services: s3, dynamodb")
+	assert.Contains(t, stdout, "Snapshot saved")
+	assert.Contains(t, stdout, "Services: s3, dynamodb")
 }
 
 func TestSnapshotSavePodServicesSingleValue(t *testing.T) {
@@ -538,7 +539,7 @@ func TestSnapshotSavePodServicesSingleValue(t *testing.T) {
 		} `json:"attributes"`
 	}
 	require.NoError(t, json.Unmarshal(capturedBody(), &parsed))
-	require.Equal(t, []string{"s3"}, parsed.Attributes.Services)
+	assert.Equal(t, []string{"s3"}, parsed.Attributes.Services)
 }
 
 func TestSnapshotSavePodServicesInvalidFormat(t *testing.T) {
@@ -558,7 +559,7 @@ func TestSnapshotSavePodServicesInvalidFormat(t *testing.T) {
 				"--non-interactive", "snapshot", "save", "pod:my-baseline", "--services", value,
 			)
 			requireExitCode(t, 1, err)
-			require.Contains(t, stderr, "comma-separated list of service names")
+			assert.Contains(t, stderr, "comma-separated list of service names")
 		})
 	}
 }
@@ -580,9 +581,9 @@ func TestSnapshotSaveLocalWithServices(t *testing.T) {
 	)
 	require.NoError(t, err, "lstk snapshot save --services failed: %s", stderr)
 
-	require.Equal(t, "services=s3,dynamodb", capturedQuery(), "request must carry exactly the requested services")
-	require.Contains(t, stdout, "Snapshot saved")
-	require.Contains(t, stdout, "Services: s3, dynamodb")
+	assert.Equal(t, "services=s3,dynamodb", capturedQuery(), "request must carry exactly the requested services")
+	assert.Contains(t, stdout, "Snapshot saved")
+	assert.Contains(t, stdout, "Services: s3, dynamodb")
 
 	_, statErr := os.Stat(dest)
 	require.NoError(t, statErr, "snapshot file should have been created")
@@ -614,7 +615,7 @@ func TestSnapshotSaveS3WithServices(t *testing.T) {
 		} `json:"attributes"`
 	}
 	require.NoError(t, json.Unmarshal(saveBody, &parsed))
-	require.Equal(t, []string{"s3", "lambda"}, parsed.Attributes.Services)
+	assert.Equal(t, []string{"s3", "lambda"}, parsed.Attributes.Services)
 }
 
 func TestSnapshotSaveEmulatorNotRunning(t *testing.T) {
@@ -648,7 +649,7 @@ func TestSnapshotSaveEmulatorNotRunning(t *testing.T) {
 			}
 			stdout, _, err := runLstk(t, ctx, t.TempDir(), e, tc.args...)
 			requireExitCode(t, 1, err)
-			require.Contains(t, stdout, "not running")
+			assert.Contains(t, stdout, "not running")
 		})
 	}
 }
@@ -667,7 +668,7 @@ func TestSnapshotSaveInvalidParentDir(t *testing.T) {
 		"--non-interactive", "snapshot", "save", "/no/such/dir/state",
 	)
 	requireExitCode(t, 1, err)
-	require.NotEmpty(t, stderr)
+	assert.NotEmpty(t, stderr)
 }
 
 func TestSnapshotSaveTelemetryEmitted(t *testing.T) {
@@ -722,15 +723,15 @@ func TestSaveAliasMatchesSnapshotSave(t *testing.T) {
 		"--non-interactive", "save", outPath,
 	)
 	require.NoError(t, err, "lstk save failed: %s", stderr)
-	require.Contains(t, stdout, "Snapshot saved")
+	assert.Contains(t, stdout, "Snapshot saved")
 
 	data, err := os.ReadFile(outPath)
 	require.NoError(t, err, "output file should exist")
-	require.True(t, len(data) > 0, "output file should be non-empty")
+	assert.True(t, len(data) > 0, "output file should be non-empty")
 
 	r, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
 	require.NoError(t, err, "output file should be a valid ZIP")
-	require.NotEmpty(t, r.File)
+	assert.NotEmpty(t, r.File)
 
 	// Alias must emit telemetry under the canonical name so usage isn't
 	// split across "save" and "snapshot save" labels.
@@ -752,5 +753,5 @@ func TestSnapshotSaveInteractive(t *testing.T) {
 		"snapshot", "save", filepath.Join(dir, "snap"),
 	)
 	require.NoError(t, err, "interactive lstk snapshot save failed")
-	require.Contains(t, out, "Snapshot saved")
+	assert.Contains(t, out, "Snapshot saved")
 }

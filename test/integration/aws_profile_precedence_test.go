@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -97,9 +98,9 @@ func TestAWSProfileEnvVarLetsEnvironmentCredentialsWin(t *testing.T) {
 	)
 	out := awsConfigureList(t, e...)
 
-	require.Regexp(t, `access_key\s*:\s*\**1111\s*:\s*env`, out,
+	assert.Regexp(t, `access_key\s*:\s*\**1111\s*:\s*env`, out,
 		"credentials must come from the environment under AWS_PROFILE")
-	require.Regexp(t, `region\s*:\s*eu-west-1\s*:\s*config-file`, out,
+	assert.Regexp(t, `region\s*:\s*eu-west-1\s*:\s*config-file`, out,
 		"the profile must still supply the region")
 }
 
@@ -122,7 +123,7 @@ func TestAWSProfileFlagSuppressesEnvironmentCredentials(t *testing.T) {
 	out, err := cmd.CombinedOutput()
 	require.NoError(t, err, "aws configure list failed: %s", out)
 
-	require.Regexp(t, `access_key\s*:\s*\**test\s*:\s*shared-credentials-file`, string(out),
+	assert.Regexp(t, `access_key\s*:\s*\**test\s*:\s*shared-credentials-file`, string(out),
 		"--profile must suppress the environment credentials (the behavior lstk avoids)")
 }
 
@@ -139,7 +140,7 @@ func TestAWSEnvironmentRegionOverridesProfileRegion(t *testing.T) {
 	)
 	out := awsConfigureList(t, e...)
 
-	require.Regexp(t, `region\s*:\s*us-east-1\s*:\s*env`, out,
+	assert.Regexp(t, `region\s*:\s*us-east-1\s*:\s*env`, out,
 		"an environment region outranks the profile's, so lstk must not seed one")
 }
 
@@ -155,5 +156,5 @@ func TestAWSProfileOutranksDefaultProfile(t *testing.T) {
 	)
 	out := awsConfigureList(t, e...)
 
-	require.Regexp(t, `region\s*:\s*eu-west-1\s*:\s*config-file`, out)
+	assert.Regexp(t, `region\s*:\s*eu-west-1\s*:\s*config-file`, out)
 }

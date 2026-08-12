@@ -8,6 +8,7 @@ import (
 
 	"github.com/localstack/lstk/test/integration/env"
 	"github.com/moby/moby/client"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -57,10 +58,10 @@ func TestStartTypeFlagFirstRunCreatesConfig(t *testing.T) {
 
 	stdout, _, _ := runLstk(t, testContext(t), t.TempDir(), e, "start", "--type", "snowflake", "--non-interactive")
 
-	require.Contains(t, stdout, "Snowflake emulator selected.")
+	assert.Contains(t, stdout, "Snowflake emulator selected.")
 	data, err := os.ReadFile(configPath)
 	require.NoError(t, err)
-	require.Contains(t, string(data), `type = "snowflake"`)
+	assert.Contains(t, string(data), `type = "snowflake"`)
 }
 
 // TestBareRootTypeFlagCreatesConfig covers the bare-root form (no "start"
@@ -75,10 +76,10 @@ func TestBareRootTypeFlagCreatesConfig(t *testing.T) {
 
 	stdout, _, _ := runLstk(t, testContext(t), t.TempDir(), e, "--type", "azure", "--non-interactive")
 
-	require.Contains(t, stdout, "Azure emulator selected.")
+	assert.Contains(t, stdout, "Azure emulator selected.")
 	data, err := os.ReadFile(configPath)
 	require.NoError(t, err)
-	require.Contains(t, string(data), `type = "azure"`)
+	assert.Contains(t, string(data), `type = "azure"`)
 }
 
 func TestStartTypeFlagSwitchesInPlace(t *testing.T) {
@@ -90,13 +91,13 @@ func TestStartTypeFlagSwitchesInPlace(t *testing.T) {
 
 	stdout, _, _ := runLstk(t, testContext(t), t.TempDir(), e, "start", "--type", "azure", "--non-interactive")
 
-	require.Contains(t, stdout, "Switched configured emulator to Azure")
+	assert.Contains(t, stdout, "Switched configured emulator to Azure")
 	data, err := os.ReadFile(configPath)
 	require.NoError(t, err)
-	require.Contains(t, string(data), `type = "azure"`)
+	assert.Contains(t, string(data), `type = "azure"`)
 	// The surgical rewrite preserves the inline comment and other fields.
-	require.Contains(t, string(data), "# keep me")
-	require.Contains(t, string(data), `port = "4566"`)
+	assert.Contains(t, string(data), "# keep me")
+	assert.Contains(t, string(data), `port = "4566"`)
 }
 
 func TestStartTypeFlagNoOpWhenMatching(t *testing.T) {
@@ -109,10 +110,10 @@ func TestStartTypeFlagNoOpWhenMatching(t *testing.T) {
 
 	stdout, _, _ := runLstk(t, testContext(t), t.TempDir(), e, "start", "--type", "aws", "--non-interactive")
 
-	require.NotContains(t, stdout, "Switched configured emulator")
+	assert.NotContains(t, stdout, "Switched configured emulator")
 	data, err := os.ReadFile(configPath)
 	require.NoError(t, err)
-	require.Equal(t, content, string(data))
+	assert.Equal(t, content, string(data))
 }
 
 func TestStartTypeFlagErrorsWhenImageSet(t *testing.T) {
@@ -126,11 +127,11 @@ func TestStartTypeFlagErrorsWhenImageSet(t *testing.T) {
 	stdout, _, err := runLstk(t, testContext(t), t.TempDir(), e, "start", "--type", "snowflake", "--non-interactive")
 
 	require.Error(t, err)
-	require.Contains(t, stdout, "Cannot switch emulator to Snowflake while a custom image is set")
+	assert.Contains(t, stdout, "Cannot switch emulator to Snowflake while a custom image is set")
 	// Config must be left untouched.
 	data, readErr := os.ReadFile(configPath)
 	require.NoError(t, readErr)
-	require.Equal(t, content, string(data))
+	assert.Equal(t, content, string(data))
 }
 
 // TestStartTypeErrorsOnMultipleBlocks verifies the switch refuses a config with
@@ -147,11 +148,11 @@ func TestStartTypeErrorsOnMultipleBlocks(t *testing.T) {
 	stdout, _, err := runLstk(t, testContext(t), t.TempDir(), e, "start", "--type", "azure", "--non-interactive")
 
 	require.Error(t, err)
-	require.Contains(t, stdout, "Unsupported configuration")
+	assert.Contains(t, stdout, "Unsupported configuration")
 	// Config must be left untouched — neither block's type is rewritten.
 	data, readErr := os.ReadFile(configPath)
 	require.NoError(t, readErr)
-	require.Equal(t, content, string(data))
+	assert.Equal(t, content, string(data))
 }
 
 // TestStartTypePositionalRejected pins that the emulator is a flag only: a
@@ -167,7 +168,7 @@ func TestStartTypePositionalRejected(t *testing.T) {
 	_, stderr, err := runLstk(t, testContext(t), t.TempDir(), e, "start", "azure", "--non-interactive")
 
 	require.Error(t, err)
-	require.Contains(t, stderr, "select the emulator with --type")
+	assert.Contains(t, stderr, "select the emulator with --type")
 	require.NoFileExists(t, configPath)
 }
 
@@ -186,11 +187,11 @@ func TestStartTypeErrorsWhenNoContainersBlock(t *testing.T) {
 	_, stderr, err := runLstk(t, testContext(t), t.TempDir(), e, "start", "--type", "azure", "--non-interactive")
 
 	require.Error(t, err)
-	require.Contains(t, stderr, "[[containers]] block")
+	assert.Contains(t, stderr, "[[containers]] block")
 	// The env table's type key must be left untouched, not corrupted to "azure".
 	data, readErr := os.ReadFile(configPath)
 	require.NoError(t, readErr)
-	require.Equal(t, content, string(data))
+	assert.Equal(t, content, string(data))
 }
 
 func TestStartTypeInvalidValue(t *testing.T) {
@@ -200,7 +201,7 @@ func TestStartTypeInvalidValue(t *testing.T) {
 	_, stderr, err := runLstk(t, testContext(t), t.TempDir(), e, "start", "--type", "bogus", "--non-interactive")
 
 	require.Error(t, err)
-	require.Contains(t, stderr, `invalid emulator type "bogus"`)
+	assert.Contains(t, stderr, `invalid emulator type "bogus"`)
 }
 
 // TestStartTypeFlagRefusesSwitchWhenDifferentEmulatorRunning is the end-to-end
@@ -238,12 +239,12 @@ func TestStartTypeFlagRefusesSwitchWhenDifferentEmulatorRunning(t *testing.T) {
 	stdout, _, err := runLstk(t, ctx, t.TempDir(), e, "start", "--type", "snowflake", "--non-interactive")
 
 	require.Error(t, err)
-	require.Contains(t, stdout, "LocalStack Azure Emulator is running on port 4566")
-	require.Contains(t, stdout, "config was not changed")
-	require.Contains(t, stdout, "docker stop localstack-external-azure")
+	assert.Contains(t, stdout, "LocalStack Azure Emulator is running on port 4566")
+	assert.Contains(t, stdout, "config was not changed")
+	assert.Contains(t, stdout, "docker stop localstack-external-azure")
 
 	// Config must be left untouched: still Azure, not rewritten to Snowflake.
 	data, readErr := os.ReadFile(configPath)
 	require.NoError(t, readErr)
-	require.Equal(t, content, string(data))
+	assert.Equal(t, content, string(data))
 }

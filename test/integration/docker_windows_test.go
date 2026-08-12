@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/localstack/lstk/test/integration/env"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -25,7 +26,7 @@ func TestWindowsDockerErrorShowsDockerCLICommand(t *testing.T) {
 	stdout, _, err := runLstk(t, testContext(t), "", windowsDockerErrorEnv(), "start")
 	require.Error(t, err)
 	requireExitCode(t, 1, err)
-	require.Contains(t, stdout, "docker desktop start")
+	assert.Contains(t, stdout, "docker desktop start")
 }
 
 // Verifies that the verbose Docker error message is suppressed on Windows.
@@ -38,6 +39,6 @@ func TestWindowsDockerErrorOmitsVerboseSummary(t *testing.T) {
 	stdout, _, err := runLstk(t, testContext(t), "", windowsDockerErrorEnv(), "start")
 	require.Error(t, err)
 	requireExitCode(t, 1, err)
-	require.Contains(t, stdout, "Docker is not available")
-	require.NotContains(t, stdout, "cannot connect to Docker daemon")
+	assert.Contains(t, stdout, "Docker is not available")
+	assert.NotContains(t, stdout, "cannot connect to Docker daemon")
 }

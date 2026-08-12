@@ -5,6 +5,7 @@ import (
 
 	"github.com/localstack/lstk/internal/snap"
 	"github.com/localstack/lstk/test/integration/env"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -19,12 +20,12 @@ func TestJSONFlagRejectsUnannotatedBuiltinCommand(t *testing.T) {
 	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), testEnvWithHome(t.TempDir(), ""), "status", "--json")
 	requireExitCode(t, 1, err)
 	envelope := decodeEnvelope(t, stdout)
-	require.Equal(t, "status", envelope.Command)
-	require.Equal(t, "error", envelope.Status)
+	assert.Equal(t, "status", envelope.Command)
+	assert.Equal(t, "error", envelope.Status)
 	require.NotNil(t, envelope.Error)
-	require.Equal(t, "NOT_JSON_CAPABLE", envelope.Error.Code)
-	require.Contains(t, envelope.Error.Message, "status")
-	require.Empty(t, stderr, "the rejection is rendered as JSON on stdout, not plain text on stderr")
+	assert.Equal(t, "NOT_JSON_CAPABLE", envelope.Error.Code)
+	assert.Contains(t, envelope.Error.Message, "status")
+	assert.Empty(t, stderr, "the rejection is rendered as JSON on stdout, not plain text on stderr")
 }
 
 func TestJSONFlagRejectsDefaultStartBehavior(t *testing.T) {
@@ -32,11 +33,11 @@ func TestJSONFlagRejectsDefaultStartBehavior(t *testing.T) {
 	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), testEnvWithHome(t.TempDir(), ""), "--json")
 	requireExitCode(t, 1, err)
 	envelope := decodeEnvelope(t, stdout)
-	require.Equal(t, "start", envelope.Command)
-	require.Equal(t, "error", envelope.Status)
+	assert.Equal(t, "start", envelope.Command)
+	assert.Equal(t, "error", envelope.Status)
 	require.NotNil(t, envelope.Error)
-	require.Equal(t, "NOT_JSON_CAPABLE", envelope.Error.Code)
-	require.Empty(t, stderr, "the rejection is rendered as JSON on stdout, not plain text on stderr")
+	assert.Equal(t, "NOT_JSON_CAPABLE", envelope.Error.Code)
+	assert.Empty(t, stderr, "the rejection is rendered as JSON on stdout, not plain text on stderr")
 }
 
 func TestJSONFlagDoesNotLaunchTUIOnPTY(t *testing.T) {
@@ -137,7 +138,7 @@ func TestJSONFlagProxyCommandsRejectBeforeCommandName(t *testing.T) {
 			requireExitCode(t, 1, err)
 			decodeEnvelope(t, stdout)
 			snap.MatchJSON(t, []byte(stdout))
-			require.Empty(t, stderr, "the rejection is rendered as JSON on stdout, not plain text on stderr")
+			assert.Empty(t, stderr, "the rejection is rendered as JSON on stdout, not plain text on stderr")
 		})
 	}
 }

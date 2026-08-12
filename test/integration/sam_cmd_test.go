@@ -6,6 +6,7 @@ import (
 
 	"github.com/localstack/lstk/internal/snap"
 	"github.com/localstack/lstk/test/integration/env"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -50,7 +51,7 @@ func TestSAMForwardsArgs(t *testing.T) {
 
 	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), e, "sam", "build")
 	require.NoError(t, err, "stderr: %s", stderr)
-	require.Contains(t, stdout, "ARGS:build")
+	assert.Contains(t, stdout, "ARGS:build")
 }
 
 // propagates the sam exit code.
@@ -61,7 +62,7 @@ func TestSAMPropagatesExitCode(t *testing.T) {
 
 	_, stderr, err := runLstk(t, testContext(t), t.TempDir(), e, "sam", "build")
 	require.Error(t, err)
-	require.Contains(t, stderr, "simulated failure")
+	assert.Contains(t, stderr, "simulated failure")
 	requireExitCode(t, 7, err)
 }
 
@@ -102,8 +103,8 @@ func TestSAMOfflineCommandsNoEmulator(t *testing.T) {
 				"sam", "--region", "us-west-2", sub)
 			require.NoError(t, err, "stderr: %s", stderr)
 
-			require.Contains(t, stdout, "ARGS:"+sub)
-			require.NotContains(t, stdout, "--region")
+			assert.Contains(t, stdout, "ARGS:"+sub)
+			assert.NotContains(t, stdout, "--region")
 		})
 	}
 }
@@ -122,7 +123,7 @@ func TestSAMHelpNoEmulator(t *testing.T) {
 			cmdArgs := append([]string{"sam"}, args...)
 			stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), e, cmdArgs...)
 			require.NoError(t, err, "stderr: %s", stderr)
-			require.Contains(t, stdout, "ARGS:"+strings.Join(args, " "))
+			assert.Contains(t, stdout, "ARGS:"+strings.Join(args, " "))
 		})
 	}
 }
@@ -135,9 +136,9 @@ func TestSAMVersionTooOld(t *testing.T) {
 
 	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), e, "sam", "build")
 	require.Error(t, err)
-	require.Contains(t, stderr+stdout, "1.95.0")
+	assert.Contains(t, stderr+stdout, "1.95.0")
 	// sam was never run for real.
-	require.NotContains(t, stdout, "ARGS:build")
+	assert.NotContains(t, stdout, "ARGS:build")
 }
 
 // a missing sam binary yields the install error.
@@ -147,7 +148,7 @@ func TestSAMMissingBinary(t *testing.T) {
 
 	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), e, "sam", "build")
 	require.Error(t, err)
-	require.Contains(t, stderr+stdout, "not found in PATH")
+	assert.Contains(t, stderr+stdout, "not found in PATH")
 }
 
 // --account is supported for sam (unlike cdk): a valid 12-digit value is
@@ -160,7 +161,7 @@ func TestSAMAccountSupported(t *testing.T) {
 	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), e,
 		"sam", "--account", "123456789012", "build")
 	require.NoError(t, err, "stderr: %s", stderr)
-	require.Contains(t, stdout, "ENV_AWS_ACCESS_KEY_ID=123456789012")
+	assert.Contains(t, stdout, "ENV_AWS_ACCESS_KEY_ID=123456789012")
 }
 
 // an invalid --account value is rejected at the command boundary before sam runs.
@@ -172,8 +173,8 @@ func TestSAMInvalidAccountRejected(t *testing.T) {
 	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), e,
 		"sam", "--account", "12345", "build")
 	require.Error(t, err)
-	require.Contains(t, stderr+stdout, "12-digit")
-	require.NotContains(t, stdout, "ARGS:build")
+	assert.Contains(t, stderr+stdout, "12-digit")
+	assert.NotContains(t, stdout, "ARGS:build")
 }
 
 // flags after the subcommand are forwarded to sam unchanged.
@@ -185,7 +186,7 @@ func TestSAMFlagsAfterActionAreForwarded(t *testing.T) {
 	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), e,
 		"sam", "build", "--region", "us-west-2")
 	require.NoError(t, err, "stderr: %s", stderr)
-	require.Contains(t, stdout, "ARGS:build --region us-west-2")
+	assert.Contains(t, stdout, "ARGS:build --region us-west-2")
 }
 
 // a flag before the subcommand is rejected with a clear message.
@@ -197,7 +198,7 @@ func TestSAMFlagBeforeSubcommandRejected(t *testing.T) {
 	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), e,
 		"--account", "111111111111", "sam", "build")
 	require.Error(t, err)
-	require.Contains(t, stderr+stdout, "must appear after the sam subcommand")
+	assert.Contains(t, stderr+stdout, "must appear after the sam subcommand")
 }
 
 // LSTK_SAM_CMD selects the binary to invoke.
@@ -212,7 +213,7 @@ func TestSAMHonorsLstkSamCmd(t *testing.T) {
 
 	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), e, "sam", "build")
 	require.NoError(t, err, "stderr: %s", stderr)
-	require.Contains(t, stdout, "MYSAM:build")
+	assert.Contains(t, stdout, "MYSAM:build")
 }
 
 // an AWS-contacting command with no running emulator fails with "not running"
@@ -227,9 +228,9 @@ func TestSAMFailsWhenEmulatorNotRunning(t *testing.T) {
 
 	stdout, _, err := runLstk(t, testContext(t), t.TempDir(), e, "sam", "deploy")
 	require.Error(t, err)
-	require.Contains(t, stdout, "is not running")
-	require.Contains(t, stdout, "Start LocalStack:")
-	require.NotContains(t, stdout, "ARGS:deploy")
+	assert.Contains(t, stdout, "is not running")
+	assert.Contains(t, stdout, "Start LocalStack:")
+	assert.NotContains(t, stdout, "ARGS:deploy")
 }
 
 // an AWS-contacting command fails with an AWS-specific error naming the running
@@ -249,9 +250,9 @@ func TestSAMRequiresAWSEmulator(t *testing.T) {
 
 	stdout, _, err := runLstk(t, ctx, t.TempDir(), e, "sam", "deploy")
 	require.Error(t, err)
-	require.Contains(t, stdout, "requires the")
-	require.Contains(t, stdout, "Snowflake")
-	require.NotContains(t, stdout, "ARGS:deploy")
+	assert.Contains(t, stdout, "requires the")
+	assert.Contains(t, stdout, "Snowflake")
+	assert.NotContains(t, stdout, "ARGS:deploy")
 }
 
 // The region must reach SAM on its command line, not only through AWS_REGION.
@@ -269,9 +270,9 @@ func TestSAMPutsSelectedRegionOnTheCommandLine(t *testing.T) {
 		"--endpoint-url", srv.URL, "sam", "--region", "ap-northeast-1", "--account", "121212122323", "deploy")
 	require.NoError(t, err, "stderr: %s", stderr)
 
-	require.Contains(t, stdout, "--region ap-northeast-1", "the region must be on sam's command line")
-	require.Contains(t, stdout, "ENV_AWS_REGION=ap-northeast-1")
-	require.Contains(t, stdout, "ENV_AWS_ACCESS_KEY_ID=121212122323")
+	assert.Contains(t, stdout, "--region ap-northeast-1", "the region must be on sam's command line")
+	assert.Contains(t, stdout, "ENV_AWS_REGION=ap-northeast-1")
+	assert.Contains(t, stdout, "ENV_AWS_ACCESS_KEY_ID=121212122323")
 }
 
 // Without lstk's --region there is nothing to assert over samconfig.toml, so
@@ -287,9 +288,9 @@ func TestSAMDoesNotInjectRegionWhenNotSelected(t *testing.T) {
 		"--endpoint-url", srv.URL, "sam", "deploy")
 	require.NoError(t, err, "stderr: %s", stderr)
 
-	require.NotContains(t, stdout, "--region")
+	assert.NotContains(t, stdout, "--region")
 	// The environment still carries the default, as before.
-	require.Contains(t, stdout, "ENV_AWS_REGION=us-east-1")
+	assert.Contains(t, stdout, "ENV_AWS_REGION=us-east-1")
 }
 
 // An ambient AWS_REGION is used but is not a selection: it is commonly exported
@@ -305,8 +306,8 @@ func TestSAMDoesNotInjectAmbientRegion(t *testing.T) {
 		"--endpoint-url", srv.URL, "sam", "deploy")
 	require.NoError(t, err, "stderr: %s", stderr)
 
-	require.NotContains(t, stdout, "--region")
-	require.Contains(t, stdout, "ENV_AWS_REGION=eu-west-1")
+	assert.NotContains(t, stdout, "--region")
+	assert.Contains(t, stdout, "ENV_AWS_REGION=eu-west-1")
 }
 
 // Offline subcommands never get the flag: `init` and `docs` reject --region
@@ -320,9 +321,9 @@ func TestSAMDoesNotInjectRegionForOfflineSubcommand(t *testing.T) {
 		"sam", "--region", "ap-northeast-1", "build")
 	require.NoError(t, err, "stderr: %s", stderr)
 
-	require.Contains(t, stdout, "ARGS:build")
-	require.NotContains(t, stdout, "--region")
-	require.Contains(t, stdout, "ENV_AWS_REGION=ap-northeast-1")
+	assert.Contains(t, stdout, "ARGS:build")
+	assert.NotContains(t, stdout, "--region")
+	assert.Contains(t, stdout, "ENV_AWS_REGION=ap-northeast-1")
 }
 
 // A --region the user addressed to sam directly wins: appending lstk's after it
@@ -338,8 +339,8 @@ func TestSAMLeavesUserSuppliedRegionFlagAlone(t *testing.T) {
 	require.NoError(t, err, "stderr: %s", stderr)
 
 	// Pinned to the whole ARGS line: lstk must not append a second --region.
-	require.Contains(t, stdout, "ARGS:deploy --region us-west-1\n")
+	assert.Contains(t, stdout, "ARGS:deploy --region us-west-1\n")
 	// The environment still carries lstk's resolved region, as it always has;
 	// sam's own command-line flag is what outranks it.
-	require.Contains(t, stdout, "ENV_AWS_REGION=ap-northeast-1")
+	assert.Contains(t, stdout, "ENV_AWS_REGION=ap-northeast-1")
 }

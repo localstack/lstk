@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/localstack/lstk/test/integration/env"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -68,8 +69,8 @@ func TestAzCommandErrorsWhenNotSetUp(t *testing.T) {
 	)
 	require.Error(t, err)
 	requireExitCode(t, 1, err)
-	require.Contains(t, stdout, "Azure CLI integration is not set up")
-	require.Contains(t, stdout, "lstk setup azure")
+	assert.Contains(t, stdout, "Azure CLI integration is not set up")
+	assert.Contains(t, stdout, "lstk setup azure")
 }
 
 // Non-interactive mode must not be rejected upfront (CI use case): with no
@@ -83,8 +84,8 @@ func TestSetupAzureNonInteractiveRunsWithoutTerminal(t *testing.T) {
 		"setup", "azure",
 	)
 	require.Error(t, err)
-	require.Contains(t, stderr, "no azure emulator configured")
-	require.NotContains(t, stderr, "interactive terminal")
+	assert.Contains(t, stderr, "no azure emulator configured")
+	assert.NotContains(t, stderr, "interactive terminal")
 }
 
 // `lstk setup az` must resolve to `setup azure`: the Azure tool-proxy command
@@ -99,8 +100,8 @@ func TestSetupAzureAliasAz(t *testing.T) {
 		"setup", "az",
 	)
 	require.Error(t, err)
-	require.NotContains(t, stderr, "unknown command")
-	require.Contains(t, stderr, "no azure emulator configured")
+	assert.NotContains(t, stderr, "unknown command")
+	assert.Contains(t, stderr, "no azure emulator configured")
 }
 
 // When the az CLI is missing, the error must be reported exactly once —
@@ -114,9 +115,9 @@ func TestSetupAzureReportsMissingAzCLIOnce(t *testing.T) {
 		"setup", "azure",
 	)
 	require.Error(t, err)
-	require.Contains(t, stderr, "az CLI not found in PATH")
+	assert.Contains(t, stderr, "az CLI not found in PATH")
 	combined := stdout + stderr
-	require.Equal(t, 1, strings.Count(combined, "az CLI not found in PATH"),
+	assert.Equal(t, 1, strings.Count(combined, "az CLI not found in PATH"),
 		"missing az CLI must be reported exactly once, got:\n%s", combined)
 }
 
@@ -137,8 +138,8 @@ func TestAzCommandErrorsWhenEmulatorNotRunning(t *testing.T) {
 	)
 	require.Error(t, err)
 	requireExitCode(t, 1, err)
-	require.Contains(t, stdout, "is not running")
-	require.Contains(t, stdout, "Start LocalStack")
+	assert.Contains(t, stdout, "is not running")
+	assert.Contains(t, stdout, "Start LocalStack")
 }
 
 // TestSetupAzureAndAzCommandSucceed requires Docker, the Azure CLI, and LOCALSTACK_AUTH_TOKEN.
@@ -183,7 +184,7 @@ func TestSetupAzureAndAzCommandSucceed(t *testing.T) {
 	p := startCmdInPTY(t, ctx, cmd)
 	out, err := p.wait()
 	require.NoError(t, err, "setup azure should succeed; output:\n%s", out)
-	require.Contains(t, out, "Azure CLI integration ready")
+	assert.Contains(t, out, "Azure CLI integration ready")
 
 	markerPath := filepath.Join(workDir, ".lstk", "azure", ".lstk-setup-complete")
 	_, err = os.Stat(markerPath)
@@ -196,7 +197,7 @@ func TestSetupAzureAndAzCommandSucceed(t *testing.T) {
 		"az", "cloud", "show", "--name", "LocalStack",
 	)
 	require.NoError(t, err, "lstk az cloud show failed: %s", stderr2)
-	require.Contains(t, stdout, "azure.localhost.localstack.cloud:4566",
+	assert.Contains(t, stdout, "azure.localhost.localstack.cloud:4566",
 		"registered cloud should expose the LocalStack Azure endpoint")
 
 	// Setup must also work without a terminal (CI use case): runLstk uses
@@ -207,5 +208,5 @@ func TestSetupAzureAndAzCommandSucceed(t *testing.T) {
 		"setup", "azure",
 	)
 	require.NoError(t, err, "non-interactive setup azure failed: stdout=%s stderr=%s", stdoutNI, stderrNI)
-	require.Contains(t, stdoutNI, "Azure CLI integration ready")
+	assert.Contains(t, stdoutNI, "Azure CLI integration ready")
 }

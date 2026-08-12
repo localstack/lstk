@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/localstack/lstk/test/integration/env"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -120,8 +121,8 @@ func TestAzStreamsInPTY(t *testing.T) {
 
 	// The two mechanisms that keep the symptom above from returning, asserted
 	// separately so a regression in either one is named rather than inferred.
-	require.Contains(t, p.output(), "STDOUT_TTY:yes", "the Azure CLI must be handed a terminal, not a pipe (DEVX-1028)")
-	require.Contains(t, p.output(), "PYTHONUNBUFFERED:1")
+	assert.Contains(t, p.output(), "STDOUT_TTY:yes", "the Azure CLI must be handed a terminal, not a pipe (DEVX-1028)")
+	assert.Contains(t, p.output(), "PYTHONUNBUFFERED:1")
 
 	// Ctrl-C via the PTY reaches the whole foreground process group (lstk and
 	// the az child), matching how a user stops a streaming command.
@@ -152,6 +153,6 @@ func TestAzWithPipedStdoutKeepsPipe(t *testing.T) {
 
 	stdout, stderr, err := runLstk(t, testContext(t), workDir, e, "--endpoint-url", srv.URL, "az", "group", "list")
 	require.NoError(t, err, "stderr: %s", stderr)
-	require.Contains(t, stdout, "STDOUT_TTY:no")
-	require.Contains(t, stdout, "piped")
+	assert.Contains(t, stdout, "STDOUT_TTY:no")
+	assert.Contains(t, stdout, "piped")
 }

@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/localstack/lstk/internal/snap"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -83,8 +84,8 @@ func TestUsageErrorBeforeJSONFallsBackToPlainText(t *testing.T) {
 	stdout, stderr, err := runLstk(t, ctx, t.TempDir(), testEnvWithHome(t.TempDir(), ""), "stop", "--bogus-flag", "--json")
 	requireExitCode(t, 1, err)
 
-	require.Empty(t, stdout, "no JSON should be attempted when --json wasn't parsed yet")
-	require.Contains(t, stderr, "bogus-flag")
+	assert.Empty(t, stdout, "no JSON should be attempted when --json wasn't parsed yet")
+	assert.Contains(t, stderr, "bogus-flag")
 }
 
 // TestConfigLoadFailureRendersJSONEnvelope covers PR #374's review comment:
@@ -104,7 +105,7 @@ func TestConfigLoadFailureRendersJSONEnvelope(t *testing.T) {
 
 	stdout, stderr, err := runLstk(t, ctx, workDir, testEnvWithHome(t.TempDir(), ""), "stop", "--json")
 	requireExitCode(t, 1, err)
-	require.Empty(t, stderr, "the plain-text fallback in Execute() must not also fire alongside the envelope")
+	assert.Empty(t, stderr, "the plain-text fallback in Execute() must not also fire alongside the envelope")
 
 	decodeEnvelope(t, stdout)
 	// error.message embeds the temp-dir config path, so it is masked.
@@ -122,12 +123,12 @@ func TestConfigNotFoundRendersJSONEnvelope(t *testing.T) {
 		"--config", missingConfig, "reset", "--force", "--json",
 	)
 	requireExitCode(t, 1, err)
-	require.Empty(t, stderr, "the plain-text fallback in Execute() must not also fire alongside the envelope")
+	assert.Empty(t, stderr, "the plain-text fallback in Execute() must not also fire alongside the envelope")
 
 	envelope := decodeEnvelope(t, stdout)
-	require.Equal(t, "error", envelope.Status)
-	require.Equal(t, "reset", envelope.Command)
+	assert.Equal(t, "error", envelope.Status)
+	assert.Equal(t, "reset", envelope.Command)
 	require.NotNil(t, envelope.Error)
-	require.Equal(t, "CONFIG_NOT_FOUND", envelope.Error.Code)
-	require.Equal(t, "CONFIG", envelope.Error.Category)
+	assert.Equal(t, "CONFIG_NOT_FOUND", envelope.Error.Code)
+	assert.Equal(t, "CONFIG", envelope.Error.Category)
 }

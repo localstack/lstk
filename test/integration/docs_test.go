@@ -4,6 +4,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -15,9 +16,9 @@ func TestDocsCommandGeneratesManPages(t *testing.T) {
 	require.NoError(t, err, stderr)
 	requireExitCode(t, 0, err)
 
-	require.FileExists(t, filepath.Join(dir, "lstk.1"))
-	require.FileExists(t, filepath.Join(dir, "lstk-start.1"))
-	require.FileExists(t, filepath.Join(dir, "lstk-stop.1"))
+	assert.FileExists(t, filepath.Join(dir, "lstk.1"))
+	assert.FileExists(t, filepath.Join(dir, "lstk-start.1"))
+	assert.FileExists(t, filepath.Join(dir, "lstk-stop.1"))
 }
 
 func TestDocsCommandGeneratesMarkdown(t *testing.T) {
@@ -28,9 +29,9 @@ func TestDocsCommandGeneratesMarkdown(t *testing.T) {
 	require.NoError(t, err, stderr)
 	requireExitCode(t, 0, err)
 
-	require.FileExists(t, filepath.Join(dir, "lstk.md"))
-	require.FileExists(t, filepath.Join(dir, "lstk_start.md"))
-	require.FileExists(t, filepath.Join(dir, "lstk_stop.md"))
+	assert.FileExists(t, filepath.Join(dir, "lstk.md"))
+	assert.FileExists(t, filepath.Join(dir, "lstk_start.md"))
+	assert.FileExists(t, filepath.Join(dir, "lstk_stop.md"))
 }
 
 func TestDocsCommandRejectsInvalidFormat(t *testing.T) {
@@ -47,5 +48,5 @@ func TestDocsCommandIsHidden(t *testing.T) {
 	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), testEnvWithHome(t.TempDir(), ""), "--help")
 	require.NoError(t, err, stderr)
 
-	require.NotContains(t, stdout, "docs")
+	assert.NotContains(t, stdout, "docs")
 }

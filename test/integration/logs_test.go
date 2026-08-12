@@ -14,6 +14,7 @@ import (
 
 	"github.com/localstack/lstk/test/integration/env"
 	"github.com/moby/moby/client"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -58,7 +59,7 @@ func TestLogsCommandFailsWhenNotRunning(t *testing.T) {
 	stdout, _, err := runLstk(t, testContext(t), "", env.With(env.AnalyticsEndpoint, analyticsSrv.URL), "--config", configFile, "logs", "--follow")
 	require.Error(t, err, "expected lstk logs --follow to fail when container not running")
 	requireExitCode(t, 1, err)
-	require.Contains(t, stdout, "LocalStack AWS Emulator is not running")
+	assert.Contains(t, stdout, "LocalStack AWS Emulator is not running")
 	assertCommandTelemetry(t, events, "logs", 1)
 }
 
@@ -159,8 +160,8 @@ func TestLogsTailCountsVisibleLinesNotFilteredOnes(t *testing.T) {
 	configFile := writeAwsConfig(t)
 	stdout, stderr, err := runLstk(t, ctx, "", env.Without(), "--config", configFile, "logs", "--tail", "1")
 	require.NoError(t, err, "lstk logs --tail 1 should exit cleanly, stderr: %s", stderr)
-	require.Contains(t, stdout, "tail-visible-marker", "--tail 1 must show the newest visible line, not an empty result")
-	require.NotContains(t, stdout, "tail-filtered-marker", "filtered request logs must stay hidden")
+	assert.Contains(t, stdout, "tail-visible-marker", "--tail 1 must show the newest visible line, not an empty result")
+	assert.NotContains(t, stdout, "tail-filtered-marker", "filtered request logs must stay hidden")
 }
 
 func TestLogsTailLimitsOutput(t *testing.T) {
@@ -179,10 +180,10 @@ func TestLogsTailLimitsOutput(t *testing.T) {
 		stdout, stderr, err := runLstk(t, ctx, "", env.Without(), args...)
 		require.NoError(t, err, "lstk logs %s should exit cleanly, stderr: %s", strings.Join(flags, " "), stderr)
 		for i := 8; i <= 10; i++ {
-			require.Contains(t, stdout, fmt.Sprintf("tail-marker-%d", i), "last 3 lines should be shown with %s", strings.Join(flags, " "))
+			assert.Contains(t, stdout, fmt.Sprintf("tail-marker-%d", i), "last 3 lines should be shown with %s", strings.Join(flags, " "))
 		}
 		for i := 1; i <= 7; i++ {
-			require.NotContains(t, stdout, fmt.Sprintf("tail-marker-%d\n", i), "older lines should be cut off with %s", strings.Join(flags, " "))
+			assert.NotContains(t, stdout, fmt.Sprintf("tail-marker-%d\n", i), "older lines should be cut off with %s", strings.Join(flags, " "))
 		}
 	}
 }
@@ -200,7 +201,7 @@ func TestLogsWithoutTailShowsAllLines(t *testing.T) {
 	stdout, stderr, err := runLstk(t, ctx, "", env.Without(), "--config", configFile, "logs")
 	require.NoError(t, err, "lstk logs should exit cleanly, stderr: %s", stderr)
 	for i := 1; i <= 10; i++ {
-		require.Contains(t, stdout, fmt.Sprintf("tail-marker-%d", i), "all lines should be shown without --tail")
+		assert.Contains(t, stdout, fmt.Sprintf("tail-marker-%d", i), "all lines should be shown without --tail")
 	}
 }
 
@@ -211,8 +212,8 @@ func TestLogsTailRejectsInvalidValue(t *testing.T) {
 	_, stderr, err := runLstk(t, testContext(t), "", env.Without(), "--config", configFile, "logs", "--tail", "bogus")
 	require.Error(t, err, "expected lstk logs --tail bogus to fail")
 	requireExitCode(t, 1, err)
-	require.Contains(t, stderr, "bogus", "error should name the invalid value")
-	require.Contains(t, stderr, "--tail", "error should name the flag")
+	assert.Contains(t, stderr, "bogus", "error should name the invalid value")
+	assert.Contains(t, stderr, "--tail", "error should name the flag")
 }
 
 func TestLogsTailWithFollowStartsFromTail(t *testing.T) {
@@ -251,7 +252,7 @@ func TestLogsTailWithFollowStartsFromTail(t *testing.T) {
 
 	select {
 	case line := <-firstLine:
-		require.Contains(t, line, "tail-marker-8", "follow should start from the last 3 lines")
+		assert.Contains(t, line, "tail-marker-8", "follow should start from the last 3 lines")
 	case <-ctx.Done():
 		t.Fatal("no marker appeared in lstk logs --follow --tail output within timeout")
 	}
@@ -276,7 +277,7 @@ func TestLogsInteractivePreservesFullScrollback(t *testing.T) {
 	require.NoError(t, err, "lstk logs should exit cleanly in interactive mode, output: %s", out)
 
 	for i := 1; i <= lineCount; i++ {
-		require.Contains(t, out, fmt.Sprintf("tail-marker-%d", i), "expected tail-marker-%d to survive scrollback", i)
+		assert.Contains(t, out, fmt.Sprintf("tail-marker-%d", i), "expected tail-marker-%d to survive scrollback", i)
 	}
 }
 

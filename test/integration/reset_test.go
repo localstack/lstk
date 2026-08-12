@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/localstack/lstk/test/integration/env"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -41,8 +42,8 @@ func TestResetSucceedsWithForce(t *testing.T) {
 		"--non-interactive", "reset", "--force",
 	)
 	require.NoError(t, err, "lstk reset failed: %s", stderr)
-	require.Contains(t, stdout, "Emulator state reset")
-	require.Equal(t, int32(1), calls.Load(), "reset endpoint should be called exactly once")
+	assert.Contains(t, stdout, "Emulator state reset")
+	assert.Equal(t, int32(1), calls.Load(), "reset endpoint should be called exactly once")
 }
 
 func TestResetFailsWithoutForceInNonInteractive(t *testing.T) {
@@ -61,8 +62,8 @@ func TestResetFailsWithoutForceInNonInteractive(t *testing.T) {
 		"--non-interactive", "reset",
 	)
 	requireExitCode(t, 1, err)
-	require.Contains(t, stderr, "--force")
-	require.Equal(t, int32(0), calls.Load(), "reset endpoint should not be called when confirmation is required")
+	assert.Contains(t, stderr, "--force")
+	assert.Equal(t, int32(0), calls.Load(), "reset endpoint should not be called when confirmation is required")
 }
 
 func TestResetLocalStackNotRunning(t *testing.T) {
@@ -77,7 +78,7 @@ func TestResetLocalStackNotRunning(t *testing.T) {
 		"--non-interactive", "reset", "--force",
 	)
 	requireExitCode(t, 1, err)
-	require.Contains(t, stdout, "not running")
+	assert.Contains(t, stdout, "not running")
 }
 
 func TestResetReturnsErrorOnAPIFailure(t *testing.T) {
@@ -94,7 +95,7 @@ func TestResetReturnsErrorOnAPIFailure(t *testing.T) {
 		"--non-interactive", "reset", "--force",
 	)
 	requireExitCode(t, 1, err)
-	require.NotEmpty(t, stderr)
+	assert.NotEmpty(t, stderr)
 }
 
 func TestResetTelemetryEmitted(t *testing.T) {
@@ -156,8 +157,8 @@ func TestResetInteractive(t *testing.T) {
 		out, err := p.wait()
 		require.NoError(t, err)
 
-		require.Contains(t, out, "Emulator state reset")
-		require.Equal(t, int32(1), calls.Load(), "reset endpoint should be called after confirmation")
+		assert.Contains(t, out, "Emulator state reset")
+		assert.Equal(t, int32(1), calls.Load(), "reset endpoint should be called after confirmation")
 	})
 
 	t.Run("cancels with n", func(t *testing.T) {
@@ -167,8 +168,8 @@ func TestResetInteractive(t *testing.T) {
 		out, err := p.wait()
 		require.NoError(t, err)
 
-		require.Contains(t, out, "Cancelled")
-		require.Equal(t, int32(0), calls.Load(), "reset endpoint must not be called when user cancels")
+		assert.Contains(t, out, "Cancelled")
+		assert.Equal(t, int32(0), calls.Load(), "reset endpoint must not be called when user cancels")
 	})
 }
 
@@ -187,11 +188,11 @@ func TestResetJSONSucceeds(t *testing.T) {
 	)
 	require.NoError(t, err, "lstk reset --json failed: %s", stderr)
 	requireExitCode(t, 0, err)
-	require.Equal(t, int32(1), calls.Load(), "reset endpoint should be called exactly once")
+	assert.Equal(t, int32(1), calls.Load(), "reset endpoint should be called exactly once")
 
 	envelope := decodeEnvelope(t, stdout)
-	require.Equal(t, "ok", envelope.Status)
-	require.Equal(t, "reset", envelope.Command)
+	assert.Equal(t, "ok", envelope.Status)
+	assert.Equal(t, "reset", envelope.Command)
 
 	var data struct {
 		Emulator struct {
@@ -201,8 +202,8 @@ func TestResetJSONSucceeds(t *testing.T) {
 		Reset bool `json:"reset"`
 	}
 	require.NoError(t, json.Unmarshal(envelope.Data, &data))
-	require.Equal(t, "aws", data.Emulator.Type)
-	require.True(t, data.Reset)
+	assert.Equal(t, "aws", data.Emulator.Type)
+	assert.True(t, data.Reset)
 }
 
 func TestResetJSONRequiresConfirmation(t *testing.T) {
@@ -219,11 +220,11 @@ func TestResetJSONRequiresConfirmation(t *testing.T) {
 	requireExitCode(t, 3, err)
 
 	envelope := decodeEnvelope(t, stdout)
-	require.Equal(t, "error", envelope.Status)
+	assert.Equal(t, "error", envelope.Status)
 	require.NotNil(t, envelope.Error)
-	require.Equal(t, "CONFIRMATION_REQUIRED", envelope.Error.Code)
-	require.Equal(t, "USAGE", envelope.Error.Category)
-	require.False(t, envelope.Error.Retryable)
+	assert.Equal(t, "CONFIRMATION_REQUIRED", envelope.Error.Code)
+	assert.Equal(t, "USAGE", envelope.Error.Category)
+	assert.False(t, envelope.Error.Retryable)
 }
 
 func TestResetJSONNotConfigured(t *testing.T) {
@@ -238,8 +239,8 @@ func TestResetJSONNotConfigured(t *testing.T) {
 	requireExitCode(t, 1, err)
 
 	envelope := decodeEnvelope(t, stdout)
-	require.Equal(t, "error", envelope.Status)
+	assert.Equal(t, "error", envelope.Status)
 	require.NotNil(t, envelope.Error)
-	require.Equal(t, "EMULATOR_NOT_CONFIGURED", envelope.Error.Code)
-	require.Equal(t, "EMULATOR", envelope.Error.Category)
+	assert.Equal(t, "EMULATOR_NOT_CONFIGURED", envelope.Error.Code)
+	assert.Equal(t, "EMULATOR", envelope.Error.Category)
 }

@@ -5,6 +5,7 @@ import (
 
 	"github.com/localstack/lstk/test/integration/env"
 	"github.com/moby/moby/client"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -26,24 +27,22 @@ func TestRestartCommandSucceeds(t *testing.T) {
 	stdout, stderr, err := runLstk(t, ctx, "", env.With(env.APIEndpoint, mockServer.URL).With(env.AnalyticsEndpoint, analyticsSrv.URL), "restart")
 	require.NoError(t, err, "lstk restart failed: %s", stderr)
 	requireExitCode(t, 0, err)
-	require.Contains(t, stdout, "stopped")
-	require.Contains(t, stdout, "LocalStack")
+	assert.Contains(t, stdout, "stopped")
+	assert.Contains(t, stdout, "LocalStack")
 
 	inspect, err := dockerClient.ContainerInspect(ctx, containerName, client.ContainerInspectOptions{})
 	require.NoError(t, err, "failed to inspect container after restart")
-	require.True(t, inspect.Container.State.Running, "container should be running after restart")
+	assert.True(t, inspect.Container.State.Running, "container should be running after restart")
 
 	// Both lstk_lifecycle (stop + start) and lstk_command events should be emitted.
 	byName := collectTelemetryByName(t, events, 2)
-	require.Contains(t, byName, "lstk_lifecycle")
-	cmdEvent, ok := byName["lstk_command"]
-	require.True(t, ok, "lstk_command event not received")
-	{
+	assert.Contains(t, byName, "lstk_lifecycle")
+	if cmdEvent, ok := byName["lstk_command"]; assert.True(t, ok, "lstk_command event not received") {
 		payload, _ := cmdEvent["payload"].(map[string]any)
 		params, _ := payload["parameters"].(map[string]any)
-		require.Equal(t, "restart", params["command"])
+		assert.Equal(t, "restart", params["command"])
 		result, _ := payload["result"].(map[string]any)
-		require.InDelta(t, 0, result["exit_code"], 0)
+		assert.InDelta(t, 0, result["exit_code"], 0)
 	}
 }
 
@@ -65,12 +64,12 @@ func TestRestartCommandRejectsAmbientEndpointURLEvenWithLocalContainerRunning(t 
 
 	stdout, _, err := runLstk(t, ctx, "", env.With(env.DisableEvents, "1").With("LSTK_ENDPOINT_URL", "http://127.0.0.1:1"), "restart")
 	require.Error(t, err)
-	require.Contains(t, stdout, "does not support LSTK_ENDPOINT_URL")
-	require.Contains(t, stdout, "LSTK_ENDPOINT_URL is set")
+	assert.Contains(t, stdout, "does not support LSTK_ENDPOINT_URL")
+	assert.Contains(t, stdout, "LSTK_ENDPOINT_URL is set")
 
 	inspect, err := dockerClient.ContainerInspect(ctx, containerName, client.ContainerInspectOptions{})
 	require.NoError(t, err, "container should still exist — restart must reject before stopping/restarting it")
-	require.True(t, inspect.Container.State.Running, "container should still be running, untouched")
+	assert.True(t, inspect.Container.State.Running, "container should still be running, untouched")
 }
 
 func TestRestartCommandPersistFlagSetsPersistenceEnv(t *testing.T) {
@@ -96,7 +95,7 @@ func TestRestartCommandPersistFlagSetsPersistenceEnv(t *testing.T) {
 	require.True(t, inspect.Container.State.Running)
 
 	envVars := containerEnvToMap(inspect.Container.Config.Env)
-	require.Equal(t, "1", envVars["LOCALSTACK_PERSISTENCE"])
+	assert.Equal(t, "1", envVars["LOCALSTACK_PERSISTENCE"])
 }
 
 func TestRestartCommandPreservesPersistenceWithoutFlag(t *testing.T) {
@@ -123,7 +122,7 @@ func TestRestartCommandPreservesPersistenceWithoutFlag(t *testing.T) {
 	require.True(t, inspect.Container.State.Running)
 
 	envVars := containerEnvToMap(inspect.Container.Config.Env)
-	require.Equal(t, "1", envVars["LOCALSTACK_PERSISTENCE"])
+	assert.Equal(t, "1", envVars["LOCALSTACK_PERSISTENCE"])
 }
 
 func TestRestartCommandFailsWhenNotRunning(t *testing.T) {
@@ -135,6 +134,6 @@ func TestRestartCommandFailsWhenNotRunning(t *testing.T) {
 	stdout, _, err := runLstk(t, testContext(t), "", env.With(env.AnalyticsEndpoint, analyticsSrv.URL), "restart")
 	require.Error(t, err, "expected lstk restart to fail when emulator is not running")
 	requireExitCode(t, 1, err)
-	require.Contains(t, stdout, "LocalStack AWS Emulator is not running")
+	assert.Contains(t, stdout, "LocalStack AWS Emulator is not running")
 	assertCommandTelemetry(t, events, "restart", 1)
 }

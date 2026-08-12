@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/localstack/lstk/test/integration/env"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -58,12 +59,12 @@ func TestVersionResolvedViaImageInspection(t *testing.T) {
 	stdout, stderr, err := runLstk(t, ctx, "", env.With(env.APIEndpoint, mockServer.URL), "start")
 	require.NoError(t, err, "lstk start failed:\nstdout: %s\nstderr: %s", stdout, stderr)
 
-	require.NotEmpty(t, *capturedVersion, "license request should carry a version resolved from image inspection")
-	require.NotEqual(t, "latest", *capturedVersion, "resolved version should not be the unresolved 'latest' tag")
-	require.Contains(t, stdout, "Checking license")
+	assert.NotEmpty(t, *capturedVersion, "license request should carry a version resolved from image inspection")
+	assert.NotEqual(t, "latest", *capturedVersion, "resolved version should not be the unresolved 'latest' tag")
+	assert.Contains(t, stdout, "Checking license")
 
 	semverLike := strings.Contains(*capturedVersion, ".") || strings.Contains(*capturedVersion, "-")
-	require.True(t, semverLike, "resolved version %q should look like a real version", *capturedVersion)
+	assert.True(t, semverLike, "resolved version %q should look like a real version", *capturedVersion)
 }
 
 // Verifies that when the license check fails after image inspection, the command
@@ -81,7 +82,7 @@ func TestCommandFailsNicelyWhenLicenseCheckFails(t *testing.T) {
 	stdout, stderr, err := runLstk(t, ctx, "",
 		env.With(env.APIEndpoint, mockServer.URL), "start")
 	require.Error(t, err, "expected lstk start to fail when license check fails")
-	require.Contains(t, stdout, "License validation failed",
+	assert.Contains(t, stdout, "License validation failed",
 		"stderr: %s", stderr)
 }
 
@@ -116,14 +117,14 @@ image = "127.0.0.1:1/localstack-pro"
 	stdout, stderr, err := runLstk(t, ctx, "", environ, "--config", configFile, "start")
 
 	out := stdout + "\n" + stderr
-	require.Equal(t, "dev", *capturedVersion, "the configured tag should be sent to the license API")
-	require.NotContains(t, out, "license validation failed",
+	assert.Equal(t, "dev", *capturedVersion, "the configured tag should be sent to the license API")
+	assert.NotContains(t, out, "license validation failed",
 		"an unparseable tag must not be treated as a license rejection")
-	require.Contains(t, out, `does not support tag "dev"`,
+	assert.Contains(t, out, `does not support tag "dev"`,
 		"the skipped pre-flight should be surfaced as a warning")
 	require.Error(t, err, "the start should proceed to the pull and fail on the unreachable registry")
 	requireExitCode(t, 1, err)
-	require.Contains(t, out, "Failed to pull")
+	assert.Contains(t, out, "Failed to pull")
 }
 
 // Verifies that pinned tags are validated before pulling (fail-fast path).
@@ -149,7 +150,7 @@ port = "4566"
 	stdout, stderr, err := runLstk(t, ctx, "",
 		env.With(env.APIEndpoint, mockServer.URL), "--config", configFile, "start")
 	require.Error(t, err, "expected lstk start to fail when license check fails")
-	require.Contains(t, stdout, "License validation failed",
+	assert.Contains(t, stdout, "License validation failed",
 		"stderr: %s", stderr)
-	require.Equal(t, "4.0.0", *capturedVersion, "pinned tag should be sent directly to the license API without image inspection")
+	assert.Equal(t, "4.0.0", *capturedVersion, "pinned tag should be sent directly to the license API without image inspection")
 }

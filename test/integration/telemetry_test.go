@@ -18,6 +18,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/localstack/lstk/test/integration/env"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -76,33 +77,33 @@ func TestStartCommandSendsTelemetryEvent(t *testing.T) {
 
 		select {
 		case event := <-events:
-			require.Equal(t, "lstk_command", event["name"])
+			assert.Equal(t, "lstk_command", event["name"])
 
 			metadata, ok := event["metadata"].(map[string]any)
 			require.True(t, ok)
 			_, err := uuid.Parse(metadata["session_id"].(string))
-			require.NoError(t, err, "session_id should be a valid UUID")
+			assert.NoError(t, err, "session_id should be a valid UUID")
 			_, err = time.Parse("2006-01-02 15:04:05.000000", metadata["client_time"].(string))
-			require.NoError(t, err, "client_time should match expected format")
+			assert.NoError(t, err, "client_time should match expected format")
 
 			payload, ok := event["payload"].(map[string]any)
 			require.True(t, ok)
-			require.NotEmpty(t, payload["machine_id"], "machine_id should be present")
-			require.Equal(t, os.Getenv("CI") != "", payload["is_ci"])
+			assert.NotEmpty(t, payload["machine_id"], "machine_id should be present")
+			assert.Equal(t, os.Getenv("CI") != "", payload["is_ci"])
 
 			environment, ok := payload["environment"].(map[string]any)
 			require.True(t, ok)
-			require.NotEmpty(t, environment["lstk_version"])
-			require.Equal(t, runtime.GOOS, environment["os"])
-			require.Equal(t, runtime.GOARCH, environment["arch"])
+			assert.NotEmpty(t, environment["lstk_version"])
+			assert.Equal(t, runtime.GOOS, environment["os"])
+			assert.Equal(t, runtime.GOARCH, environment["arch"])
 
 			params, ok := payload["parameters"].(map[string]any)
 			require.True(t, ok)
-			require.Equal(t, "start", params["command"])
+			assert.Equal(t, "start", params["command"])
 
 			result, ok := payload["result"].(map[string]any)
 			require.True(t, ok)
-			require.InDelta(t, 0, result["exit_code"], 0)
+			assert.InDelta(t, 0, result["exit_code"], 0)
 		case <-time.After(3 * time.Second):
 			t.Fatal("timed out waiting for telemetry event")
 		}
@@ -146,18 +147,18 @@ func TestStopCommandSendsTelemetryEvents(t *testing.T) {
 	lifecycle, ok := byName["lstk_lifecycle"]
 	require.True(t, ok, "expected lstk_lifecycle event")
 	lp := lifecycle["payload"].(map[string]any)
-	require.Equal(t, "stop", lp["event_type"])
-	require.Equal(t, "aws", lp["emulator"])
+	assert.Equal(t, "stop", lp["event_type"])
+	assert.Equal(t, "aws", lp["emulator"])
 
 	command, ok := byName["lstk_command"]
 	require.True(t, ok, "expected lstk_command event")
 	cp := command["payload"].(map[string]any)
 	params, ok := cp["parameters"].(map[string]any)
 	require.True(t, ok)
-	require.Equal(t, "stop", params["command"])
+	assert.Equal(t, "stop", params["command"])
 	result, ok := cp["result"].(map[string]any)
 	require.True(t, ok)
-	require.InDelta(t, 0, result["exit_code"], 0)
+	assert.InDelta(t, 0, result["exit_code"], 0)
 }
 
 func TestStartCommandSucceedsWhenAnalyticsEndpointUnreachable(t *testing.T) {
@@ -240,11 +241,11 @@ func TestAWSProxyTelemetryRecordsExitCodeAndSubcommand(t *testing.T) {
 	require.True(t, ok)
 	params, ok := payload["parameters"].(map[string]any)
 	require.True(t, ok)
-	require.Equal(t, "aws", params["command"])
-	require.Equal(t, "s3 lss", params["subcommand"])
+	assert.Equal(t, "aws", params["command"])
+	assert.Equal(t, "s3 lss", params["subcommand"])
 	result, ok := payload["result"].(map[string]any)
 	require.True(t, ok)
-	require.InDelta(t, 252, result["exit_code"], 0)
+	assert.InDelta(t, 252, result["exit_code"], 0)
 }
 
 // receiveEventByName waits up to 3s for an event with the given name.
@@ -271,9 +272,9 @@ func assertCommandTelemetry(t *testing.T, events <-chan map[string]any, command 
 	event := receiveEventByName(t, events, "lstk_command")
 	payload, _ := event["payload"].(map[string]any)
 	params, _ := payload["parameters"].(map[string]any)
-	require.Equal(t, command, params["command"])
+	assert.Equal(t, command, params["command"])
 	result, _ := payload["result"].(map[string]any)
-	require.InDelta(t, exitCode, result["exit_code"], 0)
+	assert.InDelta(t, exitCode, result["exit_code"], 0)
 }
 
 // Regression test for FLC-648: a slow analytics endpoint must not add to
@@ -376,7 +377,7 @@ func TestFlushTelemetrySubcommandDoesNotSpawnRecursively(t *testing.T) {
 			t.Fatalf("expected 2 flushed events, got %d: %v", i, got)
 		}
 	}
-	require.True(t, got["first_event"] && got["second_event"], "expected both piped events, got: %v", got)
+	assert.True(t, got["first_event"] && got["second_event"], "expected both piped events, got: %v", got)
 
 	// No further events may arrive: that would mean the flusher emitted telemetry about itself.
 	select {

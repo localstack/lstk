@@ -6,6 +6,7 @@ import (
 
 	"github.com/localstack/lstk/internal/snap"
 	"github.com/localstack/lstk/test/integration/env"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -49,7 +50,7 @@ func TestCDKForwardsArgs(t *testing.T) {
 
 	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), e, "cdk", "synth")
 	require.NoError(t, err, "stderr: %s", stderr)
-	require.Contains(t, stdout, "ARGS:synth")
+	assert.Contains(t, stdout, "ARGS:synth")
 }
 
 // 7.1 — propagates the cdk exit code.
@@ -60,7 +61,7 @@ func TestCDKPropagatesExitCode(t *testing.T) {
 
 	_, stderr, err := runLstk(t, testContext(t), t.TempDir(), e, "cdk", "synth")
 	require.Error(t, err)
-	require.Contains(t, stderr, "simulated failure")
+	assert.Contains(t, stderr, "simulated failure")
 	requireExitCode(t, 7, err)
 }
 
@@ -104,8 +105,8 @@ func TestCDKOfflineCommandsNoEmulator(t *testing.T) {
 				"cdk", "--region", "us-west-2", sub)
 			require.NoError(t, err, "stderr: %s", stderr)
 
-			require.Contains(t, stdout, "ARGS:"+sub)
-			require.NotContains(t, stdout, "--region")
+			assert.Contains(t, stdout, "ARGS:"+sub)
+			assert.NotContains(t, stdout, "--region")
 		})
 	}
 }
@@ -125,7 +126,7 @@ func TestCDKHelpNoEmulator(t *testing.T) {
 			cmdArgs := append([]string{"cdk"}, args...)
 			stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), e, cmdArgs...)
 			require.NoError(t, err, "stderr: %s", stderr)
-			require.Contains(t, stdout, "ARGS:"+strings.Join(args, " "))
+			assert.Contains(t, stdout, "ARGS:"+strings.Join(args, " "))
 		})
 	}
 }
@@ -138,9 +139,9 @@ func TestCDKVersionTooOld(t *testing.T) {
 
 	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), e, "cdk", "synth")
 	require.Error(t, err)
-	require.Contains(t, stderr+stdout, "2.177.0")
+	assert.Contains(t, stderr+stdout, "2.177.0")
 	// cdk was never run for real.
-	require.NotContains(t, stdout, "ARGS:synth")
+	assert.NotContains(t, stdout, "ARGS:synth")
 }
 
 // 7.5 — a missing cdk binary yields the install error.
@@ -150,7 +151,7 @@ func TestCDKMissingBinary(t *testing.T) {
 
 	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), e, "cdk", "synth")
 	require.Error(t, err)
-	require.Contains(t, stderr+stdout, "not found in PATH")
+	assert.Contains(t, stderr+stdout, "not found in PATH")
 }
 
 // 7.6 — --account is not supported for cdk and is rejected at the command
@@ -167,8 +168,8 @@ func TestCDKAccountRejected(t *testing.T) {
 			stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), e,
 				"cdk", "--account", value, "synth")
 			require.Error(t, err)
-			require.Contains(t, stderr+stdout, "not supported")
-			require.NotContains(t, stdout, "ARGS:synth")
+			assert.Contains(t, stderr+stdout, "not supported")
+			assert.NotContains(t, stdout, "ARGS:synth")
 		})
 	}
 }
@@ -182,7 +183,7 @@ func TestCDKFlagsAfterActionAreForwarded(t *testing.T) {
 	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), e,
 		"cdk", "synth", "--region", "us-west-2")
 	require.NoError(t, err, "stderr: %s", stderr)
-	require.Contains(t, stdout, "ARGS:synth --region us-west-2")
+	assert.Contains(t, stdout, "ARGS:synth --region us-west-2")
 }
 
 // 7.6 — a flag before the subcommand is rejected with a clear message.
@@ -194,7 +195,7 @@ func TestCDKFlagBeforeSubcommandRejected(t *testing.T) {
 	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), e,
 		"--account", "111111111111", "cdk", "synth")
 	require.Error(t, err)
-	require.Contains(t, stderr+stdout, "must appear after the cdk subcommand")
+	assert.Contains(t, stderr+stdout, "must appear after the cdk subcommand")
 }
 
 // 7.7 — LSTK_CDK_CMD selects the binary to invoke.
@@ -209,7 +210,7 @@ func TestCDKHonorsLstkCdkCmd(t *testing.T) {
 
 	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), e, "cdk", "synth")
 	require.NoError(t, err, "stderr: %s", stderr)
-	require.Contains(t, stdout, "MYCDK:synth")
+	assert.Contains(t, stdout, "MYCDK:synth")
 }
 
 // 7.3 — an AWS-contacting command with no running emulator fails with "not
@@ -224,9 +225,9 @@ func TestCDKFailsWhenEmulatorNotRunning(t *testing.T) {
 
 	stdout, _, err := runLstk(t, testContext(t), t.TempDir(), e, "cdk", "deploy")
 	require.Error(t, err)
-	require.Contains(t, stdout, "is not running")
-	require.Contains(t, stdout, "Start LocalStack:")
-	require.NotContains(t, stdout, "ARGS:deploy")
+	assert.Contains(t, stdout, "is not running")
+	assert.Contains(t, stdout, "Start LocalStack:")
+	assert.NotContains(t, stdout, "ARGS:deploy")
 }
 
 // 7.3 — an AWS-contacting command fails with an AWS-specific error naming the
@@ -246,7 +247,7 @@ func TestCDKRequiresAWSEmulator(t *testing.T) {
 
 	stdout, _, err := runLstk(t, ctx, t.TempDir(), e, "cdk", "deploy")
 	require.Error(t, err)
-	require.Contains(t, stdout, "requires the")
-	require.Contains(t, stdout, "Snowflake")
-	require.NotContains(t, stdout, "ARGS:deploy")
+	assert.Contains(t, stdout, "requires the")
+	assert.Contains(t, stdout, "Snowflake")
+	assert.NotContains(t, stdout, "ARGS:deploy")
 }

@@ -8,6 +8,7 @@ import (
 
 	"github.com/localstack/lstk/internal/snap"
 	"github.com/localstack/lstk/test/integration/env"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -51,7 +52,7 @@ func TestSnapshotVersionsSuccessWithoutDocker(t *testing.T) {
 
 	called, path, _ := cap.get()
 	require.True(t, called, "the single-pod endpoint should have been called")
-	require.Equal(t, "/v1/cloudpods/my-baseline", path)
+	assert.Equal(t, "/v1/cloudpods/my-baseline", path)
 
 	// The snapshot pins column set (no DESCRIPTION), newest-first ordering,
 	// and that descriptions are no longer rendered.
@@ -91,7 +92,7 @@ func TestSnapshotVersionsSingleVersionUsesSingularNoun(t *testing.T) {
 		"--non-interactive", "snapshot", "versions", "pod:solo",
 	)
 	require.NoError(t, err, "lstk snapshot versions failed: %s", stderr)
-	require.Contains(t, stdout, "~ 1 version\n")
+	assert.Contains(t, stdout, "~ 1 version\n")
 }
 
 func TestSnapshotVersionsEmptyHistory(t *testing.T) {
@@ -104,8 +105,8 @@ func TestSnapshotVersionsEmptyHistory(t *testing.T) {
 		"--non-interactive", "snapshot", "versions", "pod:blank",
 	)
 	require.NoError(t, err, "lstk snapshot versions failed: %s", stderr)
-	require.Contains(t, stdout, "No versions found for 'pod:blank'")
-	require.NotContains(t, stdout, "VERSION", "no table should be rendered")
+	assert.Contains(t, stdout, "No versions found for 'pod:blank'")
+	assert.NotContains(t, stdout, "VERSION", "no table should be rendered")
 }
 
 // TestSnapshotVersionsNoDockerRequired proves the command reads the platform API
@@ -121,7 +122,7 @@ func TestSnapshotVersionsNoDockerRequired(t *testing.T) {
 		"--non-interactive", "snapshot", "versions", "pod:my-baseline",
 	)
 	require.NoError(t, err, "lstk snapshot versions failed: %s", stderr)
-	require.Contains(t, stdout, "~ 3 versions")
+	assert.Contains(t, stdout, "~ 3 versions")
 }
 
 func TestSnapshotVersionsRejectsLocalPath(t *testing.T) {
@@ -134,8 +135,8 @@ func TestSnapshotVersionsRejectsLocalPath(t *testing.T) {
 		"--non-interactive", "snapshot", "versions", "./my-snapshot",
 	)
 	requireExitCode(t, 1, err)
-	require.Contains(t, strings.ToLower(stderr), "local")
-	require.Contains(t, stderr, "list versions of local snapshots")
+	assert.Contains(t, strings.ToLower(stderr), "local")
+	assert.Contains(t, stderr, "list versions of local snapshots")
 }
 
 // TestSnapshotVersionsRejectsS3Ref: S3 remotes are fully supported by
@@ -168,7 +169,7 @@ func TestSnapshotVersionsOrasKeepsComingSoon(t *testing.T) {
 		"--non-interactive", "snapshot", "versions", "oras://registry/image",
 	)
 	requireExitCode(t, 1, err)
-	require.Contains(t, stderr, "coming soon")
+	assert.Contains(t, stderr, "coming soon")
 }
 
 // TestSnapshotShowPinnedVersion: show is read-only and the platform returns every
@@ -226,7 +227,7 @@ func TestSnapshotVersionsRejectsVersionSuffix(t *testing.T) {
 		"--non-interactive", "snapshot", "versions", "pod:my-baseline:3",
 	)
 	requireExitCode(t, 1, err)
-	require.Contains(t, stderr, "drop the ':3'")
+	assert.Contains(t, stderr, "drop the ':3'")
 }
 
 func TestSnapshotVersionsRejectsInvalidPodName(t *testing.T) {
@@ -239,7 +240,7 @@ func TestSnapshotVersionsRejectsInvalidPodName(t *testing.T) {
 		"--non-interactive", "snapshot", "versions", "pod:release.v1",
 	)
 	requireExitCode(t, 1, err)
-	require.Contains(t, stderr, "invalid pod name")
+	assert.Contains(t, stderr, "invalid pod name")
 }
 
 func TestSnapshotVersionsNotFound(t *testing.T) {
@@ -255,8 +256,8 @@ func TestSnapshotVersionsNotFound(t *testing.T) {
 		"--non-interactive", "snapshot", "versions", "pod:missing",
 	)
 	requireExitCode(t, 1, err)
-	require.Contains(t, stdout, "not found")
-	require.Contains(t, stdout, "lstk snapshot list")
+	assert.Contains(t, stdout, "not found")
+	assert.Contains(t, stdout, "lstk snapshot list")
 }
 
 func TestSnapshotVersionsRequiresAuthToken(t *testing.T) {
@@ -271,6 +272,6 @@ func TestSnapshotVersionsRequiresAuthToken(t *testing.T) {
 		"--non-interactive", "snapshot", "versions", "pod:my-baseline",
 	)
 	requireExitCode(t, 1, err)
-	require.Contains(t, stdout, "Authentication required")
-	require.Contains(t, stdout, "lstk login")
+	assert.Contains(t, stdout, "Authentication required")
+	assert.Contains(t, stdout, "lstk login")
 }

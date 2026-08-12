@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/localstack/lstk/test/integration/env"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -117,7 +118,7 @@ func TestSAME2EDeployCustomAccount(t *testing.T) {
 	stdout, stderr, err := runSAM(t, ctx, work, e, "--account", account, "list", "stack-outputs",
 		"--stack-name", stack, "--output", "json", "--region", "us-east-1")
 	require.NoError(t, err, "sam list stack-outputs stderr: %s", stderr)
-	require.Contains(t, stdout, account, "function ARN should carry the custom account id")
+	assert.Contains(t, stdout, account, "function ARN should carry the custom account id")
 
 	_, stderr, err = runSAM(t, ctx, work, e, "--account", account, "delete",
 		"--stack-name", stack, "--no-prompts", "--region", "us-east-1")

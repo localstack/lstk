@@ -15,6 +15,7 @@ import (
 
 	"github.com/localstack/lstk/internal/snap"
 	"github.com/localstack/lstk/test/integration/env"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -84,8 +85,8 @@ func TestAWSCommandEndpointURLHTTPSNoDockerRequired(t *testing.T) {
 
 	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), e, "--endpoint-url", srv.URL, "aws", "s3", "ls")
 	require.NoError(t, err, "stderr: %s", stderr)
-	require.Contains(t, stdout, "ENDPOINT:"+srv.URL)
-	require.Contains(t, stdout, "ARGS:s3 ls")
+	assert.Contains(t, stdout, "ENDPOINT:"+srv.URL)
+	assert.Contains(t, stdout, "ARGS:s3 ls")
 }
 
 // TestCDKCommandEndpointURLHTTPSNoDockerRequired mirrors
@@ -106,7 +107,7 @@ func TestCDKCommandEndpointURLHTTPSNoDockerRequired(t *testing.T) {
 
 	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), e, "--endpoint-url", srv.URL, "cdk", "deploy", "MyStack")
 	require.NoError(t, err, "stderr: %s", stderr)
-	require.Contains(t, stdout, "ENV_AWS_ENDPOINT_URL="+srv.URL)
+	assert.Contains(t, stdout, "ENV_AWS_ENDPOINT_URL="+srv.URL)
 }
 
 // TestSnapshotSaveEndpointURLHTTPSNoDockerRequired proves the emulator-client
@@ -143,8 +144,8 @@ func TestSnapshotSaveEndpointURLHTTPSNoDockerRequired(t *testing.T) {
 
 	stdout, stderr, err := runLstk(t, testContext(t), dir, e, "--endpoint-url", srv.URL, "snapshot", "save")
 	require.NoError(t, err, "stderr: %s", stderr)
-	require.Contains(t, stdout, "Snapshot saved")
-	require.Equal(t, "/_localstack/pods/state", gotPath)
+	assert.Contains(t, stdout, "Snapshot saved")
+	assert.Equal(t, "/_localstack/pods/state", gotPath)
 }
 
 // TestStatusEndpointURLHTTPSchemeMismatchSuggestsHTTPS covers the confusing
@@ -165,10 +166,10 @@ func TestStatusEndpointURLHTTPSchemeMismatchSuggestsHTTPS(t *testing.T) {
 
 	_, stderr, err := runLstk(t, testContext(t), t.TempDir(), e, "--endpoint-url", httpURL, "status")
 	require.Error(t, err)
-	require.Contains(t, stderr, "could not reach LocalStack emulator at "+httpURL)
-	require.Contains(t, stderr, srv.URL+" responded")
-	require.Contains(t, stderr, "retry with that URL")
-	require.NotContains(t, stderr, "lstk start")
+	assert.Contains(t, stderr, "could not reach LocalStack emulator at "+httpURL)
+	assert.Contains(t, stderr, srv.URL+" responded")
+	assert.Contains(t, stderr, "retry with that URL")
+	assert.NotContains(t, stderr, "lstk start")
 }
 
 // TestStatusEndpointURLHTTPSSchemeMismatchSuggestsHTTP is the mirror image:
@@ -187,9 +188,9 @@ func TestStatusEndpointURLHTTPSSchemeMismatchSuggestsHTTP(t *testing.T) {
 
 	_, stderr, err := runLstk(t, testContext(t), t.TempDir(), e, "--endpoint-url", httpsURL, "status")
 	require.Error(t, err)
-	require.Contains(t, stderr, "could not reach LocalStack emulator at "+httpsURL)
-	require.Contains(t, stderr, srv.URL+" responded")
-	require.Contains(t, stderr, "retry with that URL")
+	assert.Contains(t, stderr, "could not reach LocalStack emulator at "+httpsURL)
+	assert.Contains(t, stderr, srv.URL+" responded")
+	assert.Contains(t, stderr, "retry with that URL")
 }
 
 // TestStatusEndpointURLHTTPSRendersReducedOutput is the https counterpart of

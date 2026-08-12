@@ -8,6 +8,7 @@ import (
 
 	"github.com/localstack/lstk/test/integration/env"
 	"github.com/moby/moby/client"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -24,10 +25,10 @@ func TestLogoutCommandRemovesToken(t *testing.T) {
 	stdout, stderr, err := runLstk(t, testContext(t), "", env.With(env.AnalyticsEndpoint, analyticsSrv.URL), "logout")
 	require.NoError(t, err, "lstk logout failed: %s", stderr)
 	requireExitCode(t, 0, err)
-	require.Contains(t, stdout, "Logged out successfully")
+	assert.Contains(t, stdout, "Logged out successfully")
 
 	_, err = GetAuthTokenFromKeyring()
-	require.Error(t, err, "token should be removed from keyring")
+	assert.Error(t, err, "token should be removed from keyring")
 	assertCommandTelemetry(t, events, "logout", 0)
 }
 
@@ -38,7 +39,7 @@ func TestLogoutCommandSucceedsWhenNoToken(t *testing.T) {
 	stdout, stderr, err := runLstk(t, testContext(t), "", env.Without(env.AuthToken).With(env.AnalyticsEndpoint, analyticsSrv.URL), "logout")
 	require.NoError(t, err, "lstk logout should succeed even with no token: %s", stderr)
 	requireExitCode(t, 0, err)
-	require.Contains(t, stdout, "Not currently logged in")
+	assert.Contains(t, stdout, "Not currently logged in")
 	assertCommandTelemetry(t, events, "logout", 0)
 }
 
@@ -48,7 +49,7 @@ func TestLogoutCommandWithEnvVarToken(t *testing.T) {
 	stdout, stderr, err := runLstk(t, testContext(t), "", env.Without(env.AuthToken).With(env.AuthToken, "test-env-token"), "logout")
 	require.NoError(t, err, "lstk logout should succeed: %s", stderr)
 	requireExitCode(t, 0, err)
-	require.Contains(t, stdout, "LOCALSTACK_AUTH_TOKEN")
+	assert.Contains(t, stdout, "LOCALSTACK_AUTH_TOKEN")
 }
 
 func TestLogoutCommandNotesWhenEmulatorStillRunning(t *testing.T) {
@@ -68,7 +69,7 @@ func TestLogoutCommandNotesWhenEmulatorStillRunning(t *testing.T) {
 	stdout, stderr, err := runLstk(t, ctx, "", testEnvWithHome(t.TempDir(), ""), "logout")
 	require.NoError(t, err, "lstk logout failed: %s", stderr)
 	requireExitCode(t, 0, err)
-	require.Contains(t, stdout, "LocalStack AWS Emulator is still running in the background")
+	assert.Contains(t, stdout, "LocalStack AWS Emulator is still running in the background")
 }
 
 func TestLogoutCommandReportsBothEmulatorsWhenMultipleRunning(t *testing.T) {
@@ -114,7 +115,7 @@ port = "4567"
 	stdout, stderr, err := runLstk(t, ctx, "", testEnvWithHome(t.TempDir(), ""), "--config", configFile, "logout")
 	require.NoError(t, err, "lstk logout failed: %s", stderr)
 	requireExitCode(t, 0, err)
-	require.Contains(t, stdout, "LocalStack AWS Emulator, LocalStack Snowflake Emulator are still running in the background")
+	assert.Contains(t, stdout, "LocalStack AWS Emulator, LocalStack Snowflake Emulator are still running in the background")
 }
 
 func TestLogoutCommandDoesNotReportForeignEmulatorAsRunning(t *testing.T) {
@@ -145,6 +146,6 @@ func TestLogoutCommandDoesNotReportForeignEmulatorAsRunning(t *testing.T) {
 	stdout, stderr, err := runLstk(t, ctx, "", testEnvWithHome(t.TempDir(), ""), "--config", configFile, "logout")
 	require.NoError(t, err, "lstk logout failed: %s", stderr)
 	requireExitCode(t, 0, err)
-	require.NotContains(t, stdout, "still running",
+	assert.NotContains(t, stdout, "still running",
 		"snowflake-targeted logout should not detect the AWS container as the configured emulator")
 }

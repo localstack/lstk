@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/localstack/lstk/test/integration/env"
@@ -102,12 +103,12 @@ func TestBashCompletionWorksWithoutBashCompletionPackage(t *testing.T) {
 
 	stdout, stderr, err := runBashCompletionDriver(t, completeInDriver("lstk st", 1, "lstk st"))
 	require.NoError(t, err, "completion attempt failed\nstdout: %s\nstderr: %s", stdout, stderr)
-	require.NotContains(t, stderr, "command not found")
+	assert.NotContains(t, stderr, "command not found")
 
 	completions := strings.Fields(stdout)
-	require.Contains(t, completions, "start")
-	require.Contains(t, completions, "status")
-	require.Contains(t, completions, "stop")
+	assert.Contains(t, completions, "start")
+	assert.Contains(t, completions, "status")
+	assert.Contains(t, completions, "stop")
 }
 
 // TestBashCompletionAfterWhitespaceSeparatedFlagValue covers the shape that
@@ -122,9 +123,9 @@ func TestBashCompletionAfterWhitespaceSeparatedFlagValue(t *testing.T) {
 	require.NoError(t, err, "completion attempt failed\nstdout: %s\nstderr: %s", stdout, stderr)
 
 	completions := strings.Fields(stdout)
-	require.Contains(t, completions, "start")
-	require.Contains(t, completions, "status")
-	require.Contains(t, completions, "stop")
+	assert.Contains(t, completions, "start")
+	assert.Contains(t, completions, "status")
+	assert.Contains(t, completions, "stop")
 }
 
 // TestBashCompletionReassemblesWordbreakSplits verifies the self-contained
@@ -194,10 +195,10 @@ run_reassembly
 
 			stdout, stderr, err := runBashCompletionDriver(t, driver)
 			require.NoError(t, err, "driver failed\nstdout: %s\nstderr: %s", stdout, stderr)
-			require.NotContains(t, stderr, "command not found")
+			assert.NotContains(t, stderr, "command not found")
 
 			lines := strings.Split(strings.TrimRight(stdout, "\n"), "\n")
-			require.Equal(t, tc.expect, lines)
+			assert.Equal(t, tc.expect, lines)
 		})
 	}
 }
@@ -214,5 +215,5 @@ _get_comp_words_by_ref
 `
 	stdout, stderr, err := runBashCompletionDriver(t, driver)
 	require.NoError(t, err, "driver failed\nstdout: %s\nstderr: %s", stdout, stderr)
-	require.Contains(t, stdout, "package version")
+	assert.Contains(t, stdout, "package version")
 }

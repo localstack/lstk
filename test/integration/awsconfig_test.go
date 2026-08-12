@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/localstack/lstk/test/integration/env"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -62,15 +63,15 @@ func TestStartPromptsWhenAWSProfileMissingEverywhere(t *testing.T) {
 
 	configContent, err := os.ReadFile(filepath.Join(tmpHome, ".aws", "config"))
 	require.NoError(t, err, "~/.aws/config should have been created")
-	require.Contains(t, string(configContent), "[profile localstack]")
-	require.Contains(t, string(configContent), "endpoint_url")
+	assert.Contains(t, string(configContent), "[profile localstack]")
+	assert.Contains(t, string(configContent), "endpoint_url")
 
 	credsContent, err := os.ReadFile(filepath.Join(tmpHome, ".aws", "credentials"))
 	require.NoError(t, err, "~/.aws/credentials should have been created")
 	normalizedCreds := strings.Join(strings.Fields(string(credsContent)), " ")
-	require.Contains(t, normalizedCreds, "[localstack]")
-	require.Contains(t, normalizedCreds, "aws_access_key_id = test")
-	require.Contains(t, normalizedCreds, "aws_secret_access_key = test")
+	assert.Contains(t, normalizedCreds, "[localstack]")
+	assert.Contains(t, normalizedCreds, "aws_access_key_id = test")
+	assert.Contains(t, normalizedCreds, "aws_secret_access_key = test")
 }
 
 func TestStartSkipsAWSProfilePromptWhenAlreadyConfigured(t *testing.T) {
@@ -102,7 +103,7 @@ func TestStartSkipsAWSProfilePromptWhenAlreadyConfigured(t *testing.T) {
 	_ = p.cmd.Process.Kill()
 	out, _ := p.wait()
 
-	require.NotContains(t, out, awsSetupPrompt,
+	assert.NotContains(t, out, awsSetupPrompt,
 		"profile prompt should not appear when profile is already correctly configured")
 }
 
@@ -124,7 +125,7 @@ func TestStartNonInteractiveEmitsNoteWhenAWSProfileMissing(t *testing.T) {
 	)
 	require.NoError(t, err)
 	requireExitCode(t, 0, err)
-	require.Contains(t, stdout, "LocalStack AWS profile is incomplete. Run 'lstk setup aws'.")
+	assert.Contains(t, stdout, "LocalStack AWS profile is incomplete. Run 'lstk setup aws'.")
 }
 
 func TestStartEmitsNoteWhenAWSProfileIsPartial(t *testing.T) {
@@ -150,7 +151,7 @@ func TestStartEmitsNoteWhenAWSProfileIsPartial(t *testing.T) {
 	out, err := p.wait()
 	require.NoError(t, err, "lstk start should exit successfully")
 
-	require.NotContains(t, out, "Set up a LocalStack profile for AWS CLI and SDKs in ~/.aws?",
+	assert.NotContains(t, out, "Set up a LocalStack profile for AWS CLI and SDKs in ~/.aws?",
 		"profile prompt should not appear for a partial setup")
 }
 
@@ -170,18 +171,18 @@ func TestSetupAWSCreatesAWSProfileWhenConfirmed(t *testing.T) {
 
 	configContent, err := os.ReadFile(filepath.Join(tmpHome, ".aws", "config"))
 	require.NoError(t, err, "~/.aws/config should have been created")
-	require.Contains(t, string(configContent), "[profile localstack]")
-	require.Contains(t, string(configContent), "endpoint_url")
+	assert.Contains(t, string(configContent), "[profile localstack]")
+	assert.Contains(t, string(configContent), "endpoint_url")
 
 	credsContent, err := os.ReadFile(filepath.Join(tmpHome, ".aws", "credentials"))
 	require.NoError(t, err, "~/.aws/credentials should have been created")
 	normalizedCreds := strings.Join(strings.Fields(string(credsContent)), " ")
-	require.Contains(t, normalizedCreds, "[localstack]")
-	require.Contains(t, normalizedCreds, "aws_access_key_id = test")
-	require.Contains(t, normalizedCreds, "aws_secret_access_key = test")
+	assert.Contains(t, normalizedCreds, "[localstack]")
+	assert.Contains(t, normalizedCreds, "aws_access_key_id = test")
+	assert.Contains(t, normalizedCreds, "aws_secret_access_key = test")
 
-	require.Contains(t, out, "Created LocalStack profile in ~/.aws")
-	require.NotContains(t, out, "Skipped adding LocalStack AWS profile.")
+	assert.Contains(t, out, "Created LocalStack profile in ~/.aws")
+	assert.NotContains(t, out, "Skipped adding LocalStack AWS profile.")
 }
 
 // TestSetupAWSExitsNonZeroWhenProfileWriteFails guards DEVX-941. Writing the
@@ -216,8 +217,8 @@ func TestSetupAWSExitsNonZeroWhenProfileWriteFails(t *testing.T) {
 	out, err := p.wait()
 	requireExitCode(t, 1, err)
 
-	require.Contains(t, out, "Could not set up the LocalStack AWS profile")
-	require.NotContains(t, out, "Created LocalStack profile")
+	assert.Contains(t, out, "Could not set up the LocalStack AWS profile")
+	assert.NotContains(t, out, "Created LocalStack profile")
 }
 
 func TestSetupAWSDoesNotCreateAWSProfileWhenDeclined(t *testing.T) {
@@ -234,12 +235,12 @@ func TestSetupAWSDoesNotCreateAWSProfileWhenDeclined(t *testing.T) {
 	require.NoError(t, err)
 
 	_, err = os.Stat(filepath.Join(tmpHome, ".aws", "config"))
-	require.ErrorIs(t, err, os.ErrNotExist)
+	assert.ErrorIs(t, err, os.ErrNotExist)
 	_, err = os.Stat(filepath.Join(tmpHome, ".aws", "credentials"))
-	require.ErrorIs(t, err, os.ErrNotExist)
+	assert.ErrorIs(t, err, os.ErrNotExist)
 
-	require.Contains(t, out, "Skipped adding LocalStack AWS profile.")
-	require.NotContains(t, out, "Created LocalStack profile in ~/.aws/config")
+	assert.Contains(t, out, "Skipped adding LocalStack AWS profile.")
+	assert.NotContains(t, out, "Created LocalStack profile in ~/.aws/config")
 }
 
 func TestSetupAWSNonInteractiveCreatesProfile(t *testing.T) {
@@ -251,20 +252,20 @@ func TestSetupAWSNonInteractiveCreatesProfile(t *testing.T) {
 		"setup", "aws",
 	)
 	requireExitCode(t, 0, err)
-	require.Contains(t, stdout, "Created LocalStack profile in ~/.aws")
-	require.NotContains(t, stdout, "requires an interactive terminal")
+	assert.Contains(t, stdout, "Created LocalStack profile in ~/.aws")
+	assert.NotContains(t, stdout, "requires an interactive terminal")
 
 	configContent, err := os.ReadFile(filepath.Join(tmpHome, ".aws", "config"))
 	require.NoError(t, err, "~/.aws/config should have been created")
-	require.Contains(t, string(configContent), "[profile localstack]")
-	require.Contains(t, string(configContent), "endpoint_url")
+	assert.Contains(t, string(configContent), "[profile localstack]")
+	assert.Contains(t, string(configContent), "endpoint_url")
 
 	credsContent, err := os.ReadFile(filepath.Join(tmpHome, ".aws", "credentials"))
 	require.NoError(t, err, "~/.aws/credentials should have been created")
 	normalizedCreds := strings.Join(strings.Fields(string(credsContent)), " ")
-	require.Contains(t, normalizedCreds, "[localstack]")
-	require.Contains(t, normalizedCreds, "aws_access_key_id = test")
-	require.Contains(t, normalizedCreds, "aws_secret_access_key = test")
+	assert.Contains(t, normalizedCreds, "[localstack]")
+	assert.Contains(t, normalizedCreds, "aws_access_key_id = test")
+	assert.Contains(t, normalizedCreds, "aws_secret_access_key = test")
 }
 
 func TestSetupAWSNonInteractiveIsIdempotent(t *testing.T) {
@@ -279,7 +280,7 @@ func TestSetupAWSNonInteractiveIsIdempotent(t *testing.T) {
 	// not be treated as an overwrite (no --force required).
 	stdout, _, err := runLstk(t, testContext(t), "", baseEnv, "setup", "aws")
 	requireExitCode(t, 0, err)
-	require.Contains(t, stdout, "already configured")
+	assert.Contains(t, stdout, "already configured")
 }
 
 func TestSetupAWSNonInteractiveOverwriteRequiresForce(t *testing.T) {
@@ -296,15 +297,15 @@ func TestSetupAWSNonInteractiveOverwriteRequiresForce(t *testing.T) {
 
 	stdout, _, err := runLstk(t, testContext(t), "", baseEnv, "setup", "aws")
 	requireExitCode(t, 1, err)
-	require.Contains(t, stdout, "--force")
+	assert.Contains(t, stdout, "--force")
 
 	// The existing profile must be left untouched.
 	configContent, err := os.ReadFile(filepath.Join(awsDir, "config"))
 	require.NoError(t, err)
-	require.Contains(t, string(configContent), "example.com:9999", "config must not be overwritten without --force")
+	assert.Contains(t, string(configContent), "example.com:9999", "config must not be overwritten without --force")
 	credsContent, err := os.ReadFile(filepath.Join(awsDir, "credentials"))
 	require.NoError(t, err)
-	require.Contains(t, string(credsContent), "WRONG", "credentials must not be overwritten without --force")
+	assert.Contains(t, string(credsContent), "WRONG", "credentials must not be overwritten without --force")
 }
 
 func TestSetupAWSNonInteractiveForceOverwrites(t *testing.T) {
@@ -323,11 +324,11 @@ func TestSetupAWSNonInteractiveForceOverwrites(t *testing.T) {
 
 	configContent, err := os.ReadFile(filepath.Join(awsDir, "config"))
 	require.NoError(t, err)
-	require.NotContains(t, string(configContent), "example.com", "--force should overwrite the stale endpoint")
-	require.Contains(t, string(configContent), "endpoint_url")
+	assert.NotContains(t, string(configContent), "example.com", "--force should overwrite the stale endpoint")
+	assert.Contains(t, string(configContent), "endpoint_url")
 	credsContent, err := os.ReadFile(filepath.Join(awsDir, "credentials"))
 	require.NoError(t, err)
 	normalizedCreds := strings.Join(strings.Fields(string(credsContent)), " ")
-	require.NotContains(t, normalizedCreds, "WRONG", "--force should overwrite stale credentials")
-	require.Contains(t, normalizedCreds, "aws_access_key_id = test")
+	assert.NotContains(t, normalizedCreds, "WRONG", "--force should overwrite stale credentials")
+	assert.Contains(t, normalizedCreds, "aws_access_key_id = test")
 }

@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/localstack/lstk/test/integration/env"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -40,8 +41,8 @@ func TestSnapshotRemoveLocalRefRejected(t *testing.T) {
 		"--non-interactive", "snapshot", "remove", "./my-baseline.zip",
 	)
 	requireExitCode(t, 1, err)
-	require.Contains(t, stderr, "resolves to a local file")
-	require.Contains(t, stderr, "CLI cannot delete local files")
+	assert.Contains(t, stderr, "resolves to a local file")
+	assert.Contains(t, stderr, "CLI cannot delete local files")
 }
 
 func TestSnapshotRemoveLocalBareNameRejected(t *testing.T) {
@@ -53,8 +54,8 @@ func TestSnapshotRemoveLocalBareNameRejected(t *testing.T) {
 		"--non-interactive", "snapshot", "remove", "my-baseline",
 	)
 	requireExitCode(t, 1, err)
-	require.Contains(t, stderr, "resolves to a local file")
-	require.Contains(t, stderr, "CLI cannot delete local files")
+	assert.Contains(t, stderr, "resolves to a local file")
+	assert.Contains(t, stderr, "CLI cannot delete local files")
 }
 
 func TestSnapshotRemovePodNoAuthToken(t *testing.T) {
@@ -66,7 +67,7 @@ func TestSnapshotRemovePodNoAuthToken(t *testing.T) {
 		"--non-interactive", "snapshot", "remove", "pod:my-baseline", "--force",
 	)
 	requireExitCode(t, 1, err)
-	require.Contains(t, stderr, "authentication")
+	assert.Contains(t, stderr, "authentication")
 }
 
 func TestSnapshotRemovePodInvalidName(t *testing.T) {
@@ -81,7 +82,7 @@ func TestSnapshotRemovePodInvalidName(t *testing.T) {
 				"--non-interactive", "snapshot", "remove", ref,
 			)
 			requireExitCode(t, 1, err)
-			require.Contains(t, stderr, "invalid pod name")
+			assert.Contains(t, stderr, "invalid pod name")
 		})
 	}
 }
@@ -95,7 +96,7 @@ func TestSnapshotRemoveNonInteractiveRequiresForce(t *testing.T) {
 		"--non-interactive", "snapshot", "remove", "pod:my-baseline",
 	)
 	requireExitCode(t, 1, err)
-	require.Contains(t, stderr, "--force")
+	assert.Contains(t, stderr, "--force")
 }
 
 func TestSnapshotRemoteSchemeRejected(t *testing.T) {
@@ -110,7 +111,7 @@ func TestSnapshotRemoteSchemeRejected(t *testing.T) {
 				"--non-interactive", "snapshot", "remove", ref,
 			)
 			requireExitCode(t, 1, err)
-			require.Contains(t, stderr, "not yet supported")
+			assert.Contains(t, stderr, "not yet supported")
 		})
 	}
 }
@@ -133,9 +134,9 @@ func TestSnapshotRemovePodSuccess(t *testing.T) {
 		"--non-interactive", "snapshot", "remove", "pod:my-baseline", "--force",
 	)
 	require.NoError(t, err, "lstk snapshot remove pod:my-baseline failed: %s", stderr)
-	require.Contains(t, stdout, "my-baseline")
-	require.Contains(t, stdout, "deleted")
-	require.Equal(t, int32(1), calls(), "DELETE endpoint should be called exactly once")
+	assert.Contains(t, stdout, "my-baseline")
+	assert.Contains(t, stdout, "deleted")
+	assert.Equal(t, int32(1), calls(), "DELETE endpoint should be called exactly once")
 }
 
 func TestSnapshotRemovePodServerError(t *testing.T) {
@@ -154,8 +155,8 @@ func TestSnapshotRemovePodServerError(t *testing.T) {
 		"--non-interactive", "snapshot", "remove", "pod:my-baseline", "--force",
 	)
 	requireExitCode(t, 1, err)
-	require.Contains(t, stderr, "pod remove failed")
-	require.Equal(t, int32(1), calls(), "DELETE endpoint should be called even when server errors")
+	assert.Contains(t, stderr, "pod remove failed")
+	assert.Equal(t, int32(1), calls(), "DELETE endpoint should be called even when server errors")
 }
 
 func TestSnapshotRemovePodNotFound(t *testing.T) {
@@ -183,10 +184,10 @@ func TestSnapshotRemovePodNotFound(t *testing.T) {
 		"--non-interactive", "snapshot", "remove", "pod:my-snapshot", "--force",
 	)
 	requireExitCode(t, 1, err)
-	require.Contains(t, stderr, `"my-snapshot"`)
-	require.Contains(t, stderr, "not found")
-	require.NotContains(t, stderr, "HTTP 500")
-	require.NotContains(t, stderr, "pod remove failed")
+	assert.Contains(t, stderr, `"my-snapshot"`)
+	assert.Contains(t, stderr, "not found")
+	assert.NotContains(t, stderr, "HTTP 500")
+	assert.NotContains(t, stderr, "pod remove failed")
 }
 
 func TestSnapshotRemoveInteractive(t *testing.T) {
@@ -217,8 +218,8 @@ func TestSnapshotRemoveInteractive(t *testing.T) {
 		out, err := p.wait()
 		require.NoError(t, err)
 
-		require.Contains(t, out, "deleted")
-		require.Equal(t, int32(1), calls(), "DELETE endpoint should be called after confirmation")
+		assert.Contains(t, out, "deleted")
+		assert.Equal(t, int32(1), calls(), "DELETE endpoint should be called after confirmation")
 	})
 
 	t.Run("cancels with n", func(t *testing.T) {
@@ -228,8 +229,8 @@ func TestSnapshotRemoveInteractive(t *testing.T) {
 		out, err := p.wait()
 		require.NoError(t, err)
 
-		require.Contains(t, out, "Cancelled")
-		require.Equal(t, int32(0), calls(), "DELETE endpoint must not be called when user cancels")
+		assert.Contains(t, out, "Cancelled")
+		assert.Equal(t, int32(0), calls(), "DELETE endpoint must not be called when user cancels")
 	})
 
 	t.Run("force skips confirmation prompt", func(t *testing.T) {
@@ -243,8 +244,8 @@ func TestSnapshotRemoveInteractive(t *testing.T) {
 		out, err := p.wait()
 		require.NoError(t, err)
 
-		require.NotContains(t, out, "Delete cloud snapshot", "confirmation prompt must not appear with --force")
-		require.Contains(t, out, "deleted")
-		require.Equal(t, int32(1), calls(), "DELETE endpoint should be called without confirmation")
+		assert.NotContains(t, out, "Delete cloud snapshot", "confirmation prompt must not appear with --force")
+		assert.Contains(t, out, "deleted")
+		assert.Equal(t, int32(1), calls(), "DELETE endpoint should be called without confirmation")
 	})
 }

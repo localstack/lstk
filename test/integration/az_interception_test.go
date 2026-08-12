@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/localstack/lstk/test/integration/env"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -42,8 +43,8 @@ func TestAzStartInterceptionRoutesToSubcommand(t *testing.T) {
 		"az", "start-interception",
 	)
 	require.Error(t, err)
-	require.Contains(t, stdout, "az CLI not found in PATH")
-	require.NotContains(t, stdout, "not set up")
+	assert.Contains(t, stdout, "az CLI not found in PATH")
+	assert.NotContains(t, stdout, "not set up")
 }
 
 // stop-interception is a safe no-op when LocalStack is not the active cloud — e.g.
@@ -61,12 +62,12 @@ func TestAzStopInterceptionNoOpWhenNotIntercepting(t *testing.T) {
 		"az", "stop-interception",
 	)
 	require.NoError(t, err, "stop-interception must not fail when LocalStack is not active")
-	require.Contains(t, stdout, "not the active Azure cloud")
+	assert.Contains(t, stdout, "not the active Azure cloud")
 
 	// It must not have switched the active cloud to anything.
 	active, azErr := runAzRaw(t, testContext(t), env.WithHome(home), "cloud", "show", "--query", "name", "-o", "tsv")
 	require.NoError(t, azErr)
-	require.Equal(t, "AzureCloud", active)
+	assert.Equal(t, "AzureCloud", active)
 }
 
 func TestAzStopInterceptionFailsWhenAzureCLINotInstalled(t *testing.T) {
@@ -78,8 +79,8 @@ func TestAzStopInterceptionFailsWhenAzureCLINotInstalled(t *testing.T) {
 		"az", "stop-interception",
 	)
 	require.Error(t, err)
-	require.Contains(t, stdout, "az CLI not found in PATH")
-	require.Contains(t, stdout, "Install Azure CLI:")
+	assert.Contains(t, stdout, "az CLI not found in PATH")
+	assert.Contains(t, stdout, "Install Azure CLI:")
 }
 
 // TestAzInterception exercises the full start/stop-interception lifecycle against a real
@@ -127,21 +128,21 @@ func TestAzInterception(t *testing.T) {
 	// start-interception: global `az` now points at LocalStack.
 	stdout, stderr, err := runLstk(t, ctx, workDir, baseEnv, "az", "start-interception")
 	require.NoError(t, err, "start-interception failed: stdout=%s stderr=%s", stdout, stderr)
-	require.Contains(t, stdout, "Interception active")
-	require.Contains(t, stdout, "stop-interception")
-	require.Equal(t, "LocalStack", activeCloud(), "LocalStack should be the active global cloud after start-interception")
+	assert.Contains(t, stdout, "Interception active")
+	assert.Contains(t, stdout, "stop-interception")
+	assert.Equal(t, "LocalStack", activeCloud(), "LocalStack should be the active global cloud after start-interception")
 
 	// stop-interception (default): back to AzureCloud.
 	stdout, stderr, err = runLstk(t, ctx, workDir, baseEnv, "az", "stop-interception")
 	require.NoError(t, err, "stop-interception failed: stdout=%s stderr=%s", stdout, stderr)
-	require.Contains(t, stdout, "Interception stopped")
-	require.Equal(t, "AzureCloud", activeCloud())
+	assert.Contains(t, stdout, "Interception stopped")
+	assert.Equal(t, "AzureCloud", activeCloud())
 
 	// no-op guard: LocalStack is no longer active, so stop must not clobber AzureCloud.
 	stdout, _, err = runLstk(t, ctx, workDir, baseEnv, "az", "stop-interception")
 	require.NoError(t, err)
-	require.Contains(t, stdout, "not the active Azure cloud")
-	require.Equal(t, "AzureCloud", activeCloud())
+	assert.Contains(t, stdout, "not the active Azure cloud")
+	assert.Equal(t, "AzureCloud", activeCloud())
 
 	// unknown --cloud is rejected (only reached because LocalStack is active again).
 	_, _, err = runLstk(t, ctx, workDir, baseEnv, "az", "start-interception")
@@ -149,11 +150,11 @@ func TestAzInterception(t *testing.T) {
 	require.Equal(t, "LocalStack", activeCloud())
 	_, stderr, err = runLstk(t, ctx, workDir, baseEnv, "az", "stop-interception", "--cloud", "NotARealCloud")
 	require.Error(t, err)
-	require.Contains(t, stderr, "unknown Azure cloud 'NotARealCloud'")
-	require.Equal(t, "LocalStack", activeCloud(), "rejected --cloud must not change the active cloud")
+	assert.Contains(t, stderr, "unknown Azure cloud 'NotARealCloud'")
+	assert.Equal(t, "LocalStack", activeCloud(), "rejected --cloud must not change the active cloud")
 
 	// --cloud override switches to the requested registered cloud.
 	stdout, stderr, err = runLstk(t, ctx, workDir, baseEnv, "az", "stop-interception", "--cloud", "AzureChinaCloud")
 	require.NoError(t, err, "stop-interception --cloud failed: stdout=%s stderr=%s", stdout, stderr)
-	require.Equal(t, "AzureChinaCloud", activeCloud())
+	assert.Equal(t, "AzureChinaCloud", activeCloud())
 }

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/localstack/lstk/test/integration/env"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -31,7 +32,7 @@ func TestNoEmulatorSelectionWhenConfigExists(t *testing.T) {
 
 	p := startLstkInPTY(t, ctx, e, "start")
 
-	require.Never(t, func() bool {
+	assert.Never(t, func() bool {
 		return strings.Contains(p.output(), "Which emulator would you like to use?")
 	}, 2*time.Second, 100*time.Millisecond, "emulator selection prompt should not appear when config already exists")
 
@@ -68,7 +69,7 @@ func TestFirstRunShowsEmulatorSelectionPrompt(t *testing.T) {
 	// so the file is guaranteed to exist and contain the selection by this point.
 	configData, err := os.ReadFile(configPath)
 	require.NoError(t, err)
-	require.Contains(t, string(configData), `type = "aws"`)
+	assert.Contains(t, string(configData), `type = "aws"`)
 
 	p.kill()
 }
@@ -130,7 +131,7 @@ func TestFirstRunCanSelectAzureEmulator(t *testing.T) {
 
 	p.waitForOutput("Which emulator would you like to use?", "emulator selection prompt should appear on first run")
 
-	require.Contains(t, p.output(), "Azure", "Azure should be offered as a selectable emulator")
+	assert.Contains(t, p.output(), "Azure", "Azure should be offered as a selectable emulator")
 
 	// Press the Azure selection key ('z') instead of the default-highlighted AWS.
 	p.write("z")
@@ -139,7 +140,7 @@ func TestFirstRunCanSelectAzureEmulator(t *testing.T) {
 
 	configData, err := os.ReadFile(configPath)
 	require.NoError(t, err)
-	require.Contains(t, string(configData), `type = "azure"`)
+	assert.Contains(t, string(configData), `type = "azure"`)
 
 	p.kill()
 }
@@ -170,7 +171,7 @@ func TestFirstRunPromptsForLoginBeforeEmulatorSelection(t *testing.T) {
 
 	p.waitForOutput("Press any key when complete", "auth prompt should appear on first run when no token is set")
 
-	require.NotContains(t, p.output(), "Which emulator would you like to use?",
+	assert.NotContains(t, p.output(), "Which emulator would you like to use?",
 		"emulator selection prompt must not appear before auth completes")
 
 	p.write("\r")
@@ -193,8 +194,8 @@ func TestFirstRunNonInteractiveEmitsDefaultEmulatorNote(t *testing.T) {
 
 	// Process fails at container.Start (no Docker), but the note is emitted before that.
 	stdout, _, runErr := runLstk(t, testContext(t), "", e.With(env.AuthToken, "test-token"), "--non-interactive")
-	require.Error(t, runErr, "expected failure: no Docker available")
-	require.Contains(t, stdout, "Configured with default emulator", "non-interactive first run should note the default emulator")
+	assert.Error(t, runErr, "expected failure: no Docker available")
+	assert.Contains(t, stdout, "Configured with default emulator", "non-interactive first run should note the default emulator")
 }
 
 // A first run that fails before doing any work (no Docker) leaves no config, so
@@ -214,7 +215,7 @@ func TestEmulatorSelectionReappearsAfterFailedFirstRun(t *testing.T) {
 	noDocker := base.With(env.Key("DOCKER_HOST"), "tcp://localhost:1")
 	stdout, _, runErr := runLstk(t, testContext(t), "", noDocker, "--non-interactive")
 	require.Error(t, runErr, "first run should fail when Docker is unavailable")
-	require.Contains(t, stdout, "Docker is not available")
+	assert.Contains(t, stdout, "Docker is not available")
 	require.NoFileExists(t, configPath, "a run that fails before doing any work must not create a config")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
@@ -285,9 +286,9 @@ func TestFirstRunChecksDockerBeforeAuthAndSelection(t *testing.T) {
 	out, err := runLstkInPTY(t, ctx, e, "start")
 	require.Error(t, err)
 	requireExitCode(t, 1, err)
-	require.Contains(t, out, "Docker is not available")
-	require.NotContains(t, out, "Press any key when complete",
+	assert.Contains(t, out, "Docker is not available")
+	assert.NotContains(t, out, "Press any key when complete",
 		"login prompt must not appear when the runtime is unavailable")
-	require.NotContains(t, out, "Which emulator would you like to use?",
+	assert.NotContains(t, out, "Which emulator would you like to use?",
 		"emulator selection must not appear when the runtime is unavailable")
 }

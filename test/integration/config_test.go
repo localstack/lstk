@@ -9,6 +9,7 @@ import (
 
 	"github.com/localstack/lstk/test/integration/env"
 	"github.com/moby/moby/client"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -42,7 +43,7 @@ IAM_SOFT_MODE = "1"
 
 	inspect, err := dockerClient.ContainerInspect(ctx, containerName, client.ContainerInspectOptions{})
 	require.NoError(t, err, "failed to inspect container")
-	require.Contains(t, inspect.Container.Config.Env, "IAM_SOFT_MODE=1")
+	assert.Contains(t, inspect.Container.Config.Env, "IAM_SOFT_MODE=1")
 }
 
 func TestConfigFlagOverridesConfigPath(t *testing.T) {
@@ -127,7 +128,7 @@ func TestConfigPathCommandDoesNotCreateConfig(t *testing.T) {
 	requireExitCode(t, 0, err)
 
 	assertSamePath(t, expectedConfigFile, stdout)
-	require.NoFileExists(t, expectedConfigFile)
+	assert.NoFileExists(t, expectedConfigFile)
 }
 
 func TestConfigWithUnknownFieldsIsAccepted(t *testing.T) {
@@ -162,7 +163,7 @@ tag = "latest"
 	_, stderr, err := runLstk(t, testContext(t), t.TempDir(), testEnvWithHome(t.TempDir(), ""), "--config", configFile, "stop")
 	require.Error(t, err)
 	requireExitCode(t, 1, err)
-	require.Contains(t, stderr, "port is required")
+	assert.Contains(t, stderr, "port is required")
 }
 
 func TestConfigWithInvalidContainerNameFails(t *testing.T) {
@@ -181,7 +182,7 @@ container_name = "my emulator"
 	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), testEnvWithHome(t.TempDir(), ""), "--config", configFile, "stop")
 	require.Error(t, err)
 	requireExitCode(t, 1, err)
-	require.Contains(t, stdout+stderr, `invalid container name "my emulator"`)
+	assert.Contains(t, stdout+stderr, `invalid container name "my emulator"`)
 }
 
 func TestStartWithMultipleContainersFailsFast(t *testing.T) {
@@ -203,7 +204,7 @@ port = "4567"
 	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), testEnvWithHome(t.TempDir(), ""), "--config", configFile, "start")
 	require.Error(t, err)
 	requireExitCode(t, 1, err)
-	require.Contains(t, stdout+stderr, "only one is supported at a time")
+	assert.Contains(t, stdout+stderr, "only one is supported at a time")
 }
 
 func TestLegacyYAMLConfigGivesHelpfulError(t *testing.T) {
@@ -224,8 +225,8 @@ func TestLegacyYAMLConfigGivesHelpfulError(t *testing.T) {
 	_, stderr, err := runLstk(t, testContext(t), workDir, e, "logout")
 	require.Error(t, err)
 	requireExitCode(t, 1, err)
-	require.Contains(t, stderr, "config.yaml")
-	require.Contains(t, stderr, "TOML")
+	assert.Contains(t, stderr, "config.yaml")
+	assert.Contains(t, stderr, "TOML")
 }
 
 func TestConfigWithMissingOptionalTagSucceeds(t *testing.T) {
@@ -282,7 +283,7 @@ func writeConfigFile(t *testing.T, path string) {
 
 func assertSamePath(t *testing.T, expectedPath, actualPath string) {
 	t.Helper()
-	require.Equal(
+	assert.Equal(
 		t,
 		normalizedPath(expectedPath),
 		normalizedPath(actualPath),

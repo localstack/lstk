@@ -3,6 +3,7 @@ package integration_test
 import (
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -40,7 +41,7 @@ func TestInvalidUsageExitsNonZero(t *testing.T) {
 			_, stderr, err := runLstk(t, testContext(t), t.TempDir(), e, tc.args...)
 			require.Error(t, err, "expected %v to fail", tc.args)
 			requireExitCode(t, 1, err)
-			require.Contains(t, stderr, tc.wantText)
+			assert.Contains(t, stderr, tc.wantText)
 		})
 	}
 }
@@ -59,7 +60,7 @@ func TestBareParentCommandExitsZero(t *testing.T) {
 			stdout, _, err := runLstk(t, testContext(t), t.TempDir(), e, parent)
 			require.NoError(t, err)
 			requireExitCode(t, 0, err)
-			require.Contains(t, stdout, "Usage:")
+			assert.Contains(t, stdout, "Usage:")
 		})
 	}
 }

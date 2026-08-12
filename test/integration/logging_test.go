@@ -6,6 +6,7 @@ import (
 	"runtime"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -28,8 +29,8 @@ func TestLogging_NonTTY_WritesToLogFile(t *testing.T) {
 
 	logContents, err := os.ReadFile(logPath)
 	require.NoError(t, err, "expected lstk.log to be created at %s", logPath)
-	require.Contains(t, string(logContents), "[INFO] lstk")
-	require.Contains(t, string(logContents), "starting")
+	assert.Contains(t, string(logContents), "[INFO] lstk")
+	assert.Contains(t, string(logContents), "starting")
 }
 
 func TestLogging_TTY_WritesToLogFile(t *testing.T) {
@@ -46,6 +47,6 @@ func TestLogging_TTY_WritesToLogFile(t *testing.T) {
 
 	logContents, err := os.ReadFile(logPath)
 	require.NoError(t, err, "expected lstk.log to be created at %s", logPath)
-	require.Contains(t, string(logContents), "[INFO] lstk")
-	require.Contains(t, string(logContents), "starting")
+	assert.Contains(t, string(logContents), "[INFO] lstk")
+	assert.Contains(t, string(logContents), "starting")
 }

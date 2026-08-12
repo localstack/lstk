@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/localstack/lstk/test/integration/env"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -112,9 +113,9 @@ func TestSnapshotNonAWSShowsExperimentalWarning(t *testing.T) {
 				args := append([]string{"--config", em.writeConfig(t, "4566"), "--non-interactive"}, subArgs...)
 				stdout, stderr, err := runLstk(t, ctx, dir, environ, args...)
 				require.NoError(t, err, "lstk snapshot %s failed: %s", op.name, stderr)
-				require.Contains(t, stdout, op.successText)
-				require.Contains(t, stdout, experimentalWarningFragment)
-				require.Contains(t, stdout, em.name)
+				assert.Contains(t, stdout, op.successText)
+				assert.Contains(t, stdout, experimentalWarningFragment)
+				assert.Contains(t, stdout, em.name)
 			})
 		}
 	}
@@ -137,6 +138,6 @@ func TestSnapshotSaveAWSNoExperimentalWarning(t *testing.T) {
 		"--non-interactive", "snapshot", "save",
 	)
 	require.NoError(t, err, "lstk snapshot save failed: %s", stderr)
-	require.Contains(t, stdout, "Snapshot saved")
-	require.NotContains(t, stdout, experimentalWarningFragment)
+	assert.Contains(t, stdout, "Snapshot saved")
+	assert.NotContains(t, stdout, experimentalWarningFragment)
 }

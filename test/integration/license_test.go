@@ -20,6 +20,7 @@ import (
 	"github.com/creack/pty"
 	"github.com/localstack/lstk/test/integration/env"
 	"github.com/moby/moby/client"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -80,7 +81,7 @@ func TestLicenseValidationSuccess(t *testing.T) {
 
 	inspect, err := dockerClient.ContainerInspect(ctx, containerName, client.ContainerInspectOptions{})
 	require.NoError(t, err, "failed to inspect container")
-	require.True(t, inspect.Container.State.Running, "container should be running")
+	assert.True(t, inspect.Container.State.Running, "container should be running")
 }
 
 func TestLicenseValidationFailure(t *testing.T) {
@@ -97,13 +98,13 @@ func TestLicenseValidationFailure(t *testing.T) {
 	requireExitCode(t, 1, err)
 	// Not a snapshot: the output embeds pull-progress lines that depend on
 	// the runner's image cache and the live emulator image version.
-	require.Contains(t, stdout, "License validation failed")
-	require.Contains(t, stdout, "invalid, inactive, or expired")
-	require.Contains(t, stdout, "lstk logout", "the error should point at re-authentication")
-	require.NotContains(t, stderr, "license validation failed", "the error event replaces the raw stderr error")
+	assert.Contains(t, stdout, "License validation failed")
+	assert.Contains(t, stdout, "invalid, inactive, or expired")
+	assert.Contains(t, stdout, "lstk logout", "the error should point at re-authentication")
+	assert.NotContains(t, stderr, "license validation failed", "the error event replaces the raw stderr error")
 
 	_, err = dockerClient.ContainerInspect(ctx, containerName, client.ContainerInspectOptions{})
-	require.Error(t, err, "container should not exist after license failure")
+	assert.Error(t, err, "container should not exist after license failure")
 }
 
 // TestLicenseRejectionOffersReloginAndRetries covers DEVX-658: a definitively
@@ -223,12 +224,12 @@ func TestLicenseRejectionOffersReloginAndRetries(t *testing.T) {
 		}
 	}
 	require.NoError(t, err, "start should succeed after re-login: %s", out)
-	require.True(t, staleRejected.Load(), "the stale token must have been rejected by the license server first")
-	require.Contains(t, out, "Valid license")
+	assert.True(t, staleRejected.Load(), "the stale token must have been rejected by the license server first")
+	assert.Contains(t, out, "Valid license")
 
 	inspect, err := dockerClient.ContainerInspect(ctx, containerName, client.ContainerInspectOptions{})
 	require.NoError(t, err, "failed to inspect container")
-	require.True(t, inspect.Container.State.Running, "container should be running after the retried start")
+	assert.True(t, inspect.Container.State.Running, "container should be running after the retried start")
 
 	// lstk's file-keyring fallback stores the token next to the active config
 	// file (ConfigDir follows --config), so on headless CI runners the token
@@ -243,7 +244,7 @@ func TestLicenseRejectionOffersReloginAndRetries(t *testing.T) {
 		storedToken, err = GetAuthTokenFromKeyring()
 		require.NoError(t, err, "the re-logged-in token should be stored in the system keyring")
 	}
-	require.Equal(t, realToken, storedToken, "the fresh token must replace the rejected one")
+	assert.Equal(t, realToken, storedToken, "the fresh token must replace the rejected one")
 }
 
 // TestLicenseRejectionEscDeclineShowsManualSteps covers DEVX-1045: the re-login
@@ -315,9 +316,9 @@ func TestLicenseRejectionEscDeclineShowsManualSteps(t *testing.T) {
 	err = cmd.Wait()
 	<-outputCh
 	requireExitCode(t, 1, err)
-	require.Contains(t, out.String(), "License validation failed", "declining must render the failure")
-	require.Contains(t, out.String(), "lstk logout", "declining must point at the manual recovery")
-	require.Contains(t, out.String(), "LOCALSTACK_AUTH_TOKEN", "declining must mention the env var alternative")
+	assert.Contains(t, out.String(), "License validation failed", "declining must render the failure")
+	assert.Contains(t, out.String(), "lstk logout", "declining must point at the manual recovery")
+	assert.Contains(t, out.String(), "LOCALSTACK_AUTH_TOKEN", "declining must mention the env var alternative")
 }
 
 func licenseFilePath(t *testing.T) string {
@@ -352,7 +353,7 @@ func TestLicenseCacheAndMount(t *testing.T) {
 
 	data, err := os.ReadFile(licenseFilePath(t))
 	require.NoError(t, err, "license cache file should exist after successful start")
-	require.Equal(t, licenseBody, string(data))
+	assert.Equal(t, licenseBody, string(data))
 
 	inspect, err := dockerClient.ContainerInspect(ctx, containerName, client.ContainerInspectOptions{})
 	require.NoError(t, err, "failed to inspect container")
@@ -364,5 +365,5 @@ func TestLicenseCacheAndMount(t *testing.T) {
 			break
 		}
 	}
-	require.True(t, mounted, "license file should be mounted into container at /etc/localstack/conf.d/license.json")
+	assert.True(t, mounted, "license file should be mounted into container at /etc/localstack/conf.d/license.json")
 }

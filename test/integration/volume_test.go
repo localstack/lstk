@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/localstack/lstk/test/integration/env"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -26,7 +27,7 @@ func TestVolumePathCommand(t *testing.T) {
 		require.NoError(t, err, stderr)
 		requireExitCode(t, 0, err)
 
-		require.Contains(t, stdout, filepath.Join("lstk", "volume", "localstack-aws"))
+		assert.Contains(t, stdout, filepath.Join("lstk", "volume", "localstack-aws"))
 	})
 
 	t.Run("prints custom volume path from config", func(t *testing.T) {
@@ -129,7 +130,7 @@ volume = "` + escapeTomlPath(volumeDir) + `"
 		require.NoError(t, err, "lstk volume clear failed: %s\nstdout: %s", stderr, stdout)
 		requireExitCode(t, 0, err)
 
-		require.Contains(t, stdout, "Volume data cleared")
+		assert.Contains(t, stdout, "Volume data cleared")
 
 		// Directory itself should still exist
 		_, err = os.Stat(volumeDir)
@@ -138,7 +139,7 @@ volume = "` + escapeTomlPath(volumeDir) + `"
 		// But contents should be gone
 		entries, err := os.ReadDir(volumeDir)
 		require.NoError(t, err)
-		require.Empty(t, entries, "volume directory should be empty")
+		assert.Empty(t, entries, "volume directory should be empty")
 	})
 
 	t.Run("fails without force in non-interactive mode", func(t *testing.T) {
@@ -153,7 +154,7 @@ volume = "` + escapeTomlPath(volumeDir) + `"
 		require.Error(t, err)
 		requireExitCode(t, 1, err)
 
-		require.Contains(t, stderr, "--force")
+		assert.Contains(t, stderr, "--force")
 	})
 
 	t.Run("handles nonexistent volume directory", func(t *testing.T) {
@@ -174,7 +175,7 @@ volume = "` + escapeTomlPath(volumeDir) + `"
 		require.NoError(t, err, "lstk volume clear failed: %s\nstdout: %s", stderr, stdout)
 		requireExitCode(t, 0, err)
 
-		require.Contains(t, stdout, "Volume data cleared")
+		assert.Contains(t, stdout, "Volume data cleared")
 	})
 
 	t.Run("filters by emulator type", func(t *testing.T) {
@@ -196,7 +197,7 @@ volume = "` + escapeTomlPath(volumeDir) + `"
 		_, stderr, err := runLstk(t, testContext(t), t.TempDir(), testEnvWithHome(t.TempDir(), ""), "--config", configFile, "--non-interactive", "volume", "clear", "--force", "--type", "snowflake")
 		require.Error(t, err)
 		requireExitCode(t, 1, err)
-		require.Contains(t, stderr, "not found")
+		assert.Contains(t, stderr, "not found")
 
 		// Correct type should succeed
 		stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), testEnvWithHome(t.TempDir(), ""), "--config", configFile, "--non-interactive", "volume", "clear", "--force", "--type", "aws")
@@ -205,7 +206,7 @@ volume = "` + escapeTomlPath(volumeDir) + `"
 
 		entries, err := os.ReadDir(volumeDir)
 		require.NoError(t, err)
-		require.Empty(t, entries)
+		assert.Empty(t, entries)
 	})
 
 	t.Run("emits telemetry", func(t *testing.T) {
@@ -264,7 +265,7 @@ volume = "` + escapeTomlPath(volumeDir) + `"
 		}
 
 		requireExitCode(t, 1, err)
-		require.Contains(t, stderr, "sudo")
+		assert.Contains(t, stderr, "sudo")
 	})
 }
 
@@ -304,10 +305,10 @@ volume = "` + escapeTomlPath(volumeDir) + `"
 		out, err := p.wait()
 		require.NoError(t, err)
 
-		require.Contains(t, out, "Volume data cleared")
+		assert.Contains(t, out, "Volume data cleared")
 		entries, err := os.ReadDir(volumeDir)
 		require.NoError(t, err)
-		require.Empty(t, entries, "volume directory should be empty after confirm")
+		assert.Empty(t, entries, "volume directory should be empty after confirm")
 	})
 
 	t.Run("cancels when user presses n", func(t *testing.T) {
@@ -320,10 +321,10 @@ volume = "` + escapeTomlPath(volumeDir) + `"
 		out, err := p.wait()
 		require.NoError(t, err)
 
-		require.Contains(t, out, "Cancelled")
+		assert.Contains(t, out, "Cancelled")
 		entries, err := os.ReadDir(volumeDir)
 		require.NoError(t, err)
-		require.Len(t, entries, 1, "volume directory should be untouched after cancel")
+		assert.Len(t, entries, 1, "volume directory should be untouched after cancel")
 	})
 }
 

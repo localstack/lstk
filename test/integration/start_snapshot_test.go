@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/localstack/lstk/test/integration/env"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -20,7 +21,7 @@ func TestStartSnapshotConflictingFlags(t *testing.T) {
 		"--non-interactive", "start", "--snapshot", "pod:my-baseline", "--no-snapshot",
 	)
 	requireExitCode(t, 1, err)
-	require.Contains(t, stderr, "cannot be used together")
+	assert.Contains(t, stderr, "cannot be used together")
 }
 
 func TestStartSnapshotInvalidPodName(t *testing.T) {
@@ -32,7 +33,7 @@ func TestStartSnapshotInvalidPodName(t *testing.T) {
 		"--non-interactive", "start", "--snapshot", "pod:bad.name",
 	)
 	requireExitCode(t, 1, err)
-	require.Contains(t, stderr, "invalid pod name")
+	assert.Contains(t, stderr, "invalid pod name")
 }
 
 func TestStartSnapshotLocalFileNotFound(t *testing.T) {
@@ -44,7 +45,7 @@ func TestStartSnapshotLocalFileNotFound(t *testing.T) {
 		"--non-interactive", "start", "--snapshot", "/no/such/snapshot.snapshot",
 	)
 	requireExitCode(t, 1, err)
-	require.Contains(t, stderr, "snapshot file not found")
+	assert.Contains(t, stderr, "snapshot file not found")
 }
 
 // --- Docker required ---
@@ -81,8 +82,8 @@ snapshot = "pod:my-baseline"
 	)
 	require.NoError(t, err, "lstk start failed: %s", stderr)
 	requireExitCode(t, 0, err)
-	require.Contains(t, stdout, "Snapshot loaded", "configured snapshot should auto-load after start")
-	require.Contains(t, stdout, "my-baseline")
+	assert.Contains(t, stdout, "Snapshot loaded", "configured snapshot should auto-load after start")
+	assert.Contains(t, stdout, "my-baseline")
 }
 
 // TestStartNoSnapshotSkipsAutoLoad verifies that --no-snapshot skips auto-loading
@@ -114,5 +115,5 @@ snapshot = "pod:my-baseline"
 	)
 	require.NoError(t, err, "lstk start --no-snapshot failed: %s", stderr)
 	requireExitCode(t, 0, err)
-	require.NotContains(t, stdout, "Snapshot loaded", "--no-snapshot should skip auto-loading")
+	assert.NotContains(t, stdout, "Snapshot loaded", "--no-snapshot should skip auto-loading")
 }

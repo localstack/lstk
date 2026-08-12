@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/localstack/lstk/test/integration/env"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -121,7 +122,7 @@ func TestTerraformE2ETopLevelProject(t *testing.T) {
 	require.NoError(t, err, "apply stderr: %s", stderr)
 
 	// The generated override is cleaned up after the run completes.
-	require.NoFileExists(t, filepath.Join(work, tfOverrideFile))
+	assert.NoFileExists(t, filepath.Join(work, tfOverrideFile))
 }
 
 // 8.4 — single aws provider block (no alias): exactly one override block. We
@@ -141,7 +142,7 @@ func TestTerraformE2ESingleProvider(t *testing.T) {
 	tfInit(t, ctx, work, e)
 
 	override := captureOverride(t, ctx, work, e)
-	require.Equal(t, 1, countString(override, `provider "aws" {`), "exactly one provider block")
+	assert.Equal(t, 1, countString(override, `provider "aws" {`), "exactly one provider block")
 
 	_, stderr, err := runTerraform(t, ctx, work, e, "apply", "-auto-approve", "-no-color")
 	require.NoError(t, err, "apply stderr: %s", stderr)
@@ -163,8 +164,8 @@ func TestTerraformE2EMultipleAliases(t *testing.T) {
 	tfInit(t, ctx, work, e)
 
 	override := captureOverride(t, ctx, work, e)
-	require.Equal(t, 2, countString(override, `provider "aws" {`), "default + aliased provider blocks")
-	require.Contains(t, override, `alias = "west"`)
+	assert.Equal(t, 2, countString(override, `provider "aws" {`), "default + aliased provider blocks")
+	assert.Contains(t, override, `alias = "west"`)
 
 	_, stderr, err := runTerraform(t, ctx, work, e, "apply", "-auto-approve", "-no-color")
 	require.NoError(t, err, "apply stderr: %s", stderr)
@@ -195,8 +196,8 @@ func TestTerraformE2ESubdirectoryDiscovery(t *testing.T) {
 	tfInit(t, ctx, work, e)
 
 	override := captureOverride(t, ctx, work, e)
-	require.Contains(t, override, `alias = "replica"`, "sub-directory provider discovered")
-	require.NotContains(t, override, "should_be_ignored", ".terraform provider ignored")
+	assert.Contains(t, override, `alias = "replica"`, "sub-directory provider discovered")
+	assert.NotContains(t, override, "should_be_ignored", ".terraform provider ignored")
 }
 
 // 8.6 — a provider block that explicitly sets an endpoint (e.g. FIPS) is
@@ -216,8 +217,8 @@ func TestTerraformE2EExplicitEndpointOverridden(t *testing.T) {
 	tfInit(t, ctx, work, e)
 
 	override := captureOverride(t, ctx, work, e)
-	require.NotContains(t, override, "s3-fips.us-east-1.amazonaws.com", "user FIPS endpoint must not survive")
-	require.Contains(t, override, "localstack", "override S3 endpoint targets LocalStack")
+	assert.NotContains(t, override, "s3-fips.us-east-1.amazonaws.com", "user FIPS endpoint must not survive")
+	assert.Contains(t, override, "localstack", "override S3 endpoint targets LocalStack")
 
 	_, stderr, err := runTerraform(t, ctx, work, e, "apply", "-auto-approve", "-no-color")
 	require.NoError(t, err, "apply must route to LocalStack, not FIPS; stderr: %s", stderr)
@@ -276,7 +277,7 @@ func TestTerraformE2ETofu(t *testing.T) {
 	_, stderr, err = runTerraform(t, ctx, work, e, "apply", "-auto-approve", "-no-color")
 	require.NoError(t, err, "tofu apply stderr: %s", stderr)
 
-	require.NoFileExists(t, filepath.Join(work, tfOverrideFile))
+	assert.NoFileExists(t, filepath.Join(work, tfOverrideFile))
 }
 
 // captureOverride runs the command with LSTK_TF_DRY_RUN=1 so the generated
