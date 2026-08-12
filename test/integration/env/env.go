@@ -10,21 +10,21 @@ import (
 type Key string
 
 const (
-	AuthToken          Key = "LOCALSTACK_AUTH_TOKEN"
-	LocalStackHost     Key = "LOCALSTACK_HOST"
-	APIEndpoint        Key = "LSTK_API_ENDPOINT"
-	WebAppURL          Key = "LSTK_WEB_APP_URL"
-	Keyring            Key = "LSTK_KEYRING"
-	CI                 Key = "CI"
-	AnalyticsEndpoint  Key = "LSTK_ANALYTICS_ENDPOINT"
-	DisableEvents      Key = "LOCALSTACK_DISABLE_EVENTS"
-	Home               Key = "HOME"
-	UserProfile        Key = "USERPROFILE"
-	Path               Key = "PATH"
-	Persistence        Key = "LOCALSTACK_PERSISTENCE"
-	Otel               Key = "LSTK_OTEL"
-	OtelEndpoint       Key = "OTEL_EXPORTER_OTLP_ENDPOINT"
-	StartupTimeout     Key = "LSTK_STARTUP_TIMEOUT"
+	AuthToken         Key = "LOCALSTACK_AUTH_TOKEN"
+	LocalStackHost    Key = "LOCALSTACK_HOST"
+	APIEndpoint       Key = "LSTK_API_ENDPOINT"
+	WebAppURL         Key = "LSTK_WEB_APP_URL"
+	Keyring           Key = "LSTK_KEYRING"
+	CI                Key = "CI"
+	AnalyticsEndpoint Key = "LSTK_ANALYTICS_ENDPOINT"
+	DisableEvents     Key = "LOCALSTACK_DISABLE_EVENTS"
+	Home              Key = "HOME"
+	UserProfile       Key = "USERPROFILE"
+	Path              Key = "PATH"
+	Persistence       Key = "LOCALSTACK_PERSISTENCE"
+	Otel              Key = "LSTK_OTEL"
+	OtelEndpoint      Key = "OTEL_EXPORTER_OTLP_ENDPOINT"
+	StartupTimeout    Key = "LSTK_STARTUP_TIMEOUT"
 	// UpdateGitHubAPIEndpoint and UpdateGitHubDownloadEndpoint point the
 	// updater's release-metadata API (api.github.com) and asset downloads
 	// (github.com) at mock servers (undocumented, test-only).
@@ -33,7 +33,7 @@ const (
 	// BrowserCmd replaces the OS browser launcher for the login flow
 	// (undocumented, test-only): on Windows pkg/browser opens URLs via the
 	// ShellExecute Win32 call, which fake binaries on PATH cannot intercept.
-	BrowserCmd Key = "LSTK_BROWSER_CMD"
+	BrowserCmd         Key = "LSTK_BROWSER_CMD"
 	AWSAccessKeyID     Key = "AWS_ACCESS_KEY_ID"
 	AWSSecretAccessKey Key = "AWS_SECRET_ACCESS_KEY"
 	// AzureCollectTelemetry controls the Azure CLI's usage telemetry. Defaulted to

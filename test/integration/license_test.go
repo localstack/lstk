@@ -255,9 +255,6 @@ func TestLicenseRejectionOffersReloginAndRetries(t *testing.T) {
 // matches by (image repo, internal port), so an emulator already running on 4566
 // makes `lstk start` report that instead of ever reaching the license check.
 func TestLicenseRejectionEscDeclineShowsManualSteps(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("PTY not supported on Windows")
-	}
 	requireDocker(t)
 
 	// cleanupLicense, not cleanup: the container has to go, but there is no need
@@ -281,39 +278,23 @@ func TestLicenseRejectionEscDeclineShowsManualSteps(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	t.Cleanup(cancel)
 
-	cmd := exec.CommandContext(ctx, binaryPath(), "start", "--config", configFile)
-	cmd.Env = environ
-	ptmx, err := pty.Start(cmd)
-	require.NoError(t, err, "failed to start command in PTY")
-	defer func() { _ = ptmx.Close() }()
-
-	out := &syncBuffer{}
-	outputCh := make(chan struct{})
-	go func() {
-		_, _ = io.Copy(out, ptmx)
-		close(outputCh)
-	}()
-	// require.Eventually's message args are evaluated before the wait, so the
+	p := startLstkInPTY(t, ctx, environ, "start", "--config", configFile)
+	// waitForOutputTimeout's message args are evaluated before the wait, so the
 	// transcript has to be logged from a cleanup to be of any use.
 	t.Cleanup(func() {
 		if t.Failed() {
-			t.Logf("PTY transcript:\n%s", out.String())
+			t.Logf("PTY transcript:\n%s", p.output())
 		}
 	})
 
-	require.Eventually(t, func() bool {
-		return bytes.Contains(out.Bytes(), []byte("ESC to exit"))
-	}, 60*time.Second, 100*time.Millisecond, "the re-login prompt must be on screen, advertising the decline key")
+	p.waitForOutputTimeout("ESC to exit", 60*time.Second, "the re-login prompt must be on screen, advertising the decline key")
+	p.write("\x1b")
 
-	_, err = ptmx.Write([]byte{0x1b})
-	require.NoError(t, err)
-
-	err = cmd.Wait()
-	<-outputCh
+	out, err := p.wait()
 	requireExitCode(t, 1, err)
-	assert.Contains(t, out.String(), "License validation failed", "declining must render the failure")
-	assert.Contains(t, out.String(), "lstk logout", "declining must point at the manual recovery")
-	assert.Contains(t, out.String(), "LOCALSTACK_AUTH_TOKEN", "declining must mention the env var alternative")
+	assert.Contains(t, out, "License validation failed", "declining must render the failure")
+	assert.Contains(t, out, "lstk logout", "declining must point at the manual recovery")
+	assert.Contains(t, out, "LOCALSTACK_AUTH_TOKEN", "declining must mention the env var alternative")
 }
 
 func licenseFilePath(t *testing.T) string {
