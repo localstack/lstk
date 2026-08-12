@@ -126,9 +126,13 @@ type ContainerConfig struct {
 	CustomImage string `mapstructure:"image"`
 	// CustomName overrides the derived container name (see Name). It is also exported into
 	// the container as MAIN_CONTAINER_NAME, which the emulator uses to introspect itself over
-	// the Docker socket and to name the containers it spawns (e.g. Lambda). Set it when
-	// something outside lstk has to address the emulator by a fixed name, such as a sidecar
-	// proxy on a CI agent.
+	// the Docker socket and to name the containers it spawns (e.g. Lambda, as
+	// <main-container-name>-lambda-<fn>-<id>). Set it when something outside lstk has to
+	// address the emulator by a fixed name, such as a sidecar proxy on a CI agent.
+	//
+	// The key is container_name rather than a bare name because the block already carries an
+	// image and a type name, against which an unqualified name reads ambiguously; the field is
+	// CustomName because Name is already a method (the same pairing as CustomImage/Image).
 	CustomName string `mapstructure:"container_name"`
 	// Volume is the legacy single-host-directory knob for the persistence mount
 	// (target /var/lib/localstack). It is still honored; new configs can express the
@@ -143,11 +147,17 @@ type ContainerConfig struct {
 	// server can be used as the host's resolver. Each entry is a bare port number
 	// (published on the same host port) or a Docker-style "[host:]container[/proto]"
 	// string. See ExposedPorts for the protocol rules.
+	//
+	// This replaces the v1 CLI's --host-dns flag; there is deliberately no CLI flag, since
+	// every consumer of the value is the start path. TOML integers are accepted alongside
+	// strings (expose_ports = [53, "5354:5353/udp"]) because viper's decoder is
+	// WeaklyTypedInput.
 	ExposePorts []string `mapstructure:"expose_ports"`
 	// Env is a list of named environment references defined in the top-level [env.*] config sections.
 	Env []string `mapstructure:"env"`
 	// Snapshot is an optional snapshot REF (e.g. "pod:my-baseline" or a local path)
-	// auto-loaded after the emulator starts. AWS emulator only.
+	// auto-loaded after the emulator starts. AWS emulator only. Never written by lstk:
+	// `snapshot save` does not persist its destination here.
 	Snapshot string `mapstructure:"snapshot"`
 }
 
@@ -291,7 +301,8 @@ func (c *ContainerConfig) ExtraVolumes() ([]VolumeMount, error) {
 //  3. The default os.UserCacheDir()/lstk/volume/<derived container name>.
 //
 // The default deliberately uses defaultName rather than Name: keying it to the derived name
-// means setting or changing the container's `container_name` never silently orphans existing state.
+// means setting or changing the container's `container_name` never silently orphans existing
+// state, and the default path stays byte-identical to the one already-installed users have.
 // Per-instance state is still expressible explicitly via Volume/Volumes.
 func (c *ContainerConfig) VolumeDir() (string, error) {
 	mounts, err := c.parsedVolumes()

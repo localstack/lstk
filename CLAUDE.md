@@ -50,10 +50,10 @@ Notes:
   - `auth/` - Authentication (env var token or browser-based login), token storage/keyring
   - `awscli/`, `azurecli/` - Exec wrappers behind the `lstk aws` / `lstk az` proxy commands
   - `awsconfig/` - AWS CLI profile management in `~/.aws/` (`lstk setup aws`)
-  - `azureconfig/` - Azure CLI cloud registration and interception (`lstk setup azure`, `lstk az`) — see `internal/azureconfig/CLAUDE.md`
+  - `azureconfig/` - Azure CLI cloud registration and interception (`lstk setup azure`, `lstk az`)
   - `caller/` - Classifies the invoking caller/harness (human vs agent) for telemetry
-  - `config/` - Viper-based TOML config loading and path resolution — see `internal/config/CLAUDE.md`
-  - `container/` - Handling different emulator containers (start flow, gateway ports, offline fallbacks) — see `internal/container/CLAUDE.md`
+  - `config/` - Viper-based TOML config loading and path resolution
+  - `container/` - Handling different emulator containers (start flow, gateway ports, offline fallbacks)
   - `emulator/` - Emulator API abstraction with per-type implementations (`aws/`, `azure/`, `snowflake/`)
   - `endpoint/` - Emulator endpoint/host resolution
   - `env/` - Process environment snapshot/injection helper (also used to isolate test envs)
@@ -65,7 +65,7 @@ Notes:
   - `proc/` - Runs wrapped external tools (`aws`, `terraform`, `cdk`, `sam`, `az`, extensions) with signal forwarding instead of `cmd.Run()` — see Signal Forwarding to Wrapped Tools below
   - `reset/` - `lstk reset` domain logic
   - `runtime/` - Abstraction for container runtimes (Docker, Kubernetes, etc.) - currently only Docker implemented
-  - `snapshot/` - Snapshot save/load/list/remove/show domain logic — see `internal/snapshot/CLAUDE.md`
+  - `snapshot/` - Snapshot save/load/list/remove/show domain logic
   - `telemetry/` - CLI analytics events client
   - `terminal/` - Plain-mode terminal helpers (spinner, TTY detection)
   - `tracing/` - OpenTelemetry setup (`LSTK_OTEL=1`)
@@ -122,17 +122,17 @@ Created automatically on first run with defaults. Supports emulator types: `aws`
 
 Only one `[[containers]]` block may be enabled at a time. `container.Start` rejects a config with more than one block up front (before health/auth checks and image pulls), since running multiple emulators together (e.g. AWS + Snowflake) is unsupported and would otherwise fail later during startup with container-name conflicts or port collisions. The guard lives on the start path (not `config.Get()`) on purpose: recovery/reporting commands like `stop`, `status`, and `logout` must still enumerate multiple running emulators.
 
-Each `[[containers]]` block may set an optional `container_name` (override the derived container name; also what the emulator reports as `MAIN_CONTAINER_NAME`), an optional `image` (override the default Docker Hub image), a `volumes` list of Docker-style bind specs (persistence dir, init hooks, arbitrary mounts), and an `expose_ports` list publishing container ports the gateway/service ranges don't cover (e.g. `expose_ports = [53]` for the emulator's DNS server). Container-name derivation and its deliberate decoupling from the default persistence directory, image/tag precedence, `volume` vs `volumes` semantics, path-resolution rules, and the `expose_ports` grammar are documented in `internal/config/CLAUDE.md`.
+Each `[[containers]]` block may set an optional `container_name` (override the derived container name; also what the emulator reports as `MAIN_CONTAINER_NAME`), an optional `image` (override the default Docker Hub image), a `volumes` list of Docker-style bind specs (persistence dir, init hooks, arbitrary mounts), and an `expose_ports` list publishing container ports the gateway/service ranges don't cover (e.g. `expose_ports = [53]` for the emulator's DNS server). Container-name derivation and its deliberate decoupling from the default persistence directory, image/tag precedence, `volume` vs `volumes` semantics, path-resolution rules, and the `expose_ports` grammar are documented on `config.ContainerConfig` and its methods (`internal/config/containers.go`); the user-facing summary is `internal/config/default_config.toml`.
 
 ## Selecting the emulator (`--type`)
 
 `lstk start --type <aws|snowflake|azure>` (shorthand `-t`; also on the bare root) is the non-interactive answer to the first-run emulator picker. It is a flag only — a positional (`lstk start azure`) is rejected with a hint pointing at `--type`, to avoid implying the root-level `lstk aws`/`lstk az` proxy names mean "start that emulator". It is defined as "rewrite the `type` line in config", not an ephemeral per-run override — downstream commands (`stop`, `status`, `logs`, `volume`, snapshot auto-load) all resolve from the configured type, so persisting keeps config and reality in sync. First run creates the config with the selected type (same `EnsureCreated`/`SetEmulatorType` path the picker uses); a matching config is a no-op; a differing config is switched in place via the surgical type-line rewrite (comments/formatting preserved) with a note naming the file. On switch: a custom `image` is a hard error (it pins a product that can't be reinterpreted under a new type — use `--config` for a separate profile), a non-`latest` `tag` and any `volumes`/`volume` are kept with a warning, and `container_name`/`port`/`env`/`snapshot` are kept silently (they describe the user's topology rather than pinning a product). Domain logic is `container.ApplyEmulatorType` (parallel to `container.SelectEmulator`); it is applied at the top of `startEmulator` (`cmd/root.go`) before snapshot/start-options are resolved, so it runs before the TUI and its messages go through a plain sink.
 
-`GATEWAY_LISTEN` (host exposure and published ports) is read from the container's resolved env, not hardcoded; parsing and derivation are documented in `internal/container/CLAUDE.md`.
+`GATEWAY_LISTEN` (host exposure and published ports) is read from the container's resolved env, not hardcoded; parsing and derivation live in `internal/container/gateway.go`.
 
 # Offline / Enterprise Environments
 
-There is no `--offline` flag. Instead `container.Start` degrades gracefully when internet requests fail (Docker Hub unreachable, proxy/TLS interception, license server unreachable): local images are used when pulls fail, and the license pre-flight is skipped on transport-level failures, non-definitive server responses (5xx/407), or unsupported-tag rejections so the container validates its own bundled license. Definitive license rejections (HTTP 400/401/403) drop the cached license and offer an in-place re-login instead of requiring a manual `lstk logout` (DEVX-658). The exact fallback and retry rules live in `internal/container/CLAUDE.md`; pair them with a custom `image` in the config to point at a locally loaded image or an internal-registry mirror.
+There is no `--offline` flag. Instead `container.Start` degrades gracefully when internet requests fail (Docker Hub unreachable, proxy/TLS interception, license server unreachable): local images are used when pulls fail, and the license pre-flight is skipped on transport-level failures, non-definitive server responses (5xx/407), or unsupported-tag rejections so the container validates its own bundled license. Definitive license rejections (HTTP 400/401/403) drop the cached license and offer an in-place re-login instead of requiring a manual `lstk logout` (DEVX-658). The exact fallback and retry rules live in `tryPrePullLicenseValidation`/`validateLicense`/`startWithLicenseRetry` (`internal/container/start.go`); pair them with a custom `image` in the config to point at a locally loaded image or an internal-registry mirror.
 
 # Targeting an External Emulator (`--endpoint-url`)
 
@@ -146,7 +146,7 @@ Emulator type (aws/azure/snowflake) is always auto-detected by probing `/_locals
 
 Use `lstk setup <emulator>` to set up CLI integration for an emulator type:
 - `lstk setup aws` — Sets up an AWS CLI `localstack` profile in `~/.aws/config` and `~/.aws/credentials`. Runs interactively (Y/n prompt) on a TTY; in non-interactive mode (CI / piped / `--non-interactive`) it writes the profile with defaults and exits 0 without prompting, and returns write/check failures as errors so automation exits non-zero. Overwriting an existing `localstack` profile whose values differ requires `--force`. Shared host resolution lives in `awsconfig.ResolveProfileHost`; the non-interactive write is `awsconfig.SetupNonInteractive`, the interactive path is `awsconfig.Setup(..., skipConfirm)`.
-- `lstk setup azure` (alias `lstk setup az`) — Prepares an isolated Azure CLI config dir pointing at the LocalStack Azure emulator; the user's global `~/.azure` is untouched. `lstk az <args>` then runs `az` against that isolated dir. `lstk az start-interception` / `stop-interception` are the opt-in global mode that mutates `~/.azure` so plain `az` targets LocalStack. Mechanics, rationale, and extension points: `internal/azureconfig/CLAUDE.md`.
+- `lstk setup azure` (alias `lstk setup az`) — Prepares an isolated Azure CLI config dir pointing at the LocalStack Azure emulator; the user's global `~/.azure` is untouched. `lstk az <args>` then runs `az` against that isolated dir. `lstk az start-interception` / `stop-interception` are the opt-in global mode that mutates `~/.azure` so plain `az` targets LocalStack. Mechanics and extension points: `internal/azureconfig/azureconfig.go` (`Env`, `BuildCloudConfig`) and `interception.go`.
 
 This naming avoids AWS-specific "profile" terminology and uses a clear verb for mutation operations.
 
@@ -192,7 +192,7 @@ When lstk's stdout and stderr are both terminals, `lstk aws` runs the child via 
 - A `[[containers]]` block (AWS only) can set `snapshot = "pod:..."` to auto-load after a fresh start; `lstk start --snapshot REF` overrides it for one run, `--no-snapshot` skips it.
 - `save`/`load`/`remove` and `list s3://...` support the global `--endpoint-url` targeting described under "Targeting an External Emulator"; `show`, `versions`, and bare `list` silently ignore it (they never touch the emulator regardless).
 
-REF parsing helpers, S3 credential precedence and remote-upsert mechanics, and the auto-load wiring are documented in `internal/snapshot/CLAUDE.md`.
+REF parsing helpers live in `internal/snapshot/destination.go`; S3 credential precedence and remote-upsert mechanics in `internal/snapshot/remote.go` and `resolveS3Credentials` (`cmd/snapshot.go`); the auto-load wiring in `resolveStartSnapshotRef`/`newSnapshotAutoLoader` (`cmd/snapshot.go`).
 
 # NPM Distribution
 
@@ -340,6 +340,12 @@ Custom skills are available in `.claude/skills/`:
 
 # Maintaining This File
 
-When making significant changes to the codebase (new commands, architectural changes, build process updates, new patterns), update this CLAUDE.md file to reflect them.
+When making significant changes to the codebase (new commands, architectural changes, build process updates, new patterns), update this CLAUDE.md file to reflect them — but only when the guidance spans packages. Anything specific to a single declaration — a function, type, method, struct field, or constant — belongs in a doc comment on that declaration, not here.
 
-Deep per-feature reference lives next to the code in nested CLAUDE.md files — `internal/config/`, `internal/container/`, `internal/azureconfig/`, `internal/snapshot/` (each with an `AGENTS.md` symlink for non-Claude agents, mirroring the root). Update the nested file when its feature changes; keep this root file for guidance that applies to most sessions.
+**This is the only agent-instruction file in the repo.** Where each kind of detail should go instead:
+
+- **Anything about a single declaration** (mechanism, rationale, invariants, why an obvious alternative was rejected, upstream/external behaviour it depends on) → a doc comment on that function, type, method, field, or constant. Negative statements work fine there too: anchor "there is deliberately no X" to the function where X would have gone.
+- **User-facing config reference** → `internal/config/default_config.toml`, which ships as the user's own commented config.
+- **User-facing command reference** → the command's Cobra `Short`/`Long` in `cmd/`, which is also what `lstk docs` renders.
+- **Design rationale and non-goals for in-flight work** → `openspec/changes/<id>/design.md`.
+- **Why a change was made** → the commit message and the Linear ticket. Ticket IDs in code comments (the existing DEVX-658 / DEVX-984 / PRO-324 pattern) carry provenance to the reader who needs it.
