@@ -1,7 +1,7 @@
-Snapshots created by internal/snap. Values are compared with trailing
-newlines stripped. UPDATE_SNAPS=true go test rewrites this file.
+Snapshots created by internal/snap. UPDATE_SNAPS=true go test rewrites
+this file.
 
--- TestConfigLoadFailureRendersJSONEnvelope_1 --
+[TestConfigLoadFailureRendersJSONEnvelope_1]
 {
   "command": "stop",
   "data": null,
@@ -15,9 +15,9 @@ newlines stripped. UPDATE_SNAPS=true go test rewrites this file.
   "status": "error",
   "warnings": []
 }
+---
 
-
--- TestNotJSONCapableCommandRendersEnvelope_1 --
+[TestNotJSONCapableCommandRendersEnvelope_1]
 {
   "command": "login",
   "data": null,
@@ -31,9 +31,9 @@ newlines stripped. UPDATE_SNAPS=true go test rewrites this file.
   "status": "error",
   "warnings": []
 }
+---
 
-
--- TestUsageErrorAfterJSONRendersEnvelope_1 --
+[TestUsageErrorAfterJSONRendersEnvelope_1]
 {
   "command": "stop",
   "data": null,
@@ -47,5 +47,4 @@ newlines stripped. UPDATE_SNAPS=true go test rewrites this file.
   "status": "error",
   "warnings": []
 }
-
-
+---

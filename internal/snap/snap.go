@@ -8,10 +8,21 @@
 // UPDATE_SNAPS=true go test ./... rewrites snapshots and lets Clean delete
 // obsolete ones.
 //
-// Storage is one txtar archive per test file (__snapshots__/<test_file>.snap)
-// with one section per Match call, named TestName_N (N = call number within
-// the test). txtar has no escaping, so a snapshot value containing a line
-// that looks like a txtar section separator ("-- name --") cannot be stored;
+// Storage is one archive per test file (__snapshots__/<test_file>.snap) with
+// one section per Match call:
+//
+//	[TestName_1]
+//	value
+//	---
+//
+//	[TestName_2]
+//	...
+//
+// N is the Match call number within the test. A value's newlines are stored
+// verbatim; the "---" terminator always sits on its own line, so a value not
+// ending in a newline gets one — a snapshot therefore cannot distinguish a
+// value from the same value plus one final newline. The format has no
+// escaping: a value containing a line that is exactly "---" cannot be stored;
 // write guards against that with a parse round-trip and fails with guidance
 // to sanitize the value instead.
 package snap
@@ -33,11 +44,12 @@ import (
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
-	"golang.org/x/tools/txtar"
 )
 
-// header is the comment section of every archive, kept canonical on rewrite.
-const header = "Snapshots created by internal/snap. Values are compared with trailing\nnewlines stripped. UPDATE_SNAPS=true go test rewrites this file.\n\n"
+// header is the comment block of every archive, kept canonical on rewrite.
+const header = "Snapshots created by internal/snap. UPDATE_SNAPS=true go test rewrites\nthis file.\n\n"
+
+const terminator = "---"
 
 // Test-only helper state: the visited registry must span all tests in the
 // package so Clean can tell live snapshots from obsolete ones. The mutex also
@@ -48,7 +60,16 @@ var (
 	calls   = map[string]int{}             // archive path + test name -> Match call count
 )
 
-var unsafeChars = regexp.MustCompile(`[^A-Za-z0-9._-]+`)
+var (
+	unsafeChars = regexp.MustCompile(`[^A-Za-z0-9._-]+`)
+	entryStart  = regexp.MustCompile(`^\[(.+)\]$`)
+)
+
+// entry is one named snapshot inside an archive.
+type entry struct {
+	name  string
+	value string
+}
 
 // Match compares got against the stored snapshot for the calling test,
 // creating the snapshot on first local run or rewriting it when
@@ -111,7 +132,7 @@ func mask(v any, segs []string) bool {
 	return mask(m[segs[0]], segs[1:])
 }
 
-// callerArchive resolves the txtar archive for the test file that called the
+// callerArchive resolves the archive for the test file that called the
 // exported Match/MatchJSON function (two frames up):
 // <dir>/__snapshots__/<test_file_without_.go>.snap.
 func callerArchive(t testing.TB) string {
@@ -124,33 +145,92 @@ func callerArchive(t testing.TB) string {
 	return filepath.Join(filepath.Dir(file), "__snapshots__", base+".snap")
 }
 
+// parseArchive decodes the archive format. Everything before the first
+// "[name]" line is the header comment and is discarded (rewrites emit the
+// canonical header). Each entry's value is the lines between its "[name]"
+// line and the next "---" line, verbatim; blank lines between entries are
+// separators.
+func parseArchive(data []byte) ([]entry, error) {
+	var entries []entry
+	lines := strings.Split(string(data), "\n")
+	for i := 0; i < len(lines); i++ {
+		m := entryStart.FindStringSubmatch(lines[i])
+		if m == nil {
+			continue
+		}
+		var value strings.Builder
+		terminated := false
+		j := i + 1
+		for ; j < len(lines); j++ {
+			if lines[j] == terminator {
+				terminated = true
+				break
+			}
+			value.WriteString(lines[j])
+			value.WriteString("\n")
+		}
+		if !terminated {
+			return nil, fmt.Errorf("entry %q has no %q terminator", m[1], terminator)
+		}
+		entries = append(entries, entry{name: m[1], value: value.String()})
+		i = j
+	}
+	return entries, nil
+}
+
+// formatArchive encodes entries (name-sorted) with the canonical header, the
+// "---" terminator on its own line, and one blank line between entries. A
+// value not ending in a newline gets one so the terminator stays on its own
+// line.
+func formatArchive(entries []entry) []byte {
+	sort.Slice(entries, func(i, j int) bool { return entries[i].name < entries[j].name })
+	var b strings.Builder
+	b.WriteString(header)
+	for i, e := range entries {
+		if i > 0 {
+			b.WriteString("\n")
+		}
+		b.WriteString("[" + e.name + "]\n")
+		v := e.value
+		if v != "" && !strings.HasSuffix(v, "\n") {
+			v += "\n"
+		}
+		b.WriteString(v)
+		b.WriteString(terminator + "\n")
+	}
+	return []byte(b.String())
+}
+
 // readArchive parses the archive at path. A missing file is an empty archive.
-func readArchive(path string) (*txtar.Archive, error) {
+func readArchive(path string) ([]entry, error) {
 	data, err := os.ReadFile(path)
 	if errors.Is(err, os.ErrNotExist) {
-		return &txtar.Archive{}, nil
+		return nil, nil
 	}
 	if err != nil {
 		return nil, err
 	}
-	return txtar.Parse(data), nil
+	return parseArchive(data)
 }
 
-// entrySep is appended to every stored value: the final newline terminates
-// the value's last line and the rest renders as blank lines between sections,
-// keeping the archive readable. In txtar, trailing blank lines belong to the
-// preceding section's data, so entryData strips them back off.
-const entrySep = "\n\n\n"
-
-// entryData returns the entry's value (trailing newlines stripped, see
-// entrySep) and whether it exists.
-func entryData(a *txtar.Archive, name string) (string, bool) {
-	for _, f := range a.Files {
-		if f.Name == name {
-			return strings.TrimRight(string(f.Data), "\n"), true
+// entryValue returns the entry's value and whether it exists.
+func entryValue(entries []entry, name string) (string, bool) {
+	for _, e := range entries {
+		if e.name == name {
+			return e.value, true
 		}
 	}
 	return "", false
+}
+
+// ensureNL normalizes a value for comparison: the terminator sits on its own
+// line, so stored values always end with a newline — a value without one is
+// indistinguishable from the same value with one.
+func ensureNL(s string) string {
+	if s != "" && !strings.HasSuffix(s, "\n") {
+		return s + "\n"
+	}
+	return s
 }
 
 func match(t testing.TB, got, archive string) {
@@ -158,73 +238,71 @@ func match(t testing.TB, got, archive string) {
 	if n := flagValue("test.count"); n != "" && n != "1" {
 		t.Fatalf("snap: -count > 1 is not supported (snapshot call numbering would repeat)")
 	}
-	// Values are compared with trailing newlines stripped: the stored form
-	// always ends with entrySep, so a snapshot cannot distinguish values that
-	// differ only in trailing newlines.
-	got = strings.TrimRight(got, "\n")
+	got = ensureNL(got)
 
 	mu.Lock()
 	defer mu.Unlock()
 
 	key := archive + "|" + t.Name()
 	calls[key]++
-	entry := unsafeChars.ReplaceAllString(t.Name(), "_") + "_" + strconv.Itoa(calls[key])
+	name := unsafeChars.ReplaceAllString(t.Name(), "_") + "_" + strconv.Itoa(calls[key])
 	if visited[archive] == nil {
 		visited[archive] = map[string]bool{}
 	}
-	visited[archive][entry] = true
+	visited[archive][name] = true
 
-	a, err := readArchive(archive)
+	entries, err := readArchive(archive)
 	if err != nil {
 		t.Fatalf("snap: reading %s: %v", archive, err)
 		return
 	}
-	want, exists := entryData(a, entry)
+	want, exists := entryValue(entries, name)
 	update := os.Getenv("UPDATE_SNAPS") == "true"
 	switch {
 	case !exists:
 		if isCI() && !update {
-			t.Fatalf("snap: missing snapshot %q in %s (snapshots are never created in CI; run the test locally and commit the file)", entry, archive)
+			t.Fatalf("snap: missing snapshot %q in %s (snapshots are never created in CI; run the test locally and commit the file)", name, archive)
 			return
 		}
-		writeEntry(t, archive, a, entry, got)
-		t.Logf("snap: created %q in %s", entry, archive)
+		writeEntry(t, archive, entries, name, got)
+		t.Logf("snap: created %q in %s", name, archive)
 	case want != got:
 		if update {
-			writeEntry(t, archive, a, entry, got)
-			t.Logf("snap: updated %q in %s", entry, archive)
+			writeEntry(t, archive, entries, name, got)
+			t.Logf("snap: updated %q in %s", name, archive)
 			return
 		}
 		t.Errorf("snapshot mismatch (-want +got):\n%s\nrun UPDATE_SNAPS=true go test to update %s", cmp.Diff(want, got), archive)
 	}
 }
 
-// writeEntry upserts entry=value into the archive and saves it with a
-// canonical header and name-sorted sections. A parse round-trip guards
-// against values txtar cannot represent (a line matching the "-- name --"
-// section separator); such values must be sanitized by the caller instead.
-// Callers hold mu.
-func writeEntry(t testing.TB, path string, a *txtar.Archive, entry, value string) {
+// writeEntry upserts name=value into the archive and saves it. A parse
+// round-trip guards against values the format cannot represent (a line that
+// is exactly the "---" terminator); such values must be sanitized by the
+// caller instead. Callers hold mu.
+func writeEntry(t testing.TB, path string, entries []entry, name, value string) {
 	t.Helper()
-	data := []byte(value + entrySep)
 	replaced := false
-	for i := range a.Files {
-		if a.Files[i].Name == entry {
-			a.Files[i].Data = data
+	for i := range entries {
+		if entries[i].name == name {
+			entries[i].value = value
 			replaced = true
 			break
 		}
 	}
 	if !replaced {
-		a.Files = append(a.Files, txtar.File{Name: entry, Data: data})
+		entries = append(entries, entry{name: name, value: value})
 	}
-	sort.Slice(a.Files, func(i, j int) bool { return a.Files[i].Name < a.Files[j].Name })
-	a.Comment = []byte(header)
 
-	out := txtar.Format(a)
-	back := txtar.Parse(out)
-	if got, ok := entryData(back, entry); !ok || got != value {
-		t.Fatalf("snap: value for %q does not survive the txtar round-trip (it likely contains a line matching the \"-- name --\" section separator); sanitize the value before snapshotting", entry)
+	out := formatArchive(entries)
+	back, err := parseArchive(out)
+	if err == nil {
+		if got, ok := entryValue(back, name); !ok || got != ensureNL(value) {
+			err = fmt.Errorf("value does not survive the round-trip")
+		}
+	}
+	if err != nil {
+		t.Fatalf("snap: value for %q cannot be stored (%v — it likely contains a line that is exactly %q); sanitize the value before snapshotting", name, err, terminator)
 		return
 	}
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
@@ -276,22 +354,22 @@ func Clean(m *testing.M) int {
 // Match call visited, returning how many it found. An archive left with no
 // entries is removed entirely.
 func cleanEntries(archive string, seen map[string]bool, update bool) (int, error) {
-	a, err := readArchive(archive)
+	entries, err := readArchive(archive)
 	if err != nil {
 		return 0, err
 	}
-	var live []txtar.File
+	var live []entry
 	obsolete := 0
-	for _, f := range a.Files {
-		if seen[f.Name] {
-			live = append(live, f)
+	for _, e := range entries {
+		if seen[e.name] {
+			live = append(live, e)
 			continue
 		}
 		obsolete++
 		if update {
-			fmt.Fprintf(os.Stderr, "snap: removed obsolete snapshot %q from %s\n", f.Name, archive)
+			fmt.Fprintf(os.Stderr, "snap: removed obsolete snapshot %q from %s\n", e.name, archive)
 		} else {
-			fmt.Fprintf(os.Stderr, "snap: obsolete snapshot %q in %s (UPDATE_SNAPS=true go test to remove)\n", f.Name, archive)
+			fmt.Fprintf(os.Stderr, "snap: obsolete snapshot %q in %s (UPDATE_SNAPS=true go test to remove)\n", e.name, archive)
 		}
 	}
 	if obsolete == 0 || !update {
@@ -300,9 +378,7 @@ func cleanEntries(archive string, seen map[string]bool, update bool) (int, error
 	if len(live) == 0 {
 		return obsolete, os.Remove(archive)
 	}
-	a.Files = live
-	a.Comment = []byte(header)
-	return obsolete, os.WriteFile(archive, txtar.Format(a), 0o644)
+	return obsolete, os.WriteFile(archive, formatArchive(live), 0o644)
 }
 
 // cleanOrphanArchives deletes (update mode) or reports .snap files in visited

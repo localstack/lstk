@@ -1,7 +1,7 @@
-Snapshots created by internal/snap. Values are compared with trailing
-newlines stripped. UPDATE_SNAPS=true go test rewrites this file.
+Snapshots created by internal/snap. UPDATE_SNAPS=true go test rewrites
+this file.
 
--- TestSAMInjectsCleanAWSEnv_1 --
+[TestSAMInjectsCleanAWSEnv_1]
 ARGS:build
 ENV_AWS_ENDPOINT_URL=http://<endpoint-host>:4566
 ENV_AWS_ENDPOINT_URL_S3=<unset>
@@ -12,5 +12,4 @@ ENV_AWS_SECRET_ACCESS_KEY=test
 ENV_AWS_PROFILE=<unset>
 ENV_AWS_DEFAULT_PROFILE=<unset>
 ENV_AWS_SESSION_TOKEN=<unset>
-
-
+---

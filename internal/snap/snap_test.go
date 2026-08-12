@@ -5,8 +5,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-
-	"golang.org/x/tools/txtar"
 )
 
 // fakeT records failures instead of failing the real test. Only the methods
@@ -60,27 +58,28 @@ func testArchive(t *testing.T) string {
 	return path
 }
 
-// entry reads the named entry from the archive, reporting whether it exists.
-func entry(t *testing.T, archive, name string) (string, bool) {
+// getEntry reads the named entry from the archive, reporting whether it
+// exists.
+func getEntry(t *testing.T, archive, name string) (string, bool) {
 	t.Helper()
-	a, err := readArchive(archive)
+	entries, err := readArchive(archive)
 	if err != nil {
 		t.Fatal(err)
 	}
-	return entryData(a, name)
+	return entryValue(entries, name)
 }
 
 // seed writes the given entries into the archive directly.
-func seed(t *testing.T, archive string, entries map[string]string) {
+func seed(t *testing.T, archive string, values map[string]string) {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Dir(archive), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	a := &txtar.Archive{Comment: []byte(header)}
-	for name, value := range entries {
-		a.Files = append(a.Files, txtar.File{Name: name, Data: []byte(value + "\n")})
+	var entries []entry
+	for name, value := range values {
+		entries = append(entries, entry{name: name, value: ensureNL(value)})
 	}
-	if err := os.WriteFile(archive, txtar.Format(a), 0o644); err != nil {
+	if err := os.WriteFile(archive, formatArchive(entries), 0o644); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -95,8 +94,8 @@ func TestMatchCreatesThenMatches(t *testing.T) {
 	if ft.failed {
 		t.Fatalf("first Match should create, not fail: %q", ft.msg)
 	}
-	got, ok := entry(t, archive, "TestFakeCreate_1")
-	if !ok || got != "hello\nworld" {
+	got, ok := getEntry(t, archive, "TestFakeCreate_1")
+	if !ok || got != "hello\nworld\n" {
 		t.Fatalf("stored entry: %q ok=%v", got, ok)
 	}
 
@@ -141,10 +140,10 @@ func TestMatchUpdatesOnEnv(t *testing.T) {
 	if ft.failed {
 		t.Fatalf("update mode should rewrite, not fail: %q", ft.msg)
 	}
-	if got, ok := entry(t, archive, "TestFakeUpdate_1"); !ok || got != "new" {
+	if got, ok := getEntry(t, archive, "TestFakeUpdate_1"); !ok || got != "new\n" {
 		t.Fatalf("entry not updated: %q ok=%v", got, ok)
 	}
-	if got, ok := entry(t, archive, "TestOther_1"); !ok || got != "untouched" {
+	if got, ok := getEntry(t, archive, "TestOther_1"); !ok || got != "untouched\n" {
 		t.Fatalf("sibling entry must survive an update: %q ok=%v", got, ok)
 	}
 }
@@ -159,7 +158,7 @@ func TestMatchMissingSnapshotFailsInCI(t *testing.T) {
 	if !ft.fatal {
 		t.Fatal("missing snapshot in CI must be fatal")
 	}
-	if _, ok := entry(t, archive, "TestFakeCI_1"); ok {
+	if _, ok := getEntry(t, archive, "TestFakeCI_1"); ok {
 		t.Fatal("snapshot must not be created in CI")
 	}
 }
@@ -175,8 +174,8 @@ func TestMatchCountsCallsWithinOneTest(t *testing.T) {
 	if ft.failed {
 		t.Fatalf("unexpected failure: %q", ft.msg)
 	}
-	for name, want := range map[string]string{"TestFakeMulti_1": "first", "TestFakeMulti_2": "second"} {
-		if got, ok := entry(t, archive, name); !ok || got != want {
+	for name, want := range map[string]string{"TestFakeMulti_1": "first\n", "TestFakeMulti_2": "second\n"} {
+		if got, ok := getEntry(t, archive, name); !ok || got != want {
 			t.Fatalf("%s: got=%q ok=%v", name, got, ok)
 		}
 	}
@@ -192,7 +191,7 @@ func TestMatchJSONMasksAndCanonicalizes(t *testing.T) {
 	if ft.failed {
 		t.Fatalf("unexpected failure: %q", ft.msg)
 	}
-	got, ok := entry(t, archive, "TestFakeJSON_1")
+	got, ok := getEntry(t, archive, "TestFakeJSON_1")
 	if !ok {
 		t.Fatal("entry missing")
 	}
@@ -233,58 +232,83 @@ func TestMatchJSONFatalPathsWriteNoSnapshot(t *testing.T) {
 	MatchJSON(&fakeT{name: "TestFakeJSONBadPath"}, []byte(`{"data":{}}`), "data.version")
 
 	for _, name := range []string{"TestFakeJSONInvalid_1", "TestFakeJSONBadPath_1"} {
-		if _, ok := entry(t, archive, name); ok {
+		if _, ok := getEntry(t, archive, name); ok {
 			t.Fatalf("fatal MatchJSON call must not write %s", name)
 		}
 	}
 }
 
-// TestMatchRejectsSeparatorCollision pins the txtar limitation: a value
-// containing a line that parses as a section separator cannot be stored and
+// TestMatchRejectsTerminatorCollision pins the format limitation: a value
+// containing a line that is exactly the "---" terminator cannot be stored and
 // must fail loudly instead of corrupting the archive.
-func TestMatchRejectsSeparatorCollision(t *testing.T) {
+func TestMatchRejectsTerminatorCollision(t *testing.T) {
 	t.Setenv("CI", "")
 	t.Setenv("UPDATE_SNAPS", "")
 	archive := testArchive(t)
 
 	ft := &fakeT{name: "TestFakeCollision"}
-	Match(ft, "before\n-- sneaky --\nafter")
+	Match(ft, "before\n---\nafter")
 	if !ft.fatal {
-		t.Fatal("separator collision must be fatal")
+		t.Fatal("terminator collision must be fatal")
 	}
-	if !strings.Contains(ft.msg, "round-trip") {
-		t.Fatalf("collision message should explain the round-trip guard, got %q", ft.msg)
+	if !strings.Contains(ft.msg, "sanitize") {
+		t.Fatalf("collision message should point at sanitizing, got %q", ft.msg)
 	}
 	if _, err := os.Stat(archive); !os.IsNotExist(err) {
 		t.Fatal("colliding value must not be written")
 	}
 }
 
-// TestMatchTrailingNewlineInvariant pins the spacing contract: stored entries
-// end with entrySep (blank lines between sections) regardless of the value's
-// own trailing newlines, and a value matches its stored snapshot with or
-// without them.
+// TestMatchTrailingNewlineInvariant pins the terminator contract: "---"
+// always sits on its own line, a value and the same value plus one final
+// newline are indistinguishable, but additional trailing blank lines are
+// preserved and distinguish values.
 func TestMatchTrailingNewlineInvariant(t *testing.T) {
 	t.Setenv("CI", "")
 	t.Setenv("UPDATE_SNAPS", "")
 	archive := testArchive(t)
 
 	ft := &fakeT{name: "TestFakeEOF"}
-	Match(ft, "line\n")
+	Match(ft, "line")
 	raw, err := os.ReadFile(archive)
-	if err != nil || !strings.HasSuffix(string(raw), "line"+entrySep) || strings.HasSuffix(string(raw), "line"+entrySep+"\n") {
-		t.Fatalf("stored entry should end with exactly entrySep: %q err=%v", raw, err)
+	if err != nil || !strings.HasSuffix(string(raw), "line\n---\n") {
+		t.Fatalf("terminator should sit on its own line: %q err=%v", raw, err)
 	}
 
-	for _, got := range []string{"line", "line\n"} {
+	// "line" and "line\n" are the same snapshot; "line\n\n" is not.
+	for got, wantMatch := range map[string]bool{"line": true, "line\n": true, "line\n\n": false} {
 		mu.Lock()
 		delete(calls, archive+"|TestFakeEOF")
 		mu.Unlock()
 		ft := &fakeT{name: "TestFakeEOF"}
 		Match(ft, got)
-		if ft.failed {
-			t.Fatalf("Match(%q) should match the stored snapshot: %q", got, ft.msg)
+		if ft.failed == wantMatch {
+			t.Fatalf("Match(%q): failed=%v, want match=%v (%q)", got, ft.failed, wantMatch, ft.msg)
 		}
+	}
+}
+
+// TestMatchPreservesInteriorTrailingBlankLines pins that a value ending in
+// blank lines keeps them across the store/compare round-trip.
+func TestMatchPreservesInteriorTrailingBlankLines(t *testing.T) {
+	t.Setenv("CI", "")
+	t.Setenv("UPDATE_SNAPS", "")
+	archive := testArchive(t)
+
+	value := "top\n\nmiddle\n\n\n"
+	ft := &fakeT{name: "TestFakeBlanks"}
+	Match(ft, value)
+	if got, ok := getEntry(t, archive, "TestFakeBlanks_1"); !ok || got != value {
+		t.Fatalf("blank lines not preserved: %q ok=%v", got, ok)
+	}
+
+	mu.Lock()
+	delete(calls, archive+"|TestFakeBlanks")
+	mu.Unlock()
+	ft = &fakeT{name: "TestFakeBlanks"}
+	Match(ft, value)
+	if ft.failed {
+		t.Fatalf("re-Match should succeed: %q", ft.msg)
 	}
 }
 
@@ -302,7 +326,7 @@ func TestCleanEntries(t *testing.T) {
 	if err != nil || n != 1 {
 		t.Fatalf("report mode: n=%d err=%v", n, err)
 	}
-	if _, ok := entry(t, archive, "TestGone_1"); !ok {
+	if _, ok := getEntry(t, archive, "TestGone_1"); !ok {
 		t.Fatal("report mode must not delete entries")
 	}
 
@@ -311,10 +335,10 @@ func TestCleanEntries(t *testing.T) {
 	if err != nil || n != 1 {
 		t.Fatalf("update mode: n=%d err=%v", n, err)
 	}
-	if _, ok := entry(t, archive, "TestGone_1"); ok {
+	if _, ok := getEntry(t, archive, "TestGone_1"); ok {
 		t.Fatal("stale entry should be deleted")
 	}
-	if got, ok := entry(t, archive, "TestLive_1"); !ok || got != "keep" {
+	if got, ok := getEntry(t, archive, "TestLive_1"); !ok || got != "keep\n" {
 		t.Fatalf("live entry should survive: %q ok=%v", got, ok)
 	}
 
