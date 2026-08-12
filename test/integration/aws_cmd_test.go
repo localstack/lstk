@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/localstack/lstk/internal/snap"
 	"github.com/localstack/lstk/test/integration/env"
 	"github.com/moby/moby/client"
 	"github.com/stretchr/testify/assert"
@@ -375,9 +376,8 @@ func TestAWSCommandRejectsInvalidAccount(t *testing.T) {
 
 	stdout, _, err := runLstk(t, testContext(t), t.TempDir(), e, "aws", "--account", "12345", "s3", "ls")
 	require.Error(t, err)
-	assert.Contains(t, stdout, "12-digit AWS account id")
-	// The AWS CLI must not have run.
-	assert.NotContains(t, stdout, "ARGS:")
+	// The AWS CLI must not have run, so the snapshot carries no ARGS: line.
+	snap.Match(t, sanitizeOutput(stdout))
 }
 
 // 7.5 (missing value)
@@ -389,8 +389,7 @@ func TestAWSCommandRejectsAccountWithoutValue(t *testing.T) {
 
 	stdout, _, err := runLstk(t, testContext(t), t.TempDir(), e, "aws", "--account")
 	require.Error(t, err)
-	assert.Contains(t, stdout, "--account requires a value")
-	assert.NotContains(t, stdout, "ARGS:")
+	snap.Match(t, sanitizeOutput(stdout))
 }
 
 // 7.6 — a flag before the `aws` token would be eaten during Cobra's command
@@ -403,8 +402,7 @@ func TestAWSCommandRejectsPreSubcommandAccount(t *testing.T) {
 
 	stdout, _, err := runLstk(t, testContext(t), t.TempDir(), e, "--account", "111111111111", "aws", "s3", "ls")
 	require.Error(t, err)
-	assert.Contains(t, stdout, "must appear after the aws subcommand")
-	assert.NotContains(t, stdout, "ARGS:")
+	snap.Match(t, sanitizeOutput(stdout))
 }
 
 // The leading flag is consumed before the help short-circuit, so help still
@@ -427,9 +425,7 @@ func TestAWSCommandFailsWhenAWSCLINotInstalled(t *testing.T) {
 
 	stdout, _, err := runLstk(t, testContext(t), t.TempDir(), e, "aws", "s3", "ls")
 	require.Error(t, err)
-	assert.Contains(t, stdout, "aws CLI not found in PATH")
-	assert.Contains(t, stdout, "Install AWS CLI:")
-	assert.Contains(t, stdout, "https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html")
+	snap.Match(t, sanitizeOutput(stdout))
 }
 
 func TestAWSCommandUsesDefaultPortWithoutConfig(t *testing.T) {
@@ -525,8 +521,7 @@ func TestAWSCommandHelpSkipsDockerAndEmulator(t *testing.T) {
 			stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), e, cmdArgs...)
 			require.NoError(t, err, "stderr: %s", stderr)
 
-			assert.Contains(t, stdout, "ARGS:"+strings.Join(args, " "))
-			assert.NotContains(t, stdout, "--endpoint-url")
+			snap.Match(t, sanitizeOutput(stdout))
 		})
 	}
 }

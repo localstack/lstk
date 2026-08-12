@@ -1,6 +1,26 @@
 Snapshots created by internal/snap. UPDATE_SNAPS=true go test rewrites
 this file.
 
+[TestSnapshotShowNotFound_1]
+Fetching snapshot...
+Error: Snapshot 'pod:missing' not found
+  ==> List your snapshots: lstk snapshot list
+---
+
+[TestSnapshotShowRejectsLocalPath_1]
+Error: './my-snapshot' resolves to a local file (./my-snapshot.snapshot); CLI cannot show local snapshots
+---
+
+[TestSnapshotShowRejectsPodNameWithPeriod_1]
+Error: invalid pod name "release.v1": use letters, digits, hyphens, and underscores only
+---
+
+[TestSnapshotShowRequiresAuthToken_1]
+Error: Authentication required to show snapshots
+  ==> Log in: lstk login
+  ==> Or set a token: export LOCALSTACK_AUTH_TOKEN=<token>
+---
+
 [TestSnapshotShowSuccessWithoutDocker_1]
 Fetching snapshot...
 Name            my-baseline
@@ -15,4 +35,14 @@ Services        s3, lambda, dynamodb, sqs
 Resources
   lambda        1 function
   s3            3 buckets
+---
+
+[TestSnapshotShowWithoutResources_1]
+Fetching snapshot...
+Name            bare
+Version         1
+Size            <size>
+LocalStack      <calv> 
+
+Services        s3, sqs
 ---

@@ -188,9 +188,7 @@ func TestStatusEndpointURLHTTPSSchemeMismatchSuggestsHTTP(t *testing.T) {
 
 	_, stderr, err := runLstk(t, testContext(t), t.TempDir(), e, "--endpoint-url", httpsURL, "status")
 	require.Error(t, err)
-	assert.Contains(t, stderr, "could not reach LocalStack emulator at "+httpsURL)
-	assert.Contains(t, stderr, srv.URL+" responded")
-	assert.Contains(t, stderr, "retry with that URL")
+	snap.Match(t, sanitizeOutput(stderr))
 }
 
 // TestStatusEndpointURLHTTPSRendersReducedOutput is the https counterpart of

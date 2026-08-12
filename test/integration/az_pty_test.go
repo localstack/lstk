@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/localstack/lstk/internal/snap"
 	"github.com/localstack/lstk/test/integration/env"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -153,6 +154,5 @@ func TestAzWithPipedStdoutKeepsPipe(t *testing.T) {
 
 	stdout, stderr, err := runLstk(t, testContext(t), workDir, e, "--endpoint-url", srv.URL, "az", "group", "list")
 	require.NoError(t, err, "stderr: %s", stderr)
-	assert.Contains(t, stdout, "STDOUT_TTY:no")
-	assert.Contains(t, stdout, "piped")
+	snap.Match(t, sanitizeOutput(stdout))
 }

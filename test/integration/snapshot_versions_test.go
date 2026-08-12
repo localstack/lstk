@@ -3,7 +3,6 @@ package integration_test
 import (
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
 
 	"github.com/localstack/lstk/internal/snap"
@@ -92,7 +91,7 @@ func TestSnapshotVersionsSingleVersionUsesSingularNoun(t *testing.T) {
 		"--non-interactive", "snapshot", "versions", "pod:solo",
 	)
 	require.NoError(t, err, "lstk snapshot versions failed: %s", stderr)
-	assert.Contains(t, stdout, "~ 1 version\n")
+	snap.Match(t, sanitizeOutput(stdout))
 }
 
 func TestSnapshotVersionsEmptyHistory(t *testing.T) {
@@ -105,8 +104,8 @@ func TestSnapshotVersionsEmptyHistory(t *testing.T) {
 		"--non-interactive", "snapshot", "versions", "pod:blank",
 	)
 	require.NoError(t, err, "lstk snapshot versions failed: %s", stderr)
-	assert.Contains(t, stdout, "No versions found for 'pod:blank'")
-	assert.NotContains(t, stdout, "VERSION", "no table should be rendered")
+	// The snapshot pins that no table is rendered for an empty history.
+	snap.Match(t, sanitizeOutput(stdout))
 }
 
 // TestSnapshotVersionsNoDockerRequired proves the command reads the platform API
@@ -122,7 +121,7 @@ func TestSnapshotVersionsNoDockerRequired(t *testing.T) {
 		"--non-interactive", "snapshot", "versions", "pod:my-baseline",
 	)
 	require.NoError(t, err, "lstk snapshot versions failed: %s", stderr)
-	assert.Contains(t, stdout, "~ 3 versions")
+	snap.Match(t, sanitizeOutput(stdout))
 }
 
 func TestSnapshotVersionsRejectsLocalPath(t *testing.T) {
@@ -135,8 +134,7 @@ func TestSnapshotVersionsRejectsLocalPath(t *testing.T) {
 		"--non-interactive", "snapshot", "versions", "./my-snapshot",
 	)
 	requireExitCode(t, 1, err)
-	assert.Contains(t, strings.ToLower(stderr), "local")
-	assert.Contains(t, stderr, "list versions of local snapshots")
+	snap.Match(t, sanitizeOutput(stderr))
 }
 
 // TestSnapshotVersionsRejectsS3Ref: S3 remotes are fully supported by
@@ -169,7 +167,7 @@ func TestSnapshotVersionsOrasKeepsComingSoon(t *testing.T) {
 		"--non-interactive", "snapshot", "versions", "oras://registry/image",
 	)
 	requireExitCode(t, 1, err)
-	assert.Contains(t, stderr, "coming soon")
+	snap.Match(t, sanitizeOutput(stderr))
 }
 
 // TestSnapshotShowPinnedVersion: show is read-only and the platform returns every
@@ -227,7 +225,7 @@ func TestSnapshotVersionsRejectsVersionSuffix(t *testing.T) {
 		"--non-interactive", "snapshot", "versions", "pod:my-baseline:3",
 	)
 	requireExitCode(t, 1, err)
-	assert.Contains(t, stderr, "drop the ':3'")
+	snap.Match(t, sanitizeOutput(stderr))
 }
 
 func TestSnapshotVersionsRejectsInvalidPodName(t *testing.T) {
@@ -240,7 +238,7 @@ func TestSnapshotVersionsRejectsInvalidPodName(t *testing.T) {
 		"--non-interactive", "snapshot", "versions", "pod:release.v1",
 	)
 	requireExitCode(t, 1, err)
-	assert.Contains(t, stderr, "invalid pod name")
+	snap.Match(t, sanitizeOutput(stderr))
 }
 
 func TestSnapshotVersionsNotFound(t *testing.T) {
@@ -256,8 +254,7 @@ func TestSnapshotVersionsNotFound(t *testing.T) {
 		"--non-interactive", "snapshot", "versions", "pod:missing",
 	)
 	requireExitCode(t, 1, err)
-	assert.Contains(t, stdout, "not found")
-	assert.Contains(t, stdout, "lstk snapshot list")
+	snap.Match(t, sanitizeOutput(stdout))
 }
 
 func TestSnapshotVersionsRequiresAuthToken(t *testing.T) {
@@ -272,6 +269,5 @@ func TestSnapshotVersionsRequiresAuthToken(t *testing.T) {
 		"--non-interactive", "snapshot", "versions", "pod:my-baseline",
 	)
 	requireExitCode(t, 1, err)
-	assert.Contains(t, stdout, "Authentication required")
-	assert.Contains(t, stdout, "lstk login")
+	snap.Match(t, sanitizeOutput(stdout))
 }

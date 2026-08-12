@@ -8,3 +8,7 @@ Fetching LocalStack status...
 • Version: <version>
 > Note: No resources deployed
 ---
+
+[TestStatusEndpointURLHTTPSSchemeMismatchSuggestsHTTP_1]
+Error: could not reach LocalStack emulator at https://127.0.0.1:<port>: Get "https://127.0.0.1:<port>/_localstack/health": http: server gave HTTP response to HTTPS client, but http://127.0.0.1:<port> responded — retry with that URL
+---

@@ -6,6 +6,7 @@ import (
 	"runtime"
 	"testing"
 
+	"github.com/localstack/lstk/internal/snap"
 	"github.com/localstack/lstk/test/integration/env"
 	"github.com/stretchr/testify/require"
 )
@@ -53,7 +54,7 @@ func TestUpdateCheckDoesNotWarnOnSingleInstall(t *testing.T) {
 
 	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), environ, "update", "--check")
 	require.NoError(t, err, stderr)
-	require.NotContains(t, stdout, "Multiple lstk installations found")
+	snap.Match(t, sanitizeOutput(stdout))
 }
 
 func TestUpdateCheckDoesNotWarnOnSymlinkedAliases(t *testing.T) {
@@ -70,7 +71,7 @@ func TestUpdateCheckDoesNotWarnOnSymlinkedAliases(t *testing.T) {
 
 	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), environ, "update", "--check")
 	require.NoError(t, err, stderr)
-	require.NotContains(t, stdout, "Multiple lstk installations found")
+	snap.Match(t, sanitizeOutput(stdout))
 }
 
 func TestUpdateCheckJSONReportsMultipleInstallsWarning(t *testing.T) {

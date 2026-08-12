@@ -1,0 +1,16 @@
+Snapshots created by internal/snap. UPDATE_SNAPS=true go test rewrites
+this file.
+
+[TestAzStartInterceptionRoutesToSubcommand_1]
+Error: az CLI not found in PATH
+  ==> Install Azure CLI: https://learn.microsoft.com/en-us/cli/azure/
+---
+
+[TestAzStopInterceptionFailsWhenAzureCLINotInstalled_1]
+Error: az CLI not found in PATH
+  ==> Install Azure CLI: https://learn.microsoft.com/en-us/cli/azure/
+---
+
+[TestAzStopInterceptionNoOpWhenNotIntercepting_1]
+> Note: 'LocalStack' is not the active Azure cloud (currently 'AzureCloud'); nothing to revert.
+---

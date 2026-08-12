@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/localstack/lstk/internal/snap"
 	"github.com/localstack/lstk/test/integration/env"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -22,9 +23,7 @@ func TestAzCommandFailsWhenAzureCLINotInstalled(t *testing.T) {
 
 	stdout, _, err := runLstk(t, testContext(t), workDir, e, "az", "group", "list")
 	require.Error(t, err)
-	assert.Contains(t, stdout, "az CLI not found in PATH")
-	assert.Contains(t, stdout, "Install Azure CLI:")
-	assert.Contains(t, stdout, "https://learn.microsoft.com/en-us/cli/azure/")
+	snap.Match(t, sanitizeOutput(stdout))
 }
 
 // azureHealthServer answers like an Azure-flavored emulator: /_localstack/health
@@ -119,9 +118,7 @@ func TestAzCommandStripsGlobalFlagsFromPassthrough(t *testing.T) {
 		"--endpoint-url", srv.URL, "--config", configPath, "--non-interactive", "az", "group", "list")
 	require.NoError(t, err, "stderr: %s", stderr)
 
-	assert.Contains(t, stdout, "AZ_ARGS:group list")
-	assert.NotContains(t, stdout, "--non-interactive")
-	assert.NotContains(t, stdout, "--config")
+	snap.Match(t, sanitizeOutput(stdout))
 }
 
 // --config must select the given config file for `lstk az` too: the Azure setup
@@ -137,12 +134,12 @@ func TestAzCommandConfigFlagSelectsConfigFile(t *testing.T) {
 	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), e,
 		"--endpoint-url", srv.URL, "--config", configPath, "az", "group", "list")
 	require.NoError(t, err, "stderr: %s", stderr)
-	assert.Contains(t, stdout, "AZ_ARGS:group list")
+	snap.Match(t, sanitizeOutput(stdout))
 
 	stdout, _, err = runLstk(t, testContext(t), t.TempDir(), e,
 		"--endpoint-url", srv.URL, "az", "group", "list")
 	require.Error(t, err, "without --config the azure setup marker must not be found")
-	assert.Contains(t, stdout, "Azure CLI integration is not set up")
+	snap.Match(t, sanitizeOutput(stdout))
 }
 
 func TestAzCommandShowsSpinnerForSlowOperation(t *testing.T) {

@@ -1,0 +1,6 @@
+Snapshots created by internal/snap. UPDATE_SNAPS=true go test rewrites
+this file.
+
+[TestStartCommandRejectsInvalidExposePorts_1]
+Error: failed to get config: invalid container config: invalid expose_ports entry "53/sctp": protocol must be "tcp" or "udp"
+---

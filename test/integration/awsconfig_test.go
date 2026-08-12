@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/localstack/lstk/internal/snap"
 	"github.com/localstack/lstk/test/integration/env"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -252,8 +253,7 @@ func TestSetupAWSNonInteractiveCreatesProfile(t *testing.T) {
 		"setup", "aws",
 	)
 	requireExitCode(t, 0, err)
-	assert.Contains(t, stdout, "Created LocalStack profile in ~/.aws")
-	assert.NotContains(t, stdout, "requires an interactive terminal")
+	snap.Match(t, sanitizeOutput(stdout))
 
 	configContent, err := os.ReadFile(filepath.Join(tmpHome, ".aws", "config"))
 	require.NoError(t, err, "~/.aws/config should have been created")
@@ -280,7 +280,7 @@ func TestSetupAWSNonInteractiveIsIdempotent(t *testing.T) {
 	// not be treated as an overwrite (no --force required).
 	stdout, _, err := runLstk(t, testContext(t), "", baseEnv, "setup", "aws")
 	requireExitCode(t, 0, err)
-	assert.Contains(t, stdout, "already configured")
+	snap.Match(t, sanitizeOutput(stdout))
 }
 
 func TestSetupAWSNonInteractiveOverwriteRequiresForce(t *testing.T) {
@@ -297,7 +297,7 @@ func TestSetupAWSNonInteractiveOverwriteRequiresForce(t *testing.T) {
 
 	stdout, _, err := runLstk(t, testContext(t), "", baseEnv, "setup", "aws")
 	requireExitCode(t, 1, err)
-	assert.Contains(t, stdout, "--force")
+	snap.Match(t, sanitizeOutput(stdout))
 
 	// The existing profile must be left untouched.
 	configContent, err := os.ReadFile(filepath.Join(awsDir, "config"))

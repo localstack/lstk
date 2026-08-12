@@ -85,7 +85,7 @@ func TestUsageErrorBeforeJSONFallsBackToPlainText(t *testing.T) {
 	requireExitCode(t, 1, err)
 
 	assert.Empty(t, stdout, "no JSON should be attempted when --json wasn't parsed yet")
-	assert.Contains(t, stderr, "bogus-flag")
+	snap.Match(t, sanitizeOutput(stderr))
 }
 
 // TestConfigLoadFailureRendersJSONEnvelope covers PR #374's review comment:
@@ -125,10 +125,8 @@ func TestConfigNotFoundRendersJSONEnvelope(t *testing.T) {
 	requireExitCode(t, 1, err)
 	assert.Empty(t, stderr, "the plain-text fallback in Execute() must not also fire alongside the envelope")
 
-	envelope := decodeEnvelope(t, stdout)
-	assert.Equal(t, "error", envelope.Status)
-	assert.Equal(t, "reset", envelope.Command)
-	require.NotNil(t, envelope.Error)
-	assert.Equal(t, "CONFIG_NOT_FOUND", envelope.Error.Code)
-	assert.Equal(t, "CONFIG", envelope.Error.Category)
+	decodeEnvelope(t, stdout)
+	// error.message embeds the temp-dir config path (and an OS-specific
+	// not-found detail), so it is masked.
+	snap.MatchJSON(t, []byte(stdout), "error.message")
 }

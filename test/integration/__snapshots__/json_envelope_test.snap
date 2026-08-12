@@ -17,6 +17,22 @@ this file.
 }
 ---
 
+[TestConfigNotFoundRendersJSONEnvelope_1]
+{
+  "command": "reset",
+  "data": null,
+  "error": {
+    "category": "CONFIG",
+    "code": "CONFIG_NOT_FOUND",
+    "message": "<any>",
+    "retryable": false
+  },
+  "schemaVersion": 1,
+  "status": "error",
+  "warnings": []
+}
+---
+
 [TestNotJSONCapableCommandRendersEnvelope_1]
 {
   "command": "login",
@@ -47,4 +63,8 @@ this file.
   "status": "error",
   "warnings": []
 }
+---
+
+[TestUsageErrorBeforeJSONFallsBackToPlainText_1]
+Error: unknown flag: --bogus-flag
 ---

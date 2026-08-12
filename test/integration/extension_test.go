@@ -163,7 +163,7 @@ func TestExtensionUnknownCommandNoExtensionErrors(t *testing.T) {
 	// goes to stderr, matching Cobra's own unknown-command output.
 	_, stderr, err := runLstk(t, testContext(t), t.TempDir(), envWithPath(tmpHome, t.TempDir()), "nope")
 	requireExitCode(t, 1, err)
-	require.Contains(t, stderr, "unknown command")
+	snap.Match(t, sanitizeOutput(stderr))
 }
 
 func TestExtensionExitCodePropagates(t *testing.T) {
@@ -231,7 +231,7 @@ func TestExtensionSelfAuthorizationRefusesWithoutToken(t *testing.T) {
 	environ = append(environ, "DOCKER_HOST=tcp://127.0.0.1:1")
 	_, stderr, err := runLstk(t, testContext(t), t.TempDir(), environ, "deploy", "auth")
 	requireExitCode(t, 13, err)
-	require.Contains(t, stderr, "not authorized")
+	snap.Match(t, sanitizeOutput(stderr))
 }
 
 func TestExtensionInvocationRecordedInTelemetry(t *testing.T) {
@@ -409,8 +409,9 @@ func TestExtensionHelpMissingDescriptionsFileDegrades(t *testing.T) {
 	tmpHome := t.TempDir()
 	stdout, stderr, err := runBinary(t, t.TempDir(), envWithPath(tmpHome, t.TempDir()), lstkBin, "--help")
 	require.NoError(t, err, stderr)
-	require.Contains(t, stdout, "Extensions:")
-	require.Contains(t, stdout, "deploy")
+	// The snapshot pins the Extensions section listing `deploy` with no
+	// description column when the descriptions file is absent.
+	snap.Match(t, stdout)
 }
 
 func TestExtensionResolvableViaSymlinkedLstk(t *testing.T) {
@@ -481,8 +482,8 @@ func TestExtensionBundledWinsOverPath(t *testing.T) {
 	require.NoError(t, err)
 	require.Contains(t, stdout, "SELF="+resolvedBundle, "expected the bundled extension to run, not the PATH one")
 
-	// Help lists the de-duplicated name exactly once.
+	// Help lists the de-duplicated name exactly once — pinned by the snapshot.
 	helpOut, _, err := runBinary(t, t.TempDir(), envWithPath(tmpHome, extDir), lstkBin, "--help")
 	require.NoError(t, err)
-	require.Equal(t, 1, strings.Count(helpOut, "\n  deploy"))
+	snap.Match(t, helpOut)
 }

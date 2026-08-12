@@ -7,6 +7,7 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/localstack/lstk/internal/snap"
 	"github.com/localstack/lstk/test/integration/env"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -41,8 +42,7 @@ func TestSnapshotRemoveLocalRefRejected(t *testing.T) {
 		"--non-interactive", "snapshot", "remove", "./my-baseline.zip",
 	)
 	requireExitCode(t, 1, err)
-	assert.Contains(t, stderr, "resolves to a local file")
-	assert.Contains(t, stderr, "CLI cannot delete local files")
+	snap.Match(t, sanitizeOutput(stderr))
 }
 
 func TestSnapshotRemoveLocalBareNameRejected(t *testing.T) {
@@ -54,8 +54,7 @@ func TestSnapshotRemoveLocalBareNameRejected(t *testing.T) {
 		"--non-interactive", "snapshot", "remove", "my-baseline",
 	)
 	requireExitCode(t, 1, err)
-	assert.Contains(t, stderr, "resolves to a local file")
-	assert.Contains(t, stderr, "CLI cannot delete local files")
+	snap.Match(t, sanitizeOutput(stderr))
 }
 
 func TestSnapshotRemovePodNoAuthToken(t *testing.T) {
@@ -67,7 +66,7 @@ func TestSnapshotRemovePodNoAuthToken(t *testing.T) {
 		"--non-interactive", "snapshot", "remove", "pod:my-baseline", "--force",
 	)
 	requireExitCode(t, 1, err)
-	assert.Contains(t, stderr, "authentication")
+	snap.Match(t, sanitizeOutput(stderr))
 }
 
 func TestSnapshotRemovePodInvalidName(t *testing.T) {
@@ -82,7 +81,7 @@ func TestSnapshotRemovePodInvalidName(t *testing.T) {
 				"--non-interactive", "snapshot", "remove", ref,
 			)
 			requireExitCode(t, 1, err)
-			assert.Contains(t, stderr, "invalid pod name")
+			snap.Match(t, sanitizeOutput(stderr))
 		})
 	}
 }
@@ -96,7 +95,7 @@ func TestSnapshotRemoveNonInteractiveRequiresForce(t *testing.T) {
 		"--non-interactive", "snapshot", "remove", "pod:my-baseline",
 	)
 	requireExitCode(t, 1, err)
-	assert.Contains(t, stderr, "--force")
+	snap.Match(t, sanitizeOutput(stderr))
 }
 
 func TestSnapshotRemoteSchemeRejected(t *testing.T) {
@@ -111,7 +110,7 @@ func TestSnapshotRemoteSchemeRejected(t *testing.T) {
 				"--non-interactive", "snapshot", "remove", ref,
 			)
 			requireExitCode(t, 1, err)
-			assert.Contains(t, stderr, "not yet supported")
+			snap.Match(t, sanitizeOutput(stderr))
 		})
 	}
 }

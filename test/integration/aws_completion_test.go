@@ -7,6 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/localstack/lstk/internal/snap"
 	"github.com/localstack/lstk/test/integration/env"
 )
 
@@ -37,12 +38,7 @@ func TestAWSCompletionDelegatesToAWSCompleter(t *testing.T) {
 
 	// The completer strips the first word of COMP_LINE and resolves the rest
 	// against the aws command tree, so lstk's own name must not be in it.
-	assert.Contains(t, stdout, "compline=[aws s3 l]")
-	assert.NotContains(t, stdout, "compline=[lstk")
-
-	completions := strings.Fields(stdout)
-	assert.Contains(t, completions, "ls")
-	assert.Contains(t, completions, "list-buckets")
+	snap.Match(t, sanitizeOutput(stdout))
 }
 
 // TestAWSCompletionAppendsTrailingSpaceForNewWord verifies the cursor position
@@ -57,7 +53,7 @@ func TestAWSCompletionAppendsTrailingSpaceForNewWord(t *testing.T) {
 	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), e, "__complete", "aws", "s3", "")
 	require.NoError(t, err, "stderr: %s", stderr)
 
-	assert.Contains(t, stdout, "compline=[aws s3 ]")
+	snap.Match(t, sanitizeOutput(stdout))
 }
 
 // TestAWSCompletionStripsGlobalFlags keeps lstk's own persistent flags out of
@@ -73,7 +69,7 @@ func TestAWSCompletionStripsGlobalFlags(t *testing.T) {
 		"__complete", "aws", "--non-interactive", "s3", "l")
 	require.NoError(t, err, "stderr: %s", stderr)
 
-	assert.Contains(t, stdout, "compline=[aws s3 l]")
+	snap.Match(t, sanitizeOutput(stdout))
 }
 
 // TestAWSCompletionNeedsNoDockerOrEmulator guards the property that makes this
@@ -91,8 +87,7 @@ func TestAWSCompletionNeedsNoDockerOrEmulator(t *testing.T) {
 	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), e, "__complete", "aws", "s3", "l")
 	require.NoError(t, err, "stderr: %s", stderr)
 
-	assert.Contains(t, stdout, "ls")
-	assert.NotContains(t, stdout, "Docker is not available")
+	snap.Match(t, sanitizeOutput(stdout))
 }
 
 // TestAWSCompletionDegradesWhenCompleterMissing verifies a machine without
@@ -108,7 +103,7 @@ func TestAWSCompletionDegradesWhenCompleterMissing(t *testing.T) {
 
 	// ShellCompDirectiveDefault (0) — hand the word back to the shell's own
 	// file completion rather than offering nothing at all.
-	assert.Equal(t, ":0", strings.TrimSpace(stdout))
+	snap.Match(t, sanitizeOutput(stdout))
 }
 
 // TestBashCompletionForAWSSubcommand drives the real generated bash script the

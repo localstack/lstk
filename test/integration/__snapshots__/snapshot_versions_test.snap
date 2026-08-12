@@ -20,6 +20,11 @@ Error: Version 99 of 'pod:my-baseline' not found
   ==> List available versions: lstk snapshot versions pod:my-baseline
 ---
 
+[TestSnapshotVersionsEmptyHistory_1]
+Fetching versions...
+> Note: No versions found for 'pod:blank'
+---
+
 [TestSnapshotVersionsFiltersDeletedVersions_1]
 Fetching versions...
 ~ 2 versions
@@ -29,8 +34,54 @@ Fetching versions...
   1        -        keep-one    -
 ---
 
+[TestSnapshotVersionsNoDockerRequired_1]
+Fetching versions...
+~ 3 versions
+
+  VERSION  CREATED               LOCALSTACK  SERVICES
+  3        <date>                <calv>      s3, lambda
+  2        <date>                <calv>      s3
+  1        <date>                <calv>      -
+---
+
+[TestSnapshotVersionsNotFound_1]
+Fetching versions...
+Error: Snapshot 'pod:missing' not found
+  ==> List your snapshots: lstk snapshot list
+---
+
+[TestSnapshotVersionsOrasKeepsComingSoon_1]
+Error: remote destinations are not yet supported — coming soon
+---
+
+[TestSnapshotVersionsRejectsInvalidPodName_1]
+Error: invalid pod name "release.v1": use letters, digits, hyphens, and underscores only
+---
+
+[TestSnapshotVersionsRejectsLocalPath_1]
+Error: './my-snapshot' resolves to a local file (./my-snapshot.snapshot); CLI cannot list versions of local snapshots
+---
+
 [TestSnapshotVersionsRejectsS3Ref_1]
 Error: snapshot versions is only supported for Cloud Pods (pod: refs), not S3 remotes
+---
+
+[TestSnapshotVersionsRejectsVersionSuffix_1]
+Error: a specific snapshot version is not supported here: drop the ':3' from "pod:my-baseline:3"
+---
+
+[TestSnapshotVersionsRequiresAuthToken_1]
+Error: Authentication required to list snapshot versions
+  ==> Log in: lstk login
+  ==> Or set a token: export LOCALSTACK_AUTH_TOKEN=<token>
+---
+
+[TestSnapshotVersionsSingleVersionUsesSingularNoun_1]
+Fetching versions...
+~ 1 version
+
+  VERSION  CREATED  LOCALSTACK  SERVICES
+  1        -        -           -
 ---
 
 [TestSnapshotVersionsSuccessWithoutDocker_1]

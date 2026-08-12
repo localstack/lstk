@@ -12,6 +12,14 @@ SESSION_ID=<id>
 EMULATOR_COUNT=0
 ---
 
+[TestJSONFlagBeforeCommandNameBooleanValues_--json_false_before_the_command_name_is_not_rejected_1]
+Error: aws CLI not found in PATH
+  ==> Install AWS CLI: https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html
+---
+
+[TestJSONFlagBeforeCommandNameBooleanValues_--json_false_before_the_command_name_is_not_rejected_2]
+---
+
 [TestJSONFlagBeforeCommandNameBooleanValues_--json_true_before_the_command_name_is_rejected_1]
 {
   "command": "aws",
@@ -49,9 +57,15 @@ Error: aws CLI not found in PATH
   ==> Install AWS CLI: https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html
 ---
 
+[TestJSONFlagProxyCommandsForwardJSON_aws_json_after_the_wrapped_tool_s_own_action_2]
+---
+
 [TestJSONFlagProxyCommandsForwardJSON_aws_json_immediately_after_command_name_1]
 Error: aws CLI not found in PATH
   ==> Install AWS CLI: https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html
+---
+
+[TestJSONFlagProxyCommandsForwardJSON_aws_json_immediately_after_command_name_2]
 ---
 
 [TestJSONFlagProxyCommandsForwardJSON_az_json_after_the_wrapped_tool_s_own_action_1]
@@ -59,9 +73,15 @@ Error: az CLI not found in PATH
   ==> Install Azure CLI: https://learn.microsoft.com/en-us/cli/azure/
 ---
 
+[TestJSONFlagProxyCommandsForwardJSON_az_json_after_the_wrapped_tool_s_own_action_2]
+---
+
 [TestJSONFlagProxyCommandsForwardJSON_az_json_immediately_after_command_name_1]
 Error: az CLI not found in PATH
   ==> Install Azure CLI: https://learn.microsoft.com/en-us/cli/azure/
+---
+
+[TestJSONFlagProxyCommandsForwardJSON_az_json_immediately_after_command_name_2]
 ---
 
 [TestJSONFlagProxyCommandsForwardJSON_cdk_json_after_the_wrapped_tool_s_own_action_1]
@@ -69,9 +89,15 @@ Error: cdk not found in PATH
   ==> Install CDK CLI: npm install -g aws-cdk
 ---
 
+[TestJSONFlagProxyCommandsForwardJSON_cdk_json_after_the_wrapped_tool_s_own_action_2]
+---
+
 [TestJSONFlagProxyCommandsForwardJSON_cdk_json_immediately_after_command_name_1]
 Error: cdk not found in PATH
   ==> Install CDK CLI: npm install -g aws-cdk
+---
+
+[TestJSONFlagProxyCommandsForwardJSON_cdk_json_immediately_after_command_name_2]
 ---
 
 [TestJSONFlagProxyCommandsForwardJSON_sam_json_after_the_wrapped_tool_s_own_action_1]
@@ -79,9 +105,15 @@ Error: sam not found in PATH
   ==> Install AWS SAM CLI: https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/install-sam-cli.html
 ---
 
+[TestJSONFlagProxyCommandsForwardJSON_sam_json_after_the_wrapped_tool_s_own_action_2]
+---
+
 [TestJSONFlagProxyCommandsForwardJSON_sam_json_immediately_after_command_name_1]
 Error: sam not found in PATH
   ==> Install AWS SAM CLI: https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/install-sam-cli.html
+---
+
+[TestJSONFlagProxyCommandsForwardJSON_sam_json_immediately_after_command_name_2]
 ---
 
 [TestJSONFlagProxyCommandsForwardJSON_terraform_json_after_the_wrapped_tool_s_own_action_1]
@@ -89,9 +121,15 @@ Error: terraform not found in PATH
   ==> Install Terraform CLI: https://developer.hashicorp.com/terraform/cli
 ---
 
+[TestJSONFlagProxyCommandsForwardJSON_terraform_json_after_the_wrapped_tool_s_own_action_2]
+---
+
 [TestJSONFlagProxyCommandsForwardJSON_terraform_json_immediately_after_command_name_1]
 Error: terraform not found in PATH
   ==> Install Terraform CLI: https://developer.hashicorp.com/terraform/cli
+---
+
+[TestJSONFlagProxyCommandsForwardJSON_terraform_json_immediately_after_command_name_2]
 ---
 
 [TestJSONFlagProxyCommandsRejectBeforeCommandName_aws_1]
@@ -166,6 +204,38 @@ Error: terraform not found in PATH
     "category": "USAGE",
     "code": "NOT_JSON_CAPABLE",
     "message": "\"terraform\" is not able to provide output in JSON format",
+    "retryable": false
+  },
+  "schemaVersion": 1,
+  "status": "error",
+  "warnings": []
+}
+---
+
+[TestJSONFlagRejectsDefaultStartBehavior_1]
+{
+  "command": "start",
+  "data": null,
+  "error": {
+    "category": "USAGE",
+    "code": "NOT_JSON_CAPABLE",
+    "message": "\"start\" is not able to provide output in JSON format",
+    "retryable": false
+  },
+  "schemaVersion": 1,
+  "status": "error",
+  "warnings": []
+}
+---
+
+[TestJSONFlagRejectsUnannotatedBuiltinCommand_1]
+{
+  "command": "status",
+  "data": null,
+  "error": {
+    "category": "USAGE",
+    "code": "NOT_JSON_CAPABLE",
+    "message": "\"status\" is not able to provide output in JSON format",
     "retryable": false
   },
   "schemaVersion": 1,

@@ -1,0 +1,34 @@
+Snapshots created by internal/snap. UPDATE_SNAPS=true go test rewrites
+this file.
+
+[TestAWSCompletionAppendsTrailingSpaceForNewWord_1]
+compline=[aws s3 ]
+ls
+list-buckets
+:4
+---
+
+[TestAWSCompletionDegradesWhenCompleterMissing_1]
+:0
+---
+
+[TestAWSCompletionDelegatesToAWSCompleter_1]
+compline=[aws s3 l]
+ls
+list-buckets
+:4
+---
+
+[TestAWSCompletionNeedsNoDockerOrEmulator_1]
+compline=[aws s3 l]
+ls
+list-buckets
+:4
+---
+
+[TestAWSCompletionStripsGlobalFlags_1]
+compline=[aws s3 l]
+ls
+list-buckets
+:4
+---

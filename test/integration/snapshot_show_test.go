@@ -4,7 +4,6 @@ import (
 	"encoding/base64"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"sync"
 	"testing"
 
@@ -99,8 +98,9 @@ func TestSnapshotShowWithoutResources(t *testing.T) {
 		"--non-interactive", "snapshot", "show", "pod:bare",
 	)
 	require.NoError(t, err, "lstk snapshot show failed: %s", stderr)
-	assert.Contains(t, stdout, "s3, sqs")
-	assert.NotContains(t, stdout, "Resources", "Resources section must be omitted when no counts are available")
+	// The snapshot pins that the Resources section is omitted when no counts
+	// are available.
+	snap.Match(t, sanitizeOutput(stdout))
 }
 
 // TestSnapshotShowPodNameLeadingUnderscore covers a name the platform's
@@ -139,7 +139,7 @@ func TestSnapshotShowRejectsPodNameWithPeriod(t *testing.T) {
 		"--non-interactive", "snapshot", "show", "pod:release.v1",
 	)
 	require.Error(t, err, "a dotted pod name must be rejected client-side")
-	assert.Contains(t, stderr, "invalid pod name")
+	snap.Match(t, sanitizeOutput(stderr))
 
 	called, _, _ := cap.get()
 	assert.False(t, called, "the platform endpoint must not be called for an invalid name")
@@ -176,7 +176,7 @@ func TestSnapshotShowRejectsLocalPath(t *testing.T) {
 		"--non-interactive", "snapshot", "show", "./my-snapshot",
 	)
 	requireExitCode(t, 1, err)
-	assert.Contains(t, strings.ToLower(stderr), "local")
+	snap.Match(t, sanitizeOutput(stderr))
 }
 
 func TestSnapshotShowNotFound(t *testing.T) {
@@ -192,8 +192,7 @@ func TestSnapshotShowNotFound(t *testing.T) {
 		"--non-interactive", "snapshot", "show", "pod:missing",
 	)
 	requireExitCode(t, 1, err)
-	assert.Contains(t, stdout, "not found")
-	assert.Contains(t, stdout, "lstk snapshot list")
+	snap.Match(t, sanitizeOutput(stdout))
 }
 
 func TestSnapshotShowRequiresAuthToken(t *testing.T) {
@@ -214,6 +213,5 @@ func TestSnapshotShowRequiresAuthToken(t *testing.T) {
 		"--non-interactive", "snapshot", "show", "pod:my-baseline",
 	)
 	requireExitCode(t, 1, err)
-	assert.Contains(t, stdout, "Authentication required")
-	assert.Contains(t, stdout, "lstk login")
+	snap.Match(t, sanitizeOutput(stdout))
 }

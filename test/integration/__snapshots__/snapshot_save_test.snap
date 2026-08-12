@@ -1,0 +1,42 @@
+Snapshots created by internal/snap. UPDATE_SNAPS=true go test rewrites
+this file.
+
+[TestSnapshotSavePodInvalidName_pod__1]
+Error: invalid pod name "": must not be empty
+---
+
+[TestSnapshotSavePodInvalidName_pod_bad.name_1]
+Error: invalid pod name "bad.name": use letters, digits, hyphens, and underscores only
+---
+
+[TestSnapshotSavePodInvalidName_pod_my_pod_1]
+Error: invalid pod name "my pod": use letters, digits, hyphens, and underscores only
+---
+
+[TestSnapshotSavePodNoAuthToken_1]
+Error: pod snapshots require authentication — set LOCALSTACK_AUTH_TOKEN or run "lstk login"
+---
+
+[TestSnapshotSavePodServicesInvalidFormat_____1]
+Error: must be a comma-separated list of service names (letters, digits, hyphens, underscores)
+---
+
+[TestSnapshotSavePodServicesInvalidFormat_s3__1]
+Error: must be a comma-separated list of service names (letters, digits, hyphens, underscores)
+---
+
+[TestSnapshotSavePodServicesInvalidFormat_s3_lambda_1]
+Error: must be a comma-separated list of service names (letters, digits, hyphens, underscores)
+---
+
+[TestSnapshotSaveRemoteRejected_oras_registry_my-snap_1]
+Error: remote destinations are not yet supported — coming soon
+---
+
+[TestSnapshotSaveS3CredentialsInURLRejected_1]
+Error: do not put credentials in the s3:// URL; use AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY or --profile
+---
+
+[TestSnapshotSaveS3MissingCredentials_1]
+Error: AWS credentials required for S3 snapshots: set AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY, set AWS_PROFILE, or pass --profile <name>
+---

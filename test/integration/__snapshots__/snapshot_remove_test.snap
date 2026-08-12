@@ -1,0 +1,38 @@
+Snapshots created by internal/snap. UPDATE_SNAPS=true go test rewrites
+this file.
+
+[TestSnapshotRemoteSchemeRejected_oras_registry_snap_1]
+Error: remote destinations are not yet supported — coming soon
+---
+
+[TestSnapshotRemoteSchemeRejected_s3_bucket_snap_1]
+Error: remote destinations are not yet supported — coming soon
+---
+
+[TestSnapshotRemoveLocalBareNameRejected_1]
+Error: 'my-baseline' resolves to a local file (./my-baseline.snapshot); CLI cannot delete local files
+---
+
+[TestSnapshotRemoveLocalRefRejected_1]
+Error: './my-baseline.zip' resolves to a local file (./my-baseline.snapshot); CLI cannot delete local files
+---
+
+[TestSnapshotRemoveNonInteractiveRequiresForce_1]
+Error: snapshot remove requires confirmation; use --force to skip in non-interactive mode
+---
+
+[TestSnapshotRemovePodInvalidName_pod__1]
+Error: invalid pod name "": must not be empty
+---
+
+[TestSnapshotRemovePodInvalidName_pod_bad.name_1]
+Error: invalid pod name "bad.name": use letters, digits, hyphens, and underscores only
+---
+
+[TestSnapshotRemovePodInvalidName_pod_my_pod_1]
+Error: invalid pod name "my pod": use letters, digits, hyphens, and underscores only
+---
+
+[TestSnapshotRemovePodNoAuthToken_1]
+Error: pod snapshots require authentication — set LOCALSTACK_AUTH_TOKEN or run "lstk login"
+---

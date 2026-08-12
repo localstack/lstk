@@ -546,7 +546,7 @@ func TestUpdateBinaryMockGitHubHappyPath(t *testing.T) {
 
 	verOut, err := exec.CommandContext(ctx, oldBinary, "--version").CombinedOutput()
 	require.NoError(t, err)
-	assert.Contains(t, string(verOut), "0.0.2", "binary should be replaced with the mock release")
+	snap.Match(t, sanitizeOutput(string(verOut)))
 
 	leftovers, err := filepath.Glob(filepath.Join(filepath.Dir(oldBinary), "lstk-update-*"))
 	require.NoError(t, err)
@@ -603,7 +603,7 @@ func TestUpdateBinaryMockGitHubChecksumMismatch(t *testing.T) {
 
 	verOut, err := exec.CommandContext(ctx, oldBinary, "--version").CombinedOutput()
 	require.NoError(t, err, "original binary should still run")
-	assert.Contains(t, string(verOut), "0.0.1", "binary must not be replaced on checksum mismatch")
+	snap.Match(t, sanitizeOutput(string(verOut)))
 
 	leftovers, err := filepath.Glob(filepath.Join(filepath.Dir(oldBinary), "lstk-update-*"))
 	require.NoError(t, err)
@@ -641,7 +641,7 @@ func TestUpdateBinaryMockGitHubMissingChecksums(t *testing.T) {
 
 	verOut, err := exec.CommandContext(ctx, oldBinary, "--version").CombinedOutput()
 	require.NoError(t, err, "original binary should still run")
-	assert.Contains(t, string(verOut), "0.0.1", "binary must not be replaced without a verifiable manifest")
+	snap.Match(t, sanitizeOutput(string(verOut)))
 
 	leftovers, err := filepath.Glob(filepath.Join(filepath.Dir(oldBinary), "lstk-update-*"))
 	require.NoError(t, err)

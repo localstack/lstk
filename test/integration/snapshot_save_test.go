@@ -14,6 +14,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/localstack/lstk/internal/snap"
 	"github.com/localstack/lstk/test/integration/env"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -232,7 +233,7 @@ func TestSnapshotSaveRemoteRejected(t *testing.T) {
 
 			_, stderr, err := runLstk(t, ctx, t.TempDir(), testEnvWithHome(t.TempDir(), ""), "--non-interactive", "snapshot", "save", dest)
 			requireExitCode(t, 1, err)
-			assert.Contains(t, stderr, "not yet supported")
+			snap.Match(t, sanitizeOutput(stderr))
 		})
 	}
 }
@@ -248,7 +249,7 @@ func TestSnapshotSaveS3MissingCredentials(t *testing.T) {
 		"--non-interactive", "snapshot", "save", "my-pod", "s3://my-bucket/prefix",
 	)
 	requireExitCode(t, 1, err)
-	assert.Contains(t, stderr, "AWS credentials required")
+	snap.Match(t, sanitizeOutput(stderr))
 }
 
 func TestSnapshotSaveS3CredentialsInURLRejected(t *testing.T) {
@@ -262,7 +263,7 @@ func TestSnapshotSaveS3CredentialsInURLRejected(t *testing.T) {
 		"--non-interactive", "snapshot", "save", "my-pod", "s3://my-bucket/prefix?access_key_id=AKIA&secret_access_key=secret",
 	)
 	requireExitCode(t, 1, err)
-	assert.Contains(t, stderr, "do not put credentials")
+	snap.Match(t, sanitizeOutput(stderr))
 }
 
 // mockPodS3Server handles the remote registration plus pod save against an S3
@@ -413,7 +414,7 @@ func TestSnapshotSavePodNoAuthToken(t *testing.T) {
 		"--non-interactive", "snapshot", "save", "pod:my-baseline",
 	)
 	requireExitCode(t, 1, err)
-	assert.Contains(t, stderr, "authentication")
+	snap.Match(t, sanitizeOutput(stderr))
 }
 
 func TestSnapshotSavePodInvalidName(t *testing.T) {
@@ -429,7 +430,7 @@ func TestSnapshotSavePodInvalidName(t *testing.T) {
 
 			_, stderr, err := runLstk(t, ctx, t.TempDir(), testEnvWithHome(t.TempDir(), ""), "--non-interactive", "snapshot", "save", dest)
 			requireExitCode(t, 1, err)
-			assert.Contains(t, stderr, "invalid pod name")
+			snap.Match(t, sanitizeOutput(stderr))
 		})
 	}
 }
@@ -559,7 +560,7 @@ func TestSnapshotSavePodServicesInvalidFormat(t *testing.T) {
 				"--non-interactive", "snapshot", "save", "pod:my-baseline", "--services", value,
 			)
 			requireExitCode(t, 1, err)
-			assert.Contains(t, stderr, "comma-separated list of service names")
+			snap.Match(t, sanitizeOutput(stderr))
 		})
 	}
 }

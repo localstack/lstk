@@ -1,6 +1,29 @@
 Snapshots created by internal/snap. UPDATE_SNAPS=true go test rewrites
 this file.
 
+[TestSnapshotListAllFlag_1]
+Fetching snapshots...
+~ 1 snapshot
+
+  NAME     VERSION  LAST CHANGED
+  org-pod  1        -
+---
+
+[TestSnapshotListEmpty_1]
+Fetching snapshots...
+> Note: No snapshots found
+---
+
+[TestSnapshotListRequiresAuthToken_1]
+Error: Authentication required to list snapshots
+  ==> Log in: lstk login
+  ==> Or set a token: export LOCALSTACK_AUTH_TOKEN=<token>
+---
+
+[TestSnapshotListServerError_1]
+Error: list snapshots: failed to list cloud pods: status 500: internal error
+---
+
 [TestSnapshotListSuccessWithoutDocker_1]
 Fetching snapshots...
 ~ 2 snapshots

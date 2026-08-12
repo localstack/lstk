@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/localstack/lstk/internal/snap"
 	"github.com/localstack/lstk/test/integration/env"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -21,7 +22,7 @@ func TestStartSnapshotConflictingFlags(t *testing.T) {
 		"--non-interactive", "start", "--snapshot", "pod:my-baseline", "--no-snapshot",
 	)
 	requireExitCode(t, 1, err)
-	assert.Contains(t, stderr, "cannot be used together")
+	snap.Match(t, sanitizeOutput(stderr))
 }
 
 func TestStartSnapshotInvalidPodName(t *testing.T) {
@@ -33,7 +34,7 @@ func TestStartSnapshotInvalidPodName(t *testing.T) {
 		"--non-interactive", "start", "--snapshot", "pod:bad.name",
 	)
 	requireExitCode(t, 1, err)
-	assert.Contains(t, stderr, "invalid pod name")
+	snap.Match(t, sanitizeOutput(stderr))
 }
 
 func TestStartSnapshotLocalFileNotFound(t *testing.T) {

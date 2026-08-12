@@ -1,0 +1,20 @@
+Snapshots created by internal/snap. UPDATE_SNAPS=true go test rewrites
+this file.
+
+[TestStartTypeErrorsOnMultipleBlocks_1]
+Error: Unsupported configuration
+  found 2 [[containers]] blocks in your config, but only one is supported at a time
+  ==> Edit your config file so only one [[containers]] block is enabled: lstk config path
+---
+
+[TestStartTypeErrorsWhenNoContainersBlock_1]
+Error: failed to switch emulator type: no [[containers]] block found in config
+---
+
+[TestStartTypeInvalidValue_1]
+Error: invalid emulator type "bogus" (must be one of: aws, snowflake, azure)
+---
+
+[TestStartTypePositionalRejected_1]
+Error: unexpected argument "azure"; select the emulator with --type (e.g. lstk start --type azure)
+---

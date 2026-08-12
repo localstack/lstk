@@ -1,0 +1,39 @@
+Snapshots created by internal/snap. UPDATE_SNAPS=true go test rewrites
+this file.
+
+[TestAWSCommandFailsWhenAWSCLINotInstalled_1]
+Error: aws CLI not found in PATH
+  ==> Install AWS CLI: https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html
+---
+
+[TestAWSCommandHelpSkipsDockerAndEmulator_--help_1]
+ARGS:--help
+---
+
+[TestAWSCommandHelpSkipsDockerAndEmulator_-h_1]
+ARGS:-h
+---
+
+[TestAWSCommandHelpSkipsDockerAndEmulator_help_1]
+ARGS:help
+---
+
+[TestAWSCommandHelpSkipsDockerAndEmulator_s3_--help_1]
+ARGS:s3 --help
+---
+
+[TestAWSCommandHelpSkipsDockerAndEmulator_s3_help_1]
+ARGS:s3 help
+---
+
+[TestAWSCommandRejectsAccountWithoutValue_1]
+Error: --account requires a value
+---
+
+[TestAWSCommandRejectsInvalidAccount_1]
+Error: --account must be a 12-digit AWS account id, got "12345"
+---
+
+[TestAWSCommandRejectsPreSubcommandAccount_1]
+Error: --account must appear after the aws subcommand (e.g. `lstk aws --account 111111111111 ...`)
+---

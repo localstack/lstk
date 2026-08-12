@@ -26,7 +26,7 @@ func TestPlainSink_EmitsMessageEventInfo(t *testing.T) {
 
 	sink.Emit(MessageEvent{Severity: SeverityInfo, Text: "hello"})
 
-	assert.Equal(t, "hello\n", out.String())
+	snap.Match(t, out.String())
 }
 
 func TestPlainSink_EmitsMessageEventWarning(t *testing.T) {
@@ -35,49 +35,41 @@ func TestPlainSink_EmitsMessageEventWarning(t *testing.T) {
 
 	sink.Emit(MessageEvent{Severity: SeverityWarning, Text: "something went wrong"})
 
-	assert.Equal(t, "> Warning: something went wrong\n", out.String())
+	snap.Match(t, out.String())
 }
 
 func TestPlainSink_EmitsStatusEvent(t *testing.T) {
 	tests := []struct {
-		name     string
-		event    ContainerStatusEvent
-		expected string
+		name  string
+		event ContainerStatusEvent
 	}{
 		{
-			name:     "pulling phase",
-			event:    ContainerStatusEvent{Phase: "pulling", Container: "localstack/localstack:latest"},
-			expected: "Preparing LocalStack...\n",
+			name:  "pulling phase",
+			event: ContainerStatusEvent{Phase: "pulling", Container: "localstack/localstack:latest"},
 		},
 		{
-			name:     "starting phase",
-			event:    ContainerStatusEvent{Phase: "starting", Container: "localstack-aws"},
-			expected: "Starting LocalStack...\n",
+			name:  "starting phase",
+			event: ContainerStatusEvent{Phase: "starting", Container: "localstack-aws"},
 		},
 		{
-			name:     "waiting phase",
-			event:    ContainerStatusEvent{Phase: "waiting", Container: "localstack-aws"},
-			expected: "Waiting for LocalStack to be ready...\n",
+			name:  "waiting phase",
+			event: ContainerStatusEvent{Phase: "waiting", Container: "localstack-aws"},
 		},
 		{
-			name:     "ready phase with detail",
-			event:    ContainerStatusEvent{Phase: "ready", Container: "localstack-aws", Detail: "abc123"},
-			expected: fmt.Sprintf("%s LocalStack is running (abc123)\n", SuccessMarker()),
+			name:  "ready phase with detail",
+			event: ContainerStatusEvent{Phase: "ready", Container: "localstack-aws", Detail: "abc123"},
 		},
 		{
-			name:     "ready phase without detail",
-			event:    ContainerStatusEvent{Phase: "ready", Container: "localstack-aws"},
-			expected: fmt.Sprintf("%s LocalStack is running\n", SuccessMarker()),
+			name:  "ready phase without detail",
+			event: ContainerStatusEvent{Phase: "ready", Container: "localstack-aws"},
 		},
 		{
-			name:     "unknown phase with detail",
-			event:    ContainerStatusEvent{Phase: "custom", Container: "localstack-aws", Detail: "info"},
-			expected: "LocalStack: custom (info)\n",
+			name:  "unknown phase with detail",
+			event: ContainerStatusEvent{Phase: "custom", Container: "localstack-aws", Detail: "info"},
 		},
 		{
-			name:     "unknown phase without detail",
-			event:    ContainerStatusEvent{Phase: "custom", Container: "localstack-aws"},
-			expected: "LocalStack: custom\n",
+			name:  "unknown phase without detail",
+			event: ContainerStatusEvent{Phase: "custom", Container: "localstack-aws"},
 		},
 	}
 
@@ -88,7 +80,7 @@ func TestPlainSink_EmitsStatusEvent(t *testing.T) {
 
 			sink.Emit(tt.event)
 
-			assert.Equal(t, tt.expected, out.String())
+			snap.Match(t, out.String())
 		})
 	}
 }
@@ -123,7 +115,7 @@ func TestPlainSink_EmitsLogLineEvent(t *testing.T) {
 
 	sink.Emit(LogLineEvent{Source: "container", Line: "2024-01-01 hello from container"})
 
-	assert.Equal(t, "2024-01-01 hello from container\n", out.String())
+	snap.Match(t, out.String())
 }
 
 func TestPlainSink_EmitsSpinnerEvent(t *testing.T) {
@@ -133,7 +125,7 @@ func TestPlainSink_EmitsSpinnerEvent(t *testing.T) {
 
 		sink.Emit(SpinnerEvent{Active: true, Text: "Loading"})
 
-		assert.Equal(t, "Loading...\n", out.String())
+		snap.Match(t, out.String())
 	})
 
 	t.Run("stop spinner is silent", func(t *testing.T) {
