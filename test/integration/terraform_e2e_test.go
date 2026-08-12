@@ -48,7 +48,7 @@ func requireTofu(t *testing.T) {
 func e2eEnv(t *testing.T) env.Environ {
 	t.Helper()
 	return env.With(env.DisableEvents, "1").
-		With(env.Home, t.TempDir()).
+		WithHome(t.TempDir()).
 		With(env.Key("TF_PLUGIN_CACHE_DIR"), tfPluginCacheDir(t)).
 		With(env.Key("TF_IN_AUTOMATION"), "1")
 }

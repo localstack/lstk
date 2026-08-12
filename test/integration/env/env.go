@@ -2,6 +2,7 @@ package env
 
 import (
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -29,12 +30,22 @@ const (
 	// (github.com) at mock servers (undocumented, test-only).
 	UpdateGitHubAPIEndpoint      Key = "LSTK_UPDATE_GITHUB_API_ENDPOINT"
 	UpdateGitHubDownloadEndpoint Key = "LSTK_UPDATE_GITHUB_DOWNLOAD_ENDPOINT"
+	// BrowserCmd replaces the OS browser launcher for the login flow
+	// (undocumented, test-only): on Windows pkg/browser opens URLs via the
+	// ShellExecute Win32 call, which fake binaries on PATH cannot intercept.
+	BrowserCmd Key = "LSTK_BROWSER_CMD"
 	AWSAccessKeyID     Key = "AWS_ACCESS_KEY_ID"
 	AWSSecretAccessKey Key = "AWS_SECRET_ACCESS_KEY"
 	// AzureCollectTelemetry controls the Azure CLI's usage telemetry. Defaulted to
 	// "false" in every test environment: an enabled `az` spawns a background uploader
 	// that keeps a handle on the test's temp dir, breaking t.TempDir() cleanup on Windows.
 	AzureCollectTelemetry Key = "AZURE_CORE_COLLECT_TELEMETRY"
+	// SamCliTelemetry controls the AWS SAM CLI's usage telemetry. Defaulted to
+	// "0" in every test environment: on a fresh (isolated) home, sam's
+	// first-run telemetry path prints an opt-out notice and phones home, which
+	// made `sam validate` in TestSAME2EValidateOffline hang for minutes and
+	// exit non-zero on the Windows runner.
+	SamCliTelemetry Key = "SAM_CLI_TELEMETRY"
 )
 
 // UnreachableAnalyticsEndpoint is a closed local port used as the default
@@ -64,6 +75,7 @@ func Without(keys ...Key) Environ {
 	return Environ(os.Environ()).
 		With(AnalyticsEndpoint, UnreachableAnalyticsEndpoint).
 		With(AzureCollectTelemetry, "false").
+		With(SamCliTelemetry, "0").
 		Without(keys...)
 }
 
@@ -71,6 +83,7 @@ func With(key Key, value string) Environ {
 	return Environ(os.Environ()).
 		With(AnalyticsEndpoint, UnreachableAnalyticsEndpoint).
 		With(AzureCollectTelemetry, "false").
+		With(SamCliTelemetry, "0").
 		With(key, value)
 }
 
@@ -93,4 +106,22 @@ func (e Environ) Without(keys ...Key) Environ {
 
 func (e Environ) With(key Key, value string) Environ {
 	return append(e, string(key)+"="+value)
+}
+
+// WithHome points the process home directory at dir on every OS: HOME (what
+// Unix and most tools read), plus USERPROFILE (what os.UserHomeDir reads on
+// Windows) and APPDATA (os.UserConfigDir on Windows), so the binary under
+// test resolves the same isolated home everywhere. Setting only HOME leaves a
+// Windows binary pointed at the real user profile.
+func (e Environ) WithHome(dir string) Environ {
+	return e.With(Home, dir).
+		With(UserProfile, dir).
+		With(Key("APPDATA"), filepath.Join(dir, "AppData", "Roaming"))
+}
+
+// WithHome is the package-level variant of Environ.WithHome, starting from
+// the current process environment (with the usual test-safe analytics and
+// Azure-telemetry defaults applied).
+func WithHome(dir string) Environ {
+	return Without().WithHome(dir)
 }

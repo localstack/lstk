@@ -1,7 +1,6 @@
 package integration_test
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -11,13 +10,10 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
-
-	"github.com/creack/pty"
 
 	"github.com/localstack/lstk/test/integration/env"
 	"github.com/moby/moby/client"
@@ -111,9 +107,6 @@ func TestLicenseValidationFailure(t *testing.T) {
 // login in interactive mode and retry the start with the new token, instead of
 // requiring a manual `lstk logout`.
 func TestLicenseRejectionOffersReloginAndRetries(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("PTY not supported on Windows")
-	}
 	requireDocker(t)
 	realToken := env.Require(t, env.AuthToken)
 
@@ -175,33 +168,16 @@ func TestLicenseRejectionOffersReloginAndRetries(t *testing.T) {
 	configFile := filepath.Join(t.TempDir(), "config.toml")
 	require.NoError(t, os.WriteFile(configFile, []byte("[[containers]]\ntype = \"aws\"\ntag = \"latest\"\nport = \"4566\"\n"), 0644))
 
-	cmd := exec.CommandContext(ctx, binaryPath(), "start", "--config", configFile)
-	cmd.Env = environ
-	ptmx, err := pty.Start(cmd)
-	require.NoError(t, err, "failed to start command in PTY")
-	defer func() { _ = ptmx.Close() }()
-
-	out := &syncBuffer{}
-	outputCh := make(chan struct{})
-	go func() {
-		_, _ = io.Copy(out, ptmx)
-		close(outputCh)
-	}()
+	p := startLstkInPTY(t, ctx, environ, "start", "--config", configFile)
 
 	// The stale token is rejected; the re-login prompt appears. Press ENTER.
 	// The wait covers a cold image pull on CI runners.
-	require.Eventually(t, func() bool {
-		return bytes.Contains(out.Bytes(), []byte("Log in again"))
-	}, 3*time.Minute, 100*time.Millisecond, "the re-login prompt should appear after the license rejection")
-	_, err = ptmx.Write([]byte("\r"))
-	require.NoError(t, err)
+	p.waitForOutputTimeout("Log in again", 3*time.Minute, "the re-login prompt should appear after the license rejection")
+	p.write("\r")
 
 	// The login flow runs; confirm it once the completion prompt appears.
-	require.Eventually(t, func() bool {
-		return bytes.Contains(out.Bytes(), []byte("key when complete"))
-	}, 30*time.Second, 100*time.Millisecond, "the login completion prompt should appear")
-	_, err = ptmx.Write([]byte("\r"))
-	require.NoError(t, err)
+	p.waitForOutputTimeout("key when complete", 30*time.Second, "the login completion prompt should appear")
+	p.write("\r")
 
 	// After a successful start, the post-start AWS profile setup asks a Y/n
 	// question when the runner's ~/.aws has no matching profile. It is
@@ -211,19 +187,18 @@ func TestLicenseRejectionOffersReloginAndRetries(t *testing.T) {
 		var answered atomic.Bool
 		for {
 			select {
-			case <-outputCh:
+			case <-p.done:
 				return
 			case <-time.After(200 * time.Millisecond):
-				if !answered.Load() && bytes.Contains(out.Bytes(), []byte("~/.aws? [Y/n]")) {
+				if !answered.Load() && strings.Contains(p.output(), "~/.aws? [Y/n]") {
 					answered.Store(true)
-					_, _ = ptmx.Write([]byte("n"))
+					_, _ = p.pt.Write([]byte("n"))
 				}
 			}
 		}
 	}()
 
-	err = cmd.Wait()
-	<-outputCh
+	out, err := p.wait()
 	if err != nil {
 		// The PTY transcript cannot explain a container that never became
 		// healthy — capture the emulator's own view before cleanup removes it.
@@ -243,9 +218,9 @@ func TestLicenseRejectionOffersReloginAndRetries(t *testing.T) {
 			t.Logf("health endpoint unreachable: %v", herr)
 		}
 	}
-	require.NoError(t, err, "start should succeed after re-login: %s", out.String())
+	require.NoError(t, err, "start should succeed after re-login: %s", out)
 	assert.True(t, staleRejected.Load(), "the stale token must have been rejected by the license server first")
-	assert.Contains(t, out.String(), "Valid license")
+	assert.Contains(t, out, "Valid license")
 
 	inspect, err := dockerClient.ContainerInspect(ctx, containerName, client.ContainerInspectOptions{})
 	require.NoError(t, err, "failed to inspect container")

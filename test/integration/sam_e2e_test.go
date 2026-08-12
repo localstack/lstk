@@ -52,7 +52,7 @@ func runSAM(t *testing.T, ctx context.Context, work string, e env.Environ, args 
 // HOME.
 func samE2EEnv(t *testing.T) env.Environ {
 	t.Helper()
-	return env.With(env.DisableEvents, "1").With(env.Home, t.TempDir())
+	return env.With(env.DisableEvents, "1").WithHome(t.TempDir())
 }
 
 // `sam validate` succeeds offline (no running emulator required).
@@ -63,8 +63,8 @@ func TestSAME2EValidateOffline(t *testing.T) {
 	work := copySAMSample(t, "hello")
 	e := samE2EEnv(t)
 
-	_, stderr, err := runSAM(t, ctx, work, e, "validate", "--lint")
-	require.NoError(t, err, "sam validate stderr: %s", stderr)
+	stdout, stderr, err := runSAM(t, ctx, work, e, "validate", "--lint")
+	require.NoError(t, err, "sam validate stdout: %s\nstderr: %s", stdout, stderr)
 }
 
 // `sam deploy` of a single function succeeds against LocalStack, and `sam delete`

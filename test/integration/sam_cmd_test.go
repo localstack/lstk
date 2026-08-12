@@ -1,10 +1,6 @@
 package integration_test
 
 import (
-	"fmt"
-	"os"
-	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
 
@@ -18,52 +14,39 @@ import (
 // environment it was given so tests can assert what lstk injected/stripped.
 func writeFakeSAM(t *testing.T, version string) string {
 	t.Helper()
-	if runtime.GOOS == "windows" {
-		t.Skip("fake sam script not supported on Windows")
-	}
-	dir := t.TempDir()
-	script := fmt.Sprintf(`#!/bin/sh
-if [ "$1" = "--version" ]; then
-  echo "SAM CLI, version %s"
-  exit 0
-fi
-echo "ARGS:$*"
-echo "ENV_AWS_ENDPOINT_URL=$AWS_ENDPOINT_URL"
-echo "ENV_AWS_ENDPOINT_URL_S3=${AWS_ENDPOINT_URL_S3:-<unset>}"
-echo "ENV_AWS_REGION=$AWS_REGION"
-echo "ENV_AWS_DEFAULT_REGION=$AWS_DEFAULT_REGION"
-echo "ENV_AWS_ACCESS_KEY_ID=$AWS_ACCESS_KEY_ID"
-echo "ENV_AWS_SECRET_ACCESS_KEY=$AWS_SECRET_ACCESS_KEY"
-echo "ENV_AWS_PROFILE=${AWS_PROFILE:-<unset>}"
-echo "ENV_AWS_DEFAULT_PROFILE=${AWS_DEFAULT_PROFILE:-<unset>}"
-echo "ENV_AWS_SESSION_TOKEN=${AWS_SESSION_TOKEN:-<unset>}"
-`, version)
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "sam"), []byte(script), 0755))
-	return dir
+	return writeFakeTool(t, "sam", fakeToolConfig{
+		Cases: []fakeToolCase{{Args: []string{"--version"}, Stdout: []string{"SAM CLI, version " + version}}},
+		Stdout: []string{
+			"ARGS:{args}",
+			"ENV_AWS_ENDPOINT_URL={env:AWS_ENDPOINT_URL}",
+			"ENV_AWS_ENDPOINT_URL_S3={env:AWS_ENDPOINT_URL_S3:-<unset>}",
+			"ENV_AWS_REGION={env:AWS_REGION}",
+			"ENV_AWS_DEFAULT_REGION={env:AWS_DEFAULT_REGION}",
+			"ENV_AWS_ACCESS_KEY_ID={env:AWS_ACCESS_KEY_ID}",
+			"ENV_AWS_SECRET_ACCESS_KEY={env:AWS_SECRET_ACCESS_KEY}",
+			"ENV_AWS_PROFILE={env:AWS_PROFILE:-<unset>}",
+			"ENV_AWS_DEFAULT_PROFILE={env:AWS_DEFAULT_PROFILE:-<unset>}",
+			"ENV_AWS_SESSION_TOKEN={env:AWS_SESSION_TOKEN:-<unset>}",
+		},
+	})
 }
 
 // writeFakeSAMExit creates a stub `sam` reporting a supported version but exiting
 // with the given code for any real subcommand.
 func writeFakeSAMExit(t *testing.T, code int) string {
 	t.Helper()
-	if runtime.GOOS == "windows" {
-		t.Skip("fake sam script not supported on Windows")
-	}
-	dir := t.TempDir()
-	script := fmt.Sprintf(`#!/bin/sh
-if [ "$1" = "--version" ]; then echo "SAM CLI, version 1.95.0"; exit 0; fi
-echo "sam: simulated failure" >&2
-exit %d
-`, code)
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "sam"), []byte(script), 0755))
-	return dir
+	return writeFakeTool(t, "sam", fakeToolConfig{
+		Cases:    []fakeToolCase{{Args: []string{"--version"}, Stdout: []string{"SAM CLI, version 1.95.0"}}},
+		Stderr:   []string{"sam: simulated failure"},
+		ExitCode: code,
+	})
 }
 
 // forwards args. `build` is offline, so no emulator/Docker is required.
 func TestSAMForwardsArgs(t *testing.T) {
 	t.Parallel()
 	fakeDir := writeFakeSAM(t, "1.95.0")
-	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).With(env.Home, t.TempDir())
+	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).WithHome(t.TempDir())
 
 	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), e, "sam", "build")
 	require.NoError(t, err, "stderr: %s", stderr)
@@ -74,7 +57,7 @@ func TestSAMForwardsArgs(t *testing.T) {
 func TestSAMPropagatesExitCode(t *testing.T) {
 	t.Parallel()
 	fakeDir := writeFakeSAMExit(t, 7)
-	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).With(env.Home, t.TempDir())
+	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).WithHome(t.TempDir())
 
 	_, stderr, err := runLstk(t, testContext(t), t.TempDir(), e, "sam", "build")
 	require.Error(t, err)
@@ -88,7 +71,7 @@ func TestSAMPropagatesExitCode(t *testing.T) {
 func TestSAMInjectsCleanAWSEnv(t *testing.T) {
 	t.Parallel()
 	fakeDir := writeFakeSAM(t, "1.95.0")
-	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).With(env.Home, t.TempDir()).
+	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).WithHome(t.TempDir()).
 		With(env.Key("AWS_PROFILE"), "my-real-profile").
 		With(env.Key("AWS_DEFAULT_PROFILE"), "other").
 		With(env.Key("AWS_SESSION_TOKEN"), "realtoken")
@@ -122,7 +105,7 @@ func TestSAMOfflineCommandsNoEmulator(t *testing.T) {
 		t.Run(sub, func(t *testing.T) {
 			t.Parallel()
 			fakeDir := writeFakeSAM(t, "1.95.0")
-			e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).With(env.Home, t.TempDir())
+			e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).WithHome(t.TempDir())
 
 			stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), e,
 				"sam", "--region", "us-west-2", sub)
@@ -143,7 +126,7 @@ func TestSAMHelpNoEmulator(t *testing.T) {
 		t.Run(strings.Join(args, "_"), func(t *testing.T) {
 			t.Parallel()
 			fakeDir := writeFakeSAM(t, "1.95.0")
-			e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).With(env.Home, t.TempDir())
+			e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).WithHome(t.TempDir())
 
 			cmdArgs := append([]string{"sam"}, args...)
 			stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), e, cmdArgs...)
@@ -157,7 +140,7 @@ func TestSAMHelpNoEmulator(t *testing.T) {
 func TestSAMVersionTooOld(t *testing.T) {
 	t.Parallel()
 	fakeDir := writeFakeSAM(t, "1.94.0")
-	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).With(env.Home, t.TempDir())
+	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).WithHome(t.TempDir())
 
 	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), e, "sam", "build")
 	require.Error(t, err)
@@ -169,7 +152,7 @@ func TestSAMVersionTooOld(t *testing.T) {
 // a missing sam binary yields the install error.
 func TestSAMMissingBinary(t *testing.T) {
 	t.Parallel()
-	e := env.With(env.DisableEvents, "1").With("PATH", t.TempDir()).With(env.Home, t.TempDir())
+	e := env.With(env.DisableEvents, "1").With("PATH", t.TempDir()).WithHome(t.TempDir())
 
 	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), e, "sam", "build")
 	require.Error(t, err)
@@ -181,7 +164,7 @@ func TestSAMMissingBinary(t *testing.T) {
 func TestSAMAccountSupported(t *testing.T) {
 	t.Parallel()
 	fakeDir := writeFakeSAM(t, "1.95.0")
-	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).With(env.Home, t.TempDir())
+	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).WithHome(t.TempDir())
 
 	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), e,
 		"sam", "--account", "123456789012", "build")
@@ -193,7 +176,7 @@ func TestSAMAccountSupported(t *testing.T) {
 func TestSAMInvalidAccountRejected(t *testing.T) {
 	t.Parallel()
 	fakeDir := writeFakeSAM(t, "1.95.0")
-	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).With(env.Home, t.TempDir())
+	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).WithHome(t.TempDir())
 
 	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), e,
 		"sam", "--account", "12345", "build")
@@ -206,7 +189,7 @@ func TestSAMInvalidAccountRejected(t *testing.T) {
 func TestSAMFlagsAfterActionAreForwarded(t *testing.T) {
 	t.Parallel()
 	fakeDir := writeFakeSAM(t, "1.95.0")
-	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).With(env.Home, t.TempDir())
+	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).WithHome(t.TempDir())
 
 	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), e,
 		"sam", "build", "--region", "us-west-2")
@@ -218,7 +201,7 @@ func TestSAMFlagsAfterActionAreForwarded(t *testing.T) {
 func TestSAMFlagBeforeSubcommandRejected(t *testing.T) {
 	t.Parallel()
 	fakeDir := writeFakeSAM(t, "1.95.0")
-	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).With(env.Home, t.TempDir())
+	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).WithHome(t.TempDir())
 
 	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), e,
 		"--account", "111111111111", "sam", "build")
@@ -229,13 +212,11 @@ func TestSAMFlagBeforeSubcommandRejected(t *testing.T) {
 // LSTK_SAM_CMD selects the binary to invoke.
 func TestSAMHonorsLstkSamCmd(t *testing.T) {
 	t.Parallel()
-	if runtime.GOOS == "windows" {
-		t.Skip("fake sam script not supported on Windows")
-	}
-	dir := t.TempDir()
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "mysam"),
-		[]byte("#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then echo \"SAM CLI, version 1.95.0\"; exit 0; fi\necho \"MYSAM:$*\"\n"), 0755))
-	e := env.With(env.DisableEvents, "1").With("PATH", dir).With(env.Home, t.TempDir()).
+	dir := writeFakeTool(t, "mysam", fakeToolConfig{
+		Cases:  []fakeToolCase{{Args: []string{"--version"}, Stdout: []string{"SAM CLI, version 1.95.0"}}},
+		Stdout: []string{"MYSAM:{args}"},
+	})
+	e := env.With(env.DisableEvents, "1").With("PATH", dir).WithHome(t.TempDir()).
 		With(env.Key("LSTK_SAM_CMD"), "mysam")
 
 	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), e, "sam", "build")
@@ -251,7 +232,7 @@ func TestSAMFailsWhenEmulatorNotRunning(t *testing.T) {
 	t.Cleanup(cleanup)
 
 	fakeDir := writeFakeSAM(t, "1.95.0")
-	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).With(env.Home, t.TempDir())
+	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).WithHome(t.TempDir())
 
 	stdout, _, err := runLstk(t, testContext(t), t.TempDir(), e, "sam", "deploy")
 	require.Error(t, err)
@@ -273,7 +254,7 @@ func TestSAMRequiresAWSEmulator(t *testing.T) {
 	startTestSnowflakeContainer(t, ctx)
 
 	fakeDir := writeFakeSAM(t, "1.95.0")
-	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).With(env.Home, t.TempDir())
+	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).WithHome(t.TempDir())
 
 	stdout, _, err := runLstk(t, ctx, t.TempDir(), e, "sam", "deploy")
 	require.Error(t, err)

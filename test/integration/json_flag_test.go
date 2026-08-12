@@ -1,7 +1,6 @@
 package integration_test
 
 import (
-	"runtime"
 	"testing"
 
 	"github.com/localstack/lstk/test/integration/env"
@@ -41,9 +40,6 @@ func TestJSONFlagRejectsDefaultStartBehavior(t *testing.T) {
 }
 
 func TestJSONFlagDoesNotLaunchTUIOnPTY(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("PTY not supported on Windows")
-	}
 	t.Parallel()
 
 	out, err := runLstkInPTY(t, testContext(t), testEnvWithHome(t.TempDir(), ""), "start", "--json")
@@ -63,13 +59,13 @@ type proxyCase struct {
 }
 
 func genericProxySetup(t *testing.T) (string, []string) {
-	return t.TempDir(), env.With(env.DisableEvents, "1").With("PATH", t.TempDir()).With(env.Home, t.TempDir())
+	return t.TempDir(), env.With(env.DisableEvents, "1").With("PATH", t.TempDir()).WithHome(t.TempDir())
 }
 
 func azProxySetup(t *testing.T) (string, []string) {
 	workDir := azureWorkDir(t)
 	writeAzureSetupMarker(t, workDir)
-	return workDir, env.With(env.DisableEvents, "1").With("PATH", t.TempDir()).With(env.Home, t.TempDir())
+	return workDir, env.With(env.DisableEvents, "1").With("PATH", t.TempDir()).WithHome(t.TempDir())
 }
 
 func proxyCases() []proxyCase {
@@ -160,7 +156,7 @@ func TestJSONFlagBeforeCommandNameBooleanValues(t *testing.T) {
 
 	t.Run("--json=true before the command name is rejected", func(t *testing.T) {
 		t.Parallel()
-		stdout, _, err := runLstk(t, testContext(t), t.TempDir(), env.With(env.DisableEvents, "1").With("PATH", t.TempDir()).With(env.Home, t.TempDir()), "--json=true", "aws", "s3", "ls")
+		stdout, _, err := runLstk(t, testContext(t), t.TempDir(), env.With(env.DisableEvents, "1").With("PATH", t.TempDir()).WithHome(t.TempDir()), "--json=true", "aws", "s3", "ls")
 		requireExitCode(t, 1, err)
 		envelope := decodeEnvelope(t, stdout)
 		assert.Equal(t, "aws", envelope.Command)
@@ -170,7 +166,7 @@ func TestJSONFlagBeforeCommandNameBooleanValues(t *testing.T) {
 
 	t.Run("--json=false before the command name is not rejected", func(t *testing.T) {
 		t.Parallel()
-		stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), env.With(env.DisableEvents, "1").With("PATH", t.TempDir()).With(env.Home, t.TempDir()), "--json=false", "aws", "s3", "ls")
+		stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), env.With(env.DisableEvents, "1").With("PATH", t.TempDir()).WithHome(t.TempDir()), "--json=false", "aws", "s3", "ls")
 		require.Error(t, err)
 		combined := stdout + stderr
 		require.Contains(t, combined, "not found in PATH", "the wrapped tool should have run (and failed for its own, unrelated reason)")
@@ -179,7 +175,7 @@ func TestJSONFlagBeforeCommandNameBooleanValues(t *testing.T) {
 
 	t.Run("a malformed value before the command name is rejected", func(t *testing.T) {
 		t.Parallel()
-		stdout, _, err := runLstk(t, testContext(t), t.TempDir(), env.With(env.DisableEvents, "1").With("PATH", t.TempDir()).With(env.Home, t.TempDir()), "--json=notabool", "aws", "s3", "ls")
+		stdout, _, err := runLstk(t, testContext(t), t.TempDir(), env.With(env.DisableEvents, "1").With("PATH", t.TempDir()).WithHome(t.TempDir()), "--json=notabool", "aws", "s3", "ls")
 		requireExitCode(t, 1, err)
 		envelope := decodeEnvelope(t, stdout)
 		assert.Equal(t, "aws", envelope.Command)

@@ -56,12 +56,14 @@ func startRealLocalStackWithConfig(t *testing.T, ctx context.Context, token, con
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = os.RemoveAll(home) })
 
-	e := env.With(env.DisableEvents, "1").With(env.Home, home).With(env.AuthToken, token)
+	e := env.With(env.DisableEvents, "1").WithHome(home).With(env.AuthToken, token)
 	args := []string{}
 	if configPath != "" {
 		args = append(args, "--config", configPath)
 	}
 	args = append(args, "start")
-	_, stderr, err := runLstk(t, ctx, "", e, args...)
-	require.NoError(t, err, "lstk start failed: %s", stderr)
+	stdout, stderr, err := runLstk(t, ctx, "", e, args...)
+	// User-facing failures render through the sink on stdout; stderr alone is
+	// usually empty when start fails.
+	require.NoError(t, err, "lstk start failed: stdout: %s\nstderr: %s", stdout, stderr)
 }

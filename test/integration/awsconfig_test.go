@@ -1,8 +1,6 @@
 package integration_test
 
 import (
-	"bytes"
-	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -11,7 +9,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/creack/pty"
 	"github.com/localstack/lstk/test/integration/env"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -40,14 +37,11 @@ func awsConfigEnv(t *testing.T) (env.Environ, string) {
 		}
 	})
 	writeConfigFile(t, filepath.Join(tmpHome, ".config", "lstk", "config.toml"))
-	e := env.With(env.AuthToken, env.Get(env.AuthToken)).With(env.Home, tmpHome).With(env.UserProfile, tmpHome)
+	e := env.With(env.AuthToken, env.Get(env.AuthToken)).WithHome(tmpHome)
 	return e, tmpHome
 }
 
 func TestStartPromptsWhenAWSProfileMissingEverywhere(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("PTY not supported on Windows")
-	}
 	requireDocker(t)
 	_ = env.Require(t, env.AuthToken)
 
@@ -58,30 +52,13 @@ func TestStartPromptsWhenAWSProfileMissingEverywhere(t *testing.T) {
 	defer mockServer.Close()
 
 	ctx := testContext(t)
-	cmd := exec.CommandContext(ctx, binaryPath(), "start")
-	cmd.Env = baseEnv.With(env.APIEndpoint, mockServer.URL)
-
-	ptmx, err := pty.Start(cmd)
-	require.NoError(t, err, "failed to start command in PTY")
-	defer func() { _ = ptmx.Close() }()
-
-	out := &syncBuffer{}
-	outputCh := make(chan struct{})
-	go func() {
-		_, _ = io.Copy(out, ptmx)
-		close(outputCh)
-	}()
+	p := startLstkInPTY(t, ctx, baseEnv.With(env.APIEndpoint, mockServer.URL), "start")
 
 	// Wait for the prompt emitted after the container becomes ready.
-	require.Eventually(t, func() bool {
-		return bytes.Contains(out.Bytes(), []byte(awsSetupPrompt))
-	}, 2*time.Minute, 200*time.Millisecond, "AWS profile prompt should appear")
+	p.waitForOutputTimeout(awsSetupPrompt, 2*time.Minute, "AWS profile prompt should appear")
+	p.write("y")
 
-	_, err = ptmx.Write([]byte("y"))
-	require.NoError(t, err)
-
-	err = cmd.Wait()
-	<-outputCh
+	_, err := p.wait()
 	require.NoError(t, err, "lstk start should exit successfully")
 
 	configContent, err := os.ReadFile(filepath.Join(tmpHome, ".aws", "config"))
@@ -98,9 +75,6 @@ func TestStartPromptsWhenAWSProfileMissingEverywhere(t *testing.T) {
 }
 
 func TestStartSkipsAWSProfilePromptWhenAlreadyConfigured(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("PTY not supported on Windows")
-	}
 	requireDocker(t)
 	_ = env.Require(t, env.AuthToken)
 
@@ -119,32 +93,17 @@ func TestStartSkipsAWSProfilePromptWhenAlreadyConfigured(t *testing.T) {
 		[]byte("[localstack]\naws_access_key_id = test\naws_secret_access_key = test\n"), 0600))
 
 	ctx := testContext(t)
-	cmd := exec.CommandContext(ctx, binaryPath(), "start")
-	cmd.Env = baseEnv.With(env.APIEndpoint, mockServer.URL)
-
-	ptmx, err := pty.Start(cmd)
-	require.NoError(t, err, "failed to start command in PTY")
-	defer func() { _ = ptmx.Close() }()
-
-	out := &syncBuffer{}
-	outputCh := make(chan struct{})
-	go func() {
-		_, _ = io.Copy(out, ptmx)
-		close(outputCh)
-	}()
+	p := startLstkInPTY(t, ctx, baseEnv.With(env.APIEndpoint, mockServer.URL), "start")
 
 	// Wait until the container is ready — that's the point at which post-start setup
 	// runs, so if the prompt were going to appear it would already be in the output.
-	require.Eventually(t, func() bool {
-		return bytes.Contains(out.Bytes(), []byte("LocalStack is running"))
-	}, 2*time.Minute, 200*time.Millisecond, "container should become ready")
+	p.waitForOutputTimeout("LocalStack is running", 2*time.Minute, "container should become ready")
 
 	// Teardown only: lstk may already have exited on its own, so don't assert on Wait's error.
-	_ = cmd.Process.Kill()
-	_ = cmd.Wait()
-	<-outputCh
+	_ = p.cmd.Process.Kill()
+	out, _ := p.wait()
 
-	assert.NotContains(t, out.String(), awsSetupPrompt,
+	assert.NotContains(t, out, awsSetupPrompt,
 		"profile prompt should not appear when profile is already correctly configured")
 }
 
@@ -170,9 +129,6 @@ func TestStartNonInteractiveEmitsNoteWhenAWSProfileMissing(t *testing.T) {
 }
 
 func TestStartEmitsNoteWhenAWSProfileIsPartial(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("PTY not supported on Windows")
-	}
 	requireDocker(t)
 	_ = env.Require(t, env.AuthToken)
 
@@ -188,65 +144,29 @@ func TestStartEmitsNoteWhenAWSProfileIsPartial(t *testing.T) {
 		[]byte("[localstack]\naws_access_key_id = test\naws_secret_access_key = test\n"), 0600))
 
 	ctx := testContext(t)
-	cmd := exec.CommandContext(ctx, binaryPath(), "start")
-	cmd.Env = baseEnv.With(env.APIEndpoint, mockServer.URL)
+	p := startLstkInPTY(t, ctx, baseEnv.With(env.APIEndpoint, mockServer.URL), "start")
 
-	ptmx, err := pty.Start(cmd)
-	require.NoError(t, err, "failed to start command in PTY")
-	defer func() { _ = ptmx.Close() }()
+	p.waitForOutputTimeout("LocalStack AWS profile is incomplete. Run 'lstk setup aws'.", 2*time.Minute, "AWS profile note should appear")
 
-	out := &syncBuffer{}
-	outputCh := make(chan struct{})
-	go func() {
-		_, _ = io.Copy(out, ptmx)
-		close(outputCh)
-	}()
-
-	require.Eventually(t, func() bool {
-		return bytes.Contains(out.Bytes(), []byte("LocalStack AWS profile is incomplete. Run 'lstk setup aws'."))
-	}, 2*time.Minute, 200*time.Millisecond, "AWS profile note should appear")
-
-	err = cmd.Wait()
-	<-outputCh
+	out, err := p.wait()
 	require.NoError(t, err, "lstk start should exit successfully")
 
-	assert.NotContains(t, out.String(), "Set up a LocalStack profile for AWS CLI and SDKs in ~/.aws?",
+	assert.NotContains(t, out, "Set up a LocalStack profile for AWS CLI and SDKs in ~/.aws?",
 		"profile prompt should not appear for a partial setup")
 }
 
 func TestSetupAWSCreatesAWSProfileWhenConfirmed(t *testing.T) {
 	t.Parallel()
-	if runtime.GOOS == "windows" {
-		t.Skip("PTY not supported on Windows")
-	}
 	baseEnv, tmpHome := awsConfigEnv(t)
 
 	ctx := testContext(t)
-	cmd := exec.CommandContext(ctx, binaryPath(), "setup", "aws")
-	cmd.Env = baseEnv
+	p := startLstkInPTY(t, ctx, baseEnv, "setup", "aws")
 
-	ptmx, err := pty.Start(cmd)
-	require.NoError(t, err, "failed to start command in PTY")
-	defer func() { _ = ptmx.Close() }()
+	// Wait for the AWS profile prompt, then press Y to confirm.
+	p.waitForOutput(awsSetupPrompt, "AWS profile prompt should appear")
+	p.write("y")
 
-	out := &syncBuffer{}
-	outputCh := make(chan struct{})
-	go func() {
-		_, _ = io.Copy(out, ptmx)
-		close(outputCh)
-	}()
-
-	// Wait for the AWS profile prompt.
-	require.Eventually(t, func() bool {
-		return bytes.Contains(out.Bytes(), []byte(awsSetupPrompt))
-	}, 2*time.Minute, 200*time.Millisecond, "AWS profile prompt should appear")
-
-	// Press Y to confirm.
-	_, err = ptmx.Write([]byte("y"))
-	require.NoError(t, err)
-
-	err = cmd.Wait()
-	<-outputCh
+	out, err := p.wait()
 	require.NoError(t, err)
 
 	configContent, err := os.ReadFile(filepath.Join(tmpHome, ".aws", "config"))
@@ -261,8 +181,8 @@ func TestSetupAWSCreatesAWSProfileWhenConfirmed(t *testing.T) {
 	assert.Contains(t, normalizedCreds, "aws_access_key_id = test")
 	assert.Contains(t, normalizedCreds, "aws_secret_access_key = test")
 
-	assert.Contains(t, out.String(), "Created LocalStack profile in ~/.aws")
-	assert.NotContains(t, out.String(), "Skipped adding LocalStack AWS profile.")
+	assert.Contains(t, out, "Created LocalStack profile in ~/.aws")
+	assert.NotContains(t, out, "Skipped adding LocalStack AWS profile.")
 }
 
 // TestSetupAWSExitsNonZeroWhenProfileWriteFails guards DEVX-941. Writing the
@@ -274,7 +194,7 @@ func TestSetupAWSCreatesAWSProfileWhenConfirmed(t *testing.T) {
 func TestSetupAWSExitsNonZeroWhenProfileWriteFails(t *testing.T) {
 	t.Parallel()
 	if runtime.GOOS == "windows" {
-		t.Skip("PTY not supported on Windows")
+		t.Skip("read-only directory permissions are not enforced on Windows, so the profile write would not fail")
 	}
 	if os.Geteuid() == 0 {
 		t.Skip("root bypasses directory permissions, so the profile write would not fail")
@@ -289,66 +209,29 @@ func TestSetupAWSExitsNonZeroWhenProfileWriteFails(t *testing.T) {
 	t.Cleanup(func() { _ = os.Chmod(awsDir, 0700) })
 
 	ctx := testContext(t)
-	cmd := exec.CommandContext(ctx, binaryPath(), "setup", "aws")
-	cmd.Env = baseEnv
+	p := startLstkInPTY(t, ctx, baseEnv, "setup", "aws")
 
-	ptmx, err := pty.Start(cmd)
-	require.NoError(t, err, "failed to start command in PTY")
-	defer func() { _ = ptmx.Close() }()
+	p.waitForOutput(awsSetupPrompt, "AWS profile prompt should appear")
+	p.write("y")
 
-	out := &syncBuffer{}
-	outputCh := make(chan struct{})
-	go func() {
-		_, _ = io.Copy(out, ptmx)
-		close(outputCh)
-	}()
-
-	require.Eventually(t, func() bool {
-		return bytes.Contains(out.Bytes(), []byte(awsSetupPrompt))
-	}, 2*time.Minute, 200*time.Millisecond, "AWS profile prompt should appear")
-
-	_, err = ptmx.Write([]byte("y"))
-	require.NoError(t, err)
-
-	err = cmd.Wait()
-	<-outputCh
+	out, err := p.wait()
 	requireExitCode(t, 1, err)
 
-	assert.Contains(t, out.String(), "Could not set up the LocalStack AWS profile")
-	assert.NotContains(t, out.String(), "Created LocalStack profile")
+	assert.Contains(t, out, "Could not set up the LocalStack AWS profile")
+	assert.NotContains(t, out, "Created LocalStack profile")
 }
 
 func TestSetupAWSDoesNotCreateAWSProfileWhenDeclined(t *testing.T) {
 	t.Parallel()
-	if runtime.GOOS == "windows" {
-		t.Skip("PTY not supported on Windows")
-	}
 	baseEnv, tmpHome := awsConfigEnv(t)
 
 	ctx := testContext(t)
-	cmd := exec.CommandContext(ctx, binaryPath(), "setup", "aws")
-	cmd.Env = baseEnv
+	p := startLstkInPTY(t, ctx, baseEnv, "setup", "aws")
 
-	ptmx, err := pty.Start(cmd)
-	require.NoError(t, err, "failed to start command in PTY")
-	defer func() { _ = ptmx.Close() }()
+	p.waitForOutput(awsSetupPrompt, "AWS profile prompt should appear")
+	p.write("n")
 
-	out := &syncBuffer{}
-	outputCh := make(chan struct{})
-	go func() {
-		_, _ = io.Copy(out, ptmx)
-		close(outputCh)
-	}()
-
-	require.Eventually(t, func() bool {
-		return bytes.Contains(out.Bytes(), []byte(awsSetupPrompt))
-	}, 2*time.Minute, 200*time.Millisecond, "AWS profile prompt should appear")
-
-	_, err = ptmx.Write([]byte("n"))
-	require.NoError(t, err)
-
-	err = cmd.Wait()
-	<-outputCh
+	out, err := p.wait()
 	require.NoError(t, err)
 
 	_, err = os.Stat(filepath.Join(tmpHome, ".aws", "config"))
@@ -356,8 +239,8 @@ func TestSetupAWSDoesNotCreateAWSProfileWhenDeclined(t *testing.T) {
 	_, err = os.Stat(filepath.Join(tmpHome, ".aws", "credentials"))
 	assert.ErrorIs(t, err, os.ErrNotExist)
 
-	assert.Contains(t, out.String(), "Skipped adding LocalStack AWS profile.")
-	assert.NotContains(t, out.String(), "Created LocalStack profile in ~/.aws/config")
+	assert.Contains(t, out, "Skipped adding LocalStack AWS profile.")
+	assert.NotContains(t, out, "Created LocalStack profile in ~/.aws/config")
 }
 
 func TestSetupAWSNonInteractiveCreatesProfile(t *testing.T) {

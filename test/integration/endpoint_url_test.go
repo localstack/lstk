@@ -3,29 +3,23 @@ package integration_test
 import (
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"net/http/httptest"
-	"os"
-	"os/exec"
-	"path/filepath"
-	"regexp"
-	"runtime"
 	"strings"
 	"testing"
 
-	"github.com/creack/pty"
 	"github.com/localstack/lstk/test/integration/env"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-// unreachableDockerHost points DOCKER_HOST at a socket that can't possibly
-// exist, so any code path that actually tries to talk to Docker fails
-// immediately and loudly — a clean way to prove a command took the
-// --endpoint-url path without touching Docker at all, without needing a real
-// Docker daemon to be unavailable in the test environment.
-const unreachableDockerHost = "DOCKER_HOST=unix:///nonexistent/docker.sock"
+// unreachableDockerHost points DOCKER_HOST at a closed TCP port (valid on
+// every OS, unlike a unix socket path), so any code path that actually tries
+// to talk to Docker fails immediately and loudly — a clean way to prove a
+// command took the --endpoint-url path without touching Docker at all,
+// without needing a real Docker daemon to be unavailable in the test
+// environment.
+const unreachableDockerHost = "DOCKER_HOST=tcp://localhost:1"
 
 // awsHealthHandler answers /_localstack/health like a real AWS-flavored
 // LocalStack emulator (see the community image payload recorded in design.md's
@@ -60,17 +54,10 @@ func awsHealthServer(t *testing.T) *httptest.Server {
 
 func writeFakeAWSEcho(t *testing.T) string {
 	t.Helper()
-	if runtime.GOOS == "windows" {
-		t.Skip("fake aws script not supported on Windows")
-	}
-	dir := t.TempDir()
-	script := `#!/bin/sh
-echo "ENDPOINT:$2"
-shift 2
-echo "ARGS:$@"
-`
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "aws"), []byte(script), 0755))
-	return dir
+	return writeFakeTool(t, "aws", fakeToolConfig{
+		Shift:  2,
+		Stdout: []string{"ENDPOINT:{arg2}", "ARGS:{args}"},
+	})
 }
 
 // TestAWSCommandEndpointURLNoDockerRequired proves --endpoint-url (placed
@@ -83,7 +70,7 @@ func TestAWSCommandEndpointURLNoDockerRequired(t *testing.T) {
 	defer srv.Close()
 
 	fakeDir := writeFakeAWSEcho(t)
-	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).With(env.Home, t.TempDir())
+	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).WithHome(t.TempDir())
 	e = append(e, unreachableDockerHost)
 
 	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), e, "--endpoint-url", srv.URL, "aws", "s3", "ls")
@@ -106,7 +93,7 @@ func TestAWSCommandEndpointURLAfterSubcommandPassesThrough(t *testing.T) {
 	defer srv.Close()
 
 	fakeDir := writeFakeAWSEcho(t)
-	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).With(env.Home, t.TempDir())
+	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).WithHome(t.TempDir())
 	e = append(e, unreachableDockerHost)
 
 	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), e,
@@ -125,7 +112,7 @@ func TestAWSCommandEndpointURLAfterSubcommandPassesThrough(t *testing.T) {
 // before ever touching Docker.
 func TestLogsRejectsExplicitEndpointURL(t *testing.T) {
 	t.Parallel()
-	e := env.With(env.DisableEvents, "1").With(env.Home, t.TempDir())
+	e := env.With(env.DisableEvents, "1").WithHome(t.TempDir())
 	e = append(e, unreachableDockerHost)
 
 	// The rejection is rendered as an ErrorEvent through the plain sink
@@ -141,7 +128,7 @@ func TestLogsRejectsExplicitEndpointURL(t *testing.T) {
 // other Docker-lifecycle/filesystem commands.
 func TestVolumePathRejectsExplicitEndpointURL(t *testing.T) {
 	t.Parallel()
-	e := env.With(env.DisableEvents, "1").With(env.Home, t.TempDir())
+	e := env.With(env.DisableEvents, "1").WithHome(t.TempDir())
 
 	stdout, _, err := runLstk(t, testContext(t), t.TempDir(), e, "volume", "path", "--endpoint-url", "http://localhost:4566")
 	require.Error(t, err)
@@ -153,7 +140,7 @@ func TestVolumePathRejectsExplicitEndpointURL(t *testing.T) {
 // touching Docker, exactly like logs/stop/restart/volume.
 func TestStartRejectsExplicitEndpointURL(t *testing.T) {
 	t.Parallel()
-	e := env.With(env.DisableEvents, "1").With(env.Home, t.TempDir())
+	e := env.With(env.DisableEvents, "1").WithHome(t.TempDir())
 	e = append(e, unreachableDockerHost)
 
 	stdout, _, err := runLstk(t, testContext(t), t.TempDir(), e, "start", "--endpoint-url", "http://localhost:4566")
@@ -171,7 +158,7 @@ func TestStartRejectsExplicitEndpointURL(t *testing.T) {
 
 func TestLogsRejectsAmbientEndpointURL(t *testing.T) {
 	t.Parallel()
-	e := env.With(env.DisableEvents, "1").With(env.Home, t.TempDir()).With("LSTK_ENDPOINT_URL", "http://localhost:4566")
+	e := env.With(env.DisableEvents, "1").WithHome(t.TempDir()).With("LSTK_ENDPOINT_URL", "http://localhost:4566")
 	e = append(e, unreachableDockerHost)
 
 	stdout, _, err := runLstk(t, testContext(t), t.TempDir(), e, "logs")
@@ -183,7 +170,7 @@ func TestLogsRejectsAmbientEndpointURL(t *testing.T) {
 
 func TestStopRejectsAmbientEndpointURL(t *testing.T) {
 	t.Parallel()
-	e := env.With(env.DisableEvents, "1").With(env.Home, t.TempDir()).With("LSTK_ENDPOINT_URL", "http://localhost:4566")
+	e := env.With(env.DisableEvents, "1").WithHome(t.TempDir()).With("LSTK_ENDPOINT_URL", "http://localhost:4566")
 	e = append(e, unreachableDockerHost)
 
 	stdout, _, err := runLstk(t, testContext(t), t.TempDir(), e, "stop")
@@ -193,7 +180,7 @@ func TestStopRejectsAmbientEndpointURL(t *testing.T) {
 
 func TestRestartRejectsAmbientEndpointURL(t *testing.T) {
 	t.Parallel()
-	e := env.With(env.DisableEvents, "1").With(env.Home, t.TempDir()).With("AWS_ENDPOINT_URL", "http://localhost:4566")
+	e := env.With(env.DisableEvents, "1").WithHome(t.TempDir()).With("AWS_ENDPOINT_URL", "http://localhost:4566")
 	e = append(e, unreachableDockerHost)
 
 	stdout, _, err := runLstk(t, testContext(t), t.TempDir(), e, "restart")
@@ -204,7 +191,7 @@ func TestRestartRejectsAmbientEndpointURL(t *testing.T) {
 
 func TestVolumePathRejectsAmbientEndpointURL(t *testing.T) {
 	t.Parallel()
-	e := env.With(env.DisableEvents, "1").With(env.Home, t.TempDir()).With("LSTK_ENDPOINT_URL", "http://localhost:4566")
+	e := env.With(env.DisableEvents, "1").WithHome(t.TempDir()).With("LSTK_ENDPOINT_URL", "http://localhost:4566")
 
 	stdout, _, err := runLstk(t, testContext(t), t.TempDir(), e, "volume", "path")
 	require.Error(t, err)
@@ -213,7 +200,7 @@ func TestVolumePathRejectsAmbientEndpointURL(t *testing.T) {
 
 func TestVolumeClearRejectsAmbientEndpointURL(t *testing.T) {
 	t.Parallel()
-	e := env.With(env.DisableEvents, "1").With(env.Home, t.TempDir()).With("LSTK_ENDPOINT_URL", "http://localhost:4566")
+	e := env.With(env.DisableEvents, "1").WithHome(t.TempDir()).With("LSTK_ENDPOINT_URL", "http://localhost:4566")
 
 	stdout, _, err := runLstk(t, testContext(t), t.TempDir(), e, "volume", "clear")
 	require.Error(t, err)
@@ -222,7 +209,7 @@ func TestVolumeClearRejectsAmbientEndpointURL(t *testing.T) {
 
 func TestStartRejectsAmbientEndpointURL(t *testing.T) {
 	t.Parallel()
-	e := env.With(env.DisableEvents, "1").With(env.Home, t.TempDir()).With("LSTK_ENDPOINT_URL", "http://localhost:4566")
+	e := env.With(env.DisableEvents, "1").WithHome(t.TempDir()).With("LSTK_ENDPOINT_URL", "http://localhost:4566")
 	e = append(e, unreachableDockerHost)
 
 	stdout, _, err := runLstk(t, testContext(t), t.TempDir(), e, "start")
@@ -238,7 +225,7 @@ func TestStartRejectsAmbientEndpointURL(t *testing.T) {
 // attempts — and fails on — that platform call, not on flag validation.
 func TestSnapshotShowIgnoresEndpointURL(t *testing.T) {
 	t.Parallel()
-	e := env.With(env.DisableEvents, "1").With(env.Home, t.TempDir()).With(env.APIEndpoint, "http://127.0.0.1:1")
+	e := env.With(env.DisableEvents, "1").WithHome(t.TempDir()).With(env.APIEndpoint, "http://127.0.0.1:1")
 
 	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), e, "snapshot", "show", "pod:my-baseline", "--endpoint-url", "http://localhost:4566")
 	require.Error(t, err)
@@ -250,7 +237,7 @@ func TestSnapshotShowIgnoresEndpointURL(t *testing.T) {
 // list` with no s3:// argument.
 func TestSnapshotListBareIgnoresEndpointURL(t *testing.T) {
 	t.Parallel()
-	e := env.With(env.DisableEvents, "1").With(env.Home, t.TempDir()).With(env.APIEndpoint, "http://127.0.0.1:1")
+	e := env.With(env.DisableEvents, "1").WithHome(t.TempDir()).With(env.APIEndpoint, "http://127.0.0.1:1")
 
 	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), e, "snapshot", "list", "--endpoint-url", "http://localhost:4566")
 	require.Error(t, err)
@@ -266,7 +253,7 @@ func TestStatusEndpointURLRendersReducedOutput(t *testing.T) {
 	srv := awsHealthServer(t)
 	defer srv.Close()
 
-	e := env.With(env.DisableEvents, "1").With(env.Home, t.TempDir())
+	e := env.With(env.DisableEvents, "1").WithHome(t.TempDir())
 	e = append(e, unreachableDockerHost)
 
 	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), e, "--endpoint-url", srv.URL, "status")
@@ -303,7 +290,7 @@ func TestStatusEndpointURLShowsResources(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	e := env.With(env.DisableEvents, "1").With(env.Home, t.TempDir())
+	e := env.With(env.DisableEvents, "1").WithHome(t.TempDir())
 	e = append(e, unreachableDockerHost)
 
 	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), e, "--endpoint-url", srv.URL, "status")
@@ -322,9 +309,6 @@ func TestStatusEndpointURLShowsResources(t *testing.T) {
 // summary — visibly different output for the same command.
 func TestStatusEndpointURLInteractiveRendersTUI(t *testing.T) {
 	t.Parallel()
-	if runtime.GOOS == "windows" {
-		t.Skip("PTY not supported on Windows")
-	}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/_localstack/health":
@@ -342,25 +326,12 @@ func TestStatusEndpointURLInteractiveRendersTUI(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	binPath, err := filepath.Abs(binaryPath())
+	e := append(env.Environ(testEnvWithHome(t.TempDir(), "")).With(env.DisableEvents, "1"), unreachableDockerHost)
+	p := startLstkInPTY(t, testContext(t), e, "--endpoint-url", srv.URL, "status")
+	_, err := p.wait()
 	require.NoError(t, err)
 
-	cmd := exec.CommandContext(testContext(t), binPath, "--endpoint-url", srv.URL, "status")
-	cmd.Env = append(env.Environ(testEnvWithHome(t.TempDir(), "")).With(env.DisableEvents, "1"), unreachableDockerHost)
-	ptmx, err := pty.Start(cmd)
-	require.NoError(t, err, "failed to start command in PTY")
-	t.Cleanup(func() { _ = ptmx.Close() })
-
-	out := &syncBuffer{}
-	outputCh := make(chan struct{})
-	go func() {
-		_, _ = io.Copy(out, ptmx)
-		close(outputCh)
-	}()
-	require.NoError(t, cmd.Wait())
-	<-outputCh
-
-	lines := ptyLines(out.String())
+	lines := ptyLines(p.out.String())
 	summary := -1
 	for i, line := range lines {
 		if strings.Contains(line, "resources ·") {
@@ -379,21 +350,6 @@ func TestStatusEndpointURLInteractiveRendersTUI(t *testing.T) {
 	assert.NotContains(t, joined, "Uptime:")
 }
 
-// ptyLines splits raw PTY output into display lines, dropping ANSI escape
-// sequences and carriage returns so tests can assert on layout (blank lines,
-// ordering) without depending on whether the terminal advertised colour.
-func ptyLines(raw string) []string {
-	stripped := ansiEscape.ReplaceAllString(raw, "")
-	stripped = strings.ReplaceAll(stripped, "\r", "")
-	lines := strings.Split(stripped, "\n")
-	for i, line := range lines {
-		lines[i] = strings.TrimRight(line, " \t")
-	}
-	return lines
-}
-
-var ansiEscape = regexp.MustCompile(`\x1b(\[[0-9;?]*[ -/]*[@-~]|\][^\x07\x1b]*(\x07|\x1b\\)|[@-Z\\-_])`)
-
 // TestStatusUnreachableEndpointURLFailsClosed proves an endpoint that
 // doesn't look like a genuine LocalStack instance is rejected with a clear
 // error rather than silently proceeding.
@@ -404,7 +360,7 @@ func TestStatusUnreachableEndpointURLFailsClosed(t *testing.T) {
 	}))
 	defer notLocalStack.Close()
 
-	e := env.With(env.DisableEvents, "1").With(env.Home, t.TempDir())
+	e := env.With(env.DisableEvents, "1").WithHome(t.TempDir())
 	e = append(e, unreachableDockerHost)
 
 	_, stderr, err := runLstk(t, testContext(t), t.TempDir(), e, "--endpoint-url", notLocalStack.URL, "status")
@@ -423,7 +379,7 @@ func TestCDKAWSEndpointURLBypassesDockerCheck(t *testing.T) {
 	defer srv.Close()
 
 	fakeDir := writeFakeCDK(t, "2.177.0")
-	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).With(env.Home, t.TempDir()).
+	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).WithHome(t.TempDir()).
 		With("AWS_ENDPOINT_URL", srv.URL)
 	e = append(e, unreachableDockerHost)
 
@@ -450,7 +406,7 @@ func TestCDKAWSEndpointURLWrongTypeFails(t *testing.T) {
 	defer azureLike.Close()
 
 	fakeDir := writeFakeCDK(t, "2.177.0")
-	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).With(env.Home, t.TempDir())
+	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).WithHome(t.TempDir())
 	e = append(e, unreachableDockerHost)
 
 	stdout, _, err := runLstk(t, testContext(t), t.TempDir(), e, "--endpoint-url", azureLike.URL, "cdk", "deploy", "MyStack")
