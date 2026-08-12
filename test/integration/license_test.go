@@ -95,6 +95,8 @@ func TestLicenseValidationFailure(t *testing.T) {
 	stdout, stderr, err := runLstk(t, ctx, "", env.With(env.APIEndpoint, mockServer.URL).With(env.AuthToken, "test-token-for-license-validation"), "start")
 	must.Error(t, err, "expected lstk start to fail with forbidden license")
 	requireExitCode(t, 1, err)
+	// Not a snapshot: the output embeds pull-progress lines that depend on
+	// the runner's image cache and the live emulator image version.
 	must.Contains(t, stdout, "License validation failed")
 	must.Contains(t, stdout, "invalid, inactive, or expired")
 	must.Contains(t, stdout, "lstk logout", "the error should point at re-authentication")

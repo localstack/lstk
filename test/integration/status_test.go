@@ -18,6 +18,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/sqs"
 	"github.com/localstack/lstk/internal/must"
+	"github.com/localstack/lstk/internal/snap"
 	"github.com/localstack/lstk/test/integration/env"
 	"github.com/moby/moby/client"
 )
@@ -31,9 +32,7 @@ func TestStatusCommandFailsWhenNotRunning(t *testing.T) {
 	stdout, _, err := runLstk(t, testContext(t), "", env.With(env.AnalyticsEndpoint, analyticsSrv.URL), "status")
 	must.Error(t, err, "expected lstk status to fail when emulator not running")
 	requireExitCode(t, 1, err)
-	must.Contains(t, stdout, "is not running")
-	must.Contains(t, stdout, "Start LocalStack:")
-	must.Contains(t, stdout, "See help:")
+	snap.Match(t, sanitizeOutput(stdout))
 	assertCommandTelemetry(t, events, "status", 1)
 }
 

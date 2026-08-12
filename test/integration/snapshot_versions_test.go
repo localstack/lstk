@@ -152,9 +152,7 @@ func TestSnapshotVersionsRejectsS3Ref(t *testing.T) {
 		"--non-interactive", "snapshot", "versions", "s3://bucket/prefix",
 	)
 	requireExitCode(t, 1, err)
-	must.Contains(t, stderr, "only supported for Cloud Pods")
-	must.Contains(t, stderr, "S3 remotes")
-	must.NotContains(t, stderr, "coming soon")
+	snap.Match(t, sanitizeOutput(stderr))
 }
 
 // TestSnapshotVersionsOrasKeepsComingSoon: oras:// is unimplemented for every
@@ -213,9 +211,7 @@ func TestSnapshotShowVersionNotFound(t *testing.T) {
 		"--non-interactive", "snapshot", "show", "pod:my-baseline:99",
 	)
 	requireExitCode(t, 1, err)
-	must.Contains(t, stdout, "Version 99 of 'pod:my-baseline' not found")
-	must.Contains(t, stdout, "The highest available version is 3.")
-	must.Contains(t, stdout, "lstk snapshot versions pod:my-baseline")
+	snap.Match(t, sanitizeOutput(stdout))
 }
 
 // TestSnapshotVersionsRejectsVersionSuffix: this command lists every version, so

@@ -36,7 +36,7 @@ var (
 	sanitizeCalverRe = regexp.MustCompile(`\b20\d{2}\.\d{2}\b`)
 	// Reference-extension echo lines carrying temp paths or random ids.
 	sanitizeExtPathRe = regexp.MustCompile(`(?m)^(SELF=|CONFIG_DIR=).*$`)
-	sanitizeExtIDRe = regexp.MustCompile(`(?m)^(SESSION_ID=).*$`)
+	sanitizeExtIDRe   = regexp.MustCompile(`(?m)^(SESSION_ID=).*$`)
 	// Defense in depth: a real auth token must never land in a committed
 	// snapshot or a failure diff, even if a test forgets to strip it.
 	sanitizeExtTokenRe = regexp.MustCompile(`(?m)^(AUTH_TOKEN=).*$`)

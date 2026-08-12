@@ -1,0 +1,7 @@
+ARGS=[exit 7]
+SELF=<path>
+API_VERSION=1
+CONFIG_DIR=<path>
+NON_INTERACTIVE=true
+JSON=false
+EMULATOR_COUNT=0

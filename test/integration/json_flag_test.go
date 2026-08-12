@@ -104,9 +104,9 @@ func TestJSONFlagProxyCommandsForwardJSON(t *testing.T) {
 			args := append([]string{tc.name, "--json"}, tc.args...)
 			stdout, stderr, err := runLstk(t, testContext(t), workDir, environ, args...)
 			must.Error(t, err)
-			combined := stdout + stderr
-			must.Contains(t, combined, "not found in PATH", "--json should have been forwarded to the wrapped tool, not rejected by lstk")
-			must.NotContains(t, combined, "is not able to provide output in JSON format")
+			// The snapshot pins the wrapped tool's missing-binary error —
+			// proof --json was forwarded, not rejected by lstk.
+			snap.Match(t, sanitizeOutput(stdout+"\n"+stderr))
 		})
 
 		t.Run(tc.name+"/json after the wrapped tool's own action", func(t *testing.T) {
@@ -115,9 +115,7 @@ func TestJSONFlagProxyCommandsForwardJSON(t *testing.T) {
 			args := append(append([]string{tc.name}, tc.args...), "--json")
 			stdout, stderr, err := runLstk(t, testContext(t), workDir, environ, args...)
 			must.Error(t, err)
-			combined := stdout + stderr
-			must.Contains(t, combined, "not found in PATH", "--json should have been forwarded to the wrapped tool, not rejected by lstk")
-			must.NotContains(t, combined, "is not able to provide output in JSON format")
+			snap.Match(t, sanitizeOutput(stdout+"\n"+stderr))
 		})
 	}
 }
@@ -139,10 +137,8 @@ func TestJSONFlagProxyCommandsRejectBeforeCommandName(t *testing.T) {
 			args := append([]string{"--json", tc.name}, tc.args...)
 			stdout, stderr, err := runLstk(t, testContext(t), workDir, environ, args...)
 			requireExitCode(t, 1, err)
-			envelope := decodeEnvelope(t, stdout)
-			must.Eq(t, tc.name, envelope.Command)
-			must.NotNil(t, envelope.Error)
-			must.Eq(t, "NOT_JSON_CAPABLE", envelope.Error.Code)
+			decodeEnvelope(t, stdout)
+			snap.MatchJSON(t, []byte(stdout))
 			must.Empty(t, stderr, "the rejection is rendered as JSON on stdout, not plain text on stderr")
 		})
 	}
@@ -160,10 +156,8 @@ func TestJSONFlagBeforeCommandNameBooleanValues(t *testing.T) {
 		t.Parallel()
 		stdout, _, err := runLstk(t, testContext(t), t.TempDir(), env.With(env.DisableEvents, "1").With("PATH", t.TempDir()).WithHome(t.TempDir()), "--json=true", "aws", "s3", "ls")
 		requireExitCode(t, 1, err)
-		envelope := decodeEnvelope(t, stdout)
-		must.Eq(t, "aws", envelope.Command)
-		must.NotNil(t, envelope.Error)
-		must.Eq(t, "NOT_JSON_CAPABLE", envelope.Error.Code)
+		decodeEnvelope(t, stdout)
+		snap.MatchJSON(t, []byte(stdout))
 	})
 
 	t.Run("--json=false before the command name is not rejected", func(t *testing.T) {
@@ -179,10 +173,8 @@ func TestJSONFlagBeforeCommandNameBooleanValues(t *testing.T) {
 		t.Parallel()
 		stdout, _, err := runLstk(t, testContext(t), t.TempDir(), env.With(env.DisableEvents, "1").With("PATH", t.TempDir()).WithHome(t.TempDir()), "--json=notabool", "aws", "s3", "ls")
 		requireExitCode(t, 1, err)
-		envelope := decodeEnvelope(t, stdout)
-		must.Eq(t, "aws", envelope.Command)
-		must.NotNil(t, envelope.Error)
-		must.Eq(t, "NOT_JSON_CAPABLE", envelope.Error.Code)
+		decodeEnvelope(t, stdout)
+		snap.MatchJSON(t, []byte(stdout))
 	})
 }
 

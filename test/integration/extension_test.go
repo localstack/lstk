@@ -142,11 +142,12 @@ func TestExtensionUnknownCommandDispatches(t *testing.T) {
 	installExtension(t, extDir, "hello")
 
 	tmpHome := t.TempDir()
-	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), envWithPath(tmpHome, extDir), "hello", "world")
+	// DOCKER_HOST points at a closed port so the emulator context (and with it
+	// the EMULATOR_COUNT/EMULATOR lines) can't vary with the host's Docker state.
+	environ := append(envWithPath(tmpHome, extDir), "DOCKER_HOST=tcp://127.0.0.1:1")
+	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), environ, "hello", "world")
 	must.NoError(t, err, stderr)
-	must.Contains(t, stdout, "ARGS=[world]")
-	must.Contains(t, stdout, "API_VERSION=1")
-	must.Contains(t, stdout, "CONFIG_DIR=")
+	snap.Match(t, sanitizeOutput(stdout))
 }
 
 func TestExtensionUnknownCommandNoExtensionErrors(t *testing.T) {
@@ -207,10 +208,9 @@ func TestExtensionEndpointOmittedWhenNoRuntime(t *testing.T) {
 	environ = append(environ, "DOCKER_HOST=tcp://127.0.0.1:1")
 	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), environ, "ref")
 	must.NoError(t, err, stderr)
-	must.Contains(t, stdout, "EMULATOR_COUNT=0")
-	must.NotContains(t, stdout, "EMULATOR=")
-	// The extension still runs and still receives the always-present variables.
-	must.Contains(t, stdout, "API_VERSION=1")
+	// The snapshot pins EMULATOR_COUNT=0 with no EMULATOR= lines, while the
+	// always-present variables are still conveyed.
+	snap.Match(t, sanitizeOutput(stdout))
 }
 
 func TestExtensionSelfAuthorizationRefusesWithoutToken(t *testing.T) {
@@ -293,12 +293,10 @@ func TestExtensionSessionIDOmittedWhenTelemetryDisabled(t *testing.T) {
 	stdout, _, err := runLstk(t, testContext(t), t.TempDir(), environ, "ref", "exit", "7")
 	requireExitCode(t, 7, err)
 
-	// No session exists, so the field is omitted rather than conveyed empty (the
-	// JSON-level omission is asserted in internal/extension).
-	must.NotContains(t, stdout, "SESSION_ID=",
-		"no sessionId may be conveyed when telemetry is disabled")
-	must.Contains(t, stdout, "API_VERSION=1")
-	must.Contains(t, stdout, "ARGS=[exit 7]")
+	// No session exists, so the snapshot carries no SESSION_ID line at all —
+	// omitted rather than conveyed empty (the JSON-level omission is asserted
+	// in internal/extension).
+	snap.Match(t, sanitizeOutput(stdout))
 }
 
 // echoedValue returns the value of a `KEY=value` line the reference extension

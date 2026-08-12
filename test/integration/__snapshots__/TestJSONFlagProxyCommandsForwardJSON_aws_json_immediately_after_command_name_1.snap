@@ -1,0 +1,2 @@
+Error: aws CLI not found in PATH
+  ==> Install AWS CLI: https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html
