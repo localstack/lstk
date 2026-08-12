@@ -1,6 +1,8 @@
 # Contributing to lstk
 
-Thanks for contributing to lstk! This document covers contribution guidelines for the lstk CLI.
+lstk is developed by the LocalStack team and is not currently accepting external pull requests — pull request creation is restricted to repository collaborators.
+
+Your input still matters: open an [issue](https://github.com/localstack/lstk/issues) for bugs and feature requests. This is the channel we act on.
 
 ## Development Setup
 
@@ -100,11 +102,10 @@ This scaffolds a new Bubble Tea TUI component.
 
 ## Pull Requests
 
-1. Fork the repository
-2. Create a feature branch from `main`
-3. Run `make lint` and `make test` before submitting
-4. Review your own PR first — run `/review-pr <number>`
-5. Open a PR against `main`
+1. Create a feature branch from `main`
+2. Run `make lint` and `make test` before submitting
+3. Review your own PR first — run `/review-pr <number>`
+4. Open a PR against `main`
 
 ## Questions?
 
