@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/localstack/lstk/internal/must"
+	"github.com/stretchr/testify/require"
 
 	"github.com/localstack/lstk/test/integration/env"
 )
@@ -32,16 +32,16 @@ func TestAWSCompletionDelegatesToAWSCompleter(t *testing.T) {
 	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).WithHome(t.TempDir())
 
 	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), e, "__complete", "aws", "s3", "l")
-	must.NoError(t, err, "stderr: %s", stderr)
+	require.NoError(t, err, "stderr: %s", stderr)
 
 	// The completer strips the first word of COMP_LINE and resolves the rest
 	// against the aws command tree, so lstk's own name must not be in it.
-	must.Contains(t, stdout, "compline=[aws s3 l]")
-	must.NotContains(t, stdout, "compline=[lstk")
+	require.Contains(t, stdout, "compline=[aws s3 l]")
+	require.NotContains(t, stdout, "compline=[lstk")
 
 	completions := strings.Fields(stdout)
-	must.Contains(t, completions, "ls")
-	must.Contains(t, completions, "list-buckets")
+	require.Contains(t, completions, "ls")
+	require.Contains(t, completions, "list-buckets")
 }
 
 // TestAWSCompletionAppendsTrailingSpaceForNewWord verifies the cursor position
@@ -54,9 +54,9 @@ func TestAWSCompletionAppendsTrailingSpaceForNewWord(t *testing.T) {
 	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).WithHome(t.TempDir())
 
 	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), e, "__complete", "aws", "s3", "")
-	must.NoError(t, err, "stderr: %s", stderr)
+	require.NoError(t, err, "stderr: %s", stderr)
 
-	must.Contains(t, stdout, "compline=[aws s3 ]")
+	require.Contains(t, stdout, "compline=[aws s3 ]")
 }
 
 // TestAWSCompletionStripsGlobalFlags keeps lstk's own persistent flags out of
@@ -70,9 +70,9 @@ func TestAWSCompletionStripsGlobalFlags(t *testing.T) {
 
 	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), e,
 		"__complete", "aws", "--non-interactive", "s3", "l")
-	must.NoError(t, err, "stderr: %s", stderr)
+	require.NoError(t, err, "stderr: %s", stderr)
 
-	must.Contains(t, stdout, "compline=[aws s3 l]")
+	require.Contains(t, stdout, "compline=[aws s3 l]")
 }
 
 // TestAWSCompletionNeedsNoDockerOrEmulator guards the property that makes this
@@ -88,10 +88,10 @@ func TestAWSCompletionNeedsNoDockerOrEmulator(t *testing.T) {
 		With(env.Key("DOCKER_HOST"), "tcp://localhost:1")
 
 	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), e, "__complete", "aws", "s3", "l")
-	must.NoError(t, err, "stderr: %s", stderr)
+	require.NoError(t, err, "stderr: %s", stderr)
 
-	must.Contains(t, stdout, "ls")
-	must.NotContains(t, stdout, "Docker is not available")
+	require.Contains(t, stdout, "ls")
+	require.NotContains(t, stdout, "Docker is not available")
 }
 
 // TestAWSCompletionDegradesWhenCompleterMissing verifies a machine without
@@ -103,11 +103,11 @@ func TestAWSCompletionDegradesWhenCompleterMissing(t *testing.T) {
 	e := env.With(env.DisableEvents, "1").With("PATH", t.TempDir()).WithHome(t.TempDir())
 
 	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), e, "__complete", "aws", "s3", "l")
-	must.NoError(t, err, "stderr: %s", stderr)
+	require.NoError(t, err, "stderr: %s", stderr)
 
 	// ShellCompDirectiveDefault (0) — hand the word back to the shell's own
 	// file completion rather than offering nothing at all.
-	must.Eq(t, ":0", strings.TrimSpace(stdout))
+	require.Equal(t, ":0", strings.TrimSpace(stdout))
 }
 
 // TestBashCompletionForAWSSubcommand drives the real generated bash script the
@@ -120,10 +120,10 @@ func TestBashCompletionForAWSSubcommand(t *testing.T) {
 	driver := completeInDriver(`lstk aws s3 l`, 3, "lstk aws s3 l")
 
 	stdout, stderr, err := runBashCompletionDriver(t, driver, fakeDir)
-	must.NoError(t, err, "completion attempt failed\nstdout: %s\nstderr: %s", stdout, stderr)
-	must.NotContains(t, stderr, "command not found")
+	require.NoError(t, err, "completion attempt failed\nstdout: %s\nstderr: %s", stdout, stderr)
+	require.NotContains(t, stderr, "command not found")
 
 	completions := strings.Fields(stdout)
-	must.Contains(t, completions, "ls")
-	must.Contains(t, completions, "list-buckets")
+	require.Contains(t, completions, "ls")
+	require.Contains(t, completions, "list-buckets")
 }

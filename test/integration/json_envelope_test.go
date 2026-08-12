@@ -6,8 +6,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/localstack/lstk/internal/must"
 	"github.com/localstack/lstk/internal/snap"
+	"github.com/stretchr/testify/require"
 )
 
 // jsonEnvelope mirrors the shape documented in output-envelope/spec.md and
@@ -40,8 +40,8 @@ type jsonError struct {
 func decodeEnvelope(t *testing.T, stdout string) jsonEnvelope {
 	t.Helper()
 	var envelope jsonEnvelope
-	must.NoError(t, json.Unmarshal([]byte(stdout), &envelope), "stdout should be exactly one JSON object: %s", stdout)
-	must.NotNil(t, envelope.Warnings, "warnings should always be an array, never omitted/null")
+	require.NoError(t, json.Unmarshal([]byte(stdout), &envelope), "stdout should be exactly one JSON object: %s", stdout)
+	require.NotNil(t, envelope.Warnings, "warnings should always be an array, never omitted/null")
 	return envelope
 }
 
@@ -83,8 +83,8 @@ func TestUsageErrorBeforeJSONFallsBackToPlainText(t *testing.T) {
 	stdout, stderr, err := runLstk(t, ctx, t.TempDir(), testEnvWithHome(t.TempDir(), ""), "stop", "--bogus-flag", "--json")
 	requireExitCode(t, 1, err)
 
-	must.Empty(t, stdout, "no JSON should be attempted when --json wasn't parsed yet")
-	must.Contains(t, stderr, "bogus-flag")
+	require.Empty(t, stdout, "no JSON should be attempted when --json wasn't parsed yet")
+	require.Contains(t, stderr, "bogus-flag")
 }
 
 // TestConfigLoadFailureRendersJSONEnvelope covers PR #374's review comment:
@@ -99,12 +99,12 @@ func TestConfigLoadFailureRendersJSONEnvelope(t *testing.T) {
 
 	workDir := t.TempDir()
 	lstkDir := filepath.Join(workDir, ".lstk")
-	must.NoError(t, os.MkdirAll(lstkDir, 0755))
-	must.NoError(t, os.WriteFile(filepath.Join(lstkDir, "config.toml"), []byte("[[containers]\ntype = \"aws\"\n"), 0644))
+	require.NoError(t, os.MkdirAll(lstkDir, 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(lstkDir, "config.toml"), []byte("[[containers]\ntype = \"aws\"\n"), 0644))
 
 	stdout, stderr, err := runLstk(t, ctx, workDir, testEnvWithHome(t.TempDir(), ""), "stop", "--json")
 	requireExitCode(t, 1, err)
-	must.Empty(t, stderr, "the plain-text fallback in Execute() must not also fire alongside the envelope")
+	require.Empty(t, stderr, "the plain-text fallback in Execute() must not also fire alongside the envelope")
 
 	decodeEnvelope(t, stdout)
 	// error.message embeds the temp-dir config path, so it is masked.
@@ -122,12 +122,12 @@ func TestConfigNotFoundRendersJSONEnvelope(t *testing.T) {
 		"--config", missingConfig, "reset", "--force", "--json",
 	)
 	requireExitCode(t, 1, err)
-	must.Empty(t, stderr, "the plain-text fallback in Execute() must not also fire alongside the envelope")
+	require.Empty(t, stderr, "the plain-text fallback in Execute() must not also fire alongside the envelope")
 
 	envelope := decodeEnvelope(t, stdout)
-	must.Eq(t, "error", envelope.Status)
-	must.Eq(t, "reset", envelope.Command)
-	must.NotNil(t, envelope.Error)
-	must.Eq(t, "CONFIG_NOT_FOUND", envelope.Error.Code)
-	must.Eq(t, "CONFIG", envelope.Error.Category)
+	require.Equal(t, "error", envelope.Status)
+	require.Equal(t, "reset", envelope.Command)
+	require.NotNil(t, envelope.Error)
+	require.Equal(t, "CONFIG_NOT_FOUND", envelope.Error.Code)
+	require.Equal(t, "CONFIG", envelope.Error.Category)
 }

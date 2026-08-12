@@ -7,8 +7,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/localstack/lstk/internal/must"
 	"github.com/localstack/lstk/test/integration/env"
+	"github.com/stretchr/testify/require"
 )
 
 // End-to-end tests for `lstk sam` that exercise the real AWS SAM CLI against a
@@ -37,7 +37,7 @@ func copySAMSample(t *testing.T, name string) string {
 	t.Helper()
 	work := t.TempDir()
 	src := filepath.Join("test-samples", "iac", "sam", name)
-	must.NoError(t, os.CopyFS(work, os.DirFS(src)))
+	require.NoError(t, os.CopyFS(work, os.DirFS(src)))
 	return work
 }
 
@@ -63,7 +63,7 @@ func TestSAME2EValidateOffline(t *testing.T) {
 	e := samE2EEnv(t)
 
 	stdout, stderr, err := runSAM(t, ctx, work, e, "validate", "--lint")
-	must.NoError(t, err, "sam validate stdout: %s\nstderr: %s", stdout, stderr)
+	require.NoError(t, err, "sam validate stdout: %s\nstderr: %s", stdout, stderr)
 }
 
 // `sam deploy` of a single function succeeds against LocalStack, and `sam delete`
@@ -85,11 +85,11 @@ func TestSAME2EDeployDelete(t *testing.T) {
 	_, stderr, err := runSAM(t, ctx, work, e, "deploy",
 		"--stack-name", stack, "--resolve-s3", "--no-confirm-changeset",
 		"--no-fail-on-empty-changeset", "--capabilities", "CAPABILITY_IAM", "--region", "us-east-1")
-	must.NoError(t, err, "sam deploy stderr: %s", stderr)
+	require.NoError(t, err, "sam deploy stderr: %s", stderr)
 
 	_, stderr, err = runSAM(t, ctx, work, e, "delete",
 		"--stack-name", stack, "--no-prompts", "--region", "us-east-1")
-	must.NoError(t, err, "sam delete stderr: %s", stderr)
+	require.NoError(t, err, "sam delete stderr: %s", stderr)
 }
 
 // `sam deploy --account <id>` lands the stack under that LocalStack account: the
@@ -112,14 +112,14 @@ func TestSAME2EDeployCustomAccount(t *testing.T) {
 	_, stderr, err := runSAM(t, ctx, work, e, "--account", account, "deploy",
 		"--stack-name", stack, "--resolve-s3", "--no-confirm-changeset",
 		"--no-fail-on-empty-changeset", "--capabilities", "CAPABILITY_IAM", "--region", "us-east-1")
-	must.NoError(t, err, "sam deploy stderr: %s", stderr)
+	require.NoError(t, err, "sam deploy stderr: %s", stderr)
 
 	stdout, stderr, err := runSAM(t, ctx, work, e, "--account", account, "list", "stack-outputs",
 		"--stack-name", stack, "--output", "json", "--region", "us-east-1")
-	must.NoError(t, err, "sam list stack-outputs stderr: %s", stderr)
-	must.Contains(t, stdout, account, "function ARN should carry the custom account id")
+	require.NoError(t, err, "sam list stack-outputs stderr: %s", stderr)
+	require.Contains(t, stdout, account, "function ARN should carry the custom account id")
 
 	_, stderr, err = runSAM(t, ctx, work, e, "--account", account, "delete",
 		"--stack-name", stack, "--no-prompts", "--region", "us-east-1")
-	must.NoError(t, err, "sam delete stderr: %s", stderr)
+	require.NoError(t, err, "sam delete stderr: %s", stderr)
 }

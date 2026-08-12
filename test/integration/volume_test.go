@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/localstack/lstk/internal/must"
 	"github.com/localstack/lstk/test/integration/env"
+	"github.com/stretchr/testify/require"
 )
 
 func TestVolumePathCommand(t *testing.T) {
@@ -23,10 +23,10 @@ func TestVolumePathCommand(t *testing.T) {
 
 		e := testEnvWithHome(tmpHome, xdgOverride)
 		stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), e, "volume", "path")
-		must.NoError(t, err, stderr)
+		require.NoError(t, err, stderr)
 		requireExitCode(t, 0, err)
 
-		must.Contains(t, stdout, filepath.Join("lstk", "volume", "localstack-aws"))
+		require.Contains(t, stdout, filepath.Join("lstk", "volume", "localstack-aws"))
 	})
 
 	t.Run("prints custom volume path from config", func(t *testing.T) {
@@ -40,10 +40,10 @@ port = "4566"
 volume = "` + escapeTomlPath(customVolume) + `"
 `
 		configFile := filepath.Join(t.TempDir(), "config.toml")
-		must.NoError(t, os.WriteFile(configFile, []byte(configContent), 0644))
+		require.NoError(t, os.WriteFile(configFile, []byte(configContent), 0644))
 
 		stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), testEnvWithHome(t.TempDir(), ""), "--config", configFile, "volume", "path")
-		must.NoError(t, err, stderr)
+		require.NoError(t, err, stderr)
 		requireExitCode(t, 0, err)
 
 		assertSamePath(t, customVolume, stdout)
@@ -60,10 +60,10 @@ port = "4566"
 volumes = ["` + escapeTomlPath(persistDir) + `:/var/lib/localstack", "/abs/init.sf.sql:/etc/localstack/init/ready.d/init.sf.sql"]
 `
 		configFile := filepath.Join(t.TempDir(), "config.toml")
-		must.NoError(t, os.WriteFile(configFile, []byte(configContent), 0644))
+		require.NoError(t, os.WriteFile(configFile, []byte(configContent), 0644))
 
 		stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), testEnvWithHome(t.TempDir(), ""), "--config", configFile, "volume", "path")
-		must.NoError(t, err, stderr)
+		require.NoError(t, err, stderr)
 		requireExitCode(t, 0, err)
 
 		assertSamePath(t, persistDir, stdout)
@@ -80,10 +80,10 @@ port = "4566"
 volumes = ["./persist:/var/lib/localstack"]
 `
 		configFile := filepath.Join(configDir, "config.toml")
-		must.NoError(t, os.WriteFile(configFile, []byte(configContent), 0644))
+		require.NoError(t, os.WriteFile(configFile, []byte(configContent), 0644))
 
 		stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), testEnvWithHome(t.TempDir(), ""), "--config", configFile, "volume", "path")
-		must.NoError(t, err, stderr)
+		require.NoError(t, err, stderr)
 		requireExitCode(t, 0, err)
 
 		assertSamePath(t, filepath.Join(configDir, "persist"), stdout)
@@ -99,7 +99,7 @@ volumes = ["./persist:/var/lib/localstack"]
 		analyticsSrv, events := mockAnalyticsServer(t)
 		e := env.Environ(testEnvWithHome(tmpHome, xdgOverride)).With(env.AnalyticsEndpoint, analyticsSrv.URL)
 		_, stderr, err := runLstk(t, testContext(t), t.TempDir(), e, "volume", "path")
-		must.NoError(t, err, stderr)
+		require.NoError(t, err, stderr)
 		requireExitCode(t, 0, err)
 
 		assertCommandTelemetry(t, events, "volume path", 0)
@@ -111,9 +111,9 @@ func TestVolumeClearCommand(t *testing.T) {
 	t.Run("clears volume with force flag", func(t *testing.T) {
 		t.Parallel()
 		volumeDir := t.TempDir()
-		must.NoError(t, os.MkdirAll(filepath.Join(volumeDir, "cache", "certs"), 0755))
-		must.NoError(t, os.WriteFile(filepath.Join(volumeDir, "cache", "certs", "cert.pem"), []byte("fake cert"), 0644))
-		must.NoError(t, os.WriteFile(filepath.Join(volumeDir, "cache", "machine.json"), []byte("{}"), 0644))
+		require.NoError(t, os.MkdirAll(filepath.Join(volumeDir, "cache", "certs"), 0755))
+		require.NoError(t, os.WriteFile(filepath.Join(volumeDir, "cache", "certs", "cert.pem"), []byte("fake cert"), 0644))
+		require.NoError(t, os.WriteFile(filepath.Join(volumeDir, "cache", "machine.json"), []byte("{}"), 0644))
 
 		configContent := `
 [[containers]]
@@ -123,22 +123,22 @@ port = "4566"
 volume = "` + escapeTomlPath(volumeDir) + `"
 `
 		configFile := filepath.Join(t.TempDir(), "config.toml")
-		must.NoError(t, os.WriteFile(configFile, []byte(configContent), 0644))
+		require.NoError(t, os.WriteFile(configFile, []byte(configContent), 0644))
 
 		stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), testEnvWithHome(t.TempDir(), ""), "--config", configFile, "--non-interactive", "volume", "clear", "--force")
-		must.NoError(t, err, "lstk volume clear failed: %s\nstdout: %s", stderr, stdout)
+		require.NoError(t, err, "lstk volume clear failed: %s\nstdout: %s", stderr, stdout)
 		requireExitCode(t, 0, err)
 
-		must.Contains(t, stdout, "Volume data cleared")
+		require.Contains(t, stdout, "Volume data cleared")
 
 		// Directory itself should still exist
 		_, err = os.Stat(volumeDir)
-		must.NoError(t, err, "volume directory should still exist")
+		require.NoError(t, err, "volume directory should still exist")
 
 		// But contents should be gone
 		entries, err := os.ReadDir(volumeDir)
-		must.NoError(t, err)
-		must.Empty(t, entries, "volume directory should be empty")
+		require.NoError(t, err)
+		require.Empty(t, entries, "volume directory should be empty")
 	})
 
 	t.Run("fails without force in non-interactive mode", func(t *testing.T) {
@@ -150,10 +150,10 @@ volume = "` + escapeTomlPath(volumeDir) + `"
 
 		e := testEnvWithHome(tmpHome, xdgOverride)
 		_, stderr, err := runLstk(t, testContext(t), t.TempDir(), e, "--non-interactive", "volume", "clear")
-		must.Error(t, err)
+		require.Error(t, err)
 		requireExitCode(t, 1, err)
 
-		must.Contains(t, stderr, "--force")
+		require.Contains(t, stderr, "--force")
 	})
 
 	t.Run("handles nonexistent volume directory", func(t *testing.T) {
@@ -168,19 +168,19 @@ port = "4566"
 volume = "` + escapeTomlPath(volumeDir) + `"
 `
 		configFile := filepath.Join(t.TempDir(), "config.toml")
-		must.NoError(t, os.WriteFile(configFile, []byte(configContent), 0644))
+		require.NoError(t, os.WriteFile(configFile, []byte(configContent), 0644))
 
 		stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), testEnvWithHome(t.TempDir(), ""), "--config", configFile, "--non-interactive", "volume", "clear", "--force")
-		must.NoError(t, err, "lstk volume clear failed: %s\nstdout: %s", stderr, stdout)
+		require.NoError(t, err, "lstk volume clear failed: %s\nstdout: %s", stderr, stdout)
 		requireExitCode(t, 0, err)
 
-		must.Contains(t, stdout, "Volume data cleared")
+		require.Contains(t, stdout, "Volume data cleared")
 	})
 
 	t.Run("filters by emulator type", func(t *testing.T) {
 		t.Parallel()
 		volumeDir := t.TempDir()
-		must.NoError(t, os.WriteFile(filepath.Join(volumeDir, "data.json"), []byte("{}"), 0644))
+		require.NoError(t, os.WriteFile(filepath.Join(volumeDir, "data.json"), []byte("{}"), 0644))
 
 		configContent := `
 [[containers]]
@@ -190,22 +190,22 @@ port = "4566"
 volume = "` + escapeTomlPath(volumeDir) + `"
 `
 		configFile := filepath.Join(t.TempDir(), "config.toml")
-		must.NoError(t, os.WriteFile(configFile, []byte(configContent), 0644))
+		require.NoError(t, os.WriteFile(configFile, []byte(configContent), 0644))
 
 		// Wrong type should fail
 		_, stderr, err := runLstk(t, testContext(t), t.TempDir(), testEnvWithHome(t.TempDir(), ""), "--config", configFile, "--non-interactive", "volume", "clear", "--force", "--type", "snowflake")
-		must.Error(t, err)
+		require.Error(t, err)
 		requireExitCode(t, 1, err)
-		must.Contains(t, stderr, "not found")
+		require.Contains(t, stderr, "not found")
 
 		// Correct type should succeed
 		stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), testEnvWithHome(t.TempDir(), ""), "--config", configFile, "--non-interactive", "volume", "clear", "--force", "--type", "aws")
-		must.NoError(t, err, "lstk volume clear failed: %s\nstdout: %s", stderr, stdout)
+		require.NoError(t, err, "lstk volume clear failed: %s\nstdout: %s", stderr, stdout)
 		requireExitCode(t, 0, err)
 
 		entries, err := os.ReadDir(volumeDir)
-		must.NoError(t, err)
-		must.Empty(t, entries)
+		require.NoError(t, err)
+		require.Empty(t, entries)
 	})
 
 	t.Run("emits telemetry", func(t *testing.T) {
@@ -218,7 +218,7 @@ volume = "` + escapeTomlPath(volumeDir) + `"
 		analyticsSrv, events := mockAnalyticsServer(t)
 		e := env.Environ(testEnvWithHome(tmpHome, xdgOverride)).With(env.AnalyticsEndpoint, analyticsSrv.URL)
 		_, stderr, err := runLstk(t, testContext(t), t.TempDir(), e, "--non-interactive", "volume", "clear", "--force")
-		must.NoError(t, err, stderr)
+		require.NoError(t, err, stderr)
 		requireExitCode(t, 0, err)
 
 		assertCommandTelemetry(t, events, "volume clear", 0)
@@ -240,7 +240,7 @@ volume = "` + escapeTomlPath(volumeDir) + `"
 			"-v", volumeDir+":/vol",
 			"alpine", "sh", "-c", "mkdir /vol/cache && touch /vol/cache/cert.pem",
 		).CombinedOutput()
-		must.NoError(t, err, "docker setup failed: %s", out)
+		require.NoError(t, err, "docker setup failed: %s", out)
 		t.Cleanup(func() {
 			_ = exec.Command("docker", "run", "--rm",
 				"-v", volumeDir+":/vol",
@@ -256,7 +256,7 @@ port = "4566"
 volume = "` + escapeTomlPath(volumeDir) + `"
 `
 		configFile := filepath.Join(t.TempDir(), "config.toml")
-		must.NoError(t, os.WriteFile(configFile, []byte(configContent), 0644))
+		require.NoError(t, os.WriteFile(configFile, []byte(configContent), 0644))
 
 		_, stderr, err := runLstk(t, testContext(t), t.TempDir(), testEnvWithHome(t.TempDir(), ""), "--config", configFile, "--non-interactive", "volume", "clear", "--force")
 		if err == nil {
@@ -264,7 +264,7 @@ volume = "` + escapeTomlPath(volumeDir) + `"
 		}
 
 		requireExitCode(t, 1, err)
-		must.Contains(t, stderr, "sudo")
+		require.Contains(t, stderr, "sudo")
 	})
 }
 
@@ -281,7 +281,7 @@ port = "4566"
 volume = "` + escapeTomlPath(volumeDir) + `"
 `
 		configFile := filepath.Join(t.TempDir(), "config.toml")
-		must.NoError(t, os.WriteFile(configFile, []byte(configContent), 0644))
+		require.NoError(t, os.WriteFile(configFile, []byte(configContent), 0644))
 		return configFile
 	}
 
@@ -297,33 +297,33 @@ volume = "` + escapeTomlPath(volumeDir) + `"
 	t.Run("clears volume when user confirms with y", func(t *testing.T) {
 		t.Parallel()
 		volumeDir := t.TempDir()
-		must.NoError(t, os.WriteFile(filepath.Join(volumeDir, "data.json"), []byte("{}"), 0644))
+		require.NoError(t, os.WriteFile(filepath.Join(volumeDir, "data.json"), []byte("{}"), 0644))
 
 		p := startVolumeClear(t, makeConfig(t, volumeDir))
 		p.write("y")
 		out, err := p.wait()
-		must.NoError(t, err)
+		require.NoError(t, err)
 
-		must.Contains(t, out, "Volume data cleared")
+		require.Contains(t, out, "Volume data cleared")
 		entries, err := os.ReadDir(volumeDir)
-		must.NoError(t, err)
-		must.Empty(t, entries, "volume directory should be empty after confirm")
+		require.NoError(t, err)
+		require.Empty(t, entries, "volume directory should be empty after confirm")
 	})
 
 	t.Run("cancels when user presses n", func(t *testing.T) {
 		t.Parallel()
 		volumeDir := t.TempDir()
-		must.NoError(t, os.WriteFile(filepath.Join(volumeDir, "data.json"), []byte("{}"), 0644))
+		require.NoError(t, os.WriteFile(filepath.Join(volumeDir, "data.json"), []byte("{}"), 0644))
 
 		p := startVolumeClear(t, makeConfig(t, volumeDir))
 		p.write("n")
 		out, err := p.wait()
-		must.NoError(t, err)
+		require.NoError(t, err)
 
-		must.Contains(t, out, "Cancelled")
+		require.Contains(t, out, "Cancelled")
 		entries, err := os.ReadDir(volumeDir)
-		must.NoError(t, err)
-		must.Len(t, entries, 1, "volume directory should be untouched after cancel")
+		require.NoError(t, err)
+		require.Len(t, entries, 1, "volume directory should be untouched after cancel")
 	})
 }
 

@@ -18,10 +18,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/localstack/lstk/internal/must"
 	"github.com/localstack/lstk/test/integration/env"
 	"github.com/moby/moby/api/types/network"
 	"github.com/moby/moby/client"
+	"github.com/stretchr/testify/require"
 )
 
 const snowflakeContainerName = "localstack-snowflake"
@@ -38,14 +38,14 @@ func TestStartCommandSucceedsWithValidToken(t *testing.T) {
 
 	ctx := testContext(t)
 	stdout, stderr, err := runLstk(t, ctx, "", env.With(env.APIEndpoint, mockServer.URL), "start")
-	must.NoError(t, err, "lstk start failed: %s", stderr)
+	require.NoError(t, err, "lstk start failed: %s", stderr)
 	requireExitCode(t, 0, err)
 
 	inspect, err := dockerClient.ContainerInspect(ctx, containerName, client.ContainerInspectOptions{})
-	must.NoError(t, err, "failed to inspect container")
-	must.True(t, inspect.Container.State.Running, "container should be running")
+	require.NoError(t, err, "failed to inspect container")
+	require.True(t, inspect.Container.State.Running, "container should be running")
 
-	must.NotContains(t, stdout, "• Persistence:",
+	require.NotContains(t, stdout, "• Persistence:",
 		"persistence bullet must be omitted when --persist is not set")
 }
 
@@ -66,18 +66,18 @@ func TestStartCommandReusesLocalImageWhenPresent(t *testing.T) {
 	const pinnedTag = "reuse-local-test"
 	const pinnedImage = "localstack/localstack-pro:" + pinnedTag
 	reader, err := dockerClient.ImagePull(ctx, testImage, client.ImagePullOptions{})
-	must.NoError(t, err, "failed to pull test image")
+	require.NoError(t, err, "failed to pull test image")
 	_, _ = io.Copy(io.Discard, reader)
 	_ = reader.Close()
 	_, err = dockerClient.ImageTag(ctx, client.ImageTagOptions{Source: testImage, Target: pinnedImage})
-	must.NoError(t, err)
+	require.NoError(t, err)
 	t.Cleanup(func() {
 		_, _ = dockerClient.ImageRemove(context.Background(), pinnedImage, client.ImageRemoveOptions{})
 	})
 
 	home := t.TempDir()
 	configFile := filepath.Join(home, "config.toml")
-	must.NoError(t, os.WriteFile(configFile,
+	require.NoError(t, os.WriteFile(configFile,
 		[]byte(fmt.Sprintf("[[containers]]\ntype = \"aws\"\ntag = %q\nport = \"4599\"\n", pinnedTag)), 0644))
 
 	mockServer := createMockLicenseServer(true)
@@ -88,8 +88,8 @@ func TestStartCommandReusesLocalImageWhenPresent(t *testing.T) {
 		string(env.AuthToken)+"=fake-token")
 	stdout, _, _ := runLstk(t, ctx, "", e, "--config", configFile, "start")
 
-	must.Contains(t, stdout, "Using local image "+pinnedImage, "a pinned image present locally should be reused")
-	must.NotContains(t, stdout, "Pulling", "lstk must not re-pull an image that is already present")
+	require.Contains(t, stdout, "Using local image "+pinnedImage, "a pinned image present locally should be reused")
+	require.NotContains(t, stdout, "Pulling", "lstk must not re-pull an image that is already present")
 }
 
 // A container that exits during startup must fail with a styled
@@ -106,11 +106,11 @@ func TestStartFailsWhenContainerExitsDuringStartup(t *testing.T) {
 	const pinnedTag = "exit-during-startup-test"
 	const pinnedImage = "localstack/localstack-pro:" + pinnedTag
 	reader, err := dockerClient.ImagePull(ctx, testImage, client.ImagePullOptions{})
-	must.NoError(t, err, "failed to pull test image")
+	require.NoError(t, err, "failed to pull test image")
 	_, _ = io.Copy(io.Discard, reader)
 	_ = reader.Close()
 	_, err = dockerClient.ImageTag(ctx, client.ImageTagOptions{Source: testImage, Target: pinnedImage})
-	must.NoError(t, err)
+	require.NoError(t, err)
 	t.Cleanup(func() {
 		_, _ = dockerClient.ImageRemove(context.Background(), pinnedImage, client.ImageRemoveOptions{})
 	})
@@ -123,7 +123,7 @@ func TestStartFailsWhenContainerExitsDuringStartup(t *testing.T) {
 
 	home := t.TempDir()
 	configFile := filepath.Join(home, "config.toml")
-	must.NoError(t, os.WriteFile(configFile,
+	require.NoError(t, os.WriteFile(configFile,
 		[]byte(fmt.Sprintf("[[containers]]\ntype = \"aws\"\ntag = %q\nport = \"4599\"\n", pinnedTag)), 0644))
 
 	mockServer := createMockLicenseServer(true)
@@ -134,11 +134,11 @@ func TestStartFailsWhenContainerExitsDuringStartup(t *testing.T) {
 		string(env.AuthToken)+"=fake-token")
 	stdout, stderr, err := runLstk(t, ctx, "", e, "--config", configFile, "--non-interactive", "start")
 
-	must.Error(t, err, "expected start to fail when the container exits during startup")
+	require.Error(t, err, "expected start to fail when the container exits during startup")
 	requireExitCode(t, 1, err)
 	combined := stdout + stderr
-	must.Contains(t, combined, "exited unexpectedly", "the failure must be surfaced as a styled error")
-	must.Contains(t, combined, "exit code 0", "the captured exit code must be reported")
+	require.Contains(t, combined, "exited unexpectedly", "the failure must be surfaced as a styled error")
+	require.Contains(t, combined, "exit code 0", "the captured exit code must be reported")
 }
 
 // A container that stays running but never serves /_localstack/health must not wait forever.
@@ -157,11 +157,11 @@ func TestStartFailsWhenContainerNeverBecomesHealthy(t *testing.T) {
 	const pinnedTag = "never-healthy-test"
 	const pinnedImage = "localstack/localstack-pro:" + pinnedTag
 	reader, err := dockerClient.ImagePull(ctx, standInImage, client.ImagePullOptions{})
-	must.NoError(t, err, "failed to pull nginx test image")
+	require.NoError(t, err, "failed to pull nginx test image")
 	_, _ = io.Copy(io.Discard, reader)
 	_ = reader.Close()
 	_, err = dockerClient.ImageTag(ctx, client.ImageTagOptions{Source: standInImage, Target: pinnedImage})
-	must.NoError(t, err)
+	require.NoError(t, err)
 	t.Cleanup(func() {
 		_, _ = dockerClient.ImageRemove(context.Background(), pinnedImage, client.ImageRemoveOptions{})
 	})
@@ -175,7 +175,7 @@ func TestStartFailsWhenContainerNeverBecomesHealthy(t *testing.T) {
 
 	home := t.TempDir()
 	configFile := filepath.Join(home, "config.toml")
-	must.NoError(t, os.WriteFile(configFile,
+	require.NoError(t, os.WriteFile(configFile,
 		[]byte(fmt.Sprintf("[[containers]]\ntype = \"aws\"\ntag = %q\nport = \"4599\"\n", pinnedTag)), 0644))
 
 	mockServer := createMockLicenseServer(true)
@@ -187,12 +187,12 @@ func TestStartFailsWhenContainerNeverBecomesHealthy(t *testing.T) {
 		string(env.StartupTimeout)+"=5s")
 	stdout, stderr, err := runLstk(t, ctx, "", e, "--config", configFile, "--non-interactive", "start")
 
-	must.Error(t, err, "expected start to fail when the container never becomes healthy")
+	require.Error(t, err, "expected start to fail when the container never becomes healthy")
 	requireExitCode(t, 1, err)
 	combined := stdout + stderr
-	must.Contains(t, combined, "did not become ready within 5s", "the bounded timeout must be surfaced")
-	must.Contains(t, combined, "lstk logs", "the guidance must point at lstk logs")
-	must.Contains(t, combined, "lstk stop", "the guidance must point at lstk stop")
+	require.Contains(t, combined, "did not become ready within 5s", "the bounded timeout must be surfaced")
+	require.Contains(t, combined, "lstk logs", "the guidance must point at lstk logs")
+	require.Contains(t, combined, "lstk stop", "the guidance must point at lstk stop")
 }
 
 // Interrupting a start while it awaits readiness (Ctrl+C / SIGINT) renders no
@@ -216,11 +216,11 @@ func TestStartEmitsTelemetryWhenInterruptedDuringStartup(t *testing.T) {
 	const pinnedTag = "interrupted-startup-test"
 	const pinnedImage = "localstack/localstack-pro:" + pinnedTag
 	reader, err := dockerClient.ImagePull(ctx, standInImage, client.ImagePullOptions{})
-	must.NoError(t, err, "failed to pull nginx test image")
+	require.NoError(t, err, "failed to pull nginx test image")
 	_, _ = io.Copy(io.Discard, reader)
 	_ = reader.Close()
 	_, err = dockerClient.ImageTag(ctx, client.ImageTagOptions{Source: standInImage, Target: pinnedImage})
-	must.NoError(t, err)
+	require.NoError(t, err)
 	t.Cleanup(func() {
 		_, _ = dockerClient.ImageRemove(context.Background(), pinnedImage, client.ImageRemoveOptions{})
 	})
@@ -234,7 +234,7 @@ func TestStartEmitsTelemetryWhenInterruptedDuringStartup(t *testing.T) {
 
 	home := t.TempDir()
 	configFile := filepath.Join(home, "config.toml")
-	must.NoError(t, os.WriteFile(configFile,
+	require.NoError(t, os.WriteFile(configFile,
 		[]byte(fmt.Sprintf("[[containers]]\ntype = \"aws\"\ntag = %q\nport = \"4599\"\n", pinnedTag)), 0644))
 
 	mockServer := createMockLicenseServer(true)
@@ -242,7 +242,7 @@ func TestStartEmitsTelemetryWhenInterruptedDuringStartup(t *testing.T) {
 	analyticsSrv, events := mockAnalyticsServer(t)
 
 	binPath, err := filepath.Abs(binaryPath())
-	must.NoError(t, err)
+	require.NoError(t, err)
 	cmd := exec.CommandContext(ctx, binPath, "--config", configFile, "--non-interactive", "start")
 	cmd.Env = append(testEnvWithHome(home, ""),
 		string(env.APIEndpoint)+"="+mockServer.URL,
@@ -251,25 +251,25 @@ func TestStartEmitsTelemetryWhenInterruptedDuringStartup(t *testing.T) {
 	out := &syncBuffer{}
 	cmd.Stdout = out
 	cmd.Stderr = out
-	must.NoError(t, cmd.Start())
+	require.NoError(t, cmd.Start())
 
 	// Interrupt only once the container is running, so the SIGINT lands in the
 	// readiness wait rather than during container creation.
-	must.Eventually(t, func() bool {
+	require.Eventually(t, func() bool {
 		inspect, ierr := dockerClient.ContainerInspect(ctx, wantContainer, client.ContainerInspectOptions{})
 		return ierr == nil && inspect.Container.State.Running
 	}, 60*time.Second, 100*time.Millisecond, "container never started; output:\n%s", out.String())
-	must.NoError(t, cmd.Process.Signal(os.Interrupt))
+	require.NoError(t, cmd.Process.Signal(os.Interrupt))
 	_ = cmd.Wait()
 
 	byName := collectTelemetryByName(t, events, 2)
 	lifecycle, ok := byName["lstk_lifecycle"]
-	must.True(t, ok, "an interrupted start must still emit a lifecycle telemetry event")
+	require.True(t, ok, "an interrupted start must still emit a lifecycle telemetry event")
 	lifePayload, _ := lifecycle["payload"].(map[string]any)
-	must.Eq(t, "start_error", lifePayload["event_type"])
-	must.Eq(t, "start_failed", lifePayload["error_code"])
-	must.Contains(t, lifePayload["error_msg"], "context canceled")
-	must.Contains(t, byName, "lstk_command")
+	require.Equal(t, "start_error", lifePayload["event_type"])
+	require.Equal(t, "start_failed", lifePayload["error_code"])
+	require.Contains(t, lifePayload["error_msg"], "context canceled")
+	require.Contains(t, byName, "lstk_command")
 }
 
 func TestStartCommandSucceedsWithKeyringToken(t *testing.T) {
@@ -280,7 +280,7 @@ func TestStartCommandSucceedsWithKeyringToken(t *testing.T) {
 	// Store token in keyring before running command
 	authToken := env.Require(t, env.AuthToken)
 	err := SetAuthTokenInKeyring(authToken)
-	must.NoError(t, err, "failed to store token in keyring")
+	require.NoError(t, err, "failed to store token in keyring")
 
 	mockServer := createMockLicenseServer(true)
 	defer mockServer.Close()
@@ -288,12 +288,12 @@ func TestStartCommandSucceedsWithKeyringToken(t *testing.T) {
 	ctx := testContext(t)
 	// Run without LOCALSTACK_AUTH_TOKEN should use keyring
 	_, stderr, err := runLstk(t, ctx, "", env.Without(env.AuthToken).With(env.APIEndpoint, mockServer.URL), "start")
-	must.NoError(t, err, "lstk start failed: %s", stderr)
+	require.NoError(t, err, "lstk start failed: %s", stderr)
 	requireExitCode(t, 0, err)
 
 	inspect, err := dockerClient.ContainerInspect(ctx, containerName, client.ContainerInspectOptions{})
-	must.NoError(t, err, "failed to inspect container")
-	must.True(t, inspect.Container.State.Running, "container should be running")
+	require.NoError(t, err, "failed to inspect container")
+	require.True(t, inspect.Container.State.Running, "container should be running")
 }
 
 func TestStartCommandFailsWithInvalidToken(t *testing.T) {
@@ -305,9 +305,9 @@ func TestStartCommandFailsWithInvalidToken(t *testing.T) {
 	defer mockServer.Close()
 
 	stdout, _, err := runLstk(t, testContext(t), "", env.With(env.AuthToken, "invalid-token").With(env.APIEndpoint, mockServer.URL), "start")
-	must.Error(t, err, "expected lstk start to fail with invalid token")
+	require.Error(t, err, "expected lstk start to fail with invalid token")
 	requireExitCode(t, 1, err)
-	must.Contains(t, stdout, "License validation failed")
+	require.Contains(t, stdout, "License validation failed")
 }
 
 func TestStartCommandDoesNothingWhenAlreadyRunning(t *testing.T) {
@@ -320,9 +320,9 @@ func TestStartCommandDoesNothingWhenAlreadyRunning(t *testing.T) {
 
 	analyticsSrv, events := mockAnalyticsServer(t)
 	stdout, stderr, err := runLstk(t, ctx, "", env.With(env.AuthToken, "fake-token").With(env.AnalyticsEndpoint, analyticsSrv.URL), "start")
-	must.NoError(t, err, "lstk start should succeed when container is already running: %s", stderr)
+	require.NoError(t, err, "lstk start should succeed when container is already running: %s", stderr)
 	requireExitCode(t, 0, err)
-	must.Contains(t, stdout, "already running")
+	require.Contains(t, stdout, "already running")
 	assertCommandTelemetry(t, events, "start", 0)
 }
 
@@ -333,21 +333,21 @@ func TestStartCommandFailsWhenPortInUse(t *testing.T) {
 
 	// Simulates port in use by non-LocalStack process (/_localstack/info will fail)
 	ln, err := net.Listen("tcp", ":4566")
-	must.NoError(t, err, "failed to bind port 4566 for test")
+	require.NoError(t, err, "failed to bind port 4566 for test")
 	defer func() { _ = ln.Close() }()
 
 	analyticsSrv, events := mockAnalyticsServer(t)
 	stdout, _, err := runLstk(t, testContext(t), "", env.With(env.AuthToken, "fake-token").With(env.AnalyticsEndpoint, analyticsSrv.URL), "start")
-	must.Error(t, err, "expected lstk start to fail when port is in use")
+	require.Error(t, err, "expected lstk start to fail when port is in use")
 	requireExitCode(t, 1, err)
-	must.Contains(t, stdout, "Port 4566 already in use")
-	must.Contains(t, stdout, "Free the port or configure a different one.")
-	must.Contains(t, stdout, "Use another port in the configuration:")
+	require.Contains(t, stdout, "Port 4566 already in use")
+	require.Contains(t, stdout, "Free the port or configure a different one.")
+	require.Contains(t, stdout, "Use another port in the configuration:")
 
 	// Both lstk_lifecycle (start_error) and lstk_command events should be emitted.
 	byName := collectTelemetryByName(t, events, 2)
-	must.Contains(t, byName, "lstk_lifecycle")
-	must.Contains(t, byName, "lstk_command")
+	require.Contains(t, byName, "lstk_lifecycle")
+	require.Contains(t, byName, "lstk_command")
 }
 
 func TestStartDoesNotHangWithExternalContainerAndNoCachedLabel(t *testing.T) {
@@ -359,7 +359,7 @@ func TestStartDoesNotHangWithExternalContainerAndNoCachedLabel(t *testing.T) {
 
 	const fakeImage = "localstack/localstack-pro:test-fake"
 	_, err := dockerClient.ImageTag(ctx, client.ImageTagOptions{Source: testImage, Target: fakeImage})
-	must.NoError(t, err)
+	require.NoError(t, err)
 	t.Cleanup(func() {
 		_, _ = dockerClient.ImageRemove(context.Background(), fakeImage, client.ImageRemoveOptions{})
 	})
@@ -370,14 +370,14 @@ func TestStartDoesNotHangWithExternalContainerAndNoCachedLabel(t *testing.T) {
 	// trigger emulator selection and block on keyboard input.
 	home := t.TempDir()
 	configFile := filepath.Join(home, "config.toml")
-	must.NoError(t, os.WriteFile(configFile, []byte("[[containers]]\ntype = \"aws\"\ntag = \"latest\"\nport = \"4566\"\n"), 0644))
+	require.NoError(t, os.WriteFile(configFile, []byte("[[containers]]\ntype = \"aws\"\ntag = \"latest\"\nport = \"4566\"\n"), 0644))
 
 	stdout, err := runLstkInPTY(t, ctx,
 		env.With(env.AuthToken, "fake-token").WithHome(home),
 		"start", "--config", configFile,
 	)
-	must.NoError(t, err, "lstk start hung: TUI did not exit when external container was running and no plan label was cached")
-	must.Contains(t, stdout, "already running")
+	require.NoError(t, err, "lstk start hung: TUI did not exit when external container was running and no plan label was cached")
+	require.Contains(t, stdout, "already running")
 }
 
 func TestStartCommandAttachesToExternalContainer(t *testing.T) {
@@ -389,7 +389,7 @@ func TestStartCommandAttachesToExternalContainer(t *testing.T) {
 
 	const fakeImage = "localstack/localstack-pro:test-fake"
 	_, err := dockerClient.ImageTag(ctx, client.ImageTagOptions{Source: testImage, Target: fakeImage})
-	must.NoError(t, err)
+	require.NoError(t, err)
 	t.Cleanup(func() {
 		_, _ = dockerClient.ImageRemove(context.Background(), fakeImage, client.ImageRemoveOptions{})
 	})
@@ -399,9 +399,9 @@ func TestStartCommandAttachesToExternalContainer(t *testing.T) {
 
 	analyticsSrv, events := mockAnalyticsServer(t)
 	stdout, stderr, err := runLstk(t, ctx, "", env.With(env.AuthToken, "fake-token").With(env.AnalyticsEndpoint, analyticsSrv.URL), "start")
-	must.NoError(t, err, "lstk start should succeed when external container is running: %s", stderr)
+	require.NoError(t, err, "lstk start should succeed when external container is running: %s", stderr)
 	requireExitCode(t, 0, err)
-	must.Contains(t, stdout, "already running")
+	require.Contains(t, stdout, "already running")
 	assertCommandTelemetry(t, events, "start", 0)
 }
 
@@ -412,7 +412,7 @@ func TestStartCommandAttachesWhenLocalStackRespondingOnPort(t *testing.T) {
 
 	// Serve a mock /_localstack/info on port 4566 so lstk can identify the running version.
 	ln, err := net.Listen("tcp", ":4566")
-	must.NoError(t, err, "failed to bind port 4566 for test")
+	require.NoError(t, err, "failed to bind port 4566 for test")
 	srv := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/_localstack/info" {
 			w.Header().Set("Content-Type", "application/json")
@@ -426,10 +426,10 @@ func TestStartCommandAttachesWhenLocalStackRespondingOnPort(t *testing.T) {
 	defer srv.Close()
 
 	stdout, stderr, err := runLstk(t, testContext(t), "", env.With(env.AuthToken, "fake-token"), "start")
-	must.NoError(t, err, "lstk start should succeed when LocalStack is already running: %s", stderr)
+	require.NoError(t, err, "lstk start should succeed when LocalStack is already running: %s", stderr)
 	requireExitCode(t, 0, err)
-	must.Contains(t, stdout, "3.4.0")
-	must.Contains(t, stdout, "already running")
+	require.Contains(t, stdout, "3.4.0")
+	require.Contains(t, stdout, "already running")
 }
 
 func TestStartCommandFailsWhenLocalStackRunningOnDifferentPort(t *testing.T) {
@@ -442,7 +442,7 @@ func TestStartCommandFailsWhenLocalStackRunningOnDifferentPort(t *testing.T) {
 	// Tag the test image as a LocalStack pro image to simulate an instance running.
 	const fakeImage = "localstack/localstack-pro:test-fake"
 	_, err := dockerClient.ImageTag(ctx, client.ImageTagOptions{Source: testImage, Target: fakeImage})
-	must.NoError(t, err)
+	require.NoError(t, err)
 	t.Cleanup(func() {
 		_, _ = dockerClient.ImageRemove(context.Background(), fakeImage, client.ImageRemoveOptions{})
 	})
@@ -456,13 +456,13 @@ type = "aws"
 port = "4567"
 `
 	configFile := filepath.Join(t.TempDir(), "config.toml")
-	must.NoError(t, os.WriteFile(configFile, []byte(configContent), 0644))
+	require.NoError(t, os.WriteFile(configFile, []byte(configContent), 0644))
 
 	analyticsSrv, events := mockAnalyticsServer(t)
 	stdout, _, err := runLstk(t, ctx, "", env.With(env.AuthToken, "fake-token").With(env.AnalyticsEndpoint, analyticsSrv.URL), "--config", configFile, "start")
-	must.Error(t, err, "expected lstk start to fail when LS is already running on a different port")
+	require.Error(t, err, "expected lstk start to fail when LS is already running on a different port")
 	requireExitCode(t, 1, err)
-	must.Contains(t, stdout, "already running")
+	require.Contains(t, stdout, "already running")
 	assertCommandTelemetry(t, events, "start", 1)
 }
 
@@ -478,7 +478,7 @@ func TestStartCommandFailsOnEmulatorTypeMismatch(t *testing.T) {
 	// Tag the test image as a LocalStack pro image to simulate AWS LocalStack running.
 	const fakeImage = "localstack/localstack-pro:test-fake"
 	_, err := dockerClient.ImageTag(ctx, client.ImageTagOptions{Source: testImage, Target: fakeImage})
-	must.NoError(t, err)
+	require.NoError(t, err)
 	t.Cleanup(func() {
 		_, _ = dockerClient.ImageRemove(context.Background(), fakeImage, client.ImageRemoveOptions{})
 	})
@@ -490,26 +490,26 @@ func TestStartCommandFailsOnEmulatorTypeMismatch(t *testing.T) {
 
 	analyticsSrv, events := mockAnalyticsServer(t)
 	stdout, _, err := runLstk(t, ctx, "", env.With(env.AuthToken, "fake-token").With(env.AnalyticsEndpoint, analyticsSrv.URL), "--config", configFile, "start")
-	must.Error(t, err, "lstk start should fail on emulator type mismatch")
+	require.Error(t, err, "lstk start should fail on emulator type mismatch")
 	requireExitCode(t, 1, err)
-	must.Contains(t, stdout, "LocalStack AWS Emulator is running on port 4566")
-	must.Contains(t, stdout, "Your config specifies the LocalStack Snowflake Emulator")
-	must.Contains(t, stdout, "docker stop localstack-external-aws")
+	require.Contains(t, stdout, "LocalStack AWS Emulator is running on port 4566")
+	require.Contains(t, stdout, "Your config specifies the LocalStack Snowflake Emulator")
+	require.Contains(t, stdout, "docker stop localstack-external-aws")
 
 	byName := collectTelemetryByName(t, events, 2)
 	cmdPayload, _ := byName["lstk_command"]["payload"].(map[string]any)
 	cmdParams, _ := cmdPayload["parameters"].(map[string]any)
 	cmdResult, _ := cmdPayload["result"].(map[string]any)
-	must.Eq(t, "start", cmdParams["command"])
-	must.InDelta(t, 1, cmdResult["exit_code"], 0)
+	require.Equal(t, "start", cmdParams["command"])
+	require.InDelta(t, 1, cmdResult["exit_code"], 0)
 
 	lifecycle, ok := byName["lstk_lifecycle"]
-	must.True(t, ok, "expected lstk_lifecycle telemetry event")
+	require.True(t, ok, "expected lstk_lifecycle telemetry event")
 	lifePayload, _ := lifecycle["payload"].(map[string]any)
-	must.Eq(t, "start_error", lifePayload["event_type"])
-	must.Eq(t, "emulator_mismatch", lifePayload["error_code"])
-	must.Eq(t, "snowflake", lifePayload["emulator"])
-	must.Contains(t, lifePayload["error_msg"], "running aws on port 4566, configured snowflake")
+	require.Equal(t, "start_error", lifePayload["event_type"])
+	require.Equal(t, "emulator_mismatch", lifePayload["error_code"])
+	require.Equal(t, "snowflake", lifePayload["emulator"])
+	require.Contains(t, lifePayload["error_msg"], "running aws on port 4566, configured snowflake")
 }
 
 func TestStartCommandSucceedsWithNonDefaultPort(t *testing.T) {
@@ -529,16 +529,16 @@ tag = "latest"
 port = "4567"
 `
 	configFile := filepath.Join(t.TempDir(), "config.toml")
-	must.NoError(t, os.WriteFile(configFile, []byte(configContent), 0644))
+	require.NoError(t, os.WriteFile(configFile, []byte(configContent), 0644))
 
 	ctx := testContext(t)
 	_, stderr, err := runLstk(t, ctx, "", env.With(env.APIEndpoint, mockServer.URL), "--config", configFile, "start")
-	must.NoError(t, err, "lstk start failed: %s", stderr)
+	require.NoError(t, err, "lstk start failed: %s", stderr)
 
 	inspect, err := dockerClient.ContainerInspect(ctx, containerName, client.ContainerInspectOptions{})
-	must.NoError(t, err, "failed to inspect container")
+	require.NoError(t, err, "failed to inspect container")
 	envVars := containerEnvToMap(inspect.Container.Config.Env)
-	must.Eq(t, "localhost.localstack.cloud:4567", envVars["LOCALSTACK_HOST"],
+	require.Equal(t, "localhost.localstack.cloud:4567", envVars["LOCALSTACK_HOST"],
 		"LOCALSTACK_HOST must reflect configured host port so LocalStack accepts requests on it")
 }
 
@@ -566,23 +566,23 @@ env = ["expose"]
 GATEWAY_LISTEN = "0.0.0.0:4566,0.0.0.0:443,0.0.0.0:8443"
 `
 	configFile := filepath.Join(t.TempDir(), "config.toml")
-	must.NoError(t, os.WriteFile(configFile, []byte(configContent), 0644))
+	require.NoError(t, os.WriteFile(configFile, []byte(configContent), 0644))
 
 	ctx := testContext(t)
 	_, stderr, err := runLstk(t, ctx, "", env.With(env.APIEndpoint, mockServer.URL), "--config", configFile, "start")
-	must.NoError(t, err, "lstk start failed: %s", stderr)
+	require.NoError(t, err, "lstk start failed: %s", stderr)
 
 	inspect, err := dockerClient.ContainerInspect(ctx, containerName, client.ContainerInspectOptions{})
-	must.NoError(t, err, "failed to inspect container")
+	require.NoError(t, err, "failed to inspect container")
 
 	envVars := containerEnvToMap(inspect.Container.Config.Env)
-	must.Eq(t, "0.0.0.0:4566,0.0.0.0:443,0.0.0.0:8443", envVars["GATEWAY_LISTEN"],
+	require.Equal(t, "0.0.0.0:4566,0.0.0.0:443,0.0.0.0:8443", envVars["GATEWAY_LISTEN"],
 		"configured GATEWAY_LISTEN must be passed to the container")
 
 	for _, p := range []string{"4566/tcp", "443/tcp", "8443/tcp", "4510/tcp"} {
 		bindings := inspect.Container.HostConfig.PortBindings[network.MustParsePort(p)]
-		must.NotEmpty(t, bindings, "port %s should be bound", p)
-		must.Eq(t, "0.0.0.0", bindings[0].HostIP.String(),
+		require.NotEmpty(t, bindings, "port %s should be bound", p)
+		require.Equal(t, "0.0.0.0", bindings[0].HostIP.String(),
 			"port %s should bind to the host IP from GATEWAY_LISTEN", p)
 	}
 }
@@ -609,14 +609,14 @@ port = "4566"
 expose_ports = [15353, "15354:15355/udp"]
 `
 	configFile := filepath.Join(t.TempDir(), "config.toml")
-	must.NoError(t, os.WriteFile(configFile, []byte(configContent), 0644))
+	require.NoError(t, os.WriteFile(configFile, []byte(configContent), 0644))
 
 	ctx := testContext(t)
 	_, stderr, err := runLstk(t, ctx, "", env.With(env.APIEndpoint, mockServer.URL), "--config", configFile, "start")
-	must.NoError(t, err, "lstk start failed: %s", stderr)
+	require.NoError(t, err, "lstk start failed: %s", stderr)
 
 	inspect, err := dockerClient.ContainerInspect(ctx, containerName, client.ContainerInspectOptions{})
-	must.NoError(t, err, "failed to inspect container")
+	require.NoError(t, err, "failed to inspect container")
 
 	// A bare port is published on the same host port for both protocols (DNS needs
 	// both); an entry with an explicit host port and protocol is published as written.
@@ -627,11 +627,11 @@ expose_ports = [15353, "15354:15355/udp"]
 	}
 	for port, hostPort := range expected {
 		bindings := inspect.Container.HostConfig.PortBindings[network.MustParsePort(port)]
-		must.NotEmpty(t, bindings, "port %s should be bound", port)
-		must.Eq(t, hostPort, bindings[0].HostPort)
-		must.Eq(t, "127.0.0.1", bindings[0].HostIP.String())
+		require.NotEmpty(t, bindings, "port %s should be bound", port)
+		require.Equal(t, hostPort, bindings[0].HostPort)
+		require.Equal(t, "127.0.0.1", bindings[0].HostIP.String())
 	}
-	must.Empty(t, inspect.Container.HostConfig.PortBindings[network.MustParsePort("15355/tcp")],
+	require.Empty(t, inspect.Container.HostConfig.PortBindings[network.MustParsePort("15355/tcp")],
 		"an entry that names udp must not also publish tcp")
 }
 
@@ -658,22 +658,22 @@ port = "4566"
 expose_ports = ["8080:4566"]
 `
 	configFile := filepath.Join(t.TempDir(), "config.toml")
-	must.NoError(t, os.WriteFile(configFile, []byte(configContent), 0644))
+	require.NoError(t, os.WriteFile(configFile, []byte(configContent), 0644))
 
 	ctx := testContext(t)
 	stdout, stderr, err := runLstk(t, ctx, "", env.With(env.APIEndpoint, mockServer.URL), "--config", configFile, "start")
-	must.NoError(t, err, "lstk start failed: %s", stderr)
-	must.Contains(t, stdout+stderr, "Ignoring expose_ports entry 8080:4566/tcp",
+	require.NoError(t, err, "lstk start failed: %s", stderr)
+	require.Contains(t, stdout+stderr, "Ignoring expose_ports entry 8080:4566/tcp",
 		"expected a warning explaining why the entry was dropped")
-	must.Contains(t, stdout+stderr, "already publishes container port 4566/tcp on host port 4566")
+	require.Contains(t, stdout+stderr, "already publishes container port 4566/tcp on host port 4566")
 
 	inspect, err := dockerClient.ContainerInspect(ctx, containerName, client.ContainerInspectOptions{})
-	must.NoError(t, err, "failed to inspect container")
+	require.NoError(t, err, "failed to inspect container")
 
 	edgeBindings := inspect.Container.HostConfig.PortBindings[network.MustParsePort("4566/tcp")]
-	must.NotEmpty(t, edgeBindings, "the edge port must still be published")
-	must.Eq(t, "4566", edgeBindings[0].HostPort, "the edge port's host binding must be unchanged")
-	must.Empty(t, inspect.Container.HostConfig.PortBindings[network.MustParsePort("8080/tcp")],
+	require.NotEmpty(t, edgeBindings, "the edge port must still be published")
+	require.Equal(t, "4566", edgeBindings[0].HostPort, "the edge port's host binding must be unchanged")
+	require.Empty(t, inspect.Container.HostConfig.PortBindings[network.MustParsePort("8080/tcp")],
 		"the conflicting host port must not be published")
 }
 
@@ -699,23 +699,23 @@ port = "4566"
 expose_ports = ["4566/udp"]
 `
 	configFile := filepath.Join(t.TempDir(), "config.toml")
-	must.NoError(t, os.WriteFile(configFile, []byte(configContent), 0644))
+	require.NoError(t, os.WriteFile(configFile, []byte(configContent), 0644))
 
 	ctx := testContext(t)
 	stdout, stderr, err := runLstk(t, ctx, "", env.With(env.APIEndpoint, mockServer.URL), "--config", configFile, "start")
-	must.NoError(t, err, "lstk start failed: %s", stderr)
-	must.NotContains(t, stdout+stderr, "Ignoring expose_ports entry",
+	require.NoError(t, err, "lstk start failed: %s", stderr)
+	require.NotContains(t, stdout+stderr, "Ignoring expose_ports entry",
 		"a new protocol on the edge port does not collide with anything and needs no warning")
 
 	inspect, err := dockerClient.ContainerInspect(ctx, containerName, client.ContainerInspectOptions{})
-	must.NoError(t, err, "failed to inspect container")
+	require.NoError(t, err, "failed to inspect container")
 
 	udpBindings := inspect.Container.HostConfig.PortBindings[network.MustParsePort("4566/udp")]
-	must.NotEmpty(t, udpBindings, "4566/udp should now be published")
-	must.Eq(t, "4566", udpBindings[0].HostPort)
+	require.NotEmpty(t, udpBindings, "4566/udp should now be published")
+	require.Equal(t, "4566", udpBindings[0].HostPort)
 	tcpBindings := inspect.Container.HostConfig.PortBindings[network.MustParsePort("4566/tcp")]
-	must.NotEmpty(t, tcpBindings, "4566/tcp must remain published")
-	must.Eq(t, "4566", tcpBindings[0].HostPort)
+	require.NotEmpty(t, tcpBindings, "4566/tcp must remain published")
+	require.Equal(t, "4566", tcpBindings[0].HostPort)
 }
 
 // TestStartCommandFailsWhenExposedPortIsTaken covers a busy host port requested via
@@ -728,7 +728,7 @@ func TestStartCommandFailsWhenExposedPortIsTaken(t *testing.T) {
 	t.Cleanup(cleanup)
 
 	ln, err := net.Listen("tcp", ":15360")
-	must.NoError(t, err, "failed to bind port 15360 for test")
+	require.NoError(t, err, "failed to bind port 15360 for test")
 	defer func() { _ = ln.Close() }()
 
 	configContent := `
@@ -739,13 +739,13 @@ port = "4566"
 expose_ports = [15360]
 `
 	configFile := filepath.Join(t.TempDir(), "config.toml")
-	must.NoError(t, os.WriteFile(configFile, []byte(configContent), 0644))
+	require.NoError(t, os.WriteFile(configFile, []byte(configContent), 0644))
 
 	stdout, _, err := runLstk(t, testContext(t), "", env.With(env.AuthToken, "fake-token"), "--config", configFile, "start")
-	must.Error(t, err, "expected lstk start to fail when a requested expose_ports port is in use")
+	require.Error(t, err, "expected lstk start to fail when a requested expose_ports port is in use")
 	requireExitCode(t, 1, err)
-	must.Contains(t, stdout, "Port 15360 is already in use")
-	must.Contains(t, stdout, "LocalStack requires this port. Free it before starting.")
+	require.Contains(t, stdout, "Port 15360 is already in use")
+	require.Contains(t, stdout, "LocalStack requires this port. Free it before starting.")
 }
 
 // TestStartCommandPublishesOnlyDefaultPortsWhenExposePortsUnset pins the no-op case:
@@ -763,10 +763,10 @@ func TestStartCommandPublishesOnlyDefaultPortsWhenExposePortsUnset(t *testing.T)
 
 	ctx := testContext(t)
 	_, stderr, err := runLstk(t, ctx, "", env.With(env.APIEndpoint, mockServer.URL), "start")
-	must.NoError(t, err, "lstk start failed: %s", stderr)
+	require.NoError(t, err, "lstk start failed: %s", stderr)
 
 	inspect, err := dockerClient.ContainerInspect(ctx, containerName, client.ContainerInspectOptions{})
-	must.NoError(t, err, "failed to inspect container")
+	require.NoError(t, err, "failed to inspect container")
 
 	wantPublished := map[string]bool{"4566/tcp": true, "443/tcp": true}
 	for p := 4510; p <= 4559; p++ {
@@ -779,7 +779,7 @@ func TestStartCommandPublishesOnlyDefaultPortsWhenExposePortsUnset(t *testing.T)
 			gotPublished[port.String()] = true
 		}
 	}
-	must.Eq(t, wantPublished, gotPublished, "no expose_ports configured should publish exactly the default port set")
+	require.Equal(t, wantPublished, gotPublished, "no expose_ports configured should publish exactly the default port set")
 }
 
 // TestStartCommandRejectsInvalidExposePorts checks the config surface fails at load
@@ -795,11 +795,11 @@ port = "4566"
 expose_ports = ["53/sctp"]
 `
 	configFile := filepath.Join(t.TempDir(), "config.toml")
-	must.NoError(t, os.WriteFile(configFile, []byte(configContent), 0644))
+	require.NoError(t, os.WriteFile(configFile, []byte(configContent), 0644))
 
 	_, stderr, err := runLstk(t, testContext(t), "", testEnvWithHome(t.TempDir(), ""), "--config", configFile, "status")
-	must.Error(t, err)
-	must.Contains(t, stderr, `protocol must be "tcp" or "udp"`)
+	require.Error(t, err)
+	require.Contains(t, stderr, `protocol must be "tcp" or "udp"`)
 }
 
 func TestStartCommandSetsUpContainerCorrectly(t *testing.T) {
@@ -814,18 +814,18 @@ func TestStartCommandSetsUpContainerCorrectly(t *testing.T) {
 
 	ctx := testContext(t)
 	_, stderr, err := runLstk(t, ctx, "", env.With(env.APIEndpoint, mockServer.URL), "start")
-	must.NoError(t, err, "lstk start failed: %s", stderr)
+	require.NoError(t, err, "lstk start failed: %s", stderr)
 
 	inspect, err := dockerClient.ContainerInspect(ctx, containerName, client.ContainerInspectOptions{})
-	must.NoError(t, err, "failed to inspect container")
-	must.True(t, inspect.Container.State.Running)
+	require.NoError(t, err, "failed to inspect container")
+	require.True(t, inspect.Container.State.Running)
 
 	t.Run("environment variables", func(t *testing.T) {
 		envVars := containerEnvToMap(inspect.Container.Config.Env)
-		must.Eq(t, ":4566,:443", envVars["GATEWAY_LISTEN"])
-		must.Eq(t, containerName, envVars["MAIN_CONTAINER_NAME"])
-		must.Eq(t, "localhost.localstack.cloud:4566", envVars["LOCALSTACK_HOST"])
-		must.NotEmpty(t, envVars["LOCALSTACK_AUTH_TOKEN"])
+		require.Equal(t, ":4566,:443", envVars["GATEWAY_LISTEN"])
+		require.Equal(t, containerName, envVars["MAIN_CONTAINER_NAME"])
+		require.Equal(t, "localhost.localstack.cloud:4566", envVars["LOCALSTACK_HOST"])
+		require.NotEmpty(t, envVars["LOCALSTACK_AUTH_TOKEN"])
 	})
 
 	t.Run("docker socket mount", func(t *testing.T) {
@@ -833,51 +833,51 @@ func TestStartCommandSetsUpContainerCorrectly(t *testing.T) {
 			t.Skip("Docker daemon is not reachable via unix socket")
 		}
 
-		must.True(t, hasBindTarget(inspect.Container.HostConfig.Binds, "/var/run/docker.sock"),
+		require.True(t, hasBindTarget(inspect.Container.HostConfig.Binds, "/var/run/docker.sock"),
 			"expected Docker socket bind mount to /var/run/docker.sock, got: %v", inspect.Container.HostConfig.Binds)
-		must.True(t, hasBindSource(inspect.Container.HostConfig.Binds, "/var/run/docker.sock"),
+		require.True(t, hasBindSource(inspect.Container.HostConfig.Binds, "/var/run/docker.sock"),
 			"expected Docker socket bind mount from /var/run/docker.sock, got: %v", inspect.Container.HostConfig.Binds)
 
 		envVars := containerEnvToMap(inspect.Container.Config.Env)
-		must.Eq(t, "unix:///var/run/docker.sock", envVars["DOCKER_HOST"])
+		require.Equal(t, "unix:///var/run/docker.sock", envVars["DOCKER_HOST"])
 	})
 
 	t.Run("service port range", func(t *testing.T) {
 		for p := 4510; p <= 4559; p++ {
 			port := network.MustParsePort(fmt.Sprintf("%d/tcp", p))
 			bindings := inspect.Container.HostConfig.PortBindings[port]
-			must.NotEmpty(t, bindings, "port %d/tcp should be bound", p)
-			must.Eq(t, strconv.Itoa(p), bindings[0].HostPort)
+			require.NotEmpty(t, bindings, "port %d/tcp should be bound", p)
+			require.Equal(t, strconv.Itoa(p), bindings[0].HostPort)
 		}
 	})
 
 	t.Run("main port", func(t *testing.T) {
 		mainBindings := inspect.Container.HostConfig.PortBindings[network.MustParsePort("4566/tcp")]
-		must.NotEmpty(t, mainBindings, "port 4566/tcp should be bound")
-		must.Eq(t, "4566", mainBindings[0].HostPort)
+		require.NotEmpty(t, mainBindings, "port 4566/tcp should be bound")
+		require.Equal(t, "4566", mainBindings[0].HostPort)
 	})
 
 	t.Run("https port", func(t *testing.T) {
 		httpsBindings := inspect.Container.HostConfig.PortBindings[network.MustParsePort("443/tcp")]
-		must.NotEmpty(t, httpsBindings, "port 443/tcp should be bound")
-		must.Eq(t, "443", httpsBindings[0].HostPort)
+		require.NotEmpty(t, httpsBindings, "port 443/tcp should be bound")
+		require.Equal(t, "443", httpsBindings[0].HostPort)
 	})
 
 	t.Run("volume mount", func(t *testing.T) {
-		must.True(t, hasBindTarget(inspect.Container.HostConfig.Binds, "/var/lib/localstack"),
+		require.True(t, hasBindTarget(inspect.Container.HostConfig.Binds, "/var/lib/localstack"),
 			"expected volume bind mount to /var/lib/localstack, got: %v", inspect.Container.HostConfig.Binds)
 	})
 
 	t.Run("auto remove", func(t *testing.T) {
-		must.True(t, inspect.Container.HostConfig.AutoRemove,
+		require.True(t, inspect.Container.HostConfig.AutoRemove,
 			"expected container to be created with AutoRemove (--rm) so it does not linger after exit")
 	})
 
 	t.Run("http health endpoint", func(t *testing.T) {
 		resp, err := http.Get("http://localhost.localstack.cloud:4566/_localstack/health")
-		must.NoError(t, err)
+		require.NoError(t, err)
 		t.Cleanup(func() { _ = resp.Body.Close() })
-		must.Eq(t, http.StatusOK, resp.StatusCode)
+		require.Equal(t, http.StatusOK, resp.StatusCode)
 	})
 
 	t.Run("https health endpoint", func(t *testing.T) {
@@ -889,9 +889,9 @@ func TestStartCommandSetsUpContainerCorrectly(t *testing.T) {
 			},
 		}
 		resp, err := client.Get("https://localhost.localstack.cloud/_localstack/health")
-		must.NoError(t, err)
+		require.NoError(t, err)
 		t.Cleanup(func() { _ = resp.Body.Close() })
-		must.Eq(t, http.StatusOK, resp.StatusCode)
+		require.Equal(t, http.StatusOK, resp.StatusCode)
 	})
 }
 
@@ -919,43 +919,43 @@ port = "4566"
 container_name = %q
 `, customName)
 	configFile := filepath.Join(t.TempDir(), "config.toml")
-	must.NoError(t, os.WriteFile(configFile, []byte(configContent), 0644))
+	require.NoError(t, os.WriteFile(configFile, []byte(configContent), 0644))
 
 	ctx := testContext(t)
 	testEnv := env.With(env.APIEndpoint, mockServer.URL)
 
 	stdout, stderr, err := runLstk(t, ctx, "", testEnv, "--config", configFile, "start")
-	must.NoError(t, err, "lstk start failed: %s%s", stdout, stderr)
+	require.NoError(t, err, "lstk start failed: %s%s", stdout, stderr)
 
 	inspect, err := dockerClient.ContainerInspect(ctx, customName, client.ContainerInspectOptions{})
-	must.NoError(t, err, "expected a container named %q", customName)
-	must.True(t, inspect.Container.State.Running)
+	require.NoError(t, err, "expected a container named %q", customName)
+	require.True(t, inspect.Container.State.Running)
 
 	// The name Docker gave the container and the name the emulator reports for itself
 	// (used to introspect itself and to name the containers it spawns) must agree.
 	envVars := containerEnvToMap(inspect.Container.Config.Env)
-	must.Eq(t, customName, envVars["MAIN_CONTAINER_NAME"])
+	require.Equal(t, customName, envVars["MAIN_CONTAINER_NAME"])
 
 	_, err = dockerClient.ContainerInspect(ctx, containerName, client.ContainerInspectOptions{})
-	must.Error(t, err, "the derived name %q must not be used when 'name' is set", containerName)
+	require.Error(t, err, "the derived name %q must not be used when 'name' is set", containerName)
 
 	// The default persistence directory stays keyed to the derived name, so setting or
 	// changing 'name' never silently orphans existing state.
 	volumePath, stderr, err := runLstk(t, ctx, "", testEnv, "--config", configFile, "volume", "path")
-	must.NoError(t, err, "lstk volume path failed: %s", stderr)
-	must.Contains(t, volumePath, filepath.Join("lstk", "volume", containerName))
+	require.NoError(t, err, "lstk volume path failed: %s", stderr)
+	require.Contains(t, volumePath, filepath.Join("lstk", "volume", containerName))
 
 	// Discovery resolves the custom name for the downstream commands.
 	statusOut, stderr, err := runLstk(t, ctx, "", testEnv, "--config", configFile, "status")
-	must.NoError(t, err, "lstk status failed: %s", stderr)
-	must.Contains(t, statusOut, "Container: "+customName)
+	require.NoError(t, err, "lstk status failed: %s", stderr)
+	require.Contains(t, statusOut, "Container: "+customName)
 
 	_, stderr, err = runLstk(t, ctx, "", testEnv, "--config", configFile, "stop")
-	must.NoError(t, err, "lstk stop failed: %s", stderr)
+	require.NoError(t, err, "lstk stop failed: %s", stderr)
 
 	// Removal is asynchronous — the container is created with AutoRemove, so an inspect
 	// immediately after `stop` can still catch it mid-removal. Poll rather than assert once.
-	must.Eventually(t, func() bool {
+	require.Eventually(t, func() bool {
 		_, err := dockerClient.ContainerInspect(ctx, customName, client.ContainerInspectOptions{})
 		return err != nil
 	}, 30*time.Second, 200*time.Millisecond, "lstk stop should have removed %q", customName)
@@ -974,7 +974,7 @@ func TestStartCommandMountsExtraVolumes(t *testing.T) {
 	// A real init-hook script that lstk mounts as a file (it must already exist).
 	scriptDir := t.TempDir()
 	scriptPath := filepath.Join(scriptDir, "init.sf.sql")
-	must.NoError(t, os.WriteFile(scriptPath, []byte("SHOW DATABASES;\n"), 0644))
+	require.NoError(t, os.WriteFile(scriptPath, []byte("SHOW DATABASES;\n"), 0644))
 
 	configContent := `
 [[containers]]
@@ -984,22 +984,22 @@ port = "4566"
 volumes = ["` + escapeTomlPath(scriptPath) + `:/etc/localstack/init/ready.d/init.sf.sql:ro"]
 `
 	configFile := filepath.Join(t.TempDir(), "config.toml")
-	must.NoError(t, os.WriteFile(configFile, []byte(configContent), 0644))
+	require.NoError(t, os.WriteFile(configFile, []byte(configContent), 0644))
 
 	ctx := testContext(t)
 	_, stderr, err := runLstk(t, ctx, "", env.With(env.APIEndpoint, mockServer.URL), "--config", configFile, "start")
-	must.NoError(t, err, "lstk start failed: %s", stderr)
+	require.NoError(t, err, "lstk start failed: %s", stderr)
 
 	inspect, err := dockerClient.ContainerInspect(ctx, containerName, client.ContainerInspectOptions{})
-	must.NoError(t, err, "failed to inspect container")
-	must.True(t, inspect.Container.State.Running)
+	require.NoError(t, err, "failed to inspect container")
+	require.True(t, inspect.Container.State.Running)
 
 	binds := inspect.Container.HostConfig.Binds
-	must.True(t, hasBindTarget(binds, "/var/lib/localstack"),
+	require.True(t, hasBindTarget(binds, "/var/lib/localstack"),
 		"persistence mount must still be present, got: %v", binds)
-	must.True(t, hasBindTarget(binds, "/etc/localstack/init/ready.d/init.sf.sql"),
+	require.True(t, hasBindTarget(binds, "/etc/localstack/init/ready.d/init.sf.sql"),
 		"expected init-hook mount target, got: %v", binds)
-	must.True(t, hasBindSource(binds, scriptPath),
+	require.True(t, hasBindSource(binds, scriptPath),
 		"expected init-hook mount source %s, got: %v", scriptPath, binds)
 }
 
@@ -1017,7 +1017,7 @@ func TestStartCommandMountsMultipleVolumes(t *testing.T) {
 	// as files (they must already exist).
 	persistBase := t.TempDir()
 	persistDir := filepath.Join(persistBase, "persist")
-	must.NoError(t, os.MkdirAll(persistDir, 0755))
+	require.NoError(t, os.MkdirAll(persistDir, 0755))
 
 	// LocalStack runs as root inside the container and writes root-owned files
 	// (certs, state) into the persistence mount. On Linux CI (non-root user),
@@ -1032,9 +1032,9 @@ func TestStartCommandMountsMultipleVolumes(t *testing.T) {
 
 	scriptDir := t.TempDir()
 	bootScript := filepath.Join(scriptDir, "boot.sh")
-	must.NoError(t, os.WriteFile(bootScript, []byte("#!/bin/sh\necho boot\n"), 0644))
+	require.NoError(t, os.WriteFile(bootScript, []byte("#!/bin/sh\necho boot\n"), 0644))
 	readyScript := filepath.Join(scriptDir, "init.sf.sql")
-	must.NoError(t, os.WriteFile(readyScript, []byte("SHOW DATABASES;\n"), 0644))
+	require.NoError(t, os.WriteFile(readyScript, []byte("SHOW DATABASES;\n"), 0644))
 
 	configContent := `
 [[containers]]
@@ -1048,31 +1048,31 @@ volumes = [
 ]
 `
 	configFile := filepath.Join(t.TempDir(), "config.toml")
-	must.NoError(t, os.WriteFile(configFile, []byte(configContent), 0644))
+	require.NoError(t, os.WriteFile(configFile, []byte(configContent), 0644))
 
 	ctx := testContext(t)
 	_, stderr, err := runLstk(t, ctx, "", env.With(env.APIEndpoint, mockServer.URL), "--config", configFile, "start")
-	must.NoError(t, err, "lstk start failed: %s", stderr)
+	require.NoError(t, err, "lstk start failed: %s", stderr)
 
 	inspect, err := dockerClient.ContainerInspect(ctx, containerName, client.ContainerInspectOptions{})
-	must.NoError(t, err, "failed to inspect container")
-	must.True(t, inspect.Container.State.Running)
+	require.NoError(t, err, "failed to inspect container")
+	require.True(t, inspect.Container.State.Running)
 
 	binds := inspect.Container.HostConfig.Binds
 
-	must.True(t, hasBindTarget(binds, "/var/lib/localstack"),
+	require.True(t, hasBindTarget(binds, "/var/lib/localstack"),
 		"expected persistence mount target, got: %v", binds)
-	must.True(t, hasBindSource(binds, persistDir),
+	require.True(t, hasBindSource(binds, persistDir),
 		"expected persistence mount source %s, got: %v", persistDir, binds)
 
-	must.True(t, hasBindTarget(binds, "/etc/localstack/init/boot.d/boot.sh"),
+	require.True(t, hasBindTarget(binds, "/etc/localstack/init/boot.d/boot.sh"),
 		"expected boot init-hook mount target, got: %v", binds)
-	must.True(t, hasBindSource(binds, bootScript),
+	require.True(t, hasBindSource(binds, bootScript),
 		"expected boot init-hook mount source %s, got: %v", bootScript, binds)
 
-	must.True(t, hasBindTarget(binds, "/etc/localstack/init/ready.d/init.sf.sql"),
+	require.True(t, hasBindTarget(binds, "/etc/localstack/init/ready.d/init.sf.sql"),
 		"expected ready init-hook mount target, got: %v", binds)
-	must.True(t, hasBindSource(binds, readyScript),
+	require.True(t, hasBindSource(binds, readyScript),
 		"expected ready init-hook mount source %s, got: %v", readyScript, binds)
 }
 
@@ -1095,12 +1095,12 @@ port = "4566"
 volumes = ["` + escapeTomlPath(missing) + `:/etc/localstack/init/ready.d/x.sf.sql"]
 `
 	configFile := filepath.Join(t.TempDir(), "config.toml")
-	must.NoError(t, os.WriteFile(configFile, []byte(configContent), 0644))
+	require.NoError(t, os.WriteFile(configFile, []byte(configContent), 0644))
 
 	_, stderr, err := runLstk(t, testContext(t), "", env.With(env.APIEndpoint, mockServer.URL), "--config", configFile, "start")
-	must.Error(t, err)
+	require.Error(t, err)
 	requireExitCode(t, 1, err)
-	must.Contains(t, stderr, "does not exist")
+	require.Contains(t, stderr, "does not exist")
 }
 
 func TestStartCommandPassesCIAndLocalStackEnvVars(t *testing.T) {
@@ -1123,20 +1123,20 @@ func TestStartCommandPassesCIAndLocalStackEnvVars(t *testing.T) {
 		With(env.DisableEvents, "1").
 		With("LOCALSTACK_PATH", "/home/user/repos/localstack"),
 		"start")
-	must.NoError(t, err, "lstk start failed: %s", stderr)
+	require.NoError(t, err, "lstk start failed: %s", stderr)
 	requireExitCode(t, 0, err)
-	must.Contains(t, stdout+stderr, "Not forwarding LOCALSTACK_PATH",
+	require.Contains(t, stdout+stderr, "Not forwarding LOCALSTACK_PATH",
 		"dropping a critical-collision variable must be surfaced to the user")
 
 	inspect, err := dockerClient.ContainerInspect(ctx, containerName, client.ContainerInspectOptions{})
-	must.NoError(t, err, "failed to inspect container")
-	must.True(t, inspect.Container.State.Running)
+	require.NoError(t, err, "failed to inspect container")
+	require.True(t, inspect.Container.State.Running)
 
 	envVars := containerEnvToMap(inspect.Container.Config.Env)
-	must.Eq(t, "true", envVars["CI"])
-	must.Eq(t, "1", envVars["LOCALSTACK_DISABLE_EVENTS"])
-	must.NotEmpty(t, envVars["LOCALSTACK_AUTH_TOKEN"])
-	must.NotContains(t, envVars, "LOCALSTACK_PATH")
+	require.Equal(t, "true", envVars["CI"])
+	require.Equal(t, "1", envVars["LOCALSTACK_DISABLE_EVENTS"])
+	require.NotEmpty(t, envVars["LOCALSTACK_AUTH_TOKEN"])
+	require.NotContains(t, envVars, "LOCALSTACK_PATH")
 }
 
 func TestStartCommandPersistFlagSetsPersistenceEnv(t *testing.T) {
@@ -1151,22 +1151,22 @@ func TestStartCommandPersistFlagSetsPersistenceEnv(t *testing.T) {
 
 	ctx := testContext(t)
 	stdout, stderr, err := runLstk(t, ctx, "", env.With(env.APIEndpoint, mockServer.URL), "start", "--persist")
-	must.NoError(t, err, "lstk start --persist failed: %s", stderr)
+	require.NoError(t, err, "lstk start --persist failed: %s", stderr)
 	requireExitCode(t, 0, err)
 
 	inspect, err := dockerClient.ContainerInspect(ctx, containerName, client.ContainerInspectOptions{})
-	must.NoError(t, err, "failed to inspect container")
-	must.True(t, inspect.Container.State.Running)
+	require.NoError(t, err, "failed to inspect container")
+	require.True(t, inspect.Container.State.Running)
 
 	envVars := containerEnvToMap(inspect.Container.Config.Env)
-	must.Eq(t, "1", envVars["LOCALSTACK_PERSISTENCE"])
+	require.Equal(t, "1", envVars["LOCALSTACK_PERSISTENCE"])
 
-	must.Contains(t, stdout, "• Persistence: Enabled",
+	require.Contains(t, stdout, "• Persistence: Enabled",
 		"lstk start --persist should surface persistence state in the header")
 
 	statusStdout, statusStderr, err := runLstk(t, ctx, "", env.With(env.APIEndpoint, mockServer.URL), "status")
-	must.NoError(t, err, "lstk status failed: %s", statusStderr)
-	must.Contains(t, statusStdout, "• Persistence: Enabled",
+	require.NoError(t, err, "lstk status failed: %s", statusStderr)
+	require.Contains(t, statusStdout, "• Persistence: Enabled",
 		"lstk status should surface persistence state when the running container has it enabled")
 }
 
@@ -1184,17 +1184,17 @@ func TestStartCommandForwardsPersistenceEnvFromHost(t *testing.T) {
 	stdout, stderr, err := runLstk(t, ctx, "", env.With(env.APIEndpoint, mockServer.URL).
 		With(env.Persistence, "1"),
 		"start")
-	must.NoError(t, err, "lstk start failed: %s", stderr)
+	require.NoError(t, err, "lstk start failed: %s", stderr)
 	requireExitCode(t, 0, err)
 
 	inspect, err := dockerClient.ContainerInspect(ctx, containerName, client.ContainerInspectOptions{})
-	must.NoError(t, err, "failed to inspect container")
-	must.True(t, inspect.Container.State.Running)
+	require.NoError(t, err, "failed to inspect container")
+	require.True(t, inspect.Container.State.Running)
 
 	envVars := containerEnvToMap(inspect.Container.Config.Env)
-	must.Eq(t, "1", envVars["LOCALSTACK_PERSISTENCE"])
+	require.Equal(t, "1", envVars["LOCALSTACK_PERSISTENCE"])
 
-	must.Contains(t, stdout, "• Persistence: Enabled",
+	require.Contains(t, stdout, "• Persistence: Enabled",
 		"lstk start should surface persistence state when LOCALSTACK_PERSISTENCE=1 is set in the shell")
 }
 
@@ -1219,21 +1219,21 @@ port = "4566"
 env = ["persistence"]
 `
 	configFile := filepath.Join(t.TempDir(), "config.toml")
-	must.NoError(t, os.WriteFile(configFile, []byte(configContent), 0644))
+	require.NoError(t, os.WriteFile(configFile, []byte(configContent), 0644))
 
 	ctx := testContext(t)
 	stdout, stderr, err := runLstk(t, ctx, "", env.With(env.APIEndpoint, mockServer.URL), "--config", configFile, "start")
-	must.NoError(t, err, "lstk start failed: %s", stderr)
+	require.NoError(t, err, "lstk start failed: %s", stderr)
 	requireExitCode(t, 0, err)
 
 	inspect, err := dockerClient.ContainerInspect(ctx, containerName, client.ContainerInspectOptions{})
-	must.NoError(t, err, "failed to inspect container")
-	must.True(t, inspect.Container.State.Running)
+	require.NoError(t, err, "failed to inspect container")
+	require.True(t, inspect.Container.State.Running)
 
 	envVars := containerEnvToMap(inspect.Container.Config.Env)
-	must.Eq(t, "1", envVars["LOCALSTACK_PERSISTENCE"])
+	require.Equal(t, "1", envVars["LOCALSTACK_PERSISTENCE"])
 
-	must.Contains(t, stdout, "• Persistence: Enabled",
+	require.Contains(t, stdout, "• Persistence: Enabled",
 		"lstk start should surface persistence state when LOCALSTACK_PERSISTENCE=1 is set in the config profile")
 }
 
@@ -1285,7 +1285,7 @@ func TestStartHidesHeaderUntilAuthComplete(t *testing.T) {
 	// Wait for the login prompt — header must not be visible yet.
 	p.waitForOutput("Press any key when complete", "auth prompt should appear")
 
-	must.NotContains(t, p.output(), "lstk ", "header must be hidden while auth is pending")
+	require.NotContains(t, p.output(), "lstk ", "header must be hidden while auth is pending")
 
 	// Complete auth by pressing ENTER.
 	p.write("\r")
@@ -1316,17 +1316,17 @@ port = "4566"
 image = "lstk-nonexistent-custom-image"
 `
 	configFile := filepath.Join(t.TempDir(), "config.toml")
-	must.NoError(t, os.WriteFile(configFile, []byte(configContent), 0644))
+	require.NoError(t, os.WriteFile(configFile, []byte(configContent), 0644))
 
 	// A dummy token satisfies the up-front auth check (it is not validated here);
 	// the flow fails when the custom image cannot be pulled or found locally.
 	e := env.Environ(testEnvWithHome(t.TempDir(), "")).With(env.AuthToken, "dummy-token")
 	stdout, stderr, err := runLstk(t, testContext(t), "", e, "--config", configFile, "--non-interactive", "start")
 
-	must.Error(t, err, "expected start to fail when the custom image is unavailable")
+	require.Error(t, err, "expected start to fail when the custom image is unavailable")
 	requireExitCode(t, 1, err)
 	combined := stdout + stderr
-	must.Contains(t, combined, "Failed to pull lstk-nonexistent-custom-image:latest")
+	require.Contains(t, combined, "Failed to pull lstk-nonexistent-custom-image:latest")
 }
 
 // TestStartTimesOutWhenEmulatorNeverBecomesHealthy verifies that --timeout bounds
@@ -1341,7 +1341,7 @@ func TestStartTimesOutWhenEmulatorNeverBecomesHealthy(t *testing.T) {
 	ctx := testContext(t)
 	imageRef := commitNeverHealthyImage(t, ctx)
 	imageName, imageTag, ok := strings.Cut(imageRef, ":")
-	must.True(t, ok, "never-healthy image reference must carry a pinned tag")
+	require.True(t, ok, "never-healthy image reference must carry a pinned tag")
 
 	// A non-interactive startup timeout deliberately leaves the container running
 	// for inspection, and the pinned tag names it "localstack-aws-<tag>" — a name
@@ -1355,7 +1355,7 @@ func TestStartTimesOutWhenEmulatorNeverBecomesHealthy(t *testing.T) {
 
 	home := t.TempDir()
 	configFile := filepath.Join(home, "config.toml")
-	must.NoError(t, os.WriteFile(configFile,
+	require.NoError(t, os.WriteFile(configFile,
 		[]byte(fmt.Sprintf("[[containers]]\ntype = \"aws\"\nport = \"4566\"\nimage = %q\ntag = %q\n", imageName, imageTag)), 0644))
 
 	// A pinned tag already present locally skips both the pull and the license
@@ -1364,9 +1364,9 @@ func TestStartTimesOutWhenEmulatorNeverBecomesHealthy(t *testing.T) {
 	e := append(testEnvWithHome(home, ""), string(env.AuthToken)+"=fake-token")
 	stdout, stderr, err := runLstk(t, ctx, "", e, "--config", configFile, "--non-interactive", "start", "--timeout", "3s")
 
-	must.Error(t, err, "expected start to fail when the emulator never becomes healthy")
+	require.Error(t, err, "expected start to fail when the emulator never becomes healthy")
 	requireExitCode(t, 1, err)
-	must.Contains(t, stdout+stderr, "LocalStack did not become ready within 3s")
+	require.Contains(t, stdout+stderr, "LocalStack did not become ready within 3s")
 }
 
 // TestStartFallsBackToLocalImageWhenPullFails verifies the offline degradation
@@ -1390,12 +1390,12 @@ func TestStartFallsBackToLocalImageWhenPullFails(t *testing.T) {
 	const sourceImage = "localstack/localstack-pro:latest"
 	const localImage = "lstk-offline-fallback-test"
 	reader, err := dockerClient.ImagePull(ctx, sourceImage, client.ImagePullOptions{})
-	must.NoError(t, err, "failed to pull source image")
+	require.NoError(t, err, "failed to pull source image")
 	_, _ = io.Copy(io.Discard, reader)
 	_ = reader.Close()
 
 	_, err = dockerClient.ImageTag(ctx, client.ImageTagOptions{Source: sourceImage, Target: localImage + ":latest"})
-	must.NoError(t, err, "failed to tag local image")
+	require.NoError(t, err, "failed to tag local image")
 	t.Cleanup(func() {
 		_, _ = dockerClient.ImageRemove(context.Background(), localImage+":latest", client.ImageRemoveOptions{Force: true})
 	})
@@ -1404,7 +1404,7 @@ func TestStartFallsBackToLocalImageWhenPullFails(t *testing.T) {
 	// dir outside t.TempDir (whose cleanup runs as the unprivileged test user and
 	// would fail on root-owned files) so HOME can stay fully isolated below.
 	volumeDir, err := os.MkdirTemp("", "lstk-volume")
-	must.NoError(t, err)
+	require.NoError(t, err)
 	t.Cleanup(func() { _ = os.RemoveAll(volumeDir) }) // best-effort; root-owned files may remain
 
 	home := t.TempDir()
@@ -1417,7 +1417,7 @@ image = %q
 volume = %q
 `, localImage, volumeDir)
 	configFile := filepath.Join(home, "config.toml")
-	must.NoError(t, os.WriteFile(configFile, []byte(configContent), 0644))
+	require.NoError(t, os.WriteFile(configFile, []byte(configContent), 0644))
 
 	mockServer := createMockLicenseServer(true)
 	defer mockServer.Close()
@@ -1426,14 +1426,14 @@ volume = %q
 		With(env.APIEndpoint, mockServer.URL).
 		With(env.AuthToken, authToken)
 	stdout, stderr, err := runLstk(t, ctx, "", e, "--config", configFile, "--non-interactive", "start")
-	must.NoError(t, err, "lstk start should fall back to the local image: %s", stderr)
+	require.NoError(t, err, "lstk start should fall back to the local image: %s", stderr)
 	requireExitCode(t, 0, err)
 
-	must.Contains(t, stdout+stderr, "using the local image", "expected the local-image fallback warning")
+	require.Contains(t, stdout+stderr, "using the local image", "expected the local-image fallback warning")
 
 	inspect, err := dockerClient.ContainerInspect(ctx, containerName, client.ContainerInspectOptions{})
-	must.NoError(t, err, "failed to inspect container")
-	must.True(t, inspect.Container.State.Running, "container should be running from the local image")
+	require.NoError(t, err, "failed to inspect container")
+	require.True(t, inspect.Container.State.Running, "container should be running from the local image")
 }
 
 // TestStartContinuesWhenLicenseServerUnreachable verifies the offline degradation
@@ -1463,7 +1463,7 @@ func TestStartContinuesWhenLicenseServerUnreachable(t *testing.T) {
 	// dir outside t.TempDir (whose cleanup runs as the unprivileged test user and
 	// would fail on root-owned files) so HOME can stay fully isolated below.
 	volumeDir, err := os.MkdirTemp("", "lstk-volume")
-	must.NoError(t, err)
+	require.NoError(t, err)
 	t.Cleanup(func() { _ = os.RemoveAll(volumeDir) }) // best-effort; root-owned files may remain
 
 	home := t.TempDir()
@@ -1475,20 +1475,20 @@ port = "4566"
 volume = %q
 `, volumeDir)
 	configFile := filepath.Join(home, "config.toml")
-	must.NoError(t, os.WriteFile(configFile, []byte(configContent), 0644))
+	require.NoError(t, os.WriteFile(configFile, []byte(configContent), 0644))
 
 	e := env.Environ(testEnvWithHome(home, "")).
 		With(env.APIEndpoint, unreachableURL).
 		With(env.AuthToken, authToken)
 	stdout, stderr, err := runLstk(t, ctx, "", e, "--config", configFile, "--non-interactive", "start")
-	must.NoError(t, err, "lstk start should continue when the license server is unreachable: %s", stderr)
+	require.NoError(t, err, "lstk start should continue when the license server is unreachable: %s", stderr)
 	requireExitCode(t, 0, err)
 
-	must.Contains(t, stdout+stderr, "Could not reach the license server", "expected the license-unreachable warning")
+	require.Contains(t, stdout+stderr, "Could not reach the license server", "expected the license-unreachable warning")
 
 	inspect, err := dockerClient.ContainerInspect(ctx, containerName, client.ContainerInspectOptions{})
-	must.NoError(t, err, "failed to inspect container")
-	must.True(t, inspect.Container.State.Running, "container should be running")
+	require.NoError(t, err, "failed to inspect container")
+	require.True(t, inspect.Container.State.Running, "container should be running")
 }
 
 // TestStartUsesLocalCustomImageWithoutPullOrLicenseCheck verifies the offline
@@ -1520,11 +1520,11 @@ func TestStartUsesLocalCustomImageWithoutPullOrLicenseCheck(t *testing.T) {
 	// Make the custom image present locally without a registry by tagging the
 	// lightweight test image under it.
 	reader, err := dockerClient.ImagePull(ctx, testImage, client.ImagePullOptions{})
-	must.NoError(t, err, "failed to pull test image")
+	require.NoError(t, err, "failed to pull test image")
 	_, _ = io.Copy(io.Discard, reader)
 	_ = reader.Close()
 	_, err = dockerClient.ImageTag(ctx, client.ImageTagOptions{Source: testImage, Target: fullRef})
-	must.NoError(t, err)
+	require.NoError(t, err)
 	t.Cleanup(func() {
 		_, _ = dockerClient.ImageRemove(context.Background(), fullRef, client.ImageRemoveOptions{Force: true})
 	})
@@ -1555,7 +1555,7 @@ tag = %q
 port = "4566"
 image = %q
 `, pinnedTag, customImage)
-	must.NoError(t, os.WriteFile(configFile, []byte(configContent), 0644))
+	require.NoError(t, os.WriteFile(configFile, []byte(configContent), 0644))
 
 	// A dummy token satisfies the up-front auth check; it is never validated
 	// because the license pre-flight is skipped for a local image.
@@ -1566,15 +1566,15 @@ image = %q
 	combined := stdout + stderr
 
 	// Found locally and used — nothing is pulled.
-	must.Contains(t, combined, "Using local image "+fullRef,
+	require.Contains(t, combined, "Using local image "+fullRef,
 		"the configured custom image, present locally, should be reused: %s", combined)
-	must.NotContains(t, combined, "Pulling",
+	require.NotContains(t, combined, "Pulling",
 		"lstk must not pull when the configured custom image is already present locally")
 
 	// No license check from the CLI for a local image.
-	must.Eq(t, int32(0), atomic.LoadInt32(&licenseHits),
+	require.Equal(t, int32(0), atomic.LoadInt32(&licenseHits),
 		"the CLI must not contact the license server for a local image")
-	must.NotContains(t, combined, "Checking license",
+	require.NotContains(t, combined, "Checking license",
 		"lstk must not run a pre-flight license check for a local image")
 
 	// Started from the configured local image: lstk created the container using it.
@@ -1583,7 +1583,7 @@ image = %q
 	// authoritative signal. When the container is still present, additionally
 	// confirm it was created from the configured image.
 	if inspect, err := dockerClient.ContainerInspect(ctx, wantContainer, client.ContainerInspectOptions{}); err == nil {
-		must.Eq(t, fullRef, inspect.Container.Config.Image,
+		require.Equal(t, fullRef, inspect.Container.Config.Image,
 			"the container should be created from the configured custom image")
 	}
 }
@@ -1610,7 +1610,7 @@ tag  = "latest"
 port = %q
 `, hostPort)
 	configFile := filepath.Join(t.TempDir(), "config.toml")
-	must.NoError(t, os.WriteFile(configFile, []byte(content), 0644))
+	require.NoError(t, os.WriteFile(configFile, []byte(content), 0644))
 	return configFile
 }
 
@@ -1629,7 +1629,7 @@ func TestStartCommandForSnowflakeSkipsLicenseValidation(t *testing.T) {
 
 	ctx := testContext(t)
 	_, stderr, err := runLstk(t, ctx, "", env.With(env.APIEndpoint, mockServer.URL), "--config", writeSnowflakeConfig(t, "4566"), "start")
-	must.NoError(t, err, "lstk start should succeed for snowflake even when the license server rejects the request: %s", stderr)
+	require.NoError(t, err, "lstk start should succeed for snowflake even when the license server rejects the request: %s", stderr)
 	requireExitCode(t, 0, err)
 }
 
@@ -1650,25 +1650,25 @@ func TestStartCommandSucceedsForSnowflake(t *testing.T) {
 
 	ctx := testContext(t)
 	stdout, stderr, err := runLstk(t, ctx, "", env.With(env.APIEndpoint, mockServer.URL), "--config", configFile, "start")
-	must.NoError(t, err, "lstk start failed: %s", stderr)
+	require.NoError(t, err, "lstk start failed: %s", stderr)
 	requireExitCode(t, 0, err)
 
 	inspect, err := dockerClient.ContainerInspect(ctx, snowflakeContainerName, client.ContainerInspectOptions{})
-	must.NoError(t, err, "failed to inspect snowflake container")
-	must.True(t, inspect.Container.State.Running, "snowflake container should be running")
-	must.Contains(t, inspect.Container.Config.Image, "localstack/snowflake",
+	require.NoError(t, err, "failed to inspect snowflake container")
+	require.True(t, inspect.Container.State.Running, "snowflake container should be running")
+	require.Contains(t, inspect.Container.Config.Image, "localstack/snowflake",
 		"expected localstack/snowflake image, got %s", inspect.Container.Config.Image)
 
 	resp, err := http.Get(fmt.Sprintf("http://localhost:%s/_localstack/health", hostPort))
-	must.NoError(t, err)
+	require.NoError(t, err)
 	t.Cleanup(func() { _ = resp.Body.Close() })
-	must.Eq(t, http.StatusOK, resp.StatusCode)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
 
-	must.Contains(t, stdout, "• Snowflake endpoint: http://snowflake.",
+	require.Contains(t, stdout, "• Snowflake endpoint: http://snowflake.",
 		"snowflake start should print the snowflake-prefixed endpoint hint")
-	must.NotContains(t, stdout, "• Endpoint: localhost.localstack.cloud",
+	require.NotContains(t, stdout, "• Endpoint: localhost.localstack.cloud",
 		"snowflake start should not print the bare AWS-style endpoint line")
-	must.Contains(t, stdout, "> Tip:",
+	require.Contains(t, stdout, "> Tip:",
 		"snowflake start should print a tip line like AWS does")
 }
 
@@ -1689,13 +1689,13 @@ func TestStartCommandSetsSnowflakeS3EndpointFromPort(t *testing.T) {
 
 	ctx := testContext(t)
 	_, stderr, err := runLstk(t, ctx, "", env.With(env.APIEndpoint, mockServer.URL), "--config", configFile, "start")
-	must.NoError(t, err, "lstk start failed: %s", stderr)
+	require.NoError(t, err, "lstk start failed: %s", stderr)
 	requireExitCode(t, 0, err)
 
 	inspect, err := dockerClient.ContainerInspect(ctx, snowflakeContainerName, client.ContainerInspectOptions{})
-	must.NoError(t, err, "failed to inspect snowflake container")
+	require.NoError(t, err, "failed to inspect snowflake container")
 	envVars := containerEnvToMap(inspect.Container.Config.Env)
-	must.Eq(t, "s3.localhost.localstack.cloud:"+hostPort, envVars["SF_S3_ENDPOINT"],
+	require.Equal(t, "s3.localhost.localstack.cloud:"+hostPort, envVars["SF_S3_ENDPOINT"],
 		"SF_S3_ENDPOINT should match the configured Snowflake port")
 }
 
@@ -1715,7 +1715,7 @@ tag  = "latest"
 port = %q
 `, hostPort)
 	configFile := filepath.Join(t.TempDir(), "config.toml")
-	must.NoError(t, os.WriteFile(configFile, []byte(content), 0644))
+	require.NoError(t, os.WriteFile(configFile, []byte(content), 0644))
 	return configFile
 }
 
@@ -1736,21 +1736,21 @@ func TestStartCommandSucceedsForAzure(t *testing.T) {
 
 	ctx := testContext(t)
 	stdout, stderr, err := runLstk(t, ctx, "", env.With(env.APIEndpoint, mockServer.URL), "--config", configFile, "start")
-	must.NoError(t, err, "lstk start failed: %s", stderr)
+	require.NoError(t, err, "lstk start failed: %s", stderr)
 	requireExitCode(t, 0, err)
 
 	inspect, err := dockerClient.ContainerInspect(ctx, azureContainerName, client.ContainerInspectOptions{})
-	must.NoError(t, err, "failed to inspect azure container")
-	must.True(t, inspect.Container.State.Running, "azure container should be running")
-	must.Contains(t, inspect.Container.Config.Image, "localstack/localstack-azure",
+	require.NoError(t, err, "failed to inspect azure container")
+	require.True(t, inspect.Container.State.Running, "azure container should be running")
+	require.Contains(t, inspect.Container.Config.Image, "localstack/localstack-azure",
 		"expected localstack/localstack-azure image, got %s", inspect.Container.Config.Image)
 
 	resp, err := http.Get(fmt.Sprintf("http://localhost:%s/_localstack/health", hostPort))
-	must.NoError(t, err)
+	require.NoError(t, err)
 	t.Cleanup(func() { _ = resp.Body.Close() })
-	must.Eq(t, http.StatusOK, resp.StatusCode)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
 
-	must.Contains(t, stdout, "> Tip:",
+	require.Contains(t, stdout, "> Tip:",
 		"azure start should print a tip line like AWS does")
 }
 
@@ -1767,7 +1767,7 @@ func TestStartCommandForAzureShowsPlanFromActivatedLicense(t *testing.T) {
 	// the license the container activated into its volume — not the license API.
 	const fakeImage = "localstack/localstack-azure:test-fake"
 	_, err := dockerClient.ImageTag(ctx, client.ImageTagOptions{Source: testImage, Target: fakeImage})
-	must.NoError(t, err)
+	require.NoError(t, err)
 	t.Cleanup(func() {
 		_, _ = dockerClient.ImageRemove(context.Background(), fakeImage, client.ImageRemoveOptions{})
 	})
@@ -1775,8 +1775,8 @@ func TestStartCommandForAzureShowsPlanFromActivatedLicense(t *testing.T) {
 
 	home := t.TempDir()
 	volumeDir := filepath.Join(home, "volume")
-	must.NoError(t, os.MkdirAll(filepath.Join(volumeDir, "cache"), 0755))
-	must.NoError(t, os.WriteFile(filepath.Join(volumeDir, "cache", "license.json"),
+	require.NoError(t, os.MkdirAll(filepath.Join(volumeDir, "cache"), 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(volumeDir, "cache", "license.json"),
 		[]byte(`{"license_type":"enterprise"}`), 0600))
 
 	configContent := fmt.Sprintf(`
@@ -1787,16 +1787,16 @@ port = "4566"
 volume = %q
 `, volumeDir)
 	configFile := filepath.Join(home, "config.toml")
-	must.NoError(t, os.WriteFile(configFile, []byte(configContent), 0644))
+	require.NoError(t, os.WriteFile(configFile, []byte(configContent), 0644))
 
 	// Fresh HOME = no cached plan_label, so the label must come from the volume license.
 	stdout, err := runLstkInPTY(t, ctx,
 		env.Environ(testEnvWithHome(home, "")).Without(env.AuthToken).With(env.AuthToken, "fake-token"),
 		"start", "--config", configFile,
 	)
-	must.NoError(t, err, "lstk start failed: %s", stdout)
-	must.Contains(t, stdout, "already running")
-	must.Contains(t, stdout, "LocalStack Enterprise",
+	require.NoError(t, err, "lstk start failed: %s", stdout)
+	require.Contains(t, stdout, "already running")
+	require.Contains(t, stdout, "LocalStack Enterprise",
 		"azure header should show the plan from the license the emulator activated into its volume")
 }
 
@@ -1816,6 +1816,6 @@ func TestStartCommandForAzureSkipsLicenseValidation(t *testing.T) {
 
 	ctx := testContext(t)
 	_, stderr, err := runLstk(t, ctx, "", env.With(env.APIEndpoint, mockServer.URL), "--config", writeAzureConfig(t, "4566"), "start")
-	must.NoError(t, err, "lstk start should succeed for azure even when the license server rejects the request: %s", stderr)
+	require.NoError(t, err, "lstk start should succeed for azure even when the license server rejects the request: %s", stderr)
 	requireExitCode(t, 0, err)
 }

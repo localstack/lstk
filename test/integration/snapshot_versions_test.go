@@ -6,9 +6,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/localstack/lstk/internal/must"
 	"github.com/localstack/lstk/internal/snap"
 	"github.com/localstack/lstk/test/integration/env"
+	"github.com/stretchr/testify/require"
 )
 
 // threeVersionPod is a platform payload with a deliberately out-of-order
@@ -47,11 +47,11 @@ func TestSnapshotVersionsSuccessWithoutDocker(t *testing.T) {
 		listEnv(t, srv, "test-token"),
 		"--non-interactive", "snapshot", "versions", "pod:my-baseline",
 	)
-	must.NoError(t, err, "lstk snapshot versions failed: %s", stderr)
+	require.NoError(t, err, "lstk snapshot versions failed: %s", stderr)
 
 	called, path, _ := cap.get()
-	must.True(t, called, "the single-pod endpoint should have been called")
-	must.Eq(t, "/v1/cloudpods/my-baseline", path)
+	require.True(t, called, "the single-pod endpoint should have been called")
+	require.Equal(t, "/v1/cloudpods/my-baseline", path)
 
 	// The snapshot pins column set (no DESCRIPTION), newest-first ordering,
 	// and that descriptions are no longer rendered.
@@ -75,7 +75,7 @@ func TestSnapshotVersionsFiltersDeletedVersions(t *testing.T) {
 		listEnv(t, srv, "test-token"),
 		"--non-interactive", "snapshot", "versions", "pod:p",
 	)
-	must.NoError(t, err, "lstk snapshot versions failed: %s", stderr)
+	require.NoError(t, err, "lstk snapshot versions failed: %s", stderr)
 
 	snap.Match(t, sanitizeOutput(stdout))
 }
@@ -90,8 +90,8 @@ func TestSnapshotVersionsSingleVersionUsesSingularNoun(t *testing.T) {
 		listEnv(t, srv, "test-token"),
 		"--non-interactive", "snapshot", "versions", "pod:solo",
 	)
-	must.NoError(t, err, "lstk snapshot versions failed: %s", stderr)
-	must.Contains(t, stdout, "~ 1 version\n")
+	require.NoError(t, err, "lstk snapshot versions failed: %s", stderr)
+	require.Contains(t, stdout, "~ 1 version\n")
 }
 
 func TestSnapshotVersionsEmptyHistory(t *testing.T) {
@@ -103,9 +103,9 @@ func TestSnapshotVersionsEmptyHistory(t *testing.T) {
 		listEnv(t, srv, "test-token"),
 		"--non-interactive", "snapshot", "versions", "pod:blank",
 	)
-	must.NoError(t, err, "lstk snapshot versions failed: %s", stderr)
-	must.Contains(t, stdout, "No versions found for 'pod:blank'")
-	must.NotContains(t, stdout, "VERSION", "no table should be rendered")
+	require.NoError(t, err, "lstk snapshot versions failed: %s", stderr)
+	require.Contains(t, stdout, "No versions found for 'pod:blank'")
+	require.NotContains(t, stdout, "VERSION", "no table should be rendered")
 }
 
 // TestSnapshotVersionsNoDockerRequired proves the command reads the platform API
@@ -120,8 +120,8 @@ func TestSnapshotVersionsNoDockerRequired(t *testing.T) {
 	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), e,
 		"--non-interactive", "snapshot", "versions", "pod:my-baseline",
 	)
-	must.NoError(t, err, "lstk snapshot versions failed: %s", stderr)
-	must.Contains(t, stdout, "~ 3 versions")
+	require.NoError(t, err, "lstk snapshot versions failed: %s", stderr)
+	require.Contains(t, stdout, "~ 3 versions")
 }
 
 func TestSnapshotVersionsRejectsLocalPath(t *testing.T) {
@@ -134,8 +134,8 @@ func TestSnapshotVersionsRejectsLocalPath(t *testing.T) {
 		"--non-interactive", "snapshot", "versions", "./my-snapshot",
 	)
 	requireExitCode(t, 1, err)
-	must.Contains(t, strings.ToLower(stderr), "local")
-	must.Contains(t, stderr, "list versions of local snapshots")
+	require.Contains(t, strings.ToLower(stderr), "local")
+	require.Contains(t, stderr, "list versions of local snapshots")
 }
 
 // TestSnapshotVersionsRejectsS3Ref: S3 remotes are fully supported by
@@ -168,7 +168,7 @@ func TestSnapshotVersionsOrasKeepsComingSoon(t *testing.T) {
 		"--non-interactive", "snapshot", "versions", "oras://registry/image",
 	)
 	requireExitCode(t, 1, err)
-	must.Contains(t, stderr, "coming soon")
+	require.Contains(t, stderr, "coming soon")
 }
 
 // TestSnapshotShowPinnedVersion: show is read-only and the platform returns every
@@ -193,7 +193,7 @@ func TestSnapshotShowPinnedVersion(t *testing.T) {
 		listEnv(t, srv, "test-token"),
 		"--non-interactive", "snapshot", "show", "pod:my-baseline:1",
 	)
-	must.NoError(t, err, "lstk snapshot show failed: %s", stderr)
+	require.NoError(t, err, "lstk snapshot show failed: %s", stderr)
 
 	// Snapshot of version 1's card: the pinned version's metadata must win
 	// over the latest version's.
@@ -226,7 +226,7 @@ func TestSnapshotVersionsRejectsVersionSuffix(t *testing.T) {
 		"--non-interactive", "snapshot", "versions", "pod:my-baseline:3",
 	)
 	requireExitCode(t, 1, err)
-	must.Contains(t, stderr, "drop the ':3'")
+	require.Contains(t, stderr, "drop the ':3'")
 }
 
 func TestSnapshotVersionsRejectsInvalidPodName(t *testing.T) {
@@ -239,7 +239,7 @@ func TestSnapshotVersionsRejectsInvalidPodName(t *testing.T) {
 		"--non-interactive", "snapshot", "versions", "pod:release.v1",
 	)
 	requireExitCode(t, 1, err)
-	must.Contains(t, stderr, "invalid pod name")
+	require.Contains(t, stderr, "invalid pod name")
 }
 
 func TestSnapshotVersionsNotFound(t *testing.T) {
@@ -255,8 +255,8 @@ func TestSnapshotVersionsNotFound(t *testing.T) {
 		"--non-interactive", "snapshot", "versions", "pod:missing",
 	)
 	requireExitCode(t, 1, err)
-	must.Contains(t, stdout, "not found")
-	must.Contains(t, stdout, "lstk snapshot list")
+	require.Contains(t, stdout, "not found")
+	require.Contains(t, stdout, "lstk snapshot list")
 }
 
 func TestSnapshotVersionsRequiresAuthToken(t *testing.T) {
@@ -271,6 +271,6 @@ func TestSnapshotVersionsRequiresAuthToken(t *testing.T) {
 		"--non-interactive", "snapshot", "versions", "pod:my-baseline",
 	)
 	requireExitCode(t, 1, err)
-	must.Contains(t, stdout, "Authentication required")
-	must.Contains(t, stdout, "lstk login")
+	require.Contains(t, stdout, "Authentication required")
+	require.Contains(t, stdout, "lstk login")
 }

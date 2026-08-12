@@ -9,9 +9,9 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/localstack/lstk/internal/must"
 	"github.com/localstack/lstk/internal/snap"
 	"github.com/localstack/lstk/test/integration/env"
+	"github.com/stretchr/testify/require"
 )
 
 // listCapture records what the platform list endpoint received. It is written from the
@@ -40,7 +40,7 @@ func (c *listCapture) get() (called bool, creator, auth string) {
 func mockCloudPodsServer(t *testing.T, pods []map[string]any, cap *listCapture) *httptest.Server {
 	t.Helper()
 	body, err := json.Marshal(pods)
-	must.NoError(t, err)
+	require.NoError(t, err)
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/v1/cloudpods" && r.Method == http.MethodGet {
@@ -78,10 +78,10 @@ func TestSnapshotListSuccessWithoutDocker(t *testing.T) {
 		listEnv(t, srv, "test-token"),
 		"--non-interactive", "snapshot", "list",
 	)
-	must.NoError(t, err, "lstk snapshot list failed: %s", stderr)
+	require.NoError(t, err, "lstk snapshot list failed: %s", stderr)
 	called, creator, _ := cap.get()
-	must.True(t, called, "the platform list endpoint should have been called")
-	must.Eq(t, "me", creator, "default list should send ?creator=me")
+	require.True(t, called, "the platform list endpoint should have been called")
+	require.Equal(t, "me", creator, "default list should send ?creator=me")
 	snap.Match(t, sanitizeOutput(stdout))
 }
 
@@ -97,12 +97,12 @@ func TestSnapshotListAllFlag(t *testing.T) {
 		listEnv(t, srv, "test-token"),
 		"--non-interactive", "snapshot", "list", "--all",
 	)
-	must.NoError(t, err, "lstk snapshot list --all failed: %s", stderr)
+	require.NoError(t, err, "lstk snapshot list --all failed: %s", stderr)
 	called, creator, _ := cap.get()
-	must.True(t, called, "the platform list endpoint should have been called")
-	must.Eq(t, "", creator, "--all should omit the ?creator param")
-	must.Contains(t, stdout, "~ 1 snapshot")
-	must.Contains(t, stdout, "org-pod")
+	require.True(t, called, "the platform list endpoint should have been called")
+	require.Equal(t, "", creator, "--all should omit the ?creator param")
+	require.Contains(t, stdout, "~ 1 snapshot")
+	require.Contains(t, stdout, "org-pod")
 }
 
 func TestSnapshotListEmpty(t *testing.T) {
@@ -114,8 +114,8 @@ func TestSnapshotListEmpty(t *testing.T) {
 		listEnv(t, srv, "test-token"),
 		"--non-interactive", "snapshot", "list",
 	)
-	must.NoError(t, err, "lstk snapshot list failed: %s", stderr)
-	must.Contains(t, stdout, "No snapshots found")
+	require.NoError(t, err, "lstk snapshot list failed: %s", stderr)
+	require.Contains(t, stdout, "No snapshots found")
 }
 
 func TestSnapshotListSendsBasicAuthHeader(t *testing.T) {
@@ -128,10 +128,10 @@ func TestSnapshotListSendsBasicAuthHeader(t *testing.T) {
 		listEnv(t, srv, "test-token"),
 		"--non-interactive", "snapshot", "list",
 	)
-	must.NoError(t, err, "lstk snapshot list failed: %s", stderr)
+	require.NoError(t, err, "lstk snapshot list failed: %s", stderr)
 	_, _, auth := cap.get()
 	expected := "Basic " + base64.StdEncoding.EncodeToString([]byte(":test-token"))
-	must.Eq(t, expected, auth, "list should authenticate to the platform with Basic base64(\":\"+token)")
+	require.Equal(t, expected, auth, "list should authenticate to the platform with Basic base64(\":\"+token)")
 }
 
 func TestSnapshotListRequiresAuthToken(t *testing.T) {
@@ -152,8 +152,8 @@ func TestSnapshotListRequiresAuthToken(t *testing.T) {
 		"--non-interactive", "snapshot", "list",
 	)
 	requireExitCode(t, 1, err)
-	must.Contains(t, stdout, "Authentication required")
-	must.Contains(t, stdout, "lstk login")
+	require.Contains(t, stdout, "Authentication required")
+	require.Contains(t, stdout, "lstk login")
 }
 
 func TestSnapshotListServerError(t *testing.T) {
@@ -172,7 +172,7 @@ func TestSnapshotListServerError(t *testing.T) {
 		"--non-interactive", "snapshot", "list",
 	)
 	requireExitCode(t, 1, err)
-	must.Contains(t, strings.ToLower(stderr), "error")
+	require.Contains(t, strings.ToLower(stderr), "error")
 }
 
 func TestSnapshotListInteractive(t *testing.T) {
@@ -186,6 +186,6 @@ func TestSnapshotListInteractive(t *testing.T) {
 		listEnv(t, srv, "test-token"),
 		"snapshot", "list",
 	)
-	must.NoError(t, err, "interactive lstk snapshot list failed")
-	must.Contains(t, out, "my-pod")
+	require.NoError(t, err, "interactive lstk snapshot list failed")
+	require.Contains(t, out, "my-pod")
 }

@@ -6,9 +6,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/localstack/lstk/internal/must"
 	"github.com/localstack/lstk/internal/snap"
 	"github.com/localstack/lstk/test/integration/env"
+	"github.com/stretchr/testify/require"
 )
 
 const tfOverrideFile = "localstack_providers_override.tf"
@@ -62,8 +62,8 @@ func TestTerraformForwardsArgs(t *testing.T) {
 	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).WithHome(t.TempDir())
 
 	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), e, "terraform", "version")
-	must.NoError(t, err, "stderr: %s", stderr)
-	must.Contains(t, stdout, "ARGS:version")
+	require.NoError(t, err, "stderr: %s", stderr)
+	require.Contains(t, stdout, "ARGS:version")
 }
 
 func TestTerraformAliasTF(t *testing.T) {
@@ -72,8 +72,8 @@ func TestTerraformAliasTF(t *testing.T) {
 	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).WithHome(t.TempDir())
 
 	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), e, "tf", "version")
-	must.NoError(t, err, "stderr: %s", stderr)
-	must.Contains(t, stdout, "ARGS:version")
+	require.NoError(t, err, "stderr: %s", stderr)
+	require.Contains(t, stdout, "ARGS:version")
 }
 
 // LSTK_TF_CMD selects the binary to invoke (e.g. OpenTofu). A stub named `tofu`
@@ -85,8 +85,8 @@ func TestTerraformHonorsLstkTfCmd(t *testing.T) {
 		With(env.Key("LSTK_TF_CMD"), "tofu")
 
 	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), e, "terraform", "version")
-	must.NoError(t, err, "stderr: %s", stderr)
-	must.Contains(t, stdout, "TOFU:version")
+	require.NoError(t, err, "stderr: %s", stderr)
+	require.Contains(t, stdout, "TOFU:version")
 }
 
 func TestTerraformPropagatesExitCode(t *testing.T) {
@@ -95,8 +95,8 @@ func TestTerraformPropagatesExitCode(t *testing.T) {
 	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).WithHome(t.TempDir())
 
 	_, stderr, err := runLstk(t, testContext(t), t.TempDir(), e, "terraform", "validate")
-	must.Error(t, err)
-	must.Contains(t, stderr, "simulated failure")
+	require.Error(t, err)
+	require.Contains(t, stderr, "simulated failure")
 	requireExitCode(t, 5, err)
 }
 
@@ -106,7 +106,7 @@ func TestTerraformMissingBinary(t *testing.T) {
 	e := env.With(env.DisableEvents, "1").With("PATH", t.TempDir()).WithHome(t.TempDir())
 
 	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), e, "terraform", "version")
-	must.Error(t, err)
+	require.Error(t, err)
 	// The snapshot pins the full missing-binary error card, install hint
 	// included.
 	snap.Match(t, sanitizeOutput(stderr+"\n"+stdout))
@@ -126,14 +126,14 @@ func TestTerraformUnproxiedSkipsOverride(t *testing.T) {
 
 			stdout, stderr, err := runLstk(t, testContext(t), workDir, e,
 				"terraform", "--region", "us-west-2", "--account", "111111111111", sub)
-			must.NoError(t, err, "stderr: %s", stderr)
+			require.NoError(t, err, "stderr: %s", stderr)
 
-			must.Contains(t, stdout, "ARGS:"+sub)
+			require.Contains(t, stdout, "ARGS:"+sub)
 			// lstk-specific flags must not be forwarded to terraform.
-			must.NotContains(t, stdout, "--region")
-			must.NotContains(t, stdout, "--account")
+			require.NotContains(t, stdout, "--region")
+			require.NotContains(t, stdout, "--account")
 			// No override file generated.
-			must.NoFileExists(t, filepath.Join(workDir, tfOverrideFile))
+			require.NoFileExists(t, filepath.Join(workDir, tfOverrideFile))
 		})
 	}
 }
@@ -153,10 +153,10 @@ func TestTerraformHelpSkipsOverride(t *testing.T) {
 
 			cmdArgs := append([]string{"terraform"}, args...)
 			stdout, stderr, err := runLstk(t, testContext(t), workDir, e, cmdArgs...)
-			must.NoError(t, err, "stderr: %s", stderr)
+			require.NoError(t, err, "stderr: %s", stderr)
 
-			must.Contains(t, stdout, "ARGS:"+strings.Join(args, " "))
-			must.NoFileExists(t, filepath.Join(workDir, tfOverrideFile))
+			require.Contains(t, stdout, "ARGS:"+strings.Join(args, " "))
+			require.NoFileExists(t, filepath.Join(workDir, tfOverrideFile))
 		})
 	}
 }
@@ -170,8 +170,8 @@ func TestTerraformInvalidAccountRejected(t *testing.T) {
 
 	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), e,
 		"terraform", "--account", "12345", "plan")
-	must.Error(t, err)
-	must.Contains(t, stderr+stdout, "12-digit")
+	require.Error(t, err)
+	require.Contains(t, stderr+stdout, "12-digit")
 }
 
 func TestTerraformMissingFlagValue(t *testing.T) {
@@ -180,8 +180,8 @@ func TestTerraformMissingFlagValue(t *testing.T) {
 	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).WithHome(t.TempDir())
 
 	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), e, "terraform", "--region")
-	must.Error(t, err)
-	must.Contains(t, stderr+stdout, "--region requires a value")
+	require.Error(t, err)
+	require.Contains(t, stderr+stdout, "--region requires a value")
 }
 
 // 7.7 — positional rules. Flags after the action are forwarded verbatim (use an
@@ -194,8 +194,8 @@ func TestTerraformFlagsAfterActionAreForwarded(t *testing.T) {
 
 	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), e,
 		"terraform", "version", "--region", "us-west-2")
-	must.NoError(t, err, "stderr: %s", stderr)
-	must.Contains(t, stdout, "ARGS:version --region us-west-2")
+	require.NoError(t, err, "stderr: %s", stderr)
+	require.Contains(t, stdout, "ARGS:version --region us-west-2")
 }
 
 func TestTerraformFlagBeforeSubcommandRejected(t *testing.T) {
@@ -205,8 +205,8 @@ func TestTerraformFlagBeforeSubcommandRejected(t *testing.T) {
 
 	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), e,
 		"--account", "111111111111", "terraform", "version")
-	must.Error(t, err)
-	must.Contains(t, stderr+stdout, "must appear after the terraform subcommand")
+	require.Error(t, err)
+	require.Contains(t, stderr+stdout, "must appear after the terraform subcommand")
 }
 
 // 7.2 — proxied command with no running emulator fails with "not running" and
@@ -220,10 +220,10 @@ func TestTerraformFailsWhenEmulatorNotRunning(t *testing.T) {
 	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).WithHome(t.TempDir())
 
 	stdout, _, err := runLstk(t, testContext(t), t.TempDir(), e, "terraform", "plan")
-	must.Error(t, err)
-	must.Contains(t, stdout, "is not running")
-	must.Contains(t, stdout, "Start LocalStack:")
-	must.NotContains(t, stdout, "ARGS:plan")
+	require.Error(t, err)
+	require.Contains(t, stdout, "is not running")
+	require.Contains(t, stdout, "Start LocalStack:")
+	require.NotContains(t, stdout, "ARGS:plan")
 }
 
 // 10.4 — lstk terraform only works with the AWS emulator. When a non-AWS
@@ -243,10 +243,10 @@ func TestTerraformRequiresAWSEmulator(t *testing.T) {
 	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).WithHome(t.TempDir())
 
 	stdout, _, err := runLstk(t, ctx, t.TempDir(), e, "terraform", "plan")
-	must.Error(t, err)
-	must.Contains(t, stdout, "requires the")
-	must.Contains(t, stdout, "Snowflake")
-	must.NotContains(t, stdout, "ARGS:plan")
+	require.Error(t, err)
+	require.Contains(t, stdout, "requires the")
+	require.Contains(t, stdout, "Snowflake")
+	require.NotContains(t, stdout, "ARGS:plan")
 }
 
 // 7.4 + 7.6 (encoding) — LSTK_TF_DRY_RUN generates the override (with resolved
@@ -265,15 +265,15 @@ func TestTerraformDryRunGeneratesOverride(t *testing.T) {
 
 	stdout, stderr, err := runLstk(t, ctx, workDir, e,
 		"terraform", "--region", "us-west-2", "--account", "111111111111", "plan")
-	must.NoError(t, err, "stderr: %s", stderr)
+	require.NoError(t, err, "stderr: %s", stderr)
 
 	// terraform plan must NOT have run.
-	must.NotContains(t, stdout, "ARGS:plan")
+	require.NotContains(t, stdout, "ARGS:plan")
 
 	overridePath := filepath.Join(workDir, tfOverrideFile)
-	must.FileExists(t, overridePath)
+	require.FileExists(t, overridePath)
 	content, err := os.ReadFile(overridePath)
-	must.NoError(t, err)
+	require.NoError(t, err)
 	// The snapshot pins the full generated override: resolved region and
 	// account encoded, plus the complete endpoints block (host masked).
 	snap.Match(t, sanitizeOutput(string(content)))
@@ -291,17 +291,17 @@ func TestTerraformRefusesPreexistingOverride(t *testing.T) {
 	fakeDir := writeFakeTerraform(t)
 	workDir := t.TempDir()
 	overridePath := filepath.Join(workDir, tfOverrideFile)
-	must.NoError(t, os.WriteFile(overridePath, []byte("# my own override\n"), 0644))
+	require.NoError(t, os.WriteFile(overridePath, []byte("# my own override\n"), 0644))
 
 	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).WithHome(t.TempDir())
 
 	stdout, stderr, err := runLstk(t, ctx, workDir, e, "terraform", "plan")
-	must.Error(t, err)
-	must.Contains(t, stderr+stdout, "refusing to overwrite")
+	require.Error(t, err)
+	require.Contains(t, stderr+stdout, "refusing to overwrite")
 
 	content, err := os.ReadFile(overridePath)
-	must.NoError(t, err)
-	must.Eq(t, "# my own override\n", string(content), "user's file must be untouched")
+	require.NoError(t, err)
+	require.Equal(t, "# my own override\n", string(content), "user's file must be untouched")
 }
 
 // 7.8 — a proxied `plan` generates the override (with endpoint keys sourced from
@@ -321,14 +321,14 @@ func TestTerraformGeneratesAndRemovesOverride(t *testing.T) {
 	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).WithHome(t.TempDir())
 
 	stdout, stderr, err := runLstk(t, ctx, workDir, e, "terraform", "plan")
-	must.NoError(t, err, "stderr: %s", stderr)
+	require.NoError(t, err, "stderr: %s", stderr)
 
 	// terraform ran and saw an override carrying the schema-derived s3 endpoint key.
-	must.Contains(t, stdout, "ARGS:plan")
-	must.Contains(t, stdout, "TF>")
-	must.Contains(t, stdout, "s3 =")
+	require.Contains(t, stdout, "ARGS:plan")
+	require.Contains(t, stdout, "TF>")
+	require.Contains(t, stdout, "s3 =")
 	// The override is removed once the run completes.
-	must.NoFileExists(t, filepath.Join(workDir, tfOverrideFile))
+	require.NoFileExists(t, filepath.Join(workDir, tfOverrideFile))
 }
 
 // 11.4 — a proxied command run with `-chdir=DIR` anchors lstk's work to DIR.
@@ -348,35 +348,35 @@ func TestTerraformChdirAnchorsOverrideToDir(t *testing.T) {
 	t.Run("override generated inside chdir dir", func(t *testing.T) {
 		workDir := t.TempDir()
 		infra := filepath.Join(workDir, "infra")
-		must.NoError(t, os.Mkdir(infra, 0755))
+		require.NoError(t, os.Mkdir(infra, 0755))
 		e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).WithHome(t.TempDir()).
 			With(env.Key("LSTK_TF_DRY_RUN"), "1")
 
 		_, stderr, err := runLstk(t, ctx, workDir, e, "terraform", "-chdir=infra", "plan")
-		must.NoError(t, err, "stderr: %s", stderr)
+		require.NoError(t, err, "stderr: %s", stderr)
 
 		overridePath := filepath.Join(infra, tfOverrideFile)
-		must.FileExists(t, overridePath)
+		require.FileExists(t, overridePath)
 		content, err := os.ReadFile(overridePath)
-		must.NoError(t, err)
-		must.Contains(t, string(content), "s3 =") // schema-derived endpoint key
+		require.NoError(t, err)
+		require.Contains(t, string(content), "s3 =") // schema-derived endpoint key
 		// Nothing was written at the top level.
-		must.NoFileExists(t, filepath.Join(workDir, tfOverrideFile))
+		require.NoFileExists(t, filepath.Join(workDir, tfOverrideFile))
 	})
 
 	// A live run forwards -chdir to terraform and removes the override after.
 	t.Run("chdir forwarded and override cleaned up", func(t *testing.T) {
 		workDir := t.TempDir()
 		infra := filepath.Join(workDir, "infra")
-		must.NoError(t, os.Mkdir(infra, 0755))
+		require.NoError(t, os.Mkdir(infra, 0755))
 		e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).WithHome(t.TempDir())
 
 		stdout, stderr, err := runLstk(t, ctx, workDir, e, "terraform", "-chdir=infra", "plan")
-		must.NoError(t, err, "stderr: %s", stderr)
+		require.NoError(t, err, "stderr: %s", stderr)
 
-		must.Contains(t, stdout, "ARGS:-chdir=infra plan")
-		must.NoFileExists(t, filepath.Join(infra, tfOverrideFile))
-		must.NoFileExists(t, filepath.Join(workDir, tfOverrideFile))
+		require.Contains(t, stdout, "ARGS:-chdir=infra plan")
+		require.NoFileExists(t, filepath.Join(infra, tfOverrideFile))
+		require.NoFileExists(t, filepath.Join(workDir, tfOverrideFile))
 	})
 }
 
@@ -394,10 +394,10 @@ func TestTerraformChdirMissingDirFails(t *testing.T) {
 	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).WithHome(t.TempDir())
 
 	stdout, _, err := runLstk(t, ctx, workDir, e, "terraform", "-chdir=does-not-exist", "plan")
-	must.Error(t, err)
-	must.Contains(t, stdout, "does not exist")
-	must.NotContains(t, stdout, "ARGS:")
-	must.NoFileExists(t, filepath.Join(workDir, "does-not-exist", tfOverrideFile))
+	require.Error(t, err)
+	require.Contains(t, stdout, "does not exist")
+	require.NotContains(t, stdout, "ARGS:")
+	require.NoFileExists(t, filepath.Join(workDir, "does-not-exist", tfOverrideFile))
 }
 
 // 7.9 — provider schema unavailable (before init) fails with the init-required
@@ -414,8 +414,8 @@ func TestTerraformSchemaUnavailableRequiresInit(t *testing.T) {
 	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).WithHome(t.TempDir())
 
 	stdout, stderr, err := runLstk(t, ctx, workDir, e, "terraform", "plan")
-	must.Error(t, err)
-	must.Contains(t, stderr+stdout, "terraform init")
-	must.NotContains(t, stdout, "ARGS:plan")
-	must.NoFileExists(t, filepath.Join(workDir, tfOverrideFile))
+	require.Error(t, err)
+	require.Contains(t, stderr+stdout, "terraform init")
+	require.NotContains(t, stdout, "ARGS:plan")
+	require.NoFileExists(t, filepath.Join(workDir, tfOverrideFile))
 }

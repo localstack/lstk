@@ -31,13 +31,13 @@ func TestSanitizeSnapshot(t *testing.T) {
 	t.Parallel()
 
 	cases := map[string]string{
-		"• Version: 4.14.1":            "• Version: <version>",
-		"• Version: v2.3.0-rc1":        "• Version: <version>",
-		"• Uptime: 4m 23s":             "• Uptime: <time>",
-		"• Uptime: 1h 2m 3s":           "• Uptime: <time>",
-		"• Uptime: 42s":                "• Uptime: <time>",
-		"• Endpoint: 127.0.0.1:4566":   "• Endpoint: 127.0.0.1:4566",
-		"plain text untouched":         "plain text untouched",
+		"• Version: 4.14.1":          "• Version: <version>",
+		"• Version: v2.3.0-rc1":      "• Version: <version>",
+		"• Uptime: 4m 23s":           "• Uptime: <time>",
+		"• Uptime: 1h 2m 3s":         "• Uptime: <time>",
+		"• Uptime: 42s":              "• Uptime: <time>",
+		"• Endpoint: 127.0.0.1:4566": "• Endpoint: 127.0.0.1:4566",
+		"plain text untouched":       "plain text untouched",
 		"• Version: 4.14.1\n• Uptime: 4m 23s\n• Container: localstack-aws": "• Version: <version>\n• Uptime: <time>\n• Container: localstack-aws",
 	}
 	for in, want := range cases {

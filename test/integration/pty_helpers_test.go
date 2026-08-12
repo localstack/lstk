@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"github.com/charmbracelet/x/xpty"
-	"github.com/localstack/lstk/internal/must"
+	"github.com/stretchr/testify/require"
 )
 
 // newTestPty opens a cross-platform PTY: a classic Unix PTY, or a ConPTY on
@@ -28,7 +28,7 @@ func newTestPty(t *testing.T) xpty.Pty {
 		width, height = 300, 80
 	}
 	pt, err := xpty.NewPty(width, height)
-	must.NoError(t, err, "failed to open PTY")
+	require.NoError(t, err, "failed to open PTY")
 	return pt
 }
 
@@ -51,7 +51,7 @@ func startCmdInPTY(t *testing.T, ctx context.Context, cmd *exec.Cmd) *ptyProc {
 
 	pt := newTestPty(t)
 	makeSessionLeader(cmd)
-	must.NoError(t, pt.Start(cmd), "failed to start command in PTY")
+	require.NoError(t, pt.Start(cmd), "failed to start command in PTY")
 	if up, ok := pt.(*xpty.UnixPty); ok {
 		// Close the parent's copy of the slave end so reads on the master
 		// return EOF once the child exits (creack's pty.Start does the same;
@@ -80,7 +80,7 @@ func startLstkInPTY(t *testing.T, ctx context.Context, environ []string, args ..
 	t.Helper()
 
 	binPath, err := filepath.Abs(binaryPath())
-	must.NoError(t, err)
+	require.NoError(t, err)
 
 	cmd := exec.CommandContext(ctx, binPath, args...)
 	if environ != nil {
@@ -100,7 +100,7 @@ func runLstkInPTY(t *testing.T, ctx context.Context, environ []string, args ...s
 func (p *ptyProc) write(s string) {
 	p.t.Helper()
 	_, err := p.pt.Write([]byte(s))
-	must.NoError(p.t, err)
+	require.NoError(p.t, err)
 }
 
 // output returns the ANSI-stripped output captured so far.
@@ -118,7 +118,7 @@ func (p *ptyProc) waitForOutput(want string, msgAndArgs ...any) {
 // prompts that only appear after slow work (e.g. a container becoming ready).
 func (p *ptyProc) waitForOutputTimeout(want string, timeout time.Duration, msgAndArgs ...any) {
 	p.t.Helper()
-	must.Eventually(p.t, func() bool {
+	require.Eventually(p.t, func() bool {
 		return strings.Contains(p.output(), want)
 	}, timeout, 100*time.Millisecond, msgAndArgs...)
 }

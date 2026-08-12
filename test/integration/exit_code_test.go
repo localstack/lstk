@@ -3,7 +3,7 @@ package integration_test
 import (
 	"testing"
 
-	"github.com/localstack/lstk/internal/must"
+	"github.com/stretchr/testify/require"
 )
 
 // TestInvalidUsageExitsNonZero guards against regressions of DEVX-941, where
@@ -38,9 +38,9 @@ func TestInvalidUsageExitsNonZero(t *testing.T) {
 			t.Parallel()
 			e := testEnvWithHome(t.TempDir(), "")
 			_, stderr, err := runLstk(t, testContext(t), t.TempDir(), e, tc.args...)
-			must.Error(t, err, "expected %v to fail", tc.args)
+			require.Error(t, err, "expected %v to fail", tc.args)
 			requireExitCode(t, 1, err)
-			must.Contains(t, stderr, tc.wantText)
+			require.Contains(t, stderr, tc.wantText)
 		})
 	}
 }
@@ -57,9 +57,9 @@ func TestBareParentCommandExitsZero(t *testing.T) {
 			t.Parallel()
 			e := testEnvWithHome(t.TempDir(), "")
 			stdout, _, err := runLstk(t, testContext(t), t.TempDir(), e, parent)
-			must.NoError(t, err)
+			require.NoError(t, err)
 			requireExitCode(t, 0, err)
-			must.Contains(t, stdout, "Usage:")
+			require.Contains(t, stdout, "Usage:")
 		})
 	}
 }

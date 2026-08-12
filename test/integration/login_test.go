@@ -12,8 +12,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/localstack/lstk/internal/must"
 	"github.com/localstack/lstk/test/integration/env"
+	"github.com/stretchr/testify/require"
 )
 
 // createMockAPIServer creates a mock LocalStack API server for testing
@@ -28,9 +28,9 @@ func createMockAPIServer(t *testing.T, licenseToken string, confirmed bool) *htt
 			// Validate request payload
 			var payload map[string]string
 			err := json.NewDecoder(r.Body).Decode(&payload)
-			must.NoError(t, err, "failed to decode auth request payload")
-			must.Eq(t, "lstk", payload["actor"], "actor should be lstk")
-			must.NotEmpty(t, payload["version"], "version should not be empty")
+			require.NoError(t, err, "failed to decode auth request payload")
+			require.Equal(t, "lstk", payload["actor"], "actor should be lstk")
+			require.NotEmpty(t, payload["version"], "version should not be empty")
 
 			w.WriteHeader(http.StatusCreated)
 			err = json.NewEncoder(w).Encode(map[string]string{
@@ -38,14 +38,14 @@ func createMockAPIServer(t *testing.T, licenseToken string, confirmed bool) *htt
 				"code":           "TEST123",
 				"exchange_token": exchangeToken,
 			})
-			must.NoError(t, err)
+			require.NoError(t, err)
 
 		case r.Method == "GET" && r.URL.Path == fmt.Sprintf("/v1/auth/request/%s", authReqID):
 			w.WriteHeader(http.StatusOK)
 			err := json.NewEncoder(w).Encode(map[string]bool{
 				"confirmed": confirmed,
 			})
-			must.NoError(t, err)
+			require.NoError(t, err)
 
 		case r.Method == "POST" && r.URL.Path == fmt.Sprintf("/v1/auth/request/%s/exchange", authReqID):
 			w.WriteHeader(http.StatusOK)
@@ -53,14 +53,14 @@ func createMockAPIServer(t *testing.T, licenseToken string, confirmed bool) *htt
 				"id":         authReqID,
 				"auth_token": bearerToken,
 			})
-			must.NoError(t, err)
+			require.NoError(t, err)
 
 		case r.Method == "GET" && r.URL.Path == "/v1/license/credentials":
 			w.WriteHeader(http.StatusOK)
 			err := json.NewEncoder(w).Encode(map[string]string{
 				"token": licenseToken,
 			})
-			must.NoError(t, err)
+			require.NoError(t, err)
 
 		case r.Method == "POST" && r.URL.Path == "/v1/license/request":
 			w.WriteHeader(http.StatusOK)
@@ -123,22 +123,22 @@ func TestDeviceFlowSuccess(t *testing.T) {
 	p.write("\r")
 
 	out, err := p.wait()
-	must.NoError(t, err, "login should succeed: %s", out)
+	require.NoError(t, err, "login should succeed: %s", out)
 	requireExitCode(t, 0, err)
-	must.Eq(t, mockServer.URL+"/auth/request/test-auth-req-id?code=TEST123", openedURL(), "login should open the auth URL in a browser")
-	must.Contains(t, out, "Opening browser to login...")
-	must.Contains(t, out, "Browser didn't open? Visit")
-	must.Contains(t, out, "/auth/request/test-auth-req-id?code=TEST123")
-	must.Contains(t, out, "Waiting for authorization")
-	must.Contains(t, out, "Checking if auth request is confirmed")
-	must.Contains(t, out, "Auth request confirmed")
-	must.Contains(t, out, "Fetching license token")
-	must.Contains(t, out, "Login successful")
+	require.Equal(t, mockServer.URL+"/auth/request/test-auth-req-id?code=TEST123", openedURL(), "login should open the auth URL in a browser")
+	require.Contains(t, out, "Opening browser to login...")
+	require.Contains(t, out, "Browser didn't open? Visit")
+	require.Contains(t, out, "/auth/request/test-auth-req-id?code=TEST123")
+	require.Contains(t, out, "Waiting for authorization")
+	require.Contains(t, out, "Checking if auth request is confirmed")
+	require.Contains(t, out, "Auth request confirmed")
+	require.Contains(t, out, "Fetching license token")
+	require.Contains(t, out, "Login successful")
 
 	// Verify token was stored in keyring
 	storedToken, err := GetAuthTokenFromKeyring()
-	must.NoError(t, err)
-	must.Eq(t, licenseToken, storedToken)
+	require.NoError(t, err)
+	require.Equal(t, licenseToken, storedToken)
 	assertCommandTelemetry(t, events, "login", 0)
 }
 
@@ -163,19 +163,19 @@ func TestDeviceFlowFailure_RequestNotConfirmed(t *testing.T) {
 	p.write("\r")
 
 	out, err := p.wait()
-	must.Error(t, err, "expected login to fail when request not confirmed")
+	require.Error(t, err, "expected login to fail when request not confirmed")
 	requireExitCode(t, 1, err)
-	must.Eq(t, mockServer.URL+"/auth/request/test-auth-req-id?code=TEST123", openedURL(), "login should open the auth URL in a browser")
-	must.Contains(t, out, "Opening browser to login...")
-	must.Contains(t, out, "Browser didn't open? Visit")
-	must.Contains(t, out, "/auth/request/test-auth-req-id?code=TEST123")
-	must.Contains(t, out, "Waiting for authorization")
-	must.Contains(t, out, "Checking if auth request is confirmed")
-	must.Contains(t, out, "auth request not confirmed")
+	require.Equal(t, mockServer.URL+"/auth/request/test-auth-req-id?code=TEST123", openedURL(), "login should open the auth URL in a browser")
+	require.Contains(t, out, "Opening browser to login...")
+	require.Contains(t, out, "Browser didn't open? Visit")
+	require.Contains(t, out, "/auth/request/test-auth-req-id?code=TEST123")
+	require.Contains(t, out, "Waiting for authorization")
+	require.Contains(t, out, "Checking if auth request is confirmed")
+	require.Contains(t, out, "auth request not confirmed")
 
 	// Verify no token was stored in keyring
 	_, err = GetAuthTokenFromKeyring()
-	must.Error(t, err, "no token should be stored when login fails")
+	require.Error(t, err, "no token should be stored when login fails")
 	assertCommandTelemetry(t, events, "login", 1)
 }
 
@@ -185,11 +185,11 @@ func TestLoginShortCircuitsWhenEnvTokenSet(t *testing.T) {
 	environ := append(testEnvWithHome(t.TempDir(), ""), string(env.AuthToken)+"=fake-env-token")
 
 	out, err := runLstkInPTY(t, testContext(t), environ, "login")
-	must.NoError(t, err, "login should succeed when env token is set: %s", out)
+	require.NoError(t, err, "login should succeed when env token is set: %s", out)
 	requireExitCode(t, 0, err)
-	must.Contains(t, out, "You're already logged in")
-	must.NotContains(t, out, "Opening browser")
-	must.NotContains(t, out, "Waiting for authorization")
+	require.Contains(t, out, "You're already logged in")
+	require.NotContains(t, out, "Opening browser")
+	require.NotContains(t, out, "Waiting for authorization")
 }
 
 func TestLoginShortCircuitsWhenStoredTokenExists(t *testing.T) {
@@ -197,15 +197,15 @@ func TestLoginShortCircuitsWhenStoredTokenExists(t *testing.T) {
 
 	tmpHome := t.TempDir()
 	tokenDir := filepath.Join(tmpHome, ".config", "lstk")
-	must.NoError(t, os.MkdirAll(tokenDir, 0700))
-	must.NoError(t, os.WriteFile(filepath.Join(tokenDir, "auth-token"), []byte("stored-token"), 0600))
+	require.NoError(t, os.MkdirAll(tokenDir, 0700))
+	require.NoError(t, os.WriteFile(filepath.Join(tokenDir, "auth-token"), []byte("stored-token"), 0600))
 
 	environ := env.Environ(testEnvWithHome(tmpHome, "")).Without(env.AuthToken)
 
 	out, err := runLstkInPTY(t, testContext(t), environ, "login")
-	must.NoError(t, err, "login should succeed when stored token exists: %s", out)
+	require.NoError(t, err, "login should succeed when stored token exists: %s", out)
 	requireExitCode(t, 0, err)
-	must.Contains(t, out, "You're already logged in")
-	must.NotContains(t, out, "Opening browser")
-	must.NotContains(t, out, "Waiting for authorization")
+	require.Contains(t, out, "You're already logged in")
+	require.NotContains(t, out, "Opening browser")
+	require.NotContains(t, out, "Waiting for authorization")
 }

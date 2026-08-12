@@ -7,8 +7,8 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/localstack/lstk/internal/must"
 	"github.com/localstack/lstk/test/integration/env"
+	"github.com/stretchr/testify/require"
 )
 
 // mockResetServer returns a test server that records POST /_localstack/state/reset calls and replies with status.
@@ -40,9 +40,9 @@ func TestResetSucceedsWithForce(t *testing.T) {
 		env.Environ(testEnvWithHome(t.TempDir(), "")).With(env.LocalStackHost, lsHost(srv)),
 		"--non-interactive", "reset", "--force",
 	)
-	must.NoError(t, err, "lstk reset failed: %s", stderr)
-	must.Contains(t, stdout, "Emulator state reset")
-	must.Eq(t, int32(1), calls.Load(), "reset endpoint should be called exactly once")
+	require.NoError(t, err, "lstk reset failed: %s", stderr)
+	require.Contains(t, stdout, "Emulator state reset")
+	require.Equal(t, int32(1), calls.Load(), "reset endpoint should be called exactly once")
 }
 
 func TestResetFailsWithoutForceInNonInteractive(t *testing.T) {
@@ -61,8 +61,8 @@ func TestResetFailsWithoutForceInNonInteractive(t *testing.T) {
 		"--non-interactive", "reset",
 	)
 	requireExitCode(t, 1, err)
-	must.Contains(t, stderr, "--force")
-	must.Eq(t, int32(0), calls.Load(), "reset endpoint should not be called when confirmation is required")
+	require.Contains(t, stderr, "--force")
+	require.Equal(t, int32(0), calls.Load(), "reset endpoint should not be called when confirmation is required")
 }
 
 func TestResetLocalStackNotRunning(t *testing.T) {
@@ -77,7 +77,7 @@ func TestResetLocalStackNotRunning(t *testing.T) {
 		"--non-interactive", "reset", "--force",
 	)
 	requireExitCode(t, 1, err)
-	must.Contains(t, stdout, "not running")
+	require.Contains(t, stdout, "not running")
 }
 
 func TestResetReturnsErrorOnAPIFailure(t *testing.T) {
@@ -94,7 +94,7 @@ func TestResetReturnsErrorOnAPIFailure(t *testing.T) {
 		"--non-interactive", "reset", "--force",
 	)
 	requireExitCode(t, 1, err)
-	must.NotEmpty(t, stderr)
+	require.NotEmpty(t, stderr)
 }
 
 func TestResetTelemetryEmitted(t *testing.T) {
@@ -113,7 +113,7 @@ func TestResetTelemetryEmitted(t *testing.T) {
 			With(env.AnalyticsEndpoint, analyticsSrv.URL),
 		"--non-interactive", "reset", "--force",
 	)
-	must.NoError(t, err, "lstk reset failed: %s", stderr)
+	require.NoError(t, err, "lstk reset failed: %s", stderr)
 	assertCommandTelemetry(t, events, "reset", 0)
 }
 
@@ -154,10 +154,10 @@ func TestResetInteractive(t *testing.T) {
 		p := startReset(t, srv)
 		p.write("y")
 		out, err := p.wait()
-		must.NoError(t, err)
+		require.NoError(t, err)
 
-		must.Contains(t, out, "Emulator state reset")
-		must.Eq(t, int32(1), calls.Load(), "reset endpoint should be called after confirmation")
+		require.Contains(t, out, "Emulator state reset")
+		require.Equal(t, int32(1), calls.Load(), "reset endpoint should be called after confirmation")
 	})
 
 	t.Run("cancels with n", func(t *testing.T) {
@@ -165,10 +165,10 @@ func TestResetInteractive(t *testing.T) {
 		p := startReset(t, srv)
 		p.write("n")
 		out, err := p.wait()
-		must.NoError(t, err)
+		require.NoError(t, err)
 
-		must.Contains(t, out, "Cancelled")
-		must.Eq(t, int32(0), calls.Load(), "reset endpoint must not be called when user cancels")
+		require.Contains(t, out, "Cancelled")
+		require.Equal(t, int32(0), calls.Load(), "reset endpoint must not be called when user cancels")
 	})
 }
 
@@ -185,13 +185,13 @@ func TestResetJSONSucceeds(t *testing.T) {
 		env.Environ(testEnvWithHome(t.TempDir(), "")).With(env.LocalStackHost, lsHost(srv)),
 		"reset", "--force", "--json",
 	)
-	must.NoError(t, err, "lstk reset --json failed: %s", stderr)
+	require.NoError(t, err, "lstk reset --json failed: %s", stderr)
 	requireExitCode(t, 0, err)
-	must.Eq(t, int32(1), calls.Load(), "reset endpoint should be called exactly once")
+	require.Equal(t, int32(1), calls.Load(), "reset endpoint should be called exactly once")
 
 	envelope := decodeEnvelope(t, stdout)
-	must.Eq(t, "ok", envelope.Status)
-	must.Eq(t, "reset", envelope.Command)
+	require.Equal(t, "ok", envelope.Status)
+	require.Equal(t, "reset", envelope.Command)
 
 	var data struct {
 		Emulator struct {
@@ -200,9 +200,9 @@ func TestResetJSONSucceeds(t *testing.T) {
 		} `json:"emulator"`
 		Reset bool `json:"reset"`
 	}
-	must.NoError(t, json.Unmarshal(envelope.Data, &data))
-	must.Eq(t, "aws", data.Emulator.Type)
-	must.True(t, data.Reset)
+	require.NoError(t, json.Unmarshal(envelope.Data, &data))
+	require.Equal(t, "aws", data.Emulator.Type)
+	require.True(t, data.Reset)
 }
 
 func TestResetJSONRequiresConfirmation(t *testing.T) {
@@ -219,11 +219,11 @@ func TestResetJSONRequiresConfirmation(t *testing.T) {
 	requireExitCode(t, 3, err)
 
 	envelope := decodeEnvelope(t, stdout)
-	must.Eq(t, "error", envelope.Status)
-	must.NotNil(t, envelope.Error)
-	must.Eq(t, "CONFIRMATION_REQUIRED", envelope.Error.Code)
-	must.Eq(t, "USAGE", envelope.Error.Category)
-	must.False(t, envelope.Error.Retryable)
+	require.Equal(t, "error", envelope.Status)
+	require.NotNil(t, envelope.Error)
+	require.Equal(t, "CONFIRMATION_REQUIRED", envelope.Error.Code)
+	require.Equal(t, "USAGE", envelope.Error.Category)
+	require.False(t, envelope.Error.Retryable)
 }
 
 func TestResetJSONNotConfigured(t *testing.T) {
@@ -238,8 +238,8 @@ func TestResetJSONNotConfigured(t *testing.T) {
 	requireExitCode(t, 1, err)
 
 	envelope := decodeEnvelope(t, stdout)
-	must.Eq(t, "error", envelope.Status)
-	must.NotNil(t, envelope.Error)
-	must.Eq(t, "EMULATOR_NOT_CONFIGURED", envelope.Error.Code)
-	must.Eq(t, "EMULATOR", envelope.Error.Category)
+	require.Equal(t, "error", envelope.Status)
+	require.NotNil(t, envelope.Error)
+	require.Equal(t, "EMULATOR_NOT_CONFIGURED", envelope.Error.Code)
+	require.Equal(t, "EMULATOR", envelope.Error.Category)
 }

@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/localstack/lstk/internal/must"
 	"github.com/localstack/lstk/test/integration/env"
+	"github.com/stretchr/testify/require"
 )
 
 // End-to-end tests for `lstk aws` that exercise the real aws CLI against a real
@@ -47,12 +47,12 @@ func TestAWSLogsTailFollowStreamsInPTY(t *testing.T) {
 	const marker = "hello-tail-follow"
 
 	_, stderr, err := runLstk(t, ctx, "", e, "aws", "logs", "create-log-group", "--log-group-name", logGroup)
-	must.NoError(t, err, "create-log-group failed: %s", stderr)
+	require.NoError(t, err, "create-log-group failed: %s", stderr)
 	_, stderr, err = runLstk(t, ctx, "", e, "aws", "logs", "create-log-stream", "--log-group-name", logGroup, "--log-stream-name", "s1")
-	must.NoError(t, err, "create-log-stream failed: %s", stderr)
+	require.NoError(t, err, "create-log-stream failed: %s", stderr)
 	events := fmt.Sprintf("timestamp=%d,message=%s", time.Now().UnixMilli(), marker)
 	_, stderr, err = runLstk(t, ctx, "", e, "aws", "logs", "put-log-events", "--log-group-name", logGroup, "--log-stream-name", "s1", "--log-events", events)
-	must.NoError(t, err, "put-log-events failed: %s", stderr)
+	require.NoError(t, err, "put-log-events failed: %s", stderr)
 
 	p := startLstkInPTY(t, ctx, e, "aws", "logs", "tail", logGroup, "--follow", "--since", "1h")
 
@@ -82,6 +82,6 @@ func TestAWSLogsTailFollowStreamsInPTY(t *testing.T) {
 		<-waited
 	}
 
-	must.True(t, seen,
+	require.True(t, seen,
 		"tail --follow produced no output while running; event appeared only after exit (DEVX-1026). Output after exit:\n%s", p.output())
 }

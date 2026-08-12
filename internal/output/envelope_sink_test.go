@@ -5,8 +5,8 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/localstack/lstk/internal/must"
 	"github.com/localstack/lstk/internal/snap"
+	"github.com/stretchr/testify/require"
 )
 
 func TestEnvelopeSink_SuccessWithNoEvents(t *testing.T) {
@@ -44,10 +44,10 @@ func TestEnvelopeSink_EmulatorStoppedEventAccumulates(t *testing.T) {
 
 	envelope := sink.Result("stop", nil)
 	data, ok := envelope.Data.(map[string]any)
-	must.True(t, ok)
+	require.True(t, ok)
 	entries, ok := data["emulators"].([]JsonEmulatorEntry)
-	must.True(t, ok)
-	must.Eq(t, []JsonEmulatorEntry{
+	require.True(t, ok)
+	require.Equal(t, []JsonEmulatorEntry{
 		JsonStoppedEmulator{JsonEmulatorRef: JsonEmulatorRef{Type: "aws", Name: "localstack-aws"}, WasRunning: true},
 		JsonStoppedEmulator{JsonEmulatorRef: JsonEmulatorRef{Type: "snowflake", Name: "localstack-snowflake"}, WasRunning: true},
 	}, entries)
@@ -98,7 +98,7 @@ func TestEnvelopeSink_UpdateCheckedEnvelopeJSON(t *testing.T) {
 
 	envelope := sink.Result("update", nil)
 	raw, err := json.Marshal(envelope)
-	must.NoError(t, err)
+	require.NoError(t, err)
 	snap.MatchJSON(t, raw, "data.currentVersion", "data.latestVersion")
 }
 
@@ -153,10 +153,10 @@ func TestEnvelopeSink_ErrorEventSetsClassifiedError(t *testing.T) {
 	})
 
 	envelope := sink.Result("reset", errors.New("LocalStack is not running"))
-	must.Eq(t, StatusError, envelope.Status)
-	must.Nil(t, envelope.Data)
-	must.NotNil(t, envelope.Error)
-	must.Eq(t, &EnvelopeError{
+	require.Equal(t, StatusError, envelope.Status)
+	require.Nil(t, envelope.Data)
+	require.NotNil(t, envelope.Error)
+	require.Equal(t, &EnvelopeError{
 		Code:      ErrEmulatorNotRunning,
 		Category:  CategoryEmulator,
 		Message:   "LocalStack is not running",

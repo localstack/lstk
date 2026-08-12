@@ -13,8 +13,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/localstack/lstk/internal/must"
 	"github.com/localstack/lstk/test/integration/env"
+	"github.com/stretchr/testify/require"
 )
 
 // azureLikeHealthServer answers the endpoint probe the way the Azure emulator
@@ -68,7 +68,7 @@ print("PYTHONUNBUFFERED:" + os.environ.get("PYTHONUNBUFFERED", "<unset>"))
 print(%q)
 time.sleep(%f)
 `, python, marker, holdFor.Seconds())
-	must.NoError(t, os.WriteFile(filepath.Join(dir, "az"), []byte(script), 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "az"), []byte(script), 0755))
 	return dir
 }
 
@@ -97,7 +97,7 @@ func TestAzStreamsInPTY(t *testing.T) {
 
 	ctx := testContext(t)
 	binPath, err := filepath.Abs(binaryPath())
-	must.NoError(t, err)
+	require.NoError(t, err)
 
 	cmd := exec.CommandContext(ctx, binPath, "--endpoint-url", srv.URL, "az", "webapp", "log", "tail")
 	cmd.Dir = workDir
@@ -116,12 +116,12 @@ func TestAzStreamsInPTY(t *testing.T) {
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
-	must.True(t, seen, "az produced no output while the child was still running — it was withheld in the CLI's stdout buffer until exit (DEVX-1028); output so far:\n%s", p.output())
+	require.True(t, seen, "az produced no output while the child was still running — it was withheld in the CLI's stdout buffer until exit (DEVX-1028); output so far:\n%s", p.output())
 
 	// The two mechanisms that keep the symptom above from returning, asserted
 	// separately so a regression in either one is named rather than inferred.
-	must.Contains(t, p.output(), "STDOUT_TTY:yes", "the Azure CLI must be handed a terminal, not a pipe (DEVX-1028)")
-	must.Contains(t, p.output(), "PYTHONUNBUFFERED:1")
+	require.Contains(t, p.output(), "STDOUT_TTY:yes", "the Azure CLI must be handed a terminal, not a pipe (DEVX-1028)")
+	require.Contains(t, p.output(), "PYTHONUNBUFFERED:1")
 
 	// Ctrl-C via the PTY reaches the whole foreground process group (lstk and
 	// the az child), matching how a user stops a streaming command.
@@ -151,7 +151,7 @@ func TestAzWithPipedStdoutKeepsPipe(t *testing.T) {
 		unreachableDockerHost)
 
 	stdout, stderr, err := runLstk(t, testContext(t), workDir, e, "--endpoint-url", srv.URL, "az", "group", "list")
-	must.NoError(t, err, "stderr: %s", stderr)
-	must.Contains(t, stdout, "STDOUT_TTY:no")
-	must.Contains(t, stdout, "piped")
+	require.NoError(t, err, "stderr: %s", stderr)
+	require.Contains(t, stdout, "STDOUT_TTY:no")
+	require.Contains(t, stdout, "piped")
 }

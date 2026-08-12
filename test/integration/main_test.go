@@ -19,11 +19,11 @@ import (
 
 	"net/netip"
 
-	"github.com/localstack/lstk/internal/must"
 	"github.com/localstack/lstk/test/integration/env"
 	"github.com/moby/moby/api/types/container"
 	"github.com/moby/moby/api/types/network"
 	"github.com/moby/moby/client"
+	"github.com/stretchr/testify/require"
 	"github.com/zalando/go-keyring"
 )
 
@@ -183,7 +183,7 @@ func startTestContainer(t *testing.T, ctx context.Context, hostPort ...string) {
 	t.Helper()
 
 	reader, err := dockerClient.ImagePull(ctx, testImage, client.ImagePullOptions{})
-	must.NoError(t, err, "failed to pull test image")
+	require.NoError(t, err, "failed to pull test image")
 	_, _ = io.Copy(io.Discard, reader)
 	_ = reader.Close()
 
@@ -208,9 +208,9 @@ func startTestContainer(t *testing.T, ctx context.Context, hostPort ...string) {
 		HostConfig: hostCfg,
 		Name:       containerName,
 	})
-	must.NoError(t, err, "failed to create test container")
+	require.NoError(t, err, "failed to create test container")
 	_, err = dockerClient.ContainerStart(ctx, resp.ID, client.ContainerStartOptions{})
-	must.NoError(t, err, "failed to start test container")
+	require.NoError(t, err, "failed to start test container")
 }
 
 // Use this to simulate a LocalStack container started outside lstk.
@@ -231,9 +231,9 @@ func startExternalContainer(t *testing.T, ctx context.Context, imgName, name, ho
 		},
 		Name: name,
 	})
-	must.NoError(t, err, "failed to create external container")
+	require.NoError(t, err, "failed to create external container")
 	_, err = dockerClient.ContainerStart(ctx, resp.ID, client.ContainerStartOptions{})
-	must.NoError(t, err, "failed to start external container")
+	require.NoError(t, err, "failed to start external container")
 	t.Cleanup(func() {
 		_, _ = dockerClient.ContainerRemove(context.Background(), name, client.ContainerRemoveOptions{Force: true})
 	})
@@ -251,7 +251,7 @@ func commitNeverHealthyImage(t *testing.T, ctx context.Context) string {
 	t.Helper()
 
 	reader, err := dockerClient.ImagePull(ctx, testImage, client.ImagePullOptions{})
-	must.NoError(t, err, "failed to pull test image")
+	require.NoError(t, err, "failed to pull test image")
 	_, _ = io.Copy(io.Discard, reader)
 	_ = reader.Close()
 
@@ -259,7 +259,7 @@ func commitNeverHealthyImage(t *testing.T, ctx context.Context) string {
 		Config: &container.Config{Image: testImage},
 		Name:   "lstk-never-healthy-src",
 	})
-	must.NoError(t, err, "failed to create source container")
+	require.NoError(t, err, "failed to create source container")
 	t.Cleanup(func() {
 		_, _ = dockerClient.ContainerRemove(context.Background(), resp.ID, client.ContainerRemoveOptions{Force: true})
 	})
@@ -269,7 +269,7 @@ func commitNeverHealthyImage(t *testing.T, ctx context.Context) string {
 		Reference: imageRef,
 		Changes:   []string{`CMD ["sleep", "infinity"]`},
 	})
-	must.NoError(t, err, "failed to commit never-healthy image")
+	require.NoError(t, err, "failed to commit never-healthy image")
 	t.Cleanup(func() {
 		_, _ = dockerClient.ImageRemove(context.Background(), imageRef, client.ImageRemoveOptions{Force: true})
 	})
@@ -292,7 +292,7 @@ func startNamedTestContainer(t *testing.T, ctx context.Context, name, label stri
 	t.Helper()
 
 	reader, err := dockerClient.ImagePull(ctx, testImage, client.ImagePullOptions{})
-	must.NoError(t, err, "failed to pull test image")
+	require.NoError(t, err, "failed to pull test image")
 	_, _ = io.Copy(io.Discard, reader)
 	_ = reader.Close()
 
@@ -303,9 +303,9 @@ func startNamedTestContainer(t *testing.T, ctx context.Context, name, label stri
 		},
 		Name: name,
 	})
-	must.NoError(t, err, "failed to create %s test container", label)
+	require.NoError(t, err, "failed to create %s test container", label)
 	_, err = dockerClient.ContainerStart(ctx, resp.ID, client.ContainerStartOptions{})
-	must.NoError(t, err, "failed to start %s test container", label)
+	require.NoError(t, err, "failed to start %s test container", label)
 }
 
 func testContext(t *testing.T) context.Context {
@@ -319,7 +319,7 @@ func runLstk(t *testing.T, ctx context.Context, dir string, env []string, args .
 	t.Helper()
 
 	binPath, err := filepath.Abs(binaryPath())
-	must.NoError(t, err)
+	require.NoError(t, err)
 
 	cmd := exec.CommandContext(ctx, binPath, args...)
 	cmd.Dir = dir
@@ -339,12 +339,12 @@ func runLstk(t *testing.T, ctx context.Context, dir string, env []string, args .
 func requireExitCode(t *testing.T, expected int, err error) {
 	t.Helper()
 	if expected == 0 {
-		must.NoError(t, err)
+		require.NoError(t, err)
 		return
 	}
 	var exitErr *exec.ExitError
-	must.ErrorAs(t, err, &exitErr)
-	must.Eq(t, expected, exitErr.ExitCode())
+	require.ErrorAs(t, err, &exitErr)
+	require.Equal(t, expected, exitErr.ExitCode())
 }
 
 func createMockLicenseServer(success bool) *httptest.Server {

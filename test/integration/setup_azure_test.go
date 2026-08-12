@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/localstack/lstk/internal/must"
 	"github.com/localstack/lstk/test/integration/env"
+	"github.com/stretchr/testify/require"
 )
 
 func requireAzCLI(t *testing.T) {
@@ -26,7 +26,7 @@ func requireAzCLI(t *testing.T) {
 func azTempHome(t *testing.T) string {
 	t.Helper()
 	dir, err := os.MkdirTemp("", "lstk-az-home-")
-	must.NoError(t, err)
+	require.NoError(t, err)
 	t.Cleanup(func() { _ = os.RemoveAll(dir) })
 	return dir
 }
@@ -41,8 +41,8 @@ func azureWorkDir(t *testing.T) string {
 	t.Helper()
 	workDir := t.TempDir()
 	lstkDir := filepath.Join(workDir, ".lstk")
-	must.NoError(t, os.MkdirAll(lstkDir, 0755))
-	must.NoError(t, os.WriteFile(filepath.Join(lstkDir, "config.toml"), []byte(`
+	require.NoError(t, os.MkdirAll(lstkDir, 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(lstkDir, "config.toml"), []byte(`
 [[containers]]
 type = "azure"
 tag  = "latest"
@@ -54,8 +54,8 @@ port = "4566"
 func writeAzureSetupMarker(t *testing.T, workDir string) {
 	t.Helper()
 	dir := filepath.Join(workDir, ".lstk", "azure")
-	must.NoError(t, os.MkdirAll(dir, 0700))
-	must.NoError(t, os.WriteFile(filepath.Join(dir, ".lstk-setup-complete"), []byte("ok\n"), 0600))
+	require.NoError(t, os.MkdirAll(dir, 0700))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".lstk-setup-complete"), []byte("ok\n"), 0600))
 }
 
 func TestAzCommandErrorsWhenNotSetUp(t *testing.T) {
@@ -66,10 +66,10 @@ func TestAzCommandErrorsWhenNotSetUp(t *testing.T) {
 		env.WithHome(t.TempDir()),
 		"az", "group", "list",
 	)
-	must.Error(t, err)
+	require.Error(t, err)
 	requireExitCode(t, 1, err)
-	must.Contains(t, stdout, "Azure CLI integration is not set up")
-	must.Contains(t, stdout, "lstk setup azure")
+	require.Contains(t, stdout, "Azure CLI integration is not set up")
+	require.Contains(t, stdout, "lstk setup azure")
 }
 
 // Non-interactive mode must not be rejected upfront (CI use case): with no
@@ -82,9 +82,9 @@ func TestSetupAzureNonInteractiveRunsWithoutTerminal(t *testing.T) {
 		env.WithHome(t.TempDir()),
 		"setup", "azure",
 	)
-	must.Error(t, err)
-	must.Contains(t, stderr, "no azure emulator configured")
-	must.NotContains(t, stderr, "interactive terminal")
+	require.Error(t, err)
+	require.Contains(t, stderr, "no azure emulator configured")
+	require.NotContains(t, stderr, "interactive terminal")
 }
 
 // `lstk setup az` must resolve to `setup azure`: the Azure tool-proxy command
@@ -98,9 +98,9 @@ func TestSetupAzureAliasAz(t *testing.T) {
 		env.WithHome(t.TempDir()),
 		"setup", "az",
 	)
-	must.Error(t, err)
-	must.NotContains(t, stderr, "unknown command")
-	must.Contains(t, stderr, "no azure emulator configured")
+	require.Error(t, err)
+	require.NotContains(t, stderr, "unknown command")
+	require.Contains(t, stderr, "no azure emulator configured")
 }
 
 // When the az CLI is missing, the error must be reported exactly once —
@@ -113,10 +113,10 @@ func TestSetupAzureReportsMissingAzCLIOnce(t *testing.T) {
 		env.WithHome(t.TempDir()).With("PATH", t.TempDir()),
 		"setup", "azure",
 	)
-	must.Error(t, err)
-	must.Contains(t, stderr, "az CLI not found in PATH")
+	require.Error(t, err)
+	require.Contains(t, stderr, "az CLI not found in PATH")
 	combined := stdout + stderr
-	must.Eq(t, 1, strings.Count(combined, "az CLI not found in PATH"),
+	require.Equal(t, 1, strings.Count(combined, "az CLI not found in PATH"),
 		"missing az CLI must be reported exactly once, got:\n%s", combined)
 }
 
@@ -135,10 +135,10 @@ func TestAzCommandErrorsWhenEmulatorNotRunning(t *testing.T) {
 		env.WithHome(t.TempDir()),
 		"az", "group", "list",
 	)
-	must.Error(t, err)
+	require.Error(t, err)
 	requireExitCode(t, 1, err)
-	must.Contains(t, stdout, "is not running")
-	must.Contains(t, stdout, "Start LocalStack")
+	require.Contains(t, stdout, "is not running")
+	require.Contains(t, stdout, "Start LocalStack")
 }
 
 // TestSetupAzureAndAzCommandSucceed requires Docker, the Azure CLI, and LOCALSTACK_AUTH_TOKEN.
@@ -173,21 +173,21 @@ func TestSetupAzureAndAzCommandSucceed(t *testing.T) {
 		baseEnv.With(env.APIEndpoint, mockServer.URL),
 		"start",
 	)
-	must.NoError(t, err, "lstk start failed: %s", stderr)
+	require.NoError(t, err, "lstk start failed: %s", stderr)
 
 	binPath, err := filepath.Abs(binaryPath())
-	must.NoError(t, err)
+	require.NoError(t, err)
 	cmd := exec.CommandContext(ctx, binPath, "setup", "azure")
 	cmd.Dir = workDir
 	cmd.Env = baseEnv.With(env.APIEndpoint, mockServer.URL)
 	p := startCmdInPTY(t, ctx, cmd)
 	out, err := p.wait()
-	must.NoError(t, err, "setup azure should succeed; output:\n%s", out)
-	must.Contains(t, out, "Azure CLI integration ready")
+	require.NoError(t, err, "setup azure should succeed; output:\n%s", out)
+	require.Contains(t, out, "Azure CLI integration ready")
 
 	markerPath := filepath.Join(workDir, ".lstk", "azure", ".lstk-setup-complete")
 	_, err = os.Stat(markerPath)
-	must.NoError(t, err, "marker file should be written on successful setup")
+	require.NoError(t, err, "marker file should be written on successful setup")
 
 	// `az cloud show` reads the isolated config dir locally, so the assertion
 	// doesn't depend on emulator-side behaviour for any specific Azure service.
@@ -195,8 +195,8 @@ func TestSetupAzureAndAzCommandSucceed(t *testing.T) {
 		baseEnv.With(env.APIEndpoint, mockServer.URL),
 		"az", "cloud", "show", "--name", "LocalStack",
 	)
-	must.NoError(t, err, "lstk az cloud show failed: %s", stderr2)
-	must.Contains(t, stdout, "azure.localhost.localstack.cloud:4566",
+	require.NoError(t, err, "lstk az cloud show failed: %s", stderr2)
+	require.Contains(t, stdout, "azure.localhost.localstack.cloud:4566",
 		"registered cloud should expose the LocalStack Azure endpoint")
 
 	// Setup must also work without a terminal (CI use case): runLstk uses
@@ -206,6 +206,6 @@ func TestSetupAzureAndAzCommandSucceed(t *testing.T) {
 		baseEnv.With(env.APIEndpoint, mockServer.URL),
 		"setup", "azure",
 	)
-	must.NoError(t, err, "non-interactive setup azure failed: stdout=%s stderr=%s", stdoutNI, stderrNI)
-	must.Contains(t, stdoutNI, "Azure CLI integration ready")
+	require.NoError(t, err, "non-interactive setup azure failed: stdout=%s stderr=%s", stdoutNI, stderrNI)
+	require.Contains(t, stdoutNI, "Azure CLI integration ready")
 }

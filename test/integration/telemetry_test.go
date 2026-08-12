@@ -17,8 +17,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/localstack/lstk/internal/must"
 	"github.com/localstack/lstk/test/integration/env"
+	"github.com/stretchr/testify/require"
 )
 
 // mockAnalyticsServer returns a test server that records received analytics events.
@@ -68,7 +68,7 @@ func TestStartCommandSendsTelemetryEvent(t *testing.T) {
 			With(env.AuthToken, "fake-token").
 			With(env.AnalyticsEndpoint, analyticsSrv.URL)
 		out, err := cmd.CombinedOutput()
-		must.NoError(t, err, "lstk %v failed: %s", args, out)
+		require.NoError(t, err, "lstk %v failed: %s", args, out)
 	}
 
 	t.Run("lstk start emits command=start", func(t *testing.T) {
@@ -76,33 +76,33 @@ func TestStartCommandSendsTelemetryEvent(t *testing.T) {
 
 		select {
 		case event := <-events:
-			must.Eq(t, "lstk_command", event["name"])
+			require.Equal(t, "lstk_command", event["name"])
 
 			metadata, ok := event["metadata"].(map[string]any)
-			must.True(t, ok)
+			require.True(t, ok)
 			_, err := uuid.Parse(metadata["session_id"].(string))
-			must.NoError(t, err, "session_id should be a valid UUID")
+			require.NoError(t, err, "session_id should be a valid UUID")
 			_, err = time.Parse("2006-01-02 15:04:05.000000", metadata["client_time"].(string))
-			must.NoError(t, err, "client_time should match expected format")
+			require.NoError(t, err, "client_time should match expected format")
 
 			payload, ok := event["payload"].(map[string]any)
-			must.True(t, ok)
-			must.NotEmpty(t, payload["machine_id"], "machine_id should be present")
-			must.Eq(t, os.Getenv("CI") != "", payload["is_ci"])
+			require.True(t, ok)
+			require.NotEmpty(t, payload["machine_id"], "machine_id should be present")
+			require.Equal(t, os.Getenv("CI") != "", payload["is_ci"])
 
 			environment, ok := payload["environment"].(map[string]any)
-			must.True(t, ok)
-			must.NotEmpty(t, environment["lstk_version"])
-			must.Eq[any](t, runtime.GOOS, environment["os"])
-			must.Eq[any](t, runtime.GOARCH, environment["arch"])
+			require.True(t, ok)
+			require.NotEmpty(t, environment["lstk_version"])
+			require.Equal(t, runtime.GOOS, environment["os"])
+			require.Equal(t, runtime.GOARCH, environment["arch"])
 
 			params, ok := payload["parameters"].(map[string]any)
-			must.True(t, ok)
-			must.Eq(t, "start", params["command"])
+			require.True(t, ok)
+			require.Equal(t, "start", params["command"])
 
 			result, ok := payload["result"].(map[string]any)
-			must.True(t, ok)
-			must.InDelta(t, 0, result["exit_code"], 0)
+			require.True(t, ok)
+			require.InDelta(t, 0, result["exit_code"], 0)
 		case <-time.After(3 * time.Second):
 			t.Fatal("timed out waiting for telemetry event")
 		}
@@ -127,7 +127,7 @@ func TestStopCommandSendsTelemetryEvents(t *testing.T) {
 	_, stderr, err := runLstk(t, ctx, "", env.Environ(testEnvWithHome(t.TempDir(), "")).
 		With(env.AuthToken, "fake-token").
 		With(env.AnalyticsEndpoint, analyticsSrv.URL), "stop")
-	must.NoError(t, err, "lstk stop failed: %s", stderr)
+	require.NoError(t, err, "lstk stop failed: %s", stderr)
 	requireExitCode(t, 0, err)
 
 	// Collect both the lstk_lifecycle and lstk_command events (order not guaranteed).
@@ -144,20 +144,20 @@ func TestStopCommandSendsTelemetryEvents(t *testing.T) {
 	}
 
 	lifecycle, ok := byName["lstk_lifecycle"]
-	must.True(t, ok, "expected lstk_lifecycle event")
+	require.True(t, ok, "expected lstk_lifecycle event")
 	lp := lifecycle["payload"].(map[string]any)
-	must.Eq(t, "stop", lp["event_type"])
-	must.Eq(t, "aws", lp["emulator"])
+	require.Equal(t, "stop", lp["event_type"])
+	require.Equal(t, "aws", lp["emulator"])
 
 	command, ok := byName["lstk_command"]
-	must.True(t, ok, "expected lstk_command event")
+	require.True(t, ok, "expected lstk_command event")
 	cp := command["payload"].(map[string]any)
 	params, ok := cp["parameters"].(map[string]any)
-	must.True(t, ok)
-	must.Eq(t, "stop", params["command"])
+	require.True(t, ok)
+	require.Equal(t, "stop", params["command"])
 	result, ok := cp["result"].(map[string]any)
-	must.True(t, ok)
-	must.InDelta(t, 0, result["exit_code"], 0)
+	require.True(t, ok)
+	require.InDelta(t, 0, result["exit_code"], 0)
 }
 
 func TestStartCommandSucceedsWhenAnalyticsEndpointUnreachable(t *testing.T) {
@@ -176,7 +176,7 @@ func TestStartCommandSucceedsWhenAnalyticsEndpointUnreachable(t *testing.T) {
 		With(env.AnalyticsEndpoint, "http://127.0.0.1:1")
 	out, err := cmd.CombinedOutput()
 
-	must.NoError(t, err, "lstk start should succeed even when analytics endpoint is unreachable: %s", out)
+	require.NoError(t, err, "lstk start should succeed even when analytics endpoint is unreachable: %s", out)
 	requireExitCode(t, 0, err)
 }
 
@@ -198,7 +198,7 @@ func TestStartCommandDoesNotSendTelemetryWhenDisabled(t *testing.T) {
 		With(env.AnalyticsEndpoint, analyticsSrv.URL).
 		With(env.DisableEvents, "1")
 	out, err := cmd.CombinedOutput()
-	must.NoError(t, err, "lstk start failed: %s", out)
+	require.NoError(t, err, "lstk start failed: %s", out)
 	requireExitCode(t, 0, err)
 
 	// Wait long enough that a goroutine would have fired if enabled.
@@ -232,19 +232,19 @@ func TestAWSProxyTelemetryRecordsExitCodeAndSubcommand(t *testing.T) {
 
 	_, _, err := runLstk(t, testContext(t), "", environ,
 		"--endpoint-url", emulatorSrv.URL, "aws", "s3", "lss")
-	must.Error(t, err)
+	require.Error(t, err)
 	requireExitCode(t, 252, err)
 
 	event := receiveEventByName(t, events, "lstk_command")
 	payload, ok := event["payload"].(map[string]any)
-	must.True(t, ok)
+	require.True(t, ok)
 	params, ok := payload["parameters"].(map[string]any)
-	must.True(t, ok)
-	must.Eq(t, "aws", params["command"])
-	must.Eq(t, "s3 lss", params["subcommand"])
+	require.True(t, ok)
+	require.Equal(t, "aws", params["command"])
+	require.Equal(t, "s3 lss", params["subcommand"])
 	result, ok := payload["result"].(map[string]any)
-	must.True(t, ok)
-	must.InDelta(t, 252, result["exit_code"], 0)
+	require.True(t, ok)
+	require.InDelta(t, 252, result["exit_code"], 0)
 }
 
 // receiveEventByName waits up to 3s for an event with the given name.
@@ -271,9 +271,9 @@ func assertCommandTelemetry(t *testing.T, events <-chan map[string]any, command 
 	event := receiveEventByName(t, events, "lstk_command")
 	payload, _ := event["payload"].(map[string]any)
 	params, _ := payload["parameters"].(map[string]any)
-	must.Eq[any](t, command, params["command"])
+	require.Equal(t, command, params["command"])
 	result, _ := payload["result"].(map[string]any)
-	must.InDelta(t, exitCode, result["exit_code"], 0)
+	require.InDelta(t, exitCode, result["exit_code"], 0)
 }
 
 // Regression test for FLC-648: a slow analytics endpoint must not add to
@@ -316,8 +316,8 @@ func TestStartCommand_DoesNotBlockOnSlowAnalyticsEndpoint(t *testing.T) {
 	out, err := cmd.CombinedOutput()
 	parentDuration := time.Since(start)
 
-	must.NoError(t, err, "lstk start failed: %s", out)
-	must.Less(t, parentDuration, maxParentDuration,
+	require.NoError(t, err, "lstk start failed: %s", out)
+	require.Less(t, parentDuration, maxParentDuration,
 		"parent process took %v, expected <%v — subprocess flush should not block parent", parentDuration, maxParentDuration)
 
 	// The detached subprocess should still deliver the event.
@@ -341,7 +341,7 @@ func TestCommandTelemetryIsDeliveredByDetachedFlusher(t *testing.T) {
 		With(env.AuthToken, "fake-token").
 		With(env.AnalyticsEndpoint, analyticsSrv.URL).
 		With(env.Key("DOCKER_HOST"), "tcp://127.0.0.1:1"), "start")
-	must.Error(t, err)
+	require.Error(t, err)
 	requireExitCode(t, 1, err)
 
 	assertCommandTelemetry(t, events, "start", 1)
@@ -365,7 +365,7 @@ func TestFlushTelemetrySubcommandDoesNotSpawnRecursively(t *testing.T) {
 		With(env.AnalyticsEndpoint, analyticsSrv.URL)
 	cmd.Stdin = strings.NewReader(input)
 	out, err := cmd.CombinedOutput()
-	must.NoError(t, err, "__flush-telemetry failed: %s", out)
+	require.NoError(t, err, "__flush-telemetry failed: %s", out)
 
 	got := map[string]bool{}
 	for i := 0; i < 2; i++ {
@@ -376,7 +376,7 @@ func TestFlushTelemetrySubcommandDoesNotSpawnRecursively(t *testing.T) {
 			t.Fatalf("expected 2 flushed events, got %d: %v", i, got)
 		}
 	}
-	must.True(t, got["first_event"] && got["second_event"], "expected both piped events, got: %v", got)
+	require.True(t, got["first_event"] && got["second_event"], "expected both piped events, got: %v", got)
 
 	// No further events may arrive: that would mean the flusher emitted telemetry about itself.
 	select {
@@ -402,7 +402,7 @@ func TestOtelFlushSpansJoinCommandTrace(t *testing.T) {
 		With(env.Otel, "1").
 		With(env.OtelEndpoint, otlpSrv.URL).
 		With(env.Key("DOCKER_HOST"), "tcp://127.0.0.1:1"), "start")
-	must.Error(t, err)
+	require.Error(t, err)
 	requireExitCode(t, 1, err)
 
 	// The flusher subprocess exports after the parent exits; allow for its

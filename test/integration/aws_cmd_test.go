@@ -8,9 +8,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/localstack/lstk/internal/must"
 	"github.com/localstack/lstk/test/integration/env"
 	"github.com/moby/moby/client"
+	"github.com/stretchr/testify/require"
 )
 
 // writeFakeAWS creates a fake `aws` that prints its args and env vars.
@@ -49,10 +49,10 @@ func writeFakeAWS(t *testing.T) string {
 func writeAWSProfile(t *testing.T, homeDir string) {
 	t.Helper()
 	awsDir := filepath.Join(homeDir, ".aws")
-	must.NoError(t, os.MkdirAll(awsDir, 0700))
-	must.NoError(t, os.WriteFile(filepath.Join(awsDir, "config"),
+	require.NoError(t, os.MkdirAll(awsDir, 0700))
+	require.NoError(t, os.WriteFile(filepath.Join(awsDir, "config"),
 		[]byte("[profile localstack]\nregion = us-east-1\noutput = json\nendpoint_url = http://localhost.localstack.cloud:4566\n"), 0600))
-	must.NoError(t, os.WriteFile(filepath.Join(awsDir, "credentials"),
+	require.NoError(t, os.WriteFile(filepath.Join(awsDir, "credentials"),
 		[]byte("[localstack]\naws_access_key_id = test\naws_secret_access_key = test\n"), 0600))
 }
 
@@ -70,10 +70,10 @@ func TestAWSCommandInjectsEndpointAndArgs(t *testing.T) {
 		With(env.AnalyticsEndpoint, analyticsSrv.URL)
 
 	stdout, stderr, err := runLstk(t, ctx, t.TempDir(), e, "aws", "s3", "ls")
-	must.NoError(t, err, "lstk aws failed: %s", stderr)
+	require.NoError(t, err, "lstk aws failed: %s", stderr)
 
-	must.Contains(t, stdout, "ENDPOINT:http://")
-	must.Contains(t, stdout, "ARGS:s3 ls")
+	require.Contains(t, stdout, "ENDPOINT:http://")
+	require.Contains(t, stdout, "ARGS:s3 ls")
 	assertCommandTelemetry(t, events, "aws", 0)
 }
 
@@ -90,16 +90,16 @@ func TestAWSCommandStripsGlobalFlagsFromPassthrough(t *testing.T) {
 
 	// --config must resolve to this file, not be forwarded to the aws binary.
 	configPath := filepath.Join(t.TempDir(), "config.toml")
-	must.NoError(t, os.WriteFile(configPath, []byte("# lstk test config\n"), 0600))
+	require.NoError(t, os.WriteFile(configPath, []byte("# lstk test config\n"), 0600))
 
 	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).WithHome(homeDir)
 
 	stdout, stderr, err := runLstk(t, ctx, t.TempDir(), e, "--config", configPath, "--non-interactive", "aws", "s3", "ls")
-	must.NoError(t, err, "lstk aws failed: %s", stderr)
+	require.NoError(t, err, "lstk aws failed: %s", stderr)
 
-	must.Contains(t, stdout, "ARGS:s3 ls")
-	must.NotContains(t, stdout, "--config")
-	must.NotContains(t, stdout, "--non-interactive")
+	require.Contains(t, stdout, "ARGS:s3 ls")
+	require.NotContains(t, stdout, "--config")
+	require.NotContains(t, stdout, "--non-interactive")
 }
 
 func TestAWSCommandInjectsCredentials(t *testing.T) {
@@ -114,11 +114,11 @@ func TestAWSCommandInjectsCredentials(t *testing.T) {
 	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).WithHome(t.TempDir())
 
 	stdout, stderr, err := runLstk(t, ctx, t.TempDir(), e, "aws", "sts", "get-caller-identity")
-	must.NoError(t, err, "lstk aws failed: %s", stderr)
+	require.NoError(t, err, "lstk aws failed: %s", stderr)
 
-	must.Contains(t, stdout, "AWS_ACCESS_KEY_ID=test")
-	must.Contains(t, stdout, "AWS_SECRET_ACCESS_KEY=test")
-	must.Contains(t, stdout, "AWS_DEFAULT_REGION=us-east-1")
+	require.Contains(t, stdout, "AWS_ACCESS_KEY_ID=test")
+	require.Contains(t, stdout, "AWS_SECRET_ACCESS_KEY=test")
+	require.Contains(t, stdout, "AWS_DEFAULT_REGION=us-east-1")
 }
 
 func TestAWSCommandRespectsExistingCredentials(t *testing.T) {
@@ -138,11 +138,11 @@ func TestAWSCommandRespectsExistingCredentials(t *testing.T) {
 		With("AWS_DEFAULT_REGION", "eu-west-1")
 
 	stdout, stderr, err := runLstk(t, ctx, t.TempDir(), e, "aws", "s3", "ls")
-	must.NoError(t, err, "lstk aws failed: %s", stderr)
+	require.NoError(t, err, "lstk aws failed: %s", stderr)
 
-	must.Contains(t, stdout, "AWS_ACCESS_KEY_ID=custom-key")
-	must.Contains(t, stdout, "AWS_SECRET_ACCESS_KEY=custom-secret")
-	must.Contains(t, stdout, "AWS_DEFAULT_REGION=eu-west-1")
+	require.Contains(t, stdout, "AWS_ACCESS_KEY_ID=custom-key")
+	require.Contains(t, stdout, "AWS_SECRET_ACCESS_KEY=custom-secret")
+	require.Contains(t, stdout, "AWS_DEFAULT_REGION=eu-west-1")
 }
 
 // The profile is selected through AWS_PROFILE, never a --profile argument: an
@@ -162,17 +162,17 @@ func TestAWSCommandUsesProfileWhenAvailable(t *testing.T) {
 	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).WithHome(homeDir)
 
 	stdout, stderr, err := runLstk(t, ctx, t.TempDir(), e, "aws", "s3", "ls")
-	must.NoError(t, err, "lstk aws failed: %s", stderr)
+	require.NoError(t, err, "lstk aws failed: %s", stderr)
 
-	must.Contains(t, stdout, "AWS_PROFILE=localstack")
-	must.NotContains(t, stdout, "--profile")
+	require.Contains(t, stdout, "AWS_PROFILE=localstack")
+	require.NotContains(t, stdout, "--profile")
 	// The profile is the sole credentials source: lstk removes the variables
 	// rather than seeding over them (7.10).
-	must.Contains(t, stdout, "AWS_ACCESS_KEY_ID=<unset>")
-	must.Contains(t, stdout, "AWS_SECRET_ACCESS_KEY=<unset>")
-	must.Contains(t, stdout, "AWS_SESSION_TOKEN=<unset>")
+	require.Contains(t, stdout, "AWS_ACCESS_KEY_ID=<unset>")
+	require.Contains(t, stdout, "AWS_SECRET_ACCESS_KEY=<unset>")
+	require.Contains(t, stdout, "AWS_SESSION_TOKEN=<unset>")
 	// No default region is seeded over the profile's own (7.12).
-	must.Contains(t, stdout, "AWS_DEFAULT_REGION=<unset>")
+	require.Contains(t, stdout, "AWS_DEFAULT_REGION=<unset>")
 }
 
 // 7.1 — the path that already worked: with no profile configured, a 12-digit
@@ -191,9 +191,9 @@ func TestAWSCommandAccountFromEnvWithoutProfile(t *testing.T) {
 		With("AWS_ACCESS_KEY_ID", "111111111111")
 
 	stdout, stderr, err := runLstk(t, ctx, t.TempDir(), e, "aws", "s3", "ls")
-	must.NoError(t, err, "lstk aws failed: %s", stderr)
+	require.NoError(t, err, "lstk aws failed: %s", stderr)
 
-	must.Contains(t, stdout, "AWS_ACCESS_KEY_ID=111111111111")
+	require.Contains(t, stdout, "AWS_ACCESS_KEY_ID=111111111111")
 }
 
 // 7.2 — the silent failure this change fixes: the same command stopped working
@@ -216,12 +216,12 @@ func TestAWSCommandAccountFromEnvWithProfile(t *testing.T) {
 		With("AWS_ACCESS_KEY_ID", "111111111111")
 
 	stdout, stderr, err := runLstk(t, ctx, t.TempDir(), e, "aws", "s3", "ls")
-	must.NoError(t, err, "lstk aws failed: %s", stderr)
+	require.NoError(t, err, "lstk aws failed: %s", stderr)
 
-	must.Contains(t, stdout, "AWS_ACCESS_KEY_ID=111111111111")
-	must.NotContains(t, stdout, "--profile")
+	require.Contains(t, stdout, "AWS_ACCESS_KEY_ID=111111111111")
+	require.NotContains(t, stdout, "--profile")
 	// The profile is still selected, so its other settings keep applying.
-	must.Contains(t, stdout, "AWS_PROFILE=localstack")
+	require.Contains(t, stdout, "AWS_PROFILE=localstack")
 }
 
 // 7.3 — the flag, with the profile present so the bypass path is exercised.
@@ -239,16 +239,16 @@ func TestAWSCommandAccountFlag(t *testing.T) {
 	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).WithHome(homeDir)
 
 	stdout, stderr, err := runLstk(t, ctx, t.TempDir(), e, "aws", "--account", "111111111111", "s3", "ls")
-	must.NoError(t, err, "lstk aws failed: %s", stderr)
+	require.NoError(t, err, "lstk aws failed: %s", stderr)
 
-	must.Contains(t, stdout, "AWS_ACCESS_KEY_ID=111111111111")
+	require.Contains(t, stdout, "AWS_ACCESS_KEY_ID=111111111111")
 	// The flag is lstk's: it must not reach the AWS CLI.
-	must.Contains(t, stdout, "ARGS:s3 ls")
+	require.Contains(t, stdout, "ARGS:s3 ls")
 	// A secret is always supplied alongside the key — a lone access key id
 	// makes the AWS CLI fail with "Partial credentials found in env" (7.11).
-	must.Contains(t, stdout, "AWS_SECRET_ACCESS_KEY=test")
+	require.Contains(t, stdout, "AWS_SECRET_ACCESS_KEY=test")
 	// No default region is seeded over the profile's own (7.12).
-	must.Contains(t, stdout, "AWS_DEFAULT_REGION=<unset>")
+	require.Contains(t, stdout, "AWS_DEFAULT_REGION=<unset>")
 }
 
 // 7.4
@@ -266,10 +266,10 @@ func TestAWSCommandAccountFlagBeatsEnv(t *testing.T) {
 		With("AWS_ACCESS_KEY_ID", "111111111111")
 
 	stdout, stderr, err := runLstk(t, ctx, t.TempDir(), e, "aws", "--account=222222222222", "s3", "ls")
-	must.NoError(t, err, "lstk aws failed: %s", stderr)
+	require.NoError(t, err, "lstk aws failed: %s", stderr)
 
-	must.Contains(t, stdout, "AWS_ACCESS_KEY_ID=222222222222")
-	must.NotContains(t, stdout, "AWS_ACCESS_KEY_ID=111111111111")
+	require.Contains(t, stdout, "AWS_ACCESS_KEY_ID=222222222222")
+	require.NotContains(t, stdout, "AWS_ACCESS_KEY_ID=111111111111")
 }
 
 // 7.9 — a real key in the environment is not an account selection: the profile
@@ -293,14 +293,14 @@ func TestAWSCommandRealAccessKeyDoesNotDisplaceProfile(t *testing.T) {
 		With("AWS_SESSION_TOKEN", "realtoken")
 
 	stdout, stderr, err := runLstk(t, ctx, t.TempDir(), e, "aws", "s3", "ls")
-	must.NoError(t, err, "lstk aws failed: %s", stderr)
+	require.NoError(t, err, "lstk aws failed: %s", stderr)
 
-	must.Contains(t, stdout, "AWS_PROFILE=localstack")
-	must.Contains(t, stdout, "AWS_ACCESS_KEY_ID=<unset>")
-	must.Contains(t, stdout, "AWS_SECRET_ACCESS_KEY=<unset>")
-	must.Contains(t, stdout, "AWS_SESSION_TOKEN=<unset>")
-	must.NotContains(t, stdout, "AKIAIOSFODNN7EXAMPLE")
-	must.NotContains(t, stdout, "realsecret")
+	require.Contains(t, stdout, "AWS_PROFILE=localstack")
+	require.Contains(t, stdout, "AWS_ACCESS_KEY_ID=<unset>")
+	require.Contains(t, stdout, "AWS_SECRET_ACCESS_KEY=<unset>")
+	require.Contains(t, stdout, "AWS_SESSION_TOKEN=<unset>")
+	require.NotContains(t, stdout, "AKIAIOSFODNN7EXAMPLE")
+	require.NotContains(t, stdout, "realsecret")
 }
 
 // 7.9 (no-profile half) — with nothing else to supply credentials the key is
@@ -320,11 +320,11 @@ func TestAWSCommandDeactivatesRealAccessKeyWithoutProfile(t *testing.T) {
 		With("AWS_SESSION_TOKEN", "realtoken")
 
 	stdout, stderr, err := runLstk(t, ctx, t.TempDir(), e, "aws", "s3", "ls")
-	must.NoError(t, err, "lstk aws failed: %s", stderr)
+	require.NoError(t, err, "lstk aws failed: %s", stderr)
 
-	must.Contains(t, stdout, "AWS_ACCESS_KEY_ID=LKIAIOSFODNN7EXAMPLE")
-	must.NotContains(t, stdout, "AKIAIOSFODNN7EXAMPLE")
-	must.Contains(t, stdout, "AWS_SESSION_TOKEN=<unset>")
+	require.Contains(t, stdout, "AWS_ACCESS_KEY_ID=LKIAIOSFODNN7EXAMPLE")
+	require.NotContains(t, stdout, "AKIAIOSFODNN7EXAMPLE")
+	require.Contains(t, stdout, "AWS_SESSION_TOKEN=<unset>")
 }
 
 // 7.7 — a --account after the AWS service belongs to the AWS CLI
@@ -340,10 +340,10 @@ func TestAWSCommandForwardsNonLeadingAccountFlag(t *testing.T) {
 	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).WithHome(t.TempDir())
 
 	stdout, stderr, err := runLstk(t, ctx, t.TempDir(), e, "aws", "s3", "ls", "--account", "111111111111")
-	must.NoError(t, err, "lstk aws failed: %s", stderr)
+	require.NoError(t, err, "lstk aws failed: %s", stderr)
 
-	must.Contains(t, stdout, "ARGS:s3 ls --account 111111111111")
-	must.Contains(t, stdout, "AWS_ACCESS_KEY_ID=test")
+	require.Contains(t, stdout, "ARGS:s3 ls --account 111111111111")
+	require.Contains(t, stdout, "AWS_ACCESS_KEY_ID=test")
 }
 
 // 7.8 — --region is the AWS CLI's own flag and is never consumed by lstk, even
@@ -359,9 +359,9 @@ func TestAWSCommandForwardsRegionFlag(t *testing.T) {
 	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).WithHome(t.TempDir())
 
 	stdout, stderr, err := runLstk(t, ctx, t.TempDir(), e, "aws", "--region", "us-west-2", "s3", "ls")
-	must.NoError(t, err, "lstk aws failed: %s", stderr)
+	require.NoError(t, err, "lstk aws failed: %s", stderr)
 
-	must.Contains(t, stdout, "ARGS:--region us-west-2 s3 ls")
+	require.Contains(t, stdout, "ARGS:--region us-west-2 s3 ls")
 }
 
 // 7.5 — rejected at the command boundary, before the AWS CLI is invoked. No
@@ -373,10 +373,10 @@ func TestAWSCommandRejectsInvalidAccount(t *testing.T) {
 	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).WithHome(t.TempDir())
 
 	stdout, _, err := runLstk(t, testContext(t), t.TempDir(), e, "aws", "--account", "12345", "s3", "ls")
-	must.Error(t, err)
-	must.Contains(t, stdout, "12-digit AWS account id")
+	require.Error(t, err)
+	require.Contains(t, stdout, "12-digit AWS account id")
 	// The AWS CLI must not have run.
-	must.NotContains(t, stdout, "ARGS:")
+	require.NotContains(t, stdout, "ARGS:")
 }
 
 // 7.5 (missing value)
@@ -387,9 +387,9 @@ func TestAWSCommandRejectsAccountWithoutValue(t *testing.T) {
 	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).WithHome(t.TempDir())
 
 	stdout, _, err := runLstk(t, testContext(t), t.TempDir(), e, "aws", "--account")
-	must.Error(t, err)
-	must.Contains(t, stdout, "--account requires a value")
-	must.NotContains(t, stdout, "ARGS:")
+	require.Error(t, err)
+	require.Contains(t, stdout, "--account requires a value")
+	require.NotContains(t, stdout, "ARGS:")
 }
 
 // 7.6 — a flag before the `aws` token would be eaten during Cobra's command
@@ -401,9 +401,9 @@ func TestAWSCommandRejectsPreSubcommandAccount(t *testing.T) {
 	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).WithHome(t.TempDir())
 
 	stdout, _, err := runLstk(t, testContext(t), t.TempDir(), e, "--account", "111111111111", "aws", "s3", "ls")
-	must.Error(t, err)
-	must.Contains(t, stdout, "must appear after the aws subcommand")
-	must.NotContains(t, stdout, "ARGS:")
+	require.Error(t, err)
+	require.Contains(t, stdout, "must appear after the aws subcommand")
+	require.NotContains(t, stdout, "ARGS:")
 }
 
 // The leading flag is consumed before the help short-circuit, so help still
@@ -415,9 +415,9 @@ func TestAWSCommandAccountWithHelp(t *testing.T) {
 	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).WithHome(t.TempDir())
 
 	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), e, "aws", "--account", "111111111111", "help")
-	must.NoError(t, err, "lstk aws help failed: %s", stderr)
+	require.NoError(t, err, "lstk aws help failed: %s", stderr)
 
-	must.NotContains(t, stdout, "--account")
+	require.NotContains(t, stdout, "--account")
 }
 
 func TestAWSCommandFailsWhenAWSCLINotInstalled(t *testing.T) {
@@ -425,10 +425,10 @@ func TestAWSCommandFailsWhenAWSCLINotInstalled(t *testing.T) {
 	e := env.With(env.DisableEvents, "1").With("PATH", t.TempDir()).WithHome(t.TempDir())
 
 	stdout, _, err := runLstk(t, testContext(t), t.TempDir(), e, "aws", "s3", "ls")
-	must.Error(t, err)
-	must.Contains(t, stdout, "aws CLI not found in PATH")
-	must.Contains(t, stdout, "Install AWS CLI:")
-	must.Contains(t, stdout, "https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html")
+	require.Error(t, err)
+	require.Contains(t, stdout, "aws CLI not found in PATH")
+	require.Contains(t, stdout, "Install AWS CLI:")
+	require.Contains(t, stdout, "https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html")
 }
 
 func TestAWSCommandUsesDefaultPortWithoutConfig(t *testing.T) {
@@ -445,9 +445,9 @@ func TestAWSCommandUsesDefaultPortWithoutConfig(t *testing.T) {
 		WithHome(t.TempDir()) // isolate from any real config file
 
 	stdout, stderr, err := runLstk(t, ctx, workDir, e, "aws", "s3", "ls")
-	must.NoError(t, err, "lstk aws failed: %s", stderr)
+	require.NoError(t, err, "lstk aws failed: %s", stderr)
 
-	must.Contains(t, stdout, ":4566")
+	require.Contains(t, stdout, ":4566")
 }
 
 func TestAWSCommandUsesPortFromConfig(t *testing.T) {
@@ -467,15 +467,15 @@ tag = "latest"
 port = "4599"
 `
 	lstkDir := filepath.Join(workDir, ".lstk")
-	must.NoError(t, os.MkdirAll(lstkDir, 0755))
-	must.NoError(t, os.WriteFile(filepath.Join(lstkDir, "config.toml"), []byte(configContent), 0644))
+	require.NoError(t, os.MkdirAll(lstkDir, 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(lstkDir, "config.toml"), []byte(configContent), 0644))
 
 	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir)
 
 	stdout, stderr, err := runLstk(t, ctx, workDir, e, "aws", "s3", "ls")
-	must.NoError(t, err, "lstk aws failed: %s", stderr)
+	require.NoError(t, err, "lstk aws failed: %s", stderr)
 
-	must.Contains(t, stdout, ":4599")
+	require.Contains(t, stdout, ":4599")
 }
 
 // writeFakeAWSFailing creates a fake `aws` that mimics a failing command.
@@ -499,8 +499,8 @@ func TestAWSCommandPropagatesExitCode(t *testing.T) {
 	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir)
 
 	_, stderr, err := runLstk(t, ctx, t.TempDir(), e, "aws", "s3", "ls")
-	must.Error(t, err, "lstk aws should fail when aws command fails")
-	must.Contains(t, stderr, "simulated failure")
+	require.Error(t, err, "lstk aws should fail when aws command fails")
+	require.Contains(t, stderr, "simulated failure")
 	requireExitCode(t, 42, err)
 }
 
@@ -522,10 +522,10 @@ func TestAWSCommandHelpSkipsDockerAndEmulator(t *testing.T) {
 
 			cmdArgs := append([]string{"aws"}, args...)
 			stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), e, cmdArgs...)
-			must.NoError(t, err, "stderr: %s", stderr)
+			require.NoError(t, err, "stderr: %s", stderr)
 
-			must.Contains(t, stdout, "ARGS:"+strings.Join(args, " "))
-			must.NotContains(t, stdout, "--endpoint-url")
+			require.Contains(t, stdout, "ARGS:"+strings.Join(args, " "))
+			require.NotContains(t, stdout, "--endpoint-url")
 		})
 	}
 }
@@ -541,8 +541,8 @@ func TestAWSCommandFailsWhenDockerNotRunning(t *testing.T) {
 		With(env.Key("DOCKER_HOST"), "tcp://localhost:1")
 
 	stdout, _, err := runLstk(t, testContext(t), t.TempDir(), e, "aws", "s3", "ls")
-	must.Error(t, err)
-	must.Contains(t, stdout, "Docker is not available")
+	require.Error(t, err)
+	require.Contains(t, stdout, "Docker is not available")
 }
 
 func TestAWSCommandFailsWhenEmulatorNotRunning(t *testing.T) {
@@ -556,10 +556,10 @@ func TestAWSCommandFailsWhenEmulatorNotRunning(t *testing.T) {
 		With(env.AnalyticsEndpoint, analyticsSrv.URL)
 
 	stdout, _, err := runLstk(t, testContext(t), t.TempDir(), e, "aws", "s3", "ls")
-	must.Error(t, err)
-	must.Contains(t, stdout, "is not running")
-	must.Contains(t, stdout, "Start LocalStack:")
-	must.Contains(t, stdout, "lstk")
+	require.Error(t, err)
+	require.Contains(t, stdout, "is not running")
+	require.Contains(t, stdout, "Start LocalStack:")
+	require.Contains(t, stdout, "lstk")
 	assertCommandTelemetry(t, events, "aws", 1)
 }
 
@@ -574,8 +574,8 @@ func TestAWSCommandHintsSetupCommandWhenProfileMissing(t *testing.T) {
 	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).WithHome(t.TempDir())
 
 	stdout, _, err := runLstk(t, ctx, t.TempDir(), e, "aws", "s3", "ls")
-	must.NoError(t, err)
-	must.Contains(t, stdout, "lstk setup aws")
+	require.NoError(t, err)
+	require.Contains(t, stdout, "lstk setup aws")
 }
 
 func TestAWSCommandWorksWithExternalContainer(t *testing.T) {
@@ -587,7 +587,7 @@ func TestAWSCommandWorksWithExternalContainer(t *testing.T) {
 
 	const fakeImage = "localstack/localstack-pro:test-fake"
 	_, err := dockerClient.ImageTag(ctx, client.ImageTagOptions{Source: testImage, Target: fakeImage})
-	must.NoError(t, err)
+	require.NoError(t, err)
 	t.Cleanup(func() {
 		_, _ = dockerClient.ImageRemove(context.Background(), fakeImage, client.ImageRemoveOptions{})
 	})
@@ -598,8 +598,8 @@ func TestAWSCommandWorksWithExternalContainer(t *testing.T) {
 	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).WithHome(t.TempDir())
 
 	stdout, stderr, err := runLstk(t, ctx, t.TempDir(), e, "aws", "s3", "ls")
-	must.NoError(t, err, "lstk aws should work with externally-named container: %s", stderr)
-	must.Contains(t, stdout, "ENDPOINT:http://")
+	require.NoError(t, err, "lstk aws should work with externally-named container: %s", stderr)
+	require.Contains(t, stdout, "ENDPOINT:http://")
 }
 
 // writeSlowFakeAWS creates a fake `aws` that sleeps for the given duration
@@ -627,12 +627,12 @@ func TestAWSCommandShowsSpinnerForSlowOperation(t *testing.T) {
 	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).WithHome(homeDir)
 
 	out, err := runLstkInPTY(t, ctx, e, "aws", "s3", "ls")
-	must.NoError(t, err, "lstk aws failed: %s", out)
+	require.NoError(t, err, "lstk aws failed: %s", out)
 
-	must.Contains(t, out, "Loading service")
-	must.Contains(t, out, "ARGS:s3 ls")
+	require.Contains(t, out, "Loading service")
+	require.Contains(t, out, "ARGS:s3 ls")
 	// lstk selects the profile via AWS_PROFILE, never a --profile argument.
-	must.NotContains(t, out, "--profile")
+	require.NotContains(t, out, "--profile")
 }
 
 func TestAWSCommandSuppressesSpinnerInNonInteractiveMode(t *testing.T) {
@@ -651,12 +651,12 @@ func TestAWSCommandSuppressesSpinnerInNonInteractiveMode(t *testing.T) {
 	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).WithHome(homeDir)
 
 	out, err := runLstkInPTY(t, ctx, e, "--non-interactive", "aws", "s3", "ls")
-	must.NoError(t, err, "lstk aws failed: %s", out)
+	require.NoError(t, err, "lstk aws failed: %s", out)
 
-	must.NotContains(t, out, "Loading service")
-	must.Contains(t, out, "ARGS:s3 ls")
+	require.NotContains(t, out, "Loading service")
+	require.Contains(t, out, "ARGS:s3 ls")
 	// lstk selects the profile via AWS_PROFILE, never a --profile argument.
-	must.NotContains(t, out, "--profile")
+	require.NotContains(t, out, "--profile")
 }
 
 func TestAWSCommandSuppressesSpinnerForFastOperation(t *testing.T) {
@@ -673,12 +673,12 @@ func TestAWSCommandSuppressesSpinnerForFastOperation(t *testing.T) {
 	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).WithHome(homeDir)
 
 	out, err := runLstkInPTY(t, ctx, e, "aws", "s3", "ls")
-	must.NoError(t, err, "lstk aws failed: %s", out)
+	require.NoError(t, err, "lstk aws failed: %s", out)
 
-	must.NotContains(t, out, "Loading service")
-	must.Contains(t, out, "ARGS:s3 ls")
+	require.NotContains(t, out, "Loading service")
+	require.Contains(t, out, "ARGS:s3 ls")
 	// lstk selects the profile via AWS_PROFILE, never a --profile argument.
-	must.NotContains(t, out, "--profile")
+	require.NotContains(t, out, "--profile")
 }
 
 func TestAWSCommandSuppressesHintWhenProfileExists(t *testing.T) {
@@ -695,6 +695,6 @@ func TestAWSCommandSuppressesHintWhenProfileExists(t *testing.T) {
 	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).WithHome(homeDir)
 
 	stdout, _, err := runLstk(t, ctx, t.TempDir(), e, "aws", "s3", "ls")
-	must.NoError(t, err)
-	must.NotContains(t, stdout, "lstk setup aws")
+	require.NoError(t, err)
+	require.NotContains(t, stdout, "lstk setup aws")
 }

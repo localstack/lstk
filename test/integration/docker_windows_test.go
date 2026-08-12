@@ -4,8 +4,8 @@ import (
 	"runtime"
 	"testing"
 
-	"github.com/localstack/lstk/internal/must"
 	"github.com/localstack/lstk/test/integration/env"
+	"github.com/stretchr/testify/require"
 )
 
 // windowsDockerErrorEnv returns an Environ with an invalid DOCKER_HOST and no PSModulePath.
@@ -23,9 +23,9 @@ func TestWindowsDockerErrorShowsDockerCLICommand(t *testing.T) {
 	}
 
 	stdout, _, err := runLstk(t, testContext(t), "", windowsDockerErrorEnv(), "start")
-	must.Error(t, err)
+	require.Error(t, err)
 	requireExitCode(t, 1, err)
-	must.Contains(t, stdout, "docker desktop start")
+	require.Contains(t, stdout, "docker desktop start")
 }
 
 // Verifies that the verbose Docker error message is suppressed on Windows.
@@ -36,8 +36,8 @@ func TestWindowsDockerErrorOmitsVerboseSummary(t *testing.T) {
 	}
 
 	stdout, _, err := runLstk(t, testContext(t), "", windowsDockerErrorEnv(), "start")
-	must.Error(t, err)
+	require.Error(t, err)
 	requireExitCode(t, 1, err)
-	must.Contains(t, stdout, "Docker is not available")
-	must.NotContains(t, stdout, "cannot connect to Docker daemon")
+	require.Contains(t, stdout, "Docker is not available")
+	require.NotContains(t, stdout, "cannot connect to Docker daemon")
 }

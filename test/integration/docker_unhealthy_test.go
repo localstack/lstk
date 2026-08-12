@@ -4,8 +4,8 @@ import (
 	"runtime"
 	"testing"
 
-	"github.com/localstack/lstk/internal/must"
 	"github.com/localstack/lstk/test/integration/env"
+	"github.com/stretchr/testify/require"
 )
 
 // unhealthyDockerEnv returns an environment with DOCKER_HOST pointing to a
@@ -21,10 +21,10 @@ func TestStartShowsDockerErrorWhenUnhealthy(t *testing.T) {
 	}
 
 	stdout, _, err := runLstk(t, testContext(t), "", unhealthyDockerEnv(), "start")
-	must.Error(t, err)
+	require.Error(t, err)
 	requireExitCode(t, 1, err)
-	must.Contains(t, stdout, "Docker is not available")
-	must.Contains(t, stdout, "Install Docker:")
+	require.Contains(t, stdout, "Docker is not available")
+	require.Contains(t, stdout, "Install Docker:")
 }
 
 func TestStopShowsDockerErrorWhenUnhealthy(t *testing.T) {
@@ -34,10 +34,10 @@ func TestStopShowsDockerErrorWhenUnhealthy(t *testing.T) {
 	}
 
 	stdout, _, err := runLstk(t, testContext(t), "", unhealthyDockerEnv(), "stop")
-	must.Error(t, err)
+	require.Error(t, err)
 	requireExitCode(t, 1, err)
-	must.Contains(t, stdout, "Docker is not available")
-	must.Contains(t, stdout, "Install Docker:")
+	require.Contains(t, stdout, "Docker is not available")
+	require.Contains(t, stdout, "Install Docker:")
 }
 
 // TestStopJSONIncludesDockerErrorDetail covers PR #374's report that --json
@@ -54,11 +54,11 @@ func TestStopJSONIncludesDockerErrorDetail(t *testing.T) {
 	requireExitCode(t, 1, err)
 
 	envelope := decodeEnvelope(t, stdout)
-	must.NotNil(t, envelope.Error)
-	must.Eq(t, "RUNTIME_UNAVAILABLE", envelope.Error.Code)
-	must.Eq(t, "Docker is not available", envelope.Error.Message)
+	require.NotNil(t, envelope.Error)
+	require.Equal(t, "RUNTIME_UNAVAILABLE", envelope.Error.Code)
+	require.Equal(t, "Docker is not available", envelope.Error.Message)
 	summary, _ := envelope.Error.Details["summary"].(string)
-	must.Contains(t, summary, "cannot connect to Docker daemon")
+	require.Contains(t, summary, "cannot connect to Docker daemon")
 }
 
 func TestStatusShowsDockerErrorWhenUnhealthy(t *testing.T) {
@@ -68,10 +68,10 @@ func TestStatusShowsDockerErrorWhenUnhealthy(t *testing.T) {
 	}
 
 	stdout, _, err := runLstk(t, testContext(t), "", unhealthyDockerEnv(), "status")
-	must.Error(t, err)
+	require.Error(t, err)
 	requireExitCode(t, 1, err)
-	must.Contains(t, stdout, "Docker is not available")
-	must.Contains(t, stdout, "Install Docker:")
+	require.Contains(t, stdout, "Docker is not available")
+	require.Contains(t, stdout, "Install Docker:")
 }
 
 func TestLogsShowsDockerErrorWhenUnhealthy(t *testing.T) {
@@ -81,8 +81,8 @@ func TestLogsShowsDockerErrorWhenUnhealthy(t *testing.T) {
 	}
 
 	stdout, _, err := runLstk(t, testContext(t), "", unhealthyDockerEnv(), "logs")
-	must.Error(t, err)
+	require.Error(t, err)
 	requireExitCode(t, 1, err)
-	must.Contains(t, stdout, "Docker is not available")
-	must.Contains(t, stdout, "Install Docker:")
+	require.Contains(t, stdout, "Docker is not available")
+	require.Contains(t, stdout, "Install Docker:")
 }

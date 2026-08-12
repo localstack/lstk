@@ -5,8 +5,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/localstack/lstk/internal/must"
 	"github.com/localstack/lstk/test/integration/env"
+	"github.com/stretchr/testify/require"
 )
 
 // End-to-end tests for the S3 state backend and terraform_remote_state support.
@@ -20,7 +20,7 @@ import (
 func tfStateList(t *testing.T, ctx context.Context, work string, e env.Environ) string {
 	t.Helper()
 	stdout, stderr, err := runTerraform(t, ctx, work, e, "state", "list")
-	must.NoError(t, err, "state list failed: %s", stderr)
+	require.NoError(t, err, "state list failed: %s", stderr)
 	return stdout
 }
 
@@ -44,12 +44,12 @@ func TestTerraformE2ES3Backend(t *testing.T) {
 	tfInit(t, ctx, work, e)
 
 	_, stderr, err := runTerraform(t, ctx, work, e, "apply", "-auto-approve", "-no-color")
-	must.NoError(t, err, "apply stderr: %s", stderr)
+	require.NoError(t, err, "apply stderr: %s", stderr)
 
 	// State written to and read back from the LocalStack bucket.
-	must.Contains(t, tfStateList(t, ctx, work, e), "aws_s3_bucket.b")
+	require.Contains(t, tfStateList(t, ctx, work, e), "aws_s3_bucket.b")
 
-	must.NoFileExists(t, filepath.Join(work, tfOverrideFile))
+	require.NoFileExists(t, filepath.Join(work, tfOverrideFile))
 }
 
 // 10.2 — an S3 backend with DynamoDB locking: lstk creates the lock table, and
@@ -70,9 +70,9 @@ func TestTerraformE2ES3BackendLocking(t *testing.T) {
 	tfInit(t, ctx, work, e)
 
 	_, stderr, err := runTerraform(t, ctx, work, e, "apply", "-auto-approve", "-no-color")
-	must.NoError(t, err, "apply with DynamoDB locking stderr: %s", stderr)
+	require.NoError(t, err, "apply with DynamoDB locking stderr: %s", stderr)
 
-	must.Contains(t, tfStateList(t, ctx, work, e), "aws_s3_bucket.b")
+	require.Contains(t, tfStateList(t, ctx, work, e), "aws_s3_bucket.b")
 }
 
 // 10.3 — terraform_remote_state: a producer stack writes state (with an output)
@@ -92,17 +92,17 @@ func TestTerraformE2ERemoteState(t *testing.T) {
 	e := e2eEnv(t)
 	tfInit(t, ctx, producer, e)
 	_, stderr, err := runTerraform(t, ctx, producer, e, "apply", "-auto-approve", "-no-color")
-	must.NoError(t, err, "producer apply stderr: %s", stderr)
+	require.NoError(t, err, "producer apply stderr: %s", stderr)
 
 	// Consumer: reads the producer's remote state from LocalStack.
 	consumer := copySample(t, "remote-state/consumer")
 	tfInit(t, ctx, consumer, e)
 	_, stderr, err = runTerraform(t, ctx, consumer, e, "apply", "-auto-approve", "-no-color")
-	must.NoError(t, err, "consumer apply stderr: %s", stderr)
+	require.NoError(t, err, "consumer apply stderr: %s", stderr)
 
 	stdout, stderr, err := runTerraform(t, ctx, consumer, e, "output", "-raw", "producer_bucket")
-	must.NoError(t, err, "consumer output stderr: %s", stderr)
-	must.Contains(t, stdout, "lstk-e2e-remote-producer", "consumer read the producer's output from LocalStack remote state")
+	require.NoError(t, err, "consumer output stderr: %s", stderr)
+	require.Contains(t, stdout, "lstk-e2e-remote-producer", "consumer read the producer's output from LocalStack remote state")
 }
 
 // 10.4 — the S3 backend flow under OpenTofu (LSTK_TF_CMD=tofu), covering the
@@ -122,9 +122,9 @@ func TestTerraformE2ES3BackendTofu(t *testing.T) {
 	tfInit(t, ctx, work, e)
 
 	_, stderr, err := runTerraform(t, ctx, work, e, "apply", "-auto-approve", "-no-color")
-	must.NoError(t, err, "tofu apply stderr: %s", stderr)
+	require.NoError(t, err, "tofu apply stderr: %s", stderr)
 
-	must.Contains(t, tfStateList(t, ctx, work, e), "aws_s3_bucket.b")
+	require.Contains(t, tfStateList(t, ctx, work, e), "aws_s3_bucket.b")
 }
 
 // State-bucket provisioning must address the same LocalStack account as the
@@ -148,19 +148,19 @@ func TestTerraformE2ES3BackendProvisionsInSelectedAccount(t *testing.T) {
 	e := e2eEnv(t)
 
 	_, stderr, err := runTerraform(t, ctx, work, e, "--account", account, "init", "-no-color")
-	must.NoError(t, err, "init with --account failed: %s", stderr)
+	require.NoError(t, err, "init with --account failed: %s", stderr)
 
 	_, stderr, err = runTerraform(t, ctx, work, e, "--account", account, "apply", "-auto-approve", "-no-color")
-	must.NoError(t, err, "apply stderr: %s", stderr)
+	require.NoError(t, err, "apply stderr: %s", stderr)
 
 	selected, stderr, err := runLstk(t, ctx, work, e, "aws", "--account", account, "s3", "ls")
-	must.NoError(t, err, "listing buckets in the selected account failed: %s", stderr)
-	must.Contains(t, selected, "lstk-tf-state", "the state bucket must exist in the selected account")
+	require.NoError(t, err, "listing buckets in the selected account failed: %s", stderr)
+	require.Contains(t, selected, "lstk-tf-state", "the state bucket must exist in the selected account")
 
 	// And not in the default account, which is where it landed before the fix.
 	deflt, stderr, err := runLstk(t, ctx, work, e, "aws", "s3", "ls")
-	must.NoError(t, err, "listing buckets in the default account failed: %s", stderr)
-	must.NotContains(t, deflt, "lstk-tf-state", "the state bucket must not be in the default account")
+	require.NoError(t, err, "listing buckets in the default account failed: %s", stderr)
+	require.NotContains(t, deflt, "lstk-tf-state", "the state bucket must not be in the default account")
 }
 
 // 10.5 — a configuration with no S3 backend still behaves as before: `init`
@@ -174,8 +174,8 @@ func TestTerraformE2EInitNoBackendNoEmulator(t *testing.T) {
 	e := e2eEnv(t)
 
 	_, stderr, err := runTerraform(t, ctx, work, e, "init", "-no-color")
-	must.NoError(t, err, "backend-less init must not require an emulator; stderr: %s", stderr)
+	require.NoError(t, err, "backend-less init must not require an emulator; stderr: %s", stderr)
 
 	// No override is generated for a backend-less init.
-	must.NoFileExists(t, filepath.Join(work, tfOverrideFile))
+	require.NoFileExists(t, filepath.Join(work, tfOverrideFile))
 }

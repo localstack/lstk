@@ -12,9 +12,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/localstack/lstk/internal/must"
 	"github.com/localstack/lstk/test/integration/env"
 	"github.com/moby/moby/client"
+	"github.com/stretchr/testify/require"
 )
 
 // writeAwsConfig writes a minimal aws-only config so tests don't inherit the
@@ -23,7 +23,7 @@ import (
 func writeAwsConfig(t *testing.T) string {
 	t.Helper()
 	configFile := filepath.Join(t.TempDir(), "config.toml")
-	must.NoError(t, os.WriteFile(configFile, []byte(`
+	require.NoError(t, os.WriteFile(configFile, []byte(`
 [[containers]]
 type = "aws"
 tag  = "latest"
@@ -43,7 +43,7 @@ func TestLogsExitsByDefault(t *testing.T) {
 	configFile := writeAwsConfig(t)
 	analyticsSrv, events := mockAnalyticsServer(t)
 	_, _, err := runLstk(t, ctx, "", env.With(env.AnalyticsEndpoint, analyticsSrv.URL), "--config", configFile, "logs")
-	must.NoError(t, err, "lstk logs should exit cleanly when container is running")
+	require.NoError(t, err, "lstk logs should exit cleanly when container is running")
 	requireExitCode(t, 0, err)
 	assertCommandTelemetry(t, events, "logs", 0)
 }
@@ -56,9 +56,9 @@ func TestLogsCommandFailsWhenNotRunning(t *testing.T) {
 	configFile := writeAwsConfig(t)
 	analyticsSrv, events := mockAnalyticsServer(t)
 	stdout, _, err := runLstk(t, testContext(t), "", env.With(env.AnalyticsEndpoint, analyticsSrv.URL), "--config", configFile, "logs", "--follow")
-	must.Error(t, err, "expected lstk logs --follow to fail when container not running")
+	require.Error(t, err, "expected lstk logs --follow to fail when container not running")
 	requireExitCode(t, 1, err)
-	must.Contains(t, stdout, "LocalStack AWS Emulator is not running")
+	require.Contains(t, stdout, "LocalStack AWS Emulator is not running")
 	assertCommandTelemetry(t, events, "logs", 1)
 }
 
@@ -74,7 +74,7 @@ func TestLogsWorksWithExternalContainer(t *testing.T) {
 
 	const fakeImage = "localstack/localstack-pro:test-fake"
 	_, err := dockerClient.ImageTag(ctx, client.ImageTagOptions{Source: testImage, Target: fakeImage})
-	must.NoError(t, err)
+	require.NoError(t, err)
 	t.Cleanup(func() {
 		_, _ = dockerClient.ImageRemove(context.Background(), fakeImage, client.ImageRemoveOptions{})
 	})
@@ -84,7 +84,7 @@ func TestLogsWorksWithExternalContainer(t *testing.T) {
 	configFile := writeAwsConfig(t)
 	analyticsSrv, events := mockAnalyticsServer(t)
 	_, stderr, err := runLstk(t, ctx, "", env.With(env.AnalyticsEndpoint, analyticsSrv.URL), "--config", configFile, "logs")
-	must.NoError(t, err, "lstk logs should work with externally-named container: %s", stderr)
+	require.NoError(t, err, "lstk logs should work with externally-named container: %s", stderr)
 	requireExitCode(t, 0, err)
 	assertCommandTelemetry(t, events, "logs", 0)
 }
@@ -119,11 +119,11 @@ func writeContainerLogs(t *testing.T, ctx context.Context, script, lastMarker st
 	execResp, err := dockerClient.ExecCreate(ctx, containerName, client.ExecCreateOptions{
 		Cmd: []string{"sh", "-c", "{ " + script + " } >/proc/1/fd/1"},
 	})
-	must.NoError(t, err, "failed to create exec")
+	require.NoError(t, err, "failed to create exec")
 	_, err = dockerClient.ExecStart(ctx, execResp.ID, client.ExecStartOptions{Detach: true})
-	must.NoError(t, err, "failed to start exec")
+	require.NoError(t, err, "failed to start exec")
 
-	must.Eventually(t, func() bool {
+	require.Eventually(t, func() bool {
 		reader, err := dockerClient.ContainerLogs(ctx, containerName, client.ContainerLogsOptions{
 			ShowStdout: true,
 			ShowStderr: true,
@@ -158,9 +158,9 @@ func TestLogsTailCountsVisibleLinesNotFilteredOnes(t *testing.T) {
 
 	configFile := writeAwsConfig(t)
 	stdout, stderr, err := runLstk(t, ctx, "", env.Without(), "--config", configFile, "logs", "--tail", "1")
-	must.NoError(t, err, "lstk logs --tail 1 should exit cleanly, stderr: %s", stderr)
-	must.Contains(t, stdout, "tail-visible-marker", "--tail 1 must show the newest visible line, not an empty result")
-	must.NotContains(t, stdout, "tail-filtered-marker", "filtered request logs must stay hidden")
+	require.NoError(t, err, "lstk logs --tail 1 should exit cleanly, stderr: %s", stderr)
+	require.Contains(t, stdout, "tail-visible-marker", "--tail 1 must show the newest visible line, not an empty result")
+	require.NotContains(t, stdout, "tail-filtered-marker", "filtered request logs must stay hidden")
 }
 
 func TestLogsTailLimitsOutput(t *testing.T) {
@@ -177,12 +177,12 @@ func TestLogsTailLimitsOutput(t *testing.T) {
 	for _, flags := range [][]string{{"--tail", "3"}, {"-n", "3"}} {
 		args := append([]string{"--config", configFile, "logs"}, flags...)
 		stdout, stderr, err := runLstk(t, ctx, "", env.Without(), args...)
-		must.NoError(t, err, "lstk logs %s should exit cleanly, stderr: %s", strings.Join(flags, " "), stderr)
+		require.NoError(t, err, "lstk logs %s should exit cleanly, stderr: %s", strings.Join(flags, " "), stderr)
 		for i := 8; i <= 10; i++ {
-			must.Contains(t, stdout, fmt.Sprintf("tail-marker-%d", i), "last 3 lines should be shown with %s", strings.Join(flags, " "))
+			require.Contains(t, stdout, fmt.Sprintf("tail-marker-%d", i), "last 3 lines should be shown with %s", strings.Join(flags, " "))
 		}
 		for i := 1; i <= 7; i++ {
-			must.NotContains(t, stdout, fmt.Sprintf("tail-marker-%d\n", i), "older lines should be cut off with %s", strings.Join(flags, " "))
+			require.NotContains(t, stdout, fmt.Sprintf("tail-marker-%d\n", i), "older lines should be cut off with %s", strings.Join(flags, " "))
 		}
 	}
 }
@@ -198,9 +198,9 @@ func TestLogsWithoutTailShowsAllLines(t *testing.T) {
 
 	configFile := writeAwsConfig(t)
 	stdout, stderr, err := runLstk(t, ctx, "", env.Without(), "--config", configFile, "logs")
-	must.NoError(t, err, "lstk logs should exit cleanly, stderr: %s", stderr)
+	require.NoError(t, err, "lstk logs should exit cleanly, stderr: %s", stderr)
 	for i := 1; i <= 10; i++ {
-		must.Contains(t, stdout, fmt.Sprintf("tail-marker-%d", i), "all lines should be shown without --tail")
+		require.Contains(t, stdout, fmt.Sprintf("tail-marker-%d", i), "all lines should be shown without --tail")
 	}
 }
 
@@ -209,10 +209,10 @@ func TestLogsTailRejectsInvalidValue(t *testing.T) {
 
 	configFile := writeAwsConfig(t)
 	_, stderr, err := runLstk(t, testContext(t), "", env.Without(), "--config", configFile, "logs", "--tail", "bogus")
-	must.Error(t, err, "expected lstk logs --tail bogus to fail")
+	require.Error(t, err, "expected lstk logs --tail bogus to fail")
 	requireExitCode(t, 1, err)
-	must.Contains(t, stderr, "bogus", "error should name the invalid value")
-	must.Contains(t, stderr, "--tail", "error should name the flag")
+	require.Contains(t, stderr, "bogus", "error should name the invalid value")
+	require.Contains(t, stderr, "--tail", "error should name the flag")
 }
 
 func TestLogsTailWithFollowStartsFromTail(t *testing.T) {
@@ -229,10 +229,10 @@ func TestLogsTailWithFollowStartsFromTail(t *testing.T) {
 	logsCmd := exec.CommandContext(ctx, binaryPath(), "--config", configFile, "logs", "--follow", "--tail", "3")
 	logsCmd.Env = env.Without()
 	stdout, err := logsCmd.StdoutPipe()
-	must.NoError(t, err, "failed to get stdout pipe")
+	require.NoError(t, err, "failed to get stdout pipe")
 
 	err = logsCmd.Start()
-	must.NoError(t, err, "failed to start lstk logs --follow --tail 3")
+	require.NoError(t, err, "failed to start lstk logs --follow --tail 3")
 	t.Cleanup(func() { _ = logsCmd.Process.Kill() })
 
 	// The backlog is capped at the last 3 lines, so the first line streamed
@@ -251,7 +251,7 @@ func TestLogsTailWithFollowStartsFromTail(t *testing.T) {
 
 	select {
 	case line := <-firstLine:
-		must.Contains(t, line, "tail-marker-8", "follow should start from the last 3 lines")
+		require.Contains(t, line, "tail-marker-8", "follow should start from the last 3 lines")
 	case <-ctx.Done():
 		t.Fatal("no marker appeared in lstk logs --follow --tail output within timeout")
 	}
@@ -273,10 +273,10 @@ func TestLogsInteractivePreservesFullScrollback(t *testing.T) {
 
 	configFile := writeAwsConfig(t)
 	out, err := runLstkInPTY(t, ctx, env.Without(), "--config", configFile, "logs")
-	must.NoError(t, err, "lstk logs should exit cleanly in interactive mode, output: %s", out)
+	require.NoError(t, err, "lstk logs should exit cleanly in interactive mode, output: %s", out)
 
 	for i := 1; i <= lineCount; i++ {
-		must.Contains(t, out, fmt.Sprintf("tail-marker-%d", i), "expected tail-marker-%d to survive scrollback", i)
+		require.Contains(t, out, fmt.Sprintf("tail-marker-%d", i), "expected tail-marker-%d to survive scrollback", i)
 	}
 }
 
@@ -294,10 +294,10 @@ func TestLogsFollowStreamsOutput(t *testing.T) {
 	// Uses StdoutPipe for streaming — cannot use runLstk.
 	logsCmd := exec.CommandContext(ctx, binaryPath(), "--config", configFile, "logs", "--follow")
 	stdout, err := logsCmd.StdoutPipe()
-	must.NoError(t, err, "failed to get stdout pipe")
+	require.NoError(t, err, "failed to get stdout pipe")
 
 	err = logsCmd.Start()
-	must.NoError(t, err, "failed to start lstk logs --follow")
+	require.NoError(t, err, "failed to start lstk logs --follow")
 	t.Cleanup(func() { _ = logsCmd.Process.Kill() })
 
 	// Give lstk logs a moment to connect before generating output
@@ -307,9 +307,9 @@ func TestLogsFollowStreamsOutput(t *testing.T) {
 	execResp, err := dockerClient.ExecCreate(ctx, containerName, client.ExecCreateOptions{
 		Cmd: []string{"sh", "-c", "echo " + marker + " >/proc/1/fd/1"},
 	})
-	must.NoError(t, err, "failed to create exec")
+	require.NoError(t, err, "failed to create exec")
 	_, err = dockerClient.ExecStart(ctx, execResp.ID, client.ExecStartOptions{Detach: true})
-	must.NoError(t, err, "failed to start exec")
+	require.NoError(t, err, "failed to start exec")
 
 	// Scan lines in a goroutine because reading from the pipe blocks until lstk logs exits, which it never does on its own.
 	found := make(chan struct{}, 1)

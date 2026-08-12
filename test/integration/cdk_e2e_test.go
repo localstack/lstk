@@ -7,8 +7,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/localstack/lstk/internal/must"
 	"github.com/localstack/lstk/test/integration/env"
+	"github.com/stretchr/testify/require"
 )
 
 // End-to-end tests for `lstk cdk` that exercise the real AWS CDK CLI against a
@@ -45,7 +45,7 @@ func copyCDKSample(t *testing.T, name string) string {
 	t.Helper()
 	work := t.TempDir()
 	src := filepath.Join("test-samples", "iac", "cdk", name)
-	must.NoError(t, os.CopyFS(work, os.DirFS(src)))
+	require.NoError(t, os.CopyFS(work, os.DirFS(src)))
 	return work
 }
 
@@ -90,7 +90,7 @@ func TestCDKE2ESynthOffline(t *testing.T) {
 	npmInstall(t, ctx, work, e)
 
 	_, stderr, err := runCDK(t, ctx, work, e, "synth")
-	must.NoError(t, err, "cdk synth stderr: %s", stderr)
+	require.NoError(t, err, "cdk synth stderr: %s", stderr)
 }
 
 // 8.1 + 8.2 — `cdk bootstrap` succeeds against a real LocalStack (also
@@ -110,7 +110,7 @@ func TestCDKE2EBootstrap(t *testing.T) {
 	npmInstall(t, ctx, work, e)
 
 	_, stderr, err := runCDK(t, ctx, work, e, "bootstrap")
-	must.NoError(t, err, "cdk bootstrap stderr: %s", stderr)
+	require.NoError(t, err, "cdk bootstrap stderr: %s", stderr)
 }
 
 // 8.3 — `cdk deploy` of a single bucket succeeds against LocalStack, and
@@ -130,13 +130,13 @@ func TestCDKE2EDeployDestroy(t *testing.T) {
 	npmInstall(t, ctx, work, e)
 
 	_, stderr, err := runCDK(t, ctx, work, e, "bootstrap")
-	must.NoError(t, err, "cdk bootstrap stderr: %s", stderr)
+	require.NoError(t, err, "cdk bootstrap stderr: %s", stderr)
 
 	_, stderr, err = runCDK(t, ctx, work, e, "deploy", "--require-approval", "never")
-	must.NoError(t, err, "cdk deploy stderr: %s", stderr)
+	require.NoError(t, err, "cdk deploy stderr: %s", stderr)
 
 	_, stderr, err = runCDK(t, ctx, work, e, "destroy", "--force")
-	must.NoError(t, err, "cdk destroy stderr: %s", stderr)
+	require.NoError(t, err, "cdk destroy stderr: %s", stderr)
 }
 
 // 8.6 + 8.7 — full Lambda round-trip against LocalStack. Unlike the single-bucket
@@ -165,10 +165,10 @@ func TestCDKE2ELambdaAssetDeployDestroy(t *testing.T) {
 	npmInstall(t, ctx, work, e)
 
 	_, stderr, err := runCDK(t, ctx, work, e, "bootstrap")
-	must.NoError(t, err, "cdk bootstrap stderr: %s", stderr)
+	require.NoError(t, err, "cdk bootstrap stderr: %s", stderr)
 
 	_, stderr, err = runCDK(t, ctx, work, e, "deploy", "--require-approval", "never")
-	must.NoError(t, err, "cdk deploy stderr: %s", stderr)
+	require.NoError(t, err, "cdk deploy stderr: %s", stderr)
 
 	// Strongest proof when available: invoke the function (provisioned from the
 	// uploaded asset) and assert the handler's response. lstk aws shells out to
@@ -178,15 +178,15 @@ func TestCDKE2ELambdaAssetDeployDestroy(t *testing.T) {
 		outFile := filepath.Join(work, "invoke-out.json")
 		_, stderr, err = runLstk(t, ctx, work, e, "aws", "lambda", "invoke",
 			"--function-name", "lstk-cdk-e2e-fn", outFile)
-		must.NoError(t, err, "lstk aws lambda invoke stderr: %s", stderr)
+		require.NoError(t, err, "lstk aws lambda invoke stderr: %s", stderr)
 
 		out, readErr := os.ReadFile(outFile)
-		must.NoError(t, readErr)
-		must.Contains(t, string(out), "ok from lstk cdk lambda", "lambda response: %s", out)
+		require.NoError(t, readErr)
+		require.Contains(t, string(out), "ok from lstk cdk lambda", "lambda response: %s", out)
 	} else {
 		t.Log("aws CLI not on PATH; skipping lambda invoke verification (deploy already exercised the S3 asset path)")
 	}
 
 	_, stderr, err = runCDK(t, ctx, work, e, "destroy", "--force")
-	must.NoError(t, err, "cdk destroy stderr: %s", stderr)
+	require.NoError(t, err, "cdk destroy stderr: %s", stderr)
 }

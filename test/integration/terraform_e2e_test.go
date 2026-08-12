@@ -9,8 +9,8 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/localstack/lstk/internal/must"
 	"github.com/localstack/lstk/test/integration/env"
+	"github.com/stretchr/testify/require"
 )
 
 // End-to-end tests for `lstk terraform` that exercise the real terraform/tofu
@@ -56,7 +56,7 @@ func tfPluginCacheDir(t *testing.T) string {
 	t.Helper()
 	tfCacheOnce.Do(func() {
 		d, err := os.MkdirTemp("", "lstk-tf-plugin-cache")
-		must.NoError(t, err)
+		require.NoError(t, err)
 		tfCacheDir = d
 	})
 	return tfCacheDir
@@ -79,7 +79,7 @@ func copySample(t *testing.T, name string) string {
 	t.Helper()
 	work := t.TempDir()
 	src := filepath.Join("test-samples", "iac", "terraform", name)
-	must.NoError(t, os.CopyFS(work, os.DirFS(src)))
+	require.NoError(t, os.CopyFS(work, os.DirFS(src)))
 	return work
 }
 
@@ -97,7 +97,7 @@ func runTerraform(t *testing.T, ctx context.Context, work string, e env.Environ,
 func tfInit(t *testing.T, ctx context.Context, work string, e env.Environ) {
 	t.Helper()
 	_, stderr, err := runTerraform(t, ctx, work, e, "init", "-no-color")
-	must.NoError(t, err, "terraform init failed: %s", stderr)
+	require.NoError(t, err, "terraform init failed: %s", stderr)
 }
 
 // 8.1 + 8.2 — top-level project: real init + apply against a real LocalStack,
@@ -118,10 +118,10 @@ func TestTerraformE2ETopLevelProject(t *testing.T) {
 	tfInit(t, ctx, work, e)
 
 	_, stderr, err := runTerraform(t, ctx, work, e, "apply", "-auto-approve", "-no-color")
-	must.NoError(t, err, "apply stderr: %s", stderr)
+	require.NoError(t, err, "apply stderr: %s", stderr)
 
 	// The generated override is cleaned up after the run completes.
-	must.NoFileExists(t, filepath.Join(work, tfOverrideFile))
+	require.NoFileExists(t, filepath.Join(work, tfOverrideFile))
 }
 
 // 8.4 — single aws provider block (no alias): exactly one override block. We
@@ -141,10 +141,10 @@ func TestTerraformE2ESingleProvider(t *testing.T) {
 	tfInit(t, ctx, work, e)
 
 	override := captureOverride(t, ctx, work, e)
-	must.Eq(t, 1, countString(override, `provider "aws" {`), "exactly one provider block")
+	require.Equal(t, 1, countString(override, `provider "aws" {`), "exactly one provider block")
 
 	_, stderr, err := runTerraform(t, ctx, work, e, "apply", "-auto-approve", "-no-color")
-	must.NoError(t, err, "apply stderr: %s", stderr)
+	require.NoError(t, err, "apply stderr: %s", stderr)
 }
 
 // 8.5 — multiple aliased providers plus the default: one override block per
@@ -163,11 +163,11 @@ func TestTerraformE2EMultipleAliases(t *testing.T) {
 	tfInit(t, ctx, work, e)
 
 	override := captureOverride(t, ctx, work, e)
-	must.Eq(t, 2, countString(override, `provider "aws" {`), "default + aliased provider blocks")
-	must.Contains(t, override, `alias = "west"`)
+	require.Equal(t, 2, countString(override, `provider "aws" {`), "default + aliased provider blocks")
+	require.Contains(t, override, `alias = "west"`)
 
 	_, stderr, err := runTerraform(t, ctx, work, e, "apply", "-auto-approve", "-no-color")
-	must.NoError(t, err, "apply stderr: %s", stderr)
+	require.NoError(t, err, "apply stderr: %s", stderr)
 }
 
 // 8.3 — recursive discovery: a provider block in a sub-directory is represented
@@ -188,15 +188,15 @@ func TestTerraformE2ESubdirectoryDiscovery(t *testing.T) {
 	// ignored by discovery. It's created at runtime rather than committed,
 	// since a fake .terraform dir in the repo would be confusing.
 	cacheDir := filepath.Join(work, ".terraform", "extra")
-	must.NoError(t, os.MkdirAll(cacheDir, 0755))
-	must.NoError(t, os.WriteFile(filepath.Join(cacheDir, "cached.tf"),
+	require.NoError(t, os.MkdirAll(cacheDir, 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(cacheDir, "cached.tf"),
 		[]byte("provider \"aws\" {\n  alias = \"should_be_ignored\"\n}\n"), 0644))
 	e := e2eEnv(t)
 	tfInit(t, ctx, work, e)
 
 	override := captureOverride(t, ctx, work, e)
-	must.Contains(t, override, `alias = "replica"`, "sub-directory provider discovered")
-	must.NotContains(t, override, "should_be_ignored", ".terraform provider ignored")
+	require.Contains(t, override, `alias = "replica"`, "sub-directory provider discovered")
+	require.NotContains(t, override, "should_be_ignored", ".terraform provider ignored")
 }
 
 // 8.6 — a provider block that explicitly sets an endpoint (e.g. FIPS) is
@@ -216,11 +216,11 @@ func TestTerraformE2EExplicitEndpointOverridden(t *testing.T) {
 	tfInit(t, ctx, work, e)
 
 	override := captureOverride(t, ctx, work, e)
-	must.NotContains(t, override, "s3-fips.us-east-1.amazonaws.com", "user FIPS endpoint must not survive")
-	must.Contains(t, override, "localstack", "override S3 endpoint targets LocalStack")
+	require.NotContains(t, override, "s3-fips.us-east-1.amazonaws.com", "user FIPS endpoint must not survive")
+	require.Contains(t, override, "localstack", "override S3 endpoint targets LocalStack")
 
 	_, stderr, err := runTerraform(t, ctx, work, e, "apply", "-auto-approve", "-no-color")
-	must.NoError(t, err, "apply must route to LocalStack, not FIPS; stderr: %s", stderr)
+	require.NoError(t, err, "apply must route to LocalStack, not FIPS; stderr: %s", stderr)
 }
 
 // 8.7 — provider version coverage: schema-based endpoint discovery works for
@@ -251,7 +251,7 @@ func TestTerraformE2EProviderVersions(t *testing.T) {
 			// A successful apply requires schema discovery (endpoint keys) to
 			// have worked for this provider version.
 			_, stderr, err := runTerraform(t, ctx, work, e, "apply", "-auto-approve", "-no-color")
-			must.NoError(t, err, "apply stderr: %s", stderr)
+			require.NoError(t, err, "apply stderr: %s", stderr)
 		})
 	}
 }
@@ -271,12 +271,12 @@ func TestTerraformE2ETofu(t *testing.T) {
 	e := e2eEnv(t).With(env.Key("LSTK_TF_CMD"), "tofu")
 
 	_, stderr, err := runTerraform(t, ctx, work, e, "init", "-no-color")
-	must.NoError(t, err, "tofu init stderr: %s", stderr)
+	require.NoError(t, err, "tofu init stderr: %s", stderr)
 
 	_, stderr, err = runTerraform(t, ctx, work, e, "apply", "-auto-approve", "-no-color")
-	must.NoError(t, err, "tofu apply stderr: %s", stderr)
+	require.NoError(t, err, "tofu apply stderr: %s", stderr)
 
-	must.NoFileExists(t, filepath.Join(work, tfOverrideFile))
+	require.NoFileExists(t, filepath.Join(work, tfOverrideFile))
 }
 
 // captureOverride runs the command with LSTK_TF_DRY_RUN=1 so the generated
@@ -285,10 +285,10 @@ func captureOverride(t *testing.T, ctx context.Context, work string, e env.Envir
 	t.Helper()
 	_, stderr, err := runTerraform(t, ctx, work, e.With(env.Key("LSTK_TF_DRY_RUN"), "1"),
 		"plan", "-no-color")
-	must.NoError(t, err, "dry-run stderr: %s", stderr)
+	require.NoError(t, err, "dry-run stderr: %s", stderr)
 	content, err := os.ReadFile(filepath.Join(work, tfOverrideFile))
-	must.NoError(t, err, "override file should exist after dry run")
+	require.NoError(t, err, "override file should exist after dry run")
 	// Remove it so a subsequent real run doesn't trip the pre-existing-file guard.
-	must.NoError(t, os.Remove(filepath.Join(work, tfOverrideFile)))
+	require.NoError(t, os.Remove(filepath.Join(work, tfOverrideFile)))
 	return string(content)
 }

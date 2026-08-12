@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"github.com/creack/pty"
-	"github.com/localstack/lstk/internal/must"
+	"github.com/stretchr/testify/require"
 )
 
 // These tests cover proc.Run's signal handling for wrapped tools end to end,
@@ -30,7 +30,7 @@ func startSignalWait(t *testing.T, wire func(*exec.Cmd)) *exec.Cmd {
 	installExtension(t, extDir, "sig")
 
 	binPath, err := filepath.Abs(binaryPath())
-	must.NoError(t, err)
+	require.NoError(t, err)
 
 	cmd := exec.CommandContext(testContext(t), binPath, "sig", "signal-wait")
 	cmd.Dir = t.TempDir()
@@ -87,10 +87,10 @@ func TestWrappedToolReceivesForwardedSignalNonInteractive(t *testing.T) {
 				c.Stdout = out
 				c.Stderr = out
 			})
-			must.NoError(t, cmd.Start())
+			require.NoError(t, cmd.Start())
 
 			waitForMarker(t, out)
-			must.NoError(t, cmd.Process.Signal(tc.sig))
+			require.NoError(t, cmd.Process.Signal(tc.sig))
 
 			err := cmd.Wait()
 			requireExitCode(t, 41, err)
@@ -107,12 +107,12 @@ func TestWrappedToolReceivesForwardedSIGTERMInTerminal(t *testing.T) {
 	var ptmx *os.File
 	cmd := startSignalWait(t, func(c *exec.Cmd) {})
 	ptmx, err := pty.Start(cmd)
-	must.NoError(t, err)
+	require.NoError(t, err)
 	defer func() { _ = ptmx.Close() }()
 
 	out, copied := drainPTY(ptmx)
 	waitForMarker(t, out)
-	must.NoError(t, cmd.Process.Signal(syscall.SIGTERM))
+	require.NoError(t, cmd.Process.Signal(syscall.SIGTERM))
 
 	err = cmd.Wait()
 	<-copied
@@ -127,13 +127,13 @@ func TestWrappedToolSingleSIGINTOnCtrlCInTerminal(t *testing.T) {
 	t.Parallel()
 	cmd := startSignalWait(t, func(c *exec.Cmd) {})
 	ptmx, err := pty.Start(cmd)
-	must.NoError(t, err)
+	require.NoError(t, err)
 	defer func() { _ = ptmx.Close() }()
 
 	out, copied := drainPTY(ptmx)
 	waitForMarker(t, out)
 	_, err = ptmx.Write([]byte{0x03}) // Ctrl-C → SIGINT to the foreground process group
-	must.NoError(t, err)
+	require.NoError(t, err)
 
 	err = cmd.Wait()
 	<-copied
@@ -148,11 +148,11 @@ func TestWrappedToolSingleSIGINTOnCtrlCInTerminal(t *testing.T) {
 func TestWrappedToolSingleSIGINTOnCtrlCWithRedirectedStdin(t *testing.T) {
 	t.Parallel()
 	ptmx, tty, err := pty.Open()
-	must.NoError(t, err)
+	require.NoError(t, err)
 	defer func() { _ = ptmx.Close() }()
 
 	devNull, err := os.Open(os.DevNull)
-	must.NoError(t, err)
+	require.NoError(t, err)
 	defer func() { _ = devNull.Close() }()
 
 	cmd := startSignalWait(t, func(c *exec.Cmd) {
@@ -163,13 +163,13 @@ func TestWrappedToolSingleSIGINTOnCtrlCWithRedirectedStdin(t *testing.T) {
 		// foreground process group, exactly like a real interactive session.
 		c.SysProcAttr = &syscall.SysProcAttr{Setsid: true, Setctty: true, Ctty: 1}
 	})
-	must.NoError(t, cmd.Start())
+	require.NoError(t, cmd.Start())
 	_ = tty.Close() // child holds its own copy of the slave side
 
 	out, copied := drainPTY(ptmx)
 	waitForMarker(t, out)
 	_, err = ptmx.Write([]byte{0x03}) // Ctrl-C → SIGINT to the foreground process group
-	must.NoError(t, err)
+	require.NoError(t, err)
 
 	err = cmd.Wait()
 	<-copied

@@ -8,30 +8,30 @@ import (
 	"testing"
 	"time"
 
-	"github.com/localstack/lstk/internal/must"
 	"github.com/localstack/lstk/test/integration/env"
+	"github.com/stretchr/testify/require"
 )
 
 func TestNoEmulatorSelectionWhenConfigExists(t *testing.T) {
 	t.Parallel()
 
 	tmpHome := t.TempDir()
-	must.NoError(t, os.MkdirAll(filepath.Join(tmpHome, ".config"), 0755))
+	require.NoError(t, os.MkdirAll(filepath.Join(tmpHome, ".config"), 0755))
 	e := env.Environ(testEnvWithHome(tmpHome, tmpHome)).
 		With(env.DisableEvents, "1")
 
 	// Pre-create the config so lstk does not treat this as a first run.
 	configPath, _, err := runLstk(t, testContext(t), "", e, "config", "path")
-	must.NoError(t, err)
-	must.NoError(t, os.MkdirAll(filepath.Dir(configPath), 0755))
-	must.NoError(t, os.WriteFile(configPath, []byte("[[containers]]\ntype = \"aws\"\ntag = \"latest\"\nport = \"4566\"\n"), 0644))
+	require.NoError(t, err)
+	require.NoError(t, os.MkdirAll(filepath.Dir(configPath), 0755))
+	require.NoError(t, os.WriteFile(configPath, []byte("[[containers]]\ntype = \"aws\"\ntag = \"latest\"\nport = \"4566\"\n"), 0644))
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
 	p := startLstkInPTY(t, ctx, e, "start")
 
-	must.Never(t, func() bool {
+	require.Never(t, func() bool {
 		return strings.Contains(p.output(), "Which emulator would you like to use?")
 	}, 2*time.Second, 100*time.Millisecond, "emulator selection prompt should not appear when config already exists")
 
@@ -43,14 +43,14 @@ func TestFirstRunShowsEmulatorSelectionPrompt(t *testing.T) {
 	t.Parallel()
 
 	tmpHome := t.TempDir()
-	must.NoError(t, os.MkdirAll(filepath.Join(tmpHome, ".config"), 0755))
+	require.NoError(t, os.MkdirAll(filepath.Join(tmpHome, ".config"), 0755))
 	e := env.Environ(testEnvWithHome(tmpHome, tmpHome)).
 		With(env.DisableEvents, "1")
 
 	// Confirm no config exists at the path lstk would use — this is what triggers first-run.
 	configPath, _, err := runLstk(t, testContext(t), "", e, "config", "path")
-	must.NoError(t, err)
-	must.NoFileExists(t, configPath)
+	require.NoError(t, err)
+	require.NoFileExists(t, configPath)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -67,8 +67,8 @@ func TestFirstRunShowsEmulatorSelectionPrompt(t *testing.T) {
 	// SetEmulatorType writes the config before emitting the confirmation message,
 	// so the file is guaranteed to exist and contain the selection by this point.
 	configData, err := os.ReadFile(configPath)
-	must.NoError(t, err)
-	must.Contains(t, string(configData), `type = "aws"`)
+	require.NoError(t, err)
+	require.Contains(t, string(configData), `type = "aws"`)
 
 	p.kill()
 }
@@ -84,20 +84,20 @@ func TestFirstRunStillShowsSelectionPromptAfterRunningAnotherCommand(t *testing.
 	t.Parallel()
 
 	tmpHome := t.TempDir()
-	must.NoError(t, os.MkdirAll(filepath.Join(tmpHome, ".config"), 0755))
+	require.NoError(t, os.MkdirAll(filepath.Join(tmpHome, ".config"), 0755))
 	e := env.Environ(testEnvWithHome(tmpHome, tmpHome)).
 		With(env.DisableEvents, "1")
 
 	configPath, _, err := runLstk(t, testContext(t), "", e, "config", "path")
-	must.NoError(t, err)
-	must.NoFileExists(t, configPath)
+	require.NoError(t, err)
+	require.NoFileExists(t, configPath)
 
 	// Run a command that doesn't start the emulator — this used to eagerly
 	// create the default (type = "aws") config via config.Init, consuming
 	// firstRun before the user ever saw the selector.
 	_, _, err = runLstk(t, testContext(t), "", e, "volume", "path")
-	must.NoError(t, err)
-	must.NoFileExists(t, configPath, "running an unrelated command must not create the default config")
+	require.NoError(t, err)
+	require.NoFileExists(t, configPath, "running an unrelated command must not create the default config")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -115,13 +115,13 @@ func TestFirstRunCanSelectAzureEmulator(t *testing.T) {
 	t.Parallel()
 
 	tmpHome := t.TempDir()
-	must.NoError(t, os.MkdirAll(filepath.Join(tmpHome, ".config"), 0755))
+	require.NoError(t, os.MkdirAll(filepath.Join(tmpHome, ".config"), 0755))
 	e := env.Environ(testEnvWithHome(tmpHome, tmpHome)).
 		With(env.DisableEvents, "1")
 
 	configPath, _, err := runLstk(t, testContext(t), "", e, "config", "path")
-	must.NoError(t, err)
-	must.NoFileExists(t, configPath)
+	require.NoError(t, err)
+	require.NoFileExists(t, configPath)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -130,7 +130,7 @@ func TestFirstRunCanSelectAzureEmulator(t *testing.T) {
 
 	p.waitForOutput("Which emulator would you like to use?", "emulator selection prompt should appear on first run")
 
-	must.Contains(t, p.output(), "Azure", "Azure should be offered as a selectable emulator")
+	require.Contains(t, p.output(), "Azure", "Azure should be offered as a selectable emulator")
 
 	// Press the Azure selection key ('z') instead of the default-highlighted AWS.
 	p.write("z")
@@ -138,8 +138,8 @@ func TestFirstRunCanSelectAzureEmulator(t *testing.T) {
 	p.waitForOutput("Azure emulator selected.", "Azure selection confirmation should appear")
 
 	configData, err := os.ReadFile(configPath)
-	must.NoError(t, err)
-	must.Contains(t, string(configData), `type = "azure"`)
+	require.NoError(t, err)
+	require.Contains(t, string(configData), `type = "azure"`)
 
 	p.kill()
 }
@@ -152,7 +152,7 @@ func TestFirstRunPromptsForLoginBeforeEmulatorSelection(t *testing.T) {
 	defer mockServer.Close()
 
 	tmpHome := t.TempDir()
-	must.NoError(t, os.MkdirAll(filepath.Join(tmpHome, ".config"), 0755))
+	require.NoError(t, os.MkdirAll(filepath.Join(tmpHome, ".config"), 0755))
 	e := env.Environ(testEnvWithHome(tmpHome, tmpHome)).
 		Without(env.AuthToken).
 		With(env.APIEndpoint, mockServer.URL).
@@ -160,8 +160,8 @@ func TestFirstRunPromptsForLoginBeforeEmulatorSelection(t *testing.T) {
 
 	// No config exists so this is a first run; no token means login fires before emulator selection.
 	configPath, _, err := runLstk(t, testContext(t), "", e, "config", "path")
-	must.NoError(t, err)
-	must.NoFileExists(t, configPath)
+	require.NoError(t, err)
+	require.NoFileExists(t, configPath)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
@@ -170,7 +170,7 @@ func TestFirstRunPromptsForLoginBeforeEmulatorSelection(t *testing.T) {
 
 	p.waitForOutput("Press any key when complete", "auth prompt should appear on first run when no token is set")
 
-	must.NotContains(t, p.output(), "Which emulator would you like to use?",
+	require.NotContains(t, p.output(), "Which emulator would you like to use?",
 		"emulator selection prompt must not appear before auth completes")
 
 	p.write("\r")
@@ -183,18 +183,18 @@ func TestFirstRunPromptsForLoginBeforeEmulatorSelection(t *testing.T) {
 func TestFirstRunNonInteractiveEmitsDefaultEmulatorNote(t *testing.T) {
 	t.Parallel()
 	tmpHome := t.TempDir()
-	must.NoError(t, os.MkdirAll(filepath.Join(tmpHome, ".config"), 0755))
+	require.NoError(t, os.MkdirAll(filepath.Join(tmpHome, ".config"), 0755))
 	e := env.Environ(testEnvWithHome(tmpHome, tmpHome)).With(env.DisableEvents, "1")
 
 	// Verify no config exists — this is what triggers first-run.
 	configPath, _, err := runLstk(t, testContext(t), "", e, "config", "path")
-	must.NoError(t, err)
-	must.NoFileExists(t, configPath)
+	require.NoError(t, err)
+	require.NoFileExists(t, configPath)
 
 	// Process fails at container.Start (no Docker), but the note is emitted before that.
 	stdout, _, runErr := runLstk(t, testContext(t), "", e.With(env.AuthToken, "test-token"), "--non-interactive")
-	must.Error(t, runErr, "expected failure: no Docker available")
-	must.Contains(t, stdout, "Configured with default emulator", "non-interactive first run should note the default emulator")
+	require.Error(t, runErr, "expected failure: no Docker available")
+	require.Contains(t, stdout, "Configured with default emulator", "non-interactive first run should note the default emulator")
 }
 
 // A first run that fails before doing any work (no Docker) leaves no config, so
@@ -204,18 +204,18 @@ func TestEmulatorSelectionReappearsAfterFailedFirstRun(t *testing.T) {
 	t.Parallel()
 
 	tmpHome := t.TempDir()
-	must.NoError(t, os.MkdirAll(filepath.Join(tmpHome, ".config"), 0755))
+	require.NoError(t, os.MkdirAll(filepath.Join(tmpHome, ".config"), 0755))
 	base := env.Environ(testEnvWithHome(tmpHome, tmpHome)).With(env.DisableEvents, "1")
 
 	configPath, _, err := runLstk(t, testContext(t), "", base, "config", "path")
-	must.NoError(t, err)
-	must.NoFileExists(t, configPath)
+	require.NoError(t, err)
+	require.NoFileExists(t, configPath)
 
 	noDocker := base.With(env.Key("DOCKER_HOST"), "tcp://localhost:1")
 	stdout, _, runErr := runLstk(t, testContext(t), "", noDocker, "--non-interactive")
-	must.Error(t, runErr, "first run should fail when Docker is unavailable")
-	must.Contains(t, stdout, "Docker is not available")
-	must.NoFileExists(t, configPath, "a run that fails before doing any work must not create a config")
+	require.Error(t, runErr, "first run should fail when Docker is unavailable")
+	require.Contains(t, stdout, "Docker is not available")
+	require.NoFileExists(t, configPath, "a run that fails before doing any work must not create a config")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
@@ -236,7 +236,7 @@ func TestEmulatorSelectionReappearsAfterConfigDirDeleted(t *testing.T) {
 	t.Parallel()
 
 	tmpHome := t.TempDir()
-	must.NoError(t, os.MkdirAll(filepath.Join(tmpHome, ".config"), 0755))
+	require.NoError(t, os.MkdirAll(filepath.Join(tmpHome, ".config"), 0755))
 	e := env.Environ(testEnvWithHome(tmpHome, tmpHome)).
 		With(env.DisableEvents, "1").
 		With(env.AuthToken, "test-token")
@@ -244,14 +244,14 @@ func TestEmulatorSelectionReappearsAfterConfigDirDeleted(t *testing.T) {
 	// Resolve where lstk would create the config, then pre-create it so lstk
 	// believes this is not a first run (simulates a previous successful start).
 	configPath, _, err := runLstk(t, testContext(t), "", e, "config", "path")
-	must.NoError(t, err)
-	must.NoError(t, os.MkdirAll(filepath.Dir(configPath), 0755))
-	must.NoError(t, os.WriteFile(configPath, []byte("[[containers]]\ntype = \"aws\"\ntag = \"latest\"\nport = \"4566\"\n"), 0644))
-	must.FileExists(t, configPath)
+	require.NoError(t, err)
+	require.NoError(t, os.MkdirAll(filepath.Dir(configPath), 0755))
+	require.NoError(t, os.WriteFile(configPath, []byte("[[containers]]\ntype = \"aws\"\ntag = \"latest\"\nport = \"4566\"\n"), 0644))
+	require.FileExists(t, configPath)
 
 	// Delete the entire config directory — this is what the user reported.
-	must.NoError(t, os.RemoveAll(filepath.Dir(configPath)))
-	must.NoFileExists(t, configPath)
+	require.NoError(t, os.RemoveAll(filepath.Dir(configPath)))
+	require.NoFileExists(t, configPath)
 
 	// The next run must show the emulator selector again, not silently default to AWS.
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
@@ -272,7 +272,7 @@ func TestFirstRunChecksDockerBeforeAuthAndSelection(t *testing.T) {
 	defer mockServer.Close()
 
 	tmpHome := t.TempDir()
-	must.NoError(t, os.MkdirAll(filepath.Join(tmpHome, ".config"), 0755))
+	require.NoError(t, os.MkdirAll(filepath.Join(tmpHome, ".config"), 0755))
 	e := env.Environ(testEnvWithHome(tmpHome, tmpHome)).
 		Without(env.AuthToken).
 		With(env.APIEndpoint, mockServer.URL).
@@ -283,11 +283,11 @@ func TestFirstRunChecksDockerBeforeAuthAndSelection(t *testing.T) {
 	defer cancel()
 
 	out, err := runLstkInPTY(t, ctx, e, "start")
-	must.Error(t, err)
+	require.Error(t, err)
 	requireExitCode(t, 1, err)
-	must.Contains(t, out, "Docker is not available")
-	must.NotContains(t, out, "Press any key when complete",
+	require.Contains(t, out, "Docker is not available")
+	require.NotContains(t, out, "Press any key when complete",
 		"login prompt must not appear when the runtime is unavailable")
-	must.NotContains(t, out, "Which emulator would you like to use?",
+	require.NotContains(t, out, "Which emulator would you like to use?",
 		"emulator selection must not appear when the runtime is unavailable")
 }

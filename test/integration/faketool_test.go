@@ -9,7 +9,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/localstack/lstk/internal/must"
+	"github.com/stretchr/testify/require"
 )
 
 // fakeToolConfig and fakeToolCase mirror the config structs in
@@ -68,7 +68,7 @@ func fakeToolBinary(t *testing.T) string {
 		}
 		fakeToolPath = out
 	})
-	must.NoError(t, fakeToolErr)
+	require.NoError(t, fakeToolErr)
 	return fakeToolPath
 }
 
@@ -79,8 +79,8 @@ func installFakeTool(t *testing.T, dir, name string, cfg fakeToolConfig) {
 	bin := filepath.Join(dir, execName(name))
 	copyExecutable(t, fakeToolBinary(t), bin)
 	b, err := json.Marshal(cfg)
-	must.NoError(t, err)
-	must.NoError(t, os.WriteFile(bin+".fakecfg", b, 0o644))
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(bin+".fakecfg", b, 0o644))
 }
 
 // writeFakeTool installs the faketool binary as `name` in a fresh temp dir

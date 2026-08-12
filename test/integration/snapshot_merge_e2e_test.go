@@ -9,9 +9,9 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/localstack/lstk/internal/must"
 	"github.com/localstack/lstk/test/integration/env"
 	"github.com/moby/moby/client"
+	"github.com/stretchr/testify/require"
 )
 
 // End-to-end tests for `lstk snapshot load --merge` that exercise the real
@@ -40,7 +40,7 @@ func requireAWSCLI(t *testing.T) {
 func createSNSTopic(t *testing.T, ctx context.Context, e env.Environ, region, name string) {
 	t.Helper()
 	_, stderr, err := runLstk(t, ctx, "", e, "aws", "sns", "create-topic", "--name", name, "--region", region)
-	must.NoError(t, err, "create-topic %s/%s failed: %s", region, name, stderr)
+	require.NoError(t, err, "create-topic %s/%s failed: %s", region, name, stderr)
 }
 
 // createSQSQueue creates an SQS queue named name in region via `lstk aws`,
@@ -59,14 +59,14 @@ func createSQSQueue(t *testing.T, ctx context.Context, e env.Environ, region, na
 		args = append(args, "--attributes", shorthand)
 	}
 	_, stderr, err := runLstk(t, ctx, "", e, args...)
-	must.NoError(t, err, "create-queue %s/%s failed: %s", region, name, stderr)
+	require.NoError(t, err, "create-queue %s/%s failed: %s", region, name, stderr)
 }
 
 // createS3Bucket creates an S3 bucket named name in region via `lstk aws`.
 func createS3Bucket(t *testing.T, ctx context.Context, e env.Environ, region, name string) {
 	t.Helper()
 	_, stderr, err := runLstk(t, ctx, "", e, "aws", "s3", "mb", "s3://"+name, "--region", region)
-	must.NoError(t, err, "s3 mb %s/%s failed: %s", region, name, stderr)
+	require.NoError(t, err, "s3 mb %s/%s failed: %s", region, name, stderr)
 }
 
 // snsTopicNames lists the SNS topics in region and returns their names (the
@@ -74,14 +74,14 @@ func createS3Bucket(t *testing.T, ctx context.Context, e env.Environ, region, na
 func snsTopicNames(t *testing.T, ctx context.Context, e env.Environ, region string) []string {
 	t.Helper()
 	stdout, stderr, err := runLstk(t, ctx, "", e, "aws", "sns", "list-topics", "--region", region, "--output", "json")
-	must.NoError(t, err, "list-topics %s failed: %s", region, stderr)
+	require.NoError(t, err, "list-topics %s failed: %s", region, stderr)
 
 	var resp struct {
 		Topics []struct {
 			TopicArn string `json:"TopicArn"`
 		} `json:"Topics"`
 	}
-	must.NoError(t, json.Unmarshal([]byte(stdout), &resp), "parsing list-topics output: %s", stdout)
+	require.NoError(t, json.Unmarshal([]byte(stdout), &resp), "parsing list-topics output: %s", stdout)
 
 	names := make([]string, 0, len(resp.Topics))
 	for _, topic := range resp.Topics {
@@ -111,13 +111,13 @@ func topicNameFromARN(arn string) string {
 func sqsQueueURLsByName(t *testing.T, ctx context.Context, e env.Environ, region string) map[string]string {
 	t.Helper()
 	stdout, stderr, err := runLstk(t, ctx, "", e, "aws", "sqs", "list-queues", "--region", region, "--output", "json")
-	must.NoError(t, err, "list-queues %s failed: %s", region, stderr)
+	require.NoError(t, err, "list-queues %s failed: %s", region, stderr)
 
 	var resp struct {
 		QueueUrls []string `json:"QueueUrls"`
 	}
 	if stdout != "" {
-		must.NoError(t, json.Unmarshal([]byte(stdout), &resp), "parsing list-queues output: %s", stdout)
+		require.NoError(t, json.Unmarshal([]byte(stdout), &resp), "parsing list-queues output: %s", stdout)
 	}
 
 	byName := make(map[string]string, len(resp.QueueUrls))
@@ -133,14 +133,14 @@ func sqsQueueVisibilityTimeout(t *testing.T, ctx context.Context, e env.Environ,
 	t.Helper()
 	stdout, stderr, err := runLstk(t, ctx, "", e, "aws", "sqs", "get-queue-attributes",
 		"--queue-url", queueURL, "--attribute-names", "VisibilityTimeout", "--region", region, "--output", "json")
-	must.NoError(t, err, "get-queue-attributes %s failed: %s", queueURL, stderr)
+	require.NoError(t, err, "get-queue-attributes %s failed: %s", queueURL, stderr)
 
 	var resp struct {
 		Attributes struct {
 			VisibilityTimeout string `json:"VisibilityTimeout"`
 		} `json:"Attributes"`
 	}
-	must.NoError(t, json.Unmarshal([]byte(stdout), &resp), "parsing get-queue-attributes output: %s", stdout)
+	require.NoError(t, json.Unmarshal([]byte(stdout), &resp), "parsing get-queue-attributes output: %s", stdout)
 	return resp.Attributes.VisibilityTimeout
 }
 
@@ -148,14 +148,14 @@ func sqsQueueVisibilityTimeout(t *testing.T, ctx context.Context, e env.Environ,
 func s3BucketNames(t *testing.T, ctx context.Context, e env.Environ) []string {
 	t.Helper()
 	stdout, stderr, err := runLstk(t, ctx, "", e, "aws", "s3api", "list-buckets", "--output", "json")
-	must.NoError(t, err, "list-buckets failed: %s", stderr)
+	require.NoError(t, err, "list-buckets failed: %s", stderr)
 
 	var resp struct {
 		Buckets []struct {
 			Name string `json:"Name"`
 		} `json:"Buckets"`
 	}
-	must.NoError(t, json.Unmarshal([]byte(stdout), &resp), "parsing list-buckets output: %s", stdout)
+	require.NoError(t, json.Unmarshal([]byte(stdout), &resp), "parsing list-buckets output: %s", stdout)
 
 	names := make([]string, len(resp.Buckets))
 	for i, b := range resp.Buckets {
@@ -179,10 +179,10 @@ func buildMergeTestSnapshots(t *testing.T, ctx context.Context, e env.Environ, d
 
 	snap1 = filepath.Join(dir, "snapshot1.snapshot")
 	_, stderr, err := runLstk(t, ctx, "", e, "snapshot", "save", snap1)
-	must.NoError(t, err, "snapshot save (1) failed: %s", stderr)
+	require.NoError(t, err, "snapshot save (1) failed: %s", stderr)
 
 	_, stderr, err = runLstk(t, ctx, "", e, "reset", "--force")
-	must.NoError(t, err, "reset before snapshot 2 failed: %s", stderr)
+	require.NoError(t, err, "reset before snapshot 2 failed: %s", stderr)
 
 	createSNSTopic(t, ctx, e, "us-east-1", "topic3")
 	createSQSQueue(t, ctx, e, "us-east-1", "queue3", nil)
@@ -190,7 +190,7 @@ func buildMergeTestSnapshots(t *testing.T, ctx context.Context, e env.Environ, d
 
 	snap2 = filepath.Join(dir, "snapshot2.snapshot")
 	_, stderr, err = runLstk(t, ctx, "", e, "snapshot", "save", snap2)
-	must.NoError(t, err, "snapshot save (2) failed: %s", stderr)
+	require.NoError(t, err, "snapshot save (2) failed: %s", stderr)
 
 	return snap1, snap2
 }
@@ -215,7 +215,7 @@ func TestSnapshotLoadMergeStrategies(t *testing.T) {
 	// Pinned to the "dev" image tag rather than the default "latest" so we can
 	// catch problems with the merge logic in a known-good image before they hit users.
 	configPath := filepath.Join(t.TempDir(), "config.toml")
-	must.NoError(t, os.WriteFile(configPath, []byte("[[containers]]\ntype = \"aws\"\ntag = \""+mergeTestAWSTag+"\"\nport = \"4566\"\n"), 0644))
+	require.NoError(t, os.WriteFile(configPath, []byte("[[containers]]\ntype = \"aws\"\ntag = \""+mergeTestAWSTag+"\"\nport = \"4566\"\n"), 0644))
 	startRealLocalStackWithConfig(t, ctx, token, configPath)
 
 	e := env.With(env.DisableEvents, "1").WithHome(t.TempDir())
@@ -225,7 +225,7 @@ func TestSnapshotLoadMergeStrategies(t *testing.T) {
 	// first (runLstk has no TTY, so this is non-interactive) so every later
 	// `aws` call's stdout is clean JSON.
 	_, stderr, err := runLstk(t, ctx, "", e, "setup", "aws")
-	must.NoError(t, err, "lstk setup aws failed: %s", stderr)
+	require.NoError(t, err, "lstk setup aws failed: %s", stderr)
 
 	snap1, snap2 := buildMergeTestSnapshots(t, ctx, e, t.TempDir())
 
@@ -266,35 +266,35 @@ func TestSnapshotLoadMergeStrategies(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.strategy, func(t *testing.T) {
 			_, stderr, err := runLstk(t, ctx, "", e, "reset", "--force")
-			must.NoError(t, err, "reset failed: %s", stderr)
+			require.NoError(t, err, "reset failed: %s", stderr)
 
 			_, stderr, err = runLstk(t, ctx, "", e, "snapshot", "load", snap1)
-			must.NoError(t, err, "loading snapshot1 failed: %s", stderr)
+			require.NoError(t, err, "loading snapshot1 failed: %s", stderr)
 
 			_, stderr, err = runLstk(t, ctx, "", e, "snapshot", "load", snap2, "--merge="+tc.strategy)
-			must.NoError(t, err, "loading snapshot2 (merge=%s) failed: %s", tc.strategy, stderr)
+			require.NoError(t, err, "loading snapshot2 (merge=%s) failed: %s", tc.strategy, stderr)
 
-			must.ElementsMatch(t, tc.wantUSEastSNS, snsTopicNames(t, ctx, e, "us-east-1"), "us-east-1 SNS topics")
-			must.ElementsMatch(t, tc.wantUSEastS3, s3BucketNames(t, ctx, e), "S3 buckets")
-			must.ElementsMatch(t, tc.wantAPSoutheast2["sns"], snsTopicNames(t, ctx, e, "ap-southeast-2"), "ap-southeast-2 SNS topics")
+			require.ElementsMatch(t, tc.wantUSEastSNS, snsTopicNames(t, ctx, e, "us-east-1"), "us-east-1 SNS topics")
+			require.ElementsMatch(t, tc.wantUSEastS3, s3BucketNames(t, ctx, e), "S3 buckets")
+			require.ElementsMatch(t, tc.wantAPSoutheast2["sns"], snsTopicNames(t, ctx, e, "ap-southeast-2"), "ap-southeast-2 SNS topics")
 
 			usEastQueues := sqsQueueURLsByName(t, ctx, e, "us-east-1")
 			gotUSEastSQS := make([]string, 0, len(usEastQueues))
 			for name := range usEastQueues {
 				gotUSEastSQS = append(gotUSEastSQS, name)
 			}
-			must.ElementsMatch(t, tc.wantUSEastSQS, gotUSEastSQS, "us-east-1 SQS queues")
+			require.ElementsMatch(t, tc.wantUSEastSQS, gotUSEastSQS, "us-east-1 SQS queues")
 
 			apSoutheastQueues := sqsQueueURLsByName(t, ctx, e, "ap-southeast-2")
 			gotAPSoutheastSQS := make([]string, 0, len(apSoutheastQueues))
 			for name := range apSoutheastQueues {
 				gotAPSoutheastSQS = append(gotAPSoutheastSQS, name)
 			}
-			must.ElementsMatch(t, tc.wantAPSoutheast2["sqs"], gotAPSoutheastSQS, "ap-southeast-2 SQS queues")
+			require.ElementsMatch(t, tc.wantAPSoutheast2["sqs"], gotAPSoutheastSQS, "ap-southeast-2 SQS queues")
 
 			queueToReplaceURL, ok := usEastQueues["queue-to-replace"]
-			must.True(t, ok, "queue-to-replace should exist in us-east-1 after merge=%s", tc.strategy)
-			must.Eq(t, tc.wantVisibility, sqsQueueVisibilityTimeout(t, ctx, e, "us-east-1", queueToReplaceURL),
+			require.True(t, ok, "queue-to-replace should exist in us-east-1 after merge=%s", tc.strategy)
+			require.Equal(t, tc.wantVisibility, sqsQueueVisibilityTimeout(t, ctx, e, "us-east-1", queueToReplaceURL),
 				"queue-to-replace VisibilityTimeout after merge=%s", tc.strategy)
 		})
 	}

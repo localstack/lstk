@@ -14,8 +14,8 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/localstack/lstk/internal/must"
 	"github.com/localstack/lstk/test/integration/env"
+	"github.com/stretchr/testify/require"
 )
 
 // mockStateServer returns a test server that serves a minimal ZIP at /_localstack/pods/state.
@@ -24,10 +24,10 @@ func mockStateServer(t *testing.T) *httptest.Server {
 	var zipBuf bytes.Buffer
 	zw := zip.NewWriter(&zipBuf)
 	f, err := zw.Create("state.json")
-	must.NoError(t, err)
+	require.NoError(t, err)
 	_, err = f.Write([]byte(`{"services":{}}`))
-	must.NoError(t, err)
-	must.NoError(t, zw.Close())
+	require.NoError(t, err)
+	require.NoError(t, zw.Close())
 	zipData := zipBuf.Bytes()
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -58,10 +58,10 @@ func mockStateServerCapturing(t *testing.T) (*httptest.Server, func() string) {
 	var zipBuf bytes.Buffer
 	zw := zip.NewWriter(&zipBuf)
 	f, err := zw.Create("state.json")
-	must.NoError(t, err)
+	require.NoError(t, err)
 	_, err = f.Write([]byte(`{"services":{}}`))
-	must.NoError(t, err)
-	must.NoError(t, zw.Close())
+	require.NoError(t, err)
+	require.NoError(t, zw.Close())
 	zipData := zipBuf.Bytes()
 
 	var (
@@ -108,11 +108,11 @@ func TestSnapshotSaveDefaultDestination(t *testing.T) {
 		env.Environ(testEnvWithHome(t.TempDir(), "")).With(env.LocalStackHost, lsHost(srv)),
 		"--non-interactive", "snapshot", "save",
 	)
-	must.NoError(t, err, "lstk snapshot save failed: %s", stderr)
-	must.Contains(t, stdout, "Snapshot saved")
+	require.NoError(t, err, "lstk snapshot save failed: %s", stderr)
+	require.Contains(t, stdout, "Snapshot saved")
 
 	entries, readErr := os.ReadDir(dir)
-	must.NoError(t, readErr)
+	require.NoError(t, readErr)
 	var found bool
 	for _, e := range entries {
 		if strings.HasPrefix(e.Name(), "snapshot-") && strings.HasSuffix(e.Name(), ".snapshot") {
@@ -120,7 +120,7 @@ func TestSnapshotSaveDefaultDestination(t *testing.T) {
 			break
 		}
 	}
-	must.True(t, found, "default snapshot file (snapshot-*.snapshot) should exist in %s", dir)
+	require.True(t, found, "default snapshot file (snapshot-*.snapshot) should exist in %s", dir)
 }
 
 func TestSnapshotSaveCustomPath(t *testing.T) {
@@ -138,17 +138,17 @@ func TestSnapshotSaveCustomPath(t *testing.T) {
 		env.Environ(testEnvWithHome(t.TempDir(), "")).With(env.LocalStackHost, lsHost(srv)),
 		"--non-interactive", "snapshot", "save", outPath,
 	)
-	must.NoError(t, err, "lstk snapshot save failed: %s", stderr)
-	must.Contains(t, stdout, "Snapshot saved")
-	must.Contains(t, stdout, "./my-snap.snapshot")
+	require.NoError(t, err, "lstk snapshot save failed: %s", stderr)
+	require.Contains(t, stdout, "Snapshot saved")
+	require.Contains(t, stdout, "./my-snap.snapshot")
 
 	data, err := os.ReadFile(outPath)
-	must.NoError(t, err, "output file should exist")
-	must.True(t, len(data) > 0, "output file should be non-empty")
+	require.NoError(t, err, "output file should exist")
+	require.True(t, len(data) > 0, "output file should be non-empty")
 
 	r, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
-	must.NoError(t, err, "output file should be a valid ZIP")
-	must.NotEmpty(t, r.File)
+	require.NoError(t, err, "output file should be a valid ZIP")
+	require.NotEmpty(t, r.File)
 }
 
 func TestSnapshotSaveRelativePath(t *testing.T) {
@@ -165,11 +165,11 @@ func TestSnapshotSaveRelativePath(t *testing.T) {
 		env.Environ(testEnvWithHome(t.TempDir(), "")).With(env.LocalStackHost, lsHost(srv)),
 		"--non-interactive", "snapshot", "save", "./my-state",
 	)
-	must.NoError(t, err, "lstk snapshot save failed: %s", stderr)
-	must.Contains(t, stdout, "Snapshot saved")
+	require.NoError(t, err, "lstk snapshot save failed: %s", stderr)
+	require.Contains(t, stdout, "Snapshot saved")
 
 	_, statErr := os.Stat(filepath.Join(dir, "my-state.snapshot"))
-	must.NoError(t, statErr, "relative output file should exist")
+	require.NoError(t, statErr, "relative output file should exist")
 }
 
 // TestSnapshotSaveForcesSnapshotExtension verifies that a user-supplied extension
@@ -188,13 +188,13 @@ func TestSnapshotSaveForcesSnapshotExtension(t *testing.T) {
 		env.Environ(testEnvWithHome(t.TempDir(), "")).With(env.LocalStackHost, lsHost(srv)),
 		"--non-interactive", "snapshot", "save", "./x.zip",
 	)
-	must.NoError(t, err, "lstk snapshot save failed: %s", stderr)
-	must.Contains(t, stdout, "./x.snapshot")
+	require.NoError(t, err, "lstk snapshot save failed: %s", stderr)
+	require.Contains(t, stdout, "./x.snapshot")
 
 	_, statErr := os.Stat(filepath.Join(dir, "x.snapshot"))
-	must.NoError(t, statErr, "extension should be forced to .snapshot")
+	require.NoError(t, statErr, "extension should be forced to .snapshot")
 	_, zipErr := os.Stat(filepath.Join(dir, "x.zip"))
-	must.True(t, os.IsNotExist(zipErr), "the user-supplied .zip path should not be created")
+	require.True(t, os.IsNotExist(zipErr), "the user-supplied .zip path should not be created")
 }
 
 func TestSnapshotSaveOverwritesExistingFile(t *testing.T) {
@@ -207,17 +207,17 @@ func TestSnapshotSaveOverwritesExistingFile(t *testing.T) {
 	srv := mockStateServer(t)
 	dir := t.TempDir()
 	outPath := filepath.Join(dir, "snap.snapshot")
-	must.NoError(t, os.WriteFile(outPath, []byte("OLD"), 0600))
+	require.NoError(t, os.WriteFile(outPath, []byte("OLD"), 0600))
 
 	_, stderr, err := runLstk(t, ctx, dir,
 		env.Environ(testEnvWithHome(t.TempDir(), "")).With(env.LocalStackHost, lsHost(srv)),
 		"--non-interactive", "snapshot", "save", outPath,
 	)
-	must.NoError(t, err, "lstk snapshot save should overwrite: %s", stderr)
+	require.NoError(t, err, "lstk snapshot save should overwrite: %s", stderr)
 
 	data, err := os.ReadFile(outPath)
-	must.NoError(t, err)
-	must.NotEq(t, "OLD", string(data), "file should have been overwritten")
+	require.NoError(t, err)
+	require.NotEqual(t, "OLD", string(data), "file should have been overwritten")
 }
 
 func TestSnapshotSaveRemoteRejected(t *testing.T) {
@@ -231,7 +231,7 @@ func TestSnapshotSaveRemoteRejected(t *testing.T) {
 
 			_, stderr, err := runLstk(t, ctx, t.TempDir(), testEnvWithHome(t.TempDir(), ""), "--non-interactive", "snapshot", "save", dest)
 			requireExitCode(t, 1, err)
-			must.Contains(t, stderr, "not yet supported")
+			require.Contains(t, stderr, "not yet supported")
 		})
 	}
 }
@@ -247,7 +247,7 @@ func TestSnapshotSaveS3MissingCredentials(t *testing.T) {
 		"--non-interactive", "snapshot", "save", "my-pod", "s3://my-bucket/prefix",
 	)
 	requireExitCode(t, 1, err)
-	must.Contains(t, stderr, "AWS credentials required")
+	require.Contains(t, stderr, "AWS credentials required")
 }
 
 func TestSnapshotSaveS3CredentialsInURLRejected(t *testing.T) {
@@ -261,7 +261,7 @@ func TestSnapshotSaveS3CredentialsInURLRejected(t *testing.T) {
 		"--non-interactive", "snapshot", "save", "my-pod", "s3://my-bucket/prefix?access_key_id=AKIA&secret_access_key=secret",
 	)
 	requireExitCode(t, 1, err)
-	must.Contains(t, stderr, "do not put credentials")
+	require.Contains(t, stderr, "do not put credentials")
 }
 
 // mockPodS3Server handles the remote registration plus pod save against an S3
@@ -326,18 +326,18 @@ func TestSnapshotSaveS3Success(t *testing.T) {
 			With(env.AWSSecretAccessKey, "topsecret"),
 		"--non-interactive", "snapshot", "save", "my-pod", s3URL,
 	)
-	must.NoError(t, err, "lstk snapshot save to s3 failed: %s", stderr)
-	must.Contains(t, stdout, "Snapshot saved to "+s3URL)
-	must.Contains(t, stdout, "my-pod")
+	require.NoError(t, err, "lstk snapshot save to s3 failed: %s", stderr)
+	require.Contains(t, stdout, "Snapshot saved to "+s3URL)
+	require.Contains(t, stdout, "my-pod")
 
 	remoteURL, saveBody := captured()
 	// The registered URL carries placeholders, never the secret values.
-	must.Contains(t, remoteURL, "{access_key_id}")
-	must.NotContains(t, remoteURL, "topsecret")
-	must.NotContains(t, remoteURL, "AKIAEXAMPLE")
+	require.Contains(t, remoteURL, "{access_key_id}")
+	require.NotContains(t, remoteURL, "topsecret")
+	require.NotContains(t, remoteURL, "AKIAEXAMPLE")
 	// The secrets travel only in the ephemeral save params.
-	must.Contains(t, string(saveBody), "topsecret")
-	must.Contains(t, string(saveBody), "remote_params")
+	require.Contains(t, string(saveBody), "topsecret")
+	require.Contains(t, string(saveBody), "remote_params")
 }
 
 // mockPodSaveServer returns a test server that handles POST /_localstack/pods/{name}
@@ -377,11 +377,11 @@ func TestSnapshotSavePodSuccess(t *testing.T) {
 			With(env.AuthToken, "test-token"),
 		"--non-interactive", "snapshot", "save", "pod:my-baseline",
 	)
-	must.NoError(t, err, "lstk snapshot save pod:my-baseline failed: %s", stderr)
-	must.Contains(t, stdout, "Snapshot saved")
-	must.Contains(t, stdout, "my-baseline")
-	must.Contains(t, stdout, "Version: 1")
-	must.Contains(t, stdout, "dynamodb, s3")
+	require.NoError(t, err, "lstk snapshot save pod:my-baseline failed: %s", stderr)
+	require.Contains(t, stdout, "Snapshot saved")
+	require.Contains(t, stdout, "my-baseline")
+	require.Contains(t, stdout, "Version: 1")
+	require.Contains(t, stdout, "dynamodb, s3")
 }
 
 func TestSnapshotSavePodServerError(t *testing.T) {
@@ -400,7 +400,7 @@ func TestSnapshotSavePodServerError(t *testing.T) {
 		"--non-interactive", "snapshot", "save", "pod:my-baseline",
 	)
 	requireExitCode(t, 1, err)
-	must.Contains(t, stderr, "platform error")
+	require.Contains(t, stderr, "platform error")
 }
 
 func TestSnapshotSavePodNoAuthToken(t *testing.T) {
@@ -412,7 +412,7 @@ func TestSnapshotSavePodNoAuthToken(t *testing.T) {
 		"--non-interactive", "snapshot", "save", "pod:my-baseline",
 	)
 	requireExitCode(t, 1, err)
-	must.Contains(t, stderr, "authentication")
+	require.Contains(t, stderr, "authentication")
 }
 
 func TestSnapshotSavePodInvalidName(t *testing.T) {
@@ -428,7 +428,7 @@ func TestSnapshotSavePodInvalidName(t *testing.T) {
 
 			_, stderr, err := runLstk(t, ctx, t.TempDir(), testEnvWithHome(t.TempDir(), ""), "--non-interactive", "snapshot", "save", dest)
 			requireExitCode(t, 1, err)
-			must.Contains(t, stderr, "invalid pod name")
+			require.Contains(t, stderr, "invalid pod name")
 		})
 	}
 }
@@ -501,18 +501,18 @@ func TestSnapshotSavePodWithServices(t *testing.T) {
 			With(env.AuthToken, "test-token"),
 		"--non-interactive", "snapshot", "save", "pod:my-baseline", "--services", "s3,dynamodb",
 	)
-	must.NoError(t, err, "lstk snapshot save pod:my-baseline --services failed: %s", stderr)
+	require.NoError(t, err, "lstk snapshot save pod:my-baseline --services failed: %s", stderr)
 
 	var parsed struct {
 		Attributes struct {
 			Services []string `json:"services"`
 		} `json:"attributes"`
 	}
-	must.NoError(t, json.Unmarshal(capturedBody(), &parsed))
-	must.Eq(t, []string{"s3", "dynamodb"}, parsed.Attributes.Services, "request body must carry exactly the requested services")
+	require.NoError(t, json.Unmarshal(capturedBody(), &parsed))
+	require.Equal(t, []string{"s3", "dynamodb"}, parsed.Attributes.Services, "request body must carry exactly the requested services")
 
-	must.Contains(t, stdout, "Snapshot saved")
-	must.Contains(t, stdout, "Services: s3, dynamodb")
+	require.Contains(t, stdout, "Snapshot saved")
+	require.Contains(t, stdout, "Services: s3, dynamodb")
 }
 
 func TestSnapshotSavePodServicesSingleValue(t *testing.T) {
@@ -530,15 +530,15 @@ func TestSnapshotSavePodServicesSingleValue(t *testing.T) {
 			With(env.AuthToken, "test-token"),
 		"--non-interactive", "snapshot", "save", "pod:my-baseline", "-s", "s3",
 	)
-	must.NoError(t, err, "lstk snapshot save pod:my-baseline -s s3 failed: %s", stderr)
+	require.NoError(t, err, "lstk snapshot save pod:my-baseline -s s3 failed: %s", stderr)
 
 	var parsed struct {
 		Attributes struct {
 			Services []string `json:"services"`
 		} `json:"attributes"`
 	}
-	must.NoError(t, json.Unmarshal(capturedBody(), &parsed))
-	must.Eq(t, []string{"s3"}, parsed.Attributes.Services)
+	require.NoError(t, json.Unmarshal(capturedBody(), &parsed))
+	require.Equal(t, []string{"s3"}, parsed.Attributes.Services)
 }
 
 func TestSnapshotSavePodServicesInvalidFormat(t *testing.T) {
@@ -558,7 +558,7 @@ func TestSnapshotSavePodServicesInvalidFormat(t *testing.T) {
 				"--non-interactive", "snapshot", "save", "pod:my-baseline", "--services", value,
 			)
 			requireExitCode(t, 1, err)
-			must.Contains(t, stderr, "comma-separated list of service names")
+			require.Contains(t, stderr, "comma-separated list of service names")
 		})
 	}
 }
@@ -578,14 +578,14 @@ func TestSnapshotSaveLocalWithServices(t *testing.T) {
 		env.Environ(testEnvWithHome(t.TempDir(), "")).With(env.LocalStackHost, lsHost(srv)),
 		"--non-interactive", "snapshot", "save", dest, "--services", "s3,dynamodb",
 	)
-	must.NoError(t, err, "lstk snapshot save --services failed: %s", stderr)
+	require.NoError(t, err, "lstk snapshot save --services failed: %s", stderr)
 
-	must.Eq(t, "services=s3,dynamodb", capturedQuery(), "request must carry exactly the requested services")
-	must.Contains(t, stdout, "Snapshot saved")
-	must.Contains(t, stdout, "Services: s3, dynamodb")
+	require.Equal(t, "services=s3,dynamodb", capturedQuery(), "request must carry exactly the requested services")
+	require.Contains(t, stdout, "Snapshot saved")
+	require.Contains(t, stdout, "Services: s3, dynamodb")
 
 	_, statErr := os.Stat(dest)
-	must.NoError(t, statErr, "snapshot file should have been created")
+	require.NoError(t, statErr, "snapshot file should have been created")
 }
 
 func TestSnapshotSaveS3WithServices(t *testing.T) {
@@ -605,7 +605,7 @@ func TestSnapshotSaveS3WithServices(t *testing.T) {
 			With(env.AWSSecretAccessKey, "topsecret"),
 		"--non-interactive", "snapshot", "save", "my-pod", s3URL, "--services", "s3,lambda",
 	)
-	must.NoError(t, err, "lstk snapshot save to s3 with --services failed: %s", stderr)
+	require.NoError(t, err, "lstk snapshot save to s3 with --services failed: %s", stderr)
 
 	_, saveBody := captured()
 	var parsed struct {
@@ -613,8 +613,8 @@ func TestSnapshotSaveS3WithServices(t *testing.T) {
 			Services []string `json:"services"`
 		} `json:"attributes"`
 	}
-	must.NoError(t, json.Unmarshal(saveBody, &parsed))
-	must.Eq(t, []string{"s3", "lambda"}, parsed.Attributes.Services)
+	require.NoError(t, json.Unmarshal(saveBody, &parsed))
+	require.Equal(t, []string{"s3", "lambda"}, parsed.Attributes.Services)
 }
 
 func TestSnapshotSaveEmulatorNotRunning(t *testing.T) {
@@ -648,7 +648,7 @@ func TestSnapshotSaveEmulatorNotRunning(t *testing.T) {
 			}
 			stdout, _, err := runLstk(t, ctx, t.TempDir(), e, tc.args...)
 			requireExitCode(t, 1, err)
-			must.Contains(t, stdout, "not running")
+			require.Contains(t, stdout, "not running")
 		})
 	}
 }
@@ -667,7 +667,7 @@ func TestSnapshotSaveInvalidParentDir(t *testing.T) {
 		"--non-interactive", "snapshot", "save", "/no/such/dir/state",
 	)
 	requireExitCode(t, 1, err)
-	must.NotEmpty(t, stderr)
+	require.NotEmpty(t, stderr)
 }
 
 func TestSnapshotSaveTelemetryEmitted(t *testing.T) {
@@ -684,7 +684,7 @@ func TestSnapshotSaveTelemetryEmitted(t *testing.T) {
 		env.Environ(testEnvWithHome(t.TempDir(), "")).With(env.LocalStackHost, lsHost(srv)).With(env.AnalyticsEndpoint, analyticsSrv.URL),
 		"--non-interactive", "snapshot", "save",
 	)
-	must.NoError(t, err, "lstk snapshot save failed: %s", stderr)
+	require.NoError(t, err, "lstk snapshot save failed: %s", stderr)
 	assertCommandTelemetry(t, events, "snapshot save", 0)
 }
 
@@ -721,16 +721,16 @@ func TestSaveAliasMatchesSnapshotSave(t *testing.T) {
 		env.Environ(testEnvWithHome(t.TempDir(), "")).With(env.LocalStackHost, lsHost(srv)).With(env.AnalyticsEndpoint, analyticsSrv.URL),
 		"--non-interactive", "save", outPath,
 	)
-	must.NoError(t, err, "lstk save failed: %s", stderr)
-	must.Contains(t, stdout, "Snapshot saved")
+	require.NoError(t, err, "lstk save failed: %s", stderr)
+	require.Contains(t, stdout, "Snapshot saved")
 
 	data, err := os.ReadFile(outPath)
-	must.NoError(t, err, "output file should exist")
-	must.True(t, len(data) > 0, "output file should be non-empty")
+	require.NoError(t, err, "output file should exist")
+	require.True(t, len(data) > 0, "output file should be non-empty")
 
 	r, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
-	must.NoError(t, err, "output file should be a valid ZIP")
-	must.NotEmpty(t, r.File)
+	require.NoError(t, err, "output file should be a valid ZIP")
+	require.NotEmpty(t, r.File)
 
 	// Alias must emit telemetry under the canonical name so usage isn't
 	// split across "save" and "snapshot save" labels.
@@ -751,6 +751,6 @@ func TestSnapshotSaveInteractive(t *testing.T) {
 		env.Environ(testEnvWithHome(t.TempDir(), "")).With(env.LocalStackHost, lsHost(srv)),
 		"snapshot", "save", filepath.Join(dir, "snap"),
 	)
-	must.NoError(t, err, "interactive lstk snapshot save failed")
-	must.Contains(t, out, "Snapshot saved")
+	require.NoError(t, err, "interactive lstk snapshot save failed")
+	require.Contains(t, out, "Snapshot saved")
 }

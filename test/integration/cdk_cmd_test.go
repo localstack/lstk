@@ -4,9 +4,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/localstack/lstk/internal/must"
 	"github.com/localstack/lstk/internal/snap"
 	"github.com/localstack/lstk/test/integration/env"
+	"github.com/stretchr/testify/require"
 )
 
 // writeFakeCDK creates a stub `cdk` that answers `--version` with the given
@@ -48,8 +48,8 @@ func TestCDKForwardsArgs(t *testing.T) {
 	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).WithHome(t.TempDir())
 
 	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), e, "cdk", "synth")
-	must.NoError(t, err, "stderr: %s", stderr)
-	must.Contains(t, stdout, "ARGS:synth")
+	require.NoError(t, err, "stderr: %s", stderr)
+	require.Contains(t, stdout, "ARGS:synth")
 }
 
 // 7.1 — propagates the cdk exit code.
@@ -59,8 +59,8 @@ func TestCDKPropagatesExitCode(t *testing.T) {
 	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).WithHome(t.TempDir())
 
 	_, stderr, err := runLstk(t, testContext(t), t.TempDir(), e, "cdk", "synth")
-	must.Error(t, err)
-	must.Contains(t, stderr, "simulated failure")
+	require.Error(t, err)
+	require.Contains(t, stderr, "simulated failure")
 	requireExitCode(t, 7, err)
 }
 
@@ -80,7 +80,7 @@ func TestCDKInjectsCleanAWSEnv(t *testing.T) {
 
 	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), e,
 		"cdk", "--region", "eu-west-1", "synth")
-	must.NoError(t, err, "stderr: %s", stderr)
+	require.NoError(t, err, "stderr: %s", stderr)
 
 	// The snapshot pins the full env contract: both endpoints' scheme+port
 	// (host is DNS-dependent, masked), the region, the forced "test" access
@@ -102,10 +102,10 @@ func TestCDKOfflineCommandsNoEmulator(t *testing.T) {
 
 			stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), e,
 				"cdk", "--region", "us-west-2", sub)
-			must.NoError(t, err, "stderr: %s", stderr)
+			require.NoError(t, err, "stderr: %s", stderr)
 
-			must.Contains(t, stdout, "ARGS:"+sub)
-			must.NotContains(t, stdout, "--region")
+			require.Contains(t, stdout, "ARGS:"+sub)
+			require.NotContains(t, stdout, "--region")
 		})
 	}
 }
@@ -124,8 +124,8 @@ func TestCDKHelpNoEmulator(t *testing.T) {
 
 			cmdArgs := append([]string{"cdk"}, args...)
 			stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), e, cmdArgs...)
-			must.NoError(t, err, "stderr: %s", stderr)
-			must.Contains(t, stdout, "ARGS:"+strings.Join(args, " "))
+			require.NoError(t, err, "stderr: %s", stderr)
+			require.Contains(t, stdout, "ARGS:"+strings.Join(args, " "))
 		})
 	}
 }
@@ -137,10 +137,10 @@ func TestCDKVersionTooOld(t *testing.T) {
 	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).WithHome(t.TempDir())
 
 	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), e, "cdk", "synth")
-	must.Error(t, err)
-	must.Contains(t, stderr+stdout, "2.177.0")
+	require.Error(t, err)
+	require.Contains(t, stderr+stdout, "2.177.0")
 	// cdk was never run for real.
-	must.NotContains(t, stdout, "ARGS:synth")
+	require.NotContains(t, stdout, "ARGS:synth")
 }
 
 // 7.5 — a missing cdk binary yields the install error.
@@ -149,8 +149,8 @@ func TestCDKMissingBinary(t *testing.T) {
 	e := env.With(env.DisableEvents, "1").With("PATH", t.TempDir()).WithHome(t.TempDir())
 
 	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), e, "cdk", "synth")
-	must.Error(t, err)
-	must.Contains(t, stderr+stdout, "not found in PATH")
+	require.Error(t, err)
+	require.Contains(t, stderr+stdout, "not found in PATH")
 }
 
 // 7.6 — --account is not supported for cdk and is rejected at the command
@@ -166,9 +166,9 @@ func TestCDKAccountRejected(t *testing.T) {
 
 			stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), e,
 				"cdk", "--account", value, "synth")
-			must.Error(t, err)
-			must.Contains(t, stderr+stdout, "not supported")
-			must.NotContains(t, stdout, "ARGS:synth")
+			require.Error(t, err)
+			require.Contains(t, stderr+stdout, "not supported")
+			require.NotContains(t, stdout, "ARGS:synth")
 		})
 	}
 }
@@ -181,8 +181,8 @@ func TestCDKFlagsAfterActionAreForwarded(t *testing.T) {
 
 	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), e,
 		"cdk", "synth", "--region", "us-west-2")
-	must.NoError(t, err, "stderr: %s", stderr)
-	must.Contains(t, stdout, "ARGS:synth --region us-west-2")
+	require.NoError(t, err, "stderr: %s", stderr)
+	require.Contains(t, stdout, "ARGS:synth --region us-west-2")
 }
 
 // 7.6 — a flag before the subcommand is rejected with a clear message.
@@ -193,8 +193,8 @@ func TestCDKFlagBeforeSubcommandRejected(t *testing.T) {
 
 	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), e,
 		"--account", "111111111111", "cdk", "synth")
-	must.Error(t, err)
-	must.Contains(t, stderr+stdout, "must appear after the cdk subcommand")
+	require.Error(t, err)
+	require.Contains(t, stderr+stdout, "must appear after the cdk subcommand")
 }
 
 // 7.7 — LSTK_CDK_CMD selects the binary to invoke.
@@ -208,8 +208,8 @@ func TestCDKHonorsLstkCdkCmd(t *testing.T) {
 		With(env.Key("LSTK_CDK_CMD"), "mycdk")
 
 	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), e, "cdk", "synth")
-	must.NoError(t, err, "stderr: %s", stderr)
-	must.Contains(t, stdout, "MYCDK:synth")
+	require.NoError(t, err, "stderr: %s", stderr)
+	require.Contains(t, stdout, "MYCDK:synth")
 }
 
 // 7.3 — an AWS-contacting command with no running emulator fails with "not
@@ -223,10 +223,10 @@ func TestCDKFailsWhenEmulatorNotRunning(t *testing.T) {
 	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).WithHome(t.TempDir())
 
 	stdout, _, err := runLstk(t, testContext(t), t.TempDir(), e, "cdk", "deploy")
-	must.Error(t, err)
-	must.Contains(t, stdout, "is not running")
-	must.Contains(t, stdout, "Start LocalStack:")
-	must.NotContains(t, stdout, "ARGS:deploy")
+	require.Error(t, err)
+	require.Contains(t, stdout, "is not running")
+	require.Contains(t, stdout, "Start LocalStack:")
+	require.NotContains(t, stdout, "ARGS:deploy")
 }
 
 // 7.3 — an AWS-contacting command fails with an AWS-specific error naming the
@@ -245,8 +245,8 @@ func TestCDKRequiresAWSEmulator(t *testing.T) {
 	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).WithHome(t.TempDir())
 
 	stdout, _, err := runLstk(t, ctx, t.TempDir(), e, "cdk", "deploy")
-	must.Error(t, err)
-	must.Contains(t, stdout, "requires the")
-	must.Contains(t, stdout, "Snowflake")
-	must.NotContains(t, stdout, "ARGS:deploy")
+	require.Error(t, err)
+	require.Contains(t, stdout, "requires the")
+	require.Contains(t, stdout, "Snowflake")
+	require.NotContains(t, stdout, "ARGS:deploy")
 }

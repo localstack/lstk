@@ -8,8 +8,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/localstack/lstk/internal/must"
 	"github.com/localstack/lstk/test/integration/env"
+	"github.com/stretchr/testify/require"
 )
 
 func TestAzCommandFailsWhenAzureCLINotInstalled(t *testing.T) {
@@ -20,10 +20,10 @@ func TestAzCommandFailsWhenAzureCLINotInstalled(t *testing.T) {
 	e := env.With(env.DisableEvents, "1").With("PATH", t.TempDir()).WithHome(t.TempDir())
 
 	stdout, _, err := runLstk(t, testContext(t), workDir, e, "az", "group", "list")
-	must.Error(t, err)
-	must.Contains(t, stdout, "az CLI not found in PATH")
-	must.Contains(t, stdout, "Install Azure CLI:")
-	must.Contains(t, stdout, "https://learn.microsoft.com/en-us/cli/azure/")
+	require.Error(t, err)
+	require.Contains(t, stdout, "az CLI not found in PATH")
+	require.Contains(t, stdout, "Install Azure CLI:")
+	require.Contains(t, stdout, "https://learn.microsoft.com/en-us/cli/azure/")
 }
 
 // azureHealthServer answers like an Azure-flavored emulator: /_localstack/health
@@ -66,15 +66,15 @@ func azureConfigWithSetupMarker(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
 	configPath := filepath.Join(dir, "config.toml")
-	must.NoError(t, os.WriteFile(configPath, []byte(`
+	require.NoError(t, os.WriteFile(configPath, []byte(`
 [[containers]]
 type = "azure"
 tag  = "latest"
 port = "4566"
 `), 0644))
 	markerDir := filepath.Join(dir, "azure")
-	must.NoError(t, os.MkdirAll(markerDir, 0700))
-	must.NoError(t, os.WriteFile(filepath.Join(markerDir, ".lstk-setup-complete"), []byte("ok\n"), 0600))
+	require.NoError(t, os.MkdirAll(markerDir, 0700))
+	require.NoError(t, os.WriteFile(filepath.Join(markerDir, ".lstk-setup-complete"), []byte("ok\n"), 0600))
 	return configPath
 }
 
@@ -95,14 +95,14 @@ func azureHomeWithSetupMarker(t *testing.T) string {
 	t.Helper()
 	homeDir := t.TempDir()
 	lstkDir := filepath.Join(homeDir, ".config", "lstk")
-	must.NoError(t, os.MkdirAll(filepath.Join(lstkDir, "azure"), 0700))
-	must.NoError(t, os.WriteFile(filepath.Join(lstkDir, "config.toml"), []byte(`
+	require.NoError(t, os.MkdirAll(filepath.Join(lstkDir, "azure"), 0700))
+	require.NoError(t, os.WriteFile(filepath.Join(lstkDir, "config.toml"), []byte(`
 [[containers]]
 type = "azure"
 tag  = "latest"
 port = "4566"
 `), 0644))
-	must.NoError(t, os.WriteFile(filepath.Join(lstkDir, "azure", ".lstk-setup-complete"), []byte("ok\n"), 0600))
+	require.NoError(t, os.WriteFile(filepath.Join(lstkDir, "azure", ".lstk-setup-complete"), []byte("ok\n"), 0600))
 	return homeDir
 }
 
@@ -116,11 +116,11 @@ func TestAzCommandStripsGlobalFlagsFromPassthrough(t *testing.T) {
 
 	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), azFakeEnv(t, writeFakeAz(t, 0), t.TempDir()),
 		"--endpoint-url", srv.URL, "--config", configPath, "--non-interactive", "az", "group", "list")
-	must.NoError(t, err, "stderr: %s", stderr)
+	require.NoError(t, err, "stderr: %s", stderr)
 
-	must.Contains(t, stdout, "AZ_ARGS:group list")
-	must.NotContains(t, stdout, "--non-interactive")
-	must.NotContains(t, stdout, "--config")
+	require.Contains(t, stdout, "AZ_ARGS:group list")
+	require.NotContains(t, stdout, "--non-interactive")
+	require.NotContains(t, stdout, "--config")
 }
 
 // --config must select the given config file for `lstk az` too: the Azure setup
@@ -135,13 +135,13 @@ func TestAzCommandConfigFlagSelectsConfigFile(t *testing.T) {
 
 	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), e,
 		"--endpoint-url", srv.URL, "--config", configPath, "az", "group", "list")
-	must.NoError(t, err, "stderr: %s", stderr)
-	must.Contains(t, stdout, "AZ_ARGS:group list")
+	require.NoError(t, err, "stderr: %s", stderr)
+	require.Contains(t, stdout, "AZ_ARGS:group list")
 
 	stdout, _, err = runLstk(t, testContext(t), t.TempDir(), e,
 		"--endpoint-url", srv.URL, "az", "group", "list")
-	must.Error(t, err, "without --config the azure setup marker must not be found")
-	must.Contains(t, stdout, "Azure CLI integration is not set up")
+	require.Error(t, err, "without --config the azure setup marker must not be found")
+	require.Contains(t, stdout, "Azure CLI integration is not set up")
 }
 
 func TestAzCommandShowsSpinnerForSlowOperation(t *testing.T) {
@@ -151,10 +151,10 @@ func TestAzCommandShowsSpinnerForSlowOperation(t *testing.T) {
 	// The spinner only renders after 4s, so the fake `az` must outlast that.
 	out, err := runLstkInPTY(t, testContext(t), azFakeEnv(t, writeFakeAz(t, 5), azureHomeWithSetupMarker(t)),
 		"--endpoint-url", srv.URL, "az", "group", "list")
-	must.NoError(t, err, "lstk az failed: %s", out)
+	require.NoError(t, err, "lstk az failed: %s", out)
 
-	must.Contains(t, out, "Loading service")
-	must.Contains(t, out, "AZ_ARGS:group list")
+	require.Contains(t, out, "Loading service")
+	require.Contains(t, out, "AZ_ARGS:group list")
 }
 
 // --non-interactive must suppress the spinner: before the flag was stripped in
@@ -166,8 +166,8 @@ func TestAzCommandSuppressesSpinnerInNonInteractiveMode(t *testing.T) {
 
 	out, err := runLstkInPTY(t, testContext(t), azFakeEnv(t, writeFakeAz(t, 5), azureHomeWithSetupMarker(t)),
 		"--endpoint-url", srv.URL, "--non-interactive", "az", "group", "list")
-	must.NoError(t, err, "lstk az failed: %s", out)
+	require.NoError(t, err, "lstk az failed: %s", out)
 
-	must.NotContains(t, out, "Loading service")
-	must.Contains(t, out, "AZ_ARGS:group list")
+	require.NotContains(t, out, "Loading service")
+	require.Contains(t, out, "AZ_ARGS:group list")
 }
