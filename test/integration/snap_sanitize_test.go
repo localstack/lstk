@@ -39,6 +39,18 @@ var (
 	sanitizeExtIDRe   = regexp.MustCompile(`(?m)^(SESSION_ID=).*$`)
 )
 
+// maskKeepWidth replaces every match with placeholder, right-padded with
+// spaces to the match's width so table column alignment survives. The
+// placeholder must not be wider than the shortest possible match.
+func maskKeepWidth(re *regexp.Regexp, s, placeholder string) string {
+	return re.ReplaceAllStringFunc(s, func(m string) string {
+		if pad := len(m) - len(placeholder); pad > 0 {
+			return placeholder + strings.Repeat(" ", pad)
+		}
+		return placeholder
+	})
+}
+
 func sanitizeOutput(s string) string {
 	s = strings.ReplaceAll(s, "\r\n", "\n")
 	s = sanitizePortRe.ReplaceAllString(s, "${1}:<port>")
@@ -49,9 +61,12 @@ func sanitizeOutput(s string) string {
 	s = sanitizeGatewayHostRe.ReplaceAllString(s, "${1}<endpoint-host>${2}")
 	s = sanitizeExtPathRe.ReplaceAllString(s, "${1}<path>")
 	s = sanitizeExtIDRe.ReplaceAllString(s, "${1}<id>")
-	s = sanitizeDateRe.ReplaceAllString(s, "<date>")
-	s = sanitizeSizeRe.ReplaceAllString(s, "<size>")
-	s = sanitizeCalverRe.ReplaceAllString(s, "<calver>")
+	// Width-preserving masks: these values appear in aligned tables, so the
+	// placeholder is padded to the original value's width to keep the
+	// snapshot's columns readable.
+	s = maskKeepWidth(sanitizeDateRe, s, "<date>")
+	s = maskKeepWidth(sanitizeSizeRe, s, "<size>")
+	s = maskKeepWidth(sanitizeCalverRe, s, "<calv>")
 	// Wrapped-tool env dumps echo GOOS-dependent endpoint hosts.
 	s = strings.ReplaceAll(s, "host.docker.internal", "<endpoint-host>")
 	s = strings.ReplaceAll(s, "localhost.localstack.cloud", "<endpoint-host>")

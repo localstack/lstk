@@ -1,9 +1,9 @@
 Fetching snapshot version 1...
 Name            my-baseline
 Version         1
-Created         <date>
+Created         <date>              
 Size            <size>
-LocalStack      <calver>
+LocalStack      <calv> 
 Message         the first one
 
 Services        s3
