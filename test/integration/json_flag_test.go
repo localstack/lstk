@@ -4,9 +4,9 @@ import (
 	"runtime"
 	"testing"
 
+	"github.com/localstack/lstk/internal/must"
+	"github.com/localstack/lstk/internal/snap"
 	"github.com/localstack/lstk/test/integration/env"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 // Most built-in commands haven't opted into --json output yet (see
@@ -20,12 +20,12 @@ func TestJSONFlagRejectsUnannotatedBuiltinCommand(t *testing.T) {
 	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), testEnvWithHome(t.TempDir(), ""), "status", "--json")
 	requireExitCode(t, 1, err)
 	envelope := decodeEnvelope(t, stdout)
-	assert.Equal(t, "status", envelope.Command)
-	assert.Equal(t, "error", envelope.Status)
-	require.NotNil(t, envelope.Error)
-	assert.Equal(t, "NOT_JSON_CAPABLE", envelope.Error.Code)
-	assert.Contains(t, envelope.Error.Message, "status")
-	assert.Empty(t, stderr, "the rejection is rendered as JSON on stdout, not plain text on stderr")
+	must.Eq(t, "status", envelope.Command)
+	must.Eq(t, "error", envelope.Status)
+	must.NotNil(t, envelope.Error)
+	must.Eq(t, "NOT_JSON_CAPABLE", envelope.Error.Code)
+	must.Contains(t, envelope.Error.Message, "status")
+	must.Empty(t, stderr, "the rejection is rendered as JSON on stdout, not plain text on stderr")
 }
 
 func TestJSONFlagRejectsDefaultStartBehavior(t *testing.T) {
@@ -33,11 +33,11 @@ func TestJSONFlagRejectsDefaultStartBehavior(t *testing.T) {
 	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), testEnvWithHome(t.TempDir(), ""), "--json")
 	requireExitCode(t, 1, err)
 	envelope := decodeEnvelope(t, stdout)
-	assert.Equal(t, "start", envelope.Command)
-	assert.Equal(t, "error", envelope.Status)
-	require.NotNil(t, envelope.Error)
-	assert.Equal(t, "NOT_JSON_CAPABLE", envelope.Error.Code)
-	assert.Empty(t, stderr, "the rejection is rendered as JSON on stdout, not plain text on stderr")
+	must.Eq(t, "start", envelope.Command)
+	must.Eq(t, "error", envelope.Status)
+	must.NotNil(t, envelope.Error)
+	must.Eq(t, "NOT_JSON_CAPABLE", envelope.Error.Code)
+	must.Empty(t, stderr, "the rejection is rendered as JSON on stdout, not plain text on stderr")
 }
 
 func TestJSONFlagDoesNotLaunchTUIOnPTY(t *testing.T) {
@@ -48,10 +48,10 @@ func TestJSONFlagDoesNotLaunchTUIOnPTY(t *testing.T) {
 
 	out, err := runLstkInPTY(t, testContext(t), testEnvWithHome(t.TempDir(), ""), "start", "--json")
 	requireExitCode(t, 1, err)
-	require.Contains(t, out, "start")
+	must.Contains(t, out, "start")
 	// If the TUI had launched, it would have shown the auth prompt (start with
 	// no auth token requires interactive login) rather than exiting immediately.
-	require.NotContains(t, out, "Press any key")
+	must.NotContains(t, out, "Press any key")
 }
 
 // proxyCase describes one proxy command's forwarding/rejection setup, shared
@@ -105,10 +105,10 @@ func TestJSONFlagProxyCommandsForwardJSON(t *testing.T) {
 			workDir, environ := tc.setup(t)
 			args := append([]string{tc.name, "--json"}, tc.args...)
 			stdout, stderr, err := runLstk(t, testContext(t), workDir, environ, args...)
-			require.Error(t, err)
+			must.Error(t, err)
 			combined := stdout + stderr
-			require.Contains(t, combined, "not found in PATH", "--json should have been forwarded to the wrapped tool, not rejected by lstk")
-			require.NotContains(t, combined, "is not able to provide output in JSON format")
+			must.Contains(t, combined, "not found in PATH", "--json should have been forwarded to the wrapped tool, not rejected by lstk")
+			must.NotContains(t, combined, "is not able to provide output in JSON format")
 		})
 
 		t.Run(tc.name+"/json after the wrapped tool's own action", func(t *testing.T) {
@@ -116,10 +116,10 @@ func TestJSONFlagProxyCommandsForwardJSON(t *testing.T) {
 			workDir, environ := tc.setup(t)
 			args := append(append([]string{tc.name}, tc.args...), "--json")
 			stdout, stderr, err := runLstk(t, testContext(t), workDir, environ, args...)
-			require.Error(t, err)
+			must.Error(t, err)
 			combined := stdout + stderr
-			require.Contains(t, combined, "not found in PATH", "--json should have been forwarded to the wrapped tool, not rejected by lstk")
-			require.NotContains(t, combined, "is not able to provide output in JSON format")
+			must.Contains(t, combined, "not found in PATH", "--json should have been forwarded to the wrapped tool, not rejected by lstk")
+			must.NotContains(t, combined, "is not able to provide output in JSON format")
 		})
 	}
 }
@@ -142,10 +142,10 @@ func TestJSONFlagProxyCommandsRejectBeforeCommandName(t *testing.T) {
 			stdout, stderr, err := runLstk(t, testContext(t), workDir, environ, args...)
 			requireExitCode(t, 1, err)
 			envelope := decodeEnvelope(t, stdout)
-			assert.Equal(t, tc.name, envelope.Command)
-			require.NotNil(t, envelope.Error)
-			assert.Equal(t, "NOT_JSON_CAPABLE", envelope.Error.Code)
-			assert.Empty(t, stderr, "the rejection is rendered as JSON on stdout, not plain text on stderr")
+			must.Eq(t, tc.name, envelope.Command)
+			must.NotNil(t, envelope.Error)
+			must.Eq(t, "NOT_JSON_CAPABLE", envelope.Error.Code)
+			must.Empty(t, stderr, "the rejection is rendered as JSON on stdout, not plain text on stderr")
 		})
 	}
 }
@@ -163,18 +163,18 @@ func TestJSONFlagBeforeCommandNameBooleanValues(t *testing.T) {
 		stdout, _, err := runLstk(t, testContext(t), t.TempDir(), env.With(env.DisableEvents, "1").With("PATH", t.TempDir()).With(env.Home, t.TempDir()), "--json=true", "aws", "s3", "ls")
 		requireExitCode(t, 1, err)
 		envelope := decodeEnvelope(t, stdout)
-		assert.Equal(t, "aws", envelope.Command)
-		require.NotNil(t, envelope.Error)
-		assert.Equal(t, "NOT_JSON_CAPABLE", envelope.Error.Code)
+		must.Eq(t, "aws", envelope.Command)
+		must.NotNil(t, envelope.Error)
+		must.Eq(t, "NOT_JSON_CAPABLE", envelope.Error.Code)
 	})
 
 	t.Run("--json=false before the command name is not rejected", func(t *testing.T) {
 		t.Parallel()
 		stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), env.With(env.DisableEvents, "1").With("PATH", t.TempDir()).With(env.Home, t.TempDir()), "--json=false", "aws", "s3", "ls")
-		require.Error(t, err)
+		must.Error(t, err)
 		combined := stdout + stderr
-		require.Contains(t, combined, "not found in PATH", "the wrapped tool should have run (and failed for its own, unrelated reason)")
-		require.NotContains(t, combined, "is not able to provide output in JSON format")
+		must.Contains(t, combined, "not found in PATH", "the wrapped tool should have run (and failed for its own, unrelated reason)")
+		must.NotContains(t, combined, "is not able to provide output in JSON format")
 	})
 
 	t.Run("a malformed value before the command name is rejected", func(t *testing.T) {
@@ -182,9 +182,9 @@ func TestJSONFlagBeforeCommandNameBooleanValues(t *testing.T) {
 		stdout, _, err := runLstk(t, testContext(t), t.TempDir(), env.With(env.DisableEvents, "1").With("PATH", t.TempDir()).With(env.Home, t.TempDir()), "--json=notabool", "aws", "s3", "ls")
 		requireExitCode(t, 1, err)
 		envelope := decodeEnvelope(t, stdout)
-		assert.Equal(t, "aws", envelope.Command)
-		require.NotNil(t, envelope.Error)
-		assert.Equal(t, "NOT_JSON_CAPABLE", envelope.Error.Code)
+		must.Eq(t, "aws", envelope.Command)
+		must.NotNil(t, envelope.Error)
+		must.Eq(t, "NOT_JSON_CAPABLE", envelope.Error.Code)
 	})
 }
 
@@ -196,13 +196,12 @@ func TestExtensionReceivesJSONFlagInContext(t *testing.T) {
 	environ := envWithPath(tmpHome, extDir)
 
 	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), environ, "--json", "hello", "--foo")
-	require.NoError(t, err, stderr)
-	require.Contains(t, stdout, "ARGS=[--foo]", "--json is consumed by lstk and conveyed via env, not forwarded")
-	require.Contains(t, stdout, "JSON=true")
-	// --json forces non-interactive rendering, so the extension sees that too.
-	require.Contains(t, stdout, "NON_INTERACTIVE=true")
+	must.NoError(t, err, stderr)
+	// --json is consumed by lstk and conveyed via env, not forwarded; it also
+	// forces non-interactive rendering, so the extension sees that too.
+	snap.Match(t, sanitizeOutput(stdout))
 
 	stdoutDefault, stderrDefault, errDefault := runLstk(t, testContext(t), t.TempDir(), environ, "hello", "--foo")
-	require.NoError(t, errDefault, stderrDefault)
-	require.Contains(t, stdoutDefault, "JSON=false")
+	must.NoError(t, errDefault, stderrDefault)
+	must.Contains(t, stdoutDefault, "JSON=false")
 }

@@ -7,9 +7,8 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/localstack/lstk/internal/must"
 	"github.com/localstack/lstk/test/integration/env"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 // queryCapture records the query string of the pod load/diff request the emulator
@@ -92,15 +91,15 @@ func TestSnapshotLoadPodVersionReachesWire(t *testing.T) {
 	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), versionedLoadEnv(t),
 		"--non-interactive", "--endpoint-url", srv.URL, "snapshot", "load", "pod:my-baseline:3",
 	)
-	require.NoError(t, err, "lstk snapshot load failed: %s", stderr)
+	must.NoError(t, err, "lstk snapshot load failed: %s", stderr)
 
 	called, path, query := cap.get()
-	require.True(t, called, "the pod load endpoint should have been called")
-	assert.Equal(t, "/_localstack/pods/my-baseline", path)
-	assert.Equal(t, "3", query.Get("version"))
-	assert.Equal(t, "account-region-merge", query.Get("merge"), "the default merge strategy still applies")
+	must.True(t, called, "the pod load endpoint should have been called")
+	must.Eq(t, "/_localstack/pods/my-baseline", path)
+	must.Eq(t, "3", query.Get("version"))
+	must.Eq(t, "account-region-merge", query.Get("merge"), "the default merge strategy still applies")
 
-	assert.Contains(t, stdout, "pod:my-baseline:3", "the loaded source should name the pinned version")
+	must.Contains(t, stdout, "pod:my-baseline:3", "the loaded source should name the pinned version")
 }
 
 // TestSnapshotLoadPodWithoutVersionOmitsParam: an unpinned ref must not send
@@ -114,14 +113,14 @@ func TestSnapshotLoadPodWithoutVersionOmitsParam(t *testing.T) {
 	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), versionedLoadEnv(t),
 		"--non-interactive", "--endpoint-url", srv.URL, "snapshot", "load", "pod:my-baseline",
 	)
-	require.NoError(t, err, "lstk snapshot load failed: %s", stderr)
+	must.NoError(t, err, "lstk snapshot load failed: %s", stderr)
 
 	called, _, query := cap.get()
-	require.True(t, called, "the pod load endpoint should have been called")
-	assert.False(t, query.Has("version"), "an unpinned load must not send a version parameter")
+	must.True(t, called, "the pod load endpoint should have been called")
+	must.False(t, query.Has("version"), "an unpinned load must not send a version parameter")
 
-	assert.Contains(t, stdout, "pod:my-baseline")
-	assert.NotContains(t, stdout, "pod:my-baseline:")
+	must.Contains(t, stdout, "pod:my-baseline")
+	must.NotContains(t, stdout, "pod:my-baseline:")
 }
 
 // TestLoadAliasAcceptsPodVersion: the root `lstk load` alias shares the REF
@@ -135,11 +134,11 @@ func TestLoadAliasAcceptsPodVersion(t *testing.T) {
 	_, stderr, err := runLstk(t, testContext(t), t.TempDir(), versionedLoadEnv(t),
 		"--non-interactive", "--endpoint-url", srv.URL, "load", "pod:my-baseline:2",
 	)
-	require.NoError(t, err, "lstk load failed: %s", stderr)
+	must.NoError(t, err, "lstk load failed: %s", stderr)
 
 	called, _, query := cap.get()
-	require.True(t, called, "the pod load endpoint should have been called")
-	assert.Equal(t, "2", query.Get("version"))
+	must.True(t, called, "the pod load endpoint should have been called")
+	must.Eq(t, "2", query.Get("version"))
 }
 
 // TestSnapshotLoadPodVersionDryRun: --dry-run previews the same version the load
@@ -153,15 +152,15 @@ func TestSnapshotLoadPodVersionDryRun(t *testing.T) {
 	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), versionedLoadEnv(t),
 		"--non-interactive", "--endpoint-url", srv.URL, "snapshot", "load", "pod:my-baseline:3", "--dry-run",
 	)
-	require.NoError(t, err, "lstk snapshot load --dry-run failed: %s", stderr)
+	must.NoError(t, err, "lstk snapshot load --dry-run failed: %s", stderr)
 
 	called, path, query := cap.get()
-	require.True(t, called, "the diff endpoint should have been called")
-	assert.Equal(t, "/_localstack/pods/my-baseline/diff", path)
-	assert.Equal(t, "3", query.Get("version"))
+	must.True(t, called, "the diff endpoint should have been called")
+	must.Eq(t, "/_localstack/pods/my-baseline/diff", path)
+	must.Eq(t, "3", query.Get("version"))
 
-	assert.Contains(t, stdout, "Dry-run results for pod:my-baseline:3")
-	assert.Contains(t, stdout, "No state was modified")
+	must.Contains(t, stdout, "Dry-run results for pod:my-baseline:3")
+	must.Contains(t, stdout, "No state was modified")
 }
 
 // TestSnapshotLoadPodVersionNotFound: the emulator's own message already names
@@ -180,10 +179,10 @@ func TestSnapshotLoadPodVersionNotFound(t *testing.T) {
 	requireExitCode(t, 1, err)
 
 	_, _, query := cap.get()
-	assert.Equal(t, "99", query.Get("version"))
+	must.Eq(t, "99", query.Get("version"))
 
-	assert.Contains(t, stdout, "maximum version available in the remote storage is 3")
-	assert.Contains(t, stdout, "lstk snapshot versions pod:my-baseline")
+	must.Contains(t, stdout, "maximum version available in the remote storage is 3")
+	must.Contains(t, stdout, "lstk snapshot versions pod:my-baseline")
 }
 
 // TestSnapshotLoadRejectsMalformedVersion: a colon in a ref is unambiguously a
@@ -205,8 +204,8 @@ func TestSnapshotLoadRejectsMalformedVersion(t *testing.T) {
 				"--non-interactive", "--endpoint-url", srv.URL, "snapshot", "load", ref,
 			)
 			requireExitCode(t, 1, err)
-			assert.Contains(t, stderr, "invalid version")
-			assert.NotContains(t, stderr, "invalid pod name")
+			must.Contains(t, stderr, "invalid version")
+			must.NotContains(t, stderr, "invalid pod name")
 		})
 	}
 }
@@ -221,7 +220,7 @@ func TestSnapshotLoadS3RejectsPodVersion(t *testing.T) {
 		"--non-interactive", "snapshot", "load", "my-pod:3", "s3://bucket/prefix",
 	)
 	requireExitCode(t, 1, err)
-	assert.Contains(t, stderr, "S3 remotes do not support snapshot versions")
+	must.Contains(t, stderr, "S3 remotes do not support snapshot versions")
 }
 
 // TestSnapshotSaveRejectsPodVersion: the platform assigns a version on every
@@ -235,8 +234,8 @@ func TestSnapshotSaveRejectsPodVersion(t *testing.T) {
 			"--non-interactive", "snapshot", "save", "pod:my-baseline:3",
 		)
 		requireExitCode(t, 1, err)
-		assert.Contains(t, stderr, "the platform assigns the version on each save")
-		assert.NotContains(t, stderr, "invalid pod name")
+		must.Contains(t, stderr, "the platform assigns the version on each save")
+		must.NotContains(t, stderr, "invalid pod name")
 	})
 
 	t.Run("s3 remote", func(t *testing.T) {
@@ -245,7 +244,7 @@ func TestSnapshotSaveRejectsPodVersion(t *testing.T) {
 			"--non-interactive", "snapshot", "save", "my-pod:3", "s3://bucket/prefix",
 		)
 		requireExitCode(t, 1, err)
-		assert.Contains(t, stderr, "S3 remotes do not support snapshot versions")
+		must.Contains(t, stderr, "S3 remotes do not support snapshot versions")
 	})
 }
 
@@ -259,7 +258,7 @@ func TestSnapshotRemoveRejectsPodVersion(t *testing.T) {
 		"--non-interactive", "snapshot", "remove", "pod:my-baseline:3", "--force",
 	)
 	requireExitCode(t, 1, err)
-	assert.Contains(t, stderr, "drop the ':3'")
+	must.Contains(t, stderr, "drop the ':3'")
 }
 
 // TestStartSnapshotFlagAcceptsPodVersion: --snapshot goes through the same REF
@@ -272,5 +271,5 @@ func TestStartSnapshotFlagAcceptsPodVersion(t *testing.T) {
 		"--non-interactive", "start", "--snapshot", "pod:my-baseline:abc",
 	)
 	requireExitCode(t, 1, err)
-	assert.Contains(t, stderr, "invalid version")
+	must.Contains(t, stderr, "invalid version")
 }

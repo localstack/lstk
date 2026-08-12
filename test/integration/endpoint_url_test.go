@@ -15,9 +15,9 @@ import (
 	"testing"
 
 	"github.com/creack/pty"
+	"github.com/localstack/lstk/internal/must"
+	"github.com/localstack/lstk/internal/snap"
 	"github.com/localstack/lstk/test/integration/env"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 // unreachableDockerHost points DOCKER_HOST at a socket that can't possibly
@@ -69,7 +69,7 @@ echo "ENDPOINT:$2"
 shift 2
 echo "ARGS:$@"
 `
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "aws"), []byte(script), 0755))
+	must.NoError(t, os.WriteFile(filepath.Join(dir, "aws"), []byte(script), 0755))
 	return dir
 }
 
@@ -87,9 +87,9 @@ func TestAWSCommandEndpointURLNoDockerRequired(t *testing.T) {
 	e = append(e, unreachableDockerHost)
 
 	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), e, "--endpoint-url", srv.URL, "aws", "s3", "ls")
-	require.NoError(t, err, "stderr: %s", stderr)
-	assert.Contains(t, stdout, "ENDPOINT:"+srv.URL)
-	assert.Contains(t, stdout, "ARGS:s3 ls")
+	must.NoError(t, err, "stderr: %s", stderr)
+	must.Contains(t, stdout, "ENDPOINT:"+srv.URL)
+	must.Contains(t, stdout, "ARGS:s3 ls")
 }
 
 // TestAWSCommandEndpointURLAfterSubcommandPassesThrough proves the aws-CLI
@@ -111,13 +111,13 @@ func TestAWSCommandEndpointURLAfterSubcommandPassesThrough(t *testing.T) {
 
 	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), e,
 		"--endpoint-url", srv.URL, "aws", "--endpoint-url", "http://127.0.0.1:9", "s3", "ls")
-	require.NoError(t, err, "stderr: %s", stderr)
+	must.NoError(t, err, "stderr: %s", stderr)
 	// lstk's own resolution used the pre-command mock — proven by succeeding
 	// at all with DOCKER_HOST broken.
-	assert.Contains(t, stdout, "ENDPOINT:"+srv.URL)
+	must.Contains(t, stdout, "ENDPOINT:"+srv.URL)
 	// The user's own post-command --endpoint-url reached the wrapped aws
 	// binary untouched, appearing in its forwarded args.
-	assert.Contains(t, stdout, "ARGS:--endpoint-url http://127.0.0.1:9 s3 ls")
+	must.Contains(t, stdout, "ARGS:--endpoint-url http://127.0.0.1:9 s3 ls")
 }
 
 // TestLogsRejectsExplicitEndpointURL proves logs (a Docker-lifecycle command
@@ -132,9 +132,9 @@ func TestLogsRejectsExplicitEndpointURL(t *testing.T) {
 	// (stdout), with a silent error returned so the top-level handler doesn't
 	// print a second copy to stderr.
 	stdout, _, err := runLstk(t, testContext(t), t.TempDir(), e, "logs", "--endpoint-url", "http://localhost:4566")
-	require.Error(t, err)
-	assert.Contains(t, stdout, "logs")
-	assert.Contains(t, stdout, "does not support --endpoint-url")
+	must.Error(t, err)
+	must.Contains(t, stdout, "logs")
+	must.Contains(t, stdout, "does not support --endpoint-url")
 }
 
 // TestVolumePathRejectsExplicitEndpointURL mirrors the logs case for the
@@ -144,8 +144,8 @@ func TestVolumePathRejectsExplicitEndpointURL(t *testing.T) {
 	e := env.With(env.DisableEvents, "1").With(env.Home, t.TempDir())
 
 	stdout, _, err := runLstk(t, testContext(t), t.TempDir(), e, "volume", "path", "--endpoint-url", "http://localhost:4566")
-	require.Error(t, err)
-	assert.Contains(t, stdout, "does not support --endpoint-url")
+	must.Error(t, err)
+	must.Contains(t, stdout, "does not support --endpoint-url")
 }
 
 // TestStartRejectsExplicitEndpointURL proves `start` (previously missing from
@@ -157,9 +157,9 @@ func TestStartRejectsExplicitEndpointURL(t *testing.T) {
 	e = append(e, unreachableDockerHost)
 
 	stdout, _, err := runLstk(t, testContext(t), t.TempDir(), e, "start", "--endpoint-url", "http://localhost:4566")
-	require.Error(t, err)
-	assert.Contains(t, stdout, "start")
-	assert.Contains(t, stdout, "does not support --endpoint-url")
+	must.Error(t, err)
+	must.Contains(t, stdout, "start")
+	must.Contains(t, stdout, "does not support --endpoint-url")
 }
 
 // The following tests prove the corrected behavior from design.md's Decision
@@ -175,10 +175,10 @@ func TestLogsRejectsAmbientEndpointURL(t *testing.T) {
 	e = append(e, unreachableDockerHost)
 
 	stdout, _, err := runLstk(t, testContext(t), t.TempDir(), e, "logs")
-	require.Error(t, err)
-	assert.Contains(t, stdout, "logs")
-	assert.Contains(t, stdout, "does not support LSTK_ENDPOINT_URL")
-	assert.Contains(t, stdout, "LSTK_ENDPOINT_URL is set")
+	must.Error(t, err)
+	must.Contains(t, stdout, "logs")
+	must.Contains(t, stdout, "does not support LSTK_ENDPOINT_URL")
+	must.Contains(t, stdout, "LSTK_ENDPOINT_URL is set")
 }
 
 func TestStopRejectsAmbientEndpointURL(t *testing.T) {
@@ -187,8 +187,8 @@ func TestStopRejectsAmbientEndpointURL(t *testing.T) {
 	e = append(e, unreachableDockerHost)
 
 	stdout, _, err := runLstk(t, testContext(t), t.TempDir(), e, "stop")
-	require.Error(t, err)
-	assert.Contains(t, stdout, "does not support LSTK_ENDPOINT_URL")
+	must.Error(t, err)
+	must.Contains(t, stdout, "does not support LSTK_ENDPOINT_URL")
 }
 
 func TestRestartRejectsAmbientEndpointURL(t *testing.T) {
@@ -197,9 +197,9 @@ func TestRestartRejectsAmbientEndpointURL(t *testing.T) {
 	e = append(e, unreachableDockerHost)
 
 	stdout, _, err := runLstk(t, testContext(t), t.TempDir(), e, "restart")
-	require.Error(t, err)
-	assert.Contains(t, stdout, "does not support AWS_ENDPOINT_URL")
-	assert.Contains(t, stdout, "AWS_ENDPOINT_URL is set")
+	must.Error(t, err)
+	must.Contains(t, stdout, "does not support AWS_ENDPOINT_URL")
+	must.Contains(t, stdout, "AWS_ENDPOINT_URL is set")
 }
 
 func TestVolumePathRejectsAmbientEndpointURL(t *testing.T) {
@@ -207,8 +207,8 @@ func TestVolumePathRejectsAmbientEndpointURL(t *testing.T) {
 	e := env.With(env.DisableEvents, "1").With(env.Home, t.TempDir()).With("LSTK_ENDPOINT_URL", "http://localhost:4566")
 
 	stdout, _, err := runLstk(t, testContext(t), t.TempDir(), e, "volume", "path")
-	require.Error(t, err)
-	assert.Contains(t, stdout, "does not support LSTK_ENDPOINT_URL")
+	must.Error(t, err)
+	must.Contains(t, stdout, "does not support LSTK_ENDPOINT_URL")
 }
 
 func TestVolumeClearRejectsAmbientEndpointURL(t *testing.T) {
@@ -216,8 +216,8 @@ func TestVolumeClearRejectsAmbientEndpointURL(t *testing.T) {
 	e := env.With(env.DisableEvents, "1").With(env.Home, t.TempDir()).With("LSTK_ENDPOINT_URL", "http://localhost:4566")
 
 	stdout, _, err := runLstk(t, testContext(t), t.TempDir(), e, "volume", "clear")
-	require.Error(t, err)
-	assert.Contains(t, stdout, "does not support LSTK_ENDPOINT_URL")
+	must.Error(t, err)
+	must.Contains(t, stdout, "does not support LSTK_ENDPOINT_URL")
 }
 
 func TestStartRejectsAmbientEndpointURL(t *testing.T) {
@@ -226,9 +226,9 @@ func TestStartRejectsAmbientEndpointURL(t *testing.T) {
 	e = append(e, unreachableDockerHost)
 
 	stdout, _, err := runLstk(t, testContext(t), t.TempDir(), e, "start")
-	require.Error(t, err)
-	assert.Contains(t, stdout, "start")
-	assert.Contains(t, stdout, "does not support LSTK_ENDPOINT_URL")
+	must.Error(t, err)
+	must.Contains(t, stdout, "start")
+	must.Contains(t, stdout, "does not support LSTK_ENDPOINT_URL")
 }
 
 // TestSnapshotShowIgnoresEndpointURL proves `snapshot show` silently ignores
@@ -241,9 +241,9 @@ func TestSnapshotShowIgnoresEndpointURL(t *testing.T) {
 	e := env.With(env.DisableEvents, "1").With(env.Home, t.TempDir()).With(env.APIEndpoint, "http://127.0.0.1:1")
 
 	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), e, "snapshot", "show", "pod:my-baseline", "--endpoint-url", "http://localhost:4566")
-	require.Error(t, err)
-	assert.NotContains(t, stdout, "does not support --endpoint-url")
-	assert.NotContains(t, stderr, "does not support --endpoint-url")
+	must.Error(t, err)
+	must.NotContains(t, stdout, "does not support --endpoint-url")
+	must.NotContains(t, stderr, "does not support --endpoint-url")
 }
 
 // TestSnapshotListBareIgnoresEndpointURL mirrors the show case for `snapshot
@@ -253,9 +253,9 @@ func TestSnapshotListBareIgnoresEndpointURL(t *testing.T) {
 	e := env.With(env.DisableEvents, "1").With(env.Home, t.TempDir()).With(env.APIEndpoint, "http://127.0.0.1:1")
 
 	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), e, "snapshot", "list", "--endpoint-url", "http://localhost:4566")
-	require.Error(t, err)
-	assert.NotContains(t, stdout, "does not support --endpoint-url")
-	assert.NotContains(t, stderr, "does not support --endpoint-url")
+	must.Error(t, err)
+	must.NotContains(t, stdout, "does not support --endpoint-url")
+	must.NotContains(t, stderr, "does not support --endpoint-url")
 }
 
 // TestStatusEndpointURLRendersReducedOutput proves `status` skips Docker
@@ -270,12 +270,10 @@ func TestStatusEndpointURLRendersReducedOutput(t *testing.T) {
 	e = append(e, unreachableDockerHost)
 
 	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), e, "--endpoint-url", srv.URL, "status")
-	require.NoError(t, err, "stderr: %s", stderr)
-	assert.Contains(t, stdout, "running")
-	assert.Contains(t, stdout, srv.URL[len("http://"):])
-	assert.Contains(t, stdout, "3.0.2")
-	assert.NotContains(t, stdout, "Container:")
-	assert.NotContains(t, stdout, "Uptime:")
+	must.NoError(t, err, "stderr: %s", stderr)
+	// The snapshot pins the reduced remote-status card: running headline and
+	// endpoint only — no Container/Uptime lines, which need local Docker.
+	snap.Match(t, sanitizeOutput(stdout))
 }
 
 // TestStatusEndpointURLShowsResources proves the resources bug fix: `status`
@@ -307,11 +305,11 @@ func TestStatusEndpointURLShowsResources(t *testing.T) {
 	e = append(e, unreachableDockerHost)
 
 	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), e, "--endpoint-url", srv.URL, "status")
-	require.NoError(t, err, "stderr: %s", stderr)
-	assert.Contains(t, stdout, "SERVICE")
-	assert.Contains(t, stdout, "RESOURCE")
-	assert.Contains(t, stdout, "S3")
-	assert.Contains(t, stdout, "my-test-bucket")
+	must.NoError(t, err, "stderr: %s", stderr)
+	must.Contains(t, stdout, "SERVICE")
+	must.Contains(t, stdout, "RESOURCE")
+	must.Contains(t, stdout, "S3")
+	must.Contains(t, stdout, "my-test-bucket")
 }
 
 // TestStatusEndpointURLInteractiveRendersTUI proves `status` against an
@@ -343,12 +341,12 @@ func TestStatusEndpointURLInteractiveRendersTUI(t *testing.T) {
 	defer srv.Close()
 
 	binPath, err := filepath.Abs(binaryPath())
-	require.NoError(t, err)
+	must.NoError(t, err)
 
 	cmd := exec.CommandContext(testContext(t), binPath, "--endpoint-url", srv.URL, "status")
 	cmd.Env = append(env.Environ(testEnvWithHome(t.TempDir(), "")).With(env.DisableEvents, "1"), unreachableDockerHost)
 	ptmx, err := pty.Start(cmd)
-	require.NoError(t, err, "failed to start command in PTY")
+	must.NoError(t, err, "failed to start command in PTY")
 	t.Cleanup(func() { _ = ptmx.Close() })
 
 	out := &syncBuffer{}
@@ -357,7 +355,7 @@ func TestStatusEndpointURLInteractiveRendersTUI(t *testing.T) {
 		_, _ = io.Copy(out, ptmx)
 		close(outputCh)
 	}()
-	require.NoError(t, cmd.Wait())
+	must.NoError(t, cmd.Wait())
 	<-outputCh
 
 	lines := ptyLines(out.String())
@@ -368,15 +366,15 @@ func TestStatusEndpointURLInteractiveRendersTUI(t *testing.T) {
 			break
 		}
 	}
-	require.NotEqual(t, -1, summary, "resource summary should be rendered, got:\n%s", strings.Join(lines, "\n"))
-	require.Greater(t, summary, 0)
-	assert.Empty(t, lines[summary-1], "TUI puts a blank line before the resource summary")
-	assert.Empty(t, lines[summary+1], "TUI puts a blank line after the resource summary")
+	must.NotEq(t, -1, summary, "resource summary should be rendered, got:\n%s", strings.Join(lines, "\n"))
+	must.Greater(t, summary, 0)
+	must.Empty(t, lines[summary-1], "TUI puts a blank line before the resource summary")
+	must.Empty(t, lines[summary+1], "TUI puts a blank line after the resource summary")
 
 	joined := strings.Join(lines, "\n")
-	assert.Contains(t, joined, "my-test-bucket")
-	assert.NotContains(t, joined, "Container:")
-	assert.NotContains(t, joined, "Uptime:")
+	must.Contains(t, joined, "my-test-bucket")
+	must.NotContains(t, joined, "Container:")
+	must.NotContains(t, joined, "Uptime:")
 }
 
 // ptyLines splits raw PTY output into display lines, dropping ANSI escape
@@ -408,9 +406,9 @@ func TestStatusUnreachableEndpointURLFailsClosed(t *testing.T) {
 	e = append(e, unreachableDockerHost)
 
 	_, stderr, err := runLstk(t, testContext(t), t.TempDir(), e, "--endpoint-url", notLocalStack.URL, "status")
-	require.Error(t, err)
-	assert.Contains(t, stderr, "could not reach")
-	assert.NotContains(t, stderr, "lstk start")
+	must.Error(t, err)
+	must.Contains(t, stderr, "could not reach")
+	must.NotContains(t, stderr, "lstk start")
 }
 
 // TestCDKAWSEndpointURLBypassesDockerCheck proves the BREAKING change:
@@ -428,8 +426,8 @@ func TestCDKAWSEndpointURLBypassesDockerCheck(t *testing.T) {
 	e = append(e, unreachableDockerHost)
 
 	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), e, "cdk", "deploy", "MyStack")
-	require.NoError(t, err, "stderr: %s", stderr)
-	assert.Contains(t, stdout, fmt.Sprintf("ENV_AWS_ENDPOINT_URL=%s", srv.URL))
+	must.NoError(t, err, "stderr: %s", stderr)
+	must.Contains(t, stdout, fmt.Sprintf("ENV_AWS_ENDPOINT_URL=%s", srv.URL))
 }
 
 // TestCDKAWSEndpointURLWrongTypeFails proves the type-detection gate: an
@@ -454,7 +452,7 @@ func TestCDKAWSEndpointURLWrongTypeFails(t *testing.T) {
 	e = append(e, unreachableDockerHost)
 
 	stdout, _, err := runLstk(t, testContext(t), t.TempDir(), e, "--endpoint-url", azureLike.URL, "cdk", "deploy", "MyStack")
-	require.Error(t, err)
-	assert.Contains(t, stdout, "requires the AWS emulator")
-	assert.Contains(t, stdout, "Azure")
+	must.Error(t, err)
+	must.Contains(t, stdout, "requires the AWS emulator")
+	must.Contains(t, stdout, "Azure")
 }

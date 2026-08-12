@@ -5,8 +5,8 @@ import (
 	"os"
 	"testing"
 
+	"github.com/localstack/lstk/internal/must"
 	"github.com/localstack/lstk/test/integration/env"
-	"github.com/stretchr/testify/require"
 )
 
 // Helpers for e2e tests that need a *real* LocalStack — one that serves the AWS
@@ -53,7 +53,7 @@ func startRealLocalStack(t *testing.T, ctx context.Context, token string) {
 func startRealLocalStackWithConfig(t *testing.T, ctx context.Context, token, configPath string) {
 	t.Helper()
 	home, err := os.MkdirTemp("", "lstk-e2e-home")
-	require.NoError(t, err)
+	must.NoError(t, err)
 	t.Cleanup(func() { _ = os.RemoveAll(home) })
 
 	e := env.With(env.DisableEvents, "1").With(env.Home, home).With(env.AuthToken, token)
@@ -63,5 +63,5 @@ func startRealLocalStackWithConfig(t *testing.T, ctx context.Context, token, con
 	}
 	args = append(args, "start")
 	_, stderr, err := runLstk(t, ctx, "", e, args...)
-	require.NoError(t, err, "lstk start failed: %s", stderr)
+	must.NoError(t, err, "lstk start failed: %s", stderr)
 }

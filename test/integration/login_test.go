@@ -16,9 +16,8 @@ import (
 	"time"
 
 	"github.com/creack/pty"
+	"github.com/localstack/lstk/internal/must"
 	"github.com/localstack/lstk/test/integration/env"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 // createMockAPIServer creates a mock LocalStack API server for testing
@@ -33,9 +32,9 @@ func createMockAPIServer(t *testing.T, licenseToken string, confirmed bool) *htt
 			// Validate request payload
 			var payload map[string]string
 			err := json.NewDecoder(r.Body).Decode(&payload)
-			require.NoError(t, err, "failed to decode auth request payload")
-			assert.Equal(t, "lstk", payload["actor"], "actor should be lstk")
-			assert.NotEmpty(t, payload["version"], "version should not be empty")
+			must.NoError(t, err, "failed to decode auth request payload")
+			must.Eq(t, "lstk", payload["actor"], "actor should be lstk")
+			must.NotEmpty(t, payload["version"], "version should not be empty")
 
 			w.WriteHeader(http.StatusCreated)
 			err = json.NewEncoder(w).Encode(map[string]string{
@@ -43,14 +42,14 @@ func createMockAPIServer(t *testing.T, licenseToken string, confirmed bool) *htt
 				"code":           "TEST123",
 				"exchange_token": exchangeToken,
 			})
-			require.NoError(t, err)
+			must.NoError(t, err)
 
 		case r.Method == "GET" && r.URL.Path == fmt.Sprintf("/v1/auth/request/%s", authReqID):
 			w.WriteHeader(http.StatusOK)
 			err := json.NewEncoder(w).Encode(map[string]bool{
 				"confirmed": confirmed,
 			})
-			require.NoError(t, err)
+			must.NoError(t, err)
 
 		case r.Method == "POST" && r.URL.Path == fmt.Sprintf("/v1/auth/request/%s/exchange", authReqID):
 			w.WriteHeader(http.StatusOK)
@@ -58,14 +57,14 @@ func createMockAPIServer(t *testing.T, licenseToken string, confirmed bool) *htt
 				"id":         authReqID,
 				"auth_token": bearerToken,
 			})
-			require.NoError(t, err)
+			must.NoError(t, err)
 
 		case r.Method == "GET" && r.URL.Path == "/v1/license/credentials":
 			w.WriteHeader(http.StatusOK)
 			err := json.NewEncoder(w).Encode(map[string]string{
 				"token": licenseToken,
 			})
-			require.NoError(t, err)
+			must.NoError(t, err)
 
 		case r.Method == "POST" && r.URL.Path == "/v1/license/request":
 			w.WriteHeader(http.StatusOK)
@@ -88,7 +87,7 @@ func fakeBrowserOpener(t *testing.T, environ env.Environ) (env.Environ, func() s
 	record := filepath.Join(dir, "opened-url")
 	script := fmt.Sprintf("#!/bin/sh\nprintf '%%s' \"$1\" > %q\n", record)
 	for _, name := range []string{"open", "xdg-open", "x-www-browser", "www-browser"} {
-		require.NoError(t, os.WriteFile(filepath.Join(dir, name), []byte(script), 0o755))
+		must.NoError(t, os.WriteFile(filepath.Join(dir, name), []byte(script), 0o755))
 	}
 	environ = environ.With(env.Path, dir+string(os.PathListSeparator)+os.Getenv("PATH"))
 	return environ, func() string {
@@ -122,7 +121,7 @@ func TestDeviceFlowSuccess(t *testing.T) {
 	cmd.Env = environ
 
 	ptmx, err := pty.Start(cmd)
-	require.NoError(t, err, "failed to start command in PTY")
+	must.NoError(t, err, "failed to start command in PTY")
 	defer func() { _ = ptmx.Close() }()
 
 	output := &syncBuffer{}
@@ -133,33 +132,33 @@ func TestDeviceFlowSuccess(t *testing.T) {
 	}()
 
 	// Wait for the auth completion prompt, then press ENTER.
-	require.Eventually(t, func() bool {
+	must.Eventually(t, func() bool {
 		return bytes.Contains(output.Bytes(), []byte("Press any key when complete"))
 	}, 10*time.Second, 100*time.Millisecond, "auth completion prompt should appear")
 	_, err = ptmx.Write([]byte("\r"))
-	require.NoError(t, err)
+	must.NoError(t, err)
 
 	// Wait for process to complete
 	err = cmd.Wait()
 	<-outputCh
 
 	out := output.String()
-	require.NoError(t, err, "login should succeed: %s", out)
+	must.NoError(t, err, "login should succeed: %s", out)
 	requireExitCode(t, 0, err)
-	assert.Equal(t, mockServer.URL+"/auth/request/test-auth-req-id?code=TEST123", openedURL(), "login should open the auth URL in a browser")
-	assert.Contains(t, out, "Opening browser to login...")
-	assert.Contains(t, out, "Browser didn't open? Visit")
-	assert.Contains(t, out, "/auth/request/test-auth-req-id?code=TEST123")
-	assert.Contains(t, out, "Waiting for authorization")
-	assert.Contains(t, out, "Checking if auth request is confirmed")
-	assert.Contains(t, out, "Auth request confirmed")
-	assert.Contains(t, out, "Fetching license token")
-	assert.Contains(t, out, "Login successful")
+	must.Eq(t, mockServer.URL+"/auth/request/test-auth-req-id?code=TEST123", openedURL(), "login should open the auth URL in a browser")
+	must.Contains(t, out, "Opening browser to login...")
+	must.Contains(t, out, "Browser didn't open? Visit")
+	must.Contains(t, out, "/auth/request/test-auth-req-id?code=TEST123")
+	must.Contains(t, out, "Waiting for authorization")
+	must.Contains(t, out, "Checking if auth request is confirmed")
+	must.Contains(t, out, "Auth request confirmed")
+	must.Contains(t, out, "Fetching license token")
+	must.Contains(t, out, "Login successful")
 
 	// Verify token was stored in keyring
 	storedToken, err := GetAuthTokenFromKeyring()
-	require.NoError(t, err)
-	assert.Equal(t, licenseToken, storedToken)
+	must.NoError(t, err)
+	must.Eq(t, licenseToken, storedToken)
 	assertCommandTelemetry(t, events, "login", 0)
 }
 
@@ -185,7 +184,7 @@ func TestDeviceFlowFailure_RequestNotConfirmed(t *testing.T) {
 	cmd.Env = environ
 
 	ptmx, err := pty.Start(cmd)
-	require.NoError(t, err, "failed to start command in PTY")
+	must.NoError(t, err, "failed to start command in PTY")
 	defer func() { _ = ptmx.Close() }()
 
 	output := &syncBuffer{}
@@ -196,30 +195,30 @@ func TestDeviceFlowFailure_RequestNotConfirmed(t *testing.T) {
 	}()
 
 	// Wait for the auth completion prompt, then press ENTER.
-	require.Eventually(t, func() bool {
+	must.Eventually(t, func() bool {
 		return bytes.Contains(output.Bytes(), []byte("Press any key when complete"))
 	}, 10*time.Second, 100*time.Millisecond, "auth completion prompt should appear")
 	_, err = ptmx.Write([]byte("\r"))
-	require.NoError(t, err)
+	must.NoError(t, err)
 
 	// Wait for process to complete
 	err = cmd.Wait()
 	<-outputCh
 
 	out := output.String()
-	require.Error(t, err, "expected login to fail when request not confirmed")
+	must.Error(t, err, "expected login to fail when request not confirmed")
 	requireExitCode(t, 1, err)
-	assert.Equal(t, mockServer.URL+"/auth/request/test-auth-req-id?code=TEST123", openedURL(), "login should open the auth URL in a browser")
-	assert.Contains(t, out, "Opening browser to login...")
-	assert.Contains(t, out, "Browser didn't open? Visit")
-	assert.Contains(t, out, "/auth/request/test-auth-req-id?code=TEST123")
-	assert.Contains(t, out, "Waiting for authorization")
-	assert.Contains(t, out, "Checking if auth request is confirmed")
-	assert.Contains(t, out, "auth request not confirmed")
+	must.Eq(t, mockServer.URL+"/auth/request/test-auth-req-id?code=TEST123", openedURL(), "login should open the auth URL in a browser")
+	must.Contains(t, out, "Opening browser to login...")
+	must.Contains(t, out, "Browser didn't open? Visit")
+	must.Contains(t, out, "/auth/request/test-auth-req-id?code=TEST123")
+	must.Contains(t, out, "Waiting for authorization")
+	must.Contains(t, out, "Checking if auth request is confirmed")
+	must.Contains(t, out, "auth request not confirmed")
 
 	// Verify no token was stored in keyring
 	_, err = GetAuthTokenFromKeyring()
-	assert.Error(t, err, "no token should be stored when login fails")
+	must.Error(t, err, "no token should be stored when login fails")
 	assertCommandTelemetry(t, events, "login", 1)
 }
 
@@ -232,11 +231,11 @@ func TestLoginShortCircuitsWhenEnvTokenSet(t *testing.T) {
 	environ := append(testEnvWithHome(t.TempDir(), ""), string(env.AuthToken)+"=fake-env-token")
 
 	out, err := runLstkInPTY(t, testContext(t), environ, "login")
-	require.NoError(t, err, "login should succeed when env token is set: %s", out)
+	must.NoError(t, err, "login should succeed when env token is set: %s", out)
 	requireExitCode(t, 0, err)
-	assert.Contains(t, out, "You're already logged in")
-	assert.NotContains(t, out, "Opening browser")
-	assert.NotContains(t, out, "Waiting for authorization")
+	must.Contains(t, out, "You're already logged in")
+	must.NotContains(t, out, "Opening browser")
+	must.NotContains(t, out, "Waiting for authorization")
 }
 
 func TestLoginShortCircuitsWhenStoredTokenExists(t *testing.T) {
@@ -247,15 +246,15 @@ func TestLoginShortCircuitsWhenStoredTokenExists(t *testing.T) {
 
 	tmpHome := t.TempDir()
 	tokenDir := filepath.Join(tmpHome, ".config", "lstk")
-	require.NoError(t, os.MkdirAll(tokenDir, 0700))
-	require.NoError(t, os.WriteFile(filepath.Join(tokenDir, "auth-token"), []byte("stored-token"), 0600))
+	must.NoError(t, os.MkdirAll(tokenDir, 0700))
+	must.NoError(t, os.WriteFile(filepath.Join(tokenDir, "auth-token"), []byte("stored-token"), 0600))
 
 	environ := env.Environ(testEnvWithHome(tmpHome, "")).Without(env.AuthToken)
 
 	out, err := runLstkInPTY(t, testContext(t), environ, "login")
-	require.NoError(t, err, "login should succeed when stored token exists: %s", out)
+	must.NoError(t, err, "login should succeed when stored token exists: %s", out)
 	requireExitCode(t, 0, err)
-	assert.Contains(t, out, "You're already logged in")
-	assert.NotContains(t, out, "Opening browser")
-	assert.NotContains(t, out, "Waiting for authorization")
+	must.Contains(t, out, "You're already logged in")
+	must.NotContains(t, out, "Opening browser")
+	must.NotContains(t, out, "Waiting for authorization")
 }

@@ -13,9 +13,8 @@ import (
 	"time"
 
 	"github.com/creack/pty"
+	"github.com/localstack/lstk/internal/must"
 	"github.com/localstack/lstk/test/integration/env"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 // End-to-end tests for `lstk az` that exercise the *real* Azure CLI against a
@@ -81,27 +80,27 @@ func TestAzE2ERealCLIOnPTYPreservesOutput(t *testing.T) {
 	ctx := testContext(t)
 
 	_, stderr, err := runLstk(t, ctx, workDir, baseEnv, "start")
-	require.NoError(t, err, "lstk start failed: %s", stderr)
+	must.NoError(t, err, "lstk start failed: %s", stderr)
 
 	// Registers the LocalStack cloud in an isolated AZURE_CONFIG_DIR and writes
 	// the setup marker `lstk az` requires. Non-interactive because runLstk is not
 	// on a terminal.
 	_, stderr, err = runLstk(t, ctx, workDir, baseEnv, "setup", "azure")
-	require.NoError(t, err, "lstk setup azure failed: %s", stderr)
+	must.NoError(t, err, "lstk setup azure failed: %s", stderr)
 
 	// Pipe path: no PTY, so no CR at all, and the JSON is byte-clean.
 	pipedOut, stderr, err := runLstk(t, ctx, workDir, baseEnv, "az", "cloud", "show", "-o", "json")
-	require.NoError(t, err, "lstk az cloud show failed: %s", stderr)
-	assert.NotContains(t, pipedOut, "\r", "a redirected stdout must stay a pipe, so the Azure CLI emits bare LFs")
-	assert.Equal(t, "LocalStack", cloudNameFromJSON(t, pipedOut))
+	must.NoError(t, err, "lstk az cloud show failed: %s", stderr)
+	must.NotContains(t, pipedOut, "\r", "a redirected stdout must stay a pipe, so the Azure CLI emits bare LFs")
+	must.Eq(t, "LocalStack", cloudNameFromJSON(t, pipedOut))
 
 	// PTY path: the real az ran on a terminal, and its output is still valid JSON
 	// once the PTY's CRs are stripped — the property a `lstk az ... -o json`
 	// consumer depends on.
 	ptyOut := runLstkAzInPTY(t, ctx, workDir, baseEnv, "az", "cloud", "show", "-o", "json")
-	assert.True(t, hasInnerPTYLineEndings(ptyOut),
+	must.True(t, hasInnerPTYLineEndings(ptyOut),
 		"the real Azure CLI must run on a PTY when lstk's stdout and stderr are terminals (DEVX-1028); got:\n%q", ptyOut)
-	assert.Equal(t, "LocalStack", cloudNameFromJSON(t, ptyOut))
+	must.Eq(t, "LocalStack", cloudNameFromJSON(t, ptyOut))
 }
 
 // cloudNameFromJSON extracts .name from an `az cloud show -o json` payload,
@@ -111,12 +110,12 @@ func cloudNameFromJSON(t *testing.T, out string) string {
 	t.Helper()
 	clean := strings.ReplaceAll(out, "\r", "")
 	start := strings.Index(clean, "{")
-	require.GreaterOrEqual(t, start, 0, "no JSON object in az output:\n%q", out)
+	must.GreaterOrEqual(t, start, 0, "no JSON object in az output:\n%q", out)
 
 	var payload struct {
 		Name string `json:"name"`
 	}
-	require.NoError(t, json.Unmarshal([]byte(clean[start:]), &payload),
+	must.NoError(t, json.Unmarshal([]byte(clean[start:]), &payload),
 		"az output is not valid JSON after stripping CRs:\n%q", clean[start:])
 	return payload.Name
 }
@@ -127,14 +126,14 @@ func cloudNameFromJSON(t *testing.T, out string) string {
 func runLstkAzInPTY(t *testing.T, ctx context.Context, workDir string, environ []string, args ...string) string {
 	t.Helper()
 	binPath, err := filepath.Abs(binaryPath())
-	require.NoError(t, err)
+	must.NoError(t, err)
 
 	cmd := exec.CommandContext(ctx, binPath, args...)
 	cmd.Dir = workDir
 	cmd.Env = environ
 
 	ptmx, err := pty.Start(cmd)
-	require.NoError(t, err, "failed to start command in PTY")
+	must.NoError(t, err, "failed to start command in PTY")
 	t.Cleanup(func() { _ = ptmx.Close() })
 
 	out := &syncBuffer{}
@@ -152,7 +151,7 @@ func runLstkAzInPTY(t *testing.T, ctx context.Context, workDir string, environ [
 		_ = cmd.Process.Kill()
 		err = <-waitErr
 	}
-	require.NoError(t, err, "lstk %v failed on a PTY; output:\n%s", args, out.String())
+	must.NoError(t, err, "lstk %v failed on a PTY; output:\n%s", args, out.String())
 
 	// Let the copier drain the slave's remaining bytes before reading.
 	select {

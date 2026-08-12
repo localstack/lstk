@@ -8,9 +8,8 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/localstack/lstk/internal/must"
 	"github.com/localstack/lstk/test/integration/env"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 // seedStoredAuthToken writes a stored credential into the file-based keyring of
@@ -18,8 +17,8 @@ import (
 func seedStoredAuthToken(t *testing.T, home, token string) {
 	t.Helper()
 	configDir := expectedOSConfigDir(home, "")
-	require.NoError(t, os.MkdirAll(configDir, 0700))
-	require.NoError(t, os.WriteFile(filepath.Join(configDir, "auth-token"), []byte(token), 0600))
+	must.NoError(t, os.MkdirAll(configDir, 0700))
+	must.NoError(t, os.WriteFile(filepath.Join(configDir, "auth-token"), []byte(token), 0600))
 }
 
 func basicAuthHeader(token string) string {
@@ -44,11 +43,11 @@ func TestEnvAuthTokenOverridesStoredToken(t *testing.T) {
 	_, stderr, err := runLstk(t, testContext(t), t.TempDir(), environ,
 		"--non-interactive", "snapshot", "list",
 	)
-	require.NoError(t, err, "lstk snapshot list failed: %s", stderr)
+	must.NoError(t, err, "lstk snapshot list failed: %s", stderr)
 
 	called, _, auth := cap.get()
-	require.True(t, called, "the platform list endpoint should have been called")
-	assert.Equal(t, basicAuthHeader("env-token"), auth, "LOCALSTACK_AUTH_TOKEN should override the stored token")
+	must.True(t, called, "the platform list endpoint should have been called")
+	must.Eq(t, basicAuthHeader("env-token"), auth, "LOCALSTACK_AUTH_TOKEN should override the stored token")
 }
 
 func TestStoredTokenUsedWithoutEnvAuthToken(t *testing.T) {
@@ -67,11 +66,11 @@ func TestStoredTokenUsedWithoutEnvAuthToken(t *testing.T) {
 	_, stderr, err := runLstk(t, testContext(t), t.TempDir(), environ,
 		"--non-interactive", "snapshot", "list",
 	)
-	require.NoError(t, err, "lstk snapshot list failed: %s", stderr)
+	must.NoError(t, err, "lstk snapshot list failed: %s", stderr)
 
 	called, _, auth := cap.get()
-	require.True(t, called, "the platform list endpoint should have been called")
-	assert.Equal(t, basicAuthHeader("stored-token"), auth, "the stored token should be used when no env token is set")
+	must.True(t, called, "the platform list endpoint should have been called")
+	must.Eq(t, basicAuthHeader("stored-token"), auth, "the stored token should be used when no env token is set")
 }
 
 func TestEnvAuthTokenOverridesStoredTokenForExternalEmulator(t *testing.T) {
@@ -102,11 +101,11 @@ func TestEnvAuthTokenOverridesStoredTokenForExternalEmulator(t *testing.T) {
 	_, stderr, err := runLstk(t, testContext(t), t.TempDir(), environ,
 		"--non-interactive", "--endpoint-url", srv.URL, "snapshot", "load", "pod:my-baseline",
 	)
-	require.NoError(t, err, "lstk snapshot load failed: %s", stderr)
+	must.NoError(t, err, "lstk snapshot load failed: %s", stderr)
 
 	select {
 	case auth := <-authHeader:
-		assert.Equal(t, basicAuthHeader("env-token"), auth, "LOCALSTACK_AUTH_TOKEN should override the stored token")
+		must.Eq(t, basicAuthHeader("env-token"), auth, "LOCALSTACK_AUTH_TOKEN should override the stored token")
 	default:
 		t.Fatal("the external emulator pod endpoint should have been called")
 	}

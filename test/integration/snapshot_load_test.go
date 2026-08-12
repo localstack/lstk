@@ -9,9 +9,8 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/localstack/lstk/internal/must"
 	"github.com/localstack/lstk/test/integration/env"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 // mockPodDiffServer returns a test server that handles GET /_localstack/pods/{name}/diff.
@@ -140,7 +139,7 @@ func mockPodDiffNotFoundServer(t *testing.T) *httptest.Server {
 func writeTestSnapFile(t *testing.T, dir, name string) string {
 	t.Helper()
 	path := filepath.Join(dir, name)
-	require.NoError(t, os.WriteFile(path, []byte("SNAP"), 0600))
+	must.NoError(t, os.WriteFile(path, []byte("SNAP"), 0600))
 	return path
 }
 
@@ -157,7 +156,7 @@ func TestSnapshotLoadRemoteRejected(t *testing.T) {
 				"--non-interactive", "snapshot", "load", ref,
 			)
 			requireExitCode(t, 1, err)
-			assert.Contains(t, stderr, "not yet supported")
+			must.Contains(t, stderr, "not yet supported")
 		})
 	}
 }
@@ -172,7 +171,7 @@ func TestSnapshotLoadS3RequiresPodName(t *testing.T) {
 		"--non-interactive", "snapshot", "load", "s3://bucket/key",
 	)
 	requireExitCode(t, 1, err)
-	assert.Contains(t, stderr, "pod name is required")
+	must.Contains(t, stderr, "pod name is required")
 }
 
 func TestSnapshotLoadPodNoAuthToken(t *testing.T) {
@@ -184,7 +183,7 @@ func TestSnapshotLoadPodNoAuthToken(t *testing.T) {
 		"--non-interactive", "snapshot", "load", "pod:my-baseline",
 	)
 	requireExitCode(t, 1, err)
-	assert.Contains(t, stderr, "authentication")
+	must.Contains(t, stderr, "authentication")
 }
 
 func TestSnapshotLoadPodInvalidName(t *testing.T) {
@@ -198,7 +197,7 @@ func TestSnapshotLoadPodInvalidName(t *testing.T) {
 				"--non-interactive", "snapshot", "load", ref,
 			)
 			requireExitCode(t, 1, err)
-			assert.Contains(t, stderr, "invalid pod name")
+			must.Contains(t, stderr, "invalid pod name")
 		})
 	}
 }
@@ -212,7 +211,7 @@ func TestSnapshotLoadFileNotFound(t *testing.T) {
 		"--non-interactive", "snapshot", "load", "/no/such/snapshot.snapshot",
 	)
 	requireExitCode(t, 1, err)
-	assert.Contains(t, stderr, "snapshot file not found")
+	must.Contains(t, stderr, "snapshot file not found")
 }
 
 // TestSnapshotLoadPathIsDirectory ensures passing a directory instead of a
@@ -224,14 +223,14 @@ func TestSnapshotLoadPathIsDirectory(t *testing.T) {
 
 	dir := t.TempDir()
 	target := filepath.Join(dir, "some-directory")
-	require.NoError(t, os.Mkdir(target, 0o755))
+	must.NoError(t, os.Mkdir(target, 0o755))
 
 	_, stderr, err := runLstk(t, ctx, t.TempDir(),
 		testEnvWithHome(t.TempDir(), ""),
 		"--non-interactive", "snapshot", "load", target,
 	)
 	requireExitCode(t, 1, err)
-	assert.Contains(t, stderr, "is a directory")
+	must.Contains(t, stderr, "is a directory")
 }
 
 // --- Docker required ---
@@ -252,8 +251,8 @@ func TestSnapshotLoadLocalSuccess(t *testing.T) {
 		env.Environ(testEnvWithHome(t.TempDir(), "")).With(env.LocalStackHost, lsHost(srv)),
 		"--non-interactive", "snapshot", "load", snapPath,
 	)
-	require.NoError(t, err, "lstk snapshot load failed: %s", stderr)
-	assert.Contains(t, stdout, "Snapshot loaded")
+	must.NoError(t, err, "lstk snapshot load failed: %s", stderr)
+	must.Contains(t, stdout, "Snapshot loaded")
 }
 
 func TestSnapshotLoadLocalBareNameFallback(t *testing.T) {
@@ -273,8 +272,8 @@ func TestSnapshotLoadLocalBareNameFallback(t *testing.T) {
 		env.Environ(testEnvWithHome(t.TempDir(), "")).With(env.LocalStackHost, lsHost(srv)),
 		"--non-interactive", "snapshot", "load", filepath.Join(dir, "snap"),
 	)
-	require.NoError(t, err, "bare name fallback failed: %s", stderr)
-	assert.Contains(t, stdout, "Snapshot loaded")
+	must.NoError(t, err, "bare name fallback failed: %s", stderr)
+	must.Contains(t, stdout, "Snapshot loaded")
 }
 
 // TestSnapshotLoadLocalLegacyZipFallback verifies that snapshots saved as .zip by
@@ -296,8 +295,8 @@ func TestSnapshotLoadLocalLegacyZipFallback(t *testing.T) {
 		env.Environ(testEnvWithHome(t.TempDir(), "")).With(env.LocalStackHost, lsHost(srv)),
 		"--non-interactive", "snapshot", "load", filepath.Join(dir, "snap"),
 	)
-	require.NoError(t, err, "legacy .zip fallback failed: %s", stderr)
-	assert.Contains(t, stdout, "Snapshot loaded")
+	must.NoError(t, err, "legacy .zip fallback failed: %s", stderr)
+	must.Contains(t, stdout, "Snapshot loaded")
 }
 
 func TestSnapshotLoadLocalInvalidFile(t *testing.T) {
@@ -319,8 +318,8 @@ func TestSnapshotLoadLocalInvalidFile(t *testing.T) {
 	requireExitCode(t, 1, err)
 	// The user-facing error is emitted through the sink (stdout); the underlying
 	// "zip archive" detail must not leak to the user.
-	assert.Contains(t, stdout, "not a valid snapshot")
-	assert.NotContains(t, strings.ToLower(stdout+stderr), "zip")
+	must.Contains(t, stdout, "not a valid snapshot")
+	must.NotContains(t, strings.ToLower(stdout+stderr), "zip")
 }
 
 func TestSnapshotLoadLocalOverwriteStrategy(t *testing.T) {
@@ -339,8 +338,8 @@ func TestSnapshotLoadLocalOverwriteStrategy(t *testing.T) {
 		env.Environ(testEnvWithHome(t.TempDir(), "")).With(env.LocalStackHost, lsHost(srv)),
 		"--non-interactive", "snapshot", "load", "--merge=overwrite", snapPath,
 	)
-	require.NoError(t, err, "lstk snapshot load --merge=overwrite failed: %s", stderr)
-	assert.True(t, wasReset(), "/_localstack/state/reset should have been called for overwrite strategy")
+	must.NoError(t, err, "lstk snapshot load --merge=overwrite failed: %s", stderr)
+	must.True(t, wasReset(), "/_localstack/state/reset should have been called for overwrite strategy")
 }
 
 func TestSnapshotLoadPodSuccess(t *testing.T) {
@@ -358,11 +357,11 @@ func TestSnapshotLoadPodSuccess(t *testing.T) {
 			With(env.AuthToken, "test-token"),
 		"--non-interactive", "snapshot", "load", "pod:my-baseline",
 	)
-	require.NoError(t, err, "lstk snapshot load pod:my-baseline failed: %s", stderr)
-	assert.Contains(t, stdout, "Snapshot loaded")
-	assert.Contains(t, stdout, "my-baseline")
-	assert.Contains(t, stdout, "s3")
-	assert.Contains(t, stdout, "dynamodb")
+	must.NoError(t, err, "lstk snapshot load pod:my-baseline failed: %s", stderr)
+	must.Contains(t, stdout, "Snapshot loaded")
+	must.Contains(t, stdout, "my-baseline")
+	must.Contains(t, stdout, "s3")
+	must.Contains(t, stdout, "dynamodb")
 }
 
 func TestSnapshotLoadPodServerError(t *testing.T) {
@@ -381,7 +380,7 @@ func TestSnapshotLoadPodServerError(t *testing.T) {
 		"--non-interactive", "snapshot", "load", "pod:my-baseline",
 	)
 	requireExitCode(t, 1, err)
-	assert.Contains(t, stderr, "platform unavailable")
+	must.Contains(t, stderr, "platform unavailable")
 }
 
 // TestSnapshotLoadPodNotFound covers a non-existent cloud snapshot. The emulator
@@ -406,8 +405,8 @@ func TestSnapshotLoadPodNotFound(t *testing.T) {
 	requireExitCode(t, 1, err)
 	// The user-facing error is emitted through the sink (stdout); the raw
 	// platform diagnostic must not leak to the user.
-	assert.Contains(t, stdout, "not found on the LocalStack platform")
-	assert.NotContains(t, strings.ToLower(stdout+stderr), "version information")
+	must.Contains(t, stdout, "not found on the LocalStack platform")
+	must.NotContains(t, strings.ToLower(stdout+stderr), "version information")
 }
 
 func TestSnapshotLoadTelemetryEmitted(t *testing.T) {
@@ -429,7 +428,7 @@ func TestSnapshotLoadTelemetryEmitted(t *testing.T) {
 			With(env.AnalyticsEndpoint, analyticsSrv.URL),
 		"--non-interactive", "snapshot", "load", snapPath,
 	)
-	require.NoError(t, err, "lstk snapshot load failed: %s", stderr)
+	must.NoError(t, err, "lstk snapshot load failed: %s", stderr)
 	assertCommandTelemetry(t, events, "snapshot load", 0)
 }
 
@@ -449,8 +448,8 @@ func TestSnapshotLoadInteractive(t *testing.T) {
 		env.Environ(testEnvWithHome(t.TempDir(), "")).With(env.LocalStackHost, lsHost(srv)),
 		"snapshot", "load", snapPath,
 	)
-	require.NoError(t, err, "interactive lstk snapshot load failed")
-	assert.Contains(t, out, "Snapshot loaded")
+	must.NoError(t, err, "interactive lstk snapshot load failed")
+	must.Contains(t, out, "Snapshot loaded")
 }
 
 func TestLoadAliasMatchesSnapshotLoad(t *testing.T) {
@@ -472,8 +471,8 @@ func TestLoadAliasMatchesSnapshotLoad(t *testing.T) {
 			With(env.AnalyticsEndpoint, analyticsSrv.URL),
 		"--non-interactive", "load", snapPath,
 	)
-	require.NoError(t, err, "lstk load failed: %s", stderr)
-	assert.Contains(t, stdout, "Snapshot loaded")
+	must.NoError(t, err, "lstk load failed: %s", stderr)
+	must.Contains(t, stdout, "Snapshot loaded")
 
 	// Alias must emit telemetry under the canonical name so usage isn't
 	// split across "load" and "snapshot load" labels.
@@ -493,7 +492,7 @@ func TestSnapshotLoadDryRunOnLocalRef(t *testing.T) {
 		"--non-interactive", "snapshot", "load", "--dry-run", snapPath,
 	)
 	requireExitCode(t, 1, err)
-	assert.Contains(t, stderr, "pod refs")
+	must.Contains(t, stderr, "pod refs")
 }
 
 func TestSnapshotLoadDryRunPodNoAuthToken(t *testing.T) {
@@ -505,7 +504,7 @@ func TestSnapshotLoadDryRunPodNoAuthToken(t *testing.T) {
 		"--non-interactive", "snapshot", "load", "--dry-run", "pod:my-baseline",
 	)
 	requireExitCode(t, 1, err)
-	assert.Contains(t, stderr, "authentication")
+	must.Contains(t, stderr, "authentication")
 }
 
 func TestSnapshotLoadDryRunPodSuccess(t *testing.T) {
@@ -523,10 +522,10 @@ func TestSnapshotLoadDryRunPodSuccess(t *testing.T) {
 			With(env.AuthToken, "test-token"),
 		"--non-interactive", "snapshot", "load", "--dry-run", "pod:my-baseline",
 	)
-	require.NoError(t, err, "lstk snapshot load --dry-run failed: %s", stderr)
-	assert.Contains(t, stdout, "Dry-run results")
-	assert.Contains(t, stdout, "my-baseline")
-	assert.Contains(t, stdout, "No state was modified.")
+	must.NoError(t, err, "lstk snapshot load --dry-run failed: %s", stderr)
+	must.Contains(t, stdout, "Dry-run results")
+	must.Contains(t, stdout, "my-baseline")
+	must.Contains(t, stdout, "No state was modified.")
 }
 
 // TestSnapshotLoadDryRunPodNotFound covers a non-existent cloud snapshot, mirroring
@@ -550,8 +549,8 @@ func TestSnapshotLoadDryRunPodNotFound(t *testing.T) {
 		"--non-interactive", "snapshot", "load", "--dry-run", "pod:does-not-exist",
 	)
 	requireExitCode(t, 1, err)
-	assert.Contains(t, stdout, "not found on the LocalStack platform")
-	assert.NotContains(t, strings.ToLower(stdout+stderr), "version information")
+	must.Contains(t, stdout, "not found on the LocalStack platform")
+	must.NotContains(t, strings.ToLower(stdout+stderr), "version information")
 }
 
 // mockUnlicensedPodsServer mimics an emulator whose license does not include
@@ -588,9 +587,9 @@ func TestSnapshotLoadFeatureUnavailable(t *testing.T) {
 	)
 	requireExitCode(t, 1, err)
 	// The user-facing error is emitted through the sink (stdout).
-	assert.Contains(t, stdout, "Snapshots require a paid LocalStack plan")
-	assert.Contains(t, stdout, "https://www.localstack.cloud/pricing")
-	assert.NotContains(t, stdout+stderr, "status 404", "the raw HTTP status must not leak to the user")
+	must.Contains(t, stdout, "Snapshots require a paid LocalStack plan")
+	must.Contains(t, stdout, "https://www.localstack.cloud/pricing")
+	must.NotContains(t, stdout+stderr, "status 404", "the raw HTTP status must not leak to the user")
 }
 
 // The save path funnels through a different shared helper than load, so it needs
@@ -611,7 +610,7 @@ func TestSnapshotSaveFeatureUnavailable(t *testing.T) {
 		"--non-interactive", "snapshot", "save", filepath.Join(dir, "out.snapshot"),
 	)
 	requireExitCode(t, 1, err)
-	assert.Contains(t, stdout, "Snapshots require a paid LocalStack plan")
-	assert.Contains(t, stdout, "https://www.localstack.cloud/pricing")
-	assert.NotContains(t, stdout+stderr, "status 404")
+	must.Contains(t, stdout, "Snapshots require a paid LocalStack plan")
+	must.Contains(t, stdout, "https://www.localstack.cloud/pricing")
+	must.NotContains(t, stdout+stderr, "status 404")
 }

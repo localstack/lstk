@@ -19,10 +19,9 @@ import (
 
 	"github.com/creack/pty"
 
+	"github.com/localstack/lstk/internal/must"
 	"github.com/localstack/lstk/test/integration/env"
 	"github.com/moby/moby/client"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 func TestLicenseValidationSuccess(t *testing.T) {
@@ -77,12 +76,12 @@ func TestLicenseValidationSuccess(t *testing.T) {
 	default:
 	}
 
-	require.NoError(t, err, "lstk start failed: %s", stderr)
+	must.NoError(t, err, "lstk start failed: %s", stderr)
 	requireExitCode(t, 0, err)
 
 	inspect, err := dockerClient.ContainerInspect(ctx, containerName, client.ContainerInspectOptions{})
-	require.NoError(t, err, "failed to inspect container")
-	assert.True(t, inspect.Container.State.Running, "container should be running")
+	must.NoError(t, err, "failed to inspect container")
+	must.True(t, inspect.Container.State.Running, "container should be running")
 }
 
 func TestLicenseValidationFailure(t *testing.T) {
@@ -95,15 +94,15 @@ func TestLicenseValidationFailure(t *testing.T) {
 
 	ctx := testContext(t)
 	stdout, stderr, err := runLstk(t, ctx, "", env.With(env.APIEndpoint, mockServer.URL).With(env.AuthToken, "test-token-for-license-validation"), "start")
-	require.Error(t, err, "expected lstk start to fail with forbidden license")
+	must.Error(t, err, "expected lstk start to fail with forbidden license")
 	requireExitCode(t, 1, err)
-	assert.Contains(t, stdout, "License validation failed")
-	assert.Contains(t, stdout, "invalid, inactive, or expired")
-	assert.Contains(t, stdout, "lstk logout", "the error should point at re-authentication")
-	assert.NotContains(t, stderr, "license validation failed", "the error event replaces the raw stderr error")
+	must.Contains(t, stdout, "License validation failed")
+	must.Contains(t, stdout, "invalid, inactive, or expired")
+	must.Contains(t, stdout, "lstk logout", "the error should point at re-authentication")
+	must.NotContains(t, stderr, "license validation failed", "the error event replaces the raw stderr error")
 
 	_, err = dockerClient.ContainerInspect(ctx, containerName, client.ContainerInspectOptions{})
-	assert.Error(t, err, "container should not exist after license failure")
+	must.Error(t, err, "container should not exist after license failure")
 }
 
 // TestLicenseRejectionOffersReloginAndRetries covers DEVX-658: a definitively
@@ -173,12 +172,12 @@ func TestLicenseRejectionOffersReloginAndRetries(t *testing.T) {
 	// An explicit config prevents firstRun=true, which would block the TUI on the
 	// emulator selection prompt before the license check runs.
 	configFile := filepath.Join(t.TempDir(), "config.toml")
-	require.NoError(t, os.WriteFile(configFile, []byte("[[containers]]\ntype = \"aws\"\ntag = \"latest\"\nport = \"4566\"\n"), 0644))
+	must.NoError(t, os.WriteFile(configFile, []byte("[[containers]]\ntype = \"aws\"\ntag = \"latest\"\nport = \"4566\"\n"), 0644))
 
 	cmd := exec.CommandContext(ctx, binaryPath(), "start", "--config", configFile)
 	cmd.Env = environ
 	ptmx, err := pty.Start(cmd)
-	require.NoError(t, err, "failed to start command in PTY")
+	must.NoError(t, err, "failed to start command in PTY")
 	defer func() { _ = ptmx.Close() }()
 
 	out := &syncBuffer{}
@@ -190,18 +189,18 @@ func TestLicenseRejectionOffersReloginAndRetries(t *testing.T) {
 
 	// The stale token is rejected; the re-login prompt appears. Press ENTER.
 	// The wait covers a cold image pull on CI runners.
-	require.Eventually(t, func() bool {
+	must.Eventually(t, func() bool {
 		return bytes.Contains(out.Bytes(), []byte("Log in again"))
 	}, 3*time.Minute, 100*time.Millisecond, "the re-login prompt should appear after the license rejection")
 	_, err = ptmx.Write([]byte("\r"))
-	require.NoError(t, err)
+	must.NoError(t, err)
 
 	// The login flow runs; confirm it once the completion prompt appears.
-	require.Eventually(t, func() bool {
+	must.Eventually(t, func() bool {
 		return bytes.Contains(out.Bytes(), []byte("key when complete"))
 	}, 30*time.Second, 100*time.Millisecond, "the login completion prompt should appear")
 	_, err = ptmx.Write([]byte("\r"))
-	require.NoError(t, err)
+	must.NoError(t, err)
 
 	// After a successful start, the post-start AWS profile setup asks a Y/n
 	// question when the runner's ~/.aws has no matching profile. It is
@@ -243,13 +242,13 @@ func TestLicenseRejectionOffersReloginAndRetries(t *testing.T) {
 			t.Logf("health endpoint unreachable: %v", herr)
 		}
 	}
-	require.NoError(t, err, "start should succeed after re-login: %s", out.String())
-	assert.True(t, staleRejected.Load(), "the stale token must have been rejected by the license server first")
-	assert.Contains(t, out.String(), "Valid license")
+	must.NoError(t, err, "start should succeed after re-login: %s", out.String())
+	must.True(t, staleRejected.Load(), "the stale token must have been rejected by the license server first")
+	must.Contains(t, out.String(), "Valid license")
 
 	inspect, err := dockerClient.ContainerInspect(ctx, containerName, client.ContainerInspectOptions{})
-	require.NoError(t, err, "failed to inspect container")
-	assert.True(t, inspect.Container.State.Running, "container should be running after the retried start")
+	must.NoError(t, err, "failed to inspect container")
+	must.True(t, inspect.Container.State.Running, "container should be running after the retried start")
 
 	// lstk's file-keyring fallback stores the token next to the active config
 	// file (ConfigDir follows --config), so on headless CI runners the token
@@ -258,19 +257,19 @@ func TestLicenseRejectionOffersReloginAndRetries(t *testing.T) {
 	var storedToken string
 	if useFileKeyring {
 		data, rerr := os.ReadFile(filepath.Join(filepath.Dir(configFile), authTokenFile))
-		require.NoError(t, rerr, "the re-logged-in token should be stored in the file keyring next to the config file")
+		must.NoError(t, rerr, "the re-logged-in token should be stored in the file keyring next to the config file")
 		storedToken = string(data)
 	} else {
 		storedToken, err = GetAuthTokenFromKeyring()
-		require.NoError(t, err, "the re-logged-in token should be stored in the system keyring")
+		must.NoError(t, err, "the re-logged-in token should be stored in the system keyring")
 	}
-	assert.Equal(t, realToken, storedToken, "the fresh token must replace the rejected one")
+	must.Eq(t, realToken, storedToken, "the fresh token must replace the rejected one")
 }
 
 func licenseFilePath(t *testing.T) string {
 	t.Helper()
 	cacheDir, err := os.UserCacheDir()
-	require.NoError(t, err)
+	must.NoError(t, err)
 	return filepath.Join(cacheDir, "lstk", "license.json")
 }
 
@@ -295,14 +294,14 @@ func TestLicenseCacheAndMount(t *testing.T) {
 
 	ctx := testContext(t)
 	_, stderr, err := runLstk(t, ctx, "", env.With(env.APIEndpoint, mockServer.URL), "start")
-	require.NoError(t, err, "lstk start failed: %s", stderr)
+	must.NoError(t, err, "lstk start failed: %s", stderr)
 
 	data, err := os.ReadFile(licenseFilePath(t))
-	require.NoError(t, err, "license cache file should exist after successful start")
-	assert.Equal(t, licenseBody, string(data))
+	must.NoError(t, err, "license cache file should exist after successful start")
+	must.Eq(t, licenseBody, string(data))
 
 	inspect, err := dockerClient.ContainerInspect(ctx, containerName, client.ContainerInspectOptions{})
-	require.NoError(t, err, "failed to inspect container")
+	must.NoError(t, err, "failed to inspect container")
 
 	var mounted bool
 	for _, m := range inspect.Container.Mounts {
@@ -311,5 +310,5 @@ func TestLicenseCacheAndMount(t *testing.T) {
 			break
 		}
 	}
-	assert.True(t, mounted, "license file should be mounted into container at /etc/localstack/conf.d/license.json")
+	must.True(t, mounted, "license file should be mounted into container at /etc/localstack/conf.d/license.json")
 }

@@ -8,9 +8,9 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/localstack/lstk/internal/must"
+	"github.com/localstack/lstk/internal/snap"
 	"github.com/localstack/lstk/test/integration/env"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 // showCapture records what the single-pod platform endpoint received.
@@ -77,21 +77,13 @@ func TestSnapshotShowSuccessWithoutDocker(t *testing.T) {
 		listEnv(t, srv, "test-token"),
 		"--non-interactive", "snapshot", "show", "pod:my-baseline",
 	)
-	require.NoError(t, err, "lstk snapshot show failed: %s", stderr)
+	must.NoError(t, err, "lstk snapshot show failed: %s", stderr)
 
 	called, path, _ := cap.get()
-	require.True(t, called, "the single-pod endpoint should have been called")
-	assert.Equal(t, "/v1/cloudpods/my-baseline", path)
+	must.True(t, called, "the single-pod endpoint should have been called")
+	must.Eq(t, "/v1/cloudpods/my-baseline", path)
 
-	assert.Contains(t, stdout, "my-baseline")
-	assert.Contains(t, stdout, "2026-04-15 14:32 UTC")
-	assert.Contains(t, stdout, "47.3 MB")
-	assert.Contains(t, stdout, "2026.03")
-	assert.Contains(t, stdout, "Pre-refactor baseline")
-	assert.Contains(t, stdout, "s3, lambda, dynamodb, sqs")
-	assert.Contains(t, stdout, "Resources")
-	assert.Contains(t, stdout, "3 buckets")
-	assert.Contains(t, stdout, "1 function\n", "count of one should use the singular noun")
+	snap.Match(t, sanitizeOutput(stdout))
 }
 
 func TestSnapshotShowWithoutResources(t *testing.T) {
@@ -105,9 +97,9 @@ func TestSnapshotShowWithoutResources(t *testing.T) {
 		listEnv(t, srv, "test-token"),
 		"--non-interactive", "snapshot", "show", "pod:bare",
 	)
-	require.NoError(t, err, "lstk snapshot show failed: %s", stderr)
-	assert.Contains(t, stdout, "s3, sqs")
-	assert.NotContains(t, stdout, "Resources", "Resources section must be omitted when no counts are available")
+	must.NoError(t, err, "lstk snapshot show failed: %s", stderr)
+	must.Contains(t, stdout, "s3, sqs")
+	must.NotContains(t, stdout, "Resources", "Resources section must be omitted when no counts are available")
 }
 
 // TestSnapshotShowPodNameLeadingUnderscore covers a name the platform's
@@ -125,11 +117,11 @@ func TestSnapshotShowPodNameLeadingUnderscore(t *testing.T) {
 		listEnv(t, srv, "test-token"),
 		"--non-interactive", "snapshot", "show", "pod:"+name,
 	)
-	require.NoError(t, err, "lstk snapshot show failed: %s", stderr)
+	must.NoError(t, err, "lstk snapshot show failed: %s", stderr)
 
 	called, path, _ := cap.get()
-	require.True(t, called, "the single-pod endpoint should have been called")
-	assert.Equal(t, "/v1/cloudpods/"+name, path)
+	must.True(t, called, "the single-pod endpoint should have been called")
+	must.Eq(t, "/v1/cloudpods/"+name, path)
 }
 
 // TestSnapshotShowRejectsPodNameWithPeriod: dots are outside the platform's
@@ -145,11 +137,11 @@ func TestSnapshotShowRejectsPodNameWithPeriod(t *testing.T) {
 		listEnv(t, srv, "test-token"),
 		"--non-interactive", "snapshot", "show", "pod:release.v1",
 	)
-	require.Error(t, err, "a dotted pod name must be rejected client-side")
-	assert.Contains(t, stderr, "invalid pod name")
+	must.Error(t, err, "a dotted pod name must be rejected client-side")
+	must.Contains(t, stderr, "invalid pod name")
 
 	called, _, _ := cap.get()
-	assert.False(t, called, "the platform endpoint must not be called for an invalid name")
+	must.False(t, called, "the platform endpoint must not be called for an invalid name")
 }
 
 func TestSnapshotShowSendsBasicAuthHeader(t *testing.T) {
@@ -163,10 +155,10 @@ func TestSnapshotShowSendsBasicAuthHeader(t *testing.T) {
 		listEnv(t, srv, "test-token"),
 		"--non-interactive", "snapshot", "show", "pod:p",
 	)
-	require.NoError(t, err, "lstk snapshot show failed: %s", stderr)
+	must.NoError(t, err, "lstk snapshot show failed: %s", stderr)
 	_, _, auth := cap.get()
 	expected := "Basic " + base64.StdEncoding.EncodeToString([]byte(":test-token"))
-	assert.Equal(t, expected, auth)
+	must.Eq(t, expected, auth)
 }
 
 func TestSnapshotShowRejectsLocalPath(t *testing.T) {
@@ -183,7 +175,7 @@ func TestSnapshotShowRejectsLocalPath(t *testing.T) {
 		"--non-interactive", "snapshot", "show", "./my-snapshot",
 	)
 	requireExitCode(t, 1, err)
-	assert.Contains(t, strings.ToLower(stderr), "local")
+	must.Contains(t, strings.ToLower(stderr), "local")
 }
 
 func TestSnapshotShowNotFound(t *testing.T) {
@@ -199,8 +191,8 @@ func TestSnapshotShowNotFound(t *testing.T) {
 		"--non-interactive", "snapshot", "show", "pod:missing",
 	)
 	requireExitCode(t, 1, err)
-	assert.Contains(t, stdout, "not found")
-	assert.Contains(t, stdout, "lstk snapshot list")
+	must.Contains(t, stdout, "not found")
+	must.Contains(t, stdout, "lstk snapshot list")
 }
 
 func TestSnapshotShowRequiresAuthToken(t *testing.T) {
@@ -221,6 +213,6 @@ func TestSnapshotShowRequiresAuthToken(t *testing.T) {
 		"--non-interactive", "snapshot", "show", "pod:my-baseline",
 	)
 	requireExitCode(t, 1, err)
-	assert.Contains(t, stdout, "Authentication required")
-	assert.Contains(t, stdout, "lstk login")
+	must.Contains(t, stdout, "Authentication required")
+	must.Contains(t, stdout, "lstk login")
 }

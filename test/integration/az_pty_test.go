@@ -15,9 +15,8 @@ import (
 	"time"
 
 	"github.com/creack/pty"
+	"github.com/localstack/lstk/internal/must"
 	"github.com/localstack/lstk/test/integration/env"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 // azureLikeHealthServer answers the endpoint probe the way the Azure emulator
@@ -71,7 +70,7 @@ print("PYTHONUNBUFFERED:" + os.environ.get("PYTHONUNBUFFERED", "<unset>"))
 print(%q)
 time.sleep(%f)
 `, python, marker, holdFor.Seconds())
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "az"), []byte(script), 0755))
+	must.NoError(t, os.WriteFile(filepath.Join(dir, "az"), []byte(script), 0755))
 	return dir
 }
 
@@ -99,14 +98,14 @@ func TestAzStreamsInPTY(t *testing.T) {
 		unreachableDockerHost)
 
 	binPath, err := filepath.Abs(binaryPath())
-	require.NoError(t, err)
+	must.NoError(t, err)
 
 	cmd := exec.CommandContext(testContext(t), binPath, "--endpoint-url", srv.URL, "az", "webapp", "log", "tail")
 	cmd.Dir = workDir
 	cmd.Env = e
 
 	ptmx, err := pty.Start(cmd)
-	require.NoError(t, err, "failed to start command in PTY")
+	must.NoError(t, err, "failed to start command in PTY")
 	t.Cleanup(func() { _ = ptmx.Close() })
 
 	out := &syncBuffer{}
@@ -124,12 +123,12 @@ func TestAzStreamsInPTY(t *testing.T) {
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
-	require.True(t, seen, "az produced no output while the child was still running — it was withheld in the CLI's stdout buffer until exit (DEVX-1028); output so far:\n%s", out.String())
+	must.True(t, seen, "az produced no output while the child was still running — it was withheld in the CLI's stdout buffer until exit (DEVX-1028); output so far:\n%s", out.String())
 
 	// The two mechanisms that keep the symptom above from returning, asserted
 	// separately so a regression in either one is named rather than inferred.
-	assert.Contains(t, out.String(), "STDOUT_TTY:yes", "the Azure CLI must be handed a terminal, not a pipe (DEVX-1028)")
-	assert.Contains(t, out.String(), "PYTHONUNBUFFERED:1")
+	must.Contains(t, out.String(), "STDOUT_TTY:yes", "the Azure CLI must be handed a terminal, not a pipe (DEVX-1028)")
+	must.Contains(t, out.String(), "PYTHONUNBUFFERED:1")
 
 	// Ctrl-C via the PTY reaches the whole foreground process group (lstk and
 	// the az child), matching how a user stops a streaming command.
@@ -159,7 +158,7 @@ func TestAzWithPipedStdoutKeepsPipe(t *testing.T) {
 		unreachableDockerHost)
 
 	stdout, stderr, err := runLstk(t, testContext(t), workDir, e, "--endpoint-url", srv.URL, "az", "group", "list")
-	require.NoError(t, err, "stderr: %s", stderr)
-	assert.Contains(t, stdout, "STDOUT_TTY:no")
-	assert.Contains(t, stdout, "piped")
+	must.NoError(t, err, "stderr: %s", stderr)
+	must.Contains(t, stdout, "STDOUT_TTY:no")
+	must.Contains(t, stdout, "piped")
 }

@@ -5,9 +5,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/localstack/lstk/internal/must"
 	"github.com/localstack/lstk/test/integration/env"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 // save/load work for Snowflake and Azure but emit an experimental warning.
@@ -112,10 +111,10 @@ func TestSnapshotNonAWSShowsExperimentalWarning(t *testing.T) {
 
 				args := append([]string{"--config", em.writeConfig(t, "4566"), "--non-interactive"}, subArgs...)
 				stdout, stderr, err := runLstk(t, ctx, dir, environ, args...)
-				require.NoError(t, err, "lstk snapshot %s failed: %s", op.name, stderr)
-				assert.Contains(t, stdout, op.successText)
-				assert.Contains(t, stdout, experimentalWarningFragment)
-				assert.Contains(t, stdout, em.name)
+				must.NoError(t, err, "lstk snapshot %s failed: %s", op.name, stderr)
+				must.Contains(t, stdout, op.successText)
+				must.Contains(t, stdout, experimentalWarningFragment)
+				must.Contains(t, stdout, em.name)
 			})
 		}
 	}
@@ -137,7 +136,7 @@ func TestSnapshotSaveAWSNoExperimentalWarning(t *testing.T) {
 		env.Environ(testEnvWithHome(t.TempDir(), "")).With(env.LocalStackHost, lsHost(srv)),
 		"--non-interactive", "snapshot", "save",
 	)
-	require.NoError(t, err, "lstk snapshot save failed: %s", stderr)
-	assert.Contains(t, stdout, "Snapshot saved")
-	assert.NotContains(t, stdout, experimentalWarningFragment)
+	must.NoError(t, err, "lstk snapshot save failed: %s", stderr)
+	must.Contains(t, stdout, "Snapshot saved")
+	must.NotContains(t, stdout, experimentalWarningFragment)
 }

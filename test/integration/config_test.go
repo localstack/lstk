@@ -7,10 +7,9 @@ import (
 	"runtime"
 	"testing"
 
+	"github.com/localstack/lstk/internal/must"
 	"github.com/localstack/lstk/test/integration/env"
 	"github.com/moby/moby/client"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 func TestConfigFlagEnvVarsPassedToContainer(t *testing.T) {
@@ -34,16 +33,16 @@ env = ["test"]
 IAM_SOFT_MODE = "1"
 `
 	configFile := filepath.Join(t.TempDir(), "config.toml")
-	require.NoError(t, os.WriteFile(configFile, []byte(configContent), 0644))
+	must.NoError(t, os.WriteFile(configFile, []byte(configContent), 0644))
 
 	ctx := testContext(t)
 	_, stderr, err := runLstk(t, ctx, "", env.With(env.APIEndpoint, mockServer.URL), "--config", configFile, "start")
-	require.NoError(t, err, "lstk start failed: %s", stderr)
+	must.NoError(t, err, "lstk start failed: %s", stderr)
 	requireExitCode(t, 0, err)
 
 	inspect, err := dockerClient.ContainerInspect(ctx, containerName, client.ContainerInspectOptions{})
-	require.NoError(t, err, "failed to inspect container")
-	assert.Contains(t, inspect.Container.Config.Env, "IAM_SOFT_MODE=1")
+	must.NoError(t, err, "failed to inspect container")
+	must.Contains(t, inspect.Container.Config.Env, "IAM_SOFT_MODE=1")
 }
 
 func TestConfigFlagOverridesConfigPath(t *testing.T) {
@@ -52,7 +51,7 @@ func TestConfigFlagOverridesConfigPath(t *testing.T) {
 	writeConfigFile(t, customConfig)
 
 	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), testEnvWithHome(t.TempDir(), ""), "--config", customConfig, "config", "path")
-	require.NoError(t, err, stderr)
+	must.NoError(t, err, stderr)
 	requireExitCode(t, 0, err)
 
 	assertSamePath(t, customConfig, stdout)
@@ -71,11 +70,11 @@ func TestLocalConfigTakesPrecedence(t *testing.T) {
 
 	e := testEnvWithHome(tmpHome, xdgOverride)
 	stdout, stderr, err := runLstk(t, testContext(t), workDir, e, "config", "path")
-	require.NoError(t, err, stderr)
+	must.NoError(t, err, stderr)
 	requireExitCode(t, 0, err)
 
 	expectedLocalPath, err := filepath.Abs(localConfigFile)
-	require.NoError(t, err)
+	must.NoError(t, err)
 	assertSamePath(t, expectedLocalPath, stdout)
 }
 
@@ -92,7 +91,7 @@ func TestXDGConfigTakesPrecedence(t *testing.T) {
 
 	e := testEnvWithHome(tmpHome, xdgOverride)
 	stdout, stderr, err := runLstk(t, testContext(t), workDir, e, "config", "path")
-	require.NoError(t, err, stderr)
+	must.NoError(t, err, stderr)
 	requireExitCode(t, 0, err)
 
 	assertSamePath(t, xdgConfigFile, stdout)
@@ -108,7 +107,7 @@ func TestConfigPathCommand(t *testing.T) {
 	analyticsSrv, events := mockAnalyticsServer(t)
 	e := env.Environ(testEnvWithHome(tmpHome, filepath.Join(tmpHome, "xdg-config-home"))).With(env.AnalyticsEndpoint, analyticsSrv.URL)
 	stdout, stderr, err := runLstk(t, testContext(t), workDir, e, "config", "path")
-	require.NoError(t, err, stderr)
+	must.NoError(t, err, stderr)
 	requireExitCode(t, 0, err)
 
 	assertSamePath(t, xdgConfigFile, stdout)
@@ -124,11 +123,11 @@ func TestConfigPathCommandDoesNotCreateConfig(t *testing.T) {
 
 	e := testEnvWithHome(tmpHome, xdgOverride)
 	stdout, stderr, err := runLstk(t, testContext(t), workDir, e, "config", "path")
-	require.NoError(t, err, stderr)
+	must.NoError(t, err, stderr)
 	requireExitCode(t, 0, err)
 
 	assertSamePath(t, expectedConfigFile, stdout)
-	assert.NoFileExists(t, expectedConfigFile)
+	must.NoFileExists(t, expectedConfigFile)
 }
 
 func TestConfigWithUnknownFieldsIsAccepted(t *testing.T) {
@@ -143,10 +142,10 @@ port = "4566"
 future_field = "should be ignored"
 `
 	configFile := filepath.Join(t.TempDir(), "config.toml")
-	require.NoError(t, os.WriteFile(configFile, []byte(configContent), 0644))
+	must.NoError(t, os.WriteFile(configFile, []byte(configContent), 0644))
 
 	_, stderr, err := runLstk(t, testContext(t), t.TempDir(), testEnvWithHome(t.TempDir(), ""), "--config", configFile, "config", "path")
-	require.NoError(t, err, stderr)
+	must.NoError(t, err, stderr)
 	requireExitCode(t, 0, err)
 }
 
@@ -158,12 +157,12 @@ type = "aws"
 tag = "latest"
 `
 	configFile := filepath.Join(t.TempDir(), "config.toml")
-	require.NoError(t, os.WriteFile(configFile, []byte(configContent), 0644))
+	must.NoError(t, os.WriteFile(configFile, []byte(configContent), 0644))
 
 	_, stderr, err := runLstk(t, testContext(t), t.TempDir(), testEnvWithHome(t.TempDir(), ""), "--config", configFile, "stop")
-	require.Error(t, err)
+	must.Error(t, err)
 	requireExitCode(t, 1, err)
-	assert.Contains(t, stderr, "port is required")
+	must.Contains(t, stderr, "port is required")
 }
 
 func TestConfigWithInvalidContainerNameFails(t *testing.T) {
@@ -176,13 +175,13 @@ port = "4566"
 container_name = "my emulator"
 `
 	configFile := filepath.Join(t.TempDir(), "config.toml")
-	require.NoError(t, os.WriteFile(configFile, []byte(configContent), 0644))
+	must.NoError(t, os.WriteFile(configFile, []byte(configContent), 0644))
 
 	// Rejected at config load, so the failure needs no Docker daemon and no token.
 	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), testEnvWithHome(t.TempDir(), ""), "--config", configFile, "stop")
-	require.Error(t, err)
+	must.Error(t, err)
 	requireExitCode(t, 1, err)
-	assert.Contains(t, stdout+stderr, `invalid container name "my emulator"`)
+	must.Contains(t, stdout+stderr, `invalid container name "my emulator"`)
 }
 
 func TestStartWithMultipleContainersFailsFast(t *testing.T) {
@@ -197,14 +196,14 @@ type = "snowflake"
 port = "4567"
 `
 	configFile := filepath.Join(t.TempDir(), "config.toml")
-	require.NoError(t, os.WriteFile(configFile, []byte(configContent), 0644))
+	must.NoError(t, os.WriteFile(configFile, []byte(configContent), 0644))
 
 	// The guard runs at the very top of container.Start, before any Docker health
 	// check, auth, or image pull — so start fails fast even without a daemon/token.
 	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), testEnvWithHome(t.TempDir(), ""), "--config", configFile, "start")
-	require.Error(t, err)
+	must.Error(t, err)
 	requireExitCode(t, 1, err)
-	assert.Contains(t, stdout+stderr, "only one is supported at a time")
+	must.Contains(t, stdout+stderr, "only one is supported at a time")
 }
 
 func TestLegacyYAMLConfigGivesHelpfulError(t *testing.T) {
@@ -214,8 +213,8 @@ func TestLegacyYAMLConfigGivesHelpfulError(t *testing.T) {
 	xdgOverride := filepath.Join(tmpHome, "xdg-config-home")
 
 	legacyConfigDir := filepath.Join(tmpHome, ".config", "lstk")
-	require.NoError(t, os.MkdirAll(legacyConfigDir, 0755))
-	require.NoError(t, os.WriteFile(
+	must.NoError(t, os.MkdirAll(legacyConfigDir, 0755))
+	must.NoError(t, os.WriteFile(
 		filepath.Join(legacyConfigDir, "config.yaml"),
 		[]byte("emulators:\n  - type: aws\n    port: 4566\n"),
 		0644,
@@ -223,10 +222,10 @@ func TestLegacyYAMLConfigGivesHelpfulError(t *testing.T) {
 
 	e := testEnvWithHome(tmpHome, xdgOverride)
 	_, stderr, err := runLstk(t, testContext(t), workDir, e, "logout")
-	require.Error(t, err)
+	must.Error(t, err)
 	requireExitCode(t, 1, err)
-	assert.Contains(t, stderr, "config.yaml")
-	assert.Contains(t, stderr, "TOML")
+	must.Contains(t, stderr, "config.yaml")
+	must.Contains(t, stderr, "TOML")
 }
 
 func TestConfigWithMissingOptionalTagSucceeds(t *testing.T) {
@@ -237,10 +236,10 @@ type = "aws"
 port = "4566"
 `
 	configFile := filepath.Join(t.TempDir(), "config.toml")
-	require.NoError(t, os.WriteFile(configFile, []byte(configContent), 0644))
+	must.NoError(t, os.WriteFile(configFile, []byte(configContent), 0644))
 
 	_, stderr, err := runLstk(t, testContext(t), t.TempDir(), testEnvWithHome(t.TempDir(), ""), "--config", configFile, "config", "path")
-	require.NoError(t, err, stderr)
+	must.NoError(t, err, stderr)
 	requireExitCode(t, 0, err)
 }
 
@@ -276,14 +275,14 @@ func expectedOSConfigDir(tmpHome, xdgConfigHome string) string {
 
 func writeConfigFile(t *testing.T, path string) {
 	t.Helper()
-	require.NoError(t, os.MkdirAll(filepath.Dir(path), 0755))
+	must.NoError(t, os.MkdirAll(filepath.Dir(path), 0755))
 	content := "[[containers]]\ntype = \"aws\"\ntag = \"latest\"\nport = \"4566\"\n"
-	require.NoError(t, os.WriteFile(path, []byte(content), 0644))
+	must.NoError(t, os.WriteFile(path, []byte(content), 0644))
 }
 
 func assertSamePath(t *testing.T, expectedPath, actualPath string) {
 	t.Helper()
-	assert.Equal(
+	must.Eq(
 		t,
 		normalizedPath(expectedPath),
 		normalizedPath(actualPath),

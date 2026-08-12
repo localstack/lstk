@@ -5,10 +5,9 @@ import (
 	"encoding/json"
 	"testing"
 
+	"github.com/localstack/lstk/internal/must"
 	"github.com/localstack/lstk/test/integration/env"
 	"github.com/moby/moby/client"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 func TestStopCommandSucceeds(t *testing.T) {
@@ -21,18 +20,18 @@ func TestStopCommandSucceeds(t *testing.T) {
 
 	analyticsSrv, events := mockAnalyticsServer(t)
 	stdout, stderr, err := runLstk(t, ctx, "", env.With(env.AnalyticsEndpoint, analyticsSrv.URL), "stop")
-	require.NoError(t, err, "lstk stop failed: %s", stderr)
+	must.NoError(t, err, "lstk stop failed: %s", stderr)
 	requireExitCode(t, 0, err)
-	assert.Contains(t, stdout, "Stopping", "should show stopping message")
-	assert.Contains(t, stdout, "stopped", "should show stopped message")
+	must.Contains(t, stdout, "Stopping", "should show stopping message")
+	must.Contains(t, stdout, "stopped", "should show stopped message")
 
 	_, err = dockerClient.ContainerInspect(ctx, containerName, client.ContainerInspectOptions{})
-	assert.Error(t, err, "container should not exist after stop")
+	must.Error(t, err, "container should not exist after stop")
 
 	// Both lstk_lifecycle (stop) and lstk_command events should be emitted.
 	byName := collectTelemetryByName(t, events, 2)
-	assert.Contains(t, byName, "lstk_lifecycle")
-	assert.Contains(t, byName, "lstk_command")
+	must.Contains(t, byName, "lstk_lifecycle")
+	must.Contains(t, byName, "lstk_command")
 }
 
 // TestStopCommandRejectsAmbientEndpointURLEvenWithLocalContainerRunning
@@ -50,13 +49,13 @@ func TestStopCommandRejectsAmbientEndpointURLEvenWithLocalContainerRunning(t *te
 	startTestContainer(t, ctx)
 
 	stdout, _, err := runLstk(t, ctx, "", env.With(env.DisableEvents, "1").With("LSTK_ENDPOINT_URL", "http://127.0.0.1:1"), "stop")
-	require.Error(t, err)
-	assert.Contains(t, stdout, "does not support LSTK_ENDPOINT_URL")
-	assert.Contains(t, stdout, "LSTK_ENDPOINT_URL is set")
+	must.Error(t, err)
+	must.Contains(t, stdout, "does not support LSTK_ENDPOINT_URL")
+	must.Contains(t, stdout, "LSTK_ENDPOINT_URL is set")
 
 	inspect, err := dockerClient.ContainerInspect(ctx, containerName, client.ContainerInspectOptions{})
-	require.NoError(t, err, "container should still exist — stop must reject before ever touching it")
-	assert.True(t, inspect.Container.State.Running, "container should still be running")
+	must.NoError(t, err, "container should still exist — stop must reject before ever touching it")
+	must.True(t, inspect.Container.State.Running, "container should still be running")
 }
 
 func TestStopCommandFailsWhenNotRunning(t *testing.T) {
@@ -66,9 +65,9 @@ func TestStopCommandFailsWhenNotRunning(t *testing.T) {
 
 	analyticsSrv, events := mockAnalyticsServer(t)
 	stdout, _, err := runLstk(t, testContext(t), "", env.With(env.AnalyticsEndpoint, analyticsSrv.URL), "stop")
-	require.Error(t, err, "expected lstk stop to fail when container not running")
+	must.Error(t, err, "expected lstk stop to fail when container not running")
 	requireExitCode(t, 1, err)
-	assert.Contains(t, stdout, "LocalStack AWS Emulator is not running")
+	must.Contains(t, stdout, "LocalStack AWS Emulator is not running")
 	assertCommandTelemetry(t, events, "stop", 1)
 }
 
@@ -82,9 +81,9 @@ func TestStopCommandReportsEmulatorSpecificNotRunningMessage(t *testing.T) {
 	analyticsSrv, events := mockAnalyticsServer(t)
 	e := env.Environ(testEnvWithHome(t.TempDir(), "")).With(env.AnalyticsEndpoint, analyticsSrv.URL)
 	stdout, _, err := runLstk(t, testContext(t), "", e, "--config", configFile, "stop")
-	require.Error(t, err, "expected lstk stop to fail when snowflake container not running")
+	must.Error(t, err, "expected lstk stop to fail when snowflake container not running")
 	requireExitCode(t, 1, err)
-	assert.Contains(t, stdout, "LocalStack Snowflake Emulator is not running",
+	must.Contains(t, stdout, "LocalStack Snowflake Emulator is not running",
 		"stop should match status's emulator-specific message")
 	assertCommandTelemetry(t, events, "stop", 1)
 }
@@ -101,7 +100,7 @@ func TestStopCommandIgnoresForeignEmulatorOnPort(t *testing.T) {
 	// AWS image running on 4566 while config targets snowflake.
 	const fakeImage = "localstack/localstack-pro:test-fake"
 	_, err := dockerClient.ImageTag(ctx, client.ImageTagOptions{Source: testImage, Target: fakeImage})
-	require.NoError(t, err)
+	must.NoError(t, err)
 	t.Cleanup(func() {
 		_, _ = dockerClient.ImageRemove(context.Background(), fakeImage, client.ImageRemoveOptions{})
 	})
@@ -110,13 +109,13 @@ func TestStopCommandIgnoresForeignEmulatorOnPort(t *testing.T) {
 	configFile := writeSnowflakeConfig(t, "4566")
 
 	stdout, _, err := runLstk(t, testContext(t), "", testEnvWithHome(t.TempDir(), ""), "--config", configFile, "stop")
-	require.Error(t, err, "lstk stop should not match foreign emulator on configured port")
+	must.Error(t, err, "lstk stop should not match foreign emulator on configured port")
 	requireExitCode(t, 1, err)
-	assert.Contains(t, stdout, "LocalStack Snowflake Emulator is not running")
-	assert.NotContains(t, stdout, "stopped", "should not have stopped the AWS container")
+	must.Contains(t, stdout, "LocalStack Snowflake Emulator is not running")
+	must.NotContains(t, stdout, "stopped", "should not have stopped the AWS container")
 
 	_, inspectErr := dockerClient.ContainerInspect(ctx, "localstack-external-aws", client.ContainerInspectOptions{})
-	assert.NoError(t, inspectErr, "AWS container should still exist after snowflake-targeted stop")
+	must.NoError(t, inspectErr, "AWS container should still exist after snowflake-targeted stop")
 }
 
 func TestStopCommandStopsExternalContainer(t *testing.T) {
@@ -128,7 +127,7 @@ func TestStopCommandStopsExternalContainer(t *testing.T) {
 
 	const fakeImage = "localstack/localstack-pro:test-fake"
 	_, err := dockerClient.ImageTag(ctx, client.ImageTagOptions{Source: testImage, Target: fakeImage})
-	require.NoError(t, err)
+	must.NoError(t, err)
 	t.Cleanup(func() {
 		_, _ = dockerClient.ImageRemove(context.Background(), fakeImage, client.ImageRemoveOptions{})
 	})
@@ -136,12 +135,12 @@ func TestStopCommandStopsExternalContainer(t *testing.T) {
 	startExternalContainer(t, ctx, fakeImage, "localstack-external", "4566")
 
 	stdout, stderr, err := runLstk(t, ctx, "", testEnvWithHome(t.TempDir(), ""), "stop")
-	require.NoError(t, err, "lstk stop should stop external container: %s", stderr)
+	must.NoError(t, err, "lstk stop should stop external container: %s", stderr)
 	requireExitCode(t, 0, err)
-	assert.Contains(t, stdout, "stopped")
+	must.Contains(t, stdout, "stopped")
 
 	_, err = dockerClient.ContainerInspect(ctx, "localstack-external", client.ContainerInspectOptions{})
-	assert.Error(t, err, "external container should be gone after lstk stop")
+	must.Error(t, err, "external container should be gone after lstk stop")
 }
 
 func TestStopCommandIsIdempotent(t *testing.T) {
@@ -154,14 +153,14 @@ func TestStopCommandIsIdempotent(t *testing.T) {
 
 	e := testEnvWithHome(t.TempDir(), "")
 	_, stderr, err := runLstk(t, ctx, "", e, "stop")
-	require.NoError(t, err, "first lstk stop failed: %s", stderr)
+	must.NoError(t, err, "first lstk stop failed: %s", stderr)
 	requireExitCode(t, 0, err)
 
 	_, err = dockerClient.ContainerInspect(ctx, containerName, client.ContainerInspectOptions{})
-	require.Error(t, err, "container should not exist after first stop")
+	must.Error(t, err, "container should not exist after first stop")
 
 	_, _, err = runLstk(t, ctx, "", e, "stop")
-	assert.Error(t, err, "second lstk stop should fail since container already removed")
+	must.Error(t, err, "second lstk stop should fail since container already removed")
 	requireExitCode(t, 1, err)
 }
 
@@ -174,13 +173,13 @@ func TestStopCommandJSON(t *testing.T) {
 	startTestContainer(t, ctx)
 
 	stdout, stderr, err := runLstk(t, ctx, "", testEnvWithHome(t.TempDir(), ""), "stop", "--json")
-	require.NoError(t, err, "lstk stop --json failed: %s", stderr)
+	must.NoError(t, err, "lstk stop --json failed: %s", stderr)
 	requireExitCode(t, 0, err)
 
 	envelope := decodeEnvelope(t, stdout)
-	assert.Equal(t, "ok", envelope.Status)
-	assert.Equal(t, "stop", envelope.Command)
-	assert.Nil(t, envelope.Error)
+	must.Eq(t, "ok", envelope.Status)
+	must.Eq(t, "stop", envelope.Command)
+	must.Nil(t, envelope.Error)
 
 	var data struct {
 		Emulators []struct {
@@ -189,11 +188,11 @@ func TestStopCommandJSON(t *testing.T) {
 			WasRunning bool   `json:"wasRunning"`
 		} `json:"emulators"`
 	}
-	require.NoError(t, json.Unmarshal(envelope.Data, &data))
-	require.Len(t, data.Emulators, 1)
-	assert.Equal(t, "aws", data.Emulators[0].Type)
-	assert.Equal(t, "localstack-aws", data.Emulators[0].Name)
-	assert.True(t, data.Emulators[0].WasRunning)
+	must.NoError(t, json.Unmarshal(envelope.Data, &data))
+	must.Len(t, data.Emulators, 1)
+	must.Eq(t, "aws", data.Emulators[0].Type)
+	must.Eq(t, "localstack-aws", data.Emulators[0].Name)
+	must.True(t, data.Emulators[0].WasRunning)
 }
 
 func TestStopCommandJSONNotRunning(t *testing.T) {
@@ -205,8 +204,8 @@ func TestStopCommandJSONNotRunning(t *testing.T) {
 	requireExitCode(t, 1, err)
 
 	envelope := decodeEnvelope(t, stdout)
-	assert.Equal(t, "error", envelope.Status)
-	require.NotNil(t, envelope.Error)
-	assert.Equal(t, "EMULATOR_NOT_RUNNING", envelope.Error.Code)
-	assert.Equal(t, "EMULATOR", envelope.Error.Category)
+	must.Eq(t, "error", envelope.Status)
+	must.NotNil(t, envelope.Error)
+	must.Eq(t, "EMULATOR_NOT_RUNNING", envelope.Error.Code)
+	must.Eq(t, "EMULATOR", envelope.Error.Category)
 }

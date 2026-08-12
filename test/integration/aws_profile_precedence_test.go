@@ -7,8 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
+	"github.com/localstack/lstk/internal/must"
 )
 
 // These tests do not exercise lstk. They pin the botocore behavior lstk's
@@ -34,11 +33,11 @@ func awsProfileFixture(t *testing.T) []string {
 	dir := t.TempDir()
 
 	configPath := filepath.Join(dir, "config")
-	require.NoError(t, os.WriteFile(configPath, []byte(
+	must.NoError(t, os.WriteFile(configPath, []byte(
 		"[profile localstack]\nregion = eu-west-1\noutput = table\n"), 0600))
 
 	credsPath := filepath.Join(dir, "credentials")
-	require.NoError(t, os.WriteFile(credsPath, []byte(
+	must.NoError(t, os.WriteFile(credsPath, []byte(
 		"[localstack]\naws_access_key_id = test\naws_secret_access_key = test\n"), 0600))
 
 	return []string{
@@ -80,7 +79,7 @@ func awsConfigureList(t *testing.T, extraEnv ...string) string {
 	cmd.Env = awsProbeEnv(extraEnv...)
 
 	out, err := cmd.CombinedOutput()
-	require.NoError(t, err, "aws configure list failed: %s", out)
+	must.NoError(t, err, "aws configure list failed: %s", out)
 	return string(out)
 }
 
@@ -98,9 +97,9 @@ func TestAWSProfileEnvVarLetsEnvironmentCredentialsWin(t *testing.T) {
 	)
 	out := awsConfigureList(t, e...)
 
-	assert.Regexp(t, `access_key\s*:\s*\**1111\s*:\s*env`, out,
+	must.Regexp(t, `access_key\s*:\s*\**1111\s*:\s*env`, out,
 		"credentials must come from the environment under AWS_PROFILE")
-	assert.Regexp(t, `region\s*:\s*eu-west-1\s*:\s*config-file`, out,
+	must.Regexp(t, `region\s*:\s*eu-west-1\s*:\s*config-file`, out,
 		"the profile must still supply the region")
 }
 
@@ -121,9 +120,9 @@ func TestAWSProfileFlagSuppressesEnvironmentCredentials(t *testing.T) {
 	)...)
 
 	out, err := cmd.CombinedOutput()
-	require.NoError(t, err, "aws configure list failed: %s", out)
+	must.NoError(t, err, "aws configure list failed: %s", out)
 
-	assert.Regexp(t, `access_key\s*:\s*\**test\s*:\s*shared-credentials-file`, string(out),
+	must.Regexp(t, `access_key\s*:\s*\**test\s*:\s*shared-credentials-file`, string(out),
 		"--profile must suppress the environment credentials (the behavior lstk avoids)")
 }
 
@@ -140,7 +139,7 @@ func TestAWSEnvironmentRegionOverridesProfileRegion(t *testing.T) {
 	)
 	out := awsConfigureList(t, e...)
 
-	assert.Regexp(t, `region\s*:\s*us-east-1\s*:\s*env`, out,
+	must.Regexp(t, `region\s*:\s*us-east-1\s*:\s*env`, out,
 		"an environment region outranks the profile's, so lstk must not seed one")
 }
 
@@ -156,5 +155,5 @@ func TestAWSProfileOutranksDefaultProfile(t *testing.T) {
 	)
 	out := awsConfigureList(t, e...)
 
-	assert.Regexp(t, `region\s*:\s*eu-west-1\s*:\s*config-file`, out)
+	must.Regexp(t, `region\s*:\s*eu-west-1\s*:\s*config-file`, out)
 }

@@ -13,9 +13,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/localstack/lstk/internal/must"
+	"github.com/localstack/lstk/internal/snap"
 	"github.com/localstack/lstk/test/integration/env"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 // minimalStateZip builds a minimal valid state export ZIP, mirroring
@@ -25,10 +25,10 @@ func minimalStateZip(t *testing.T) []byte {
 	var buf bytes.Buffer
 	zw := zip.NewWriter(&buf)
 	f, err := zw.Create("state.json")
-	require.NoError(t, err)
+	must.NoError(t, err)
 	_, err = f.Write([]byte(`{"services":{}}`))
-	require.NoError(t, err)
-	require.NoError(t, zw.Close())
+	must.NoError(t, err)
+	must.NoError(t, zw.Close())
 	return buf.Bytes()
 }
 
@@ -48,7 +48,7 @@ func httpsCertFileEnv(t *testing.T, srv *httptest.Server) string {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "test-ca.pem")
 	pemBytes := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: srv.Certificate().Raw})
-	require.NoError(t, os.WriteFile(path, pemBytes, 0o600))
+	must.NoError(t, os.WriteFile(path, pemBytes, 0o600))
 	return "SSL_CERT_FILE=" + path
 }
 
@@ -83,9 +83,9 @@ func TestAWSCommandEndpointURLHTTPSNoDockerRequired(t *testing.T) {
 	e = append(e, unreachableDockerHost, httpsCertFileEnv(t, srv))
 
 	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), e, "--endpoint-url", srv.URL, "aws", "s3", "ls")
-	require.NoError(t, err, "stderr: %s", stderr)
-	assert.Contains(t, stdout, "ENDPOINT:"+srv.URL)
-	assert.Contains(t, stdout, "ARGS:s3 ls")
+	must.NoError(t, err, "stderr: %s", stderr)
+	must.Contains(t, stdout, "ENDPOINT:"+srv.URL)
+	must.Contains(t, stdout, "ARGS:s3 ls")
 }
 
 // TestCDKCommandEndpointURLHTTPSNoDockerRequired mirrors
@@ -105,8 +105,8 @@ func TestCDKCommandEndpointURLHTTPSNoDockerRequired(t *testing.T) {
 	e = append(e, unreachableDockerHost, httpsCertFileEnv(t, srv))
 
 	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), e, "--endpoint-url", srv.URL, "cdk", "deploy", "MyStack")
-	require.NoError(t, err, "stderr: %s", stderr)
-	assert.Contains(t, stdout, "ENV_AWS_ENDPOINT_URL="+srv.URL)
+	must.NoError(t, err, "stderr: %s", stderr)
+	must.Contains(t, stdout, "ENV_AWS_ENDPOINT_URL="+srv.URL)
 }
 
 // TestSnapshotSaveEndpointURLHTTPSNoDockerRequired proves the emulator-client
@@ -142,9 +142,9 @@ func TestSnapshotSaveEndpointURLHTTPSNoDockerRequired(t *testing.T) {
 	e = append(e, unreachableDockerHost, httpsCertFileEnv(t, srv))
 
 	stdout, stderr, err := runLstk(t, testContext(t), dir, e, "--endpoint-url", srv.URL, "snapshot", "save")
-	require.NoError(t, err, "stderr: %s", stderr)
-	assert.Contains(t, stdout, "Snapshot saved")
-	assert.Equal(t, "/_localstack/pods/state", gotPath)
+	must.NoError(t, err, "stderr: %s", stderr)
+	must.Contains(t, stdout, "Snapshot saved")
+	must.Eq(t, "/_localstack/pods/state", gotPath)
 }
 
 // TestStatusEndpointURLHTTPSchemeMismatchSuggestsHTTPS covers the confusing
@@ -164,11 +164,11 @@ func TestStatusEndpointURLHTTPSchemeMismatchSuggestsHTTPS(t *testing.T) {
 	e = append(e, unreachableDockerHost, httpsCertFileEnv(t, srv))
 
 	_, stderr, err := runLstk(t, testContext(t), t.TempDir(), e, "--endpoint-url", httpURL, "status")
-	require.Error(t, err)
-	assert.Contains(t, stderr, "could not reach LocalStack emulator at "+httpURL)
-	assert.Contains(t, stderr, srv.URL+" responded")
-	assert.Contains(t, stderr, "retry with that URL")
-	assert.NotContains(t, stderr, "lstk start")
+	must.Error(t, err)
+	must.Contains(t, stderr, "could not reach LocalStack emulator at "+httpURL)
+	must.Contains(t, stderr, srv.URL+" responded")
+	must.Contains(t, stderr, "retry with that URL")
+	must.NotContains(t, stderr, "lstk start")
 }
 
 // TestStatusEndpointURLHTTPSSchemeMismatchSuggestsHTTP is the mirror image:
@@ -186,10 +186,10 @@ func TestStatusEndpointURLHTTPSSchemeMismatchSuggestsHTTP(t *testing.T) {
 	e = append(e, unreachableDockerHost)
 
 	_, stderr, err := runLstk(t, testContext(t), t.TempDir(), e, "--endpoint-url", httpsURL, "status")
-	require.Error(t, err)
-	assert.Contains(t, stderr, "could not reach LocalStack emulator at "+httpsURL)
-	assert.Contains(t, stderr, srv.URL+" responded")
-	assert.Contains(t, stderr, "retry with that URL")
+	must.Error(t, err)
+	must.Contains(t, stderr, "could not reach LocalStack emulator at "+httpsURL)
+	must.Contains(t, stderr, srv.URL+" responded")
+	must.Contains(t, stderr, "retry with that URL")
 }
 
 // TestStatusEndpointURLHTTPSRendersReducedOutput is the https counterpart of
@@ -205,10 +205,8 @@ func TestStatusEndpointURLHTTPSRendersReducedOutput(t *testing.T) {
 	e = append(e, unreachableDockerHost, httpsCertFileEnv(t, srv))
 
 	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), e, "--endpoint-url", srv.URL, "status")
-	require.NoError(t, err, "stderr: %s", stderr)
-	assert.Contains(t, stdout, "running")
-	assert.Contains(t, stdout, srv.URL)
-	assert.Contains(t, stdout, "3.0.2")
-	assert.NotContains(t, stdout, "Container:")
-	assert.NotContains(t, stdout, "Uptime:")
+	must.NoError(t, err, "stderr: %s", stderr)
+	// The snapshot pins the reduced remote-status card: running headline and
+	// endpoint only — no Container/Uptime lines, which need local Docker.
+	snap.Match(t, sanitizeOutput(stdout))
 }

@@ -1,0 +1,7 @@
+Fetching versions...
+~ 3 versions
+
+  VERSION  CREATED               LOCALSTACK  SERVICES
+  3        <date>  <calver>     s3, lambda
+  2        <date>  <calver>     s3
+  1        <date>  <calver>     -

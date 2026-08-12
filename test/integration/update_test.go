@@ -23,9 +23,9 @@ import (
 	"time"
 
 	"github.com/creack/pty"
+	"github.com/localstack/lstk/internal/must"
+	"github.com/localstack/lstk/internal/snap"
 	"github.com/localstack/lstk/test/integration/env"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 func TestUpdateCheckCommand(t *testing.T) {
@@ -34,11 +34,11 @@ func TestUpdateCheckCommand(t *testing.T) {
 
 	analyticsSrv, events := mockAnalyticsServer(t)
 	stdout, stderr, err := runLstk(t, ctx, "", env.With(env.AnalyticsEndpoint, analyticsSrv.URL), "update", "--check")
-	require.NoError(t, err, "lstk update --check failed: %s", stderr)
+	must.NoError(t, err, "lstk update --check failed: %s", stderr)
 	requireExitCode(t, 0, err)
 
 	// Dev builds report a note about skipping update check
-	assert.Contains(t, stdout, "Note:", "should show a note (dev build or up-to-date)")
+	must.Contains(t, stdout, "Note:", "should show a note (dev build or up-to-date)")
 	assertCommandTelemetry(t, events, "update", 0)
 }
 
@@ -47,9 +47,9 @@ func TestUpdateCheckCommandNonInteractive(t *testing.T) {
 	ctx := testContext(t)
 
 	stdout, stderr, err := runLstk(t, ctx, "", testEnvWithHome(t.TempDir(), ""), "update", "--check", "--non-interactive")
-	require.NoError(t, err, "lstk update --check --non-interactive failed: %s", stderr)
+	must.NoError(t, err, "lstk update --check --non-interactive failed: %s", stderr)
 	requireExitCode(t, 0, err)
-	assert.Contains(t, stdout, "Note:", "should show a note in non-interactive mode")
+	must.Contains(t, stdout, "Note:", "should show a note in non-interactive mode")
 }
 
 func TestUpdateCheckCommandJSON(t *testing.T) {
@@ -57,24 +57,24 @@ func TestUpdateCheckCommandJSON(t *testing.T) {
 	ctx := testContext(t)
 
 	stdout, stderr, err := runLstk(t, ctx, "", testEnvWithHome(t.TempDir(), ""), "update", "--check", "--json")
-	require.NoError(t, err, "lstk update --check --json failed: %s", stderr)
+	must.NoError(t, err, "lstk update --check --json failed: %s", stderr)
 	requireExitCode(t, 0, err)
 
 	envelope := decodeEnvelope(t, stdout)
-	assert.Equal(t, "ok", envelope.Status)
-	assert.Equal(t, "update", envelope.Command)
+	must.Eq(t, "ok", envelope.Status)
+	must.Eq(t, "update", envelope.Command)
 
 	var data struct {
 		CurrentVersion  string `json:"currentVersion"`
 		LatestVersion   string `json:"latestVersion"`
 		UpdateAvailable bool   `json:"updateAvailable"`
 	}
-	require.NoError(t, json.Unmarshal(envelope.Data, &data))
+	must.NoError(t, json.Unmarshal(envelope.Data, &data))
 	// The integration test binary is a dev build, so Check short-circuits
 	// before any network call — this exercises the "checked, none applied"
 	// UpdateCheckedEvent shape without depending on network access.
-	assert.Equal(t, "dev", data.CurrentVersion)
-	assert.False(t, data.UpdateAvailable)
+	must.Eq(t, "dev", data.CurrentVersion)
+	must.False(t, data.UpdateAvailable)
 }
 
 func requireNPM(t *testing.T) {
@@ -101,8 +101,8 @@ func TestUpdateNPMInstall(t *testing.T) {
 	// On Windows, t.TempDir() may return a short 8.3 path (e.g. RUNNER~1)
 	// while the program resolves the long path. EvalSymlinks normalizes both.
 	projectDir, err := filepath.EvalSymlinks(t.TempDir())
-	require.NoError(t, err)
-	require.NoError(t, os.WriteFile(
+	must.NoError(t, err)
+	must.NoError(t, os.WriteFile(
 		filepath.Join(projectDir, "package.json"),
 		[]byte(`{"name":"test-project","version":"1.0.0","dependencies":{"@localstack/lstk":"*"}}`),
 		0o644,
@@ -112,7 +112,7 @@ func TestUpdateNPMInstall(t *testing.T) {
 	npmInstall := exec.CommandContext(ctx, "npm", "install", "@localstack/lstk")
 	npmInstall.Dir = projectDir
 	out, err := npmInstall.CombinedOutput()
-	require.NoError(t, err, "npm install failed: %s", string(out))
+	must.NoError(t, err, "npm install failed: %s", string(out))
 
 	// Build a fake old version binary and replace the one in node_modules
 	platformPkg := npmPlatformPackage()
@@ -124,11 +124,11 @@ func TestUpdateNPMInstall(t *testing.T) {
 
 	// Verify the binary exists from npm install
 	_, err = os.Stat(nmBinaryPath)
-	require.NoError(t, err, "expected binary at %s after npm install", nmBinaryPath)
+	must.NoError(t, err, "expected binary at %s after npm install", nmBinaryPath)
 
 	// Build our dev binary with a fake old version into that location
 	repoRoot, err := filepath.Abs("../..")
-	require.NoError(t, err)
+	must.NoError(t, err)
 	buildCmd := exec.CommandContext(ctx, "go", "build",
 		"-ldflags", "-X github.com/localstack/lstk/internal/version.version=0.0.1",
 		"-o", nmBinaryPath,
@@ -136,7 +136,7 @@ func TestUpdateNPMInstall(t *testing.T) {
 	)
 	buildCmd.Dir = repoRoot
 	out, err = buildCmd.CombinedOutput()
-	require.NoError(t, err, "go build failed: %s", string(out))
+	must.NoError(t, err, "go build failed: %s", string(out))
 
 	// Run the binary directly (not through npx) so os.Executable() resolves to the node_modules path.
 	// The update should always use `npm install -g` regardless of local/global context.
@@ -145,10 +145,10 @@ func TestUpdateNPMInstall(t *testing.T) {
 	stdout, err := cmd.CombinedOutput()
 	stdoutStr := string(stdout)
 
-	require.NoError(t, err, "lstk update failed: %s", stdoutStr)
+	must.NoError(t, err, "lstk update failed: %s", stdoutStr)
 	requireExitCode(t, 0, err)
-	assert.Contains(t, stdoutStr, "npm install -g", "should always use global install")
-	assert.Contains(t, stdoutStr, "Updated to", "should complete the update")
+	must.Contains(t, stdoutStr, "npm install -g", "should always use global install")
+	must.Contains(t, stdoutStr, "Updated to", "should complete the update")
 }
 
 func TestUpdateBinaryInPlace(t *testing.T) {
@@ -162,7 +162,7 @@ func TestUpdateBinaryInPlace(t *testing.T) {
 	}
 	tmpBinary := filepath.Join(t.TempDir(), binaryName)
 	repoRoot, err := filepath.Abs("../..")
-	require.NoError(t, err)
+	must.NoError(t, err)
 
 	buildCmd := exec.CommandContext(ctx, "go", "build",
 		"-ldflags", "-X github.com/localstack/lstk/internal/version.version=0.0.1",
@@ -171,13 +171,13 @@ func TestUpdateBinaryInPlace(t *testing.T) {
 	)
 	buildCmd.Dir = repoRoot
 	out, err := buildCmd.CombinedOutput()
-	require.NoError(t, err, "go build failed: %s", string(out))
+	must.NoError(t, err, "go build failed: %s", string(out))
 
 	// Verify it reports the fake version
 	verCmd := exec.CommandContext(ctx, tmpBinary, "--version")
 	verOut, err := verCmd.CombinedOutput()
-	require.NoError(t, err)
-	assert.Contains(t, string(verOut), "0.0.1")
+	must.NoError(t, err)
+	must.Contains(t, string(verOut), "0.0.1")
 
 	// Run update — should download the real latest release from GitHub and
 	// replace itself. HOME is a temp dir so config/log side effects stay
@@ -186,21 +186,21 @@ func TestUpdateBinaryInPlace(t *testing.T) {
 	updateCmd.Env = testEnvWithHome(t.TempDir(), "")
 	updateOut, err := updateCmd.CombinedOutput()
 	updateStr := string(updateOut)
-	require.NoError(t, err, "lstk update failed: %s", updateStr)
+	must.NoError(t, err, "lstk update failed: %s", updateStr)
 	requireExitCode(t, 0, err)
-	assert.Contains(t, updateStr, "Update available: 0.0.1", "should detect update")
-	assert.Contains(t, updateStr, "Downloading and verifying update", "should download and verify binary")
-	assert.Contains(t, updateStr, "Updated to", "should complete the update")
+	must.Contains(t, updateStr, "Update available: 0.0.1", "should detect update")
+	must.Contains(t, updateStr, "Downloading and verifying update", "should download and verify binary")
+	must.Contains(t, updateStr, "Updated to", "should complete the update")
 
 	// Verify the binary was replaced with the release version the update
 	// reported, not just "anything other than 0.0.1".
 	m := regexp.MustCompile(`Updated to v?([0-9]+\.[0-9]+\.[0-9]+\S*)`).FindStringSubmatch(updateStr)
-	require.Len(t, m, 2, "update output should report the installed version: %s", updateStr)
+	must.Len(t, m, 2, "update output should report the installed version: %s", updateStr)
 	verCmd2 := exec.CommandContext(ctx, tmpBinary, "--version")
 	verOut2, err := verCmd2.CombinedOutput()
-	require.NoError(t, err)
-	assert.Contains(t, string(verOut2), m[1], "replaced binary should print the downloaded release version")
-	assert.NotContains(t, string(verOut2), "0.0.1", "binary should no longer be the old version")
+	must.NoError(t, err)
+	must.Contains(t, string(verOut2), m[1], "replaced binary should print the downloaded release version")
+	must.NotContains(t, string(verOut2), "0.0.1", "binary should no longer be the old version")
 }
 
 // TestUpdateBinaryInPlaceJSON exercises an actual applied update (not just
@@ -218,7 +218,7 @@ func TestUpdateBinaryInPlaceJSON(t *testing.T) {
 	}
 	tmpBinary := filepath.Join(t.TempDir(), binaryName)
 	repoRoot, err := filepath.Abs("../..")
-	require.NoError(t, err)
+	must.NoError(t, err)
 
 	buildCmd := exec.CommandContext(ctx, "go", "build",
 		"-ldflags", "-X github.com/localstack/lstk/internal/version.version=0.0.1",
@@ -227,28 +227,28 @@ func TestUpdateBinaryInPlaceJSON(t *testing.T) {
 	)
 	buildCmd.Dir = repoRoot
 	out, err := buildCmd.CombinedOutput()
-	require.NoError(t, err, "go build failed: %s", string(out))
+	must.NoError(t, err, "go build failed: %s", string(out))
 
 	updateCmd := exec.CommandContext(ctx, tmpBinary, "update", "--non-interactive", "--json")
 	updateCmd.Env = testEnvWithHome(t.TempDir(), "")
 	updateOut, err := updateCmd.CombinedOutput()
 	updateStr := string(updateOut)
-	require.NoError(t, err, "lstk update --json failed: %s", updateStr)
+	must.NoError(t, err, "lstk update --json failed: %s", updateStr)
 	requireExitCode(t, 0, err)
 
 	envelope := decodeEnvelope(t, strings.TrimSpace(updateStr))
-	assert.Equal(t, "ok", envelope.Status)
+	must.Eq(t, "ok", envelope.Status)
 
 	var data map[string]any
-	require.NoError(t, json.Unmarshal(envelope.Data, &data))
-	assert.Equal(t, "0.0.1", data["currentVersion"])
-	assert.Equal(t, true, data["updated"])
-	assert.Equal(t, "binary", data["method"])
-	assert.NotEmpty(t, data["updatedVersion"])
+	must.NoError(t, json.Unmarshal(envelope.Data, &data))
+	must.Eq(t, "0.0.1", data["currentVersion"])
+	must.Eq(t, true, data["updated"])
+	must.Eq(t, "binary", data["method"])
+	must.NotEmpty(t, data["updatedVersion"])
 	_, hasLatestVersion := data["latestVersion"]
 	_, hasUpdateAvailable := data["updateAvailable"]
-	assert.False(t, hasLatestVersion, "applied-update data should not carry a stale latestVersion key from the preceding check")
-	assert.False(t, hasUpdateAvailable, "applied-update data should not carry a stale updateAvailable key from the preceding check")
+	must.False(t, hasLatestVersion, "applied-update data should not carry a stale latestVersion key from the preceding check")
+	must.False(t, hasUpdateAvailable, "applied-update data should not carry a stale updateAvailable key from the preceding check")
 }
 
 func requireHomebrew(t *testing.T) {
@@ -263,7 +263,7 @@ func homebrewLstkBinaryPath(t *testing.T) string {
 
 	// Find the Caskroom binary by resolving the brew symlink
 	brewBin, err := exec.Command("brew", "--prefix").Output()
-	require.NoError(t, err)
+	must.NoError(t, err)
 	prefix := strings.TrimSpace(string(brewBin))
 
 	// Look for lstk in the Caskroom
@@ -283,7 +283,7 @@ func TestUpdateHomebrew(t *testing.T) {
 
 	ctx := testContext(t)
 	repoRoot, err := filepath.Abs("../..")
-	require.NoError(t, err)
+	must.NoError(t, err)
 
 	// Build a fake old version into the Caskroom location
 	buildCmd := exec.CommandContext(ctx, "go", "build",
@@ -293,13 +293,13 @@ func TestUpdateHomebrew(t *testing.T) {
 	)
 	buildCmd.Dir = repoRoot
 	out, err := buildCmd.CombinedOutput()
-	require.NoError(t, err, "go build failed: %s", string(out))
+	must.NoError(t, err, "go build failed: %s", string(out))
 
 	// Verify it reports the fake version
 	verCmd := exec.CommandContext(ctx, caskBinary, "--version")
 	verOut, err := verCmd.CombinedOutput()
-	require.NoError(t, err)
-	assert.Contains(t, string(verOut), "0.0.1")
+	must.NoError(t, err)
+	must.Contains(t, string(verOut), "0.0.1")
 
 	// Run update — should detect Homebrew and run brew upgrade
 	// Note: brew may consider lstk already up-to-date (its metadata tracks the
@@ -308,10 +308,10 @@ func TestUpdateHomebrew(t *testing.T) {
 	updateCmd := exec.CommandContext(ctx, caskBinary, "update", "--non-interactive")
 	updateOut, err := updateCmd.CombinedOutput()
 	updateStr := string(updateOut)
-	require.NoError(t, err, "lstk update failed: %s", updateStr)
+	must.NoError(t, err, "lstk update failed: %s", updateStr)
 	requireExitCode(t, 0, err)
-	assert.Contains(t, updateStr, "Homebrew", "should detect Homebrew install")
-	assert.Contains(t, updateStr, "brew upgrade", "should mention brew upgrade")
+	must.Contains(t, updateStr, "Homebrew", "should detect Homebrew install")
+	must.Contains(t, updateStr, "brew upgrade", "should mention brew upgrade")
 }
 
 func TestUpdateNotification(t *testing.T) {
@@ -325,7 +325,7 @@ func TestUpdateNotification(t *testing.T) {
 	// Build a fake old version to a temp location
 	tmpBinary := filepath.Join(t.TempDir(), "lstk")
 	repoRoot, err := filepath.Abs("../..")
-	require.NoError(t, err)
+	must.NoError(t, err)
 
 	buildCmd := exec.CommandContext(ctx, "go", "build",
 		"-ldflags", "-X github.com/localstack/lstk/internal/version.version=0.0.1",
@@ -334,7 +334,7 @@ func TestUpdateNotification(t *testing.T) {
 	)
 	buildCmd.Dir = repoRoot
 	out, err := buildCmd.CombinedOutput()
-	require.NoError(t, err, "go build failed: %s", string(out))
+	must.NoError(t, err, "go build failed: %s", string(out))
 
 	// Mock API server so license validation fails fast after the notification
 	mockServer := createMockLicenseServer(false)
@@ -349,7 +349,7 @@ type = "aws"     # Emulator type
 tag  = "latest"  # Docker image tag
 port = "4566"    # Host port
 `
-		require.NoError(t, os.WriteFile(configFile, []byte(originalConfig), 0o644))
+		must.NoError(t, os.WriteFile(configFile, []byte(originalConfig), 0o644))
 
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
@@ -358,7 +358,7 @@ port = "4566"    # Host port
 		cmd.Env = env.Without(env.AuthToken).With(env.AuthToken, "fake-token").With(env.APIEndpoint, mockServer.URL)
 
 		ptmx, err := pty.Start(cmd)
-		require.NoError(t, err, "failed to start command in PTY")
+		must.NoError(t, err, "failed to start command in PTY")
 		defer func() { _ = ptmx.Close() }()
 
 		output := &syncBuffer{}
@@ -368,25 +368,25 @@ port = "4566"    # Host port
 			close(outputCh)
 		}()
 
-		require.Eventually(t, func() bool {
+		must.Eventually(t, func() bool {
 			return bytes.Contains(output.Bytes(), []byte("New lstk version available"))
 		}, 10*time.Second, 100*time.Millisecond, "update notification prompt should appear")
 
 		_, err = ptmx.Write([]byte("s"))
-		require.NoError(t, err)
+		must.NoError(t, err)
 
 		_ = cmd.Wait()
 		<-outputCh
 
-		assert.Contains(t, output.String(), "New lstk version available")
+		must.Contains(t, output.String(), "New lstk version available")
 
 		configData, err := os.ReadFile(configFile)
-		require.NoError(t, err)
+		must.NoError(t, err)
 		configStr := string(configData)
-		assert.Contains(t, configStr, "update_skipped_version", "skipped version should be persisted")
-		assert.Contains(t, configStr, "# User-maintained lstk config", "file header comment should be preserved")
-		assert.Contains(t, configStr, "# Emulator type", "inline comments should be preserved")
-		assert.Contains(t, configStr, `port = "4566"`, "existing config values should be preserved")
+		must.Contains(t, configStr, "update_skipped_version", "skipped version should be persisted")
+		must.Contains(t, configStr, "# User-maintained lstk config", "file header comment should be preserved")
+		must.Contains(t, configStr, "# Emulator type", "inline comments should be preserved")
+		must.Contains(t, configStr, `port = "4566"`, "existing config values should be preserved")
 	})
 
 	t.Run("update", func(t *testing.T) {
@@ -394,11 +394,11 @@ port = "4566"    # Host port
 		// Copy binary since it will be replaced during the update
 		updateBinary := filepath.Join(t.TempDir(), "lstk")
 		data, err := os.ReadFile(tmpBinary)
-		require.NoError(t, err)
-		require.NoError(t, os.WriteFile(updateBinary, data, 0o755))
+		must.NoError(t, err)
+		must.NoError(t, os.WriteFile(updateBinary, data, 0o755))
 
 		configFile := filepath.Join(t.TempDir(), "config.toml")
-		require.NoError(t, os.WriteFile(configFile, []byte(""), 0o644))
+		must.NoError(t, os.WriteFile(configFile, []byte(""), 0o644))
 
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 		defer cancel()
@@ -407,7 +407,7 @@ port = "4566"    # Host port
 		cmd.Env = env.Without(env.AuthToken).With(env.AuthToken, "fake-token").With(env.APIEndpoint, mockServer.URL)
 
 		ptmx, err := pty.Start(cmd)
-		require.NoError(t, err, "failed to start command in PTY")
+		must.NoError(t, err, "failed to start command in PTY")
 		defer func() { _ = ptmx.Close() }()
 
 		output := &syncBuffer{}
@@ -417,26 +417,26 @@ port = "4566"    # Host port
 			close(outputCh)
 		}()
 
-		require.Eventually(t, func() bool {
+		must.Eventually(t, func() bool {
 			return bytes.Contains(output.Bytes(), []byte("New lstk version available"))
 		}, 10*time.Second, 100*time.Millisecond, "update notification prompt should appear")
 
 		_, err = ptmx.Write([]byte("u"))
-		require.NoError(t, err)
+		must.NoError(t, err)
 
 		err = cmd.Wait()
 		<-outputCh
 
 		out := output.String()
-		require.NoError(t, err, "update should succeed: %s", out)
-		assert.Contains(t, out, "New lstk version available")
-		assert.Contains(t, out, "Updated to")
+		must.NoError(t, err, "update should succeed: %s", out)
+		must.Contains(t, out, "New lstk version available")
+		must.Contains(t, out, "Updated to")
 
 		// Verify the binary was actually replaced
 		verCmd := exec.CommandContext(ctx, updateBinary, "--version")
 		verOut, err := verCmd.CombinedOutput()
-		require.NoError(t, err)
-		assert.NotContains(t, string(verOut), "0.0.1", "binary should no longer be the old version")
+		must.NoError(t, err)
+		must.NotContains(t, string(verOut), "0.0.1", "binary should no longer be the old version")
 	})
 }
 
@@ -449,7 +449,7 @@ func npmPlatformPackage() string {
 func buildLstkWithVersion(t *testing.T, ctx context.Context, version, outPath string) {
 	t.Helper()
 	repoRoot, err := filepath.Abs("../..")
-	require.NoError(t, err)
+	must.NoError(t, err)
 	buildCmd := exec.CommandContext(ctx, "go", "build",
 		"-ldflags", "-X github.com/localstack/lstk/internal/version.version="+version,
 		"-o", outPath,
@@ -457,7 +457,7 @@ func buildLstkWithVersion(t *testing.T, ctx context.Context, version, outPath st
 	)
 	buildCmd.Dir = repoRoot
 	out, err := buildCmd.CombinedOutput()
-	require.NoError(t, err, "go build failed: %s", string(out))
+	must.NoError(t, err, "go build failed: %s", string(out))
 }
 
 // releaseAssetName mirrors the goreleaser asset naming the updater expects:
@@ -480,24 +480,24 @@ func packageReleaseArchive(t *testing.T, binaryName string, binary []byte) []byt
 		hdr := &zip.FileHeader{Name: binaryName, Method: zip.Deflate}
 		hdr.SetMode(0o755)
 		w, err := zw.CreateHeader(hdr)
-		require.NoError(t, err)
+		must.NoError(t, err)
 		_, err = w.Write(binary)
-		require.NoError(t, err)
-		require.NoError(t, zw.Close())
+		must.NoError(t, err)
+		must.NoError(t, zw.Close())
 		return buf.Bytes()
 	}
 	gw := gzip.NewWriter(&buf)
 	tw := tar.NewWriter(gw)
-	require.NoError(t, tw.WriteHeader(&tar.Header{
+	must.NoError(t, tw.WriteHeader(&tar.Header{
 		Name:     binaryName,
 		Mode:     0o755,
 		Size:     int64(len(binary)),
 		Typeflag: tar.TypeReg,
 	}))
 	_, err := tw.Write(binary)
-	require.NoError(t, err)
-	require.NoError(t, tw.Close())
-	require.NoError(t, gw.Close())
+	must.NoError(t, err)
+	must.NoError(t, tw.Close())
+	must.NoError(t, gw.Close())
 	return buf.Bytes()
 }
 
@@ -557,7 +557,7 @@ func TestUpdateBinaryMockGitHubHappyPath(t *testing.T) {
 	newBinary := filepath.Join(t.TempDir(), binaryName)
 	buildLstkWithVersion(t, ctx, "0.0.2", newBinary)
 	newBytes, err := os.ReadFile(newBinary)
-	require.NoError(t, err)
+	must.NoError(t, err)
 
 	archive := packageReleaseArchive(t, binaryName, newBytes)
 	sum := sha256.Sum256(archive)
@@ -570,22 +570,24 @@ func TestUpdateBinaryMockGitHubHappyPath(t *testing.T) {
 	})
 
 	updateCmd := exec.CommandContext(ctx, oldBinary, "update", "--non-interactive")
-	updateCmd.Env = mockGitHubEnv(t, srv)
+	// Pin PATH to an empty dir so the multiple-installs warning (which scans
+	// PATH for other lstk binaries) can never inject host-dependent lines
+	// into the snapshotted output.
+	updateCmd.Env = append(mockGitHubEnv(t, srv), string(env.Path)+"="+t.TempDir())
 	out, err := updateCmd.CombinedOutput()
 	outStr := string(out)
-	require.NoError(t, err, "lstk update failed: %s", outStr)
+	must.NoError(t, err, "lstk update failed: %s", outStr)
 	requireExitCode(t, 0, err)
-	assert.Contains(t, outStr, "Update available: 0.0.1 → v0.0.2", "should detect the mock release")
-	assert.Contains(t, outStr, "Downloading and verifying update", "should take the binary download path")
-	assert.Contains(t, outStr, "Updated to v0.0.2", "should complete the update")
+	// The snapshot pins the full check → download/verify → updated sequence.
+	snap.Match(t, sanitizeOutput(outStr))
 
 	verOut, err := exec.CommandContext(ctx, oldBinary, "--version").CombinedOutput()
-	require.NoError(t, err)
-	assert.Contains(t, string(verOut), "0.0.2", "binary should be replaced with the mock release")
+	must.NoError(t, err)
+	must.Contains(t, string(verOut), "0.0.2", "binary should be replaced with the mock release")
 
 	leftovers, err := filepath.Glob(filepath.Join(filepath.Dir(oldBinary), "lstk-update-*"))
-	require.NoError(t, err)
-	assert.Empty(t, leftovers, "download temp files should be cleaned up")
+	must.NoError(t, err)
+	must.Empty(t, leftovers, "download temp files should be cleaned up")
 }
 
 // TestUpdateBinaryMockGitHubChecksumMismatch proves the checksum gate: when
@@ -625,7 +627,7 @@ func TestUpdateBinaryMockGitHubChecksumMismatch(t *testing.T) {
 	updateCmd.Stdout = &stdout
 	updateCmd.Stderr = &stderr
 	err := updateCmd.Run()
-	require.Error(t, err, "update must fail on checksum mismatch, output: %s%s", stdout.String(), stderr.String())
+	must.Error(t, err, "update must fail on checksum mismatch, output: %s%s", stdout.String(), stderr.String())
 	requireExitCode(t, 1, err)
 
 	wantStdout := "Checking for updates...\n" +
@@ -633,16 +635,16 @@ func TestUpdateBinaryMockGitHubChecksumMismatch(t *testing.T) {
 		"Downloading and verifying update...\n" +
 		fmt.Sprintf("Error: update failed: checksum mismatch for %s: expected %s, got %s — the downloaded archive may be corrupted or tampered with; update aborted\n",
 			assetName, hex.EncodeToString(wrongSum[:]), hex.EncodeToString(archiveSum[:]))
-	assert.Equal(t, wantStdout, stdout.String(), "full stdout should be exactly the check/download/error sequence")
-	assert.Empty(t, stderr.String(), "silent-error handling must not print anything to stderr")
+	must.Eq(t, wantStdout, stdout.String(), "full stdout should be exactly the check/download/error sequence")
+	must.Empty(t, stderr.String(), "silent-error handling must not print anything to stderr")
 
 	verOut, err := exec.CommandContext(ctx, oldBinary, "--version").CombinedOutput()
-	require.NoError(t, err, "original binary should still run")
-	assert.Contains(t, string(verOut), "0.0.1", "binary must not be replaced on checksum mismatch")
+	must.NoError(t, err, "original binary should still run")
+	must.Contains(t, string(verOut), "0.0.1", "binary must not be replaced on checksum mismatch")
 
 	leftovers, err := filepath.Glob(filepath.Join(filepath.Dir(oldBinary), "lstk-update-*"))
-	require.NoError(t, err)
-	assert.Empty(t, leftovers, "rejected download must not leave temp files behind")
+	must.NoError(t, err)
+	must.Empty(t, leftovers, "rejected download must not leave temp files behind")
 }
 
 // TestUpdateBinaryMockGitHubMissingChecksums proves the fail-closed contract:
@@ -669,16 +671,16 @@ func TestUpdateBinaryMockGitHubMissingChecksums(t *testing.T) {
 	updateCmd.Env = mockGitHubEnv(t, srv)
 	out, err := updateCmd.CombinedOutput()
 	outStr := string(out)
-	require.Error(t, err, "update must fail when checksums.txt is missing, output: %s", outStr)
+	must.Error(t, err, "update must fail when checksums.txt is missing, output: %s", outStr)
 	requireExitCode(t, 1, err)
-	assert.Contains(t, outStr, "no checksums.txt asset", "should name the missing manifest")
-	assert.Contains(t, outStr, "refusing to install an unverifiable binary", "should state the fail-closed policy")
+	must.Contains(t, outStr, "no checksums.txt asset", "should name the missing manifest")
+	must.Contains(t, outStr, "refusing to install an unverifiable binary", "should state the fail-closed policy")
 
 	verOut, err := exec.CommandContext(ctx, oldBinary, "--version").CombinedOutput()
-	require.NoError(t, err, "original binary should still run")
-	assert.Contains(t, string(verOut), "0.0.1", "binary must not be replaced without a verifiable manifest")
+	must.NoError(t, err, "original binary should still run")
+	must.Contains(t, string(verOut), "0.0.1", "binary must not be replaced without a verifiable manifest")
 
 	leftovers, err := filepath.Glob(filepath.Join(filepath.Dir(oldBinary), "lstk-update-*"))
-	require.NoError(t, err)
-	assert.Empty(t, leftovers, "aborted update must not leave temp files behind")
+	must.NoError(t, err)
+	must.Empty(t, leftovers, "aborted update must not leave temp files behind")
 }

@@ -14,9 +14,8 @@ import (
 	"time"
 
 	"github.com/creack/pty"
+	"github.com/localstack/lstk/internal/must"
 	"github.com/localstack/lstk/test/integration/env"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 // mockPodRemoveServer returns a test server that handles DELETE /_localstack/pods/{name}.
@@ -48,8 +47,8 @@ func TestSnapshotRemoveLocalRefRejected(t *testing.T) {
 		"--non-interactive", "snapshot", "remove", "./my-baseline.zip",
 	)
 	requireExitCode(t, 1, err)
-	assert.Contains(t, stderr, "resolves to a local file")
-	assert.Contains(t, stderr, "CLI cannot delete local files")
+	must.Contains(t, stderr, "resolves to a local file")
+	must.Contains(t, stderr, "CLI cannot delete local files")
 }
 
 func TestSnapshotRemoveLocalBareNameRejected(t *testing.T) {
@@ -61,8 +60,8 @@ func TestSnapshotRemoveLocalBareNameRejected(t *testing.T) {
 		"--non-interactive", "snapshot", "remove", "my-baseline",
 	)
 	requireExitCode(t, 1, err)
-	assert.Contains(t, stderr, "resolves to a local file")
-	assert.Contains(t, stderr, "CLI cannot delete local files")
+	must.Contains(t, stderr, "resolves to a local file")
+	must.Contains(t, stderr, "CLI cannot delete local files")
 }
 
 func TestSnapshotRemovePodNoAuthToken(t *testing.T) {
@@ -74,7 +73,7 @@ func TestSnapshotRemovePodNoAuthToken(t *testing.T) {
 		"--non-interactive", "snapshot", "remove", "pod:my-baseline", "--force",
 	)
 	requireExitCode(t, 1, err)
-	assert.Contains(t, stderr, "authentication")
+	must.Contains(t, stderr, "authentication")
 }
 
 func TestSnapshotRemovePodInvalidName(t *testing.T) {
@@ -89,7 +88,7 @@ func TestSnapshotRemovePodInvalidName(t *testing.T) {
 				"--non-interactive", "snapshot", "remove", ref,
 			)
 			requireExitCode(t, 1, err)
-			assert.Contains(t, stderr, "invalid pod name")
+			must.Contains(t, stderr, "invalid pod name")
 		})
 	}
 }
@@ -103,7 +102,7 @@ func TestSnapshotRemoveNonInteractiveRequiresForce(t *testing.T) {
 		"--non-interactive", "snapshot", "remove", "pod:my-baseline",
 	)
 	requireExitCode(t, 1, err)
-	assert.Contains(t, stderr, "--force")
+	must.Contains(t, stderr, "--force")
 }
 
 func TestSnapshotRemoteSchemeRejected(t *testing.T) {
@@ -118,7 +117,7 @@ func TestSnapshotRemoteSchemeRejected(t *testing.T) {
 				"--non-interactive", "snapshot", "remove", ref,
 			)
 			requireExitCode(t, 1, err)
-			assert.Contains(t, stderr, "not yet supported")
+			must.Contains(t, stderr, "not yet supported")
 		})
 	}
 }
@@ -140,10 +139,10 @@ func TestSnapshotRemovePodSuccess(t *testing.T) {
 			With(env.AuthToken, "test-token"),
 		"--non-interactive", "snapshot", "remove", "pod:my-baseline", "--force",
 	)
-	require.NoError(t, err, "lstk snapshot remove pod:my-baseline failed: %s", stderr)
-	assert.Contains(t, stdout, "my-baseline")
-	assert.Contains(t, stdout, "deleted")
-	assert.Equal(t, int32(1), calls(), "DELETE endpoint should be called exactly once")
+	must.NoError(t, err, "lstk snapshot remove pod:my-baseline failed: %s", stderr)
+	must.Contains(t, stdout, "my-baseline")
+	must.Contains(t, stdout, "deleted")
+	must.Eq(t, int32(1), calls(), "DELETE endpoint should be called exactly once")
 }
 
 func TestSnapshotRemovePodServerError(t *testing.T) {
@@ -162,8 +161,8 @@ func TestSnapshotRemovePodServerError(t *testing.T) {
 		"--non-interactive", "snapshot", "remove", "pod:my-baseline", "--force",
 	)
 	requireExitCode(t, 1, err)
-	assert.Contains(t, stderr, "pod remove failed")
-	assert.Equal(t, int32(1), calls(), "DELETE endpoint should be called even when server errors")
+	must.Contains(t, stderr, "pod remove failed")
+	must.Eq(t, int32(1), calls(), "DELETE endpoint should be called even when server errors")
 }
 
 func TestSnapshotRemovePodNotFound(t *testing.T) {
@@ -191,10 +190,10 @@ func TestSnapshotRemovePodNotFound(t *testing.T) {
 		"--non-interactive", "snapshot", "remove", "pod:my-snapshot", "--force",
 	)
 	requireExitCode(t, 1, err)
-	assert.Contains(t, stderr, `"my-snapshot"`)
-	assert.Contains(t, stderr, "not found")
-	assert.NotContains(t, stderr, "HTTP 500")
-	assert.NotContains(t, stderr, "pod remove failed")
+	must.Contains(t, stderr, `"my-snapshot"`)
+	must.Contains(t, stderr, "not found")
+	must.NotContains(t, stderr, "HTTP 500")
+	must.NotContains(t, stderr, "pod remove failed")
 }
 
 func TestSnapshotRemoveInteractive(t *testing.T) {
@@ -210,14 +209,14 @@ func TestSnapshotRemoveInteractive(t *testing.T) {
 	startRemove := func(t *testing.T, srv *httptest.Server) (*os.File, *syncBuffer, chan struct{}, *exec.Cmd) {
 		t.Helper()
 		binPath, err := filepath.Abs(binaryPath())
-		require.NoError(t, err)
+		must.NoError(t, err)
 
 		cmd := exec.CommandContext(testContext(t), binPath, "snapshot", "remove", "pod:my-baseline")
 		cmd.Env = env.Environ(testEnvWithHome(t.TempDir(), "")).
 			With(env.LocalStackHost, lsHost(srv)).
 			With(env.AuthToken, "test-token")
 		ptmx, err := pty.Start(cmd)
-		require.NoError(t, err, "failed to start command in PTY")
+		must.NoError(t, err, "failed to start command in PTY")
 		t.Cleanup(func() { _ = ptmx.Close() })
 
 		out := &syncBuffer{}
@@ -226,7 +225,7 @@ func TestSnapshotRemoveInteractive(t *testing.T) {
 			_, _ = io.Copy(out, ptmx)
 			close(outputCh)
 		}()
-		require.Eventually(t, func() bool {
+		must.Eventually(t, func() bool {
 			return bytes.Contains(out.Bytes(), []byte("Delete cloud snapshot"))
 		}, 10*time.Second, 100*time.Millisecond, "confirmation prompt should appear")
 		return ptmx, out, outputCh, cmd
@@ -236,37 +235,37 @@ func TestSnapshotRemoveInteractive(t *testing.T) {
 		srv, calls := mockPodRemoveServer(t, http.StatusOK)
 		ptmx, out, outputCh, cmd := startRemove(t, srv)
 		_, err := ptmx.Write([]byte("y"))
-		require.NoError(t, err)
-		require.NoError(t, cmd.Wait())
+		must.NoError(t, err)
+		must.NoError(t, cmd.Wait())
 		<-outputCh
 
-		assert.Contains(t, out.String(), "deleted")
-		assert.Equal(t, int32(1), calls(), "DELETE endpoint should be called after confirmation")
+		must.Contains(t, out.String(), "deleted")
+		must.Eq(t, int32(1), calls(), "DELETE endpoint should be called after confirmation")
 	})
 
 	t.Run("cancels with n", func(t *testing.T) {
 		srv, calls := mockPodRemoveServer(t, http.StatusOK)
 		ptmx, out, outputCh, cmd := startRemove(t, srv)
 		_, err := ptmx.Write([]byte("n"))
-		require.NoError(t, err)
-		require.NoError(t, cmd.Wait())
+		must.NoError(t, err)
+		must.NoError(t, cmd.Wait())
 		<-outputCh
 
-		assert.Contains(t, out.String(), "Cancelled")
-		assert.Equal(t, int32(0), calls(), "DELETE endpoint must not be called when user cancels")
+		must.Contains(t, out.String(), "Cancelled")
+		must.Eq(t, int32(0), calls(), "DELETE endpoint must not be called when user cancels")
 	})
 
 	t.Run("force skips confirmation prompt", func(t *testing.T) {
 		srv, calls := mockPodRemoveServer(t, http.StatusOK)
 
 		binPath, err := filepath.Abs(binaryPath())
-		require.NoError(t, err)
+		must.NoError(t, err)
 		cmd := exec.CommandContext(testContext(t), binPath, "snapshot", "remove", "pod:my-baseline", "--force")
 		cmd.Env = env.Environ(testEnvWithHome(t.TempDir(), "")).
 			With(env.LocalStackHost, lsHost(srv)).
 			With(env.AuthToken, "test-token")
 		ptmx, err := pty.Start(cmd)
-		require.NoError(t, err, "failed to start command in PTY")
+		must.NoError(t, err, "failed to start command in PTY")
 		t.Cleanup(func() { _ = ptmx.Close() })
 
 		out := &syncBuffer{}
@@ -276,11 +275,11 @@ func TestSnapshotRemoveInteractive(t *testing.T) {
 			close(outputCh)
 		}()
 
-		require.NoError(t, cmd.Wait())
+		must.NoError(t, cmd.Wait())
 		<-outputCh
 
-		assert.NotContains(t, out.String(), "Delete cloud snapshot", "confirmation prompt must not appear with --force")
-		assert.Contains(t, out.String(), "deleted")
-		assert.Equal(t, int32(1), calls(), "DELETE endpoint should be called without confirmation")
+		must.NotContains(t, out.String(), "Delete cloud snapshot", "confirmation prompt must not appear with --force")
+		must.Contains(t, out.String(), "deleted")
+		must.Eq(t, int32(1), calls(), "DELETE endpoint should be called without confirmation")
 	})
 }

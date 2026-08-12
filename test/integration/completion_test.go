@@ -9,8 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
+	"github.com/localstack/lstk/internal/must"
 
 	"github.com/localstack/lstk/test/integration/env"
 )
@@ -48,16 +47,16 @@ func runBashCompletionDriver(t *testing.T, driver string, extraPath ...string) (
 
 	tmpHome := t.TempDir()
 	script, genStderr, err := runLstk(t, testContext(t), t.TempDir(), testEnvWithHome(tmpHome, ""), "completion", "bash")
-	require.NoError(t, err, "lstk completion bash failed: %s", genStderr)
+	must.NoError(t, err, "lstk completion bash failed: %s", genStderr)
 
 	dir := t.TempDir()
 	scriptPath := filepath.Join(dir, "lstk-completion.bash")
-	require.NoError(t, os.WriteFile(scriptPath, []byte(script), 0o600))
+	must.NoError(t, os.WriteFile(scriptPath, []byte(script), 0o600))
 	driverPath := filepath.Join(dir, "driver.bash")
-	require.NoError(t, os.WriteFile(driverPath, []byte(driver), 0o600))
+	must.NoError(t, os.WriteFile(driverPath, []byte(driver), 0o600))
 
 	binDir, err := filepath.Abs(filepath.Dir(binaryPath()))
-	require.NoError(t, err)
+	must.NoError(t, err)
 
 	cmd := exec.CommandContext(testContext(t), bashPath, "--noprofile", "--norc", driverPath, scriptPath)
 	cmd.Dir = dir
@@ -102,13 +101,13 @@ func TestBashCompletionWorksWithoutBashCompletionPackage(t *testing.T) {
 	t.Parallel()
 
 	stdout, stderr, err := runBashCompletionDriver(t, completeInDriver("lstk st", 1, "lstk st"))
-	require.NoError(t, err, "completion attempt failed\nstdout: %s\nstderr: %s", stdout, stderr)
-	assert.NotContains(t, stderr, "command not found")
+	must.NoError(t, err, "completion attempt failed\nstdout: %s\nstderr: %s", stdout, stderr)
+	must.NotContains(t, stderr, "command not found")
 
 	completions := strings.Fields(stdout)
-	assert.Contains(t, completions, "start")
-	assert.Contains(t, completions, "status")
-	assert.Contains(t, completions, "stop")
+	must.Contains(t, completions, "start")
+	must.Contains(t, completions, "status")
+	must.Contains(t, completions, "stop")
 }
 
 // TestBashCompletionAfterWhitespaceSeparatedFlagValue covers the shape that
@@ -120,12 +119,12 @@ func TestBashCompletionAfterWhitespaceSeparatedFlagValue(t *testing.T) {
 	t.Parallel()
 
 	stdout, stderr, err := runBashCompletionDriver(t, completeInDriver(`lstk --config = st`, 3, "lstk --config= st"))
-	require.NoError(t, err, "completion attempt failed\nstdout: %s\nstderr: %s", stdout, stderr)
+	must.NoError(t, err, "completion attempt failed\nstdout: %s\nstderr: %s", stdout, stderr)
 
 	completions := strings.Fields(stdout)
-	assert.Contains(t, completions, "start")
-	assert.Contains(t, completions, "status")
-	assert.Contains(t, completions, "stop")
+	must.Contains(t, completions, "start")
+	must.Contains(t, completions, "status")
+	must.Contains(t, completions, "stop")
 }
 
 // TestBashCompletionReassemblesWordbreakSplits verifies the self-contained
@@ -194,11 +193,11 @@ run_reassembly
 `, tc.compWords, tc.cword, tc.line, len(tc.line))
 
 			stdout, stderr, err := runBashCompletionDriver(t, driver)
-			require.NoError(t, err, "driver failed\nstdout: %s\nstderr: %s", stdout, stderr)
-			assert.NotContains(t, stderr, "command not found")
+			must.NoError(t, err, "driver failed\nstdout: %s\nstderr: %s", stdout, stderr)
+			must.NotContains(t, stderr, "command not found")
 
 			lines := strings.Split(strings.TrimRight(stdout, "\n"), "\n")
-			assert.Equal(t, tc.expect, lines)
+			must.Eq(t, tc.expect, lines)
 		})
 	}
 }
@@ -214,6 +213,6 @@ source "$1" || exit 1
 _get_comp_words_by_ref
 `
 	stdout, stderr, err := runBashCompletionDriver(t, driver)
-	require.NoError(t, err, "driver failed\nstdout: %s\nstderr: %s", stdout, stderr)
-	assert.Contains(t, stdout, "package version")
+	must.NoError(t, err, "driver failed\nstdout: %s\nstderr: %s", stdout, stderr)
+	must.Contains(t, stdout, "package version")
 }

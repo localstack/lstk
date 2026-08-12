@@ -12,8 +12,9 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
+	"github.com/localstack/lstk/internal/must"
+	"github.com/localstack/lstk/internal/snap"
 	"github.com/localstack/lstk/test/integration/env"
-	"github.com/stretchr/testify/require"
 )
 
 // The extension mechanism resolves and execs `lstk-<name>` executables for
@@ -56,7 +57,7 @@ func referenceExtensionBinary(t *testing.T) string {
 		}
 		refExtPath = out
 	})
-	require.NoError(t, refExtErr)
+	must.NoError(t, refExtErr)
 	return refExtPath
 }
 
@@ -70,13 +71,13 @@ func execName(base string) string {
 func copyExecutable(t *testing.T, src, dst string) {
 	t.Helper()
 	in, err := os.Open(src)
-	require.NoError(t, err)
+	must.NoError(t, err)
 	defer func() { _ = in.Close() }()
 	out, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o755)
-	require.NoError(t, err)
+	must.NoError(t, err)
 	_, err = io.Copy(out, in)
-	require.NoError(t, err)
-	require.NoError(t, out.Close())
+	must.NoError(t, err)
+	must.NoError(t, out.Close())
 }
 
 // installExtension places the reference extension under the name `lstk-<name>`
@@ -92,7 +93,7 @@ func installExtension(t *testing.T, dir, name string) {
 func installLstkBundle(t *testing.T, dir string) string {
 	t.Helper()
 	binPath, err := filepath.Abs(binaryPath())
-	require.NoError(t, err)
+	must.NoError(t, err)
 	dst := filepath.Join(dir, execName("lstk"))
 	copyExecutable(t, binPath, dst)
 	return dst
@@ -129,10 +130,10 @@ func TestExtensionBuiltinTakesPrecedence(t *testing.T) {
 
 	tmpHome := t.TempDir()
 	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), envWithPath(tmpHome, extDir), "config", "path")
-	require.NoError(t, err, stderr)
+	must.NoError(t, err, stderr)
 	// The built-in prints a config path; the extension would have printed ARGS=.
-	require.Contains(t, stdout, "config.toml")
-	require.NotContains(t, stdout, "ARGS=")
+	must.Contains(t, stdout, "config.toml")
+	must.NotContains(t, stdout, "ARGS=")
 }
 
 func TestExtensionUnknownCommandDispatches(t *testing.T) {
@@ -142,10 +143,10 @@ func TestExtensionUnknownCommandDispatches(t *testing.T) {
 
 	tmpHome := t.TempDir()
 	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), envWithPath(tmpHome, extDir), "hello", "world")
-	require.NoError(t, err, stderr)
-	require.Contains(t, stdout, "ARGS=[world]")
-	require.Contains(t, stdout, "API_VERSION=1")
-	require.Contains(t, stdout, "CONFIG_DIR=")
+	must.NoError(t, err, stderr)
+	must.Contains(t, stdout, "ARGS=[world]")
+	must.Contains(t, stdout, "API_VERSION=1")
+	must.Contains(t, stdout, "CONFIG_DIR=")
 }
 
 func TestExtensionUnknownCommandNoExtensionErrors(t *testing.T) {
@@ -155,7 +156,7 @@ func TestExtensionUnknownCommandNoExtensionErrors(t *testing.T) {
 	// goes to stderr, matching Cobra's own unknown-command output.
 	_, stderr, err := runLstk(t, testContext(t), t.TempDir(), envWithPath(tmpHome, t.TempDir()), "nope")
 	requireExitCode(t, 1, err)
-	require.Contains(t, stderr, "unknown command")
+	must.Contains(t, stderr, "unknown command")
 }
 
 func TestExtensionExitCodePropagates(t *testing.T) {
@@ -175,10 +176,10 @@ func TestExtensionGlobalFlagConveyedNotForwarded(t *testing.T) {
 
 	tmpHome := t.TempDir()
 	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), envWithPath(tmpHome, extDir), "--non-interactive", "hello", "--foo")
-	require.NoError(t, err, stderr)
+	must.NoError(t, err, stderr)
 	// --non-interactive is consumed by lstk and conveyed via env, not forwarded.
-	require.Contains(t, stdout, "ARGS=[--foo]")
-	require.Contains(t, stdout, "NON_INTERACTIVE=true")
+	must.Contains(t, stdout, "ARGS=[--foo]")
+	must.Contains(t, stdout, "NON_INTERACTIVE=true")
 }
 
 func TestExtensionAuthTokenConveyedWhenAuthed(t *testing.T) {
@@ -190,8 +191,8 @@ func TestExtensionAuthTokenConveyedWhenAuthed(t *testing.T) {
 	environ := envWithPath(tmpHome, extDir)
 	environ = append(environ, string(env.AuthToken)+"=tok-abc-123")
 	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), environ, "ref")
-	require.NoError(t, err, stderr)
-	require.Contains(t, stdout, "AUTH_TOKEN=tok-abc-123")
+	must.NoError(t, err, stderr)
+	must.Contains(t, stdout, "AUTH_TOKEN=tok-abc-123")
 }
 
 func TestExtensionEndpointOmittedWhenNoRuntime(t *testing.T) {
@@ -205,11 +206,11 @@ func TestExtensionEndpointOmittedWhenNoRuntime(t *testing.T) {
 	// emulator context is deterministically omitted.
 	environ = append(environ, "DOCKER_HOST=tcp://127.0.0.1:1")
 	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), environ, "ref")
-	require.NoError(t, err, stderr)
-	require.Contains(t, stdout, "EMULATOR_COUNT=0")
-	require.NotContains(t, stdout, "EMULATOR=")
+	must.NoError(t, err, stderr)
+	must.Contains(t, stdout, "EMULATOR_COUNT=0")
+	must.NotContains(t, stdout, "EMULATOR=")
 	// The extension still runs and still receives the always-present variables.
-	require.Contains(t, stdout, "API_VERSION=1")
+	must.Contains(t, stdout, "API_VERSION=1")
 }
 
 func TestExtensionSelfAuthorizationRefusesWithoutToken(t *testing.T) {
@@ -224,7 +225,7 @@ func TestExtensionSelfAuthorizationRefusesWithoutToken(t *testing.T) {
 	environ = append(environ, "DOCKER_HOST=tcp://127.0.0.1:1")
 	_, stderr, err := runLstk(t, testContext(t), t.TempDir(), environ, "deploy", "auth")
 	requireExitCode(t, 13, err)
-	require.Contains(t, stderr, "not authorized")
+	must.Contains(t, stderr, "not authorized")
 }
 
 func TestExtensionInvocationRecordedInTelemetry(t *testing.T) {
@@ -239,7 +240,7 @@ func TestExtensionInvocationRecordedInTelemetry(t *testing.T) {
 		With(env.AnalyticsEndpoint, analyticsSrv.URL)
 
 	_, stderr, err := runLstk(t, testContext(t), t.TempDir(), environ, "hello", "world")
-	require.NoError(t, err, stderr)
+	must.NoError(t, err, stderr)
 
 	// The invocation is recorded in product telemetry as ext:<name>, so the
 	// warehouse tracks which extension ran — and is NOT mislabeled as "start".
@@ -264,16 +265,16 @@ func TestExtensionSessionIDConveyedAndMatchesCommandEvent(t *testing.T) {
 		With(env.Key("DOCKER_HOST"), "tcp://127.0.0.1:1")
 
 	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), environ, "ref")
-	require.NoError(t, err, stderr)
+	must.NoError(t, err, stderr)
 
 	conveyed := echoedValue(t, stdout, "SESSION_ID")
 	_, parseErr := uuid.Parse(conveyed)
-	require.NoError(t, parseErr, "conveyed sessionId must be a UUID, got %q", conveyed)
+	must.NoError(t, parseErr, "conveyed sessionId must be a UUID, got %q", conveyed)
 
 	event := receiveEventByName(t, events, "lstk_command")
 	metadata, ok := event["metadata"].(map[string]any)
-	require.True(t, ok, "event has no metadata object: %v", event)
-	require.Equal(t, conveyed, metadata["session_id"],
+	must.True(t, ok, "event has no metadata object: %v", event)
+	must.Eq[any](t, conveyed, metadata["session_id"],
 		"conveyed sessionId must equal the session id on the ext:<name> event")
 }
 
@@ -294,10 +295,10 @@ func TestExtensionSessionIDOmittedWhenTelemetryDisabled(t *testing.T) {
 
 	// No session exists, so the field is omitted rather than conveyed empty (the
 	// JSON-level omission is asserted in internal/extension).
-	require.NotContains(t, stdout, "SESSION_ID=",
+	must.NotContains(t, stdout, "SESSION_ID=",
 		"no sessionId may be conveyed when telemetry is disabled")
-	require.Contains(t, stdout, "API_VERSION=1")
-	require.Contains(t, stdout, "ARGS=[exit 7]")
+	must.Contains(t, stdout, "API_VERSION=1")
+	must.Contains(t, stdout, "ARGS=[exit 7]")
 }
 
 // echoedValue returns the value of a `KEY=value` line the reference extension
@@ -328,9 +329,9 @@ func TestExtensionEndpointConveyedWhenEmulatorRunning(t *testing.T) {
 	environ := envWithPath(tmpHome, extDir)
 	environ = append(environ, string(env.AuthToken)+"=tok-xyz")
 	stdout, stderr, err := runLstk(t, ctx, t.TempDir(), environ, "ref")
-	require.NoError(t, err, stderr)
-	require.Contains(t, stdout, "EMULATOR=aws http")
-	require.Contains(t, stdout, "AUTH_TOKEN=tok-xyz")
+	must.NoError(t, err, stderr)
+	must.Contains(t, stdout, "EMULATOR=aws http")
+	must.Contains(t, stdout, "AUTH_TOKEN=tok-xyz")
 }
 
 func TestExtensionHelpListsBundledWithDescriptionAndPathNameOnly(t *testing.T) {
@@ -338,7 +339,7 @@ func TestExtensionHelpListsBundledWithDescriptionAndPathNameOnly(t *testing.T) {
 	bundleDir := t.TempDir()
 	lstkBin := installLstkBundle(t, bundleDir)
 	installExtension(t, bundleDir, "deploy") // bundled
-	require.NoError(t, os.WriteFile(
+	must.NoError(t, os.WriteFile(
 		filepath.Join(bundleDir, "lstk-extensions.toml"),
 		[]byte("deploy = \"Deploy your application to LocalStack\"\n"), 0o644))
 
@@ -347,14 +348,12 @@ func TestExtensionHelpListsBundledWithDescriptionAndPathNameOnly(t *testing.T) {
 
 	tmpHome := t.TempDir()
 	stdout, stderr, err := runBinary(t, t.TempDir(), envWithPath(tmpHome, extDir), lstkBin, "--help")
-	require.NoError(t, err, stderr)
+	must.NoError(t, err, stderr)
 
-	require.Contains(t, stdout, "Extensions:")
-	require.Contains(t, stdout, "deploy")
-	require.Contains(t, stdout, "Deploy your application to LocalStack")
-	require.Contains(t, stdout, "hello")
-	// Help must not execute any extension.
-	require.NotContains(t, stdout, "ARGS=")
+	// The snapshot pins the Extensions section (bundled `deploy` with its
+	// description, PATH-only `hello` without) and that no extension was
+	// executed (no ARGS= line).
+	snap.Match(t, stdout)
 }
 
 // TestExtensionHelpDescriptionColumnAlignsWithCommands guards the bug where the
@@ -367,19 +366,19 @@ func TestExtensionHelpDescriptionColumnAlignsWithCommands(t *testing.T) {
 	bundleDir := t.TempDir()
 	lstkBin := installLstkBundle(t, bundleDir)
 	installExtension(t, bundleDir, "deploy")
-	require.NoError(t, os.WriteFile(
+	must.NoError(t, os.WriteFile(
 		filepath.Join(bundleDir, "lstk-extensions.toml"),
 		[]byte("deploy = \"Deploy your application to LocalStack\"\n"), 0o644))
 
 	tmpHome := t.TempDir()
 	stdout, stderr, err := runBinary(t, t.TempDir(), envWithPath(tmpHome, t.TempDir()), lstkBin, "--help")
-	require.NoError(t, err, stderr)
+	must.NoError(t, err, stderr)
 
 	lines := strings.Split(stdout, "\n")
 	// The built-in `aws` command (in the Tools group) sets the reference column.
 	cmdCol := descriptionColumn(t, lines, "aws", "Run AWS CLI commands against LocalStack")
 	extCol := descriptionColumn(t, lines, "deploy", "Deploy your application to LocalStack")
-	require.Equal(t, cmdCol, extCol,
+	must.Eq(t, cmdCol, extCol,
 		"extension description column (%d) must align with command description column (%d)", extCol, cmdCol)
 }
 
@@ -405,9 +404,9 @@ func TestExtensionHelpMissingDescriptionsFileDegrades(t *testing.T) {
 
 	tmpHome := t.TempDir()
 	stdout, stderr, err := runBinary(t, t.TempDir(), envWithPath(tmpHome, t.TempDir()), lstkBin, "--help")
-	require.NoError(t, err, stderr)
-	require.Contains(t, stdout, "Extensions:")
-	require.Contains(t, stdout, "deploy")
+	must.NoError(t, err, stderr)
+	must.Contains(t, stdout, "Extensions:")
+	must.Contains(t, stdout, "deploy")
 }
 
 func TestExtensionResolvableViaSymlinkedLstk(t *testing.T) {
@@ -424,13 +423,13 @@ func TestExtensionResolvableViaSymlinkedLstk(t *testing.T) {
 
 	linkDir := t.TempDir()
 	link := filepath.Join(linkDir, "lstk")
-	require.NoError(t, os.Symlink(realLstk, link))
+	must.NoError(t, os.Symlink(realLstk, link))
 
 	tmpHome := t.TempDir()
 	// Empty PATH extension dir: deploy can only come from the bundled location.
 	stdout, stderr, err := runBinary(t, t.TempDir(), envWithPath(tmpHome, t.TempDir()), link, "deploy", "ok")
-	require.NoError(t, err, stderr)
-	require.Contains(t, stdout, "ARGS=[ok]")
+	must.NoError(t, err, stderr)
+	must.Contains(t, stdout, "ARGS=[ok]")
 }
 
 func TestExtensionBundledPremiumSelfAuthorizes(t *testing.T) {
@@ -452,8 +451,8 @@ func TestExtensionBundledPremiumSelfAuthorizes(t *testing.T) {
 	// Authed: the bundled extension authorizes successfully.
 	authed := append(noRuntime, string(env.AuthToken)+"=tok-premium")
 	stdout, stderr, err := runBinary(t, t.TempDir(), authed, lstkBin, "deploy", "auth")
-	require.NoError(t, err, stderr)
-	require.Contains(t, stdout, "authorized")
+	must.NoError(t, err, stderr)
+	must.Contains(t, stdout, "authorized")
 }
 
 func TestExtensionBundledWinsOverPath(t *testing.T) {
@@ -469,17 +468,17 @@ func TestExtensionBundledWinsOverPath(t *testing.T) {
 	// The reference extension echoes its own resolved executable path as SELF=,
 	// so we can confirm the *bundled* copy ran, not the same-named PATH copy.
 	stdout, stderr, err := runBinary(t, t.TempDir(), envWithPath(tmpHome, extDir), lstkBin, "deploy", "world")
-	require.NoError(t, err, stderr)
-	require.Contains(t, stdout, "ARGS=[world]")
+	must.NoError(t, err, stderr)
+	must.Contains(t, stdout, "ARGS=[world]")
 	// lstk derives its bundled dir from the symlink-resolved executable path, so
 	// compare SELF against the resolved bundle dir (TempDir may be a symlink,
 	// e.g. /var → /private/var on macOS).
 	resolvedBundle, err := filepath.EvalSymlinks(bundleDir)
-	require.NoError(t, err)
-	require.Contains(t, stdout, "SELF="+resolvedBundle, "expected the bundled extension to run, not the PATH one")
+	must.NoError(t, err)
+	must.Contains(t, stdout, "SELF="+resolvedBundle, "expected the bundled extension to run, not the PATH one")
 
 	// Help lists the de-duplicated name exactly once.
 	helpOut, _, err := runBinary(t, t.TempDir(), envWithPath(tmpHome, extDir), lstkBin, "--help")
-	require.NoError(t, err)
-	require.Equal(t, 1, strings.Count(helpOut, "\n  deploy"))
+	must.NoError(t, err)
+	must.Eq(t, 1, strings.Count(helpOut, "\n  deploy"))
 }

@@ -5,9 +5,8 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/localstack/lstk/internal/must"
 	"github.com/localstack/lstk/test/integration/env"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 // --- no Docker required (parallel) ---
@@ -21,7 +20,7 @@ func TestStartSnapshotConflictingFlags(t *testing.T) {
 		"--non-interactive", "start", "--snapshot", "pod:my-baseline", "--no-snapshot",
 	)
 	requireExitCode(t, 1, err)
-	assert.Contains(t, stderr, "cannot be used together")
+	must.Contains(t, stderr, "cannot be used together")
 }
 
 func TestStartSnapshotInvalidPodName(t *testing.T) {
@@ -33,7 +32,7 @@ func TestStartSnapshotInvalidPodName(t *testing.T) {
 		"--non-interactive", "start", "--snapshot", "pod:bad.name",
 	)
 	requireExitCode(t, 1, err)
-	assert.Contains(t, stderr, "invalid pod name")
+	must.Contains(t, stderr, "invalid pod name")
 }
 
 func TestStartSnapshotLocalFileNotFound(t *testing.T) {
@@ -45,7 +44,7 @@ func TestStartSnapshotLocalFileNotFound(t *testing.T) {
 		"--non-interactive", "start", "--snapshot", "/no/such/snapshot.snapshot",
 	)
 	requireExitCode(t, 1, err)
-	assert.Contains(t, stderr, "snapshot file not found")
+	must.Contains(t, stderr, "snapshot file not found")
 }
 
 // --- Docker required ---
@@ -73,17 +72,17 @@ port = "4566"
 snapshot = "pod:my-baseline"
 `
 	configFile := filepath.Join(t.TempDir(), "config.toml")
-	require.NoError(t, os.WriteFile(configFile, []byte(configContent), 0644))
+	must.NoError(t, os.WriteFile(configFile, []byte(configContent), 0644))
 
 	ctx := testContext(t)
 	stdout, stderr, err := runLstk(t, ctx, "",
 		env.With(env.APIEndpoint, licenseServer.URL).With(env.LocalStackHost, lsHost(podServer)),
 		"--config", configFile, "start",
 	)
-	require.NoError(t, err, "lstk start failed: %s", stderr)
+	must.NoError(t, err, "lstk start failed: %s", stderr)
 	requireExitCode(t, 0, err)
-	assert.Contains(t, stdout, "Snapshot loaded", "configured snapshot should auto-load after start")
-	assert.Contains(t, stdout, "my-baseline")
+	must.Contains(t, stdout, "Snapshot loaded", "configured snapshot should auto-load after start")
+	must.Contains(t, stdout, "my-baseline")
 }
 
 // TestStartNoSnapshotSkipsAutoLoad verifies that --no-snapshot skips auto-loading
@@ -106,14 +105,14 @@ port = "4566"
 snapshot = "pod:my-baseline"
 `
 	configFile := filepath.Join(t.TempDir(), "config.toml")
-	require.NoError(t, os.WriteFile(configFile, []byte(configContent), 0644))
+	must.NoError(t, os.WriteFile(configFile, []byte(configContent), 0644))
 
 	ctx := testContext(t)
 	stdout, stderr, err := runLstk(t, ctx, "",
 		env.With(env.APIEndpoint, licenseServer.URL),
 		"--config", configFile, "start", "--no-snapshot",
 	)
-	require.NoError(t, err, "lstk start --no-snapshot failed: %s", stderr)
+	must.NoError(t, err, "lstk start --no-snapshot failed: %s", stderr)
 	requireExitCode(t, 0, err)
-	assert.NotContains(t, stdout, "Snapshot loaded", "--no-snapshot should skip auto-loading")
+	must.NotContains(t, stdout, "Snapshot loaded", "--no-snapshot should skip auto-loading")
 }

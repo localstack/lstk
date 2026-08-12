@@ -3,10 +3,9 @@ package integration_test
 import (
 	"testing"
 
+	"github.com/localstack/lstk/internal/must"
 	"github.com/localstack/lstk/test/integration/env"
 	"github.com/moby/moby/client"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 func TestRestartCommandSucceeds(t *testing.T) {
@@ -21,28 +20,30 @@ func TestRestartCommandSucceeds(t *testing.T) {
 
 	ctx := testContext(t)
 	_, stderr, err := runLstk(t, ctx, "", env.With(env.APIEndpoint, mockServer.URL), "start")
-	require.NoError(t, err, "lstk start failed: %s", stderr)
+	must.NoError(t, err, "lstk start failed: %s", stderr)
 
 	analyticsSrv, events := mockAnalyticsServer(t)
 	stdout, stderr, err := runLstk(t, ctx, "", env.With(env.APIEndpoint, mockServer.URL).With(env.AnalyticsEndpoint, analyticsSrv.URL), "restart")
-	require.NoError(t, err, "lstk restart failed: %s", stderr)
+	must.NoError(t, err, "lstk restart failed: %s", stderr)
 	requireExitCode(t, 0, err)
-	assert.Contains(t, stdout, "stopped")
-	assert.Contains(t, stdout, "LocalStack")
+	must.Contains(t, stdout, "stopped")
+	must.Contains(t, stdout, "LocalStack")
 
 	inspect, err := dockerClient.ContainerInspect(ctx, containerName, client.ContainerInspectOptions{})
-	require.NoError(t, err, "failed to inspect container after restart")
-	assert.True(t, inspect.Container.State.Running, "container should be running after restart")
+	must.NoError(t, err, "failed to inspect container after restart")
+	must.True(t, inspect.Container.State.Running, "container should be running after restart")
 
 	// Both lstk_lifecycle (stop + start) and lstk_command events should be emitted.
 	byName := collectTelemetryByName(t, events, 2)
-	assert.Contains(t, byName, "lstk_lifecycle")
-	if cmdEvent, ok := byName["lstk_command"]; assert.True(t, ok, "lstk_command event not received") {
+	must.Contains(t, byName, "lstk_lifecycle")
+	cmdEvent, ok := byName["lstk_command"]
+	must.True(t, ok, "lstk_command event not received")
+	{
 		payload, _ := cmdEvent["payload"].(map[string]any)
 		params, _ := payload["parameters"].(map[string]any)
-		assert.Equal(t, "restart", params["command"])
+		must.Eq(t, "restart", params["command"])
 		result, _ := payload["result"].(map[string]any)
-		assert.InDelta(t, 0, result["exit_code"], 0)
+		must.InDelta(t, 0, result["exit_code"], 0)
 	}
 }
 
@@ -63,13 +64,13 @@ func TestRestartCommandRejectsAmbientEndpointURLEvenWithLocalContainerRunning(t 
 	startTestContainer(t, ctx)
 
 	stdout, _, err := runLstk(t, ctx, "", env.With(env.DisableEvents, "1").With("LSTK_ENDPOINT_URL", "http://127.0.0.1:1"), "restart")
-	require.Error(t, err)
-	assert.Contains(t, stdout, "does not support LSTK_ENDPOINT_URL")
-	assert.Contains(t, stdout, "LSTK_ENDPOINT_URL is set")
+	must.Error(t, err)
+	must.Contains(t, stdout, "does not support LSTK_ENDPOINT_URL")
+	must.Contains(t, stdout, "LSTK_ENDPOINT_URL is set")
 
 	inspect, err := dockerClient.ContainerInspect(ctx, containerName, client.ContainerInspectOptions{})
-	require.NoError(t, err, "container should still exist — restart must reject before stopping/restarting it")
-	assert.True(t, inspect.Container.State.Running, "container should still be running, untouched")
+	must.NoError(t, err, "container should still exist — restart must reject before stopping/restarting it")
+	must.True(t, inspect.Container.State.Running, "container should still be running, untouched")
 }
 
 func TestRestartCommandPersistFlagSetsPersistenceEnv(t *testing.T) {
@@ -84,18 +85,18 @@ func TestRestartCommandPersistFlagSetsPersistenceEnv(t *testing.T) {
 
 	ctx := testContext(t)
 	_, stderr, err := runLstk(t, ctx, "", env.With(env.APIEndpoint, mockServer.URL), "start")
-	require.NoError(t, err, "lstk start failed: %s", stderr)
+	must.NoError(t, err, "lstk start failed: %s", stderr)
 
 	_, stderr, err = runLstk(t, ctx, "", env.With(env.APIEndpoint, mockServer.URL), "restart", "--persist")
-	require.NoError(t, err, "lstk restart --persist failed: %s", stderr)
+	must.NoError(t, err, "lstk restart --persist failed: %s", stderr)
 	requireExitCode(t, 0, err)
 
 	inspect, err := dockerClient.ContainerInspect(ctx, containerName, client.ContainerInspectOptions{})
-	require.NoError(t, err, "failed to inspect container after restart")
-	require.True(t, inspect.Container.State.Running)
+	must.NoError(t, err, "failed to inspect container after restart")
+	must.True(t, inspect.Container.State.Running)
 
 	envVars := containerEnvToMap(inspect.Container.Config.Env)
-	assert.Equal(t, "1", envVars["LOCALSTACK_PERSISTENCE"])
+	must.Eq(t, "1", envVars["LOCALSTACK_PERSISTENCE"])
 }
 
 func TestRestartCommandPreservesPersistenceWithoutFlag(t *testing.T) {
@@ -110,19 +111,19 @@ func TestRestartCommandPreservesPersistenceWithoutFlag(t *testing.T) {
 
 	ctx := testContext(t)
 	_, stderr, err := runLstk(t, ctx, "", env.With(env.APIEndpoint, mockServer.URL), "start", "--persist")
-	require.NoError(t, err, "lstk start --persist failed: %s", stderr)
+	must.NoError(t, err, "lstk start --persist failed: %s", stderr)
 
 	// Restart without --persist should carry the setting forward from the running instance.
 	_, stderr, err = runLstk(t, ctx, "", env.With(env.APIEndpoint, mockServer.URL), "restart")
-	require.NoError(t, err, "lstk restart failed: %s", stderr)
+	must.NoError(t, err, "lstk restart failed: %s", stderr)
 	requireExitCode(t, 0, err)
 
 	inspect, err := dockerClient.ContainerInspect(ctx, containerName, client.ContainerInspectOptions{})
-	require.NoError(t, err, "failed to inspect container after restart")
-	require.True(t, inspect.Container.State.Running)
+	must.NoError(t, err, "failed to inspect container after restart")
+	must.True(t, inspect.Container.State.Running)
 
 	envVars := containerEnvToMap(inspect.Container.Config.Env)
-	assert.Equal(t, "1", envVars["LOCALSTACK_PERSISTENCE"])
+	must.Eq(t, "1", envVars["LOCALSTACK_PERSISTENCE"])
 }
 
 func TestRestartCommandFailsWhenNotRunning(t *testing.T) {
@@ -132,8 +133,8 @@ func TestRestartCommandFailsWhenNotRunning(t *testing.T) {
 
 	analyticsSrv, events := mockAnalyticsServer(t)
 	stdout, _, err := runLstk(t, testContext(t), "", env.With(env.AnalyticsEndpoint, analyticsSrv.URL), "restart")
-	require.Error(t, err, "expected lstk restart to fail when emulator is not running")
+	must.Error(t, err, "expected lstk restart to fail when emulator is not running")
 	requireExitCode(t, 1, err)
-	assert.Contains(t, stdout, "LocalStack AWS Emulator is not running")
+	must.Contains(t, stdout, "LocalStack AWS Emulator is not running")
 	assertCommandTelemetry(t, events, "restart", 1)
 }

@@ -6,9 +6,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/localstack/lstk/internal/must"
+	"github.com/localstack/lstk/internal/snap"
 	"github.com/localstack/lstk/test/integration/env"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 // threeVersionPod is a platform payload with a deliberately out-of-order
@@ -47,26 +47,15 @@ func TestSnapshotVersionsSuccessWithoutDocker(t *testing.T) {
 		listEnv(t, srv, "test-token"),
 		"--non-interactive", "snapshot", "versions", "pod:my-baseline",
 	)
-	require.NoError(t, err, "lstk snapshot versions failed: %s", stderr)
+	must.NoError(t, err, "lstk snapshot versions failed: %s", stderr)
 
 	called, path, _ := cap.get()
-	require.True(t, called, "the single-pod endpoint should have been called")
-	assert.Equal(t, "/v1/cloudpods/my-baseline", path)
+	must.True(t, called, "the single-pod endpoint should have been called")
+	must.Eq(t, "/v1/cloudpods/my-baseline", path)
 
-	assert.Contains(t, stdout, "~ 3 versions")
-	for _, header := range []string{"VERSION", "CREATED", "LOCALSTACK", "SERVICES"} {
-		assert.Contains(t, stdout, header)
-	}
-	assert.NotContains(t, stdout, "DESCRIPTION", "the description column was dropped in favour of more service names")
-	assert.Contains(t, stdout, "2026-04-15 14:32 UTC")
-	assert.Contains(t, stdout, "s3, lambda")
-	assert.NotContains(t, stdout, "nightly baseline", "the description is no longer rendered")
-
-	// Newest first: version 3's row must precede version 1's.
-	assert.Less(t, strings.Index(stdout, "2026.06"), strings.Index(stdout, "2026.05"),
-		"versions should be listed newest first")
-	assert.Less(t, strings.Index(stdout, "2026.05"), strings.Index(stdout, "2026.04"),
-		"versions should be listed newest first")
+	// The snapshot pins column set (no DESCRIPTION), newest-first ordering,
+	// and that descriptions are no longer rendered.
+	snap.Match(t, sanitizeOutput(stdout))
 }
 
 // TestSnapshotVersionsFiltersDeletedVersions: the platform marks removed versions
@@ -86,12 +75,9 @@ func TestSnapshotVersionsFiltersDeletedVersions(t *testing.T) {
 		listEnv(t, srv, "test-token"),
 		"--non-interactive", "snapshot", "versions", "pod:p",
 	)
-	require.NoError(t, err, "lstk snapshot versions failed: %s", stderr)
+	must.NoError(t, err, "lstk snapshot versions failed: %s", stderr)
 
-	assert.Contains(t, stdout, "~ 2 versions", "the deleted version must not be counted")
-	assert.Contains(t, stdout, "keep-one")
-	assert.Contains(t, stdout, "keep-three")
-	assert.NotContains(t, stdout, "gone-two")
+	snap.Match(t, sanitizeOutput(stdout))
 }
 
 func TestSnapshotVersionsSingleVersionUsesSingularNoun(t *testing.T) {
@@ -104,8 +90,8 @@ func TestSnapshotVersionsSingleVersionUsesSingularNoun(t *testing.T) {
 		listEnv(t, srv, "test-token"),
 		"--non-interactive", "snapshot", "versions", "pod:solo",
 	)
-	require.NoError(t, err, "lstk snapshot versions failed: %s", stderr)
-	assert.Contains(t, stdout, "~ 1 version\n")
+	must.NoError(t, err, "lstk snapshot versions failed: %s", stderr)
+	must.Contains(t, stdout, "~ 1 version\n")
 }
 
 func TestSnapshotVersionsEmptyHistory(t *testing.T) {
@@ -117,9 +103,9 @@ func TestSnapshotVersionsEmptyHistory(t *testing.T) {
 		listEnv(t, srv, "test-token"),
 		"--non-interactive", "snapshot", "versions", "pod:blank",
 	)
-	require.NoError(t, err, "lstk snapshot versions failed: %s", stderr)
-	assert.Contains(t, stdout, "No versions found for 'pod:blank'")
-	assert.NotContains(t, stdout, "VERSION", "no table should be rendered")
+	must.NoError(t, err, "lstk snapshot versions failed: %s", stderr)
+	must.Contains(t, stdout, "No versions found for 'pod:blank'")
+	must.NotContains(t, stdout, "VERSION", "no table should be rendered")
 }
 
 // TestSnapshotVersionsNoDockerRequired proves the command reads the platform API
@@ -134,8 +120,8 @@ func TestSnapshotVersionsNoDockerRequired(t *testing.T) {
 	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), e,
 		"--non-interactive", "snapshot", "versions", "pod:my-baseline",
 	)
-	require.NoError(t, err, "lstk snapshot versions failed: %s", stderr)
-	assert.Contains(t, stdout, "~ 3 versions")
+	must.NoError(t, err, "lstk snapshot versions failed: %s", stderr)
+	must.Contains(t, stdout, "~ 3 versions")
 }
 
 func TestSnapshotVersionsRejectsLocalPath(t *testing.T) {
@@ -148,8 +134,8 @@ func TestSnapshotVersionsRejectsLocalPath(t *testing.T) {
 		"--non-interactive", "snapshot", "versions", "./my-snapshot",
 	)
 	requireExitCode(t, 1, err)
-	assert.Contains(t, strings.ToLower(stderr), "local")
-	assert.Contains(t, stderr, "list versions of local snapshots")
+	must.Contains(t, strings.ToLower(stderr), "local")
+	must.Contains(t, stderr, "list versions of local snapshots")
 }
 
 // TestSnapshotVersionsRejectsS3Ref: S3 remotes are fully supported by
@@ -166,9 +152,9 @@ func TestSnapshotVersionsRejectsS3Ref(t *testing.T) {
 		"--non-interactive", "snapshot", "versions", "s3://bucket/prefix",
 	)
 	requireExitCode(t, 1, err)
-	assert.Contains(t, stderr, "only supported for Cloud Pods")
-	assert.Contains(t, stderr, "S3 remotes")
-	assert.NotContains(t, stderr, "coming soon")
+	must.Contains(t, stderr, "only supported for Cloud Pods")
+	must.Contains(t, stderr, "S3 remotes")
+	must.NotContains(t, stderr, "coming soon")
 }
 
 // TestSnapshotVersionsOrasKeepsComingSoon: oras:// is unimplemented for every
@@ -184,7 +170,7 @@ func TestSnapshotVersionsOrasKeepsComingSoon(t *testing.T) {
 		"--non-interactive", "snapshot", "versions", "oras://registry/image",
 	)
 	requireExitCode(t, 1, err)
-	assert.Contains(t, stderr, "coming soon")
+	must.Contains(t, stderr, "coming soon")
 }
 
 // TestSnapshotShowPinnedVersion: show is read-only and the platform returns every
@@ -209,13 +195,11 @@ func TestSnapshotShowPinnedVersion(t *testing.T) {
 		listEnv(t, srv, "test-token"),
 		"--non-interactive", "snapshot", "show", "pod:my-baseline:1",
 	)
-	require.NoError(t, err, "lstk snapshot show failed: %s", stderr)
+	must.NoError(t, err, "lstk snapshot show failed: %s", stderr)
 
-	assert.Contains(t, stdout, "the first one")
-	assert.Contains(t, stdout, "2026.04")
-	assert.Contains(t, stdout, "1.0 KB")
-	assert.NotContains(t, stdout, "the latest one", "the pinned version's metadata must win")
-	assert.NotContains(t, stdout, "2026.06")
+	// Snapshot of version 1's card: the pinned version's metadata must win
+	// over the latest version's.
+	snap.Match(t, sanitizeOutput(stdout))
 }
 
 func TestSnapshotShowVersionNotFound(t *testing.T) {
@@ -229,9 +213,9 @@ func TestSnapshotShowVersionNotFound(t *testing.T) {
 		"--non-interactive", "snapshot", "show", "pod:my-baseline:99",
 	)
 	requireExitCode(t, 1, err)
-	assert.Contains(t, stdout, "Version 99 of 'pod:my-baseline' not found")
-	assert.Contains(t, stdout, "The highest available version is 3.")
-	assert.Contains(t, stdout, "lstk snapshot versions pod:my-baseline")
+	must.Contains(t, stdout, "Version 99 of 'pod:my-baseline' not found")
+	must.Contains(t, stdout, "The highest available version is 3.")
+	must.Contains(t, stdout, "lstk snapshot versions pod:my-baseline")
 }
 
 // TestSnapshotVersionsRejectsVersionSuffix: this command lists every version, so
@@ -246,7 +230,7 @@ func TestSnapshotVersionsRejectsVersionSuffix(t *testing.T) {
 		"--non-interactive", "snapshot", "versions", "pod:my-baseline:3",
 	)
 	requireExitCode(t, 1, err)
-	assert.Contains(t, stderr, "drop the ':3'")
+	must.Contains(t, stderr, "drop the ':3'")
 }
 
 func TestSnapshotVersionsRejectsInvalidPodName(t *testing.T) {
@@ -259,7 +243,7 @@ func TestSnapshotVersionsRejectsInvalidPodName(t *testing.T) {
 		"--non-interactive", "snapshot", "versions", "pod:release.v1",
 	)
 	requireExitCode(t, 1, err)
-	assert.Contains(t, stderr, "invalid pod name")
+	must.Contains(t, stderr, "invalid pod name")
 }
 
 func TestSnapshotVersionsNotFound(t *testing.T) {
@@ -275,8 +259,8 @@ func TestSnapshotVersionsNotFound(t *testing.T) {
 		"--non-interactive", "snapshot", "versions", "pod:missing",
 	)
 	requireExitCode(t, 1, err)
-	assert.Contains(t, stdout, "not found")
-	assert.Contains(t, stdout, "lstk snapshot list")
+	must.Contains(t, stdout, "not found")
+	must.Contains(t, stdout, "lstk snapshot list")
 }
 
 func TestSnapshotVersionsRequiresAuthToken(t *testing.T) {
@@ -291,6 +275,6 @@ func TestSnapshotVersionsRequiresAuthToken(t *testing.T) {
 		"--non-interactive", "snapshot", "versions", "pod:my-baseline",
 	)
 	requireExitCode(t, 1, err)
-	assert.Contains(t, stdout, "Authentication required")
-	assert.Contains(t, stdout, "lstk login")
+	must.Contains(t, stdout, "Authentication required")
+	must.Contains(t, stdout, "lstk login")
 }
