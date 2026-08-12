@@ -18,7 +18,10 @@ require (
 	github.com/zalando/go-keyring v0.2.8
 )
 
-require github.com/google/go-cmp v0.7.0 // indirect
+require (
+	github.com/google/go-cmp v0.7.0 // indirect
+	golang.org/x/tools v0.47.0 // indirect
+)
 
 require (
 	github.com/Microsoft/go-winio v0.6.2 // indirect

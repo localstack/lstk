@@ -8,9 +8,12 @@
 // UPDATE_SNAPS=true go test ./... rewrites snapshots and lets Clean delete
 // obsolete ones.
 //
-// One file per snapshot (TestName_N.snap, N = call number within the test),
-// so there is no snapshot-file format to parse and cleanup is a directory
-// listing.
+// Storage is one txtar archive per test file (__snapshots__/<test_file>.snap)
+// with one section per Match call, named TestName_N (N = call number within
+// the test). txtar has no escaping, so a snapshot value containing a line
+// that looks like a txtar section separator ("-- name --") cannot be stored;
+// write guards against that with a parse round-trip and fails with guidance
+// to sanitize the value instead.
 package snap
 
 import (
@@ -23,20 +26,26 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
+	"golang.org/x/tools/txtar"
 )
 
+// header is the comment section of every archive, kept canonical on rewrite.
+const header = "Snapshots created by internal/snap. Values are compared with the trailing\nnewline stripped. UPDATE_SNAPS=true go test rewrites this file.\n\n"
+
 // Test-only helper state: the visited registry must span all tests in the
-// package so Clean can tell live snapshots from obsolete ones.
+// package so Clean can tell live snapshots from obsolete ones. The mutex also
+// serializes read-modify-write cycles on archives shared by parallel tests.
 var (
 	mu      sync.Mutex
-	visited = map[string]map[string]bool{} // snapshot dir -> filename -> seen
-	calls   = map[string]int{}             // dir + test name -> Match call count
+	visited = map[string]map[string]bool{} // archive path -> entry name -> seen
+	calls   = map[string]int{}             // archive path + test name -> Match call count
 )
 
 var unsafeChars = regexp.MustCompile(`[^A-Za-z0-9._-]+`)
@@ -46,7 +55,7 @@ var unsafeChars = regexp.MustCompile(`[^A-Za-z0-9._-]+`)
 // UPDATE_SNAPS=true.
 func Match(t testing.TB, got string) {
 	t.Helper()
-	match(t, got, callerSnapshotDir(t))
+	match(t, got, callerArchive(t))
 }
 
 // MatchJSON snapshots got (a JSON document) in canonical pretty-printed form
@@ -82,7 +91,7 @@ func MatchJSON(t testing.TB, got []byte, maskPaths ...string) {
 	if err := enc.Encode(v); err != nil {
 		t.Fatalf("snap: %v", err)
 	}
-	match(t, buf.String(), callerSnapshotDir(t))
+	match(t, buf.String(), callerArchive(t))
 }
 
 // mask walks nested JSON objects along path segments and replaces the final
@@ -102,67 +111,130 @@ func mask(v any, segs []string) bool {
 	return mask(m[segs[0]], segs[1:])
 }
 
-// callerSnapshotDir resolves the __snapshots__ directory next to the test
-// file that called the exported Match/MatchJSON function (two frames up).
-func callerSnapshotDir(t testing.TB) string {
+// callerArchive resolves the txtar archive for the test file that called the
+// exported Match/MatchJSON function (two frames up):
+// <dir>/__snapshots__/<test_file_without_.go>.snap.
+func callerArchive(t testing.TB) string {
 	t.Helper()
 	_, file, _, ok := runtime.Caller(2)
 	if !ok {
 		t.Fatal("snap: cannot resolve calling test file")
 	}
-	return filepath.Join(filepath.Dir(file), "__snapshots__")
+	base := strings.TrimSuffix(filepath.Base(file), ".go")
+	return filepath.Join(filepath.Dir(file), "__snapshots__", base+".snap")
 }
 
-func match(t testing.TB, got, dir string) {
+// readArchive parses the archive at path. A missing file is an empty archive.
+func readArchive(path string) (*txtar.Archive, error) {
+	data, err := os.ReadFile(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return &txtar.Archive{}, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return txtar.Parse(data), nil
+}
+
+// entryData returns the entry's value (trailing newline stripped) and whether
+// it exists.
+func entryData(a *txtar.Archive, name string) (string, bool) {
+	for _, f := range a.Files {
+		if f.Name == name {
+			return strings.TrimSuffix(string(f.Data), "\n"), true
+		}
+	}
+	return "", false
+}
+
+func match(t testing.TB, got, archive string) {
 	t.Helper()
 	if n := flagValue("test.count"); n != "" && n != "1" {
 		t.Fatalf("snap: -count > 1 is not supported (snapshot call numbering would repeat)")
 	}
+	// Values are compared with the trailing newline stripped: the stored form
+	// always ends with exactly one newline (txtar sections are line-based), so
+	// a snapshot cannot distinguish output ending with a newline from output
+	// that doesn't.
+	got = strings.TrimSuffix(got, "\n")
 
 	mu.Lock()
-	key := dir + "|" + t.Name()
-	calls[key]++
-	name := unsafeChars.ReplaceAllString(t.Name(), "_") + "_" + strconv.Itoa(calls[key]) + ".snap"
-	if visited[dir] == nil {
-		visited[dir] = map[string]bool{}
-	}
-	visited[dir][name] = true
-	mu.Unlock()
+	defer mu.Unlock()
 
-	path := filepath.Join(dir, name)
-	raw, err := os.ReadFile(path)
-	// Snapshot files always end with exactly one newline (see write) so text
-	// tooling (git diffs, cat, EOF-fixing hooks) treats them as regular text
-	// files. Both sides are compared with that trailing newline stripped; the
-	// cost is that a snapshot cannot distinguish output ending with a newline
-	// from output that doesn't.
-	want := strings.TrimSuffix(string(raw), "\n")
-	got = strings.TrimSuffix(got, "\n")
+	key := archive + "|" + t.Name()
+	calls[key]++
+	entry := unsafeChars.ReplaceAllString(t.Name(), "_") + "_" + strconv.Itoa(calls[key])
+	if visited[archive] == nil {
+		visited[archive] = map[string]bool{}
+	}
+	visited[archive][entry] = true
+
+	a, err := readArchive(archive)
+	if err != nil {
+		t.Fatalf("snap: reading %s: %v", archive, err)
+		return
+	}
+	want, exists := entryData(a, entry)
 	update := os.Getenv("UPDATE_SNAPS") == "true"
 	switch {
-	case errors.Is(err, os.ErrNotExist):
+	case !exists:
 		if isCI() && !update {
-			t.Fatalf("snap: missing snapshot %s (snapshots are never created in CI; run the test locally and commit the file)", path)
+			t.Fatalf("snap: missing snapshot %q in %s (snapshots are never created in CI; run the test locally and commit the file)", entry, archive)
 			return
 		}
-		write(t, path, got)
-		t.Logf("snap: created %s", path)
-	case err != nil:
-		t.Fatalf("snap: reading %s: %v", path, err)
+		writeEntry(t, archive, a, entry, got)
+		t.Logf("snap: created %q in %s", entry, archive)
 	case want != got:
 		if update {
-			write(t, path, got)
-			t.Logf("snap: updated %s", path)
+			writeEntry(t, archive, a, entry, got)
+			t.Logf("snap: updated %q in %s", entry, archive)
 			return
 		}
-		t.Errorf("snapshot mismatch (-want +got):\n%s\nrun UPDATE_SNAPS=true go test to update %s", cmp.Diff(string(want), got), path)
+		t.Errorf("snapshot mismatch (-want +got):\n%s\nrun UPDATE_SNAPS=true go test to update %s", cmp.Diff(want, got), archive)
 	}
 }
 
-// Clean runs the package's tests and then handles obsolete snapshots: files
-// in visited __snapshots__ directories that no Match call used. They are
-// deleted when UPDATE_SNAPS=true, otherwise reported as an error (non-zero
-// exit) so stale snapshots can't linger unnoticed. Wire it in TestMain:
+// writeEntry upserts entry=value into the archive and saves it with a
+// canonical header and name-sorted sections. A parse round-trip guards
+// against values txtar cannot represent (a line matching the "-- name --"
+// section separator); such values must be sanitized by the caller instead.
+// Callers hold mu.
+func writeEntry(t testing.TB, path string, a *txtar.Archive, entry, value string) {
+	t.Helper()
+	data := []byte(value + "\n")
+	replaced := false
+	for i := range a.Files {
+		if a.Files[i].Name == entry {
+			a.Files[i].Data = data
+			replaced = true
+			break
+		}
+	}
+	if !replaced {
+		a.Files = append(a.Files, txtar.File{Name: entry, Data: data})
+	}
+	sort.Slice(a.Files, func(i, j int) bool { return a.Files[i].Name < a.Files[j].Name })
+	a.Comment = []byte(header)
+
+	out := txtar.Format(a)
+	back := txtar.Parse(out)
+	if got, ok := entryData(back, entry); !ok || got != value {
+		t.Fatalf("snap: value for %q does not survive the txtar round-trip (it likely contains a line matching the \"-- name --\" section separator); sanitize the value before snapshotting", entry)
+		return
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatalf("snap: %v", err)
+	}
+	if err := os.WriteFile(path, out, 0o644); err != nil {
+		t.Fatalf("snap: %v", err)
+	}
+}
+
+// Clean runs the package's tests and then handles obsolete snapshots: archive
+// entries no Match call used, and whole .snap archives in visited snapshot
+// directories that no test touched. They are deleted when UPDATE_SNAPS=true,
+// otherwise reported as an error (non-zero exit) so stale snapshots can't
+// linger unnoticed. Wire it in TestMain:
 //
 //	func TestMain(m *testing.M) { os.Exit(snap.Clean(m)) }
 //
@@ -176,62 +248,97 @@ func Clean(m *testing.M) int {
 	update := os.Getenv("UPDATE_SNAPS") == "true"
 	mu.Lock()
 	defer mu.Unlock()
-	for dir, seen := range visited {
-		if n, err := reportObsolete(dir, seen, update); err != nil {
-			fmt.Fprintf(os.Stderr, "snap: cleaning %s: %v\n", dir, err)
+
+	for archive, seen := range visited {
+		n, err := cleanEntries(archive, seen, update)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "snap: cleaning %s: %v\n", archive, err)
 			code = 1
 		} else if n > 0 && !update {
 			code = 1
 		}
 	}
+	if n, err := cleanOrphanArchives(update); err != nil {
+		fmt.Fprintf(os.Stderr, "snap: cleaning orphan archives: %v\n", err)
+		code = 1
+	} else if n > 0 && !update {
+		code = 1
+	}
 	return code
 }
 
-// reportObsolete deletes (update mode) or reports unvisited .snap files in
-// dir, returning how many it found.
-//
-// ponytail: only directories where at least one Match ran this process are
-// examined — deleting a whole test file orphans its snapshots until some
-// other test in the same directory runs Match. Acceptable: any later full
-// package run flags them.
-func reportObsolete(dir string, seen map[string]bool, update bool) (int, error) {
-	entries, err := os.ReadDir(dir)
-	if errors.Is(err, os.ErrNotExist) {
-		return 0, nil
-	}
+// cleanEntries deletes (update mode) or reports entries of archive that no
+// Match call visited, returning how many it found. An archive left with no
+// entries is removed entirely.
+func cleanEntries(archive string, seen map[string]bool, update bool) (int, error) {
+	a, err := readArchive(archive)
 	if err != nil {
 		return 0, err
 	}
+	var live []txtar.File
 	obsolete := 0
-	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), ".snap") || seen[e.Name()] {
+	for _, f := range a.Files {
+		if seen[f.Name] {
+			live = append(live, f)
 			continue
 		}
 		obsolete++
-		path := filepath.Join(dir, e.Name())
 		if update {
-			if err := os.Remove(path); err != nil {
-				return obsolete, err
-			}
-			fmt.Fprintf(os.Stderr, "snap: removed obsolete snapshot %s\n", path)
+			fmt.Fprintf(os.Stderr, "snap: removed obsolete snapshot %q from %s\n", f.Name, archive)
 		} else {
-			fmt.Fprintf(os.Stderr, "snap: obsolete snapshot %s (UPDATE_SNAPS=true go test to remove)\n", path)
+			fmt.Fprintf(os.Stderr, "snap: obsolete snapshot %q in %s (UPDATE_SNAPS=true go test to remove)\n", f.Name, archive)
 		}
 	}
-	return obsolete, nil
+	if obsolete == 0 || !update {
+		return obsolete, nil
+	}
+	if len(live) == 0 {
+		return obsolete, os.Remove(archive)
+	}
+	a.Files = live
+	a.Comment = []byte(header)
+	return obsolete, os.WriteFile(archive, txtar.Format(a), 0o644)
 }
 
-// write stores content with exactly one trailing newline, the invariant
-// match relies on when it strips it back off before comparing.
-func write(t testing.TB, path, content string) {
-	t.Helper()
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		t.Fatalf("snap: %v", err)
+// cleanOrphanArchives deletes (update mode) or reports .snap files in visited
+// snapshot directories that no test visited — typically archives of deleted
+// or renamed test files.
+//
+// ponytail: only directories where at least one Match ran this process are
+// examined — deleting a whole test file orphans its archive until some other
+// test in the same directory runs Match. Acceptable: any later full package
+// run flags it.
+func cleanOrphanArchives(update bool) (int, error) {
+	dirs := map[string]bool{}
+	for archive := range visited {
+		dirs[filepath.Dir(archive)] = true
 	}
-	content = strings.TrimSuffix(content, "\n") + "\n"
-	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
-		t.Fatalf("snap: %v", err)
+	orphans := 0
+	for dir := range dirs {
+		entries, err := os.ReadDir(dir)
+		if errors.Is(err, os.ErrNotExist) {
+			continue
+		}
+		if err != nil {
+			return orphans, err
+		}
+		for _, e := range entries {
+			path := filepath.Join(dir, e.Name())
+			if e.IsDir() || !strings.HasSuffix(e.Name(), ".snap") || visited[path] != nil {
+				continue
+			}
+			orphans++
+			if update {
+				if err := os.Remove(path); err != nil {
+					return orphans, err
+				}
+				fmt.Fprintf(os.Stderr, "snap: removed orphan snapshot archive %s\n", path)
+			} else {
+				fmt.Fprintf(os.Stderr, "snap: orphan snapshot archive %s (UPDATE_SNAPS=true go test to remove)\n", path)
+			}
+		}
 	}
+	return orphans, nil
 }
 
 func isCI() bool {

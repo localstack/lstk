@@ -1,0 +1,17 @@
+Snapshots created by internal/snap. Values are compared with the trailing
+newline stripped. UPDATE_SNAPS=true go test rewrites this file.
+
+-- TestPlainSink_EmitsErrorEvent_1 --
+Error: Connection failed
+  Cannot connect to Docker
+  ==> Start Docker: open -a Docker
+-- TestPlainSink_EmitsInstanceInfoEvent_full_1 --
+✔︎ LocalStack AWS Emulator is running
+• Endpoint: localhost.localstack.cloud:4566
+• Persistence: Enabled
+• Container: localstack-aws
+• Version: <version>
+• Uptime: <time>
+-- TestPlainSink_EmitsInstanceInfoEvent_minimal_1 --
+✔︎ LocalStack AWS Emulator is running
+• Endpoint: 127.0.0.1:4566

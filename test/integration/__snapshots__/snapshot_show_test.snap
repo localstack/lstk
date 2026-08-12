@@ -1,3 +1,7 @@
+Snapshots created by internal/snap. Values are compared with the trailing
+newline stripped. UPDATE_SNAPS=true go test rewrites this file.
+
+-- TestSnapshotShowSuccessWithoutDocker_1 --
 Fetching snapshot...
 Name            my-baseline
 Version         1
