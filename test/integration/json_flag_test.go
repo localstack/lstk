@@ -1,6 +1,8 @@
 package integration_test
 
 import (
+	"slices"
+	"strings"
 	"testing"
 
 	"github.com/localstack/lstk/internal/must"
@@ -189,7 +191,12 @@ func TestExtensionReceivesJSONFlagInContext(t *testing.T) {
 	extDir := t.TempDir()
 	installExtension(t, extDir, "hello")
 	tmpHome := t.TempDir()
-	environ := envWithPath(tmpHome, extDir)
+	// Strip any ambient auth token: it would add an environment-dependent
+	// AUTH_TOKEN line to the snapshotted context echo (and put a real secret
+	// in the failure diff).
+	environ := slices.DeleteFunc(envWithPath(tmpHome, extDir), func(kv string) bool {
+		return strings.HasPrefix(kv, string(env.AuthToken)+"=")
+	})
 
 	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), environ, "--json", "hello", "--foo")
 	must.NoError(t, err, stderr)

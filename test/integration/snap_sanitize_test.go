@@ -36,7 +36,10 @@ var (
 	sanitizeCalverRe = regexp.MustCompile(`\b20\d{2}\.\d{2}\b`)
 	// Reference-extension echo lines carrying temp paths or random ids.
 	sanitizeExtPathRe = regexp.MustCompile(`(?m)^(SELF=|CONFIG_DIR=).*$`)
-	sanitizeExtIDRe   = regexp.MustCompile(`(?m)^(SESSION_ID=).*$`)
+	sanitizeExtIDRe = regexp.MustCompile(`(?m)^(SESSION_ID=).*$`)
+	// Defense in depth: a real auth token must never land in a committed
+	// snapshot or a failure diff, even if a test forgets to strip it.
+	sanitizeExtTokenRe = regexp.MustCompile(`(?m)^(AUTH_TOKEN=).*$`)
 )
 
 // maskKeepWidth replaces every match with placeholder, right-padded with
@@ -61,6 +64,7 @@ func sanitizeOutput(s string) string {
 	s = sanitizeGatewayHostRe.ReplaceAllString(s, "${1}<endpoint-host>${2}")
 	s = sanitizeExtPathRe.ReplaceAllString(s, "${1}<path>")
 	s = sanitizeExtIDRe.ReplaceAllString(s, "${1}<id>")
+	s = sanitizeExtTokenRe.ReplaceAllString(s, "${1}<redacted>")
 	// Width-preserving masks: these values appear in aligned tables, so the
 	// placeholder is padded to the original value's width to keep the
 	// snapshot's columns readable.
