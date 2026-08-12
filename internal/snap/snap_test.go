@@ -11,11 +11,11 @@ import (
 // Match uses are implemented; anything else nil-panics loudly.
 type fakeT struct {
 	testing.TB
-	name    string
-	failed  bool
-	fatal   bool
-	msg     string
-	logs    []string
+	name   string
+	failed bool
+	fatal  bool
+	msg    string
+	logs   []string
 }
 
 func (f *fakeT) Helper()      {}
@@ -134,7 +134,7 @@ func TestMatchUpdatesOnEnv(t *testing.T) {
 		t.Fatalf("update mode should rewrite, not fail: %q", ft.msg)
 	}
 	content, _ := os.ReadFile(path)
-	if string(content) != "new" {
+	if string(content) != "new\n" {
 		t.Fatalf("snapshot not updated: %q", content)
 	}
 }
@@ -166,7 +166,7 @@ func TestMatchCountsCallsWithinOneTest(t *testing.T) {
 	if ft.failed {
 		t.Fatalf("unexpected failure: %q", ft.msg)
 	}
-	for path, want := range map[string]string{path1: "first", path2: "second"} {
+	for path, want := range map[string]string{path1: "first\n", path2: "second\n"} {
 		content, err := os.ReadFile(path)
 		if err != nil || string(content) != want {
 			t.Fatalf("%s: content=%q err=%v", path, content, err)
@@ -264,6 +264,33 @@ func TestMatchJSONFatalPathsWriteNoSnapshot(t *testing.T) {
 	for _, name := range []string{"TestFakeJSONInvalid_1.snap", "TestFakeJSONBadPath_1.snap"} {
 		if _, err := os.Stat(filepath.Join(dir, name)); !os.IsNotExist(err) {
 			t.Fatalf("fatal MatchJSON call must not write %s", name)
+		}
+	}
+}
+
+// TestMatchTrailingNewlineInvariant pins the EOF contract: stored files end
+// with exactly one newline regardless of whether the value had one, and a
+// value matches its stored snapshot with or without a trailing newline.
+func TestMatchTrailingNewlineInvariant(t *testing.T) {
+	t.Setenv("CI", "")
+	t.Setenv("UPDATE_SNAPS", "")
+	path := snapPath(t, "TestFakeEOF", "1")
+
+	ft := &fakeT{name: "TestFakeEOF"}
+	Match(ft, "line\n")
+	content, err := os.ReadFile(path)
+	if err != nil || string(content) != "line\n" {
+		t.Fatalf("stored snapshot should end with exactly one newline: %q err=%v", content, err)
+	}
+
+	for _, got := range []string{"line", "line\n"} {
+		mu.Lock()
+		delete(calls, filepath.Dir(path)+"|TestFakeEOF")
+		mu.Unlock()
+		ft := &fakeT{name: "TestFakeEOF"}
+		Match(ft, got)
+		if ft.failed {
+			t.Fatalf("Match(%q) should match the stored snapshot: %q", got, ft.msg)
 		}
 	}
 }

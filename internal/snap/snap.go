@@ -130,7 +130,14 @@ func match(t testing.TB, got, dir string) {
 	mu.Unlock()
 
 	path := filepath.Join(dir, name)
-	want, err := os.ReadFile(path)
+	raw, err := os.ReadFile(path)
+	// Snapshot files always end with exactly one newline (see write) so text
+	// tooling (git diffs, cat, EOF-fixing hooks) treats them as regular text
+	// files. Both sides are compared with that trailing newline stripped; the
+	// cost is that a snapshot cannot distinguish output ending with a newline
+	// from output that doesn't.
+	want := strings.TrimSuffix(string(raw), "\n")
+	got = strings.TrimSuffix(got, "\n")
 	update := os.Getenv("UPDATE_SNAPS") == "true"
 	switch {
 	case errors.Is(err, os.ErrNotExist):
@@ -142,7 +149,7 @@ func match(t testing.TB, got, dir string) {
 		t.Logf("snap: created %s", path)
 	case err != nil:
 		t.Fatalf("snap: reading %s: %v", path, err)
-	case string(want) != got:
+	case want != got:
 		if update {
 			write(t, path, got)
 			t.Logf("snap: updated %s", path)
@@ -214,11 +221,14 @@ func reportObsolete(dir string, seen map[string]bool, update bool) (int, error) 
 	return obsolete, nil
 }
 
+// write stores content with exactly one trailing newline, the invariant
+// match relies on when it strips it back off before comparing.
 func write(t testing.TB, path, content string) {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		t.Fatalf("snap: %v", err)
 	}
+	content = strings.TrimSuffix(content, "\n") + "\n"
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatalf("snap: %v", err)
 	}
