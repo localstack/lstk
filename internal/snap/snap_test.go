@@ -396,3 +396,31 @@ func TestCleanOrphanArchives(t *testing.T) {
 		}
 	}
 }
+
+// TestMatchStoresNearTerminatorLines pins that only a line that is exactly
+// "---" is unstorable: lines merely containing or resembling the terminator
+// (markdown-style rules, indented dashes, inline dashes) round-trip fine.
+func TestMatchStoresNearTerminatorLines(t *testing.T) {
+	t.Setenv("CI", "")
+	t.Setenv("UPDATE_SNAPS", "")
+	archive := testArchive(t)
+
+	value := "----\n--- text\n ---\na---b\n-- almost --\n"
+	ft := &fakeT{name: "TestFakeDashes"}
+	Match(ft, value)
+	if ft.failed {
+		t.Fatalf("near-terminator lines should be storable: %q", ft.msg)
+	}
+	if got, ok := getEntry(t, archive, "TestFakeDashes_1"); !ok || got != value {
+		t.Fatalf("round-trip mangled the value: %q ok=%v", got, ok)
+	}
+
+	mu.Lock()
+	delete(calls, archive+"|TestFakeDashes")
+	mu.Unlock()
+	ft = &fakeT{name: "TestFakeDashes"}
+	Match(ft, value)
+	if ft.failed {
+		t.Fatalf("re-Match against stored snapshot failed: %q", ft.msg)
+	}
+}
