@@ -1,0 +1,45 @@
+Snapshots created by internal/snap. Values are compared with the trailing
+newline stripped. UPDATE_SNAPS=true go test rewrites this file.
+
+-- TestConfigLoadFailureRendersJSONEnvelope_1 --
+{
+  "command": "stop",
+  "data": null,
+  "error": {
+    "category": "CONFIG",
+    "code": "CONFIG_INVALID",
+    "message": "<any>",
+    "retryable": false
+  },
+  "schemaVersion": 1,
+  "status": "error",
+  "warnings": []
+}
+-- TestNotJSONCapableCommandRendersEnvelope_1 --
+{
+  "command": "login",
+  "data": null,
+  "error": {
+    "category": "USAGE",
+    "code": "NOT_JSON_CAPABLE",
+    "message": "\"login\" is not able to provide output in JSON format",
+    "retryable": false
+  },
+  "schemaVersion": 1,
+  "status": "error",
+  "warnings": []
+}
+-- TestUsageErrorAfterJSONRendersEnvelope_1 --
+{
+  "command": "stop",
+  "data": null,
+  "error": {
+    "category": "USAGE",
+    "code": "USAGE_ERROR",
+    "message": "unknown flag: --bogus-flag",
+    "retryable": false
+  },
+  "schemaVersion": 1,
+  "status": "error",
+  "warnings": []
+}

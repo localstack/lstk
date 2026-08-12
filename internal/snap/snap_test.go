@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"golang.org/x/tools/txtar"
 )
 
 // fakeT records failures instead of failing the real test. Only the methods
@@ -37,57 +39,70 @@ func (f *fakeT) Logf(format string, args ...any) {
 	f.logs = append(f.logs, format)
 }
 
-// snapPath returns where Match will store snapshot n for the given fake test
-// name, and registers cleanup of the file and the registry entries so tests
-// stay independent.
-func snapPath(t *testing.T, fakeName string, n string) string {
+// testArchive returns the archive Match uses when called from this file
+// (snap_test.go) and registers cleanup of the file and the helper registry so
+// tests stay independent. These tests are sequential (t.Setenv forbids
+// t.Parallel), so resetting the whole registry is safe.
+func testArchive(t *testing.T) string {
 	t.Helper()
-	dir := filepath.Join(filepath.Dir(callerFile(t)), "__snapshots__")
-	path := filepath.Join(dir, fakeName+"_"+n+".snap")
-	t.Cleanup(func() {
-		_ = os.Remove(path)
-		mu.Lock()
-		defer mu.Unlock()
-		delete(calls, dir+"|"+fakeName)
-		if visited[dir] != nil {
-			delete(visited[dir], filepath.Base(path))
-		}
-	})
-	return path
-}
-
-func callerFile(t *testing.T) string {
-	t.Helper()
-	// Match resolves the caller's file; in these tests that is snap_test.go,
-	// so snapshots land in this package's __snapshots__ directory.
 	wd, err := os.Getwd()
 	if err != nil {
 		t.Fatal(err)
 	}
-	return filepath.Join(wd, "snap_test.go")
+	path := filepath.Join(wd, "__snapshots__", "snap_test.snap")
+	t.Cleanup(func() {
+		_ = os.Remove(path)
+		mu.Lock()
+		defer mu.Unlock()
+		visited = map[string]map[string]bool{}
+		calls = map[string]int{}
+	})
+	return path
+}
+
+// entry reads the named entry from the archive, reporting whether it exists.
+func entry(t *testing.T, archive, name string) (string, bool) {
+	t.Helper()
+	a, err := readArchive(archive)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return entryData(a, name)
+}
+
+// seed writes the given entries into the archive directly.
+func seed(t *testing.T, archive string, entries map[string]string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(archive), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	a := &txtar.Archive{Comment: []byte(header)}
+	for name, value := range entries {
+		a.Files = append(a.Files, txtar.File{Name: name, Data: []byte(value + "\n")})
+	}
+	if err := os.WriteFile(archive, txtar.Format(a), 0o644); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func TestMatchCreatesThenMatches(t *testing.T) {
 	t.Setenv("CI", "")
 	t.Setenv("UPDATE_SNAPS", "")
-	path := snapPath(t, "TestFakeCreate", "1")
+	archive := testArchive(t)
 
 	ft := &fakeT{name: "TestFakeCreate"}
 	Match(ft, "hello\nworld\n")
 	if ft.failed {
 		t.Fatalf("first Match should create, not fail: %q", ft.msg)
 	}
-	content, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatalf("snapshot not written: %v", err)
-	}
-	if string(content) != "hello\nworld\n" {
-		t.Fatalf("snapshot content %q", content)
+	got, ok := entry(t, archive, "TestFakeCreate_1")
+	if !ok || got != "hello\nworld" {
+		t.Fatalf("stored entry: %q ok=%v", got, ok)
 	}
 
 	// Same test name matches again on a fresh run (reset the call counter).
 	mu.Lock()
-	delete(calls, filepath.Dir(path)+"|TestFakeCreate")
+	delete(calls, archive+"|TestFakeCreate")
 	mu.Unlock()
 	ft = &fakeT{name: "TestFakeCreate"}
 	Match(ft, "hello\nworld\n")
@@ -99,13 +114,8 @@ func TestMatchCreatesThenMatches(t *testing.T) {
 func TestMatchFailsOnMismatch(t *testing.T) {
 	t.Setenv("CI", "")
 	t.Setenv("UPDATE_SNAPS", "")
-	path := snapPath(t, "TestFakeMismatch", "1")
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(path, []byte("old"), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	archive := testArchive(t)
+	seed(t, archive, map[string]string{"TestFakeMismatch_1": "old"})
 
 	ft := &fakeT{name: "TestFakeMismatch"}
 	Match(ft, "new")
@@ -120,36 +130,36 @@ func TestMatchFailsOnMismatch(t *testing.T) {
 func TestMatchUpdatesOnEnv(t *testing.T) {
 	t.Setenv("CI", "")
 	t.Setenv("UPDATE_SNAPS", "true")
-	path := snapPath(t, "TestFakeUpdate", "1")
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(path, []byte("old"), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	archive := testArchive(t)
+	seed(t, archive, map[string]string{
+		"TestFakeUpdate_1": "old",
+		"TestOther_1":      "untouched",
+	})
 
 	ft := &fakeT{name: "TestFakeUpdate"}
 	Match(ft, "new")
 	if ft.failed {
 		t.Fatalf("update mode should rewrite, not fail: %q", ft.msg)
 	}
-	content, _ := os.ReadFile(path)
-	if string(content) != "new\n" {
-		t.Fatalf("snapshot not updated: %q", content)
+	if got, ok := entry(t, archive, "TestFakeUpdate_1"); !ok || got != "new" {
+		t.Fatalf("entry not updated: %q ok=%v", got, ok)
+	}
+	if got, ok := entry(t, archive, "TestOther_1"); !ok || got != "untouched" {
+		t.Fatalf("sibling entry must survive an update: %q ok=%v", got, ok)
 	}
 }
 
 func TestMatchMissingSnapshotFailsInCI(t *testing.T) {
 	t.Setenv("CI", "true")
 	t.Setenv("UPDATE_SNAPS", "")
-	path := snapPath(t, "TestFakeCI", "1")
+	archive := testArchive(t)
 
 	ft := &fakeT{name: "TestFakeCI"}
 	Match(ft, "content")
 	if !ft.fatal {
 		t.Fatal("missing snapshot in CI must be fatal")
 	}
-	if _, err := os.Stat(path); err == nil {
+	if _, ok := entry(t, archive, "TestFakeCI_1"); ok {
 		t.Fatal("snapshot must not be created in CI")
 	}
 }
@@ -157,8 +167,7 @@ func TestMatchMissingSnapshotFailsInCI(t *testing.T) {
 func TestMatchCountsCallsWithinOneTest(t *testing.T) {
 	t.Setenv("CI", "")
 	t.Setenv("UPDATE_SNAPS", "")
-	path1 := snapPath(t, "TestFakeMulti", "1")
-	path2 := snapPath(t, "TestFakeMulti", "2")
+	archive := testArchive(t)
 
 	ft := &fakeT{name: "TestFakeMulti"}
 	Match(ft, "first")
@@ -166,10 +175,9 @@ func TestMatchCountsCallsWithinOneTest(t *testing.T) {
 	if ft.failed {
 		t.Fatalf("unexpected failure: %q", ft.msg)
 	}
-	for path, want := range map[string]string{path1: "first\n", path2: "second\n"} {
-		content, err := os.ReadFile(path)
-		if err != nil || string(content) != want {
-			t.Fatalf("%s: content=%q err=%v", path, content, err)
+	for name, want := range map[string]string{"TestFakeMulti_1": "first", "TestFakeMulti_2": "second"} {
+		if got, ok := entry(t, archive, name); !ok || got != want {
+			t.Fatalf("%s: got=%q ok=%v", name, got, ok)
 		}
 	}
 }
@@ -177,18 +185,17 @@ func TestMatchCountsCallsWithinOneTest(t *testing.T) {
 func TestMatchJSONMasksAndCanonicalizes(t *testing.T) {
 	t.Setenv("CI", "")
 	t.Setenv("UPDATE_SNAPS", "")
-	path := snapPath(t, "TestFakeJSON", "1")
+	archive := testArchive(t)
 
 	ft := &fakeT{name: "TestFakeJSON"}
 	MatchJSON(ft, []byte(`{"zebra":1,"data":{"version":"4.14.1","name":"aws"}}`), "data.version")
 	if ft.failed {
 		t.Fatalf("unexpected failure: %q", ft.msg)
 	}
-	content, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatal(err)
+	got, ok := entry(t, archive, "TestFakeJSON_1")
+	if !ok {
+		t.Fatal("entry missing")
 	}
-	got := string(content)
 	if !strings.Contains(got, `"version": "<any>"`) {
 		t.Fatalf("masked value missing: %s", got)
 	}
@@ -218,79 +225,149 @@ func TestMatchJSONFailsOnInvalidJSON(t *testing.T) {
 	}
 }
 
-func TestReportObsolete(t *testing.T) {
-	dir := t.TempDir()
-	live := filepath.Join(dir, "TestLive_1.snap")
-	stale := filepath.Join(dir, "TestGone_1.snap")
-	other := filepath.Join(dir, "notes.txt")
-	for _, p := range []string{live, stale, other} {
-		if err := os.WriteFile(p, []byte("x"), 0o644); err != nil {
-			t.Fatal(err)
-		}
-	}
-	seen := map[string]bool{"TestLive_1.snap": true}
-
-	// Report mode: counts but keeps files.
-	n, err := reportObsolete(dir, seen, false)
-	if err != nil || n != 1 {
-		t.Fatalf("report mode: n=%d err=%v", n, err)
-	}
-	if _, err := os.Stat(stale); err != nil {
-		t.Fatal("report mode must not delete")
-	}
-
-	// Update mode: deletes the stale snapshot only.
-	n, err = reportObsolete(dir, seen, true)
-	if err != nil || n != 1 {
-		t.Fatalf("update mode: n=%d err=%v", n, err)
-	}
-	if _, err := os.Stat(stale); !os.IsNotExist(err) {
-		t.Fatal("stale snapshot should be deleted")
-	}
-	for _, p := range []string{live, other} {
-		if _, err := os.Stat(p); err != nil {
-			t.Fatalf("%s should survive cleanup: %v", p, err)
-		}
-	}
-}
-
 func TestMatchJSONFatalPathsWriteNoSnapshot(t *testing.T) {
 	t.Setenv("CI", "")
-	dir := filepath.Join(filepath.Dir(callerFile(t)), "__snapshots__")
+	archive := testArchive(t)
 
 	MatchJSON(&fakeT{name: "TestFakeJSONInvalid"}, []byte(`not json`))
 	MatchJSON(&fakeT{name: "TestFakeJSONBadPath"}, []byte(`{"data":{}}`), "data.version")
 
-	for _, name := range []string{"TestFakeJSONInvalid_1.snap", "TestFakeJSONBadPath_1.snap"} {
-		if _, err := os.Stat(filepath.Join(dir, name)); !os.IsNotExist(err) {
+	for _, name := range []string{"TestFakeJSONInvalid_1", "TestFakeJSONBadPath_1"} {
+		if _, ok := entry(t, archive, name); ok {
 			t.Fatalf("fatal MatchJSON call must not write %s", name)
 		}
 	}
 }
 
-// TestMatchTrailingNewlineInvariant pins the EOF contract: stored files end
+// TestMatchRejectsSeparatorCollision pins the txtar limitation: a value
+// containing a line that parses as a section separator cannot be stored and
+// must fail loudly instead of corrupting the archive.
+func TestMatchRejectsSeparatorCollision(t *testing.T) {
+	t.Setenv("CI", "")
+	t.Setenv("UPDATE_SNAPS", "")
+	archive := testArchive(t)
+
+	ft := &fakeT{name: "TestFakeCollision"}
+	Match(ft, "before\n-- sneaky --\nafter")
+	if !ft.fatal {
+		t.Fatal("separator collision must be fatal")
+	}
+	if !strings.Contains(ft.msg, "round-trip") {
+		t.Fatalf("collision message should explain the round-trip guard, got %q", ft.msg)
+	}
+	if _, err := os.Stat(archive); !os.IsNotExist(err) {
+		t.Fatal("colliding value must not be written")
+	}
+}
+
+// TestMatchTrailingNewlineInvariant pins the EOF contract: stored entries end
 // with exactly one newline regardless of whether the value had one, and a
 // value matches its stored snapshot with or without a trailing newline.
 func TestMatchTrailingNewlineInvariant(t *testing.T) {
 	t.Setenv("CI", "")
 	t.Setenv("UPDATE_SNAPS", "")
-	path := snapPath(t, "TestFakeEOF", "1")
+	archive := testArchive(t)
 
 	ft := &fakeT{name: "TestFakeEOF"}
 	Match(ft, "line\n")
-	content, err := os.ReadFile(path)
-	if err != nil || string(content) != "line\n" {
-		t.Fatalf("stored snapshot should end with exactly one newline: %q err=%v", content, err)
+	raw, err := os.ReadFile(archive)
+	if err != nil || !strings.HasSuffix(string(raw), "line\n") || strings.HasSuffix(string(raw), "line\n\n") {
+		t.Fatalf("stored entry should end with exactly one newline: %q err=%v", raw, err)
 	}
 
 	for _, got := range []string{"line", "line\n"} {
 		mu.Lock()
-		delete(calls, filepath.Dir(path)+"|TestFakeEOF")
+		delete(calls, archive+"|TestFakeEOF")
 		mu.Unlock()
 		ft := &fakeT{name: "TestFakeEOF"}
 		Match(ft, got)
 		if ft.failed {
 			t.Fatalf("Match(%q) should match the stored snapshot: %q", got, ft.msg)
+		}
+	}
+}
+
+func TestCleanEntries(t *testing.T) {
+	dir := t.TempDir()
+	archive := filepath.Join(dir, "some_test.snap")
+	seed(t, archive, map[string]string{
+		"TestLive_1": "keep",
+		"TestGone_1": "stale",
+	})
+	seen := map[string]bool{"TestLive_1": true}
+
+	// Report mode: counts but keeps entries.
+	n, err := cleanEntries(archive, seen, false)
+	if err != nil || n != 1 {
+		t.Fatalf("report mode: n=%d err=%v", n, err)
+	}
+	if _, ok := entry(t, archive, "TestGone_1"); !ok {
+		t.Fatal("report mode must not delete entries")
+	}
+
+	// Update mode: drops the stale entry, keeps the live one.
+	n, err = cleanEntries(archive, seen, true)
+	if err != nil || n != 1 {
+		t.Fatalf("update mode: n=%d err=%v", n, err)
+	}
+	if _, ok := entry(t, archive, "TestGone_1"); ok {
+		t.Fatal("stale entry should be deleted")
+	}
+	if got, ok := entry(t, archive, "TestLive_1"); !ok || got != "keep" {
+		t.Fatalf("live entry should survive: %q ok=%v", got, ok)
+	}
+
+	// Dropping the last live entry removes the archive entirely.
+	n, err = cleanEntries(archive, map[string]bool{}, true)
+	if err != nil || n != 1 {
+		t.Fatalf("final update: n=%d err=%v", n, err)
+	}
+	if _, err := os.Stat(archive); !os.IsNotExist(err) {
+		t.Fatal("empty archive should be removed")
+	}
+}
+
+func TestCleanOrphanArchives(t *testing.T) {
+	dir := t.TempDir()
+	live := filepath.Join(dir, "live_test.snap")
+	orphan := filepath.Join(dir, "gone_test.snap")
+	other := filepath.Join(dir, "notes.txt")
+	for _, p := range []string{live, orphan, other} {
+		if err := os.WriteFile(p, []byte("x"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	mu.Lock()
+	visited = map[string]map[string]bool{live: {"TestX_1": true}}
+	mu.Unlock()
+	t.Cleanup(func() {
+		mu.Lock()
+		defer mu.Unlock()
+		visited = map[string]map[string]bool{}
+	})
+
+	mu.Lock()
+	n, err := cleanOrphanArchives(false)
+	mu.Unlock()
+	if err != nil || n != 1 {
+		t.Fatalf("report mode: n=%d err=%v", n, err)
+	}
+	if _, err := os.Stat(orphan); err != nil {
+		t.Fatal("report mode must not delete")
+	}
+
+	mu.Lock()
+	n, err = cleanOrphanArchives(true)
+	mu.Unlock()
+	if err != nil || n != 1 {
+		t.Fatalf("update mode: n=%d err=%v", n, err)
+	}
+	if _, err := os.Stat(orphan); !os.IsNotExist(err) {
+		t.Fatal("orphan archive should be deleted")
+	}
+	for _, p := range []string{live, other} {
+		if _, err := os.Stat(p); err != nil {
+			t.Fatalf("%s should survive cleanup: %v", p, err)
 		}
 	}
 }

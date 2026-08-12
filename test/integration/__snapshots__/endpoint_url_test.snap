@@ -1,0 +1,9 @@
+Snapshots created by internal/snap. Values are compared with the trailing
+newline stripped. UPDATE_SNAPS=true go test rewrites this file.
+
+-- TestStatusEndpointURLRendersReducedOutput_1 --
+Fetching LocalStack status...
+✔︎ LocalStack AWS Emulator is running
+• Endpoint: http://127.0.0.1:<port>
+• Version: <version>
+> Note: No resources deployed

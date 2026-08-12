@@ -1,4 +1,0 @@
-Fetching snapshot version 99...
-Error: Version 99 of 'pod:my-baseline' not found
-  The highest available version is 3.
-  ==> List available versions: lstk snapshot versions pod:my-baseline

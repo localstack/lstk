@@ -1,3 +1,7 @@
+Snapshots created by internal/snap. Values are compared with the trailing
+newline stripped. UPDATE_SNAPS=true go test rewrites this file.
+
+-- TestCDKInjectsCleanAWSEnv_1 --
 ARGS:synth
 ENV_AWS_ENDPOINT_URL=http://<endpoint-host>:4566
 ENV_AWS_ENDPOINT_URL_S3=http://<endpoint-host>:4566
