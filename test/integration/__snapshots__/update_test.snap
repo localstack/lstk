@@ -1,8 +1,10 @@
-Snapshots created by internal/snap. Values are compared with the trailing
-newline stripped. UPDATE_SNAPS=true go test rewrites this file.
+Snapshots created by internal/snap. Values are compared with trailing
+newlines stripped. UPDATE_SNAPS=true go test rewrites this file.
 
 -- TestUpdateBinaryMockGitHubHappyPath_1 --
 Checking for updates...
 Update available: 0.0.1 → v0.0.2
 Downloading and verifying update...
 ✔︎ Updated to v0.0.2
+
+

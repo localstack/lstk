@@ -1,5 +1,5 @@
-Snapshots created by internal/snap. Values are compared with the trailing
-newline stripped. UPDATE_SNAPS=true go test rewrites this file.
+Snapshots created by internal/snap. Values are compared with trailing
+newlines stripped. UPDATE_SNAPS=true go test rewrites this file.
 
 -- TestEnvelopeSink_UpdateCheckedEnvelopeJSON_1 --
 {
@@ -14,3 +14,5 @@ newline stripped. UPDATE_SNAPS=true go test rewrites this file.
   "status": "ok",
   "warnings": []
 }
+
+

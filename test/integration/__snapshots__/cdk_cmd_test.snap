@@ -1,5 +1,5 @@
-Snapshots created by internal/snap. Values are compared with the trailing
-newline stripped. UPDATE_SNAPS=true go test rewrites this file.
+Snapshots created by internal/snap. Values are compared with trailing
+newlines stripped. UPDATE_SNAPS=true go test rewrites this file.
 
 -- TestCDKInjectsCleanAWSEnv_1 --
 ARGS:synth
@@ -11,3 +11,5 @@ ENV_AWS_SECRET_ACCESS_KEY=test
 ENV_AWS_PROFILE=<unset>
 ENV_AWS_DEFAULT_PROFILE=<unset>
 ENV_AWS_SESSION_TOKEN=<unset>
+
+

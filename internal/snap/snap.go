@@ -37,7 +37,7 @@ import (
 )
 
 // header is the comment section of every archive, kept canonical on rewrite.
-const header = "Snapshots created by internal/snap. Values are compared with the trailing\nnewline stripped. UPDATE_SNAPS=true go test rewrites this file.\n\n"
+const header = "Snapshots created by internal/snap. Values are compared with trailing\nnewlines stripped. UPDATE_SNAPS=true go test rewrites this file.\n\n"
 
 // Test-only helper state: the visited registry must span all tests in the
 // package so Clean can tell live snapshots from obsolete ones. The mutex also
@@ -136,12 +136,18 @@ func readArchive(path string) (*txtar.Archive, error) {
 	return txtar.Parse(data), nil
 }
 
-// entryData returns the entry's value (trailing newline stripped) and whether
-// it exists.
+// entrySep is appended to every stored value: the final newline terminates
+// the value's last line and the rest renders as blank lines between sections,
+// keeping the archive readable. In txtar, trailing blank lines belong to the
+// preceding section's data, so entryData strips them back off.
+const entrySep = "\n\n\n"
+
+// entryData returns the entry's value (trailing newlines stripped, see
+// entrySep) and whether it exists.
 func entryData(a *txtar.Archive, name string) (string, bool) {
 	for _, f := range a.Files {
 		if f.Name == name {
-			return strings.TrimSuffix(string(f.Data), "\n"), true
+			return strings.TrimRight(string(f.Data), "\n"), true
 		}
 	}
 	return "", false
@@ -152,11 +158,10 @@ func match(t testing.TB, got, archive string) {
 	if n := flagValue("test.count"); n != "" && n != "1" {
 		t.Fatalf("snap: -count > 1 is not supported (snapshot call numbering would repeat)")
 	}
-	// Values are compared with the trailing newline stripped: the stored form
-	// always ends with exactly one newline (txtar sections are line-based), so
-	// a snapshot cannot distinguish output ending with a newline from output
-	// that doesn't.
-	got = strings.TrimSuffix(got, "\n")
+	// Values are compared with trailing newlines stripped: the stored form
+	// always ends with entrySep, so a snapshot cannot distinguish values that
+	// differ only in trailing newlines.
+	got = strings.TrimRight(got, "\n")
 
 	mu.Lock()
 	defer mu.Unlock()
@@ -201,7 +206,7 @@ func match(t testing.TB, got, archive string) {
 // Callers hold mu.
 func writeEntry(t testing.TB, path string, a *txtar.Archive, entry, value string) {
 	t.Helper()
-	data := []byte(value + "\n")
+	data := []byte(value + entrySep)
 	replaced := false
 	for i := range a.Files {
 		if a.Files[i].Name == entry {

@@ -1,5 +1,5 @@
-Snapshots created by internal/snap. Values are compared with the trailing
-newline stripped. UPDATE_SNAPS=true go test rewrites this file.
+Snapshots created by internal/snap. Values are compared with trailing
+newlines stripped. UPDATE_SNAPS=true go test rewrites this file.
 
 -- TestExtensionReceivesJSONFlagInContext_1 --
 ARGS=[--foo]
@@ -10,6 +10,8 @@ NON_INTERACTIVE=true
 JSON=true
 SESSION_ID=<id>
 EMULATOR_COUNT=0
+
+
 -- TestJSONFlagBeforeCommandNameBooleanValues_--json_true_before_the_command_name_is_rejected_1 --
 {
   "command": "aws",
@@ -24,6 +26,8 @@ EMULATOR_COUNT=0
   "status": "error",
   "warnings": []
 }
+
+
 -- TestJSONFlagBeforeCommandNameBooleanValues_a_malformed_value_before_the_command_name_is_rejected_1 --
 {
   "command": "aws",
@@ -38,36 +42,58 @@ EMULATOR_COUNT=0
   "status": "error",
   "warnings": []
 }
+
+
 -- TestJSONFlagProxyCommandsForwardJSON_aws_json_after_the_wrapped_tool_s_own_action_1 --
 Error: aws CLI not found in PATH
   ==> Install AWS CLI: https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html
+
+
 -- TestJSONFlagProxyCommandsForwardJSON_aws_json_immediately_after_command_name_1 --
 Error: aws CLI not found in PATH
   ==> Install AWS CLI: https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html
+
+
 -- TestJSONFlagProxyCommandsForwardJSON_az_json_after_the_wrapped_tool_s_own_action_1 --
 Error: az CLI not found in PATH
   ==> Install Azure CLI: https://learn.microsoft.com/en-us/cli/azure/
+
+
 -- TestJSONFlagProxyCommandsForwardJSON_az_json_immediately_after_command_name_1 --
 Error: az CLI not found in PATH
   ==> Install Azure CLI: https://learn.microsoft.com/en-us/cli/azure/
+
+
 -- TestJSONFlagProxyCommandsForwardJSON_cdk_json_after_the_wrapped_tool_s_own_action_1 --
 Error: cdk not found in PATH
   ==> Install CDK CLI: npm install -g aws-cdk
+
+
 -- TestJSONFlagProxyCommandsForwardJSON_cdk_json_immediately_after_command_name_1 --
 Error: cdk not found in PATH
   ==> Install CDK CLI: npm install -g aws-cdk
+
+
 -- TestJSONFlagProxyCommandsForwardJSON_sam_json_after_the_wrapped_tool_s_own_action_1 --
 Error: sam not found in PATH
   ==> Install AWS SAM CLI: https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/install-sam-cli.html
+
+
 -- TestJSONFlagProxyCommandsForwardJSON_sam_json_immediately_after_command_name_1 --
 Error: sam not found in PATH
   ==> Install AWS SAM CLI: https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/install-sam-cli.html
+
+
 -- TestJSONFlagProxyCommandsForwardJSON_terraform_json_after_the_wrapped_tool_s_own_action_1 --
 Error: terraform not found in PATH
   ==> Install Terraform CLI: https://developer.hashicorp.com/terraform/cli
+
+
 -- TestJSONFlagProxyCommandsForwardJSON_terraform_json_immediately_after_command_name_1 --
 Error: terraform not found in PATH
   ==> Install Terraform CLI: https://developer.hashicorp.com/terraform/cli
+
+
 -- TestJSONFlagProxyCommandsRejectBeforeCommandName_aws_1 --
 {
   "command": "aws",
@@ -82,6 +108,8 @@ Error: terraform not found in PATH
   "status": "error",
   "warnings": []
 }
+
+
 -- TestJSONFlagProxyCommandsRejectBeforeCommandName_az_1 --
 {
   "command": "az",
@@ -96,6 +124,8 @@ Error: terraform not found in PATH
   "status": "error",
   "warnings": []
 }
+
+
 -- TestJSONFlagProxyCommandsRejectBeforeCommandName_cdk_1 --
 {
   "command": "cdk",
@@ -110,6 +140,8 @@ Error: terraform not found in PATH
   "status": "error",
   "warnings": []
 }
+
+
 -- TestJSONFlagProxyCommandsRejectBeforeCommandName_sam_1 --
 {
   "command": "sam",
@@ -124,6 +156,8 @@ Error: terraform not found in PATH
   "status": "error",
   "warnings": []
 }
+
+
 -- TestJSONFlagProxyCommandsRejectBeforeCommandName_terraform_1 --
 {
   "command": "terraform",
@@ -138,3 +172,5 @@ Error: terraform not found in PATH
   "status": "error",
   "warnings": []
 }
+
+

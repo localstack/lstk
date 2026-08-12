@@ -1,5 +1,5 @@
-Snapshots created by internal/snap. Values are compared with the trailing
-newline stripped. UPDATE_SNAPS=true go test rewrites this file.
+Snapshots created by internal/snap. Values are compared with trailing
+newlines stripped. UPDATE_SNAPS=true go test rewrites this file.
 
 -- TestExtensionEndpointOmittedWhenNoRuntime_1 --
 ARGS=[]
@@ -10,6 +10,8 @@ NON_INTERACTIVE=true
 JSON=false
 SESSION_ID=<id>
 EMULATOR_COUNT=0
+
+
 -- TestExtensionHelpListsBundledWithDescriptionAndPathNameOnly_1 --
 Usage: lstk [options] [command]
 
@@ -57,6 +59,8 @@ Options:
       --timeout duration      Maximum time to wait for the emulator to become ready (overrides LSTK_STARTUP_TIMEOUT; 0 uses the default)
   -t, --type string           Emulator type to start (aws, snowflake, azure)
   -v, --version               Show version
+
+
 -- TestExtensionSessionIDOmittedWhenTelemetryDisabled_1 --
 ARGS=[exit 7]
 SELF=<path>
@@ -65,6 +69,8 @@ CONFIG_DIR=<path>
 NON_INTERACTIVE=true
 JSON=false
 EMULATOR_COUNT=0
+
+
 -- TestExtensionUnknownCommandDispatches_1 --
 ARGS=[world]
 SELF=<path>
@@ -74,3 +80,5 @@ NON_INTERACTIVE=true
 JSON=false
 SESSION_ID=<id>
 EMULATOR_COUNT=0
+
+

@@ -260,9 +260,10 @@ func TestMatchRejectsSeparatorCollision(t *testing.T) {
 	}
 }
 
-// TestMatchTrailingNewlineInvariant pins the EOF contract: stored entries end
-// with exactly one newline regardless of whether the value had one, and a
-// value matches its stored snapshot with or without a trailing newline.
+// TestMatchTrailingNewlineInvariant pins the spacing contract: stored entries
+// end with entrySep (blank lines between sections) regardless of the value's
+// own trailing newlines, and a value matches its stored snapshot with or
+// without them.
 func TestMatchTrailingNewlineInvariant(t *testing.T) {
 	t.Setenv("CI", "")
 	t.Setenv("UPDATE_SNAPS", "")
@@ -271,8 +272,8 @@ func TestMatchTrailingNewlineInvariant(t *testing.T) {
 	ft := &fakeT{name: "TestFakeEOF"}
 	Match(ft, "line\n")
 	raw, err := os.ReadFile(archive)
-	if err != nil || !strings.HasSuffix(string(raw), "line\n") || strings.HasSuffix(string(raw), "line\n\n") {
-		t.Fatalf("stored entry should end with exactly one newline: %q err=%v", raw, err)
+	if err != nil || !strings.HasSuffix(string(raw), "line"+entrySep) || strings.HasSuffix(string(raw), "line"+entrySep+"\n") {
+		t.Fatalf("stored entry should end with exactly entrySep: %q err=%v", raw, err)
 	}
 
 	for _, got := range []string{"line", "line\n"} {

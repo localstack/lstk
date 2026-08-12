@@ -1,5 +1,5 @@
-Snapshots created by internal/snap. Values are compared with the trailing
-newline stripped. UPDATE_SNAPS=true go test rewrites this file.
+Snapshots created by internal/snap. Values are compared with trailing
+newlines stripped. UPDATE_SNAPS=true go test rewrites this file.
 
 -- TestSnapshotShowPinnedVersion_1 --
 Fetching snapshot version 1...
@@ -11,11 +11,15 @@ LocalStack      <calv>
 Message         the first one
 
 Services        s3
+
+
 -- TestSnapshotShowVersionNotFound_1 --
 Fetching snapshot version 99...
 Error: Version 99 of 'pod:my-baseline' not found
   The highest available version is 3.
   ==> List available versions: lstk snapshot versions pod:my-baseline
+
+
 -- TestSnapshotVersionsFiltersDeletedVersions_1 --
 Fetching versions...
 ~ 2 versions
@@ -23,8 +27,12 @@ Fetching versions...
   VERSION  CREATED  LOCALSTACK  SERVICES
   3        -        keep-three  -
   1        -        keep-one    -
+
+
 -- TestSnapshotVersionsRejectsS3Ref_1 --
 Error: snapshot versions is only supported for Cloud Pods (pod: refs), not S3 remotes
+
+
 -- TestSnapshotVersionsSuccessWithoutDocker_1 --
 Fetching versions...
 ~ 3 versions
@@ -33,3 +41,5 @@ Fetching versions...
   3        <date>                <calv>      s3, lambda
   2        <date>                <calv>      s3
   1        <date>                <calv>      -
+
+

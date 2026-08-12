@@ -1,5 +1,5 @@
-Snapshots created by internal/snap. Values are compared with the trailing
-newline stripped. UPDATE_SNAPS=true go test rewrites this file.
+Snapshots created by internal/snap. Values are compared with trailing
+newlines stripped. UPDATE_SNAPS=true go test rewrites this file.
 
 -- TestSnapshotShowSuccessWithoutDocker_1 --
 Fetching snapshot...
@@ -15,3 +15,5 @@ Services        s3, lambda, dynamodb, sqs
 Resources
   lambda        1 function
   s3            3 buckets
+
+

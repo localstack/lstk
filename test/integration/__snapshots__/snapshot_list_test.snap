@@ -1,5 +1,5 @@
-Snapshots created by internal/snap. Values are compared with the trailing
-newline stripped. UPDATE_SNAPS=true go test rewrites this file.
+Snapshots created by internal/snap. Values are compared with trailing
+newlines stripped. UPDATE_SNAPS=true go test rewrites this file.
 
 -- TestSnapshotListSuccessWithoutDocker_1 --
 Fetching snapshots...
@@ -8,3 +8,5 @@ Fetching snapshots...
   NAME           VERSION  LAST CHANGED
   baseline-q2    3        <date>              
   infra-2026-04  1        -
+
+
