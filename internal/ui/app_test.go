@@ -875,6 +875,91 @@ func TestAppEnterSelectsHighlightedVerticalOption(t *testing.T) {
 	}
 }
 
+// TestAppEscResolvesVerticalDeclineOption guards the license re-login prompt's
+// decline path (DEVX-1045): the vertical key handler claims Enter for the
+// highlighted row, so a direct ESC press must still fall through to its option
+// rather than being swallowed.
+func TestAppEscResolvesVerticalDeclineOption(t *testing.T) {
+	t.Parallel()
+
+	app := NewApp("dev", "", "", nil)
+	responseCh := make(chan output.InputResponse, 1)
+
+	model, _ := app.Update(output.UserInputRequestEvent{
+		Prompt: "License validation failed: invalid, inactive, or expired authentication token or subscription.",
+		Options: []output.InputOption{
+			{Key: "r", Label: "[R] Re-authenticate"},
+			{Key: "esc", Label: "[ESC] Exit"},
+		},
+		ResponseCh: responseCh,
+		Vertical:   true,
+	})
+	app = model.(App)
+
+	model, cmd := app.Update(tea.KeyMsg{Type: tea.KeyEscape})
+	app = model.(App)
+	if cmd == nil {
+		t.Fatal("expected response command when esc is pressed on a vertical prompt")
+	}
+	cmd()
+
+	select {
+	case resp := <-responseCh:
+		if resp.SelectedKey != "esc" {
+			t.Fatalf("expected esc key, got %q", resp.SelectedKey)
+		}
+		if resp.Cancelled {
+			t.Fatal("expected esc to decline through its option, not as a cancellation")
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for response on channel")
+	}
+
+	if app.inputPrompt.Visible() {
+		t.Fatal("expected input prompt to be hidden after response")
+	}
+}
+
+func TestAppReloginShortcutIgnoresVerticalSelection(t *testing.T) {
+	t.Parallel()
+
+	app := NewApp("dev", "", "", nil)
+	responseCh := make(chan output.InputResponse, 1)
+
+	model, _ := app.Update(output.UserInputRequestEvent{
+		Prompt: "License validation failed: invalid, inactive, or expired authentication token or subscription.",
+		Options: []output.InputOption{
+			{Key: "r", Label: "[R] Re-authenticate"},
+			{Key: "esc", Label: "[ESC] Exit"},
+		},
+		ResponseCh: responseCh,
+		Vertical:   true,
+	})
+	app = model.(App)
+
+	model, _ = app.Update(tea.KeyMsg{Type: tea.KeyDown})
+	app = model.(App)
+	model, cmd := app.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'r'}})
+	app = model.(App)
+	if cmd == nil {
+		t.Fatal("expected response command when r is pressed on a vertical prompt")
+	}
+	cmd()
+
+	select {
+	case resp := <-responseCh:
+		if resp.SelectedKey != "r" {
+			t.Fatalf("expected r key, got %q", resp.SelectedKey)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for response on channel")
+	}
+
+	if app.inputPrompt.Visible() {
+		t.Fatal("expected input prompt to be hidden after response")
+	}
+}
+
 func TestAppAnyKeyOptionResolvesOnAnyKeypress(t *testing.T) {
 	t.Parallel()
 

@@ -1698,7 +1698,7 @@ func TestPromptRelogin_FoldsReasonIntoThePromptWithoutASeparateWarning(t *testin
 	req, ok := events[0].(output.UserInputRequestEvent)
 	require.True(t, ok, "the only event emitted must be the prompt itself")
 	assert.Contains(t, req.Prompt, licErr.Message, "the prompt must explain why the user is being asked to log in again")
-	assert.Contains(t, req.Prompt, "Log in again to refresh your credentials?")
+	assert.Equal(t, "[R] Re-authenticate", req.Options[0].Label, "the recovery action belongs to the choice, not the prompt sentence")
 }
 
 // TestPromptRelogin_OffersAnAdvertisedDeclineKey covers DEVX-1045: Ctrl+C was the
@@ -1712,7 +1712,7 @@ func TestPromptRelogin_OffersAnAdvertisedDeclineKey(t *testing.T) {
 		response output.InputResponse
 		accepted bool
 	}{
-		{name: "enter accepts", response: output.InputResponse{SelectedKey: "enter"}, accepted: true},
+		{name: "r accepts", response: output.InputResponse{SelectedKey: "r"}, accepted: true},
 		{name: "esc declines", response: output.InputResponse{SelectedKey: "esc"}, accepted: false},
 		{name: "cancel declines", response: output.InputResponse{Cancelled: true}, accepted: false},
 	} {
@@ -1728,11 +1728,11 @@ func TestPromptRelogin_OffersAnAdvertisedDeclineKey(t *testing.T) {
 			accepted := promptRelogin(context.Background(), sink, licErr)
 
 			assert.Equal(t, tc.accepted, accepted)
-			keys := make([]string, 0, len(req.Options))
-			for _, opt := range req.Options {
-				keys = append(keys, opt.Key)
-			}
-			assert.Equal(t, []string{"enter", "esc"}, keys, "both the accept and the decline key must be advertised")
+			assert.True(t, req.Vertical, "the choices must render as vertical, selectable actions")
+			assert.Equal(t, []output.InputOption{
+				{Key: "r", Label: "[R] Re-authenticate"},
+				{Key: "esc", Label: "[ESC] Exit"},
+			}, req.Options, "both the accept and the decline key must be advertised, shortcut first")
 		})
 	}
 }
