@@ -23,6 +23,8 @@ lstk passes everything you need through two environment variables, so you never 
   "nonInteractive": true,
   "json": false,
   "sessionId": "6f1c9a2e-7b4d-4c3a-9f10-2d8e5b7a1c43",
+  "machineId": "dkr_0a1b2c3d4e5f",
+  "endpointUrl": "http://localhost:4566",
   "emulators": [
     { "type": "aws", "endpoint": "http://localhost.localstack.cloud:4566", "port": "4566" }
   ]
@@ -36,6 +38,8 @@ lstk passes everything you need through two environment variables, so you never 
 | `nonInteractive` | bool | `true` when the user passed `--non-interactive` or stdout is not a TTY. When true, do not prompt. |
 | `json` | bool | `true` when the user passed `--json`. Setting `--json` also forces `nonInteractive` to `true`. lstk makes no decision about your output format — decide for yourself whether to honor it. |
 | `sessionId` | string | lstk's telemetry session id for this invocation. **Omitted** when lstk's telemetry is disabled. See [Correlating your telemetry with lstk's](#correlating-your-telemetry-with-lstks). |
+| `machineId` | string | lstk's anonymized machine id — an irreversible hash, not your Docker or system id. **Omitted** when lstk's telemetry is disabled. See [Correlating your telemetry with lstk's](#correlating-your-telemetry-with-lstks). |
+| `endpointUrl` | string | An externally-managed emulator lstk was pointed at, from `--endpoint-url`, `LSTK_ENDPOINT_URL`, or `AWS_ENDPOINT_URL`. **Omitted** when none was set. Conveyed **verbatim and unvalidated** — see [Targeting an external emulator](#targeting-an-external-emulator). |
 | `emulators` | array | One entry per running LocalStack emulator: `{ "type", "endpoint", "port" }`. An **empty array** `[]` when none are running. |
 
 `emulators` can hold **more than one** entry — lstk may run an AWS, a Snowflake, and an Azure emulator at the same time. Don't assume a single endpoint: select the one(s) your extension needs by `type`, and handle the empty case. `authToken` is **omitted, not set empty**, when the user is not authenticated — check for its presence.
@@ -78,17 +82,34 @@ lstk performs **no** compatibility check for you — it runs any resolvable `lst
 
 ### Conveyance of global flags
 
-Each lstk global flag that affects behavior is conveyed as a field of `LSTK_EXT_CONTEXT` rather than being forwarded on your command line (today: `nonInteractive`, `json`). This is what lets you own your entire flag namespace without colliding with lstk. As lstk adds global flags, they appear as additional fields — additively, under the same `LSTK_EXT_API_VERSION` major version.
+Each lstk global flag that affects behavior is conveyed as a field of `LSTK_EXT_CONTEXT` rather than being forwarded on your command line (today: `nonInteractive`, `json`, `endpointUrl`). This is what lets you own your entire flag namespace without colliding with lstk. As lstk adds global flags, they appear as additional fields — additively, under the same `LSTK_EXT_API_VERSION` major version.
+
+Position matters for all of them, in the same way: only `lstk --endpoint-url http://host:4566 myext` reaches lstk's parser and becomes `endpointUrl`. Written after your name, `lstk myext --endpoint-url http://host:4566` is forwarded to your argv verbatim and lstk never sees it — exactly like `--json`. The environment variables work in either spelling, since they're not positional at all.
+
+### Targeting an external emulator
+
+`endpointUrl` is present when the user pointed lstk at an emulator it did not start — docker compose, host networking, CI, another machine, or a cloud-hosted ephemeral instance. lstk resolves it from `--endpoint-url` first, then `LSTK_ENDPOINT_URL`, then `AWS_ENDPOINT_URL`, and conveys the winner:
+
+```sh
+endpoint_url=$(printf '%s' "$LSTK_EXT_CONTEXT" | jq -r '.endpointUrl // empty')
+```
+
+**The value is unvalidated.** lstk applies that precedence and nothing else: it does not check that the value parses as a URL, does not normalize it, and does not check that anything is listening. Whatever the user set arrives byte for byte, so parse it yourself and handle a malformed or unreachable value rather than assuming it is usable. This is deliberate — an extension that diagnoses a broken endpoint has to be able to see the actual mistake, and would be useless if lstk refused to dispatch it.
+
+`endpointUrl` and `emulators` answer different questions and neither replaces the other: `emulators` is what lstk found running under local Docker, while `endpointUrl` is what it was *told* to target. A user with both set has a local emulator running and is aiming somewhere else; if your extension acts on an endpoint, prefer `endpointUrl` when it is present. Absence means either that no endpoint source was set — the default local target — or that lstk predates the field; in both cases fall back to your default endpoint.
 
 ### Correlating your telemetry with lstk's
 
-lstk records every extension invocation as its own analytics event (`ext:<name>`, carrying the duration and exit code). If your extension reports analytics too, `sessionId` is what joins the two: it is lstk's session id for the invocation that dispatched you, so stamping it on your own events makes the join exact instead of guessing from a machine id and a timestamp. Note the spelling difference — the context field is `sessionId`, while lstk's analytics wire format calls the same value `session_id`.
+lstk records every extension invocation as its own analytics event (`ext:<name>`, carrying the duration and exit code). If your extension reports analytics too, `sessionId` is what joins the two: it is lstk's session id for the invocation that dispatched you, so stamping it on your own events makes the join exact instead of guessing from a machine id and a timestamp. `machineId` is the companion for the other axis: it is the anonymized machine identity lstk stamps on its own events, so reusing it makes your events and lstk's report as one machine instead of two. Note the spelling difference — the context fields are `sessionId` and `machineId`, while lstk's analytics wire format calls the same values `session_id` and `machine_id`.
 
 ```sh
 session_id=$(printf '%s' "$LSTK_EXT_CONTEXT" | jq -r '.sessionId // empty')
+machine_id=$(printf '%s' "$LSTK_EXT_CONTEXT" | jq -r '.machineId // empty')
 ```
 
-**Absence is ambiguous, by design.** The field is omitted when lstk's telemetry is disabled (there is no session to correlate), and it is also absent on an lstk released before the field existed. You cannot tell those two cases apart — so don't try to. Treat absence as "no correlation available" and carry on: generate your own id if you need one, and never make the field a hard requirement.
+Reuse `machineId` rather than deriving your own: it is already the final hashed value (never a raw Docker or system id, so there is nothing further to anonymize), and deriving it independently costs a Docker round-trip that can fail and can disagree with lstk's answer.
+
+**Absence is ambiguous, by design.** Both fields are omitted when lstk's telemetry is disabled — a disabled lstk computes neither, so they always appear and disappear together — and both are also absent on an lstk released before they existed. You cannot tell those two cases apart, so don't try. Treat absence as "no correlation available" and carry on: generate or derive your own ids if you need them, and never make either field a hard requirement.
 
 ## Help descriptions
 

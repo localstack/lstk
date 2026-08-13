@@ -305,6 +305,160 @@ func TestExtensionSessionIDOmittedWhenTelemetryDisabled(t *testing.T) {
 	snap.Match(t, sanitizeOutput(stdout))
 }
 
+// The conveyed machineId exists so an extension's own telemetry reports the same
+// machine as lstk's without re-deriving it. As with sessionId, a non-empty value
+// is not enough — it has to be *lstk's* machine id, so this compares it against
+// the one on the event lstk actually sent.
+func TestExtensionMachineIDConveyedAndMatchesCommandEvent(t *testing.T) {
+	t.Parallel()
+	extDir := t.TempDir()
+	installExtension(t, extDir, "ref")
+
+	analyticsSrv, events := mockAnalyticsServer(t)
+
+	tmpHome := t.TempDir()
+	environ := env.Environ(envWithPath(tmpHome, extDir)).
+		With(env.AnalyticsEndpoint, analyticsSrv.URL).
+		With(env.Key("DOCKER_HOST"), "tcp://127.0.0.1:1")
+
+	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), environ, "ref")
+	require.NoError(t, err, stderr)
+
+	// The dead DOCKER_HOST rules out the dkr_ derivation, so this also covers the
+	// fallback paths: whichever one lstk lands on must be the one it conveys.
+	conveyed := echoedValue(t, stdout, "MACHINE_ID")
+	require.NotEmpty(t, conveyed, "conveyed machineId must not be empty")
+
+	event := receiveEventByName(t, events, "lstk_command")
+	payload, ok := event["payload"].(map[string]any)
+	require.True(t, ok, "event has no payload object: %v", event)
+	environment, ok := payload["environment"].(map[string]any)
+	require.True(t, ok, "event payload has no environment object: %v", payload)
+	require.Equal(t, conveyed, environment["machine_id"],
+		"conveyed machineId must equal the machine id on the ext:<name> event")
+}
+
+func TestExtensionMachineIDOmittedWhenTelemetryDisabled(t *testing.T) {
+	t.Parallel()
+	extDir := t.TempDir()
+	installExtension(t, extDir, "ref")
+
+	tmpHome := t.TempDir()
+	environ := env.Environ(envWithPath(tmpHome, extDir)).
+		With(env.DisableEvents, "1").
+		With(env.Key("DOCKER_HOST"), "tcp://127.0.0.1:1")
+
+	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), environ, "ref")
+	require.NoError(t, err, stderr)
+
+	// A disabled client computes no machine id, so the field goes absent alongside
+	// sessionId rather than being conveyed empty.
+	require.NotContains(t, stdout, "MACHINE_ID=",
+		"no machineId may be conveyed when telemetry is disabled")
+	require.NotContains(t, stdout, "SESSION_ID=")
+	require.Contains(t, stdout, "API_VERSION=1")
+}
+
+// endpointUrl tells an extension that lstk was pointed at an externally-managed
+// emulator. Each source is covered separately because lstk owns the precedence
+// between them — that is the one thing it does to the value.
+func TestExtensionEndpointURLConveyedFromEverySource(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		// extraEnv is applied on top of the base environment.
+		extraEnv map[string]string
+		// args precede the extension name, as lstk's own flags must.
+		args []string
+		want string
+	}{
+		{
+			name: "flag",
+			args: []string{"--endpoint-url", "http://localhost:4566", "ref"},
+			want: "http://localhost:4566",
+		},
+		{
+			name:     "LSTK_ENDPOINT_URL",
+			extraEnv: map[string]string{"LSTK_ENDPOINT_URL": "http://lstk-env:4566"},
+			args:     []string{"ref"},
+			want:     "http://lstk-env:4566",
+		},
+		{
+			name:     "AWS_ENDPOINT_URL",
+			extraEnv: map[string]string{"AWS_ENDPOINT_URL": "http://aws-env:4566"},
+			args:     []string{"ref"},
+			want:     "http://aws-env:4566",
+		},
+		{
+			name: "flag beats both env vars",
+			extraEnv: map[string]string{
+				"LSTK_ENDPOINT_URL": "http://lstk-env:4566",
+				"AWS_ENDPOINT_URL":  "http://aws-env:4566",
+			},
+			args: []string{"--endpoint-url", "http://flag:4566", "ref"},
+			want: "http://flag:4566",
+		},
+		{
+			name:     "LSTK_ENDPOINT_URL beats AWS_ENDPOINT_URL",
+			extraEnv: map[string]string{"LSTK_ENDPOINT_URL": "http://lstk-env:4566", "AWS_ENDPOINT_URL": "http://aws-env:4566"},
+			args:     []string{"ref"},
+			want:     "http://lstk-env:4566",
+		},
+		{
+			// lstk neither validates nor normalizes the value: whatever the user
+			// set reaches the extension byte for byte, so an extension diagnosing a
+			// broken endpoint sees the actual mistake. Note the preserved trailing
+			// slash, which endpoint.Resolve would have stripped.
+			name:     "malformed value is passed through verbatim",
+			extraEnv: map[string]string{"LSTK_ENDPOINT_URL": "not a url/"},
+			args:     []string{"ref"},
+			want:     "not a url/",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			extDir := t.TempDir()
+			installExtension(t, extDir, "ref")
+
+			environ := env.Environ(envWithPath(t.TempDir(), extDir)).
+				With(env.DisableEvents, "1").
+				With(env.Key("DOCKER_HOST"), "tcp://127.0.0.1:1")
+			for k, v := range tt.extraEnv {
+				environ = environ.With(env.Key(k), v)
+			}
+
+			stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), environ, tt.args...)
+			require.NoError(t, err, stderr)
+			require.Equal(t, tt.want, echoedValue(t, stdout, "ENDPOINT_URL"))
+		})
+	}
+}
+
+func TestExtensionEndpointURLOmittedWhenNoSourceSet(t *testing.T) {
+	t.Parallel()
+	extDir := t.TempDir()
+	installExtension(t, extDir, "ref")
+
+	// Strip any inherited endpoint variables so "no source set" is genuine.
+	environ := env.Environ(envWithPath(t.TempDir(), extDir)).
+		With(env.DisableEvents, "1").
+		With(env.Key("DOCKER_HOST"), "tcp://127.0.0.1:1").
+		Without(env.Key("LSTK_ENDPOINT_URL")).
+		Without(env.Key("AWS_ENDPOINT_URL"))
+
+	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), environ, "ref")
+	require.NoError(t, err, stderr)
+
+	// Absent, not empty: the extension detects the field by presence and falls
+	// back to its own default local endpoint.
+	require.NotContains(t, stdout, "ENDPOINT_URL=",
+		"no endpointUrl may be conveyed when no endpoint source is set")
+	require.Contains(t, stdout, "API_VERSION=1")
+}
+
 // echoedValue returns the value of a `KEY=value` line the reference extension
 // printed, failing the test when no such line is present.
 func echoedValue(t *testing.T, stdout, key string) string {

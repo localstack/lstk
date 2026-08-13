@@ -46,6 +46,36 @@ func (c *Client) SessionID() string {
 	return c.sessionID
 }
 
+// machineIDTimeout bounds the Docker daemon lookup behind LoadOrCreateMachineID.
+// MachineID runs before an extension execs, where a black-holed DOCKER_HOST would
+// otherwise stall dispatch for the OS TCP connect timeout (~75s on macOS); on
+// expiry the derivation falls through to the system/generated id.
+const machineIDTimeout = 3 * time.Second
+
+// MachineID is the anonymized machine identity stamped on this client's events
+// (the salted hash produced by LoadOrCreateMachineID, never a raw Docker or
+// system id). It is conveyed to extension processes through the runtime context
+// so an extension emitting its own telemetry reports the same machine without
+// re-deriving it.
+//
+// The value is computed lazily on first use and cached for the process; every
+// consumer (this accessor and event building via GetEnvironment) goes through
+// here. Always empty when telemetry is disabled: a disabled client emits no
+// events, so there is no identity to share — and the guard precedes the
+// computation, so a disabled client never dials Docker or persists a generated
+// id to derive a value it would only mask.
+func (c *Client) MachineID(ctx context.Context) string {
+	if !c.enabled {
+		return ""
+	}
+	c.machineIDOnce.Do(func() {
+		ctx, cancel := context.WithTimeout(ctx, machineIDTimeout)
+		defer cancel()
+		c.machineID = LoadOrCreateMachineID(ctx)
+	})
+	return c.machineID
+}
+
 func New(endpoint string, disabled bool) *Client {
 	if disabled {
 		return &Client{enabled: false}

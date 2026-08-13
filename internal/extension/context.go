@@ -59,12 +59,32 @@ type Emulator struct {
 // extension: it cannot tell a telemetry-disabled lstk from an lstk predating the
 // field. Like every field added after version 1 it is detected by presence, not
 // by LSTK_EXT_API_VERSION.
+//
+// MachineID is the anonymized machine identity lstk stamps on its own telemetry
+// events — already the salted hash, never a raw Docker or system id — conveyed so
+// an extension emitting telemetry reports the same machine without re-deriving
+// it. Conveying it exposes nothing new: it is the prepared hash, and the child
+// environment already carries AuthToken. It is omitted when lstk telemetry is
+// disabled, which a disabled client makes absent together with SessionID (it
+// computes neither), so absence is ambiguous in the same way SessionID's is.
+//
+// EndpointURL is the endpoint lstk was asked to target instead of a locally
+// managed emulator, resolved with lstk's own source precedence (--endpoint-url,
+// then LSTK_ENDPOINT_URL, then AWS_ENDPOINT_URL) and conveyed verbatim: it is
+// not validated, normalized, or probed. A malformed or unreachable value reaches
+// the extension unchanged on purpose — judging it is the extension's job, and an
+// extension diagnosing a broken endpoint has to see exactly what the user set.
+// It is omitted when no endpoint source was given, i.e. the invocation targets
+// the default local emulator. Note that Emulators is independent of it: that
+// array is what local Docker discovery found, not what lstk was told to target.
 type Context struct {
 	ConfigDir      string     `json:"configDir"`
 	AuthToken      string     `json:"authToken,omitempty"`
 	NonInteractive bool       `json:"nonInteractive"`
 	JSON           bool       `json:"json"`
 	SessionID      string     `json:"sessionId,omitempty"`
+	MachineID      string     `json:"machineId,omitempty"`
+	EndpointURL    string     `json:"endpointUrl,omitempty"`
 	Emulators      []Emulator `json:"emulators"`
 }
 
