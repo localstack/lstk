@@ -170,10 +170,10 @@ func TestLicenseRejectionOffersReloginAndRetries(t *testing.T) {
 
 	p := startLstkInPTY(t, ctx, environ, "start", "--config", configFile)
 
-	// The stale token is rejected; the re-login prompt appears. Press ENTER.
-	// The wait covers a cold image pull on CI runners.
-	p.waitForOutputTimeout("Log in again", 3*time.Minute, "the re-login prompt should appear after the license rejection")
-	p.write("\r")
+	// The stale token is rejected; the re-login prompt appears. Press R, the
+	// shortcut it advertises. The wait covers a cold image pull on CI runners.
+	p.waitForOutputTimeout("[R] Re-authenticate", 3*time.Minute, "the re-login prompt should appear after the license rejection")
+	p.write("r")
 
 	// The login flow runs; confirm it once the completion prompt appears.
 	p.waitForOutputTimeout("key when complete", 30*time.Second, "the login completion prompt should appear")
