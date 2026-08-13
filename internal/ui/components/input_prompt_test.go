@@ -174,7 +174,7 @@ func TestInputPromptViewReloginChoicesAreScannable(t *testing.T) {
 	const width = 40
 	question := "License validation failed: invalid, inactive, or expired authentication token or subscription."
 	p := NewInputPrompt().Show(question, []output.InputOption{
-		{Key: "enter", Label: "[ENTER] Log in again"},
+		{Key: "r", Label: "[R] Re-authenticate"},
 		{Key: "esc", Label: "[ESC] Exit"},
 	}, true)
 
@@ -183,7 +183,7 @@ func TestInputPromptViewReloginChoicesAreScannable(t *testing.T) {
 	if len(lines) < 3 {
 		t.Fatalf("expected a wrapped question and two vertical choices, got:\n%s", view)
 	}
-	if choices := lines[len(lines)-2:]; !strings.Contains(choices[0], "[ENTER] Log in again") ||
+	if choices := lines[len(lines)-2:]; !strings.Contains(choices[0], "[R] Re-authenticate") ||
 		!strings.Contains(choices[1], "[ESC] Exit") {
 		t.Fatalf("expected each choice on its own trailing line, got:\n%s", view)
 	}

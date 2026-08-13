@@ -1345,7 +1345,7 @@ func promptRelogin(ctx context.Context, sink output.Sink, licErr *api.LicenseErr
 	sink.Emit(output.UserInputRequestEvent{
 		Prompt: fmt.Sprintf("License validation failed: %s.", licErr.Message),
 		Options: []output.InputOption{
-			{Key: "enter", Label: "[ENTER] Log in again"},
+			{Key: "r", Label: "[R] Re-authenticate"},
 			{Key: "esc", Label: "[ESC] Exit"},
 		},
 		ResponseCh: responseCh,
