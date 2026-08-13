@@ -1335,22 +1335,20 @@ func isDefinitiveLicenseRejection(status int) bool {
 // ESC declines. Ctrl+C would do too, but it also cancels the root context, and
 // the ErrorEvent that the decline renders then races the TUI's own quit — so the
 // manual recovery steps sometimes never reach the terminal (DEVX-1045). An
-// advertised decline key keeps that path deterministic. The choices render
-// vertically so both keys read as selectable actions rather than a hint tacked
-// onto the end of the sentence; the prompt therefore states the reason and
-// leaves the two actions to the labels, which keeps it one wrapped statement
-// instead of a statement whose trailing question dangles at the wrap point.
+// advertised decline key keeps that path deterministic. The prompt states the
+// reason and leaves the two actions to output.ActionChoice's labels, which keeps
+// it one wrapped statement instead of a statement whose trailing question
+// dangles at the wrap point.
 func promptRelogin(ctx context.Context, sink output.Sink, licErr *api.LicenseError) bool {
 	responseCh := make(chan output.InputResponse, 1)
-	sink.Emit(output.UserInputRequestEvent{
-		Prompt: fmt.Sprintf("License validation failed: %s.", licErr.Message),
-		Options: []output.InputOption{
-			{Key: "r", Label: "[R] Re-authenticate"},
-			{Key: "esc", Label: "[ESC] Exit"},
+	sink.Emit(output.ActionChoice(
+		fmt.Sprintf("License validation failed: %s.", licErr.Message),
+		[]output.InputOption{
+			{Key: "r", Label: "Re-authenticate"},
+			{Key: "esc", Label: "Exit"},
 		},
-		ResponseCh: responseCh,
-		Vertical:   true,
-	})
+		responseCh,
+	))
 	select {
 	case resp := <-responseCh:
 		return !resp.Cancelled && resp.SelectedKey != "esc"
@@ -1629,15 +1627,14 @@ func (m *startupMonitor) await(ctx context.Context, containerID, healthURL strin
 
 			m.sink.Emit(output.SpinnerStop())
 			responseCh = make(chan output.InputResponse, 1)
-			m.sink.Emit(output.UserInputRequestEvent{
-				Prompt: "LocalStack is still starting. Check progress with 'lstk logs'.",
-				Options: []output.InputOption{
-					{Key: "w", Label: "[W] Keep waiting"},
-					{Key: "s", Label: "[S] Stop and exit"},
+			m.sink.Emit(output.ActionChoice(
+				"LocalStack is still starting. Check progress with 'lstk logs'.",
+				[]output.InputOption{
+					{Key: "w", Label: "Keep waiting"},
+					{Key: "s", Label: "Stop and exit"},
 				},
-				ResponseCh: responseCh,
-				Vertical:   true,
-			})
+				responseCh,
+			))
 		case <-ticker.C:
 			if ready, err := check(); err != nil || ready {
 				return err

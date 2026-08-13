@@ -271,11 +271,19 @@ type InputResponse struct {
 	Cancelled   bool
 }
 
+// UserInputRequestEvent asks the frontend to put a question to the user and
+// send the answer back on ResponseCh.
+//
+// Build one with Confirm, ActionChoice, or Acknowledge (prompt.go) rather than
+// by hand: naming what the prompt is settles how it renders, and a guard test
+// fails the build on a raw literal outside this package.
 type UserInputRequestEvent struct {
 	Prompt     string
 	Options    []InputOption
 	ResponseCh chan<- InputResponse
-	Vertical   bool
+	// Vertical renders each option as its own selectable row instead of a
+	// trailing "[a/b]" hint. Set by ActionChoice; do not set it directly.
+	Vertical bool
 }
 
 // UserInputDismissEvent removes a pending prompt when the condition that

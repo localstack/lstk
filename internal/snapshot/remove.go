@@ -49,18 +49,15 @@ func Remove(ctx context.Context, rt runtime.Runtime, containers []config.Contain
 
 	if !force {
 		responseCh := make(chan output.InputResponse, 1)
-		sink.Emit(output.UserInputRequestEvent{
-			Prompt: fmt.Sprintf("Delete cloud snapshot 'pod:%s'? This operation cannot be undone.", podName),
-			Options: []output.InputOption{
-				{Key: "y", Label: "Y"},
-				{Key: "n", Label: "n"},
-			},
-			ResponseCh: responseCh,
-		})
+		sink.Emit(output.Confirm(
+			fmt.Sprintf("Delete cloud snapshot 'pod:%s'? This operation cannot be undone.", podName),
+			output.DefaultNo,
+			responseCh,
+		))
 
 		select {
 		case resp := <-responseCh:
-			if resp.Cancelled || resp.SelectedKey != "y" {
+			if resp.Cancelled || resp.SelectedKey != output.KeyYes {
 				sink.Emit(output.MessageEvent{Severity: output.SeverityNote, Text: "Cancelled"})
 				return nil
 			}

@@ -19,12 +19,7 @@ func SelectEmulator(
 	}
 
 	responseCh := make(chan output.InputResponse, 1)
-	sink.Emit(output.UserInputRequestEvent{
-		Prompt:     "Which emulator would you like to use?",
-		Options:    options,
-		ResponseCh: responseCh,
-		Vertical:   true,
-	})
+	sink.Emit(output.ActionChoice("Which emulator would you like to use?", options, responseCh))
 
 	var resp output.InputResponse
 	select {

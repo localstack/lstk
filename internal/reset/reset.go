@@ -41,18 +41,11 @@ func Reset(ctx context.Context, rt runtime.Runtime, containers []config.Containe
 
 	if !force {
 		responseCh := make(chan output.InputResponse, 1)
-		sink.Emit(output.UserInputRequestEvent{
-			Prompt: "Reset emulator state? All resources will be lost",
-			Options: []output.InputOption{
-				{Key: "y", Label: "Yes"},
-				{Key: "n", Label: "NO"},
-			},
-			ResponseCh: responseCh,
-		})
+		sink.Emit(output.Confirm("Reset emulator state? All resources will be lost", output.DefaultNo, responseCh))
 
 		select {
 		case resp := <-responseCh:
-			if resp.Cancelled || resp.SelectedKey != "y" {
+			if resp.Cancelled || resp.SelectedKey != output.KeyYes {
 				sink.Emit(output.MessageEvent{Severity: output.SeverityNote, Text: "Cancelled"})
 				return nil
 			}

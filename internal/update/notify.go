@@ -75,12 +75,11 @@ func promptAndUpdate(ctx context.Context, sink output.Sink, opts NotifyOptions, 
 	sink.Emit(output.MessageEvent{Severity: output.SeveritySecondary, Text: fmt.Sprintf("> Release notes: %s", releaseNotesURL)})
 
 	responseCh := make(chan output.InputResponse, 1)
-	sink.Emit(output.UserInputRequestEvent{
-		Prompt:     "Update lstk to latest version?",
-		Options:    []output.InputOption{{Key: "u", Label: "Update now [U]"}, {Key: "r", Label: "Remind me next time [R]"}, {Key: "s", Label: "Skip this version [S]"}},
-		ResponseCh: responseCh,
-		Vertical:   true,
-	})
+	sink.Emit(output.ActionChoice("Update lstk to latest version?", []output.InputOption{
+		{Key: "u", Label: "Update now"},
+		{Key: "r", Label: "Remind me next time"},
+		{Key: "s", Label: "Skip this version"},
+	}, responseCh))
 
 	var resp output.InputResponse
 	select {

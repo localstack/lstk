@@ -292,7 +292,9 @@ volume = "` + escapeTomlPath(volumeDir) + `"
 	startVolumeClear := func(t *testing.T, configFile string) *ptyProc {
 		t.Helper()
 		p := startLstkInPTY(t, testContext(t), testEnvWithHome(t.TempDir(), ""), "--config", configFile, "volume", "clear")
-		p.waitForOutput("Clear volume data?", "confirmation prompt should appear")
+		// An irreversible confirmation stays inline and capitalizes the answer
+		// ENTER picks, so a stray ENTER cannot wipe the volume.
+		p.waitForOutput("Clear volume data? This cannot be undone [y/N]", "confirmation prompt should appear")
 		return p
 	}
 

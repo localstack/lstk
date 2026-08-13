@@ -271,10 +271,12 @@ A JSON-capable command emits a single `output.Envelope` (schema version, `data`/
 
 Domain code must never read from stdin or wait for user input directly. Instead:
 
-1. Emit a `UserInputRequestEvent` via `sink.Emit(output.UserInputRequestEvent{...})` with:
-   - `Prompt`: message to display
-   - `Options`: available choices (e.g., `{Key: "enter", Label: "Press ENTER to continue"}`)
-   - `ResponseCh`: channel to receive the user's response
+1. Emit a `UserInputRequestEvent` built with one of the three intent constructors in `internal/output/prompt.go` — never a raw struct literal, which a guard test rejects outside that package. Name what the prompt *is* and its layout follows:
+   - `output.Confirm(prompt, output.DefaultYes|DefaultNo, responseCh)` — y/n on an action the user already requested. Renders inline as `[y/N]`; the capitalized answer is what ENTER picks. `DefaultNo` for anything destructive.
+   - `output.ActionChoice(prompt, options, responseCh)` — a choice between distinct outcomes. Renders one selectable row per option, with the `[KEY]` shortcut derived from each option's `Key`, so labels stay plain prose.
+   - `output.Acknowledge(prompt, label, responseCh)` — a single keypress, no choice.
+
+   If a new prompt is not clearly one of the three, ask the user which it should be rather than guessing. Vertical is not a global default: flattening distinct actions into a trailing hint reads as prose and wraps badly (DEVX-1045), but a confirmation is one line for good reason.
 
 2. Wait on the `ResponseCh` for an `InputResponse` containing:
    - `SelectedKey`: which option was selected
@@ -289,11 +291,7 @@ Domain code must never read from stdin or wait for user input directly. Instead:
 Example flow in auth login:
 ```go
 responseCh := make(chan output.InputResponse, 1)
-sink.Emit(output.UserInputRequestEvent{
-    Prompt:     "Waiting for authentication...",
-    Options:    []output.InputOption{{Key: "enter", Label: "Press ENTER when complete"}},
-    ResponseCh: responseCh,
-})
+sink.Emit(output.Acknowledge("Waiting for authentication...", "Press any key when complete", responseCh))
 
 select {
 case resp := <-responseCh:

@@ -74,11 +74,7 @@ func (l *loginProvider) Login(ctx context.Context) (string, error) {
 	l.sink.Emit(output.SpinnerStart("Waiting for authorization..."))
 
 	responseCh := make(chan output.InputResponse, 1)
-	l.sink.Emit(output.UserInputRequestEvent{
-		Prompt:     "Waiting for authorization...",
-		Options:    []output.InputOption{{Key: "any", Label: "Press any key when complete"}},
-		ResponseCh: responseCh,
-	})
+	l.sink.Emit(output.Acknowledge("Waiting for authorization...", "Press any key when complete", responseCh))
 
 	select {
 	case resp := <-responseCh:

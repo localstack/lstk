@@ -853,9 +853,12 @@ func TestStartupMonitorAwait_InteractivePromptKeepWaitingThenStop(t *testing.T) 
 	assert.Equal(t, "LocalStack is still starting. Check progress with 'lstk logs'.", firstPrompt.Prompt)
 	assert.True(t, firstPrompt.Vertical)
 	assert.Equal(t, []output.InputOption{
-		{Key: "w", Label: "[W] Keep waiting"},
-		{Key: "s", Label: "[S] Stop and exit"},
+		{Key: "w", Label: "Keep waiting"},
+		{Key: "s", Label: "Stop and exit"},
 	}, firstPrompt.Options)
+	// Labels stay plain prose; the advertised keys come from output.OptionLabel.
+	assert.Equal(t, "[W] Keep waiting", output.OptionLabel(firstPrompt.Options[0]))
+	assert.Equal(t, "[S] Stop and exit", output.OptionLabel(firstPrompt.Options[1]))
 }
 
 func TestStartupMonitorAwait_DismissesPromptWhenEmulatorBecomesReady(t *testing.T) {
@@ -1698,7 +1701,7 @@ func TestPromptRelogin_FoldsReasonIntoThePromptWithoutASeparateWarning(t *testin
 	req, ok := events[0].(output.UserInputRequestEvent)
 	require.True(t, ok, "the only event emitted must be the prompt itself")
 	assert.Contains(t, req.Prompt, licErr.Message, "the prompt must explain why the user is being asked to log in again")
-	assert.Equal(t, "[R] Re-authenticate", req.Options[0].Label, "the recovery action belongs to the choice, not the prompt sentence")
+	assert.Equal(t, "Re-authenticate", req.Options[0].Label, "the recovery action belongs to the choice, not the prompt sentence")
 }
 
 // TestPromptRelogin_OffersAnAdvertisedDeclineKey covers DEVX-1045: Ctrl+C was the
@@ -1730,9 +1733,13 @@ func TestPromptRelogin_OffersAnAdvertisedDeclineKey(t *testing.T) {
 			assert.Equal(t, tc.accepted, accepted)
 			assert.True(t, req.Vertical, "the choices must render as vertical, selectable actions")
 			assert.Equal(t, []output.InputOption{
-				{Key: "r", Label: "[R] Re-authenticate"},
-				{Key: "esc", Label: "[ESC] Exit"},
-			}, req.Options, "both the accept and the decline key must be advertised, shortcut first")
+				{Key: "r", Label: "Re-authenticate"},
+				{Key: "esc", Label: "Exit"},
+			}, req.Options)
+			// Labels stay plain prose; the advertised keys come from output.OptionLabel.
+			assert.Equal(t, "[R] Re-authenticate", output.OptionLabel(req.Options[0]),
+				"both the accept and the decline key must be advertised, shortcut first")
+			assert.Equal(t, "[ESC] Exit", output.OptionLabel(req.Options[1]))
 		})
 	}
 }

@@ -795,12 +795,11 @@ func TestAppEnterSelectsHighlightedVerticalOption(t *testing.T) {
 	app := NewApp("dev", "", "", nil)
 	responseCh := make(chan output.InputResponse, 1)
 
-	model, _ := app.Update(output.UserInputRequestEvent{
-		Prompt:     "Update lstk to latest version?",
-		Options:    []output.InputOption{{Key: "u", Label: "Update now [U]"}, {Key: "s", Label: "Skip this version [S]"}, {Key: "n", Label: "Never ask again [N]"}},
-		ResponseCh: responseCh,
-		Vertical:   true,
-	})
+	model, _ := app.Update(output.ActionChoice("Update lstk to latest version?", []output.InputOption{
+		{Key: "u", Label: "Update now"},
+		{Key: "s", Label: "Skip this version"},
+		{Key: "n", Label: "Never ask again"},
+	}, responseCh))
 	app = model.(App)
 
 	model, _ = app.Update(tea.KeyMsg{Type: tea.KeyDown})
@@ -837,15 +836,14 @@ func TestAppEscResolvesVerticalDeclineOption(t *testing.T) {
 	app := NewApp("dev", "", "", nil)
 	responseCh := make(chan output.InputResponse, 1)
 
-	model, _ := app.Update(output.UserInputRequestEvent{
-		Prompt: "License validation failed: invalid, inactive, or expired authentication token or subscription.",
-		Options: []output.InputOption{
-			{Key: "r", Label: "[R] Re-authenticate"},
-			{Key: "esc", Label: "[ESC] Exit"},
+	model, _ := app.Update(output.ActionChoice(
+		"License validation failed: invalid, inactive, or expired authentication token or subscription.",
+		[]output.InputOption{
+			{Key: "r", Label: "Re-authenticate"},
+			{Key: "esc", Label: "Exit"},
 		},
-		ResponseCh: responseCh,
-		Vertical:   true,
-	})
+		responseCh,
+	))
 	app = model.(App)
 
 	model, cmd := app.Update(tea.KeyMsg{Type: tea.KeyEscape})
@@ -878,15 +876,14 @@ func TestAppReloginShortcutIgnoresVerticalSelection(t *testing.T) {
 	app := NewApp("dev", "", "", nil)
 	responseCh := make(chan output.InputResponse, 1)
 
-	model, _ := app.Update(output.UserInputRequestEvent{
-		Prompt: "License validation failed: invalid, inactive, or expired authentication token or subscription.",
-		Options: []output.InputOption{
-			{Key: "r", Label: "[R] Re-authenticate"},
-			{Key: "esc", Label: "[ESC] Exit"},
+	model, _ := app.Update(output.ActionChoice(
+		"License validation failed: invalid, inactive, or expired authentication token or subscription.",
+		[]output.InputOption{
+			{Key: "r", Label: "Re-authenticate"},
+			{Key: "esc", Label: "Exit"},
 		},
-		ResponseCh: responseCh,
-		Vertical:   true,
-	})
+		responseCh,
+	))
 	app = model.(App)
 
 	model, _ = app.Update(tea.KeyMsg{Type: tea.KeyDown})
@@ -912,17 +909,55 @@ func TestAppReloginShortcutIgnoresVerticalSelection(t *testing.T) {
 	}
 }
 
+// TestAppEnterHonorsTheConfirmDefault pins the contract that lets output.Confirm
+// advertise its default by capitalizing one label: ENTER must select whichever
+// answer is capitalized, so a destructive prompt built with DefaultNo cannot be
+// confirmed by a stray ENTER.
+func TestAppEnterHonorsTheConfirmDefault(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name string
+		def  output.ConfirmDefault
+		want string
+	}{
+		{name: "default yes", def: output.DefaultYes, want: output.KeyYes},
+		{name: "default no", def: output.DefaultNo, want: output.KeyNo},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			app := NewApp("dev", "", "", nil)
+			responseCh := make(chan output.InputResponse, 1)
+
+			model, _ := app.Update(output.Confirm("Reset emulator state? All resources will be lost", tc.def, responseCh))
+			app = model.(App)
+
+			_, cmd := app.Update(tea.KeyMsg{Type: tea.KeyEnter})
+			if cmd == nil {
+				t.Fatal("expected enter to resolve the confirmation")
+			}
+			cmd()
+
+			select {
+			case resp := <-responseCh:
+				if resp.SelectedKey != tc.want {
+					t.Fatalf("expected enter to select %q, got %q", tc.want, resp.SelectedKey)
+				}
+			case <-time.After(time.Second):
+				t.Fatal("timed out waiting for response on channel")
+			}
+		})
+	}
+}
+
 func TestAppAnyKeyOptionResolvesOnAnyKeypress(t *testing.T) {
 	t.Parallel()
 
 	app := NewApp("dev", "", "", nil)
 	responseCh := make(chan output.InputResponse, 1)
 
-	model, _ := app.Update(output.UserInputRequestEvent{
-		Prompt:     "Waiting for authorization...",
-		Options:    []output.InputOption{{Key: "any", Label: "Press any key when complete"}},
-		ResponseCh: responseCh,
-	})
+	model, _ := app.Update(output.Acknowledge("Waiting for authorization...", "Press any key when complete", responseCh))
 	app = model.(App)
 
 	// Any key (e.g., spacebar) should resolve

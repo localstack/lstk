@@ -195,7 +195,7 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// View renders one or the other.
 		a.inputPrompt = a.inputPrompt.Show(msg.Prompt, msg.Options, msg.Vertical)
 		if a.spinner.Visible() {
-			a.spinner = a.spinner.SetText(output.FormatPrompt(msg.Prompt, msg.Options))
+			a.spinner = a.spinner.SetText(output.FormatPromptEvent(msg))
 		}
 	case output.UserInputDismissEvent:
 		if a.pendingInput == nil || a.pendingInput.ResponseCh != msg.ResponseCh {
@@ -466,7 +466,7 @@ func formatResolvedInput(req output.UserInputRequestEvent, selectedKey string) s
 
 	if req.Vertical {
 		firstLine := strings.Split(req.Prompt, "\n")[0]
-		if selected == "" || !hasLabels || selectedKey == "any" {
+		if selected == "" || !hasLabels || selectedKey == output.KeyAny {
 			return firstLine
 		}
 		return fmt.Sprintf("%s %s", firstLine, selected)
@@ -475,14 +475,14 @@ func formatResolvedInput(req output.UserInputRequestEvent, selectedKey string) s
 	formatted := output.FormatPrompt(req.Prompt, req.Options)
 	firstLine := strings.Split(formatted, "\n")[0]
 
-	if selected == "" || !hasLabels || selectedKey == "any" {
+	if selected == "" || !hasLabels || selectedKey == output.KeyAny {
 		return firstLine
 	}
 	return fmt.Sprintf("%s %s", firstLine, selected)
 }
 
 // resolveOption finds the best matching option for a key event, in priority order:
-//  1. "any" — matches any keypress
+//  1. output.KeyAny — matches any keypress
 //  2. "enter" — matches the Enter key explicitly
 //  3. uppercase label — matches Enter as the conventional default
 //  4. case-insensitive key match — matches any other key
@@ -490,7 +490,7 @@ func resolveOption(options []output.InputOption, msg tea.KeyMsg) *output.InputOp
 	var uppercaseDefault *output.InputOption
 	for i, opt := range options {
 		switch {
-		case opt.Key == "any":
+		case opt.Key == output.KeyAny:
 			return &options[i]
 		case msg.Type == tea.KeyEnter && opt.Key == "enter":
 			return &options[i]
