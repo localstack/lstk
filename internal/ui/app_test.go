@@ -432,59 +432,6 @@ func TestAppSnapshotLoadedEventRendersGreen(t *testing.T) {
 	}
 }
 
-func TestAppMultipleInstallsEventRendersColoredWarning(t *testing.T) {
-	// Mutates the global lipgloss color profile, so it must not run in parallel.
-	original := lipgloss.ColorProfile()
-	lipgloss.SetColorProfile(termenv.TrueColor)
-	t.Cleanup(func() { lipgloss.SetColorProfile(original) })
-
-	app := NewApp("dev", "", "", nil)
-
-	model, _ := app.Update(output.MultipleInstallsEvent{Installs: []output.InstallLocation{
-		{Path: "/opt/homebrew/bin/lstk", Method: "homebrew", Running: true},
-		{Path: "/home/u/.nvm/versions/node/v22/bin/lstk", Method: "npm"},
-	}})
-	app = model.(App)
-
-	if len(app.lines) != 5 {
-		t.Fatalf("expected 5 lines (header + 2 installs + 2 footer lines), got %d: %+v", len(app.lines), app.lines)
-	}
-
-	wantWarning := styles.Warning.Render("Warning:")
-	if !strings.Contains(app.lines[0].text, wantWarning) {
-		t.Fatalf("expected colored %q in header line, got: %q", wantWarning, app.lines[0].text)
-	}
-	if !strings.Contains(app.lines[0].text, "Multiple lstk installations found on PATH:") {
-		t.Fatalf("expected header text, got: %q", app.lines[0].text)
-	}
-
-	for i, want := range []string{
-		"/opt/homebrew/bin/lstk (homebrew, currently running)",
-		"/home/u/.nvm/versions/node/v22/bin/lstk (npm)",
-	} {
-		line := app.lines[i+1]
-		if !line.secondary {
-			t.Fatalf("expected install line %d to be styled secondary, got: %+v", i, line)
-		}
-		if !strings.Contains(line.text, want) {
-			t.Fatalf("expected install line %d to contain %q, got: %q", i, want, line.text)
-		}
-	}
-
-	for i, want := range []string{
-		"The first path is used when you run lstk.",
-		"Remove unused installations or reorder PATH.",
-	} {
-		line := app.lines[i+3]
-		if !line.secondary {
-			t.Fatalf("expected footer line %d to be styled secondary, got: %+v", i, line)
-		}
-		if !strings.Contains(line.text, want) {
-			t.Fatalf("expected footer line %d to contain %q, got: %q", i, want, line.text)
-		}
-	}
-}
-
 func TestAppMessageEventWrapsOnVisibleWidth(t *testing.T) {
 	t.Parallel()
 

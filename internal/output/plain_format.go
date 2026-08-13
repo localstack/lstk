@@ -74,8 +74,6 @@ func FormatEventLine(event Event) (string, bool) {
 		return formatUpdateChecked(e), true
 	case UpdateAppliedEvent:
 		return formatUpdateApplied(e), true
-	case MultipleInstallsEvent:
-		return formatMultipleInstalls(e), true
 	default:
 		return "", false
 	}
@@ -191,21 +189,6 @@ func formatUpdateChecked(e UpdateCheckedEvent) string {
 
 func formatUpdateApplied(e UpdateAppliedEvent) string {
 	return SuccessMarker() + " " + fmt.Sprintf("Updated to %s", e.UpdatedVersion)
-}
-
-func formatMultipleInstalls(e MultipleInstallsEvent) string {
-	var sb strings.Builder
-	sb.WriteString("> Warning: Multiple lstk installations found on PATH:")
-	for _, in := range e.Installs {
-		sb.WriteString("\n  " + in.Path + " (" + in.Method)
-		if in.Running {
-			sb.WriteString(", currently running")
-		}
-		sb.WriteString(")")
-	}
-	sb.WriteString("\n  The first path is used when you run lstk.")
-	sb.WriteString("\n  Remove unused installations or reorder PATH.")
-	return sb.String()
 }
 
 func formatErrorEvent(e ErrorEvent) string {
