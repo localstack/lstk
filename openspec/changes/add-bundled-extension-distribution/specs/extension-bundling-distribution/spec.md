@@ -54,13 +54,16 @@ Updating lstk SHALL replace the lstk executable, its bundled extensions, and the
 
 ### Requirement: Existing installs keep updating across the transition
 
-Introducing bundled-extension distribution SHALL NOT break `lstk update` for any existing install, in either direction. The update entry points per install method (`brew upgrade` for Homebrew, `npm install -g` for npm, archive download-verify-replace for binary) are unchanged; bundled extensions are payload, never a precondition — no update SHALL fail because extensions are missing from an archive, a package, or an install. The conventions in-the-field updaters depend on SHALL be preserved: the archive name template and `checksums.txt` manifest, the lstk binary's name and archive-root location, the npm package names / wrapper `bin` / launcher contract, and the cask name, tap, and `binary "lstk"` stanza.
+Introducing bundled-extension distribution SHALL NOT break `lstk update` for any existing install, in either direction. The update entry points per install method (`brew upgrade` for Homebrew, `npm install -g` for npm, archive download-verify-replace for binary) are unchanged. The conventions in-the-field updaters depend on SHALL be preserved: the archive name template and `checksums.txt` manifest, the lstk binary's name and archive-root location, the npm package names / wrapper `bin` / launcher contract, and the cask name, tap, and `binary "lstk"` stanza.
+
+Bundled extensions are payload rather than a precondition in one sense only: **an archive that carries none is a valid archive**. A release shipping no bundled extensions — a pre-bundling release, or a rollback to one — SHALL update successfully as a set of size one. When an archive does carry bundled extensions they are **not optional**: the update SHALL install the complete set or fail, and a partial set SHALL NOT be reported as a successful update.
 
 #### Scenario: Pre-bundling lstk updates into the first bundling release (binary)
 
 - **WHEN** a user on a pre-bundling lstk runs `lstk update` and the latest release bundles extensions
 - **THEN** the update succeeds using the in-the-field updater (which replaces only the lstk binary and ignores the archive's extra members)
-- **AND** the following update, running the new set-wise updater, installs the bundled extensions
+- **AND** the install is left with an incomplete set, since that updater predates bundling and cannot be made to fail
+- **AND** the incomplete set is repaired by the next `lstk update`, which SHALL NOT wait for a newer release to become available
 
 #### Scenario: Pre-bundling lstk updates via Homebrew or npm
 
@@ -71,6 +74,18 @@ Introducing bundled-extension distribution SHALL NOT break `lstk update` for any
 
 - **WHEN** the new set-wise updater applies an archive that carries no bundled extensions
 - **THEN** the update succeeds, replacing only the lstk binary (a set of size one)
+
+#### Scenario: Bundled extensions fail to install
+
+- **WHEN** the set-wise updater applies an archive that carries bundled extensions and any member fails to stage or commit
+- **THEN** the update fails with an error naming the member that failed
+- **AND** the installation is left on its previous version rather than reporting success with an incomplete set
+
+#### Scenario: Incomplete bundled set is repaired when lstk is already current
+
+- **WHEN** `lstk update` runs on an install whose lstk binary is already the latest version but whose bundled set is incomplete
+- **THEN** the update SHALL NOT report "already up to date"
+- **AND** it installs the missing members of the set
 - **AND** on the binary channel, previously installed bundled extensions remain in place and still run
 
 ### Requirement: Bundle provenance is pinned and verified
