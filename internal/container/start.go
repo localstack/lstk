@@ -1335,16 +1335,21 @@ func isDefinitiveLicenseRejection(status int) bool {
 // ESC declines. Ctrl+C would do too, but it also cancels the root context, and
 // the ErrorEvent that the decline renders then races the TUI's own quit — so the
 // manual recovery steps sometimes never reach the terminal (DEVX-1045). An
-// advertised decline key keeps that path deterministic.
+// advertised decline key keeps that path deterministic. The choices render
+// vertically so both keys read as selectable actions rather than a hint tacked
+// onto the end of the sentence; the prompt therefore states the reason and
+// leaves the two actions to the labels, which keeps it one wrapped statement
+// instead of a statement whose trailing question dangles at the wrap point.
 func promptRelogin(ctx context.Context, sink output.Sink, licErr *api.LicenseError) bool {
 	responseCh := make(chan output.InputResponse, 1)
 	sink.Emit(output.UserInputRequestEvent{
-		Prompt: fmt.Sprintf("License validation failed: %s. Log in again to refresh your credentials?", licErr.Message),
+		Prompt: fmt.Sprintf("License validation failed: %s.", licErr.Message),
 		Options: []output.InputOption{
-			{Key: "enter", Label: "ENTER to log in again"},
-			{Key: "esc", Label: "ESC to exit"},
+			{Key: "enter", Label: "[ENTER] Log in again"},
+			{Key: "esc", Label: "[ESC] Exit"},
 		},
 		ResponseCh: responseCh,
+		Vertical:   true,
 	})
 	select {
 	case resp := <-responseCh:

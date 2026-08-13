@@ -287,7 +287,7 @@ func TestLicenseRejectionEscDeclineShowsManualSteps(t *testing.T) {
 		}
 	})
 
-	p.waitForOutputTimeout("ESC to exit", 60*time.Second, "the re-login prompt must be on screen, advertising the decline key")
+	p.waitForOutputTimeout("[ESC] Exit", 60*time.Second, "the re-login prompt must be on screen, advertising the decline key")
 	p.write("\x1b")
 
 	out, err := p.wait()

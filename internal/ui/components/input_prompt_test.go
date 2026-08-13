@@ -163,3 +163,37 @@ func TestInputPromptViewSlowStartChoicesAreScannable(t *testing.T) {
 		}
 	}
 }
+
+// TestInputPromptViewReloginChoicesAreScannable covers the license re-login
+// prompt: its question is long enough to wrap, so flattening the two choices
+// into a trailing hint made them read as prose. They belong on their own lines
+// below the wrapped question, shortcut first.
+func TestInputPromptViewReloginChoicesAreScannable(t *testing.T) {
+	t.Parallel()
+
+	const width = 40
+	question := "License validation failed: invalid, inactive, or expired authentication token or subscription."
+	p := NewInputPrompt().Show(question, []output.InputOption{
+		{Key: "enter", Label: "[ENTER] Log in again"},
+		{Key: "esc", Label: "[ESC] Exit"},
+	}, true)
+
+	view := p.View(width)
+	lines := strings.Split(strings.TrimRight(view, "\n"), "\n")
+	if len(lines) < 3 {
+		t.Fatalf("expected a wrapped question and two vertical choices, got:\n%s", view)
+	}
+	if choices := lines[len(lines)-2:]; !strings.Contains(choices[0], "[ENTER] Log in again") ||
+		!strings.Contains(choices[1], "[ESC] Exit") {
+		t.Fatalf("expected each choice on its own trailing line, got:\n%s", view)
+	}
+	for _, line := range lines {
+		if w := lipgloss.Width(line); w > width {
+			t.Errorf("line exceeds width %d (%d): %q", width, w, line)
+		}
+	}
+	flattened := strings.Join(strings.Fields(view), " ")
+	if !strings.Contains(flattened, strings.Join(strings.Fields(question), " ")) {
+		t.Errorf("expected the whole question to survive wrapping, got:\n%s", view)
+	}
+}
