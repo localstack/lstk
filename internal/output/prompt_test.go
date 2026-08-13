@@ -29,11 +29,11 @@ func TestConfirmRendersInlineWithTheDefaultCapitalized(t *testing.T) {
 			ch := make(chan InputResponse, 1)
 			event := Confirm("Reset emulator state?", tt.def, ch)
 
-			assert.False(t, event.Vertical, "a confirmation stays on one line")
-			require.Len(t, event.Options, 2)
-			assert.Equal(t, KeyYes, event.Options[0].Key)
-			assert.Equal(t, KeyNo, event.Options[1].Key)
-			assert.Equal(t, tt.labels, []string{event.Options[0].Label, event.Options[1].Label})
+			assert.False(t, event.Vertical(), "a confirmation stays on one line")
+			require.Len(t, event.Options(), 2)
+			assert.Equal(t, KeyYes, event.Options()[0].Key)
+			assert.Equal(t, KeyNo, event.Options()[1].Key)
+			assert.Equal(t, tt.labels, []string{event.Options()[0].Label, event.Options()[1].Label})
 			assert.Equal(t, "Reset emulator state?"+tt.hint, FormatPromptEvent(event))
 		})
 	}
@@ -48,9 +48,9 @@ func TestActionChoiceRendersVerticallyWithDerivedShortcuts(t *testing.T) {
 		{Key: "esc", Label: "Exit"},
 	}, ch)
 
-	assert.True(t, event.Vertical, "distinct actions render as selectable rows")
-	assert.Equal(t, "[ENTER] Log in again", OptionLabel(event.Options[0]))
-	assert.Equal(t, "[ESC] Exit", OptionLabel(event.Options[1]))
+	assert.True(t, event.Vertical(), "distinct actions render as selectable rows")
+	assert.Equal(t, "[ENTER] Log in again", OptionLabel(event.Options()[0]))
+	assert.Equal(t, "[ESC] Exit", OptionLabel(event.Options()[1]))
 
 	// The one-line form keeps the shortcuts, so a prompt mirrored into spinner
 	// text never leaves the user without a key to press. The labels bring their
@@ -66,9 +66,9 @@ func TestAcknowledgeRendersInlineWithASingleAnyKeyOption(t *testing.T) {
 	ch := make(chan InputResponse, 1)
 	event := Acknowledge("Waiting for authorization...", "Press any key when complete", ch)
 
-	assert.False(t, event.Vertical)
-	require.Len(t, event.Options, 1)
-	assert.Equal(t, KeyAny, event.Options[0].Key)
+	assert.False(t, event.Vertical())
+	require.Len(t, event.Options(), 1)
+	assert.Equal(t, KeyAny, event.Options()[0].Key)
 	assert.Equal(t, "Waiting for authorization... (Press any key when complete)", FormatPromptEvent(event))
 }
 

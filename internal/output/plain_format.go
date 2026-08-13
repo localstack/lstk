@@ -112,20 +112,20 @@ func formatUserInputRequest(e UserInputRequestEvent) string {
 // than nested. Used wherever the full multi-line rendering does not fit: plain
 // output, and the TUI's spinner text.
 func FormatPromptEvent(e UserInputRequestEvent) string {
-	if !e.Vertical {
-		return FormatPrompt(e.Prompt, e.Options)
+	if !e.vertical {
+		return FormatPrompt(e.prompt, e.options)
 	}
 
-	labels := make([]string, 0, len(e.Options))
-	for _, opt := range e.Options {
+	labels := make([]string, 0, len(e.options))
+	for _, opt := range e.options {
 		if label := OptionLabel(opt); label != "" {
 			labels = append(labels, label)
 		}
 	}
 	if len(labels) == 0 {
-		return appendPromptSuffix(e.Prompt, "")
+		return appendPromptSuffix(e.prompt, "")
 	}
-	return appendPromptSuffix(e.Prompt, " "+strings.Join(labels, " / "))
+	return appendPromptSuffix(e.prompt, " "+strings.Join(labels, " / "))
 }
 
 // FormatPromptLabels formats option labels into a suffix string.

@@ -272,19 +272,39 @@ type InputResponse struct {
 }
 
 // UserInputRequestEvent asks the frontend to put a question to the user and
-// send the answer back on ResponseCh.
+// send the answer back on the response channel.
 //
-// Build one with Confirm, ActionChoice, or Acknowledge (prompt.go) rather than
-// by hand: naming what the prompt is settles how it renders, and a guard test
-// fails the build on a raw literal outside this package.
+// Build one with Confirm, ActionChoice, or Acknowledge (prompt.go). The fields
+// are unexported so that is the only way: a struct literal asks its author to
+// pick a rendering at the moment the question they can actually answer is what
+// the prompt IS, and the cheapest answer — leaving the layout out — silently
+// ships an inline prompt. That is how the license re-login prompt ended up with
+// two advertised keys flattened into one dimmed hint (DEVX-1045). Naming the
+// intent instead makes the layout a consequence rather than a decision.
 type UserInputRequestEvent struct {
-	Prompt     string
-	Options    []InputOption
-	ResponseCh chan<- InputResponse
-	// Vertical renders each option as its own selectable row instead of a
-	// trailing "[a/b]" hint. Set by ActionChoice; do not set it directly.
-	Vertical bool
+	prompt     string
+	options    []InputOption
+	responseCh chan<- InputResponse
+	// vertical renders each option as its own selectable row instead of a
+	// trailing "[a/b]" hint.
+	vertical bool
 }
+
+// Prompt is the question put to the user. It may span several lines; the
+// options are appended to the first one.
+func (e UserInputRequestEvent) Prompt() string { return e.prompt }
+
+// Options are the answers the user may choose between. The returned slice is
+// not copied — treat it as read-only.
+func (e UserInputRequestEvent) Options() []InputOption { return e.options }
+
+// ResponseCh receives the user's answer. It also identifies the request, so a
+// UserInputDismissEvent can name the exact prompt it retracts.
+func (e UserInputRequestEvent) ResponseCh() chan<- InputResponse { return e.responseCh }
+
+// Vertical reports whether each option should render as its own selectable row
+// rather than as a trailing "[a/b]" hint. Set by ActionChoice.
+func (e UserInputRequestEvent) Vertical() bool { return e.vertical }
 
 // UserInputDismissEvent removes a pending prompt when the condition that
 // required input resolves on its own. ResponseCh identifies the exact request

@@ -271,7 +271,7 @@ A JSON-capable command emits a single `output.Envelope` (schema version, `data`/
 
 Domain code must never read from stdin or wait for user input directly. Instead:
 
-1. Emit a `UserInputRequestEvent` built with one of the three intent constructors in `internal/output/prompt.go` — never a raw struct literal, which a guard test rejects outside that package. Name what the prompt *is* and its layout follows:
+1. Emit a `UserInputRequestEvent` built with one of the three intent constructors in `internal/output/prompt.go`. Its fields are unexported, so a struct literal built anywhere else does not compile — the constructors are the only way in. Name what the prompt *is* and its layout follows:
    - `output.Confirm(prompt, output.DefaultYes|DefaultNo, responseCh)` — y/n on an action the user already requested. Renders inline as `[y/N]`; the capitalized answer is what ENTER picks. `DefaultNo` for anything destructive.
    - `output.ActionChoice(prompt, options, responseCh)` — a choice between distinct outcomes. Renders one selectable row per option, with the `[KEY]` shortcut derived from each option's `Key`, so labels stay plain prose.
    - `output.Acknowledge(prompt, label, responseCh)` — a single keypress, no choice.

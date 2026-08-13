@@ -44,12 +44,12 @@ func Confirm(prompt string, def ConfirmDefault, responseCh chan<- InputResponse)
 		yes, no = "y", "N"
 	}
 	return UserInputRequestEvent{
-		Prompt: prompt,
-		Options: []InputOption{
+		prompt: prompt,
+		options: []InputOption{
 			{Key: KeyYes, Label: yes},
 			{Key: KeyNo, Label: no},
 		},
-		ResponseCh: responseCh,
+		responseCh: responseCh,
 	}
 }
 
@@ -70,10 +70,10 @@ func Confirm(prompt string, def ConfirmDefault, responseCh chan<- InputResponse)
 // requested, and Acknowledge when there is nothing to choose between.
 func ActionChoice(prompt string, options []InputOption, responseCh chan<- InputResponse) UserInputRequestEvent {
 	return UserInputRequestEvent{
-		Prompt:     prompt,
-		Options:    options,
-		ResponseCh: responseCh,
-		Vertical:   true,
+		prompt:     prompt,
+		options:    options,
+		responseCh: responseCh,
+		vertical:   true,
 	}
 }
 
@@ -82,9 +82,9 @@ func ActionChoice(prompt string, options []InputOption, responseCh chan<- InputR
 // is one option and every key selects it — so it stays on one line.
 func Acknowledge(prompt, label string, responseCh chan<- InputResponse) UserInputRequestEvent {
 	return UserInputRequestEvent{
-		Prompt:     prompt,
-		Options:    []InputOption{{Key: KeyAny, Label: label}},
-		ResponseCh: responseCh,
+		prompt:     prompt,
+		options:    []InputOption{{Key: KeyAny, Label: label}},
+		responseCh: responseCh,
 	}
 }
 

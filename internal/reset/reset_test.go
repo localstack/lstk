@@ -147,7 +147,7 @@ func TestReset_ConfirmYes(t *testing.T) {
 
 	go func() {
 		req := <-prompts
-		req.ResponseCh <- output.InputResponse{SelectedKey: "y"}
+		req.ResponseCh() <- output.InputResponse{SelectedKey: "y"}
 	}()
 
 	err := reset.Reset(context.Background(), healthyRunningMock(t), awsContainers, resetter, "host:4566", false, sink)
@@ -163,7 +163,7 @@ func TestReset_ConfirmNo(t *testing.T) {
 
 	go func() {
 		req := <-prompts
-		req.ResponseCh <- output.InputResponse{SelectedKey: "n"}
+		req.ResponseCh() <- output.InputResponse{SelectedKey: "n"}
 	}()
 
 	err := reset.Reset(context.Background(), healthyRunningMock(t), awsContainers, resetter, "host:4566", false, sink)

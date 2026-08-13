@@ -47,7 +47,7 @@ Go through each changed file and check for violations. Flag only actual problems
 
 - [ ] Domain code never reads from stdin directly
 - [ ] Interactive input uses `UserInputRequestEvent` + `ResponseCh` pattern
-- [ ] Prompts are built with an intent constructor (`output.Confirm` / `ActionChoice` / `Acknowledge`), not a raw event literal; a choice between distinct actions is not shipped as an inline `[a/b]` hint, and an `ActionChoice` label does not spell out its own key
+- [ ] The intent constructor a prompt uses matches what it is (the compiler enforces that one is used, not that it is the right one): a choice between distinct actions is `ActionChoice`, not a `Confirm` with an inline `[a/b]` hint, and an `ActionChoice` label does not spell out its own key
 - [ ] Non-TTY mode fails early with a helpful error if input would be required
 - [ ] New user-supplied inputs (args, flags, config values) are validated at the boundary via `internal/validate`; no new inline validation regexp duplicates an existing validator (pod names → `PodName`; opaque secrets → loose checks like `AuthToken`; paths/URLs → their existing parsers; other identifiers → the owning API's documented contract) and malformed-input cases are tested
 
