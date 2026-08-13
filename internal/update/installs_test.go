@@ -29,6 +29,42 @@ func pathGetenv(dirs ...string) func(string) string {
 	}
 }
 
+func valuesGetenv(values map[string]string) func(string) string {
+	return func(key string) string {
+		return values[key]
+	}
+}
+
+func fakeASDFInstall(t *testing.T) (string, string, string) {
+	t.Helper()
+	dataDir := filepath.Join(t.TempDir(), ".asdf")
+	installPath := filepath.Join(dataDir, "installs", "nodejs", "22.22.0")
+	binDir := filepath.Join(installPath, "bin")
+	shimDir := filepath.Join(dataDir, "shims")
+	packageDir := filepath.Join(installPath, "lib", "node_modules", "@localstack", "lstk")
+	for _, dir := range []string{binDir, shimDir, packageDir} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	launcher := filepath.Join(packageDir, "index.js")
+	if err := os.WriteFile(launcher, []byte("#!/usr/bin/env node\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(launcher, filepath.Join(binDir, binaryName)); err != nil {
+		t.Fatal(err)
+	}
+	shim := filepath.Join(shimDir, binaryName)
+	if err := os.WriteFile(shim, []byte("#!/usr/bin/env bash\n# asdf-plugin: nodejs 22.22.0\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	resolvedLauncher, err := filepath.EvalSymlinks(launcher)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return dataDir, installPath, resolvedLauncher
+}
+
 func TestFindInstallsReportsDistinctInstallsInPathOrder(t *testing.T) {
 	t.Parallel()
 	dirA, dirB := t.TempDir(), t.TempDir()
@@ -72,6 +108,136 @@ func TestFindInstallsDeduplicatesRepeatedPathDir(t *testing.T) {
 
 	if len(installs) != 1 {
 		t.Fatalf("expected 1 install, got %d: %+v", len(installs), installs)
+	}
+}
+
+func TestFindInstallsDeduplicatesASDFShimAfterInstall(t *testing.T) {
+	t.Parallel()
+	dataDir, installPath, launcher := fakeASDFInstall(t)
+	binDir := filepath.Join(installPath, "bin")
+	shimDir := filepath.Join(dataDir, "shims")
+	getenv := valuesGetenv(map[string]string{
+		"PATH":              strings.Join([]string{binDir, shimDir}, string(os.PathListSeparator)),
+		"ASDF_DATA_DIR":     dataDir,
+		"ASDF_INSTALL_PATH": installPath,
+	})
+
+	installs := FindInstalls(getenv)
+
+	if len(installs) != 1 {
+		t.Fatalf("expected 1 install, got %d: %+v", len(installs), installs)
+	}
+	if installs[0].Path != filepath.Join(binDir, binaryName) {
+		t.Errorf("expected install path to be preserved, got %s", installs[0].Path)
+	}
+	if installs[0].ResolvedPath != launcher {
+		t.Errorf("expected resolved path %s, got %s", launcher, installs[0].ResolvedPath)
+	}
+	if installs[0].Method != InstallNPM {
+		t.Errorf("expected npm install, got %s", installs[0].Method)
+	}
+}
+
+func TestFindInstallsDeduplicatesASDFShimBeforeInstall(t *testing.T) {
+	t.Parallel()
+	dataDir, installPath, launcher := fakeASDFInstall(t)
+	binDir := filepath.Join(installPath, "bin")
+	shimDir := filepath.Join(dataDir, "shims")
+	getenv := valuesGetenv(map[string]string{
+		"PATH":              strings.Join([]string{shimDir, binDir}, string(os.PathListSeparator)),
+		"ASDF_DATA_DIR":     dataDir,
+		"ASDF_INSTALL_PATH": installPath,
+	})
+
+	installs := FindInstalls(getenv)
+
+	if len(installs) != 1 {
+		t.Fatalf("expected 1 install, got %d: %+v", len(installs), installs)
+	}
+	if installs[0].Path != filepath.Join(shimDir, binaryName) {
+		t.Errorf("expected shim path to be preserved, got %s", installs[0].Path)
+	}
+	if installs[0].ResolvedPath != launcher {
+		t.Errorf("expected resolved path %s, got %s", launcher, installs[0].ResolvedPath)
+	}
+	if installs[0].Method != InstallNPM {
+		t.Errorf("expected npm install, got %s", installs[0].Method)
+	}
+}
+
+func TestFindInstallsKeepsUnresolvedASDFShim(t *testing.T) {
+	t.Parallel()
+	dataDir, installPath, _ := fakeASDFInstall(t)
+	binDir := filepath.Join(installPath, "bin")
+	shimDir := filepath.Join(dataDir, "shims")
+
+	for _, test := range []struct {
+		name        string
+		installPath string
+	}{
+		{name: "unset install path"},
+		{name: "missing install path", installPath: filepath.Join(dataDir, "missing")},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			getenv := valuesGetenv(map[string]string{
+				"PATH":              strings.Join([]string{binDir, shimDir}, string(os.PathListSeparator)),
+				"ASDF_DATA_DIR":     dataDir,
+				"ASDF_INSTALL_PATH": test.installPath,
+			})
+
+			installs := FindInstalls(getenv)
+
+			if len(installs) != 2 {
+				t.Fatalf("expected 2 distinct entries, got %d: %+v", len(installs), installs)
+			}
+		})
+	}
+}
+
+func TestFindInstallsReportsASDFShimAndDistinctInstall(t *testing.T) {
+	t.Parallel()
+	dataDir, installPath, _ := fakeASDFInstall(t)
+	shimDir := filepath.Join(dataDir, "shims")
+	standaloneDir := t.TempDir()
+	standalone := writeFakeExecutable(t, standaloneDir)
+	getenv := valuesGetenv(map[string]string{
+		"PATH":              strings.Join([]string{shimDir, standaloneDir}, string(os.PathListSeparator)),
+		"ASDF_DATA_DIR":     dataDir,
+		"ASDF_INSTALL_PATH": installPath,
+	})
+
+	installs := FindInstalls(getenv)
+
+	if len(installs) != 2 {
+		t.Fatalf("expected 2 installs, got %d: %+v", len(installs), installs)
+	}
+	if installs[0].Path != filepath.Join(shimDir, binaryName) || installs[0].Method != InstallNPM {
+		t.Errorf("expected asdf npm install first, got %+v", installs[0])
+	}
+	if installs[1].Path != standalone || installs[1].Method != InstallBinary {
+		t.Errorf("expected standalone binary second, got %+v", installs[1])
+	}
+}
+
+func TestFindInstallsDoesNotResolveASDFShimForDifferentInstall(t *testing.T) {
+	t.Parallel()
+	dataDir, installPath, _ := fakeASDFInstall(t)
+	binDir := filepath.Join(installPath, "bin")
+	shimDir := filepath.Join(dataDir, "shims")
+	shim := filepath.Join(shimDir, binaryName)
+	if err := os.WriteFile(shim, []byte("#!/usr/bin/env bash\n# asdf-plugin: golang 1.26.5\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	getenv := valuesGetenv(map[string]string{
+		"PATH":              strings.Join([]string{binDir, shimDir}, string(os.PathListSeparator)),
+		"ASDF_DATA_DIR":     dataDir,
+		"ASDF_INSTALL_PATH": installPath,
+	})
+
+	installs := FindInstalls(getenv)
+
+	if len(installs) != 2 {
+		t.Fatalf("expected 2 distinct entries, got %d: %+v", len(installs), installs)
 	}
 }
 

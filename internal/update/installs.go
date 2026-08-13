@@ -11,18 +11,20 @@ import (
 // binaryName is the executable name scanned for on PATH.
 const binaryName = "lstk"
 
+const maxASDFShimSize = 64 * 1024
+
 // Install describes one distinct lstk executable found on PATH.
 type Install struct {
 	Path         string // location as found on PATH (what a shell would execute)
-	ResolvedPath string // after symlink resolution
+	ResolvedPath string // canonical executable target after shim and symlink resolution
 	Method       InstallMethod
 	Running      bool // whether this entry is the currently running executable
 }
 
 // FindInstalls scans the directories in the PATH environment variable for
-// lstk executables. Entries that resolve to the same file (symlinks,
-// hardlinks, the same directory listed twice) are reported once. Results
-// follow PATH order, so the first entry is the one a shell would execute.
+// lstk executables. Entries that resolve to the same install (symlinks,
+// hardlinks, active asdf shims, the same directory listed twice) are reported
+// once. Results follow PATH order, so the first entry is what a shell executes.
 func FindInstalls(getenv func(string) string) []Install {
 	runningInfo, runningResolved := runningExecutable()
 
@@ -35,9 +37,10 @@ func FindInstalls(getenv func(string) string) []Install {
 			continue
 		}
 		for _, candidate := range executableCandidates(dir, getenv) {
-			resolved, err := filepath.EvalSymlinks(candidate)
+			installPath := resolveASDFShim(candidate, getenv)
+			resolved, err := filepath.EvalSymlinks(installPath)
 			if err != nil {
-				resolved = candidate
+				resolved = installPath
 			}
 			info, err := os.Stat(resolved)
 			if err != nil {
@@ -56,6 +59,61 @@ func FindInstalls(getenv func(string) string) []Install {
 		}
 	}
 	return installs
+}
+
+func resolveASDFShim(candidate string, getenv func(string) string) string {
+	// asdf shims are wrapper scripts rather than symlinks, so resolve the
+	// active shim explicitly before comparing file identities.
+	dataDir := getenv("ASDF_DATA_DIR")
+	if dataDir == "" {
+		home := getenv("HOME")
+		if home == "" {
+			return candidate
+		}
+		dataDir = filepath.Join(home, ".asdf")
+	}
+	if filepath.Clean(filepath.Dir(candidate)) != filepath.Clean(filepath.Join(dataDir, "shims")) {
+		return candidate
+	}
+
+	installPath := getenv("ASDF_INSTALL_PATH")
+	if installPath == "" || !asdfShimSelectsInstall(candidate, dataDir, installPath) {
+		return candidate
+	}
+	targets := executableCandidates(filepath.Join(installPath, "bin"), getenv)
+	if len(targets) == 0 {
+		return candidate
+	}
+	return targets[0]
+}
+
+func asdfShimSelectsInstall(candidate, dataDir, installPath string) bool {
+	// ASDF_INSTALL_PATH can be inherited from an unrelated asdf command, so
+	// confirm that this generated shim lists the same plugin and version.
+	rel, err := filepath.Rel(filepath.Join(dataDir, "installs"), installPath)
+	if err != nil {
+		return false
+	}
+	parts := strings.Split(filepath.Clean(rel), string(os.PathSeparator))
+	if len(parts) != 2 || parts[0] == ".." || parts[0] == "." || parts[1] == "." {
+		return false
+	}
+
+	info, err := os.Stat(candidate)
+	if err != nil || !info.Mode().IsRegular() || info.Size() > maxASDFShimSize {
+		return false
+	}
+	contents, err := os.ReadFile(candidate)
+	if err != nil {
+		return false
+	}
+	want := "# asdf-plugin: " + parts[0] + " " + parts[1]
+	for line := range strings.SplitSeq(string(contents), "\n") {
+		if strings.TrimSpace(line) == want {
+			return true
+		}
+	}
+	return false
 }
 
 // WarnMultipleInstalls emits a warning when more than one distinct lstk

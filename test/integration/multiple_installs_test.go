@@ -73,6 +73,37 @@ func TestUpdateCheckDoesNotWarnOnSymlinkedAliases(t *testing.T) {
 	require.NotContains(t, stdout, "Multiple lstk installations found")
 }
 
+func TestUpdateCheckDoesNotWarnOnASDFShimAlias(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("asdf shims are Unix wrapper scripts")
+	}
+	t.Parallel()
+	dataDir := filepath.Join(t.TempDir(), ".asdf")
+	installPath := filepath.Join(dataDir, "installs", "nodejs", "22.22.0")
+	binDir := filepath.Join(installPath, "bin")
+	shimDir := filepath.Join(dataDir, "shims")
+	packageDir := filepath.Join(installPath, "lib", "node_modules", "@localstack", "lstk")
+	require.NoError(t, os.MkdirAll(binDir, 0o755))
+	require.NoError(t, os.MkdirAll(shimDir, 0o755))
+	require.NoError(t, os.MkdirAll(packageDir, 0o755))
+	launcher := copyBinaryTo(t, packageDir)
+	require.NoError(t, os.Symlink(launcher, filepath.Join(binDir, "lstk")))
+	require.NoError(t, os.WriteFile(
+		filepath.Join(shimDir, "lstk"),
+		[]byte("#!/usr/bin/env bash\n# asdf-plugin: nodejs 22.22.0\n"),
+		0o755,
+	))
+
+	environ := env.Environ(testEnvWithHome(t.TempDir(), "")).
+		With(env.Path, binDir+string(os.PathListSeparator)+shimDir).
+		With(env.Key("ASDF_DATA_DIR"), dataDir).
+		With(env.Key("ASDF_INSTALL_PATH"), installPath)
+
+	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), environ, "update", "--check")
+	require.NoError(t, err, stderr)
+	require.NotContains(t, stdout, "Multiple lstk installations found")
+}
+
 func TestUpdateCheckJSONReportsMultipleInstallsWarning(t *testing.T) {
 	t.Parallel()
 	dirA, dirB := t.TempDir(), t.TempDir()

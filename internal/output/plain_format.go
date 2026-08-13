@@ -203,7 +203,8 @@ func formatMultipleInstalls(e MultipleInstallsEvent) string {
 		}
 		sb.WriteString(")")
 	}
-	sb.WriteString("\n  Your shell runs the first one; remove the others to avoid using a stale version.")
+	sb.WriteString("\n  The first path is used when you run lstk.")
+	sb.WriteString("\n  Remove unused installations or reorder PATH.")
 	return sb.String()
 }
 

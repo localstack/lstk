@@ -446,8 +446,8 @@ func TestAppMultipleInstallsEventRendersColoredWarning(t *testing.T) {
 	}})
 	app = model.(App)
 
-	if len(app.lines) != 4 {
-		t.Fatalf("expected 4 lines (header + 2 installs + footer), got %d: %+v", len(app.lines), app.lines)
+	if len(app.lines) != 5 {
+		t.Fatalf("expected 5 lines (header + 2 installs + 2 footer lines), got %d: %+v", len(app.lines), app.lines)
 	}
 
 	wantWarning := styles.Warning.Render("Warning:")
@@ -471,12 +471,17 @@ func TestAppMultipleInstallsEventRendersColoredWarning(t *testing.T) {
 		}
 	}
 
-	footer := app.lines[3]
-	if !footer.secondary {
-		t.Fatalf("expected footer line to be styled secondary, got: %+v", footer)
-	}
-	if !strings.Contains(footer.text, "Your shell runs the first one; remove the others to avoid using a stale version.") {
-		t.Fatalf("expected footer text, got: %q", footer.text)
+	for i, want := range []string{
+		"The first path is used when you run lstk.",
+		"Remove unused installations or reorder PATH.",
+	} {
+		line := app.lines[i+3]
+		if !line.secondary {
+			t.Fatalf("expected footer line %d to be styled secondary, got: %+v", i, line)
+		}
+		if !strings.Contains(line.text, want) {
+			t.Fatalf("expected footer line %d to contain %q, got: %q", i, want, line.text)
+		}
 	}
 }
 
