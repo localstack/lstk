@@ -25,7 +25,10 @@ var (
 	sanitizeEndpointHostRe = regexp.MustCompile(`(ENV_AWS_ENDPOINT_URL(?:_S3)?=https?://)[^:\s]+`)
 	// Any URL pointing at the default gateway port (terraform override
 	// endpoints, rendered endpoint lines) — anchored on :4566 so it can't
-	// touch unrelated URLs.
+	// touch unrelated URLs. Like sanitizeSizeRe below, this mask is
+	// shape-anchored across the whole stream: a test that needs to assert a
+	// specific host on :4566 (or a specific size) can't — narrow the anchor
+	// if that case ever appears.
 	sanitizeGatewayHostRe = regexp.MustCompile(`(https?://)[^:"\s]+(:4566)`)
 	// Rendered snapshot metadata: timestamps ("2026-04-15 14:32 UTC"),
 	// human-readable sizes ("47.3 MB"), and LocalStack calendar versions
@@ -36,7 +39,10 @@ var (
 	sanitizeCalverRe = regexp.MustCompile(`\b20\d{2}\.\d{2}\b`)
 	// Reference-extension echo lines carrying temp paths or random ids.
 	sanitizeExtPathRe = regexp.MustCompile(`(?m)^(SELF=|CONFIG_DIR=).*$`)
-	sanitizeExtIDRe   = regexp.MustCompile(`(?m)^(SESSION_ID=).*$`)
+	// MACHINE_ID's value is environment-dependent twice over: its origin
+	// prefix (dkr_/sys_/gen_) depends on whether Docker or /etc/machine-id is
+	// available on the host, and the rest is a host-derived hash or random id.
+	sanitizeExtIDRe = regexp.MustCompile(`(?m)^((?:SESSION|MACHINE)_ID=).*$`)
 	// Defense in depth: a real auth token must never land in a committed
 	// snapshot or a failure diff, even if a test forgets to strip it.
 	sanitizeExtTokenRe = regexp.MustCompile(`(?m)^(AUTH_TOKEN=).*$`)

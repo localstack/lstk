@@ -9,6 +9,7 @@ CONFIG_DIR=<path>
 NON_INTERACTIVE=true
 JSON=true
 SESSION_ID=<id>
+MACHINE_ID=<id>
 EMULATOR_COUNT=0
 ---
 
