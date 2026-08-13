@@ -62,10 +62,30 @@ func TestEmitUnhealthyError_ConfiguredRancherSocketWinsFirstAction(t *testing.T)
 	assert.Equal(t, "rdctl start", actions[0].Value)
 }
 
-func TestEmitUnhealthyError_RancherHomeDirEvidenceWinsWithoutSocket(t *testing.T) {
+func TestEmitUnhealthyError_RancherCLIOnPathWinsWithoutSocket(t *testing.T) {
 	home := "/home/user"
 	// Daemon host is the plain default socket (unresolved), so evidence must come
-	// from the filesystem instead of the configured socket path.
+	// from PATH instead of the configured socket path.
+	rt := newUnhealthyRuntime(t, "unix:///var/run/docker.sock")
+	sink := &captureSink{}
+
+	lookPath := func(name string) (string, error) {
+		if name == "rdctl" {
+			return "/usr/local/bin/rdctl", nil
+		}
+		return "", errors.New("not found")
+	}
+
+	rt.emitUnhealthyError(sink, errors.New("boom"), home, notFound, lookPath, emptyGetenv, "linux")
+
+	actions := sink.errorEvent(t).Actions
+	require.NotEmpty(t, actions)
+	assert.Equal(t, "Start Rancher Desktop:", actions[0].Label)
+	assert.Equal(t, "rdctl start", actions[0].Value)
+}
+
+func TestEmitUnhealthyError_StaleRancherHomeDirIsIgnored(t *testing.T) {
+	home := "/home/user"
 	rt := newUnhealthyRuntime(t, "unix:///var/run/docker.sock")
 	sink := &captureSink{}
 
@@ -76,12 +96,11 @@ func TestEmitUnhealthyError_RancherHomeDirEvidenceWinsWithoutSocket(t *testing.T
 		return nil, os.ErrNotExist
 	}
 
-	rt.emitUnhealthyError(sink, errors.New("boom"), home, statFn, notOnPath, emptyGetenv, "linux")
+	rt.emitUnhealthyError(sink, errors.New("boom"), home, statFn, notOnPath, emptyGetenv, "darwin")
 
 	actions := sink.errorEvent(t).Actions
 	require.NotEmpty(t, actions)
-	assert.Equal(t, "Start Rancher Desktop:", actions[0].Label)
-	assert.Equal(t, "rdctl start", actions[0].Value)
+	assert.Equal(t, "Start Docker Desktop:", actions[0].Label)
 }
 
 func TestEmitUnhealthyError_PodmanOnPath_Darwin(t *testing.T) {

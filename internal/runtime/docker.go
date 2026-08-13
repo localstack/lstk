@@ -319,7 +319,11 @@ func detectRuntimeFlavor(
 	if configuredFlavor != flavorUnknown && configuredFlavor != flavorDockerNative {
 		return configuredFlavor
 	}
-	if _, err := statFn(filepath.Join(home, ".rd")); err == nil {
+	// Rancher Desktop leaves ~/.rd behind when the application is removed. Its
+	// rdctl executable is installed on PATH on every supported platform, and is
+	// stronger evidence that Rancher Desktop is still installed than the state
+	// directory alone.
+	if _, err := lookPath("rdctl"); err == nil {
 		return flavorRancherDesktop
 	}
 	if _, err := statFn(filepath.Join(home, ".colima")); err == nil {
