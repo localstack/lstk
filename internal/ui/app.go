@@ -197,6 +197,14 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if a.spinner.Visible() {
 			a.spinner = a.spinner.SetText(output.FormatPrompt(msg.Prompt, msg.Options))
 		}
+	case output.UserInputDismissEvent:
+		if a.pendingInput == nil || a.pendingInput.ResponseCh != msg.ResponseCh {
+			return a, nil
+		}
+		a.pendingInput = nil
+		a.inputPrompt = a.inputPrompt.Hide()
+		a.spinner = a.spinner.SetText("")
+		return a, nil
 	case output.PullSkippableEvent:
 		msgCopy := msg
 		a.pullSkip = &msgCopy

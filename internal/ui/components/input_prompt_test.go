@@ -135,3 +135,31 @@ func TestInputPromptViewUnwrappedWithoutWidth(t *testing.T) {
 		t.Errorf("expected no wrapping without a known width, got: %q", view)
 	}
 }
+
+func TestInputPromptViewSlowStartChoicesAreScannable(t *testing.T) {
+	t.Parallel()
+
+	const width = 80
+	question := "LocalStack is still starting. Check progress with 'lstk logs'."
+	p := NewInputPrompt().Show(question, []output.InputOption{
+		{Key: "w", Label: "[W] Keep waiting"},
+		{Key: "s", Label: "[S] Stop and exit"},
+	}, true)
+
+	view := p.View(width)
+	lines := strings.Split(view, "\n")
+	if len(lines) < 3 {
+		t.Fatalf("expected a question and two vertical choices, got:\n%s", view)
+	}
+	if !strings.Contains(lines[0], question) {
+		t.Fatalf("expected the question and log command on one line, got:\n%s", view)
+	}
+	if !strings.Contains(lines[1], "[W] Keep waiting") || !strings.Contains(lines[2], "[S] Stop and exit") {
+		t.Fatalf("expected prefixed shortcuts on separate lines, got:\n%s", view)
+	}
+	for _, line := range lines {
+		if lipgloss.Width(line) > width {
+			t.Fatalf("line exceeds width %d: %q", width, line)
+		}
+	}
+}

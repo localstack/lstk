@@ -245,6 +245,7 @@ func (MultipleInstallsEvent) sealedEvent()    {}
 func (ContainerStatusEvent) sealedEvent()     {}
 func (ProgressEvent) sealedEvent()            {}
 func (UserInputRequestEvent) sealedEvent()    {}
+func (UserInputDismissEvent) sealedEvent()    {}
 func (PullSkippableEvent) sealedEvent()       {}
 func (LogLineEvent) sealedEvent()             {}
 
@@ -290,6 +291,13 @@ type UserInputRequestEvent struct {
 	Options    []InputOption
 	ResponseCh chan<- InputResponse
 	Vertical   bool
+}
+
+// UserInputDismissEvent removes a pending prompt when the condition that
+// required input resolves on its own. ResponseCh identifies the exact request
+// so a late dismissal cannot hide a newer prompt.
+type UserInputDismissEvent struct {
+	ResponseCh chan<- InputResponse
 }
 
 // PullSkippableEvent signals that an in-flight image pull can be abandoned in
