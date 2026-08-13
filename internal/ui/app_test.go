@@ -201,6 +201,38 @@ func TestAppEnterRespondsToInputRequest(t *testing.T) {
 	}
 }
 
+func TestAppDismissesOnlyTheMatchingPendingInput(t *testing.T) {
+	t.Parallel()
+
+	app := NewApp("dev", "", "", nil)
+	model, _ := app.Update(output.SpinnerStart("Starting LocalStack"))
+	app = model.(App)
+
+	responseCh := make(chan output.InputResponse, 1)
+	prompt := "LocalStack is still starting."
+	model, _ = app.Update(output.UserInputRequestEvent{
+		Prompt:     prompt,
+		Options:    []output.InputOption{{Key: "w", Label: "[W] Keep waiting"}},
+		ResponseCh: responseCh,
+	})
+	app = model.(App)
+
+	model, _ = app.Update(output.UserInputDismissEvent{ResponseCh: make(chan output.InputResponse, 1)})
+	app = model.(App)
+	if !app.inputPrompt.Visible() {
+		t.Fatal("expected an unrelated dismissal to leave the prompt visible")
+	}
+
+	model, _ = app.Update(output.UserInputDismissEvent{ResponseCh: responseCh})
+	app = model.(App)
+	if app.pendingInput != nil || app.inputPrompt.Visible() {
+		t.Fatal("expected the matching prompt to be dismissed")
+	}
+	if view := app.View(); strings.Contains(view, prompt) {
+		t.Fatalf("expected the spinner's prompt mirror to be cleared, got:\n%s", view)
+	}
+}
+
 // TestAppPendingInputSurvivesDeferredSpinnerStop covers DEVX-1045: a prompt
 // emitted right after a spinner was stopped inside its min duration used to be
 // parked in the spinner's text, and the min-duration tick then erased it. The

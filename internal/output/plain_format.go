@@ -34,6 +34,8 @@ func FormatEventLine(event Event) (string, bool) {
 		return "", false
 	case UserInputRequestEvent:
 		return formatUserInputRequest(e), true
+	case UserInputDismissEvent:
+		return "", false
 	case PullSkippableEvent:
 		// Interactive-only affordance with no plain-text rendering: non-interactive
 		// pulls never emit it, and PlainSink cannot bind the ESC key.

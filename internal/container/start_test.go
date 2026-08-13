@@ -821,9 +821,11 @@ func TestStartupMonitorAwait_InteractivePromptKeepWaitingThenStop(t *testing.T) 
 	mockRT.EXPECT().Stop(gomock.Any(), "cid").Return(nil)
 
 	prompts := make(chan output.UserInputRequestEvent, 2)
+	seenPrompts := make(chan output.UserInputRequestEvent, 2)
 	sink := output.SinkFunc(func(event output.Event) {
 		if req, ok := event.(output.UserInputRequestEvent); ok {
 			prompts <- req
+			seenPrompts <- req
 		}
 	})
 
@@ -846,6 +848,80 @@ func TestStartupMonitorAwait_InteractivePromptKeepWaitingThenStop(t *testing.T) 
 	var timeoutErr *startupTimeoutError
 	require.ErrorAs(t, err, &timeoutErr)
 	assert.True(t, timeoutErr.stopped, "choosing stop at the prompt must be recorded on the error")
+
+	firstPrompt := <-seenPrompts
+	assert.Equal(t, "LocalStack is still starting. Check progress with 'lstk logs'.", firstPrompt.Prompt)
+	assert.True(t, firstPrompt.Vertical)
+	assert.Equal(t, []output.InputOption{
+		{Key: "w", Label: "[W] Keep waiting"},
+		{Key: "s", Label: "[S] Stop and exit"},
+	}, firstPrompt.Options)
+}
+
+func TestStartupMonitorAwait_DismissesPromptWhenEmulatorBecomesReady(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockRT := runtime.NewMockRuntime(ctrl)
+	mockRT.EXPECT().IsRunning(gomock.Any(), "cid").Return(true, nil).AnyTimes()
+
+	var ready atomic.Bool
+	healthServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		if ready.Load() {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}))
+	defer healthServer.Close()
+
+	prompts := make(chan output.UserInputRequestEvent, 1)
+	dismissals := make(chan output.UserInputDismissEvent, 1)
+	sink := output.SinkFunc(func(event output.Event) {
+		switch event := event.(type) {
+		case output.UserInputRequestEvent:
+			prompts <- event
+			ready.Store(true)
+		case output.UserInputDismissEvent:
+			dismissals <- event
+		}
+	})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	monitor := newStartupMonitor(mockRT, sink, nil, 25*time.Millisecond, true)
+	err := monitor.await(ctx, "cid", healthServer.URL, make(chan runtime.ExitResult))
+
+	require.NoError(t, err)
+	prompt := <-prompts
+	dismissal := <-dismissals
+	assert.Equal(t, prompt.ResponseCh, dismissal.ResponseCh)
+}
+
+func TestStartupMonitorAwait_DoesNotStopEmulatorThatBecameReadyBeforeSelection(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockRT := runtime.NewMockRuntime(ctrl)
+	mockRT.EXPECT().IsRunning(gomock.Any(), "cid").Return(true, nil).AnyTimes()
+
+	var ready atomic.Bool
+	healthServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		if ready.Load() {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}))
+	defer healthServer.Close()
+
+	sink := output.SinkFunc(func(event output.Event) {
+		if prompt, ok := event.(output.UserInputRequestEvent); ok {
+			ready.Store(true)
+			prompt.ResponseCh <- output.InputResponse{SelectedKey: "s"}
+		}
+	})
+
+	monitor := newStartupMonitor(mockRT, sink, nil, 25*time.Millisecond, true)
+	err := monitor.await(context.Background(), "cid", healthServer.URL, make(chan runtime.ExitResult))
+
+	require.NoError(t, err)
 }
 
 func TestStartupMonitorAwait_ReturnsExitCodeFromExitCh(t *testing.T) {
