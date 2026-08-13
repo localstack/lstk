@@ -106,6 +106,37 @@ func TestSessionID_MatchesEmittedEventsAndIsEmptyWhenDisabled(t *testing.T) {
 	assert.Empty(t, New("http://localhost", true).SessionID())
 }
 
+// The machine id is conveyed to extension processes (see internal/extension.Context),
+// so it must be readable from outside the package and must be the very same value
+// stamped on the events this client emits — an extension's telemetry is only
+// joinable to lstk's if both report the identical machine. MachineID owns the
+// lazy derivation, so the accessor and event building must agree no matter which
+// runs first.
+func TestMachineID_MatchesEmittedEventsAndIsEmptyWhenDisabled(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+
+	c := New("http://localhost", false)
+	id := c.MachineID(ctx)
+	require.NotEmpty(t, id, "an enabled client derives the machine id on first use")
+	assert.Equal(t, id, c.GetEnvironment(ctx).MachineID, "events must carry the same id the accessor conveys")
+
+	c.Emit(ctx, "cli_cmd", map[string]any{"cmd": "lstk ref"})
+	require.Len(t, c.pending, 1)
+	payload, ok := c.pending[0].Payload.(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, id, payload["machine_id"])
+
+	// A disabled client never computes one, so there is nothing to convey.
+	// Assert on the unexported field, not just the accessor: the accessor
+	// masking a derived value would hide that the derivation (a Docker
+	// round-trip, potentially a persisted machine_id file) still ran.
+	disabled := New("http://localhost", true)
+	assert.Empty(t, disabled.MachineID(ctx))
+	assert.Empty(t, disabled.GetEnvironment(ctx).MachineID)
+	assert.Empty(t, disabled.machineID, "a disabled client must not run the derivation at all")
+}
+
 func TestEmit_DropsOldestWhenFull(t *testing.T) {
 	t.Parallel()
 	c := New("http://localhost", false)
