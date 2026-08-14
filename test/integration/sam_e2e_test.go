@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/localstack/lstk/test/integration/env"
 	"github.com/stretchr/testify/assert"
@@ -59,7 +60,11 @@ func samE2EEnv(t *testing.T) env.Environ {
 func TestSAME2EValidateOffline(t *testing.T) {
 	requireSAM(t)
 
-	ctx := testContext(t)
+	// Not testContext: the frozen-Python sam CLI plus --lint's cfn-lint init
+	// can exceed 2 minutes on a cold Windows runner, and the context expiring
+	// kills a sam that already printed a successful validation.
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	t.Cleanup(cancel)
 	work := copySAMSample(t, "hello")
 	e := samE2EEnv(t)
 
