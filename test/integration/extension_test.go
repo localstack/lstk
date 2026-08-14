@@ -7,11 +7,13 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
 
 	"github.com/google/uuid"
+	"github.com/localstack/lstk/internal/snap"
 	"github.com/localstack/lstk/test/integration/env"
 	"github.com/stretchr/testify/require"
 )
@@ -103,6 +105,11 @@ func installLstkBundle(t *testing.T, dir string) string {
 // is touched. Extra DOCKER_HOST etc. can be appended by the caller.
 func envWithPath(tmpHome, extDir string) []string {
 	e := testEnvWithHome(tmpHome, "")
+	// Strip any ambient auth token (set in CI) so extension-context output is
+	// deterministic; a test that wants one appends it explicitly, which wins.
+	e = slices.DeleteFunc(e, func(kv string) bool {
+		return strings.HasPrefix(kv, string(env.AuthToken)+"=")
+	})
 	e = append(e, "PATH="+extDir+string(os.PathListSeparator)+os.Getenv("PATH"))
 	return e
 }
@@ -141,11 +148,12 @@ func TestExtensionUnknownCommandDispatches(t *testing.T) {
 	installExtension(t, extDir, "hello")
 
 	tmpHome := t.TempDir()
-	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), envWithPath(tmpHome, extDir), "hello", "world")
+	// DOCKER_HOST points at a closed port so the emulator context (and with it
+	// the EMULATOR_COUNT/EMULATOR lines) can't vary with the host's Docker state.
+	environ := append(envWithPath(tmpHome, extDir), "DOCKER_HOST=tcp://127.0.0.1:1")
+	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), environ, "hello", "world")
 	require.NoError(t, err, stderr)
-	require.Contains(t, stdout, "ARGS=[world]")
-	require.Contains(t, stdout, "API_VERSION=1")
-	require.Contains(t, stdout, "CONFIG_DIR=")
+	snap.Match(t, sanitizeOutput(stdout))
 }
 
 func TestExtensionUnknownCommandNoExtensionErrors(t *testing.T) {
@@ -155,7 +163,7 @@ func TestExtensionUnknownCommandNoExtensionErrors(t *testing.T) {
 	// goes to stderr, matching Cobra's own unknown-command output.
 	_, stderr, err := runLstk(t, testContext(t), t.TempDir(), envWithPath(tmpHome, t.TempDir()), "nope")
 	requireExitCode(t, 1, err)
-	require.Contains(t, stderr, "unknown command")
+	snap.Match(t, sanitizeOutput(stderr))
 }
 
 func TestExtensionExitCodePropagates(t *testing.T) {
@@ -206,10 +214,9 @@ func TestExtensionEndpointOmittedWhenNoRuntime(t *testing.T) {
 	environ = append(environ, "DOCKER_HOST=tcp://127.0.0.1:1")
 	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), environ, "ref")
 	require.NoError(t, err, stderr)
-	require.Contains(t, stdout, "EMULATOR_COUNT=0")
-	require.NotContains(t, stdout, "EMULATOR=")
-	// The extension still runs and still receives the always-present variables.
-	require.Contains(t, stdout, "API_VERSION=1")
+	// The snapshot pins EMULATOR_COUNT=0 with no EMULATOR= lines, while the
+	// always-present variables are still conveyed.
+	snap.Match(t, sanitizeOutput(stdout))
 }
 
 func TestExtensionSelfAuthorizationRefusesWithoutToken(t *testing.T) {
@@ -224,7 +231,7 @@ func TestExtensionSelfAuthorizationRefusesWithoutToken(t *testing.T) {
 	environ = append(environ, "DOCKER_HOST=tcp://127.0.0.1:1")
 	_, stderr, err := runLstk(t, testContext(t), t.TempDir(), environ, "deploy", "auth")
 	requireExitCode(t, 13, err)
-	require.Contains(t, stderr, "not authorized")
+	snap.Match(t, sanitizeOutput(stderr))
 }
 
 func TestExtensionInvocationRecordedInTelemetry(t *testing.T) {
@@ -292,12 +299,10 @@ func TestExtensionSessionIDOmittedWhenTelemetryDisabled(t *testing.T) {
 	stdout, _, err := runLstk(t, testContext(t), t.TempDir(), environ, "ref", "exit", "7")
 	requireExitCode(t, 7, err)
 
-	// No session exists, so the field is omitted rather than conveyed empty (the
-	// JSON-level omission is asserted in internal/extension).
-	require.NotContains(t, stdout, "SESSION_ID=",
-		"no sessionId may be conveyed when telemetry is disabled")
-	require.Contains(t, stdout, "API_VERSION=1")
-	require.Contains(t, stdout, "ARGS=[exit 7]")
+	// No session exists, so the snapshot carries no SESSION_ID line at all —
+	// omitted rather than conveyed empty (the JSON-level omission is asserted
+	// in internal/extension).
+	snap.Match(t, sanitizeOutput(stdout))
 }
 
 // The conveyed machineId exists so an extension's own telemetry reports the same
@@ -503,12 +508,10 @@ func TestExtensionHelpListsBundledWithDescriptionAndPathNameOnly(t *testing.T) {
 	stdout, stderr, err := runBinary(t, t.TempDir(), envWithPath(tmpHome, extDir), lstkBin, "--help")
 	require.NoError(t, err, stderr)
 
-	require.Contains(t, stdout, "Extensions:")
-	require.Contains(t, stdout, "deploy")
-	require.Contains(t, stdout, "Deploy your application to LocalStack")
-	require.Contains(t, stdout, "hello")
-	// Help must not execute any extension.
-	require.NotContains(t, stdout, "ARGS=")
+	// The snapshot pins the Extensions section (bundled `deploy` with its
+	// description, PATH-only `hello` without) and that no extension was
+	// executed (no ARGS= line).
+	snap.Match(t, stdout)
 }
 
 // TestExtensionHelpDescriptionColumnAlignsWithCommands guards the bug where the
@@ -560,8 +563,9 @@ func TestExtensionHelpMissingDescriptionsFileDegrades(t *testing.T) {
 	tmpHome := t.TempDir()
 	stdout, stderr, err := runBinary(t, t.TempDir(), envWithPath(tmpHome, t.TempDir()), lstkBin, "--help")
 	require.NoError(t, err, stderr)
-	require.Contains(t, stdout, "Extensions:")
-	require.Contains(t, stdout, "deploy")
+	// The snapshot pins the Extensions section listing `deploy` with no
+	// description column when the descriptions file is absent.
+	snap.Match(t, stdout)
 }
 
 func TestExtensionResolvableViaSymlinkedLstk(t *testing.T) {
@@ -632,8 +636,8 @@ func TestExtensionBundledWinsOverPath(t *testing.T) {
 	require.NoError(t, err)
 	require.Contains(t, stdout, "SELF="+resolvedBundle, "expected the bundled extension to run, not the PATH one")
 
-	// Help lists the de-duplicated name exactly once.
+	// Help lists the de-duplicated name exactly once — pinned by the snapshot.
 	helpOut, _, err := runBinary(t, t.TempDir(), envWithPath(tmpHome, extDir), lstkBin, "--help")
 	require.NoError(t, err)
-	require.Equal(t, 1, strings.Count(helpOut, "\n  deploy"))
+	snap.Match(t, helpOut)
 }

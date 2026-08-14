@@ -1,0 +1,34 @@
+Snapshots created by internal/snap. UPDATE_SNAPS=true go test rewrites
+this file.
+
+[TestSnapshotLoadDryRunOnLocalRef_1]
+Error: --dry-run is only supported for pod refs — use the "pod:" prefix (e.g. pod:my-baseline --dry-run)
+---
+
+[TestSnapshotLoadDryRunPodNoAuthToken_1]
+Error: pod snapshots require authentication — set LOCALSTACK_AUTH_TOKEN or run "lstk login"
+---
+
+[TestSnapshotLoadPodInvalidName_pod__1]
+Error: invalid pod name "": must not be empty
+---
+
+[TestSnapshotLoadPodInvalidName_pod_bad.name_1]
+Error: invalid pod name "bad.name": use letters, digits, hyphens, and underscores only
+---
+
+[TestSnapshotLoadPodInvalidName_pod_my_pod_1]
+Error: invalid pod name "my pod": use letters, digits, hyphens, and underscores only
+---
+
+[TestSnapshotLoadPodNoAuthToken_1]
+Error: pod snapshots require authentication — set LOCALSTACK_AUTH_TOKEN or run "lstk login"
+---
+
+[TestSnapshotLoadRemoteRejected_oras_registry_image_1]
+Error: remote destinations are not yet supported — coming soon
+---
+
+[TestSnapshotLoadS3RequiresPodName_1]
+Error: a pod name is required to load from S3: lstk snapshot load <pod-name> s3://bucket/key
+---

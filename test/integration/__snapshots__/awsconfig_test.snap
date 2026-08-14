@@ -1,0 +1,16 @@
+Snapshots created by internal/snap. UPDATE_SNAPS=true go test rewrites
+this file.
+
+[TestSetupAWSNonInteractiveCreatesProfile_1]
+✔︎ Created LocalStack profile in ~/.aws
+---
+
+[TestSetupAWSNonInteractiveIsIdempotent_1]
+> Note: LocalStack AWS profile is already configured.
+---
+
+[TestSetupAWSNonInteractiveOverwriteRequiresForce_1]
+Error: Refusing to overwrite the existing LocalStack AWS profile
+  a 'localstack' AWS profile already exists with different values
+  ==> Overwrite it: lstk setup aws --force
+---

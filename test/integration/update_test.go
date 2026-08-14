@@ -21,6 +21,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/localstack/lstk/internal/snap"
 	"github.com/localstack/lstk/test/integration/env"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -537,13 +538,12 @@ func TestUpdateBinaryMockGitHubHappyPath(t *testing.T) {
 	outStr := string(out)
 	require.NoError(t, err, "lstk update failed: %s", outStr)
 	requireExitCode(t, 0, err)
-	assert.Contains(t, outStr, "Update available: 0.0.1 → v0.0.2", "should detect the mock release")
-	assert.Contains(t, outStr, "Downloading and verifying update", "should take the binary download path")
-	assert.Contains(t, outStr, "Updated to v0.0.2", "should complete the update")
+	// The snapshot pins the full check → download/verify → updated sequence.
+	snap.Match(t, sanitizeOutput(outStr))
 
 	verOut, err := exec.CommandContext(ctx, oldBinary, "--version").CombinedOutput()
 	require.NoError(t, err)
-	assert.Contains(t, string(verOut), "0.0.2", "binary should be replaced with the mock release")
+	snap.Match(t, sanitizeOutput(string(verOut)))
 
 	leftovers, err := filepath.Glob(filepath.Join(filepath.Dir(oldBinary), "lstk-update-*"))
 	require.NoError(t, err)
@@ -597,7 +597,7 @@ func TestUpdateBinaryMockGitHubChecksumMismatch(t *testing.T) {
 
 	verOut, err := exec.CommandContext(ctx, oldBinary, "--version").CombinedOutput()
 	require.NoError(t, err, "original binary should still run")
-	assert.Contains(t, string(verOut), "0.0.1", "binary must not be replaced on checksum mismatch")
+	snap.Match(t, sanitizeOutput(string(verOut)))
 
 	leftovers, err := filepath.Glob(filepath.Join(filepath.Dir(oldBinary), "lstk-update-*"))
 	require.NoError(t, err)
@@ -635,7 +635,7 @@ func TestUpdateBinaryMockGitHubMissingChecksums(t *testing.T) {
 
 	verOut, err := exec.CommandContext(ctx, oldBinary, "--version").CombinedOutput()
 	require.NoError(t, err, "original binary should still run")
-	assert.Contains(t, string(verOut), "0.0.1", "binary must not be replaced without a verifiable manifest")
+	snap.Match(t, sanitizeOutput(string(verOut)))
 
 	leftovers, err := filepath.Glob(filepath.Join(filepath.Dir(oldBinary), "lstk-update-*"))
 	require.NoError(t, err)

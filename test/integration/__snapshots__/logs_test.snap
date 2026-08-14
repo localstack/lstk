@@ -1,0 +1,6 @@
+Snapshots created by internal/snap. UPDATE_SNAPS=true go test rewrites
+this file.
+
+[TestLogsTailRejectsInvalidValue_1]
+Error: invalid --tail value "bogus": expected a non-negative integer or "all"
+---

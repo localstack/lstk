@@ -1,0 +1,17 @@
+Snapshots created by internal/snap. UPDATE_SNAPS=true go test rewrites
+this file.
+
+[TestEnvelopeSink_UpdateCheckedEnvelopeJSON_1]
+{
+  "command": "update",
+  "data": {
+    "currentVersion": "<any>",
+    "latestVersion": "<any>",
+    "updateAvailable": true
+  },
+  "error": null,
+  "schemaVersion": 1,
+  "status": "ok",
+  "warnings": []
+}
+---

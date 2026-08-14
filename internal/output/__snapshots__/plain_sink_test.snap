@@ -1,0 +1,66 @@
+Snapshots created by internal/snap. UPDATE_SNAPS=true go test rewrites
+this file.
+
+[TestPlainSink_EmitsErrorEvent_1]
+Error: Connection failed
+  Cannot connect to Docker
+  ==> Start Docker: open -a Docker
+---
+
+[TestPlainSink_EmitsInstanceInfoEvent_full_1]
+✔︎ LocalStack AWS Emulator is running
+• Endpoint: localhost.localstack.cloud:4566
+• Persistence: Enabled
+• Container: localstack-aws
+• Version: <version>
+• Uptime: <time>
+---
+
+[TestPlainSink_EmitsInstanceInfoEvent_minimal_1]
+✔︎ LocalStack AWS Emulator is running
+• Endpoint: 127.0.0.1:4566
+---
+
+[TestPlainSink_EmitsLogLineEvent_1]
+2024-01-01 hello from container
+---
+
+[TestPlainSink_EmitsMessageEventInfo_1]
+hello
+---
+
+[TestPlainSink_EmitsMessageEventWarning_1]
+> Warning: something went wrong
+---
+
+[TestPlainSink_EmitsSpinnerEvent_active_spinner_1]
+Loading...
+---
+
+[TestPlainSink_EmitsStatusEvent_pulling_phase_1]
+Preparing LocalStack...
+---
+
+[TestPlainSink_EmitsStatusEvent_ready_phase_with_detail_1]
+✔︎ LocalStack is running (abc123)
+---
+
+[TestPlainSink_EmitsStatusEvent_ready_phase_without_detail_1]
+✔︎ LocalStack is running
+---
+
+[TestPlainSink_EmitsStatusEvent_starting_phase_1]
+Starting LocalStack...
+---
+
+[TestPlainSink_EmitsStatusEvent_unknown_phase_with_detail_1]
+LocalStack: custom (info)
+---
+
+[TestPlainSink_EmitsStatusEvent_unknown_phase_without_detail_1]
+LocalStack: custom
+---
+
+[TestPlainSink_EmitsStatusEvent_waiting_phase_1]
+Waiting for LocalStack to be ready...
+---

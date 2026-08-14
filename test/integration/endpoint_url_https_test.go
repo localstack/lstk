@@ -13,6 +13,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/localstack/lstk/internal/snap"
 	"github.com/localstack/lstk/test/integration/env"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -187,9 +188,7 @@ func TestStatusEndpointURLHTTPSSchemeMismatchSuggestsHTTP(t *testing.T) {
 
 	_, stderr, err := runLstk(t, testContext(t), t.TempDir(), e, "--endpoint-url", httpsURL, "status")
 	require.Error(t, err)
-	assert.Contains(t, stderr, "could not reach LocalStack emulator at "+httpsURL)
-	assert.Contains(t, stderr, srv.URL+" responded")
-	assert.Contains(t, stderr, "retry with that URL")
+	snap.Match(t, sanitizeOutput(stderr))
 }
 
 // TestStatusEndpointURLHTTPSRendersReducedOutput is the https counterpart of
@@ -206,9 +205,7 @@ func TestStatusEndpointURLHTTPSRendersReducedOutput(t *testing.T) {
 
 	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), e, "--endpoint-url", srv.URL, "status")
 	require.NoError(t, err, "stderr: %s", stderr)
-	assert.Contains(t, stdout, "running")
-	assert.Contains(t, stdout, srv.URL)
-	assert.Contains(t, stdout, "3.0.2")
-	assert.NotContains(t, stdout, "Container:")
-	assert.NotContains(t, stdout, "Uptime:")
+	// The snapshot pins the reduced remote-status card: running headline and
+	// endpoint only — no Container/Uptime lines, which need local Docker.
+	snap.Match(t, sanitizeOutput(stdout))
 }

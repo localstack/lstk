@@ -1,0 +1,34 @@
+Snapshots created by internal/snap. UPDATE_SNAPS=true go test rewrites
+this file.
+
+[TestBashCompletionFallbackYieldsToInstalledPackage_1]
+package version
+---
+
+[TestBashCompletionReassemblesWordbreakSplits_adjacent_pieces_re-join_1]
+cur=--config=./cfg
+prev=lstk
+cword=1
+nwords=2
+---
+
+[TestBashCompletionReassemblesWordbreakSplits_empty_word_after_separator-then-space_1]
+cur=
+prev=--config=
+cword=2
+nwords=3
+---
+
+[TestBashCompletionReassemblesWordbreakSplits_whitespace-surrounded_separator_stays_separate_1]
+cur=./x
+prev==
+cword=3
+nwords=4
+---
+
+[TestBashCompletionReassemblesWordbreakSplits_word_after_separator-then-space_stays_separate_1]
+cur=st
+prev=--config=
+cword=2
+nwords=3
+---

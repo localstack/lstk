@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/localstack/lstk/internal/snap"
 	"github.com/localstack/lstk/test/integration/env"
 )
 
@@ -141,35 +142,30 @@ func TestBashCompletionReassemblesWordbreakSplits(t *testing.T) {
 		compWords string
 		cword     int
 		line      string
-		expect    []string
 	}{
 		{
 			name:      "adjacent pieces re-join",
 			compWords: `lstk --config = ./cfg`,
 			cword:     3,
 			line:      "lstk --config=./cfg",
-			expect:    []string{"cur=--config=./cfg", "prev=lstk", "cword=1", "nwords=2"},
 		},
 		{
 			name:      "word after separator-then-space stays separate",
 			compWords: `lstk --config = st`,
 			cword:     3,
 			line:      "lstk --config= st",
-			expect:    []string{"cur=st", "prev=--config=", "cword=2", "nwords=3"},
 		},
 		{
 			name:      "whitespace-surrounded separator stays separate",
 			compWords: `lstk --config = ./x`,
 			cword:     3,
 			line:      "lstk --config = ./x",
-			expect:    []string{"cur=./x", "prev==", "cword=3", "nwords=4"},
 		},
 		{
 			name:      "empty word after separator-then-space",
 			compWords: `lstk --config = ""`,
 			cword:     3,
 			line:      "lstk --config= ",
-			expect:    []string{"cur=", "prev=--config=", "cword=2", "nwords=3"},
 		},
 	}
 
@@ -197,8 +193,7 @@ run_reassembly
 			require.NoError(t, err, "driver failed\nstdout: %s\nstderr: %s", stdout, stderr)
 			assert.NotContains(t, stderr, "command not found")
 
-			lines := strings.Split(strings.TrimRight(stdout, "\n"), "\n")
-			assert.Equal(t, tc.expect, lines)
+			snap.Match(t, sanitizeOutput(stdout))
 		})
 	}
 }
@@ -215,5 +210,5 @@ _get_comp_words_by_ref
 `
 	stdout, stderr, err := runBashCompletionDriver(t, driver)
 	require.NoError(t, err, "driver failed\nstdout: %s\nstderr: %s", stdout, stderr)
-	assert.Contains(t, stdout, "package version")
+	snap.Match(t, sanitizeOutput(stdout))
 }

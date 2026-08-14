@@ -1,0 +1,88 @@
+Snapshots created by internal/snap. UPDATE_SNAPS=true go test rewrites
+this file.
+
+[TestAWSCommandEndpointURLAfterSubcommandPassesThrough_1]
+> Note: No AWS profile found, run 'lstk setup aws'
+ENDPOINT:http://127.0.0.1:<port>
+ARGS:--endpoint-url http://127.0.0.1:<port> s3 ls
+---
+
+[TestAWSCommandEndpointURLNoDockerRequired_1]
+> Note: No AWS profile found, run 'lstk setup aws'
+ENDPOINT:http://127.0.0.1:<port>
+ARGS:s3 ls
+---
+
+[TestCDKAWSEndpointURLBypassesDockerCheck_1]
+ARGS:deploy MyStack
+ENV_AWS_ENDPOINT_URL=http://<host>:<port>
+ENV_AWS_ENDPOINT_URL_S3=http://<host>:<port>
+ENV_AWS_REGION=us-east-1
+ENV_AWS_ACCESS_KEY_ID=test
+ENV_AWS_SECRET_ACCESS_KEY=test
+ENV_AWS_PROFILE=<unset>
+ENV_AWS_DEFAULT_PROFILE=<unset>
+ENV_AWS_SESSION_TOKEN=<unset>
+---
+
+[TestCDKAWSEndpointURLWrongTypeFails_1]
+Error: lstk cdk requires the AWS emulator, but the endpoint at http://127.0.0.1:<port> is a LocalStack Azure Emulator emulator
+---
+
+[TestLogsRejectsAmbientEndpointURL_1]
+Error: logs does not support LSTK_ENDPOINT_URL: it operates on a local Docker container or local filesystem state with no remote equivalent (LSTK_ENDPOINT_URL is set)
+---
+
+[TestLogsRejectsExplicitEndpointURL_1]
+Error: logs does not support --endpoint-url: it operates on a local Docker container or local filesystem state with no remote equivalent (--endpoint-url was passed)
+---
+
+[TestRestartRejectsAmbientEndpointURL_1]
+Error: restart does not support AWS_ENDPOINT_URL: it operates on a local Docker container or local filesystem state with no remote equivalent (AWS_ENDPOINT_URL is set)
+---
+
+[TestStartRejectsAmbientEndpointURL_1]
+Error: start does not support LSTK_ENDPOINT_URL: it operates on a local Docker container or local filesystem state with no remote equivalent (LSTK_ENDPOINT_URL is set)
+---
+
+[TestStartRejectsExplicitEndpointURL_1]
+Error: start does not support --endpoint-url: it operates on a local Docker container or local filesystem state with no remote equivalent (--endpoint-url was passed)
+---
+
+[TestStatusEndpointURLRendersReducedOutput_1]
+Fetching LocalStack status...
+✔︎ LocalStack AWS Emulator is running
+• Endpoint: http://127.0.0.1:<port>
+• Version: <version>
+> Note: No resources deployed
+---
+
+[TestStatusEndpointURLShowsResources_1]
+Fetching LocalStack status...
+✔︎ LocalStack AWS Emulator is running
+• Endpoint: http://127.0.0.1:<port>
+• Version: <version>
+~ 1 resources · 1 services
+  SERVICE  RESOURCE        REGION     ACCOUNT
+  S3       my-test-bucket  us-east-1  000000000000
+---
+
+[TestStatusUnreachableEndpointURLFailsClosed_1]
+Error: could not reach LocalStack emulator at http://127.0.0.1:<port>: unexpected status 404 from http://127.0.0.1:<port>/_localstack/health
+---
+
+[TestStopRejectsAmbientEndpointURL_1]
+Error: stop does not support LSTK_ENDPOINT_URL: it operates on a local Docker container or local filesystem state with no remote equivalent (LSTK_ENDPOINT_URL is set)
+---
+
+[TestVolumeClearRejectsAmbientEndpointURL_1]
+Error: volume clear does not support LSTK_ENDPOINT_URL: it operates on a local Docker container or local filesystem state with no remote equivalent (LSTK_ENDPOINT_URL is set)
+---
+
+[TestVolumePathRejectsAmbientEndpointURL_1]
+Error: volume path does not support LSTK_ENDPOINT_URL: it operates on a local Docker container or local filesystem state with no remote equivalent (LSTK_ENDPOINT_URL is set)
+---
+
+[TestVolumePathRejectsExplicitEndpointURL_1]
+Error: volume path does not support --endpoint-url: it operates on a local Docker container or local filesystem state with no remote equivalent (--endpoint-url was passed)
+---

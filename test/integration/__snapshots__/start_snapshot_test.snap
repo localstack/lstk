@@ -1,0 +1,10 @@
+Snapshots created by internal/snap. UPDATE_SNAPS=true go test rewrites
+this file.
+
+[TestStartSnapshotConflictingFlags_1]
+Error: --snapshot and --no-snapshot cannot be used together
+---
+
+[TestStartSnapshotInvalidPodName_1]
+Error: invalid pod name "bad.name": use letters, digits, hyphens, and underscores only
+---

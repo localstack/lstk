@@ -3,7 +3,7 @@ package integration_test
 import (
 	"testing"
 
-	"github.com/stretchr/testify/assert"
+	"github.com/localstack/lstk/internal/snap"
 	"github.com/stretchr/testify/require"
 )
 
@@ -18,19 +18,18 @@ func TestInvalidUsageExitsNonZero(t *testing.T) {
 	t.Parallel()
 
 	cases := []struct {
-		name     string
-		args     []string
-		wantText string
+		name string
+		args []string
 	}{
-		{"unknown flag on start", []string{"start", "--bogus-flag-xyz"}, "unknown flag"},
-		{"unknown flag on root", []string{"--bogus-flag-xyz"}, "unknown flag"},
-		{"unknown command", []string{"bogus-command"}, "unknown command"},
-		{"unknown config subcommand", []string{"config", "bogus"}, `unknown command "bogus"`},
-		{"removed config profile subcommand", []string{"config", "profile"}, `unknown command "profile"`},
-		{"unknown setup subcommand", []string{"setup", "bogus"}, `unknown command "bogus"`},
-		{"unknown volume subcommand", []string{"volume", "bogus"}, `unknown command "bogus"`},
-		{"unknown snapshot subcommand", []string{"snapshot", "bogus"}, `unknown command "bogus"`},
-		{"unknown completion shell", []string{"completion", "bogus"}, `unknown command "bogus"`},
+		{"unknown flag on start", []string{"start", "--bogus-flag-xyz"}},
+		{"unknown flag on root", []string{"--bogus-flag-xyz"}},
+		{"unknown command", []string{"bogus-command"}},
+		{"unknown config subcommand", []string{"config", "bogus"}},
+		{"removed config profile subcommand", []string{"config", "profile"}},
+		{"unknown setup subcommand", []string{"setup", "bogus"}},
+		{"unknown volume subcommand", []string{"volume", "bogus"}},
+		{"unknown snapshot subcommand", []string{"snapshot", "bogus"}},
+		{"unknown completion shell", []string{"completion", "bogus"}},
 	}
 
 	for _, tc := range cases {
@@ -41,7 +40,7 @@ func TestInvalidUsageExitsNonZero(t *testing.T) {
 			_, stderr, err := runLstk(t, testContext(t), t.TempDir(), e, tc.args...)
 			require.Error(t, err, "expected %v to fail", tc.args)
 			requireExitCode(t, 1, err)
-			assert.Contains(t, stderr, tc.wantText)
+			snap.Match(t, sanitizeOutput(stderr))
 		})
 	}
 }
@@ -60,7 +59,7 @@ func TestBareParentCommandExitsZero(t *testing.T) {
 			stdout, _, err := runLstk(t, testContext(t), t.TempDir(), e, parent)
 			require.NoError(t, err)
 			requireExitCode(t, 0, err)
-			assert.Contains(t, stdout, "Usage:")
+			snap.Match(t, sanitizeOutput(stdout))
 		})
 	}
 }

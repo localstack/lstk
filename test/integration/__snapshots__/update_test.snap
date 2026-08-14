@@ -1,0 +1,21 @@
+Snapshots created by internal/snap. UPDATE_SNAPS=true go test rewrites
+this file.
+
+[TestUpdateBinaryMockGitHubChecksumMismatch_1]
+lstk 0.0.1
+---
+
+[TestUpdateBinaryMockGitHubHappyPath_1]
+Checking for updates...
+Update available: 0.0.1 → v0.0.2
+Downloading and verifying update...
+✔︎ Updated to v0.0.2
+---
+
+[TestUpdateBinaryMockGitHubHappyPath_2]
+lstk 0.0.2
+---
+
+[TestUpdateBinaryMockGitHubMissingChecksums_1]
+lstk 0.0.1
+---

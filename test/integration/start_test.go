@@ -18,6 +18,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/localstack/lstk/internal/snap"
 	"github.com/localstack/lstk/test/integration/env"
 	"github.com/moby/moby/api/types/network"
 	"github.com/moby/moby/client"
@@ -803,7 +804,7 @@ expose_ports = ["53/sctp"]
 
 	_, stderr, err := runLstk(t, testContext(t), "", testEnvWithHome(t.TempDir(), ""), "--config", configFile, "status")
 	require.Error(t, err)
-	assert.Contains(t, stderr, `protocol must be "tcp" or "udp"`)
+	snap.Match(t, sanitizeOutput(stderr))
 }
 
 func TestStartCommandSetsUpContainerCorrectly(t *testing.T) {

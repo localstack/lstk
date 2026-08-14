@@ -1,0 +1,70 @@
+Snapshots created by internal/snap. UPDATE_SNAPS=true go test rewrites
+this file.
+
+[TestConfigLoadFailureRendersJSONEnvelope_1]
+{
+  "command": "stop",
+  "data": null,
+  "error": {
+    "category": "CONFIG",
+    "code": "CONFIG_INVALID",
+    "message": "<any>",
+    "retryable": false
+  },
+  "schemaVersion": 1,
+  "status": "error",
+  "warnings": []
+}
+---
+
+[TestConfigNotFoundRendersJSONEnvelope_1]
+{
+  "command": "reset",
+  "data": null,
+  "error": {
+    "category": "CONFIG",
+    "code": "CONFIG_NOT_FOUND",
+    "message": "<any>",
+    "retryable": false
+  },
+  "schemaVersion": 1,
+  "status": "error",
+  "warnings": []
+}
+---
+
+[TestNotJSONCapableCommandRendersEnvelope_1]
+{
+  "command": "login",
+  "data": null,
+  "error": {
+    "category": "USAGE",
+    "code": "NOT_JSON_CAPABLE",
+    "message": "\"login\" is not able to provide output in JSON format",
+    "retryable": false
+  },
+  "schemaVersion": 1,
+  "status": "error",
+  "warnings": []
+}
+---
+
+[TestUsageErrorAfterJSONRendersEnvelope_1]
+{
+  "command": "stop",
+  "data": null,
+  "error": {
+    "category": "USAGE",
+    "code": "USAGE_ERROR",
+    "message": "unknown flag: --bogus-flag",
+    "retryable": false
+  },
+  "schemaVersion": 1,
+  "status": "error",
+  "warnings": []
+}
+---
+
+[TestUsageErrorBeforeJSONFallsBackToPlainText_1]
+Error: unknown flag: --bogus-flag
+---

@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/localstack/lstk/internal/snap"
 	"github.com/localstack/lstk/test/integration/env"
 	"github.com/moby/moby/client"
 	"github.com/stretchr/testify/assert"
@@ -212,8 +213,7 @@ func TestLogsTailRejectsInvalidValue(t *testing.T) {
 	_, stderr, err := runLstk(t, testContext(t), "", env.Without(), "--config", configFile, "logs", "--tail", "bogus")
 	require.Error(t, err, "expected lstk logs --tail bogus to fail")
 	requireExitCode(t, 1, err)
-	assert.Contains(t, stderr, "bogus", "error should name the invalid value")
-	assert.Contains(t, stderr, "--tail", "error should name the flag")
+	snap.Match(t, sanitizeOutput(stderr))
 }
 
 func TestLogsTailWithFollowStartsFromTail(t *testing.T) {

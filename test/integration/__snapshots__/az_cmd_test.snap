@@ -1,0 +1,20 @@
+Snapshots created by internal/snap. UPDATE_SNAPS=true go test rewrites
+this file.
+
+[TestAzCommandConfigFlagSelectsConfigFile_1]
+AZ_ARGS:group list
+---
+
+[TestAzCommandConfigFlagSelectsConfigFile_2]
+Error: Azure CLI integration is not set up
+  ==> Set it up: lstk setup azure
+---
+
+[TestAzCommandFailsWhenAzureCLINotInstalled_1]
+Error: az CLI not found in PATH
+  ==> Install Azure CLI: https://learn.microsoft.com/en-us/cli/azure/
+---
+
+[TestAzCommandStripsGlobalFlagsFromPassthrough_1]
+AZ_ARGS:group list
+---

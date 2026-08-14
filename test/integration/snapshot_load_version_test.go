@@ -7,6 +7,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/localstack/lstk/internal/snap"
 	"github.com/localstack/lstk/test/integration/env"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -100,7 +101,8 @@ func TestSnapshotLoadPodVersionReachesWire(t *testing.T) {
 	assert.Equal(t, "3", query.Get("version"))
 	assert.Equal(t, "account-region-merge", query.Get("merge"), "the default merge strategy still applies")
 
-	assert.Contains(t, stdout, "pod:my-baseline:3", "the loaded source should name the pinned version")
+	// The snapshot pins that the loaded source names the pinned version.
+	snap.Match(t, sanitizeOutput(stdout))
 }
 
 // TestSnapshotLoadPodWithoutVersionOmitsParam: an unpinned ref must not send
@@ -120,8 +122,8 @@ func TestSnapshotLoadPodWithoutVersionOmitsParam(t *testing.T) {
 	require.True(t, called, "the pod load endpoint should have been called")
 	assert.False(t, query.Has("version"), "an unpinned load must not send a version parameter")
 
-	assert.Contains(t, stdout, "pod:my-baseline")
-	assert.NotContains(t, stdout, "pod:my-baseline:")
+	// The snapshot pins that no version suffix is rendered for an unpinned ref.
+	snap.Match(t, sanitizeOutput(stdout))
 }
 
 // TestLoadAliasAcceptsPodVersion: the root `lstk load` alias shares the REF
@@ -160,8 +162,7 @@ func TestSnapshotLoadPodVersionDryRun(t *testing.T) {
 	assert.Equal(t, "/_localstack/pods/my-baseline/diff", path)
 	assert.Equal(t, "3", query.Get("version"))
 
-	assert.Contains(t, stdout, "Dry-run results for pod:my-baseline:3")
-	assert.Contains(t, stdout, "No state was modified")
+	snap.Match(t, sanitizeOutput(stdout))
 }
 
 // TestSnapshotLoadPodVersionNotFound: the emulator's own message already names
@@ -182,8 +183,7 @@ func TestSnapshotLoadPodVersionNotFound(t *testing.T) {
 	_, _, query := cap.get()
 	assert.Equal(t, "99", query.Get("version"))
 
-	assert.Contains(t, stdout, "maximum version available in the remote storage is 3")
-	assert.Contains(t, stdout, "lstk snapshot versions pod:my-baseline")
+	snap.Match(t, sanitizeOutput(stdout))
 }
 
 // TestSnapshotLoadRejectsMalformedVersion: a colon in a ref is unambiguously a
@@ -205,8 +205,7 @@ func TestSnapshotLoadRejectsMalformedVersion(t *testing.T) {
 				"--non-interactive", "--endpoint-url", srv.URL, "snapshot", "load", ref,
 			)
 			requireExitCode(t, 1, err)
-			assert.Contains(t, stderr, "invalid version")
-			assert.NotContains(t, stderr, "invalid pod name")
+			snap.Match(t, sanitizeOutput(stderr))
 		})
 	}
 }
@@ -221,7 +220,7 @@ func TestSnapshotLoadS3RejectsPodVersion(t *testing.T) {
 		"--non-interactive", "snapshot", "load", "my-pod:3", "s3://bucket/prefix",
 	)
 	requireExitCode(t, 1, err)
-	assert.Contains(t, stderr, "S3 remotes do not support snapshot versions")
+	snap.Match(t, sanitizeOutput(stderr))
 }
 
 // TestSnapshotSaveRejectsPodVersion: the platform assigns a version on every
@@ -235,8 +234,7 @@ func TestSnapshotSaveRejectsPodVersion(t *testing.T) {
 			"--non-interactive", "snapshot", "save", "pod:my-baseline:3",
 		)
 		requireExitCode(t, 1, err)
-		assert.Contains(t, stderr, "the platform assigns the version on each save")
-		assert.NotContains(t, stderr, "invalid pod name")
+		snap.Match(t, sanitizeOutput(stderr))
 	})
 
 	t.Run("s3 remote", func(t *testing.T) {
@@ -245,7 +243,7 @@ func TestSnapshotSaveRejectsPodVersion(t *testing.T) {
 			"--non-interactive", "snapshot", "save", "my-pod:3", "s3://bucket/prefix",
 		)
 		requireExitCode(t, 1, err)
-		assert.Contains(t, stderr, "S3 remotes do not support snapshot versions")
+		snap.Match(t, sanitizeOutput(stderr))
 	})
 }
 
@@ -259,7 +257,7 @@ func TestSnapshotRemoveRejectsPodVersion(t *testing.T) {
 		"--non-interactive", "snapshot", "remove", "pod:my-baseline:3", "--force",
 	)
 	requireExitCode(t, 1, err)
-	assert.Contains(t, stderr, "drop the ':3'")
+	snap.Match(t, sanitizeOutput(stderr))
 }
 
 // TestStartSnapshotFlagAcceptsPodVersion: --snapshot goes through the same REF
@@ -272,5 +270,5 @@ func TestStartSnapshotFlagAcceptsPodVersion(t *testing.T) {
 		"--non-interactive", "start", "--snapshot", "pod:my-baseline:abc",
 	)
 	requireExitCode(t, 1, err)
-	assert.Contains(t, stderr, "invalid version")
+	snap.Match(t, sanitizeOutput(stderr))
 }

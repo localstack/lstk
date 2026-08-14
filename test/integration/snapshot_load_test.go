@@ -9,6 +9,7 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/localstack/lstk/internal/snap"
 	"github.com/localstack/lstk/test/integration/env"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -157,7 +158,7 @@ func TestSnapshotLoadRemoteRejected(t *testing.T) {
 				"--non-interactive", "snapshot", "load", ref,
 			)
 			requireExitCode(t, 1, err)
-			assert.Contains(t, stderr, "not yet supported")
+			snap.Match(t, sanitizeOutput(stderr))
 		})
 	}
 }
@@ -172,7 +173,7 @@ func TestSnapshotLoadS3RequiresPodName(t *testing.T) {
 		"--non-interactive", "snapshot", "load", "s3://bucket/key",
 	)
 	requireExitCode(t, 1, err)
-	assert.Contains(t, stderr, "pod name is required")
+	snap.Match(t, sanitizeOutput(stderr))
 }
 
 func TestSnapshotLoadPodNoAuthToken(t *testing.T) {
@@ -184,7 +185,7 @@ func TestSnapshotLoadPodNoAuthToken(t *testing.T) {
 		"--non-interactive", "snapshot", "load", "pod:my-baseline",
 	)
 	requireExitCode(t, 1, err)
-	assert.Contains(t, stderr, "authentication")
+	snap.Match(t, sanitizeOutput(stderr))
 }
 
 func TestSnapshotLoadPodInvalidName(t *testing.T) {
@@ -198,7 +199,7 @@ func TestSnapshotLoadPodInvalidName(t *testing.T) {
 				"--non-interactive", "snapshot", "load", ref,
 			)
 			requireExitCode(t, 1, err)
-			assert.Contains(t, stderr, "invalid pod name")
+			snap.Match(t, sanitizeOutput(stderr))
 		})
 	}
 }
@@ -493,7 +494,7 @@ func TestSnapshotLoadDryRunOnLocalRef(t *testing.T) {
 		"--non-interactive", "snapshot", "load", "--dry-run", snapPath,
 	)
 	requireExitCode(t, 1, err)
-	assert.Contains(t, stderr, "pod refs")
+	snap.Match(t, sanitizeOutput(stderr))
 }
 
 func TestSnapshotLoadDryRunPodNoAuthToken(t *testing.T) {
@@ -505,7 +506,7 @@ func TestSnapshotLoadDryRunPodNoAuthToken(t *testing.T) {
 		"--non-interactive", "snapshot", "load", "--dry-run", "pod:my-baseline",
 	)
 	requireExitCode(t, 1, err)
-	assert.Contains(t, stderr, "authentication")
+	snap.Match(t, sanitizeOutput(stderr))
 }
 
 func TestSnapshotLoadDryRunPodSuccess(t *testing.T) {

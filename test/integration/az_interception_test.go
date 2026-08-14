@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/localstack/lstk/internal/snap"
 	"github.com/localstack/lstk/test/integration/env"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -43,8 +44,7 @@ func TestAzStartInterceptionRoutesToSubcommand(t *testing.T) {
 		"az", "start-interception",
 	)
 	require.Error(t, err)
-	assert.Contains(t, stdout, "az CLI not found in PATH")
-	assert.NotContains(t, stdout, "not set up")
+	snap.Match(t, sanitizeOutput(stdout))
 }
 
 // stop-interception is a safe no-op when LocalStack is not the active cloud — e.g.
@@ -62,7 +62,7 @@ func TestAzStopInterceptionNoOpWhenNotIntercepting(t *testing.T) {
 		"az", "stop-interception",
 	)
 	require.NoError(t, err, "stop-interception must not fail when LocalStack is not active")
-	assert.Contains(t, stdout, "not the active Azure cloud")
+	snap.Match(t, sanitizeOutput(stdout))
 
 	// It must not have switched the active cloud to anything.
 	active, azErr := runAzRaw(t, testContext(t), env.WithHome(home), "cloud", "show", "--query", "name", "-o", "tsv")
@@ -79,8 +79,7 @@ func TestAzStopInterceptionFailsWhenAzureCLINotInstalled(t *testing.T) {
 		"az", "stop-interception",
 	)
 	require.Error(t, err)
-	assert.Contains(t, stdout, "az CLI not found in PATH")
-	assert.Contains(t, stdout, "Install Azure CLI:")
+	snap.Match(t, sanitizeOutput(stdout))
 }
 
 // TestAzInterception exercises the full start/stop-interception lifecycle against a real

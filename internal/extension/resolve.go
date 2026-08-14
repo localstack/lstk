@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	goruntime "runtime"
+	"slices"
 	"sort"
 	"strings"
 
@@ -128,7 +129,15 @@ func scanDir(dir string) []string {
 		}
 		name := strings.TrimPrefix(fileName, NamePrefix)
 		if goruntime.GOOS == "windows" {
-			name = strings.TrimSuffix(name, filepath.Ext(name))
+			// isExecutableFile accepts any regular file on Windows, so
+			// executability must be decided here by PATHEXT — otherwise a
+			// data file like lstk-extensions.toml lists as a phantom
+			// "extensions" extension.
+			ext := strings.ToLower(filepath.Ext(name))
+			if !slices.Contains(windowsExts(), ext) {
+				continue
+			}
+			name = strings.TrimSuffix(name, ext)
 		}
 		if name == "" {
 			continue

@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/localstack/lstk/internal/snap"
 	"github.com/localstack/lstk/test/integration/env"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -154,7 +155,7 @@ volume = "` + escapeTomlPath(volumeDir) + `"
 		require.Error(t, err)
 		requireExitCode(t, 1, err)
 
-		assert.Contains(t, stderr, "--force")
+		snap.Match(t, sanitizeOutput(stderr))
 	})
 
 	t.Run("handles nonexistent volume directory", func(t *testing.T) {
@@ -197,7 +198,7 @@ volume = "` + escapeTomlPath(volumeDir) + `"
 		_, stderr, err := runLstk(t, testContext(t), t.TempDir(), testEnvWithHome(t.TempDir(), ""), "--config", configFile, "--non-interactive", "volume", "clear", "--force", "--type", "snowflake")
 		require.Error(t, err)
 		requireExitCode(t, 1, err)
-		assert.Contains(t, stderr, "not found")
+		snap.Match(t, sanitizeOutput(stderr))
 
 		// Correct type should succeed
 		stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), testEnvWithHome(t.TempDir(), ""), "--config", configFile, "--non-interactive", "volume", "clear", "--force", "--type", "aws")

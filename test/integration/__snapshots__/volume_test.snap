@@ -1,0 +1,10 @@
+Snapshots created by internal/snap. UPDATE_SNAPS=true go test rewrites
+this file.
+
+[TestVolumeClearCommand_fails_without_force_in_non-interactive_mode_1]
+Error: volume clear requires confirmation; use --force to skip in non-interactive mode
+---
+
+[TestVolumeClearCommand_filters_by_emulator_type_1]
+Error: emulator type "snowflake" not found in config; available: [aws]
+---

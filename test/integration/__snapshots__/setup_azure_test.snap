@@ -1,0 +1,22 @@
+Snapshots created by internal/snap. UPDATE_SNAPS=true go test rewrites
+this file.
+
+[TestAzCommandErrorsWhenNotSetUp_1]
+Error: Azure CLI integration is not set up
+  ==> Set it up: lstk setup azure
+---
+
+[TestSetupAzureAliasAz_1]
+Error: no azure emulator configured — run 'lstk start' and select the Azure emulator first
+---
+
+[TestSetupAzureNonInteractiveRunsWithoutTerminal_1]
+Error: no azure emulator configured — run 'lstk start' and select the Azure emulator first
+---
+
+[TestSetupAzureReportsMissingAzCLIOnce_1]
+Error: az CLI not found in PATH — install it from https://learn.microsoft.com/en-us/cli/azure/
+---
+
+[TestSetupAzureReportsMissingAzCLIOnce_2]
+---

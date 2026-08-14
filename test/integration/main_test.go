@@ -106,6 +106,12 @@ func TestMain(m *testing.M) {
 		}
 	}
 
+	// snap.Clean is deliberately NOT wired here (unlike unit-test packages):
+	// it treats unvisited snapshots as obsolete, but this package skips whole
+	// test groups per platform (Docker on Windows CI, PTY/sh fakes on Windows,
+	// TLS trust on non-Linux), so a full run on any one OS never visits the
+	// other platforms' snapshots — Clean would flag them (or delete them under
+	// UPDATE_SNAPS=true). Stale snapshots here are caught by review instead.
 	m.Run()
 }
 

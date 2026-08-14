@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/localstack/lstk/internal/snap"
 	"github.com/localstack/lstk/test/integration/env"
 	"github.com/moby/moby/client"
 	"github.com/stretchr/testify/assert"
@@ -39,7 +40,7 @@ func TestLogoutCommandSucceedsWhenNoToken(t *testing.T) {
 	stdout, stderr, err := runLstk(t, testContext(t), "", env.Without(env.AuthToken).With(env.AnalyticsEndpoint, analyticsSrv.URL), "logout")
 	require.NoError(t, err, "lstk logout should succeed even with no token: %s", stderr)
 	requireExitCode(t, 0, err)
-	assert.Contains(t, stdout, "Not currently logged in")
+	snap.Match(t, sanitizeOutput(stdout))
 	assertCommandTelemetry(t, events, "logout", 0)
 }
 

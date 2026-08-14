@@ -1,0 +1,8 @@
+Snapshots created by internal/snap. UPDATE_SNAPS=true go test rewrites
+this file.
+
+[TestAzWithPipedStdoutKeepsPipe_1]
+STDOUT_TTY:no
+PYTHONUNBUFFERED:1
+piped
+---

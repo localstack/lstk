@@ -71,20 +71,34 @@ func Require(t testing.TB, key Key) string {
 
 type Environ []string
 
-func Without(keys ...Key) Environ {
+// ambientAWSKeys are the AWS credential/config variables lstk and the wrapped
+// tools resolve from the environment. They are stripped from every test
+// environment so the developer's real shell (profile, region, keys, endpoint
+// overrides) can't leak into wrapped-tool env dumps, credential resolution, or
+// snapshotted output; tests exercising ambient behavior set them explicitly
+// via With, which wins because exec dedups duplicate keys to the last value.
+var ambientAWSKeys = []Key{
+	"AWS_PROFILE", "AWS_DEFAULT_PROFILE",
+	"AWS_REGION", "AWS_DEFAULT_REGION",
+	"AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_SESSION_TOKEN",
+	"AWS_ENDPOINT_URL", "AWS_ENDPOINT_URL_S3",
+	"LSTK_ENDPOINT_URL",
+}
+
+func base() Environ {
 	return Environ(os.Environ()).
+		Without(ambientAWSKeys...).
 		With(AnalyticsEndpoint, UnreachableAnalyticsEndpoint).
 		With(AzureCollectTelemetry, "false").
-		With(SamCliTelemetry, "0").
-		Without(keys...)
+		With(SamCliTelemetry, "0")
+}
+
+func Without(keys ...Key) Environ {
+	return base().Without(keys...)
 }
 
 func With(key Key, value string) Environ {
-	return Environ(os.Environ()).
-		With(AnalyticsEndpoint, UnreachableAnalyticsEndpoint).
-		With(AzureCollectTelemetry, "false").
-		With(SamCliTelemetry, "0").
-		With(key, value)
+	return base().With(key, value)
 }
 
 func (e Environ) Without(keys ...Key) Environ {

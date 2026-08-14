@@ -1,0 +1,8 @@
+Snapshots created by internal/snap. UPDATE_SNAPS=true go test rewrites
+this file.
+
+[TestStatusCommandFailsWhenNotRunning_1]
+Error: LocalStack AWS Emulator is not running
+  ==> Start LocalStack: lstk
+  ==> See help: lstk -h
+---

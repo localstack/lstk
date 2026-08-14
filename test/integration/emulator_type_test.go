@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/localstack/lstk/internal/snap"
 	"github.com/localstack/lstk/test/integration/env"
 	"github.com/moby/moby/client"
 	"github.com/stretchr/testify/assert"
@@ -148,7 +149,7 @@ func TestStartTypeErrorsOnMultipleBlocks(t *testing.T) {
 	stdout, _, err := runLstk(t, testContext(t), t.TempDir(), e, "start", "--type", "azure", "--non-interactive")
 
 	require.Error(t, err)
-	assert.Contains(t, stdout, "Unsupported configuration")
+	snap.Match(t, sanitizeOutput(stdout))
 	// Config must be left untouched — neither block's type is rewritten.
 	data, readErr := os.ReadFile(configPath)
 	require.NoError(t, readErr)
@@ -168,7 +169,7 @@ func TestStartTypePositionalRejected(t *testing.T) {
 	_, stderr, err := runLstk(t, testContext(t), t.TempDir(), e, "start", "azure", "--non-interactive")
 
 	require.Error(t, err)
-	assert.Contains(t, stderr, "select the emulator with --type")
+	snap.Match(t, sanitizeOutput(stderr))
 	require.NoFileExists(t, configPath)
 }
 
@@ -187,7 +188,7 @@ func TestStartTypeErrorsWhenNoContainersBlock(t *testing.T) {
 	_, stderr, err := runLstk(t, testContext(t), t.TempDir(), e, "start", "--type", "azure", "--non-interactive")
 
 	require.Error(t, err)
-	assert.Contains(t, stderr, "[[containers]] block")
+	snap.Match(t, sanitizeOutput(stderr))
 	// The env table's type key must be left untouched, not corrupted to "azure".
 	data, readErr := os.ReadFile(configPath)
 	require.NoError(t, readErr)
@@ -201,7 +202,7 @@ func TestStartTypeInvalidValue(t *testing.T) {
 	_, stderr, err := runLstk(t, testContext(t), t.TempDir(), e, "start", "--type", "bogus", "--non-interactive")
 
 	require.Error(t, err)
-	assert.Contains(t, stderr, `invalid emulator type "bogus"`)
+	snap.Match(t, sanitizeOutput(stderr))
 }
 
 // TestStartTypeFlagRefusesSwitchWhenDifferentEmulatorRunning is the end-to-end

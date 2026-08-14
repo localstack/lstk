@@ -1,0 +1,140 @@
+Snapshots created by internal/snap. UPDATE_SNAPS=true go test rewrites
+this file.
+
+[TestBareParentCommandExitsZero_completion_1]
+Generate the autocompletion script for lstk for the specified shell.
+See each sub-command's help for details on how to use the generated script.
+
+Usage: lstk completion [flags]
+
+Commands:
+  bash        Generate the autocompletion script for bash
+  fish        Generate the autocompletion script for fish
+  powershell  Generate the autocompletion script for powershell
+  zsh         Generate the autocompletion script for zsh
+
+Options:
+  -h, --help   help for completion
+
+Global Options:
+      --config string         Path to config file
+      --endpoint-url string   Target an existing, externally-managed emulator at this URL
+      --json                  Output in JSON format (only supported by some commands)
+      --non-interactive       Disable interactive mode
+---
+
+[TestBareParentCommandExitsZero_config_1]
+Manage configuration
+
+Usage: lstk config [flags]
+
+Commands:
+  path        Print the configuration file path
+
+Options:
+  -h, --help   help for config
+
+Global Options:
+      --config string         Path to config file
+      --endpoint-url string   Target an existing, externally-managed emulator at this URL
+      --json                  Output in JSON format (only supported by some commands)
+      --non-interactive       Disable interactive mode
+---
+
+[TestBareParentCommandExitsZero_setup_1]
+Set up emulator CLI integration for AWS or Azure.
+
+Usage: lstk setup [flags]
+
+Commands:
+  aws         Set up the LocalStack AWS profile
+  azure       Set up Azure CLI integration with LocalStack
+
+Options:
+  -h, --help   help for setup
+
+Global Options:
+      --config string         Path to config file
+      --endpoint-url string   Target an existing, externally-managed emulator at this URL
+      --json                  Output in JSON format (only supported by some commands)
+      --non-interactive       Disable interactive mode
+---
+
+[TestBareParentCommandExitsZero_snapshot_1]
+Manage emulator snapshots
+
+Usage: lstk snapshot [flags]
+
+Commands:
+  list        List Cloud Pod snapshots available on the LocalStack platform
+  load        Load a snapshot into the running emulator
+  remove      Delete a cloud snapshot from the LocalStack platform
+  save        Save a snapshot of the emulator state
+  show        Show metadata for a cloud snapshot
+  versions    List the version history of a cloud snapshot
+
+Options:
+  -h, --help   help for snapshot
+
+Global Options:
+      --config string         Path to config file
+      --endpoint-url string   Target an existing, externally-managed emulator at this URL
+      --json                  Output in JSON format (only supported by some commands)
+      --non-interactive       Disable interactive mode
+---
+
+[TestBareParentCommandExitsZero_volume_1]
+Manage emulator volume
+
+Usage: lstk volume [flags]
+
+Commands:
+  clear       Clear emulator volume data
+  path        Print the volume directory path
+
+Options:
+  -h, --help   help for volume
+
+Global Options:
+      --config string         Path to config file
+      --endpoint-url string   Target an existing, externally-managed emulator at this URL
+      --json                  Output in JSON format (only supported by some commands)
+      --non-interactive       Disable interactive mode
+---
+
+[TestInvalidUsageExitsNonZero_removed_config_profile_subcommand_1]
+Error: unknown command "profile" for "lstk config"
+---
+
+[TestInvalidUsageExitsNonZero_unknown_command_1]
+Error: unknown command "bogus-command" for lstk
+  ==> See help: lstk -h
+---
+
+[TestInvalidUsageExitsNonZero_unknown_completion_shell_1]
+Error: unknown command "bogus" for "lstk completion"
+---
+
+[TestInvalidUsageExitsNonZero_unknown_config_subcommand_1]
+Error: unknown command "bogus" for "lstk config"
+---
+
+[TestInvalidUsageExitsNonZero_unknown_flag_on_root_1]
+Error: unknown flag: --bogus-flag-xyz
+---
+
+[TestInvalidUsageExitsNonZero_unknown_flag_on_start_1]
+Error: unknown flag: --bogus-flag-xyz
+---
+
+[TestInvalidUsageExitsNonZero_unknown_setup_subcommand_1]
+Error: unknown command "bogus" for "lstk setup"
+---
+
+[TestInvalidUsageExitsNonZero_unknown_snapshot_subcommand_1]
+Error: unknown command "bogus" for "lstk snapshot"
+---
+
+[TestInvalidUsageExitsNonZero_unknown_volume_subcommand_1]
+Error: unknown command "bogus" for "lstk volume"
+---

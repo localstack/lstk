@@ -1,0 +1,7 @@
+Snapshots created by internal/snap. UPDATE_SNAPS=true go test rewrites
+this file.
+
+[TestLogoutCommandSucceedsWhenNoToken_1]
+Logging out......
+> Note: Not currently logged in
+---

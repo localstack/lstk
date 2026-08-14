@@ -7,6 +7,7 @@ import (
 	"runtime"
 	"testing"
 
+	"github.com/localstack/lstk/internal/snap"
 	"github.com/localstack/lstk/test/integration/env"
 	"github.com/moby/moby/client"
 	"github.com/stretchr/testify/assert"
@@ -163,7 +164,7 @@ tag = "latest"
 	_, stderr, err := runLstk(t, testContext(t), t.TempDir(), testEnvWithHome(t.TempDir(), ""), "--config", configFile, "stop")
 	require.Error(t, err)
 	requireExitCode(t, 1, err)
-	assert.Contains(t, stderr, "port is required")
+	snap.Match(t, sanitizeOutput(stderr))
 }
 
 func TestConfigWithInvalidContainerNameFails(t *testing.T) {
@@ -182,7 +183,8 @@ container_name = "my emulator"
 	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), testEnvWithHome(t.TempDir(), ""), "--config", configFile, "stop")
 	require.Error(t, err)
 	requireExitCode(t, 1, err)
-	assert.Contains(t, stdout+stderr, `invalid container name "my emulator"`)
+	snap.Match(t, sanitizeOutput(stdout))
+	snap.Match(t, sanitizeOutput(stderr))
 }
 
 func TestStartWithMultipleContainersFailsFast(t *testing.T) {
@@ -204,7 +206,8 @@ port = "4567"
 	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), testEnvWithHome(t.TempDir(), ""), "--config", configFile, "start")
 	require.Error(t, err)
 	requireExitCode(t, 1, err)
-	assert.Contains(t, stdout+stderr, "only one is supported at a time")
+	snap.Match(t, sanitizeOutput(stdout))
+	snap.Match(t, sanitizeOutput(stderr))
 }
 
 func TestLegacyYAMLConfigGivesHelpfulError(t *testing.T) {

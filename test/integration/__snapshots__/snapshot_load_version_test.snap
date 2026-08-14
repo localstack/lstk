@@ -1,0 +1,62 @@
+Snapshots created by internal/snap. UPDATE_SNAPS=true go test rewrites
+this file.
+
+[TestSnapshotLoadPodVersionDryRun_1]
+Checking diff for pod "my-baseline" (version 3)......
+Dry-run results for pod:my-baseline:3
+
+  s3  + 1 addition
+
+✔︎ No state was modified.
+---
+
+[TestSnapshotLoadPodVersionNotFound_1]
+Loading snapshot from pod "my-baseline" (version 99)......
+Error: Could not load snapshot
+  Unable to load pod my-baseline with version 99. The maximum version available in the remote storage is 3
+  ==> List available versions: lstk snapshot versions pod:my-baseline
+---
+
+[TestSnapshotLoadPodVersionReachesWire_1]
+Loading snapshot from pod "my-baseline" (version 3)......
+✔︎ Snapshot loaded from pod:my-baseline:3
+• Services: s3
+---
+
+[TestSnapshotLoadPodWithoutVersionOmitsParam_1]
+Loading snapshot from pod "my-baseline"......
+✔︎ Snapshot loaded from pod:my-baseline
+• Services: s3
+---
+
+[TestSnapshotLoadRejectsMalformedVersion_pod_my-baseline_0_1]
+Error: invalid version "0" in "pod:my-baseline:0": use a positive integer
+---
+
+[TestSnapshotLoadRejectsMalformedVersion_pod_my-baseline__1]
+Error: invalid version "" in "pod:my-baseline:": use a positive integer
+---
+
+[TestSnapshotLoadRejectsMalformedVersion_pod_my-baseline_abc_1]
+Error: invalid version "abc" in "pod:my-baseline:abc": use a positive integer
+---
+
+[TestSnapshotLoadS3RejectsPodVersion_1]
+Error: a specific snapshot version is not supported here: "my-pod:3" — S3 remotes do not support snapshot versions
+---
+
+[TestSnapshotRemoveRejectsPodVersion_1]
+Error: a specific snapshot version is not supported here: drop the ':3' from "pod:my-baseline:3"
+---
+
+[TestSnapshotSaveRejectsPodVersion_pod_destination_1]
+Error: a specific snapshot version is not supported here: 'pod:my-baseline:3' — the platform assigns the version on each save; use 'pod:my-baseline'
+---
+
+[TestSnapshotSaveRejectsPodVersion_s3_remote_1]
+Error: a specific snapshot version is not supported here: "my-pod:3" — S3 remotes do not support snapshot versions
+---
+
+[TestStartSnapshotFlagAcceptsPodVersion_1]
+Error: invalid version "abc" in "pod:my-baseline:abc": use a positive integer
+---

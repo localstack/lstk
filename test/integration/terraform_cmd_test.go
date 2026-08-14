@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/localstack/lstk/internal/snap"
 	"github.com/localstack/lstk/test/integration/env"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -63,7 +64,7 @@ func TestTerraformForwardsArgs(t *testing.T) {
 
 	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), e, "terraform", "version")
 	require.NoError(t, err, "stderr: %s", stderr)
-	assert.Contains(t, stdout, "ARGS:version")
+	snap.Match(t, sanitizeOutput(stdout))
 }
 
 func TestTerraformAliasTF(t *testing.T) {
@@ -73,7 +74,7 @@ func TestTerraformAliasTF(t *testing.T) {
 
 	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), e, "tf", "version")
 	require.NoError(t, err, "stderr: %s", stderr)
-	assert.Contains(t, stdout, "ARGS:version")
+	snap.Match(t, sanitizeOutput(stdout))
 }
 
 // LSTK_TF_CMD selects the binary to invoke (e.g. OpenTofu). A stub named `tofu`
@@ -86,7 +87,7 @@ func TestTerraformHonorsLstkTfCmd(t *testing.T) {
 
 	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), e, "terraform", "version")
 	require.NoError(t, err, "stderr: %s", stderr)
-	assert.Contains(t, stdout, "TOFU:version")
+	snap.Match(t, sanitizeOutput(stdout))
 }
 
 func TestTerraformPropagatesExitCode(t *testing.T) {
@@ -96,7 +97,7 @@ func TestTerraformPropagatesExitCode(t *testing.T) {
 
 	_, stderr, err := runLstk(t, testContext(t), t.TempDir(), e, "terraform", "validate")
 	require.Error(t, err)
-	assert.Contains(t, stderr, "simulated failure")
+	snap.Match(t, sanitizeOutput(stderr))
 	requireExitCode(t, 5, err)
 }
 
@@ -107,10 +108,10 @@ func TestTerraformMissingBinary(t *testing.T) {
 
 	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), e, "terraform", "version")
 	require.Error(t, err)
-	combined := stderr + stdout
-	assert.Contains(t, combined, "not found in PATH")
-	assert.Contains(t, combined, "Install Terraform CLI:")
-	assert.Contains(t, combined, "https://developer.hashicorp.com/terraform/cli")
+	// The snapshots pin the full missing-binary error card, install hint
+	// included.
+	snap.Match(t, sanitizeOutput(stderr))
+	snap.Match(t, sanitizeOutput(stdout))
 }
 
 // 7.3 — fmt/validate/version/init run without generating an override and without
@@ -129,10 +130,9 @@ func TestTerraformUnproxiedSkipsOverride(t *testing.T) {
 				"terraform", "--region", "us-west-2", "--account", "111111111111", sub)
 			require.NoError(t, err, "stderr: %s", stderr)
 
-			assert.Contains(t, stdout, "ARGS:"+sub)
-			// lstk-specific flags must not be forwarded to terraform.
-			assert.NotContains(t, stdout, "--region")
-			assert.NotContains(t, stdout, "--account")
+			// The snapshot pins the forwarded args: lstk-specific flags
+			// (--region/--account) must not be forwarded to terraform.
+			snap.Match(t, sanitizeOutput(stdout))
 			// No override file generated.
 			assert.NoFileExists(t, filepath.Join(workDir, tfOverrideFile))
 		})
@@ -156,7 +156,7 @@ func TestTerraformHelpSkipsOverride(t *testing.T) {
 			stdout, stderr, err := runLstk(t, testContext(t), workDir, e, cmdArgs...)
 			require.NoError(t, err, "stderr: %s", stderr)
 
-			assert.Contains(t, stdout, "ARGS:"+strings.Join(args, " "))
+			snap.Match(t, sanitizeOutput(stdout))
 			assert.NoFileExists(t, filepath.Join(workDir, tfOverrideFile))
 		})
 	}
@@ -172,7 +172,8 @@ func TestTerraformInvalidAccountRejected(t *testing.T) {
 	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), e,
 		"terraform", "--account", "12345", "plan")
 	require.Error(t, err)
-	assert.Contains(t, stderr+stdout, "12-digit")
+	snap.Match(t, sanitizeOutput(stderr))
+	snap.Match(t, sanitizeOutput(stdout))
 }
 
 func TestTerraformMissingFlagValue(t *testing.T) {
@@ -182,7 +183,8 @@ func TestTerraformMissingFlagValue(t *testing.T) {
 
 	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), e, "terraform", "--region")
 	require.Error(t, err)
-	assert.Contains(t, stderr+stdout, "--region requires a value")
+	snap.Match(t, sanitizeOutput(stderr))
+	snap.Match(t, sanitizeOutput(stdout))
 }
 
 // 7.7 — positional rules. Flags after the action are forwarded verbatim (use an
@@ -196,7 +198,7 @@ func TestTerraformFlagsAfterActionAreForwarded(t *testing.T) {
 	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), e,
 		"terraform", "version", "--region", "us-west-2")
 	require.NoError(t, err, "stderr: %s", stderr)
-	assert.Contains(t, stdout, "ARGS:version --region us-west-2")
+	snap.Match(t, sanitizeOutput(stdout))
 }
 
 func TestTerraformFlagBeforeSubcommandRejected(t *testing.T) {
@@ -207,7 +209,8 @@ func TestTerraformFlagBeforeSubcommandRejected(t *testing.T) {
 	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), e,
 		"--account", "111111111111", "terraform", "version")
 	require.Error(t, err)
-	assert.Contains(t, stderr+stdout, "must appear after the terraform subcommand")
+	snap.Match(t, sanitizeOutput(stderr))
+	snap.Match(t, sanitizeOutput(stdout))
 }
 
 // 7.2 — proxied command with no running emulator fails with "not running" and
@@ -275,10 +278,9 @@ func TestTerraformDryRunGeneratesOverride(t *testing.T) {
 	require.FileExists(t, overridePath)
 	content, err := os.ReadFile(overridePath)
 	require.NoError(t, err)
-	assert.Contains(t, string(content), `region = "us-west-2"`)
-	assert.Contains(t, string(content), `access_key = "111111111111"`)
-	assert.Contains(t, string(content), "endpoints {")
-	assert.Contains(t, string(content), "s3 =")
+	// The snapshot pins the full generated override: resolved region and
+	// account encoded, plus the complete endpoints block (host masked).
+	snap.Match(t, sanitizeOutput(string(content)))
 }
 
 // 7.5 — a pre-existing override file (not created by lstk) causes a clear

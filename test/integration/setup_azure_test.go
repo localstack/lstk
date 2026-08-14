@@ -4,9 +4,9 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strings"
 	"testing"
 
+	"github.com/localstack/lstk/internal/snap"
 	"github.com/localstack/lstk/test/integration/env"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -69,8 +69,7 @@ func TestAzCommandErrorsWhenNotSetUp(t *testing.T) {
 	)
 	require.Error(t, err)
 	requireExitCode(t, 1, err)
-	assert.Contains(t, stdout, "Azure CLI integration is not set up")
-	assert.Contains(t, stdout, "lstk setup azure")
+	snap.Match(t, sanitizeOutput(stdout))
 }
 
 // Non-interactive mode must not be rejected upfront (CI use case): with no
@@ -84,8 +83,7 @@ func TestSetupAzureNonInteractiveRunsWithoutTerminal(t *testing.T) {
 		"setup", "azure",
 	)
 	require.Error(t, err)
-	assert.Contains(t, stderr, "no azure emulator configured")
-	assert.NotContains(t, stderr, "interactive terminal")
+	snap.Match(t, sanitizeOutput(stderr))
 }
 
 // `lstk setup az` must resolve to `setup azure`: the Azure tool-proxy command
@@ -100,8 +98,7 @@ func TestSetupAzureAliasAz(t *testing.T) {
 		"setup", "az",
 	)
 	require.Error(t, err)
-	assert.NotContains(t, stderr, "unknown command")
-	assert.Contains(t, stderr, "no azure emulator configured")
+	snap.Match(t, sanitizeOutput(stderr))
 }
 
 // When the az CLI is missing, the error must be reported exactly once —
@@ -115,10 +112,8 @@ func TestSetupAzureReportsMissingAzCLIOnce(t *testing.T) {
 		"setup", "azure",
 	)
 	require.Error(t, err)
-	assert.Contains(t, stderr, "az CLI not found in PATH")
-	combined := stdout + stderr
-	assert.Equal(t, 1, strings.Count(combined, "az CLI not found in PATH"),
-		"missing az CLI must be reported exactly once, got:\n%s", combined)
+	snap.Match(t, sanitizeOutput(stderr))
+	snap.Match(t, sanitizeOutput(stdout))
 }
 
 func TestAzCommandErrorsWhenEmulatorNotRunning(t *testing.T) {

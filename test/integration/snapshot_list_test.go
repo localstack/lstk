@@ -5,10 +5,10 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"sync"
 	"testing"
 
+	"github.com/localstack/lstk/internal/snap"
 	"github.com/localstack/lstk/test/integration/env"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -82,14 +82,7 @@ func TestSnapshotListSuccessWithoutDocker(t *testing.T) {
 	called, creator, _ := cap.get()
 	require.True(t, called, "the platform list endpoint should have been called")
 	assert.Equal(t, "me", creator, "default list should send ?creator=me")
-	assert.Contains(t, stdout, "~ 2 snapshots")
-	assert.Contains(t, stdout, "~ 2 snapshots\n\n  NAME")
-	assert.Contains(t, stdout, "NAME")
-	assert.Contains(t, stdout, "VERSION")
-	assert.Contains(t, stdout, "LAST CHANGED")
-	assert.Contains(t, stdout, "baseline-q2")
-	assert.Contains(t, stdout, "infra-2026-04")
-	assert.Contains(t, stdout, "3")
+	snap.Match(t, sanitizeOutput(stdout))
 }
 
 func TestSnapshotListAllFlag(t *testing.T) {
@@ -108,8 +101,7 @@ func TestSnapshotListAllFlag(t *testing.T) {
 	called, creator, _ := cap.get()
 	require.True(t, called, "the platform list endpoint should have been called")
 	assert.Equal(t, "", creator, "--all should omit the ?creator param")
-	assert.Contains(t, stdout, "~ 1 snapshot")
-	assert.Contains(t, stdout, "org-pod")
+	snap.Match(t, sanitizeOutput(stdout))
 }
 
 func TestSnapshotListEmpty(t *testing.T) {
@@ -122,7 +114,7 @@ func TestSnapshotListEmpty(t *testing.T) {
 		"--non-interactive", "snapshot", "list",
 	)
 	require.NoError(t, err, "lstk snapshot list failed: %s", stderr)
-	assert.Contains(t, stdout, "No snapshots found")
+	snap.Match(t, sanitizeOutput(stdout))
 }
 
 func TestSnapshotListSendsBasicAuthHeader(t *testing.T) {
@@ -159,8 +151,7 @@ func TestSnapshotListRequiresAuthToken(t *testing.T) {
 		"--non-interactive", "snapshot", "list",
 	)
 	requireExitCode(t, 1, err)
-	assert.Contains(t, stdout, "Authentication required")
-	assert.Contains(t, stdout, "lstk login")
+	snap.Match(t, sanitizeOutput(stdout))
 }
 
 func TestSnapshotListServerError(t *testing.T) {
@@ -179,7 +170,7 @@ func TestSnapshotListServerError(t *testing.T) {
 		"--non-interactive", "snapshot", "list",
 	)
 	requireExitCode(t, 1, err)
-	assert.Contains(t, strings.ToLower(stderr), "error")
+	snap.Match(t, sanitizeOutput(stderr))
 }
 
 func TestSnapshotListInteractive(t *testing.T) {

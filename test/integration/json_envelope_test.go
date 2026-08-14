@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/localstack/lstk/internal/snap"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -55,12 +56,8 @@ func TestNotJSONCapableCommandRendersEnvelope(t *testing.T) {
 	stdout, _, err := runLstk(t, ctx, t.TempDir(), testEnvWithHome(t.TempDir(), ""), "login", "--json")
 	requireExitCode(t, 1, err)
 
-	envelope := decodeEnvelope(t, stdout)
-	assert.Equal(t, "error", envelope.Status)
-	assert.Equal(t, "login", envelope.Command)
-	require.NotNil(t, envelope.Error)
-	assert.Equal(t, "NOT_JSON_CAPABLE", envelope.Error.Code)
-	assert.Equal(t, "USAGE", envelope.Error.Category)
+	decodeEnvelope(t, stdout)
+	snap.MatchJSON(t, []byte(stdout))
 }
 
 func TestUsageErrorAfterJSONRendersEnvelope(t *testing.T) {
@@ -73,11 +70,8 @@ func TestUsageErrorAfterJSONRendersEnvelope(t *testing.T) {
 	stdout, _, err := runLstk(t, ctx, t.TempDir(), testEnvWithHome(t.TempDir(), ""), "stop", "--json", "--bogus-flag")
 	requireExitCode(t, 1, err)
 
-	envelope := decodeEnvelope(t, stdout)
-	assert.Equal(t, "error", envelope.Status)
-	require.NotNil(t, envelope.Error)
-	assert.Equal(t, "USAGE_ERROR", envelope.Error.Code)
-	assert.Equal(t, "USAGE", envelope.Error.Category)
+	decodeEnvelope(t, stdout)
+	snap.MatchJSON(t, []byte(stdout))
 }
 
 func TestUsageErrorBeforeJSONFallsBackToPlainText(t *testing.T) {
@@ -91,7 +85,7 @@ func TestUsageErrorBeforeJSONFallsBackToPlainText(t *testing.T) {
 	requireExitCode(t, 1, err)
 
 	assert.Empty(t, stdout, "no JSON should be attempted when --json wasn't parsed yet")
-	assert.Contains(t, stderr, "bogus-flag")
+	snap.Match(t, sanitizeOutput(stderr))
 }
 
 // TestConfigLoadFailureRendersJSONEnvelope covers PR #374's review comment:
@@ -113,13 +107,9 @@ func TestConfigLoadFailureRendersJSONEnvelope(t *testing.T) {
 	requireExitCode(t, 1, err)
 	assert.Empty(t, stderr, "the plain-text fallback in Execute() must not also fire alongside the envelope")
 
-	envelope := decodeEnvelope(t, stdout)
-	assert.Equal(t, "error", envelope.Status)
-	assert.Equal(t, "stop", envelope.Command)
-	require.NotNil(t, envelope.Error)
-	assert.Equal(t, "CONFIG_INVALID", envelope.Error.Code)
-	assert.Equal(t, "CONFIG", envelope.Error.Category)
-	assert.False(t, envelope.Error.Retryable)
+	decodeEnvelope(t, stdout)
+	// error.message embeds the temp-dir config path, so it is masked.
+	snap.MatchJSON(t, []byte(stdout), "error.message")
 }
 
 // TestConfigNotFoundRendersJSONEnvelope covers the CONFIG_NOT_FOUND half of
@@ -135,10 +125,8 @@ func TestConfigNotFoundRendersJSONEnvelope(t *testing.T) {
 	requireExitCode(t, 1, err)
 	assert.Empty(t, stderr, "the plain-text fallback in Execute() must not also fire alongside the envelope")
 
-	envelope := decodeEnvelope(t, stdout)
-	assert.Equal(t, "error", envelope.Status)
-	assert.Equal(t, "reset", envelope.Command)
-	require.NotNil(t, envelope.Error)
-	assert.Equal(t, "CONFIG_NOT_FOUND", envelope.Error.Code)
-	assert.Equal(t, "CONFIG", envelope.Error.Category)
+	decodeEnvelope(t, stdout)
+	// error.message embeds the temp-dir config path (and an OS-specific
+	// not-found detail), so it is masked.
+	snap.MatchJSON(t, []byte(stdout), "error.message")
 }
