@@ -187,20 +187,6 @@ type UpdateAppliedEvent struct {
 	Method         string
 }
 
-// InstallLocation describes one lstk executable found on PATH.
-type InstallLocation struct {
-	Path    string // location as found on PATH (what a shell would execute)
-	Method  string // install method: "homebrew", "npm", or "binary"
-	Running bool   // whether this entry is the currently running executable
-}
-
-// MultipleInstallsEvent warns that more than one distinct lstk install was
-// found on PATH. Installs are in PATH order, so the first entry is the one a
-// shell resolves when the user types "lstk".
-type MultipleInstallsEvent struct {
-	Installs []InstallLocation
-}
-
 type AuthCompleteEvent struct{}
 
 type SnapshotDiffServiceResult struct {
@@ -241,7 +227,6 @@ func (EmulatorStoppedEvent) sealedEvent()     {}
 func (EmulatorResetEvent) sealedEvent()       {}
 func (UpdateCheckedEvent) sealedEvent()       {}
 func (UpdateAppliedEvent) sealedEvent()       {}
-func (MultipleInstallsEvent) sealedEvent()    {}
 func (ContainerStatusEvent) sealedEvent()     {}
 func (ProgressEvent) sealedEvent()            {}
 func (UserInputRequestEvent) sealedEvent()    {}
