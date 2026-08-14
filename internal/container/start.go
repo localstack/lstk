@@ -1335,16 +1335,21 @@ func isDefinitiveLicenseRejection(status int) bool {
 // ESC declines. Ctrl+C would do too, but it also cancels the root context, and
 // the ErrorEvent that the decline renders then races the TUI's own quit — so the
 // manual recovery steps sometimes never reach the terminal (DEVX-1045). An
-// advertised decline key keeps that path deterministic.
+// advertised decline key keeps that path deterministic. The choices render
+// vertically so both keys read as selectable actions rather than a hint tacked
+// onto the end of the sentence; the prompt therefore states the reason and
+// leaves the two actions to the labels, which keeps it one wrapped statement
+// instead of a statement whose trailing question dangles at the wrap point.
 func promptRelogin(ctx context.Context, sink output.Sink, licErr *api.LicenseError) bool {
 	responseCh := make(chan output.InputResponse, 1)
 	sink.Emit(output.UserInputRequestEvent{
-		Prompt: fmt.Sprintf("License validation failed: %s. Log in again to refresh your credentials?", licErr.Message),
+		Prompt: fmt.Sprintf("License validation failed: %s.", licErr.Message),
 		Options: []output.InputOption{
-			{Key: "enter", Label: "ENTER to log in again"},
-			{Key: "esc", Label: "ESC to exit"},
+			{Key: "r", Label: "[R] Re-authenticate"},
+			{Key: "esc", Label: "[ESC] Exit"},
 		},
 		ResponseCh: responseCh,
+		Vertical:   true,
 	})
 	select {
 	case resp := <-responseCh:
@@ -1528,6 +1533,12 @@ func (m *startupMonitor) await(ctx context.Context, containerID, healthURL strin
 	defer deadline.Stop()
 	ticker := time.NewTicker(1 * time.Second)
 	defer ticker.Stop()
+	var responseCh chan output.InputResponse
+	defer func() {
+		if responseCh != nil {
+			m.sink.Emit(output.UserInputDismissEvent{ResponseCh: responseCh})
+		}
+	}()
 
 	check := func() (ready bool, err error) {
 		running, err := m.rt.IsRunning(ctx, containerID)
@@ -1574,6 +1585,29 @@ func (m *startupMonitor) await(ctx context.Context, containerID, healthURL strin
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
+		case resp := <-responseCh:
+			// The TUI has already hidden a prompt once it sends a response.
+			responseCh = nil
+			if resp.Cancelled {
+				if ctx.Err() != nil {
+					return ctx.Err()
+				}
+				return context.Canceled
+			}
+			if resp.SelectedKey == "s" {
+				// Readiness may have changed between the last poll and the keypress.
+				// Never stop an emulator that became ready while the prompt was open.
+				if ready, err := check(); err != nil || ready {
+					return err
+				}
+				m.sink.Emit(output.SpinnerStart("Stopping LocalStack..."))
+				// Best-effort stop; the timeout error is authoritative either way.
+				_ = m.rt.Stop(ctx, containerID)
+				return &startupTimeoutError{timeout: m.timeout, stopped: true}
+			}
+
+			deadline.Reset(m.timeout)
+			m.sink.Emit(output.SpinnerStart("Starting LocalStack"))
 		case res := <-exitCh:
 			if res.Err != nil {
 				// The wait itself failed (e.g. an exit+removal race before the
@@ -1584,66 +1618,31 @@ func (m *startupMonitor) await(ctx context.Context, containerID, healthURL strin
 			}
 			return &containerExitedError{exitCode: res.ExitCode}
 		case <-deadline.C:
-			surface, stopped, err := m.handleTimeout(ctx, containerID)
-			if err != nil {
+			// Avoid surfacing a stale timeout if readiness changed since the last
+			// poll, especially when the ticker and deadline become ready together.
+			if ready, err := check(); err != nil || ready {
 				return err
 			}
-			if surface {
-				return &startupTimeoutError{timeout: m.timeout, stopped: stopped}
+			if !m.interactive {
+				return &startupTimeoutError{timeout: m.timeout}
 			}
-			// Keep waiting: re-arm the deadline and restore the spinner.
-			deadline.Reset(m.timeout)
-			m.sink.Emit(output.SpinnerStart("Starting LocalStack"))
+
+			m.sink.Emit(output.SpinnerStop())
+			responseCh = make(chan output.InputResponse, 1)
+			m.sink.Emit(output.UserInputRequestEvent{
+				Prompt: "LocalStack is still starting. Check progress with 'lstk logs'.",
+				Options: []output.InputOption{
+					{Key: "w", Label: "[W] Keep waiting"},
+					{Key: "s", Label: "[S] Stop and exit"},
+				},
+				ResponseCh: responseCh,
+				Vertical:   true,
+			})
 		case <-ticker.C:
 			if ready, err := check(); err != nil || ready {
 				return err
 			}
 		}
-	}
-}
-
-// handleTimeout decides what to do when the startup deadline elapses. In
-// non-interactive mode it always surfaces the timeout, leaving the container
-// running so the user can inspect it. In interactive mode it prompts the user to
-// keep waiting or stop; "keep waiting" returns surface=false so the caller
-// re-arms the deadline. stopped reports whether the container was stopped (the
-// user chose "stop"), so the timeout error can describe its actual state.
-func (m *startupMonitor) handleTimeout(ctx context.Context, containerID string) (surface, stopped bool, err error) {
-	if !m.interactive {
-		return true, false, nil
-	}
-
-	m.sink.Emit(output.SpinnerStop())
-	responseCh := make(chan output.InputResponse, 1)
-	m.sink.Emit(output.UserInputRequestEvent{
-		Prompt: "LocalStack is taking longer than expected to start. Check logs with 'lstk logs'",
-		Options: []output.InputOption{
-			{Key: "w", Label: "Keep waiting [W]"},
-			{Key: "s", Label: "Stop LocalStack and exit [S]"},
-		},
-		ResponseCh: responseCh,
-	})
-
-	select {
-	case resp := <-responseCh:
-		if resp.Cancelled {
-			// Ctrl+C: leave the container running (it is detached).
-			if ctx.Err() != nil {
-				return false, false, ctx.Err()
-			}
-			return false, false, context.Canceled
-		}
-		if resp.SelectedKey == "s" {
-			// Stopping takes a few seconds; show progress so the CLI does not
-			// look hung after the keypress. The caller's SpinnerStop closes it.
-			m.sink.Emit(output.SpinnerStart("Stopping LocalStack..."))
-			// Best-effort stop; the timeout error is authoritative either way.
-			_ = m.rt.Stop(ctx, containerID)
-			return true, true, nil
-		}
-		return false, false, nil
-	case <-ctx.Done():
-		return false, false, ctx.Err()
 	}
 }
 

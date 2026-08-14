@@ -201,6 +201,38 @@ func TestAppEnterRespondsToInputRequest(t *testing.T) {
 	}
 }
 
+func TestAppDismissesOnlyTheMatchingPendingInput(t *testing.T) {
+	t.Parallel()
+
+	app := NewApp("dev", "", "", nil)
+	model, _ := app.Update(output.SpinnerStart("Starting LocalStack"))
+	app = model.(App)
+
+	responseCh := make(chan output.InputResponse, 1)
+	prompt := "LocalStack is still starting."
+	model, _ = app.Update(output.UserInputRequestEvent{
+		Prompt:     prompt,
+		Options:    []output.InputOption{{Key: "w", Label: "[W] Keep waiting"}},
+		ResponseCh: responseCh,
+	})
+	app = model.(App)
+
+	model, _ = app.Update(output.UserInputDismissEvent{ResponseCh: make(chan output.InputResponse, 1)})
+	app = model.(App)
+	if !app.inputPrompt.Visible() {
+		t.Fatal("expected an unrelated dismissal to leave the prompt visible")
+	}
+
+	model, _ = app.Update(output.UserInputDismissEvent{ResponseCh: responseCh})
+	app = model.(App)
+	if app.pendingInput != nil || app.inputPrompt.Visible() {
+		t.Fatal("expected the matching prompt to be dismissed")
+	}
+	if view := app.View(); strings.Contains(view, prompt) {
+		t.Fatalf("expected the spinner's prompt mirror to be cleared, got:\n%s", view)
+	}
+}
+
 // TestAppPendingInputSurvivesDeferredSpinnerStop covers DEVX-1045: a prompt
 // emitted right after a spinner was stopped inside its min duration used to be
 // parked in the spinner's text, and the min-duration tick then erased it. The
@@ -397,54 +429,6 @@ func TestAppSnapshotLoadedEventRendersGreen(t *testing.T) {
 	}
 	if !strings.Contains(app.lines[0].text, "Snapshot loaded from pod:my-baseline") {
 		t.Fatalf("expected loaded message text, got: %q", app.lines[0].text)
-	}
-}
-
-func TestAppMultipleInstallsEventRendersColoredWarning(t *testing.T) {
-	// Mutates the global lipgloss color profile, so it must not run in parallel.
-	original := lipgloss.ColorProfile()
-	lipgloss.SetColorProfile(termenv.TrueColor)
-	t.Cleanup(func() { lipgloss.SetColorProfile(original) })
-
-	app := NewApp("dev", "", "", nil)
-
-	model, _ := app.Update(output.MultipleInstallsEvent{Installs: []output.InstallLocation{
-		{Path: "/opt/homebrew/bin/lstk", Method: "homebrew", Running: true},
-		{Path: "/home/u/.nvm/versions/node/v22/bin/lstk", Method: "npm"},
-	}})
-	app = model.(App)
-
-	if len(app.lines) != 4 {
-		t.Fatalf("expected 4 lines (header + 2 installs + footer), got %d: %+v", len(app.lines), app.lines)
-	}
-
-	wantWarning := styles.Warning.Render("Warning:")
-	if !strings.Contains(app.lines[0].text, wantWarning) {
-		t.Fatalf("expected colored %q in header line, got: %q", wantWarning, app.lines[0].text)
-	}
-	if !strings.Contains(app.lines[0].text, "Multiple lstk installations found on PATH:") {
-		t.Fatalf("expected header text, got: %q", app.lines[0].text)
-	}
-
-	for i, want := range []string{
-		"/opt/homebrew/bin/lstk (homebrew, currently running)",
-		"/home/u/.nvm/versions/node/v22/bin/lstk (npm)",
-	} {
-		line := app.lines[i+1]
-		if !line.secondary {
-			t.Fatalf("expected install line %d to be styled secondary, got: %+v", i, line)
-		}
-		if !strings.Contains(line.text, want) {
-			t.Fatalf("expected install line %d to contain %q, got: %q", i, want, line.text)
-		}
-	}
-
-	footer := app.lines[3]
-	if !footer.secondary {
-		t.Fatalf("expected footer line to be styled secondary, got: %+v", footer)
-	}
-	if !strings.Contains(footer.text, "Your shell runs the first one; remove the others to avoid using a stale version.") {
-		t.Fatalf("expected footer text, got: %q", footer.text)
 	}
 }
 
@@ -833,6 +817,91 @@ func TestAppEnterSelectsHighlightedVerticalOption(t *testing.T) {
 	case resp := <-responseCh:
 		if resp.SelectedKey != "s" {
 			t.Fatalf("expected s key, got %q", resp.SelectedKey)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for response on channel")
+	}
+
+	if app.inputPrompt.Visible() {
+		t.Fatal("expected input prompt to be hidden after response")
+	}
+}
+
+// TestAppEscResolvesVerticalDeclineOption guards the license re-login prompt's
+// decline path (DEVX-1045): the vertical key handler claims Enter for the
+// highlighted row, so a direct ESC press must still fall through to its option
+// rather than being swallowed.
+func TestAppEscResolvesVerticalDeclineOption(t *testing.T) {
+	t.Parallel()
+
+	app := NewApp("dev", "", "", nil)
+	responseCh := make(chan output.InputResponse, 1)
+
+	model, _ := app.Update(output.UserInputRequestEvent{
+		Prompt: "License validation failed: invalid, inactive, or expired authentication token or subscription.",
+		Options: []output.InputOption{
+			{Key: "r", Label: "[R] Re-authenticate"},
+			{Key: "esc", Label: "[ESC] Exit"},
+		},
+		ResponseCh: responseCh,
+		Vertical:   true,
+	})
+	app = model.(App)
+
+	model, cmd := app.Update(tea.KeyMsg{Type: tea.KeyEscape})
+	app = model.(App)
+	if cmd == nil {
+		t.Fatal("expected response command when esc is pressed on a vertical prompt")
+	}
+	cmd()
+
+	select {
+	case resp := <-responseCh:
+		if resp.SelectedKey != "esc" {
+			t.Fatalf("expected esc key, got %q", resp.SelectedKey)
+		}
+		if resp.Cancelled {
+			t.Fatal("expected esc to decline through its option, not as a cancellation")
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for response on channel")
+	}
+
+	if app.inputPrompt.Visible() {
+		t.Fatal("expected input prompt to be hidden after response")
+	}
+}
+
+func TestAppReloginShortcutIgnoresVerticalSelection(t *testing.T) {
+	t.Parallel()
+
+	app := NewApp("dev", "", "", nil)
+	responseCh := make(chan output.InputResponse, 1)
+
+	model, _ := app.Update(output.UserInputRequestEvent{
+		Prompt: "License validation failed: invalid, inactive, or expired authentication token or subscription.",
+		Options: []output.InputOption{
+			{Key: "r", Label: "[R] Re-authenticate"},
+			{Key: "esc", Label: "[ESC] Exit"},
+		},
+		ResponseCh: responseCh,
+		Vertical:   true,
+	})
+	app = model.(App)
+
+	model, _ = app.Update(tea.KeyMsg{Type: tea.KeyDown})
+	app = model.(App)
+	model, cmd := app.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'r'}})
+	app = model.(App)
+	if cmd == nil {
+		t.Fatal("expected response command when r is pressed on a vertical prompt")
+	}
+	cmd()
+
+	select {
+	case resp := <-responseCh:
+		if resp.SelectedKey != "r" {
+			t.Fatalf("expected r key, got %q", resp.SelectedKey)
 		}
 	case <-time.After(time.Second):
 		t.Fatal("timed out waiting for response on channel")

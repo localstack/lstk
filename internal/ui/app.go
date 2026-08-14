@@ -197,6 +197,14 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if a.spinner.Visible() {
 			a.spinner = a.spinner.SetText(output.FormatPrompt(msg.Prompt, msg.Options))
 		}
+	case output.UserInputDismissEvent:
+		if a.pendingInput == nil || a.pendingInput.ResponseCh != msg.ResponseCh {
+			return a, nil
+		}
+		a.pendingInput = nil
+		a.inputPrompt = a.inputPrompt.Hide()
+		a.spinner = a.spinner.SetText("")
+		return a, nil
 	case output.PullSkippableEvent:
 		msgCopy := msg
 		a.pullSkip = &msgCopy
@@ -243,19 +251,6 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case output.MessageEvent:
 		msgCopy := msg
 		a.addLine(styledLine{text: components.RenderMessage(msg), message: &msgCopy})
-		return a, nil
-	case output.MultipleInstallsEvent:
-		if line, ok := output.FormatEventLine(msg); ok {
-			parts := strings.Split(line, "\n")
-			if len(parts) > 0 {
-				first := strings.Replace(parts[0], "> ", styles.Secondary.Render("> "), 1)
-				first = strings.Replace(first, "Warning:", styles.Warning.Render("Warning:"), 1)
-				a.addLine(styledLine{text: first})
-			}
-			for _, part := range parts[1:] {
-				a.addLine(styledLine{text: part, secondary: true})
-			}
-		}
 		return a, nil
 	case output.AuthEvent:
 		if msg.Preamble != "" {

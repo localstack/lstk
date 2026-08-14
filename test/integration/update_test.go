@@ -533,10 +533,7 @@ func TestUpdateBinaryMockGitHubHappyPath(t *testing.T) {
 	})
 
 	updateCmd := exec.CommandContext(ctx, oldBinary, "update", "--non-interactive")
-	// Pin PATH to an empty dir so the multiple-installs warning (which scans
-	// PATH for other lstk binaries) can never inject host-dependent lines
-	// into the snapshotted output.
-	updateCmd.Env = append(mockGitHubEnv(t, srv), string(env.Path)+"="+t.TempDir())
+	updateCmd.Env = mockGitHubEnv(t, srv)
 	out, err := updateCmd.CombinedOutput()
 	outStr := string(out)
 	require.NoError(t, err, "lstk update failed: %s", outStr)
@@ -582,10 +579,7 @@ func TestUpdateBinaryMockGitHubChecksumMismatch(t *testing.T) {
 	})
 
 	updateCmd := exec.CommandContext(ctx, oldBinary, "update", "--non-interactive")
-	// Pin PATH to an empty dir so the multiple-installs warning (which scans
-	// PATH for other lstk binaries) can never inject host-dependent lines
-	// into the output being compared exactly.
-	updateCmd.Env = append(mockGitHubEnv(t, srv), string(env.Path)+"="+t.TempDir())
+	updateCmd.Env = mockGitHubEnv(t, srv)
 	var stdout, stderr bytes.Buffer
 	updateCmd.Stdout = &stdout
 	updateCmd.Stderr = &stderr

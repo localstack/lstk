@@ -135,3 +135,65 @@ func TestInputPromptViewUnwrappedWithoutWidth(t *testing.T) {
 		t.Errorf("expected no wrapping without a known width, got: %q", view)
 	}
 }
+
+func TestInputPromptViewSlowStartChoicesAreScannable(t *testing.T) {
+	t.Parallel()
+
+	const width = 80
+	question := "LocalStack is still starting. Check progress with 'lstk logs'."
+	p := NewInputPrompt().Show(question, []output.InputOption{
+		{Key: "w", Label: "[W] Keep waiting"},
+		{Key: "s", Label: "[S] Stop and exit"},
+	}, true)
+
+	view := p.View(width)
+	lines := strings.Split(view, "\n")
+	if len(lines) < 3 {
+		t.Fatalf("expected a question and two vertical choices, got:\n%s", view)
+	}
+	if !strings.Contains(lines[0], question) {
+		t.Fatalf("expected the question and log command on one line, got:\n%s", view)
+	}
+	if !strings.Contains(lines[1], "[W] Keep waiting") || !strings.Contains(lines[2], "[S] Stop and exit") {
+		t.Fatalf("expected prefixed shortcuts on separate lines, got:\n%s", view)
+	}
+	for _, line := range lines {
+		if lipgloss.Width(line) > width {
+			t.Fatalf("line exceeds width %d: %q", width, line)
+		}
+	}
+}
+
+// TestInputPromptViewReloginChoicesAreScannable covers the license re-login
+// prompt: its question is long enough to wrap, so flattening the two choices
+// into a trailing hint made them read as prose. They belong on their own lines
+// below the wrapped question, shortcut first.
+func TestInputPromptViewReloginChoicesAreScannable(t *testing.T) {
+	t.Parallel()
+
+	const width = 40
+	question := "License validation failed: invalid, inactive, or expired authentication token or subscription."
+	p := NewInputPrompt().Show(question, []output.InputOption{
+		{Key: "r", Label: "[R] Re-authenticate"},
+		{Key: "esc", Label: "[ESC] Exit"},
+	}, true)
+
+	view := p.View(width)
+	lines := strings.Split(strings.TrimRight(view, "\n"), "\n")
+	if len(lines) < 3 {
+		t.Fatalf("expected a wrapped question and two vertical choices, got:\n%s", view)
+	}
+	if choices := lines[len(lines)-2:]; !strings.Contains(choices[0], "[R] Re-authenticate") ||
+		!strings.Contains(choices[1], "[ESC] Exit") {
+		t.Fatalf("expected each choice on its own trailing line, got:\n%s", view)
+	}
+	for _, line := range lines {
+		if w := lipgloss.Width(line); w > width {
+			t.Errorf("line exceeds width %d (%d): %q", width, w, line)
+		}
+	}
+	flattened := strings.Join(strings.Fields(view), " ")
+	if !strings.Contains(flattened, strings.Join(strings.Fields(question), " ")) {
+		t.Errorf("expected the whole question to survive wrapping, got:\n%s", view)
+	}
+}

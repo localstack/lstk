@@ -821,9 +821,11 @@ func TestStartupMonitorAwait_InteractivePromptKeepWaitingThenStop(t *testing.T) 
 	mockRT.EXPECT().Stop(gomock.Any(), "cid").Return(nil)
 
 	prompts := make(chan output.UserInputRequestEvent, 2)
+	seenPrompts := make(chan output.UserInputRequestEvent, 2)
 	sink := output.SinkFunc(func(event output.Event) {
 		if req, ok := event.(output.UserInputRequestEvent); ok {
 			prompts <- req
+			seenPrompts <- req
 		}
 	})
 
@@ -846,6 +848,80 @@ func TestStartupMonitorAwait_InteractivePromptKeepWaitingThenStop(t *testing.T) 
 	var timeoutErr *startupTimeoutError
 	require.ErrorAs(t, err, &timeoutErr)
 	assert.True(t, timeoutErr.stopped, "choosing stop at the prompt must be recorded on the error")
+
+	firstPrompt := <-seenPrompts
+	assert.Equal(t, "LocalStack is still starting. Check progress with 'lstk logs'.", firstPrompt.Prompt)
+	assert.True(t, firstPrompt.Vertical)
+	assert.Equal(t, []output.InputOption{
+		{Key: "w", Label: "[W] Keep waiting"},
+		{Key: "s", Label: "[S] Stop and exit"},
+	}, firstPrompt.Options)
+}
+
+func TestStartupMonitorAwait_DismissesPromptWhenEmulatorBecomesReady(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockRT := runtime.NewMockRuntime(ctrl)
+	mockRT.EXPECT().IsRunning(gomock.Any(), "cid").Return(true, nil).AnyTimes()
+
+	var ready atomic.Bool
+	healthServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		if ready.Load() {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}))
+	defer healthServer.Close()
+
+	prompts := make(chan output.UserInputRequestEvent, 1)
+	dismissals := make(chan output.UserInputDismissEvent, 1)
+	sink := output.SinkFunc(func(event output.Event) {
+		switch event := event.(type) {
+		case output.UserInputRequestEvent:
+			prompts <- event
+			ready.Store(true)
+		case output.UserInputDismissEvent:
+			dismissals <- event
+		}
+	})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	monitor := newStartupMonitor(mockRT, sink, nil, 25*time.Millisecond, true)
+	err := monitor.await(ctx, "cid", healthServer.URL, make(chan runtime.ExitResult))
+
+	require.NoError(t, err)
+	prompt := <-prompts
+	dismissal := <-dismissals
+	assert.Equal(t, prompt.ResponseCh, dismissal.ResponseCh)
+}
+
+func TestStartupMonitorAwait_DoesNotStopEmulatorThatBecameReadyBeforeSelection(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockRT := runtime.NewMockRuntime(ctrl)
+	mockRT.EXPECT().IsRunning(gomock.Any(), "cid").Return(true, nil).AnyTimes()
+
+	var ready atomic.Bool
+	healthServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		if ready.Load() {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}))
+	defer healthServer.Close()
+
+	sink := output.SinkFunc(func(event output.Event) {
+		if prompt, ok := event.(output.UserInputRequestEvent); ok {
+			ready.Store(true)
+			prompt.ResponseCh <- output.InputResponse{SelectedKey: "s"}
+		}
+	})
+
+	monitor := newStartupMonitor(mockRT, sink, nil, 25*time.Millisecond, true)
+	err := monitor.await(context.Background(), "cid", healthServer.URL, make(chan runtime.ExitResult))
+
+	require.NoError(t, err)
 }
 
 func TestStartupMonitorAwait_ReturnsExitCodeFromExitCh(t *testing.T) {
@@ -1622,7 +1698,7 @@ func TestPromptRelogin_FoldsReasonIntoThePromptWithoutASeparateWarning(t *testin
 	req, ok := events[0].(output.UserInputRequestEvent)
 	require.True(t, ok, "the only event emitted must be the prompt itself")
 	assert.Contains(t, req.Prompt, licErr.Message, "the prompt must explain why the user is being asked to log in again")
-	assert.Contains(t, req.Prompt, "Log in again to refresh your credentials?")
+	assert.Equal(t, "[R] Re-authenticate", req.Options[0].Label, "the recovery action belongs to the choice, not the prompt sentence")
 }
 
 // TestPromptRelogin_OffersAnAdvertisedDeclineKey covers DEVX-1045: Ctrl+C was the
@@ -1636,7 +1712,7 @@ func TestPromptRelogin_OffersAnAdvertisedDeclineKey(t *testing.T) {
 		response output.InputResponse
 		accepted bool
 	}{
-		{name: "enter accepts", response: output.InputResponse{SelectedKey: "enter"}, accepted: true},
+		{name: "r accepts", response: output.InputResponse{SelectedKey: "r"}, accepted: true},
 		{name: "esc declines", response: output.InputResponse{SelectedKey: "esc"}, accepted: false},
 		{name: "cancel declines", response: output.InputResponse{Cancelled: true}, accepted: false},
 	} {
@@ -1652,11 +1728,11 @@ func TestPromptRelogin_OffersAnAdvertisedDeclineKey(t *testing.T) {
 			accepted := promptRelogin(context.Background(), sink, licErr)
 
 			assert.Equal(t, tc.accepted, accepted)
-			keys := make([]string, 0, len(req.Options))
-			for _, opt := range req.Options {
-				keys = append(keys, opt.Key)
-			}
-			assert.Equal(t, []string{"enter", "esc"}, keys, "both the accept and the decline key must be advertised")
+			assert.True(t, req.Vertical, "the choices must render as vertical, selectable actions")
+			assert.Equal(t, []output.InputOption{
+				{Key: "r", Label: "[R] Re-authenticate"},
+				{Key: "esc", Label: "[ESC] Exit"},
+			}, req.Options, "both the accept and the decline key must be advertised, shortcut first")
 		})
 	}
 }

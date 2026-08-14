@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"os"
 	"strings"
 	"sync"
 
@@ -40,7 +39,6 @@ func Check(ctx context.Context, sink output.Sink, githubToken string) (string, b
 
 // Update checks for updates and applies the update if one is available.
 func Update(ctx context.Context, sink output.Sink, checkOnly bool, githubToken string) error {
-	WarnMultipleInstalls(sink, os.Getenv)
 	current := version.Version()
 	latest, available, err := Check(ctx, sink, githubToken)
 	if err != nil {
