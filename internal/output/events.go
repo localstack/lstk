@@ -271,16 +271,9 @@ type InputResponse struct {
 	Cancelled   bool
 }
 
-// UserInputRequestEvent asks the frontend to put a question to the user and
-// send the answer back on the response channel.
-//
-// Build one with Confirm, ActionChoice, or Acknowledge (prompt.go). The fields
-// are unexported so that is the only way: a struct literal asks its author to
-// pick a rendering at the moment the question they can actually answer is what
-// the prompt IS, and the cheapest answer — leaving the layout out — silently
-// ships an inline prompt. That is how the license re-login prompt ended up with
-// two advertised keys flattened into one dimmed hint (DEVX-1045). Naming the
-// intent instead makes the layout a consequence rather than a decision.
+// Base struct for all user input requests. Not to be instantiated directly.
+// Build user input requests with typical constructors defined in prompt.go,
+// e.g. Confirm, ActionChoice, or Acknowledge.
 type UserInputRequestEvent struct {
 	prompt     string
 	options    []InputOption
