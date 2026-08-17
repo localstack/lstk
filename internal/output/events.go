@@ -283,12 +283,8 @@ type UserInputRequestEvent struct {
 	vertical bool
 }
 
-// Prompt is the question put to the user. It may span several lines; the
-// options are appended to the first one.
 func (e UserInputRequestEvent) Prompt() string { return e.prompt }
 
-// Options are the answers the user may choose between. The returned slice is
-// not copied — treat it as read-only.
 func (e UserInputRequestEvent) Options() []InputOption { return e.options }
 
 // ResponseCh receives the user's answer. It also identifies the request, so a
@@ -296,7 +292,7 @@ func (e UserInputRequestEvent) Options() []InputOption { return e.options }
 func (e UserInputRequestEvent) ResponseCh() chan<- InputResponse { return e.responseCh }
 
 // Vertical reports whether each option should render as its own selectable row
-// rather than as a trailing "[a/b]" hint. Set by ActionChoice.
+// rather than as a trailing "[a/b]" hint.
 func (e UserInputRequestEvent) Vertical() bool { return e.vertical }
 
 // UserInputDismissEvent removes a pending prompt when the condition that
