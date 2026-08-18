@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	goruntime "runtime"
 	"strings"
 	"testing"
 	"time"
@@ -201,6 +202,17 @@ func assertStateDirMounted(t *testing.T, mounts []container.MountPoint) {
 				"/var/lib/snowflake-rs must be a bind mount, not an anonymous volume")
 			assert.True(t, strings.HasSuffix(filepath.ToSlash(m.Source), "/snowflake-rs"),
 				"expected the managed volume subdirectory, got %s", m.Source)
+			if goruntime.GOOS != "windows" {
+				// The emulator runs as uid 1000 and creates PGDATA inside this
+				// mount. On native Linux Docker that uid is the container's, not
+				// the host user's, so a directory only its owner can write makes
+				// PostgreSQL fail to initialize and the container exit — the mode
+				// is the only part of that lstk can control.
+				info, err := os.Stat(m.Source)
+				require.NoError(t, err)
+				assert.Equal(t, os.FileMode(0777), info.Mode().Perm(),
+					"the mounted state dir must be writable by the emulator's non-root user")
+			}
 			return
 		}
 	}

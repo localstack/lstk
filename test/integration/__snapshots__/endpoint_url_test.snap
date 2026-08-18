@@ -67,6 +67,13 @@ Fetching LocalStack status...
   S3       my-test-bucket  us-east-1  000000000000
 ---
 
+[TestStatusEndpointURLSnowflakePreviewPayload_1]
+Fetching LocalStack status...
+✔︎ LocalStack Snowflake Emulator is running
+• Endpoint: http://127.0.0.1:<port>
+• Version: <version>
+---
+
 [TestStatusUnreachableEndpointURLFailsClosed_1]
 Error: could not reach LocalStack emulator at http://127.0.0.1:<port>: unexpected status 404 from http://127.0.0.1:<port>/_localstack/health
 ---

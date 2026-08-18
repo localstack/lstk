@@ -265,9 +265,9 @@ func startOnce(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts S
 		// cluster per start. It lives under the managed volume dir so that
 		// `lstk volume path` points at it and `lstk volume clear` resets it.
 		if c.Type == config.EmulatorSnowflakeNext {
-			stateDir := filepath.Join(volumeDir, "snowflake-rs")
-			if err := os.MkdirAll(stateDir, 0755); err != nil {
-				return "", fmt.Errorf("failed to create state directory %s: %w", stateDir, err)
+			stateDir, err := prepareNextStateDir(volumeDir, sink)
+			if err != nil {
+				return "", err
 			}
 			binds = append(binds, runtime.BindMount{HostPath: stateDir, ContainerPath: snowflake.NextStateDir})
 		}
@@ -410,6 +410,40 @@ func emitAlreadyRunning(ctx context.Context, sink output.Sink, c runtime.Contain
 		sink.Emit(output.MessageEvent{Severity: output.SeverityNote, Text: endpoint.DNSRebindNote})
 	}
 	emitPostStartPointers(sink, c.EmulatorType, resolvedHost, webAppURL, persist)
+}
+
+// prepareNextStateDir creates the host directory bound over the preview Snowflake
+// emulator's declared VOLUME (snowflake.NextStateDir) and makes it writable by
+// whichever user the emulator runs as.
+//
+// The wide mode is what --persist needs on native Linux Docker, where host uids
+// are not remapped: the emulator runs as uid 1000 and has to create PGDATA inside
+// this mount, so a directory owned by any other uid — every CI runner, most Linux
+// desktops — makes PostgreSQL fail to initialize and the container exit during
+// startup. lstk cannot chown to a uid it does not own, so widening the mode is the
+// only fix available to it. Docker Desktop and the other VM-backed runtimes map
+// ownership and never needed this, which is why the failure only ever showed up on
+// Linux. MkdirAll's mode is masked by the process umask, so the mode is set
+// explicitly afterwards rather than trusted to the create call — that also widens a
+// directory an older lstk already created.
+//
+// A chmod that does not stick is not fatal: it is a no-op on Windows and fails on a
+// directory another user owns, neither of which necessarily breaks the start. But
+// the failure it would cause surfaces only as an opaque health-check timeout, so
+// say what the emulator needs instead of leaving the user to debug PostgreSQL.
+func prepareNextStateDir(volumeDir string, sink output.Sink) (string, error) {
+	stateDir := filepath.Join(volumeDir, "snowflake-rs")
+	if err := os.MkdirAll(stateDir, 0777); err != nil {
+		return "", fmt.Errorf("failed to create state directory %s: %w", stateDir, err)
+	}
+	if err := os.Chmod(stateDir, 0777); err != nil {
+		sink.Emit(output.MessageEvent{
+			Severity: output.SeverityWarning,
+			Text: fmt.Sprintf("Could not make %s writable for the emulator: %v. The emulator runs as uid 1000 and writes its state there, "+
+				"so with --persist it may fail to start until that directory is writable by it.", stateDir, err),
+		})
+	}
+	return stateDir, nil
 }
 
 func isPersistenceEnabled(ctx context.Context, rt runtime.Runtime, containerName string) bool {

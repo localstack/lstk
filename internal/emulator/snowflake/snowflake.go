@@ -34,11 +34,13 @@ func NextListenAddr(containerPort string) string {
 // PostgreSQL cluster's worth of data per start. Covering it also gives --persist
 // a place to keep the cluster without overriding PGDATA.
 //
-// Caveat for --persist on Linux: the emulator runs as a non-root user (uid 1000),
-// which has to create the PGDATA subdirectory inside this mount, so a host
-// directory owned by a different uid makes PostgreSQL refuse to start. Docker
-// Desktop maps ownership and is unaffected. The default (no --persist) path never
-// writes here, so only --persist is exposed to it.
+// The emulator runs as a non-root user (uid 1000) and has to create the PGDATA
+// subdirectory inside this mount, so on native Linux Docker — where that uid is the
+// container's, not the host user's — the host directory has to be writable by it,
+// or PostgreSQL fails to initialize and the container exits during startup. lstk
+// cannot chown to a uid it does not own, so the start path widens the directory's
+// mode instead; see prepareNextStateDir in internal/container/start.go. Docker
+// Desktop maps ownership and never needed either.
 const NextStateDir = "/var/lib/snowflake-rs"
 
 // NextEphemeralPGData is where the preview Snowflake emulator's PostgreSQL cluster
