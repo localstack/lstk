@@ -203,12 +203,6 @@ var awsSignatureServices = []string{"s3", "sqs", "sts", "iam", "lambda", "dynamo
 // its health/info surface, and doubles as the reachability check: an
 // unreachable or non-LocalStack-shaped response fails closed rather than
 // silently proceeding.
-//
-// NOTE: the AWS-vs-Snowflake classification below (via "services" map
-// contents) is a best-effort heuristic pending confirmation against a real
-// LocalStack Snowflake health payload — the Snowflake product requires a
-// licensed emulator to inspect, which wasn't available to verify this
-// against. See design.md's Open Questions for add-endpoint-url-flag.
 func probeType(ctx context.Context, endpointURL string) (config.EmulatorType, error) {
 	health, err := fetchJSON[healthResponse](ctx, endpointURL+"/_localstack/health")
 	if err != nil {
@@ -275,6 +269,17 @@ func swapScheme(endpointURL string) (string, bool) {
 
 // classifyByServices inspects a health response's "services" map for a
 // per-product signature, returning "" when neither is recognized.
+//
+// Snowflake is checked before AWS because the Snowflake image reports the whole
+// AWS service catalog alongside its own "snowflake" key, so an AWS key proves
+// nothing on its own. Verified against localstack/snowflake:latest and a
+// community localstack image.
+//
+// The preview Snowflake emulator (config.EmulatorSnowflakeNext) is not
+// classifiable here: its health payload carries a version and no services map at
+// all, so it lands in IndeterminateTypeError. Fixing that means adding the key on
+// its side (LAV-1678) rather than guessing from an absent map here, which would
+// misread every future emulator with a minimal payload as the preview.
 func classifyByServices(services map[string]string) config.EmulatorType {
 	if _, ok := services["snowflake"]; ok {
 		return config.EmulatorSnowflake

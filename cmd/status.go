@@ -31,9 +31,10 @@ func newStatusCmd(cfg *env.Env) *cobra.Command {
 			}
 
 			clients := map[config.EmulatorType]emulator.Client{
-				config.EmulatorAWS:       aws.NewClient(),
-				config.EmulatorSnowflake: snowflake.NewClient(),
-				config.EmulatorAzure:     azure.NewClient(),
+				config.EmulatorAWS:           aws.NewClient(),
+				config.EmulatorSnowflake:     snowflake.NewClient(),
+				config.EmulatorAzure:         azure.NewClient(),
+				config.EmulatorSnowflakeNext: snowflake.NewClient(),
 			}
 
 			if target != nil {

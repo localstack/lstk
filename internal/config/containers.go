@@ -21,20 +21,41 @@ const (
 	EmulatorAWS       EmulatorType = "aws"
 	EmulatorSnowflake EmulatorType = "snowflake"
 	EmulatorAzure     EmulatorType = "azure"
+	// EmulatorSnowflakeNext is the rewritten Snowflake emulator, published as
+	// localstack/snowflake-next while it is in preview. The name deliberately
+	// says nothing about the implementation: at GA it takes over the plain
+	// `snowflake` type and image, and the Python build stays reachable only
+	// through pinned legacy tags, at which point this type is retired (LAV-595).
+	EmulatorSnowflakeNext EmulatorType = "snowflake-next"
 
 	DefaultPort    = "4566"
 	dockerRegistry = "localstack"
 )
 
 var emulatorDisplayNames = map[EmulatorType]string{
-	EmulatorAWS:       "AWS",
-	EmulatorSnowflake: "Snowflake",
-	EmulatorAzure:     "Azure",
+	EmulatorAWS:           "AWS",
+	EmulatorSnowflake:     "Snowflake",
+	EmulatorAzure:         "Azure",
+	EmulatorSnowflakeNext: "Snowflake Preview",
 }
 
 // SelectableEmulatorTypes lists the emulator types available for interactive selection,
-// in the order they should be presented.
+// in the order they should be presented. Preview types are deliberately absent — see
+// previewEmulatorTypes.
 var SelectableEmulatorTypes = []EmulatorType{EmulatorAWS, EmulatorSnowflake, EmulatorAzure}
+
+// previewEmulatorTypes lists types that are valid in config and accepted by --type,
+// but are not offered by the interactive first-run picker: a new user's first choice
+// should be a GA product, while an existing user can opt into a preview explicitly.
+// They are still named in ParseEmulatorType's error, since an error that lists the
+// valid values must list all of them.
+var previewEmulatorTypes = []EmulatorType{EmulatorSnowflakeNext}
+
+// KnownEmulatorTypes lists every type accepted in config or via --type: the
+// selectable ones followed by the previews.
+func KnownEmulatorTypes() []EmulatorType {
+	return append(append([]EmulatorType{}, SelectableEmulatorTypes...), previewEmulatorTypes...)
+}
 
 // emulatorSelectionKeys assigns each selectable type a unique single-character key.
 // "aws" and "azure" both start with 'a', so keys can't simply be the first character.
@@ -67,13 +88,14 @@ func (e EmulatorType) DisplayName() string {
 // platform license check (the LocalStack platform API has no catalog entry for
 // them), and lets the container validate the token against the licensing server.
 func (e EmulatorType) SelfValidatesLicense() bool {
-	return e == EmulatorSnowflake || e == EmulatorAzure
+	return e == EmulatorSnowflake || e == EmulatorAzure || e == EmulatorSnowflakeNext
 }
 
 var emulatorHealthPaths = map[EmulatorType]string{
-	EmulatorAWS:       "/_localstack/health",
-	EmulatorSnowflake: "/_localstack/health",
-	EmulatorAzure:     "/_localstack/health",
+	EmulatorAWS:           "/_localstack/health",
+	EmulatorSnowflake:     "/_localstack/health",
+	EmulatorAzure:         "/_localstack/health",
+	EmulatorSnowflakeNext: "/_localstack/health",
 }
 
 var knownImages = []struct {
@@ -85,6 +107,7 @@ var knownImages = []struct {
 	{EmulatorAWS, "localstack", false},
 	{EmulatorSnowflake, "snowflake", true},
 	{EmulatorAzure, "localstack-azure", true},
+	{EmulatorSnowflakeNext, "snowflake-next", true},
 }
 
 func EmulatorTypeForImage(image string) EmulatorType {
@@ -593,7 +616,7 @@ func (c *ContainerConfig) HealthPath() (string, error) {
 
 func (c *ContainerConfig) ContainerPort() (string, error) {
 	switch c.Type {
-	case EmulatorAWS, EmulatorSnowflake, EmulatorAzure:
+	case EmulatorAWS, EmulatorSnowflake, EmulatorAzure, EmulatorSnowflakeNext:
 		return DefaultPort + "/tcp", nil
 	default:
 		return "", fmt.Errorf("%s emulator not supported yet by lstk", c.Type)
