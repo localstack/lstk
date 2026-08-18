@@ -275,11 +275,15 @@ func swapScheme(endpointURL string) (string, bool) {
 // nothing on its own. Verified against localstack/snowflake:latest and a
 // community localstack image.
 //
-// The preview Snowflake emulator (config.EmulatorSnowflakeNext) is not
-// classifiable here: its health payload carries a version and no services map at
-// all, so it lands in IndeterminateTypeError. Fixing that means adding the key on
-// its side (LAV-1678) rather than guessing from an absent map here, which would
-// misread every future emulator with a minimal payload as the preview.
+// The preview Snowflake emulator (config.EmulatorSnowflakeNext) reports the same
+// "snowflake" key and nothing else (localstack/snowflake-rs#2116, LAV-1678), so a
+// remote preview resolves to EmulatorSnowflake. That collapse is deliberate: the
+// two are indistinguishable from the payload, and every path a resolved Target
+// reaches treats them identically (same emulator client, same side of every
+// AWS-only and Azure-only branch), so the only visible difference is the GA
+// display name in `lstk status`. A type is never inferred from what a payload
+// lacks — reading an absent or AWS-key-free map as "the preview" would misread
+// every future emulator with a minimal payload.
 func classifyByServices(services map[string]string) config.EmulatorType {
 	if _, ok := services["snowflake"]; ok {
 		return config.EmulatorSnowflake
