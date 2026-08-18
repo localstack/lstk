@@ -223,6 +223,21 @@ func startOnce(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts S
 			env = append(env, "SF_S3_ENDPOINT="+snowflake.S3Endpoint(c.Port))
 		}
 
+		// The preview Snowflake emulator listens on 8080 by default and ignores
+		// GATEWAY_LISTEN, so its own listen variable is what has to move it onto the
+		// gateway port every other part of lstk assumes. Its PostgreSQL cluster is
+		// always written to disk (there is no in-memory mode), so persistence is a
+		// matter of where PGDATA points: inside the bound state dir, or in the
+		// container's writable layer when the user did not ask to persist.
+		if c.Type == config.EmulatorSnowflakeNext {
+			if !envHasKey(resolvedEnv, "SNOWFLAKE_LISTEN_ADDR") {
+				env = append(env, "SNOWFLAKE_LISTEN_ADDR="+snowflake.NextListenAddr(config.DefaultPort))
+			}
+			if !opts.Persist && !envHasKey(resolvedEnv, "PGDATA") {
+				env = append(env, "PGDATA="+snowflake.NextEphemeralPGData)
+			}
+		}
+
 		env = append(env, hostEnv...)
 		env = append(env, agentEnvVars...)
 
@@ -244,6 +259,18 @@ func startOnce(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts S
 			return "", fmt.Errorf("failed to create volume directory %s: %w", volumeDir, err)
 		}
 		binds = append(binds, runtime.BindMount{HostPath: volumeDir, ContainerPath: "/var/lib/localstack"})
+
+		// Cover the preview Snowflake emulator's own declared VOLUME — see
+		// snowflake.NextStateDir for why leaving it uncovered leaks a PostgreSQL
+		// cluster per start. It lives under the managed volume dir so that
+		// `lstk volume path` points at it and `lstk volume clear` resets it.
+		if c.Type == config.EmulatorSnowflakeNext {
+			stateDir := filepath.Join(volumeDir, "snowflake-rs")
+			if err := os.MkdirAll(stateDir, 0755); err != nil {
+				return "", fmt.Errorf("failed to create state directory %s: %w", stateDir, err)
+			}
+			binds = append(binds, runtime.BindMount{HostPath: stateDir, ContainerPath: snowflake.NextStateDir})
+		}
 
 		// Extra user-defined mounts (e.g. Snowflake init hooks). Unlike the persistence
 		// directory, these are not created — init-hook entries are files, so the source
@@ -394,7 +421,7 @@ func isPersistenceEnabled(ctx context.Context, rt runtime.Runtime, containerName
 }
 
 func emitPostStartPointers(sink output.Sink, emulatorType config.EmulatorType, resolvedHost, webAppURL string, persist bool) {
-	if sfHost := snowflake.Hostname(resolvedHost); emulatorType == config.EmulatorSnowflake && sfHost != "" {
+	if sfHost := snowflake.Hostname(resolvedHost); (emulatorType == config.EmulatorSnowflake || emulatorType == config.EmulatorSnowflakeNext) && sfHost != "" {
 		sink.Emit(output.MessageEvent{Severity: output.SeveritySecondary, Text: fmt.Sprintf("• Snowflake endpoint: http://%s", sfHost)})
 	} else {
 		sink.Emit(output.MessageEvent{Severity: output.SeveritySecondary, Text: fmt.Sprintf("• Endpoint: %s", resolvedHost)})
@@ -417,7 +444,7 @@ func tipsForType(t config.EmulatorType) []string {
 			"> Tip: View emulator logs: lstk logs --follow",
 			"> Tip: View deployed resources: lstk status",
 		}
-	case config.EmulatorSnowflake:
+	case config.EmulatorSnowflake, config.EmulatorSnowflakeNext:
 		return []string{
 			"> Tip: View emulator logs: lstk logs --follow",
 			"> Tip: Check emulator status: lstk status",
