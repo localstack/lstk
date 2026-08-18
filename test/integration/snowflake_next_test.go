@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	goruntime "runtime"
 	"strings"
@@ -181,6 +182,7 @@ func TestStartSnowflakeNextPersistsStateIntoVolumeWithPersist(t *testing.T) {
 	ctx := testContext(t)
 	_, stderr, err := runLstk(t, ctx, "", env.Environ(testEnvWithHome(t.TempDir(), "")), "--config", configFile, "start", "--persist")
 	require.NoError(t, err, "lstk start failed: %s", stderr)
+	removePersistedNextState(t)
 
 	inspect, err := dockerClient.ContainerInspect(ctx, snowflakeNextContainerName, client.ContainerInspectOptions{})
 	require.NoError(t, err)
@@ -190,6 +192,26 @@ func TestStartSnowflakeNextPersistsStateIntoVolumeWithPersist(t *testing.T) {
 	assert.Equal(t, "/var/lib/snowflake-rs/data", envVars["PGDATA"],
 		"with --persist the cluster must land in the mounted state dir")
 	assertStateDirMounted(t, inspect.Container.Mounts)
+}
+
+// removePersistedNextState deletes the emulator's PostgreSQL cluster from inside
+// the container, as root, once the test is done with it. PostgreSQL creates PGDATA
+// as the emulator's own uid 1000 with mode 0700, so on Linux — where that uid is
+// not the test process's — nothing running on the host can descend into it, and
+// t.TempDir's own cleanup of the temporary HOME fails with "permission denied".
+// Cleanups run last-registered-first, so calling this after the start puts the
+// removal ahead of both the container removal and the temporary HOME's.
+func removePersistedNextState(t *testing.T) {
+	t.Helper()
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		out, err := exec.CommandContext(ctx, "docker", "exec", "--user", "0",
+			snowflakeNextContainerName, "sh", "-c", "rm -rf /var/lib/snowflake-rs/*").CombinedOutput()
+		if err != nil {
+			t.Logf("could not remove the emulator's persisted state: %v: %s", err, out)
+		}
+	})
 }
 
 // assertStateDirMounted checks a host directory is bound over the image's declared
