@@ -18,6 +18,7 @@ import (
 	"regexp"
 	"runtime"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -470,8 +471,19 @@ func packageReleaseArchive(t *testing.T, binaryName string, binary []byte) []byt
 // mockGitHubEnv.
 func mockGitHubReleaseServer(t *testing.T, tag string, assets map[string][]byte) *httptest.Server {
 	t.Helper()
+	srv, _ := mockGitHubReleaseServerCounting(t, tag, assets)
+	return srv
+}
+
+// mockGitHubReleaseServerCounting is mockGitHubReleaseServer plus a request
+// counter, so a test can prove that update_check = "off" (or an externally
+// managed install) makes no request at all, rather than merely printing nothing.
+func mockGitHubReleaseServerCounting(t *testing.T, tag string, assets map[string][]byte) (*httptest.Server, *atomic.Int64) {
+	t.Helper()
+	var requests atomic.Int64
 	downloadPrefix := "/localstack/lstk/releases/download/" + tag + "/"
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests.Add(1)
 		switch {
 		case r.URL.Path == "/repos/localstack/lstk/releases/latest":
 			w.Header().Set("Content-Type", "application/json")
@@ -488,7 +500,20 @@ func mockGitHubReleaseServer(t *testing.T, tag string, assets map[string][]byte)
 		}
 	}))
 	t.Cleanup(srv.Close)
-	return srv
+	return srv, &requests
+}
+
+// lstkAtInstallPath builds lstk with the given version stamped in, at
+// <t.TempDir()>/<segments...>/lstk, and returns its path. Install detection
+// reads the running binary's own resolved path, so placing the binary under a
+// package manager's directory layout is the only way to exercise it end to end.
+func lstkAtInstallPath(t *testing.T, ctx context.Context, version string, segments ...string) string {
+	t.Helper()
+	dir := filepath.Join(append([]string{t.TempDir()}, segments...)...)
+	require.NoError(t, os.MkdirAll(dir, 0o755))
+	path := filepath.Join(dir, execName("lstk"))
+	buildLstkWithVersion(t, ctx, version, path)
+	return path
 }
 
 // mockGitHubEnv builds an isolated test environment whose updater GitHub
@@ -640,4 +665,61 @@ func TestUpdateBinaryMockGitHubMissingChecksums(t *testing.T) {
 	leftovers, err := filepath.Glob(filepath.Join(filepath.Dir(oldBinary), "lstk-update-*"))
 	require.NoError(t, err)
 	assert.Empty(t, leftovers, "aborted update must not leave temp files behind")
+}
+
+// TestUpdateRefusesExternallyManagedInstall covers the case a mise or Nix user
+// hits: lstk must not replace a binary another package manager owns. The refusal
+// has to happen before any network request, so the test also asserts the mock
+// GitHub was never contacted.
+func TestUpdateRefusesExternallyManagedInstall(t *testing.T) {
+	t.Parallel()
+	ctx := testContext(t)
+
+	srv, requests := mockGitHubReleaseServerCounting(t, "v0.0.2", nil)
+	misePath := lstkAtInstallPath(t, ctx, "0.0.1", "mise", "installs", "lstk", "0.0.1")
+
+	// Subtests share srv and run sequentially: the later ones do contact it, so
+	// the no-request assertion below is a delta rather than an absolute count.
+	t.Run("refuses to update", func(t *testing.T) {
+		requestsBefore := requests.Load()
+		stdout, stderr, err := runBinary(t, "", mockGitHubEnv(t, srv), misePath, "update", "--non-interactive")
+		requireExitCode(t, 1, err)
+
+		assert.Contains(t, stdout, "installed with mise")
+		assert.Contains(t, stdout, "mise upgrade lstk")
+		assert.Empty(t, stderr, "the error is rendered through the sink, not re-printed on stderr")
+		assert.Equal(t, requestsBefore, requests.Load(), "an externally managed install must not even check for a version")
+
+		version, _, err := runBinary(t, "", mockGitHubEnv(t, srv), misePath, "--version")
+		require.NoError(t, err)
+		assert.Contains(t, version, "0.0.1", "the binary must be left untouched")
+	})
+
+	t.Run("refusal reports a machine-readable code", func(t *testing.T) {
+		stdout, _, err := runBinary(t, "", mockGitHubEnv(t, srv), misePath, "update", "--json")
+		requireExitCode(t, 1, err)
+
+		envelope := decodeEnvelope(t, stdout)
+		require.NotNil(t, envelope.Error)
+		assert.Equal(t, "UPDATE_EXTERNALLY_MANAGED", envelope.Error.Code)
+		assert.Equal(t, "USAGE", envelope.Error.Category)
+		assert.False(t, envelope.Error.Retryable)
+	})
+
+	t.Run("check still works", func(t *testing.T) {
+		stdout, stderr, err := runBinary(t, "", mockGitHubEnv(t, srv), misePath, "update", "--check", "--non-interactive")
+		require.NoError(t, err, "stderr: %s", stderr)
+		requireExitCode(t, 0, err)
+		assert.Contains(t, stdout, "Update available: 0.0.1 → v0.0.2")
+	})
+
+	t.Run("check ignores update_check off", func(t *testing.T) {
+		// update_check governs only the automatic check on start; asking
+		// explicitly always checks.
+		environ := append(mockGitHubEnv(t, srv), string(env.UpdateCheck)+"=off")
+		stdout, stderr, err := runBinary(t, "", environ, misePath, "update", "--check", "--non-interactive")
+		require.NoError(t, err, "stderr: %s", stderr)
+		requireExitCode(t, 0, err)
+		assert.Contains(t, stdout, "Update available: 0.0.1 → v0.0.2")
+	})
 }

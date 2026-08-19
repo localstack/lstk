@@ -19,6 +19,12 @@ var defaultConfigTemplate string
 
 type CLIConfig struct {
 	UpdateSkippedVersion string `mapstructure:"update_skipped_version"`
+	// UpdateCheck is the raw [cli] update_check value ("prompt", "notify" or
+	// "off"). It stays an unvalidated string here on purpose: Get() is called by
+	// every command, so rejecting a typo at this layer would make one unusable
+	// setting break the whole CLI. It is parsed — and an invalid value reported
+	// and ignored — at the command boundary instead.
+	UpdateCheck string `mapstructure:"update_check"`
 }
 
 type Config struct {
@@ -173,6 +179,14 @@ func setInFile(path, key string, value any) error {
 
 func SetUpdateSkippedVersion(version string) error {
 	return Set("cli.update_skipped_version", version)
+}
+
+// SetUpdateCheck persists the automatic update-check policy, preserving the
+// config file's comments and formatting (see setInFile). It takes a string
+// rather than the update package's CheckMode so this package stays free of a
+// dependency on the update domain; the command boundary adapts.
+func SetUpdateCheck(mode string) error {
+	return Set("cli.update_check", mode)
 }
 
 func Get() (*Config, error) {

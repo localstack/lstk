@@ -373,14 +373,15 @@ func startEmulator(ctx context.Context, rt runtime.Runtime, cfg *env.Env, tel *t
 
 	opts := buildStartOptions(cfg, appConfig, logger, tel, persist)
 
-	notifyOpts := update.NotifyOptions{
-		GitHubToken:        cfg.GitHubToken,
-		UpdatePrompt:       true,
-		SkippedVersion:     appConfig.CLI.UpdateSkippedVersion,
-		PersistSkipVersion: config.SetUpdateSkippedVersion,
-	}
+	// Resolved once and shared by both output paths, so the interactive and
+	// non-interactive runs cannot disagree about the update policy. In
+	// interactive mode any warning from resolution prints above the TUI, for the
+	// same reason ApplyEmulatorType's messages do: it happens before ui.Run.
+	plainSink := output.NewPlainSink(os.Stdout)
+	interactive := isInteractiveMode(cfg)
+	notifyOpts := buildNotifyOptions(plainSink, cfg, appConfig, configPath, firstRun, interactive)
 
-	if isInteractiveMode(cfg) {
+	if interactive {
 		return ui.Run(ctx, ui.RunOptions{
 			Runtime:                rt,
 			Version:                version.Version(),
@@ -393,16 +394,15 @@ func startEmulator(ctx context.Context, rt runtime.Runtime, cfg *env.Env, tel *t
 		})
 	}
 
-	sink := output.NewPlainSink(os.Stdout)
 	if firstRun && len(appConfig.Containers) > 0 {
 		emName := appConfig.Containers[0].Type.ShortName()
-		sink.Emit(output.MessageEvent{
+		plainSink.Emit(output.MessageEvent{
 			Severity: output.SeverityNote,
 			Text:     fmt.Sprintf("Configured with default emulator %s.", emName),
 		})
 	}
-	update.NotifyUpdate(ctx, sink, update.NotifyOptions{GitHubToken: cfg.GitHubToken})
-	resolvedVersion, err := container.Start(ctx, rt, sink, opts, false)
+	update.NotifyUpdate(ctx, plainSink, notifyOpts)
+	resolvedVersion, err := container.Start(ctx, rt, plainSink, opts, false)
 	if err != nil {
 		return err
 	}
@@ -410,7 +410,7 @@ func startEmulator(ctx context.Context, rt runtime.Runtime, cfg *env.Env, tel *t
 	// this run (resolvedVersion is empty when it was already running). This mirrors
 	// v1's AUTO_LOAD_POD: state is loaded as the emulator comes up, not on every invocation.
 	if autoLoad != nil && resolvedVersion != "" {
-		if err := autoLoad(ctx, sink); err != nil {
+		if err := autoLoad(ctx, plainSink); err != nil {
 			return err
 		}
 	}
