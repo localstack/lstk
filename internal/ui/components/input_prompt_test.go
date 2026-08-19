@@ -167,15 +167,16 @@ func TestInputPromptViewSlowStartChoicesAreScannable(t *testing.T) {
 // TestInputPromptViewReloginChoicesAreScannable covers the license re-login
 // prompt: its question is long enough to wrap, so flattening the two choices
 // into a trailing hint made them read as prose. They belong on their own lines
-// below the wrapped question, shortcut first.
+// below the wrapped question, shortcut first — and the shortcut is derived from
+// each option's key, so a plain-prose label still advertises the key to press.
 func TestInputPromptViewReloginChoicesAreScannable(t *testing.T) {
 	t.Parallel()
 
 	const width = 40
 	question := "License validation failed: invalid, inactive, or expired authentication token or subscription."
 	p := NewInputPrompt().Show(question, []output.InputOption{
-		{Key: "r", Label: "[R] Re-authenticate"},
-		{Key: "esc", Label: "[ESC] Exit"},
+		{Key: "r", Label: "Re-authenticate"},
+		{Key: "esc", Label: "Exit"},
 	}, true)
 
 	view := p.View(width)

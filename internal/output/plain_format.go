@@ -101,7 +101,31 @@ func formatStatusLine(e ContainerStatusEvent) (string, bool) {
 }
 
 func formatUserInputRequest(e UserInputRequestEvent) string {
-	return FormatPrompt(e.Prompt, e.Options)
+	return FormatPromptEvent(e)
+}
+
+// FormatPromptEvent renders a prompt on a single line. A vertical prompt has no
+// one-line form of its own, so its options are laid end to end — each keeping
+// the shortcut OptionLabel derives, since a plain-prose label ("Log in again")
+// would otherwise leave the user with no key to press. They carry their own
+// brackets, so the surrounding "[a/b]" of an inline prompt is dropped rather
+// than nested. Used wherever the full multi-line rendering does not fit: plain
+// output, and the TUI's spinner text.
+func FormatPromptEvent(e UserInputRequestEvent) string {
+	if !e.vertical {
+		return FormatPrompt(e.prompt, e.options)
+	}
+
+	labels := make([]string, 0, len(e.options))
+	for _, opt := range e.options {
+		if label := OptionLabel(opt); label != "" {
+			labels = append(labels, label)
+		}
+	}
+	if len(labels) == 0 {
+		return appendPromptSuffix(e.prompt, "")
+	}
+	return appendPromptSuffix(e.prompt, " "+strings.Join(labels, " / "))
 }
 
 // FormatPromptLabels formats option labels into a suffix string.
@@ -125,8 +149,14 @@ func FormatPromptLabels(options []InputOption) string {
 
 // FormatPrompt formats a prompt string with its options into a display line.
 func FormatPrompt(prompt string, options []InputOption) string {
+	return appendPromptSuffix(prompt, FormatPromptLabels(options))
+}
+
+// appendPromptSuffix puts the option hints on the end of the prompt's first
+// line, so any lines below it stay a block of their own.
+func appendPromptSuffix(prompt, suffix string) string {
 	lines := strings.Split(prompt, "\n")
-	firstLine := lines[0] + FormatPromptLabels(options)
+	firstLine := lines[0] + suffix
 	rest := lines[1:]
 	if len(rest) == 0 {
 		return firstLine

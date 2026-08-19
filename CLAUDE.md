@@ -271,10 +271,12 @@ A JSON-capable command emits a single `output.Envelope` (schema version, `data`/
 
 Domain code must never read from stdin or wait for user input directly. Instead:
 
-1. Emit a `UserInputRequestEvent` via `sink.Emit(output.UserInputRequestEvent{...})` with:
-   - `Prompt`: message to display
-   - `Options`: available choices (e.g., `{Key: "enter", Label: "Press ENTER to continue"}`)
-   - `ResponseCh`: channel to receive the user's response
+1. Emit a `UserInputRequestEvent` built with one of the intent constructors in `internal/output/prompt.go`:
+   - `output.Confirm(prompt, output.DefaultYes|DefaultNo, responseCh)` — y/n on an action the user already requested. Use `DefaultNo` for anything destructive.
+   - `output.ActionChoice(prompt, options, responseCh)` — a choice between distinct outcomes. `[KEY]` shortcut is derived from each option's `Key`.
+   - `output.Acknowledge(prompt, label, responseCh)` — a single any key press to acknowledge the message.
+
+   If a new prompt is not clearly one of the three, ask which one it should be rather than guessing.
 
 2. Wait on the `ResponseCh` for an `InputResponse` containing:
    - `SelectedKey`: which option was selected
@@ -289,11 +291,7 @@ Domain code must never read from stdin or wait for user input directly. Instead:
 Example flow in auth login:
 ```go
 responseCh := make(chan output.InputResponse, 1)
-sink.Emit(output.UserInputRequestEvent{
-    Prompt:     "Waiting for authentication...",
-    Options:    []output.InputOption{{Key: "enter", Label: "Press ENTER when complete"}},
-    ResponseCh: responseCh,
-})
+sink.Emit(output.Acknowledge("Waiting for authentication...", "Press any key when complete", responseCh))
 
 select {
 case resp := <-responseCh:

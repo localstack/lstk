@@ -60,6 +60,12 @@ func TestFirstRunShowsEmulatorSelectionPrompt(t *testing.T) {
 
 	p.waitForOutput("Which emulator would you like to use?", "emulator selection prompt should appear on first run")
 
+	// Each choice is a selectable row advertising the key that picks it directly.
+	// The shortcut is derived from the option's key by output.OptionLabel, so a
+	// picker whose labels are bare names still tells the user what to press.
+	p.waitForOutput("[A] AWS", "each emulator row should advertise its shortcut")
+	p.waitForOutput("[Z] Azure", "each emulator row should advertise its shortcut")
+
 	// Confirm the default-highlighted option (AWS) by pressing Enter.
 	p.write("\r")
 

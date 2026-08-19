@@ -271,12 +271,29 @@ type InputResponse struct {
 	Cancelled   bool
 }
 
+// Base struct for all user input requests. Not to be instantiated directly.
+// Build user input requests with typical constructors defined in prompt.go,
+// e.g. Confirm, ActionChoice, or Acknowledge.
 type UserInputRequestEvent struct {
-	Prompt     string
-	Options    []InputOption
-	ResponseCh chan<- InputResponse
-	Vertical   bool
+	prompt     string
+	options    []InputOption
+	responseCh chan<- InputResponse
+	// vertical renders each option as its own selectable row instead of a
+	// trailing "[a/b]" hint.
+	vertical bool
 }
+
+func (e UserInputRequestEvent) Prompt() string { return e.prompt }
+
+func (e UserInputRequestEvent) Options() []InputOption { return e.options }
+
+// ResponseCh receives the user's answer. It also identifies the request, so a
+// UserInputDismissEvent can name the exact prompt it retracts.
+func (e UserInputRequestEvent) ResponseCh() chan<- InputResponse { return e.responseCh }
+
+// Vertical reports whether each option should render as its own selectable row
+// rather than as a trailing "[a/b]" hint.
+func (e UserInputRequestEvent) Vertical() bool { return e.vertical }
 
 // UserInputDismissEvent removes a pending prompt when the condition that
 // required input resolves on its own. ResponseCh identifies the exact request

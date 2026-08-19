@@ -117,7 +117,7 @@ func TestNotifyUpdatePromptSkip(t *testing.T) {
 	sink := output.SinkFunc(func(event output.Event) {
 		events = append(events, event)
 		if req, ok := event.(output.UserInputRequestEvent); ok {
-			req.ResponseCh <- output.InputResponse{SelectedKey: "s"}
+			req.ResponseCh() <- output.InputResponse{SelectedKey: "s"}
 		}
 	})
 
@@ -155,7 +155,7 @@ func TestNotifyUpdatePromptRemind(t *testing.T) {
 	sink := output.SinkFunc(func(event output.Event) {
 		events = append(events, event)
 		if req, ok := event.(output.UserInputRequestEvent); ok {
-			req.ResponseCh <- output.InputResponse{SelectedKey: "r"}
+			req.ResponseCh() <- output.InputResponse{SelectedKey: "r"}
 		}
 	})
 
@@ -171,12 +171,12 @@ func TestNotifyUpdatePromptCancelled(t *testing.T) {
 	sink := output.SinkFunc(func(event output.Event) {
 		events = append(events, event)
 		if req, ok := event.(output.UserInputRequestEvent); ok {
-			assert.Equal(t, "Update lstk to latest version?", req.Prompt)
-			assert.Len(t, req.Options, 3)
-			assert.Equal(t, "u", req.Options[0].Key)
-			assert.Equal(t, "r", req.Options[1].Key)
-			assert.Equal(t, "s", req.Options[2].Key)
-			req.ResponseCh <- output.InputResponse{Cancelled: true}
+			assert.Equal(t, "Update lstk to latest version?", req.Prompt())
+			assert.Len(t, req.Options(), 3)
+			assert.Equal(t, "u", req.Options()[0].Key)
+			assert.Equal(t, "r", req.Options()[1].Key)
+			assert.Equal(t, "s", req.Options()[2].Key)
+			req.ResponseCh() <- output.InputResponse{Cancelled: true}
 		}
 	})
 

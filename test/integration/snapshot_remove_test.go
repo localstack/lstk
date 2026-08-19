@@ -206,7 +206,11 @@ func TestSnapshotRemoveInteractive(t *testing.T) {
 				With(env.LocalStackHost, lsHost(srv)).
 				With(env.AuthToken, "test-token"),
 			"snapshot", "remove", "pod:my-baseline")
-		p.waitForOutput("Delete cloud snapshot", "confirmation prompt should appear")
+		p.waitForOutput("Delete cloud snapshot 'pod:my-baseline'?", "confirmation prompt should appear")
+		// An irreversible delete capitalizes the answer ENTER picks, so a stray
+		// ENTER cancels instead of deleting. Asserted apart from the question
+		// because the hint moves to its own line when the question wraps.
+		p.waitForOutput("[y/N]", "the confirmation should advertise 'no' as its default")
 		return p
 	}
 

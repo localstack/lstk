@@ -306,18 +306,14 @@ func Setup(ctx context.Context, sink output.Sink, resolvedHost string, status pr
 
 	if !skipConfirm {
 		responseCh := make(chan output.InputResponse, 1)
-		sink.Emit(output.UserInputRequestEvent{
-			Prompt:     "Set up a LocalStack profile for AWS CLI and SDKs in ~/.aws?",
-			Options:    []output.InputOption{{Key: "y", Label: "Y"}, {Key: "n", Label: "n"}},
-			ResponseCh: responseCh,
-		})
+		sink.Emit(output.Confirm("Set up a LocalStack profile for AWS CLI and SDKs in ~/.aws?", output.DefaultYes, responseCh))
 
 		select {
 		case resp := <-responseCh:
 			if resp.Cancelled {
 				return nil
 			}
-			if resp.SelectedKey == "n" {
+			if resp.SelectedKey == output.KeyNo {
 				sink.Emit(output.MessageEvent{Severity: output.SeverityNote, Text: "Skipped adding LocalStack AWS profile."})
 				return nil
 			}

@@ -169,11 +169,7 @@ func TestAppEnterRespondsToInputRequest(t *testing.T) {
 	app := NewApp("dev", "", "", nil)
 
 	responseCh := make(chan output.InputResponse, 1)
-	model, _ := app.Update(output.UserInputRequestEvent{
-		Prompt:     "Press enter",
-		Options:    []output.InputOption{{Key: "enter", Label: "Continue"}},
-		ResponseCh: responseCh,
-	})
+	model, _ := app.Update(output.Acknowledge("Press enter", "Continue", responseCh))
 	app = model.(App)
 
 	if !app.inputPrompt.Visible() {
@@ -189,8 +185,8 @@ func TestAppEnterRespondsToInputRequest(t *testing.T) {
 
 	select {
 	case resp := <-responseCh:
-		if resp.SelectedKey != "enter" {
-			t.Fatalf("expected enter key, got %q", resp.SelectedKey)
+		if resp.SelectedKey != output.KeyAny {
+			t.Fatalf("expected the any-key option, got %q", resp.SelectedKey)
 		}
 	case <-time.After(time.Second):
 		t.Fatal("timed out waiting for response on channel")
@@ -210,11 +206,9 @@ func TestAppDismissesOnlyTheMatchingPendingInput(t *testing.T) {
 
 	responseCh := make(chan output.InputResponse, 1)
 	prompt := "LocalStack is still starting."
-	model, _ = app.Update(output.UserInputRequestEvent{
-		Prompt:     prompt,
-		Options:    []output.InputOption{{Key: "w", Label: "[W] Keep waiting"}},
-		ResponseCh: responseCh,
-	})
+	model, _ = app.Update(output.ActionChoice(prompt, []output.InputOption{
+		{Key: "w", Label: "Keep waiting"},
+	}, responseCh))
 	app = model.(App)
 
 	model, _ = app.Update(output.UserInputDismissEvent{ResponseCh: make(chan output.InputResponse, 1)})
@@ -255,13 +249,12 @@ func TestAppPendingInputSurvivesDeferredSpinnerStop(t *testing.T) {
 		t.Fatal("expected the spinner stop to be deferred by the min duration")
 	}
 
-	prompt := "License validation failed. Log in again to refresh your credentials?"
+	prompt := "License validation failed: token expired."
 	responseCh := make(chan output.InputResponse, 1)
-	model, _ = app.Update(output.UserInputRequestEvent{
-		Prompt:     prompt,
-		Options:    []output.InputOption{{Key: "enter", Label: "ENTER to log in again"}},
-		ResponseCh: responseCh,
-	})
+	model, _ = app.Update(output.ActionChoice(prompt, []output.InputOption{
+		{Key: "r", Label: "Re-authenticate"},
+		{Key: "esc", Label: "Exit"},
+	}, responseCh))
 	app = model.(App)
 
 	model, _ = app.Update(components.SpinnerMinDurationElapsedMsg{})
@@ -286,8 +279,8 @@ func TestAppPendingInputSurvivesDeferredSpinnerStop(t *testing.T) {
 
 	select {
 	case resp := <-responseCh:
-		if resp.SelectedKey != "enter" {
-			t.Fatalf("expected enter key, got %q", resp.SelectedKey)
+		if resp.SelectedKey != "r" {
+			t.Fatalf("expected enter to select the highlighted action, got %q", resp.SelectedKey)
 		}
 	case <-time.After(time.Second):
 		t.Fatal("timed out waiting for response on channel")
@@ -299,28 +292,23 @@ func TestAppPendingInputSurvivesDeferredSpinnerStop(t *testing.T) {
 
 // TestAppPromptWrapsAtTerminalWidth covers the other half of DEVX-1045: a long
 // prompt has to be wrapped to the terminal width, since Bubble Tea's renderer
-// would otherwise truncate the key hints off the right edge.
+// would otherwise truncate the key hints off the right edge. An inline
+// confirmation is the case that can lose them — its hint sits at the very end
+// of the question rather than on rows of its own.
 func TestAppPromptWrapsAtTerminalWidth(t *testing.T) {
 	t.Parallel()
 
 	const width = 40
-	question := "License validation failed: invalid, inactive, or expired authentication token or subscription. Log in again to refresh your credentials?"
+	question := "Delete cloud snapshot 'pod:nightly-regression-baseline'? This operation cannot be undone."
 
 	app := NewApp("dev", "", "", nil)
 	model, _ := app.Update(tea.WindowSizeMsg{Width: width})
 	app = model.(App)
-	model, _ = app.Update(output.UserInputRequestEvent{
-		Prompt: question,
-		Options: []output.InputOption{
-			{Key: "enter", Label: "ENTER to log in again"},
-			{Key: "esc", Label: "ESC to exit"},
-		},
-		ResponseCh: make(chan output.InputResponse, 1),
-	})
+	model, _ = app.Update(output.Confirm(question, output.DefaultNo, make(chan output.InputResponse, 1)))
 	app = model.(App)
 
 	view := app.View()
-	if !strings.Contains(view, "[ENTER to log in again/ESC to exit]") {
+	if !strings.Contains(view, "[y/N]") {
 		t.Errorf("expected the key hints to be rendered, got:\n%s", view)
 	}
 	if strings.Contains(view, question) {
@@ -335,11 +323,7 @@ func TestAppCtrlCCancelsPendingInput(t *testing.T) {
 	app := NewApp("dev", "", "", func() { cancelled = true })
 
 	responseCh := make(chan output.InputResponse, 1)
-	model, _ := app.Update(output.UserInputRequestEvent{
-		Prompt:     "Press enter",
-		Options:    []output.InputOption{{Key: "enter", Label: "Continue"}},
-		ResponseCh: responseCh,
-	})
+	model, _ := app.Update(output.Acknowledge("Press enter", "Continue", responseCh))
 	app = model.(App)
 
 	model, cmd := app.Update(tea.KeyMsg{Type: tea.KeyCtrlC})
@@ -648,134 +632,29 @@ func TestAppNonSilentErrorShowsInErrorDisplay(t *testing.T) {
 	}
 }
 
-func TestAppEnterPrefersExplicitEnterOption(t *testing.T) {
+// TestAppUnmatchedKeyLeavesPromptPending covers the app-level half of a
+// resolveOption miss: no response command, and the prompt stays on screen still
+// waiting for an answer.
+//
+// The matching rules themselves belong to TestResolveOption, which feeds them
+// arbitrary option slices. That is now the only place they can be exercised at
+// all: every prompt a user sees comes from a constructor, so the shapes this
+// file used to build by hand to reach them one at a time — an explicit "enter"
+// option outranking an uppercase default, all-lowercase labels, non-letter
+// labels — can no longer be built outside internal/output.
+func TestAppUnmatchedKeyLeavesPromptPending(t *testing.T) {
 	t.Parallel()
 
 	app := NewApp("dev", "", "", nil)
 	responseCh := make(chan output.InputResponse, 1)
 
-	model, _ := app.Update(output.UserInputRequestEvent{
-		Prompt: "Open browser now?",
-		Options: []output.InputOption{
-			{Key: "y", Label: "Y"},
-			{Key: "n", Label: "n"},
-			{Key: "enter", Label: "Press ENTER when complete"},
-		},
-		ResponseCh: responseCh,
-	})
+	model, _ := app.Update(output.Confirm("Open browser now?", output.DefaultYes, responseCh))
 	app = model.(App)
 
-	model, cmd := app.Update(tea.KeyMsg{Type: tea.KeyEnter})
-	app = model.(App)
-	if cmd == nil {
-		t.Fatal("expected response command")
-	}
-	cmd()
-
-	select {
-	case resp := <-responseCh:
-		if resp.SelectedKey != "enter" {
-			t.Fatalf("expected enter key, got %q", resp.SelectedKey)
-		}
-	case <-time.After(time.Second):
-		t.Fatal("timed out waiting for response on channel")
-	}
-
-	if app.inputPrompt.Visible() {
-		t.Fatal("expected input prompt to be hidden after response")
-	}
-}
-
-func TestAppEnterSelectsUppercaseLabelDefault(t *testing.T) {
-	t.Parallel()
-
-	app := NewApp("dev", "", "", nil)
-	responseCh := make(chan output.InputResponse, 1)
-
-	model, _ := app.Update(output.UserInputRequestEvent{
-		Prompt: "Open browser now?",
-		Options: []output.InputOption{
-			{Key: "y", Label: "Y"},
-			{Key: "n", Label: "n"},
-		},
-		ResponseCh: responseCh,
-	})
-	app = model.(App)
-
-	model, cmd := app.Update(tea.KeyMsg{Type: tea.KeyEnter})
-	app = model.(App)
-	if cmd == nil {
-		t.Fatal("expected response command when enter is pressed with uppercase default")
-	}
-	cmd()
-
-	select {
-	case resp := <-responseCh:
-		if resp.SelectedKey != "y" {
-			t.Fatalf("expected y key, got %q", resp.SelectedKey)
-		}
-	case <-time.After(time.Second):
-		t.Fatal("timed out waiting for response on channel")
-	}
-
-	if app.inputPrompt.Visible() {
-		t.Fatal("expected input prompt to be hidden after response")
-	}
-}
-
-func TestAppEnterDoesNothingWithoutDefault(t *testing.T) {
-	t.Parallel()
-
-	app := NewApp("dev", "", "", nil)
-	responseCh := make(chan output.InputResponse, 1)
-
-	model, _ := app.Update(output.UserInputRequestEvent{
-		Prompt: "Choose:",
-		Options: []output.InputOption{
-			{Key: "y", Label: "y"},
-			{Key: "n", Label: "n"},
-		},
-		ResponseCh: responseCh,
-	})
-	app = model.(App)
-
-	model, cmd := app.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	model, cmd := app.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'x'}})
 	app = model.(App)
 	if cmd != nil {
-		t.Fatal("expected no response command when no uppercase default option exists")
-	}
-
-	select {
-	case resp := <-responseCh:
-		t.Fatalf("expected no response, got %+v", resp)
-	case <-time.After(200 * time.Millisecond):
-	}
-
-	if !app.inputPrompt.Visible() {
-		t.Fatal("expected input prompt to remain visible")
-	}
-}
-
-func TestAppEnterDoesNothingWithNonLetterLabel(t *testing.T) {
-	t.Parallel()
-
-	app := NewApp("dev", "", "", nil)
-	responseCh := make(chan output.InputResponse, 1)
-
-	model, _ := app.Update(output.UserInputRequestEvent{
-		Prompt: "Choose:",
-		Options: []output.InputOption{
-			{Key: "1", Label: "1"},
-			{Key: "2", Label: "2"},
-		},
-		ResponseCh: responseCh,
-	})
-	app = model.(App)
-
-	model, cmd := app.Update(tea.KeyMsg{Type: tea.KeyEnter})
-	app = model.(App)
-	if cmd != nil {
-		t.Fatal("expected no response command when label contains no letters")
+		t.Fatal("expected no response command for a key no option claims")
 	}
 
 	select {
@@ -795,12 +674,11 @@ func TestAppEnterSelectsHighlightedVerticalOption(t *testing.T) {
 	app := NewApp("dev", "", "", nil)
 	responseCh := make(chan output.InputResponse, 1)
 
-	model, _ := app.Update(output.UserInputRequestEvent{
-		Prompt:     "Update lstk to latest version?",
-		Options:    []output.InputOption{{Key: "u", Label: "Update now [U]"}, {Key: "s", Label: "Skip this version [S]"}, {Key: "n", Label: "Never ask again [N]"}},
-		ResponseCh: responseCh,
-		Vertical:   true,
-	})
+	model, _ := app.Update(output.ActionChoice("Update lstk to latest version?", []output.InputOption{
+		{Key: "u", Label: "Update now"},
+		{Key: "s", Label: "Skip this version"},
+		{Key: "n", Label: "Never ask again"},
+	}, responseCh))
 	app = model.(App)
 
 	model, _ = app.Update(tea.KeyMsg{Type: tea.KeyDown})
@@ -837,15 +715,14 @@ func TestAppEscResolvesVerticalDeclineOption(t *testing.T) {
 	app := NewApp("dev", "", "", nil)
 	responseCh := make(chan output.InputResponse, 1)
 
-	model, _ := app.Update(output.UserInputRequestEvent{
-		Prompt: "License validation failed: invalid, inactive, or expired authentication token or subscription.",
-		Options: []output.InputOption{
-			{Key: "r", Label: "[R] Re-authenticate"},
-			{Key: "esc", Label: "[ESC] Exit"},
+	model, _ := app.Update(output.ActionChoice(
+		"License validation failed: invalid, inactive, or expired authentication token or subscription.",
+		[]output.InputOption{
+			{Key: "r", Label: "Re-authenticate"},
+			{Key: "esc", Label: "Exit"},
 		},
-		ResponseCh: responseCh,
-		Vertical:   true,
-	})
+		responseCh,
+	))
 	app = model.(App)
 
 	model, cmd := app.Update(tea.KeyMsg{Type: tea.KeyEscape})
@@ -878,15 +755,14 @@ func TestAppReloginShortcutIgnoresVerticalSelection(t *testing.T) {
 	app := NewApp("dev", "", "", nil)
 	responseCh := make(chan output.InputResponse, 1)
 
-	model, _ := app.Update(output.UserInputRequestEvent{
-		Prompt: "License validation failed: invalid, inactive, or expired authentication token or subscription.",
-		Options: []output.InputOption{
-			{Key: "r", Label: "[R] Re-authenticate"},
-			{Key: "esc", Label: "[ESC] Exit"},
+	model, _ := app.Update(output.ActionChoice(
+		"License validation failed: invalid, inactive, or expired authentication token or subscription.",
+		[]output.InputOption{
+			{Key: "r", Label: "Re-authenticate"},
+			{Key: "esc", Label: "Exit"},
 		},
-		ResponseCh: responseCh,
-		Vertical:   true,
-	})
+		responseCh,
+	))
 	app = model.(App)
 
 	model, _ = app.Update(tea.KeyMsg{Type: tea.KeyDown})
@@ -912,17 +788,60 @@ func TestAppReloginShortcutIgnoresVerticalSelection(t *testing.T) {
 	}
 }
 
+// TestAppEnterHonorsTheConfirmDefault pins the contract that lets output.Confirm
+// advertise its default by capitalizing one label: ENTER must select whichever
+// answer is capitalized, so a destructive prompt built with DefaultNo cannot be
+// confirmed by a stray ENTER.
+func TestAppEnterHonorsTheConfirmDefault(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name string
+		def  output.ConfirmDefault
+		want string
+	}{
+		{name: "default yes", def: output.DefaultYes, want: output.KeyYes},
+		{name: "default no", def: output.DefaultNo, want: output.KeyNo},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			app := NewApp("dev", "", "", nil)
+			responseCh := make(chan output.InputResponse, 1)
+
+			model, _ := app.Update(output.Confirm("Reset emulator state? All resources will be lost", tc.def, responseCh))
+			app = model.(App)
+
+			model, cmd := app.Update(tea.KeyMsg{Type: tea.KeyEnter})
+			app = model.(App)
+			if cmd == nil {
+				t.Fatal("expected enter to resolve the confirmation")
+			}
+			cmd()
+
+			select {
+			case resp := <-responseCh:
+				if resp.SelectedKey != tc.want {
+					t.Fatalf("expected enter to select %q, got %q", tc.want, resp.SelectedKey)
+				}
+			case <-time.After(time.Second):
+				t.Fatal("timed out waiting for response on channel")
+			}
+
+			if app.inputPrompt.Visible() {
+				t.Fatal("expected input prompt to be hidden after response")
+			}
+		})
+	}
+}
+
 func TestAppAnyKeyOptionResolvesOnAnyKeypress(t *testing.T) {
 	t.Parallel()
 
 	app := NewApp("dev", "", "", nil)
 	responseCh := make(chan output.InputResponse, 1)
 
-	model, _ := app.Update(output.UserInputRequestEvent{
-		Prompt:     "Waiting for authorization...",
-		Options:    []output.InputOption{{Key: "any", Label: "Press any key when complete"}},
-		ResponseCh: responseCh,
-	})
+	model, _ := app.Update(output.Acknowledge("Waiting for authorization...", "Press any key when complete", responseCh))
 	app = model.(App)
 
 	// Any key (e.g., spacebar) should resolve
@@ -1040,14 +959,10 @@ func TestAppPendingInputOptionCOverridesClipboardShortcut(t *testing.T) {
 	model, _ := app.Update(output.AuthEvent{URL: "https://example.com"})
 	app = model.(App)
 
-	model, _ = app.Update(output.UserInputRequestEvent{
-		Prompt: "Choose option",
-		Options: []output.InputOption{
-			{Key: "c", Label: "Continue"},
-			{Key: "x", Label: "Cancel"},
-		},
-		ResponseCh: responseCh,
-	})
+	model, _ = app.Update(output.ActionChoice("Choose option", []output.InputOption{
+		{Key: "c", Label: "Continue"},
+		{Key: "x", Label: "Cancel"},
+	}, responseCh))
 	app = model.(App)
 
 	model, cmd := app.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'c'}})
@@ -1141,6 +1056,12 @@ func TestResolveOption(t *testing.T) {
 		{
 			name:          "non-letter label not treated as uppercase default",
 			options:       []output.InputOption{{Key: "1", Label: "1"}, {Key: "2", Label: "2"}},
+			press:         enter,
+			wantOptionKey: "",
+		},
+		{
+			name:          "all-lowercase labels leave Enter unanswered",
+			options:       []output.InputOption{{Key: "y", Label: "y"}, {Key: "n", Label: "n"}},
 			press:         enter,
 			wantOptionKey: "",
 		},

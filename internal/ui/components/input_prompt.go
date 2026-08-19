@@ -123,10 +123,11 @@ func (p InputPrompt) viewVertical(width int) string {
 	}
 
 	for i, opt := range p.options {
+		label := output.OptionLabel(opt)
 		if i == p.selectedIndex {
-			sb.WriteString(styles.NimboMid.Render("● " + opt.Label))
+			sb.WriteString(styles.NimboMid.Render("● " + label))
 		} else {
-			sb.WriteString(styles.Secondary.Render("○ " + opt.Label))
+			sb.WriteString(styles.Secondary.Render("○ " + label))
 		}
 		sb.WriteString("\n")
 	}
