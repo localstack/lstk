@@ -31,9 +31,8 @@ const (
 	ErrValidationError        ErrorCode = "VALIDATION_ERROR"
 	ErrUsageError             ErrorCode = "USAGE_ERROR"
 	ErrNotJSONCapable         ErrorCode = "NOT_JSON_CAPABLE"
-	// ErrUpdateExternallyManaged: lstk cannot update itself because another
-	// package manager owns its binary. Usage, not runtime: the fix is to run the
-	// manager's own upgrade command, not to retry.
+	// Another package manager owns lstk's binary. Usage, not runtime: the fix is
+	// that manager's own upgrade command, not a retry.
 	ErrUpdateExternallyManaged ErrorCode = "UPDATE_EXTERNALLY_MANAGED"
 	ErrNetworkError            ErrorCode = "NETWORK_ERROR"
 	ErrCancelled               ErrorCode = "CANCELLED"

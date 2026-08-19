@@ -9,35 +9,26 @@ import (
 	"github.com/localstack/lstk/internal/update"
 )
 
-// updateCheckContext is everything resolveUpdateCheckMode needs to pick a
-// policy, gathered at the command boundary so the resolution itself stays a pure
-// function over named inputs.
+// updateCheckContext is what resolveUpdateCheckMode needs to pick a policy,
+// gathered at the boundary so the resolution stays a pure function.
 type updateCheckContext struct {
-	// EnvValue is LSTK_UPDATE_CHECK, empty when unset.
-	EnvValue string
-	// ConfigValue is [cli] update_check, empty when unset.
-	ConfigValue string
-	// ExternallyManaged reports that another package manager owns the binary.
-	ExternallyManaged bool
-	// Interactive reports whether a prompt could actually be answered.
-	Interactive bool
+	EnvValue          string // LSTK_UPDATE_CHECK, empty when unset
+	ConfigValue       string // [cli] update_check, empty when unset
+	ExternallyManaged bool   // another package manager owns the binary
+	Interactive       bool   // a prompt could actually be answered
 }
 
-// resolveUpdateCheckMode resolves the automatic update-check policy in
-// precedence order: LSTK_UPDATE_CHECK, then [cli] update_check in config.toml,
-// then the default implied by the install (notify when another package manager
-// owns the binary, prompt otherwise).
+// resolveUpdateCheckMode resolves the policy in precedence order:
+// LSTK_UPDATE_CHECK, [cli] update_check, then the install-implied default
+// (notify when a package manager owns the binary, prompt otherwise).
 //
-// An unparsable value is reported through sink and skipped rather than failing
-// the command. The setting governs only a best-effort background check, so a
-// typo must never stop `lstk start` — and it cannot be fixed with lstk itself,
-// since there is no `lstk config set`. Falling through source by source (rather
-// than jumping straight to the default) keeps the documented precedence true
-// even when one source is garbage.
+// An unparsable value is reported and skipped, never fatal: the setting governs
+// a best-effort background check, so a typo must not stop `lstk start` — and
+// there is no `lstk config set` to fix it with. Falling through source by source
+// keeps the documented precedence true even when one source is garbage.
 //
-// A prompt is downgraded to notify off an interactive terminal: only the TUI
-// answers a UserInputRequestEvent, so prompting against a plain sink would block
-// the CLI until the context is cancelled with nothing on screen to act on.
+// Off a terminal, prompt is downgraded to notify: only the TUI answers a
+// UserInputRequestEvent, so a plain sink would block until context cancellation.
 func resolveUpdateCheckMode(sink output.Sink, checkCtx updateCheckContext) update.CheckMode {
 	mode := resolveConfiguredCheckMode(sink, checkCtx)
 	if mode == update.CheckModePrompt && !checkCtx.Interactive {
@@ -76,10 +67,9 @@ func resolveConfiguredCheckMode(sink output.Sink, checkCtx updateCheckContext) u
 	return update.CheckModePrompt
 }
 
-// buildNotifyOptions resolves the single update-notification policy used by both
-// the interactive (TUI) and non-interactive start paths. Building it once is
-// what keeps them in sync: the non-interactive path used to construct its own
-// NotifyOptions and so ignored the skipped version entirely (DEVX-1029).
+// buildNotifyOptions resolves the one policy both start paths use. Building it
+// once is what keeps them in sync: the non-interactive path used to construct
+// its own NotifyOptions and so ignored the skipped version (DEVX-1029).
 func buildNotifyOptions(sink output.Sink, cfg *env.Env, appConfig *config.Config, configPath string, firstRun, interactive bool) update.NotifyOptions {
 	info := update.DetectInstallMethod()
 
@@ -97,9 +87,8 @@ func buildNotifyOptions(sink output.Sink, cfg *env.Env, appConfig *config.Config
 		ConfigPath:         configPath,
 	}
 
-	// On a genuine first run there is no config file to write to yet, and
-	// creating one here would suppress the emulator picker, so the prompt's
-	// "Don't ask again" option is withheld rather than silently doing nothing.
+	// No config file to write to on a first run, and creating one here would
+	// suppress the emulator picker — so withhold the option (see NotifyOptions).
 	if !firstRun {
 		opts.PersistCheckMode = func(mode update.CheckMode) error {
 			return config.SetUpdateCheck(string(mode))

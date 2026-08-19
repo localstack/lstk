@@ -24,8 +24,8 @@ func TestClassifyPath(t *testing.T) {
 			wantMethod: InstallHomebrew,
 		},
 		{
-			// A self-installed npm lstk under a mise-managed *node* is still an npm
-			// install and must keep updating itself through npm (see 273738e).
+			// An npm lstk under a mise-managed *node* is still an npm install and
+			// must keep updating through npm (see 273738e).
 			name:       "npm global install under mise-managed node",
 			path:       "/Users/someone/.local/share/mise/installs/node/24.8.0/lib/node_modules/@localstack/lstk_darwin_arm64/lstk",
 			wantMethod: InstallNPM,
@@ -57,9 +57,8 @@ func TestClassifyPath(t *testing.T) {
 			wantMethod:  InstallExternal,
 			wantManager: ManagerNix,
 		},
-		// A manager's name is not rare enough to match on its own: someone with a
-		// checkout of the tool itself would otherwise get a refusal from
-		// `lstk update` advising a command that does not apply to them.
+		// A manager's name alone is not rare enough: a checkout of the tool itself
+		// would otherwise get a refusal advising a command that does not apply.
 		{
 			name:       "directory merely named nix is not a nix install",
 			path:       "/home/user/projects/nix/bin/lstk",
@@ -148,9 +147,8 @@ func TestClassifyPath(t *testing.T) {
 	}
 }
 
-// TestExternalManagerHints pins the user-facing wording: these strings are
-// printed verbatim in the notify line and in the `lstk update` refusal, so a
-// change here is a change to the CLI's output.
+// TestExternalManagerHints pins wording printed verbatim in the notify line and
+// the `lstk update` refusal, so a change here changes the CLI's output.
 func TestExternalManagerHints(t *testing.T) {
 	t.Parallel()
 
@@ -163,8 +161,8 @@ func TestExternalManagerHints(t *testing.T) {
 		{ManagerMise, "mise", "mise upgrade lstk", "run mise upgrade lstk"},
 		{ManagerScoop, "Scoop", "scoop update lstk", "run scoop update lstk"},
 		{ManagerChocolatey, "Chocolatey", "choco upgrade lstk", "run choco upgrade lstk"},
-		// Nix installs split across nix profile / nixos-rebuild / home-manager and
-		// asdf has no upgrade verb, so neither names a command.
+		// Nix splits across profile / nixos-rebuild / home-manager and asdf has no
+		// upgrade verb, so neither names a command.
 		{ManagerNix, "Nix", "", "update it with Nix"},
 		{ManagerASDF, "asdf", "", "update it with asdf"},
 	}

@@ -346,14 +346,12 @@ func startEmulator(ctx context.Context, rt runtime.Runtime, cfg *env.Env, tel *t
 		logger.Info("could not resolve friendly config path: %v", err)
 	}
 
-	// Everything that has to be reported before the TUI can start goes through
-	// this sink, in interactive mode too: applying --type mutates config that the
-	// auto-load loader and start options are built from, and the update policy is
-	// resolved for both output paths at once.
+	// Anything reported before the TUI can start goes through this sink, in
+	// interactive mode too.
 	plainSink := output.NewPlainSink(os.Stdout)
 
-	// Apply the --type flag before resolving snapshot and start options so
-	// everything downstream reflects the selected emulator.
+	// Apply --type before resolving snapshot and start options so everything
+	// downstream reflects the selected emulator.
 	if emulatorType != "" {
 		newContainers, applyErr := container.ApplyEmulatorType(ctx, rt, plainSink, emulatorType, appConfig.Containers, firstRun, configPath)
 		if applyErr != nil {
@@ -377,8 +375,7 @@ func startEmulator(ctx context.Context, rt runtime.Runtime, cfg *env.Env, tel *t
 
 	opts := buildStartOptions(cfg, appConfig, logger, tel, persist)
 
-	// Resolved once and shared by both output paths, so the interactive and
-	// non-interactive runs cannot disagree about the update policy.
+	// Resolved once so the two output paths cannot disagree about the policy.
 	interactive := isInteractiveMode(cfg)
 	notifyOpts := buildNotifyOptions(plainSink, cfg, appConfig, configPath, firstRun, interactive)
 

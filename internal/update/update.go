@@ -41,9 +41,8 @@ func Check(ctx context.Context, sink output.Sink, githubToken string) (string, b
 func Update(ctx context.Context, sink output.Sink, checkOnly bool, githubToken string) error {
 	info := DetectInstallMethod()
 
-	// Refused before Check so an install lstk must not touch costs no network
-	// request either. --check is read-only and stays allowed: knowing a new
-	// version exists is useful even when another tool installs it.
+	// Refused before Check, so a binary lstk must not touch costs no request
+	// either. --check is read-only and stays allowed.
 	if !checkOnly {
 		if err := refuseExternalUpdate(sink, info); err != nil {
 			return err
@@ -69,9 +68,9 @@ func Update(ctx context.Context, sink output.Sink, checkOnly bool, githubToken s
 	return nil
 }
 
-// refuseExternalUpdate reports that lstk cannot update itself because another
-// package manager owns the binary, returning the silent error the command
-// boundary propagates. It returns nil for every install lstk does manage.
+// refuseExternalUpdate reports that another package manager owns the binary and
+// returns the silent error the command boundary propagates. Nil for installs
+// lstk manages itself.
 func refuseExternalUpdate(sink output.Sink, info InstallInfo) error {
 	if !info.ExternallyManaged() {
 		return nil
@@ -85,8 +84,8 @@ func refuseExternalUpdate(sink output.Sink, info InstallInfo) error {
 	if cmd := info.Manager.UpgradeCommand(); cmd != "" {
 		actions = append(actions, output.ErrorAction{Label: fmt.Sprintf("Update it with %s:", manager), Value: cmd})
 	} else {
-		// No single correct command for this manager, so the advice goes in the
-		// summary rather than masquerading as something runnable.
+		// No single correct command, so the advice goes in the summary rather than
+		// masquerading as something runnable.
 		summary += fmt.Sprintf(" Update it with %s instead.", manager)
 	}
 	actions = append(actions, output.ErrorAction{Label: "Or just check for a new version:", Value: "lstk update --check"})
@@ -100,26 +99,22 @@ func refuseExternalUpdate(sink output.Sink, info InstallInfo) error {
 	return output.NewSilentError(err)
 }
 
-// externalInstallError states that lstk cannot replace a binary another package
-// manager owns. Both refusal paths build their message from it so they cannot
-// describe the same situation differently. It deliberately carries no upgrade
-// advice: refuseExternalUpdate offers that as an ErrorAction instead, and
-// repeating it in the headline would say the same thing twice.
+// externalInstallError is the shared sentence for both refusal paths, so they
+// cannot describe the same situation differently. It carries no upgrade advice:
+// refuseExternalUpdate offers that as an ErrorAction instead.
 func externalInstallError(info InstallInfo) error {
 	return fmt.Errorf("lstk was installed with %s, so it cannot update itself", info.Manager.DisplayName())
 }
 
-// applyUpdate performs the update for the given install, returning the method's
-// canonical name ("homebrew"/"npm"/"binary") on success.
+// applyUpdate returns the method's canonical name ("homebrew"/"npm"/"binary").
 func applyUpdate(ctx context.Context, sink output.Sink, info InstallInfo, latest, githubToken string) (string, error) {
 	var err error
 	switch info.Method {
 	case InstallExternal:
-		// Defense in depth: Update refuses before reaching here, but the
-		// interactive prompt's "Update now" is also routed through applyUpdate,
-		// and a user who forces update_check = "prompt" on a managed install
-		// must still never have their binary replaced. This path renders as a
-		// single warning line with no actions, so it carries the advice inline.
+		// Defense in depth: the prompt's "Update now" also routes here, so a user
+		// who forces update_check = "prompt" on a managed install must still never
+		// have their binary replaced. Renders as one warning line with no actions,
+		// hence the inline advice.
 		return "", fmt.Errorf("%w — %s to update it", externalInstallError(info), info.Manager.UpgradeAdvice())
 	case InstallHomebrew:
 		sink.Emit(output.MessageEvent{Severity: output.SeverityNote, Text: "Installed through Homebrew, running brew upgrade"})

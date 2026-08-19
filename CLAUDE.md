@@ -132,11 +132,11 @@ Each `[[containers]]` block may set an optional `container_name` (override the d
 
 # Automatic Update Check
 
-`lstk start` (and the bare root) checks GitHub for a newer release. Its policy is `[cli] update_check` in config.toml — `prompt` (blocking prompt, the default), `notify` (one-line note, no input wait), or `off` (no network request at all) — overridable by `LSTK_UPDATE_CHECK`. Precedence and the fallback rules live in `resolveUpdateCheckMode` (`cmd/update_check.go`); an unparsable value is warned about and skipped rather than failing the command, and a `prompt` policy is downgraded to `notify` off a TTY because only the TUI can answer a `UserInputRequestEvent`.
+`lstk start` (and the bare root) checks GitHub for a newer release. The policy is `[cli] update_check` — `prompt` (default), `notify` (one-line note, no input wait), or `off` (no request at all) — overridable by `LSTK_UPDATE_CHECK`. Precedence and fallback rules live in `resolveUpdateCheckMode` (`cmd/update_check.go`): an unparsable value is warned about and skipped rather than failing the command, and `prompt` is downgraded to `notify` off a TTY, since only the TUI answers a `UserInputRequestEvent`.
 
-`buildNotifyOptions` (same file) is the single place the policy is resolved, deliberately shared by the interactive and non-interactive start paths — they previously built separate `NotifyOptions`, which is how the non-interactive path came to ignore `cli.update_skipped_version`. `internal/update` never reads config: the mode, the skipped version, and the persist callbacks are all injected.
+`buildNotifyOptions` (same file) is the one place the policy is resolved, shared by both start paths — they previously built separate `NotifyOptions`, which is how the non-interactive path came to ignore `cli.update_skipped_version`. `internal/update` never reads config; everything is injected.
 
-An install owned by another package manager defaults to `notify` and is never self-updated (`lstk update` refuses with `UPDATE_EXTERNALLY_MANAGED`); an explicit `update_check` overrides that default in both directions. Explicit `lstk update` always checks regardless of the setting. Per-manager detection rules and upgrade wording are documented on `classifyPath` and `ExternalManager` (`internal/update/install_method.go`).
+Installs owned by another package manager default to `notify` and are never self-updated (`lstk update` refuses with `UPDATE_EXTERNALLY_MANAGED`); an explicit `update_check` overrides that in both directions. Explicit `lstk update` always checks. Detection rules and per-manager wording are documented on `classifyPath` and `ExternalManager` (`internal/update/install_method.go`).
 
 # Offline / Enterprise Environments
 

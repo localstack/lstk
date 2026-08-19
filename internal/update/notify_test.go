@@ -42,8 +42,8 @@ func testFetcher(serverURL string) versionFetcher {
 	}
 }
 
-// failingFetcher fails the test if it is called at all, so a caller can assert
-// that no version request was made rather than merely that nothing was printed.
+// failingFetcher fails the test if called, so a caller can assert no version
+// request was made rather than merely that nothing was printed.
 func failingFetcher(t *testing.T) versionFetcher {
 	t.Helper()
 	return func(ctx context.Context, token string) (string, error) {
@@ -203,8 +203,7 @@ func TestNotifyUpdateOffMakesNoRequest(t *testing.T) {
 	assert.Empty(t, events)
 }
 
-// A zero-value Mode must never block on input: domain code reached without a
-// resolved policy falls back to the non-blocking note.
+// A zero-value Mode must never block: it falls back to the non-blocking note.
 func TestNotifyUpdateZeroModeDoesNotPrompt(t *testing.T) {
 	server := newTestGitHubServer(t, "v2.0.0")
 	defer server.Close()
@@ -251,9 +250,8 @@ func TestNotifyUpdateNotifyLineNamesExternalManager(t *testing.T) {
 	}
 }
 
-// The "Don't ask again" option writes to the config file, so it is withheld
-// when there is nothing to write to (a genuine first run, where creating the
-// config here would suppress the emulator picker).
+// "Don't ask again" writes to the config file, so it is withheld when there is
+// nothing to write to (a first run, where creating it would hide the picker).
 func TestNotifyUpdateHidesDontAskAgainWithoutPersist(t *testing.T) {
 	server := newTestGitHubServer(t, "v2.0.0")
 	defer server.Close()

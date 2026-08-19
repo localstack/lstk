@@ -9,10 +9,9 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-// TestResolveUpdateCheckMode exercises the seam between "what the user and the
-// environment configured" and the policy handed to update.NotifyUpdate:
-// LSTK_UPDATE_CHECK (the field env.Init() populates), [cli] update_check from
-// config.toml, and the default implied by an externally managed install.
+// TestResolveUpdateCheckMode covers the seam between what the user configured
+// (LSTK_UPDATE_CHECK, [cli] update_check, the install-implied default) and the
+// policy handed to update.NotifyUpdate.
 func TestResolveUpdateCheckMode(t *testing.T) {
 	t.Parallel()
 
@@ -53,8 +52,7 @@ func TestResolveUpdateCheckMode(t *testing.T) {
 			want:     update.CheckModeOff,
 		},
 		{
-			// Only the TUI answers a prompt, so a non-interactive run notifies
-			// instead of blocking on input nothing can satisfy.
+			// Only the TUI answers a prompt, so a non-interactive run notifies.
 			name:     "prompt is downgraded to notify when not interactive",
 			checkCtx: updateCheckContext{ConfigValue: "prompt"},
 			want:     update.CheckModeNotify,

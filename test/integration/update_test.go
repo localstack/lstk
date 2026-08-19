@@ -320,8 +320,8 @@ func TestUpdateNotification(t *testing.T) {
 
 	ctx := testContext(t)
 
-	// Built here rather than shared via lstkAtInstallPath: the "update" subtest
-	// replaces this binary in place, so it must not be reused by other tests.
+	// Not shared via lstkAtInstallPath: the "update" subtest replaces this binary
+	// in place, so no other test may reuse it.
 	tmpBinary := filepath.Join(t.TempDir(), execName("lstk"))
 	buildLstkWithVersion(t, ctx, "0.0.1", tmpBinary)
 
@@ -459,8 +459,8 @@ func mockGitHubReleaseServer(t *testing.T, tag string, assets map[string][]byte)
 }
 
 // mockGitHubReleaseServerCounting is mockGitHubReleaseServer plus a request
-// counter, so a test can prove that update_check = "off" (or an externally
-// managed install) makes no request at all, rather than merely printing nothing.
+// counter, so a test can prove no request was made rather than merely that
+// nothing was printed.
 func mockGitHubReleaseServerCounting(t *testing.T, tag string, assets map[string][]byte) (*httptest.Server, *atomic.Int64) {
 	t.Helper()
 	var requests atomic.Int64
@@ -496,8 +496,8 @@ type installPathBuild struct {
 }
 
 // cleanupInstallPathBuilds removes the shared binaries lstkAtInstallPath built.
-// They deliberately live outside t.TempDir() (they outlive the test that built
-// them), so nothing else would reclaim them; called from TestMain.
+// They live outside t.TempDir() (they outlive the test that built them), so
+// nothing else reclaims them. Called from TestMain.
 func cleanupInstallPathBuilds() {
 	installPathBuilds.Range(func(_, value any) bool {
 		if build, ok := value.(*installPathBuild); ok && build.root != "" {
@@ -507,15 +507,13 @@ func cleanupInstallPathBuilds() {
 	})
 }
 
-// lstkAtInstallPath returns the path to an lstk binary with the given version
-// stamped in, placed under <segments...> so install detection sees that layout.
-// Detection reads the running binary's own resolved path, so laying the binary
-// out like a package manager would is the only way to exercise it end to end.
+// lstkAtInstallPath returns an lstk binary with the given version stamped in,
+// placed under <segments...>. Detection reads the running binary's resolved path,
+// so laying it out like a package manager is the only way to exercise it e2e.
 //
-// Each distinct (version, layout) is built once for the whole package and shared:
-// the build is the expensive part (a full link of a ~60 MB binary), several tests
-// want the same layout, and they run in parallel. Callers must therefore treat
-// the binary as read-only — a test that lets lstk replace it needs its own copy.
+// Each (version, layout) is built once per package and shared, since the build is
+// the expensive part. Callers must treat the binary as read-only — a test that
+// lets lstk replace it needs its own copy.
 func lstkAtInstallPath(t *testing.T, ctx context.Context, version string, segments ...string) string {
 	t.Helper()
 
@@ -524,8 +522,7 @@ func lstkAtInstallPath(t *testing.T, ctx context.Context, version string, segmen
 	build := entry.(*installPathBuild)
 
 	build.once.Do(func() {
-		// Deliberately not t.TempDir(): the binary outlives the test that built
-		// it, and t.TempDir() is removed when that test finishes.
+		// Not t.TempDir(): the binary outlives the test that built it.
 		root, err := os.MkdirTemp("", "lstk-install-path-*")
 		if err != nil {
 			build.err = err

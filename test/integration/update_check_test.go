@@ -15,8 +15,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// updateCheckConfig is a config file carrying distinctive comments, so a test
-// that triggers a config write can also prove the write preserved them.
+// updateCheckConfig carries distinctive comments, so a test that triggers a
+// config write can prove the write preserved them.
 const updateCheckConfig = `# User-maintained lstk config
 [[containers]]
 type = "aws"     # Emulator type
@@ -24,8 +24,8 @@ tag  = "latest"  # Docker image tag
 port = "4566"    # Host port
 `
 
-// writeUpdateCheckConfig writes a config file with the given extra lines
-// appended (e.g. a [cli] section) and returns its path.
+// writeUpdateCheckConfig appends extra lines (e.g. a [cli] section) and returns
+// the file's path.
 func writeUpdateCheckConfig(t *testing.T, extra string) string {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "config.toml")
@@ -33,15 +33,11 @@ func writeUpdateCheckConfig(t *testing.T, extra string) string {
 	return path
 }
 
-// writeUpdateCheckConfigWithMode writes a config whose [cli] section sets
-// update_check to the given raw value.
 func writeUpdateCheckConfigWithMode(t *testing.T, mode string) string {
 	t.Helper()
 	return writeUpdateCheckConfig(t, fmt.Sprintf("\n[cli]\nupdate_check = %q\n", mode))
 }
 
-// assertConfigCommentsPreserved checks that a config rewrite left the
-// user-maintained parts of updateCheckConfig untouched.
 func assertConfigCommentsPreserved(t *testing.T, configStr string) {
 	t.Helper()
 	assert.Contains(t, configStr, "# User-maintained lstk config", "file header comment should be preserved")
@@ -49,10 +45,9 @@ func assertConfigCommentsPreserved(t *testing.T, configStr string) {
 	assert.Contains(t, configStr, `port = "4566"`, "existing config values should be preserved")
 }
 
-// updateCheckEnv builds the environment the update-check tests run in: a mock
-// GitHub advertising v0.0.2, and Docker unreachable so the run fails fast right
-// after the update check instead of needing a daemon. It returns the environment
-// and the mock's request counter.
+// updateCheckEnv returns the environment these tests run in, plus the mock's
+// request counter: a mock GitHub advertising v0.0.2, and Docker unreachable so
+// the run fails fast after the check instead of needing a daemon.
 func updateCheckEnv(t *testing.T, extraEnv ...string) ([]string, *atomic.Int64) {
 	t.Helper()
 	srv, requests := mockGitHubReleaseServerCounting(t, "v0.0.2", nil)
@@ -60,14 +55,13 @@ func updateCheckEnv(t *testing.T, extraEnv ...string) ([]string, *atomic.Int64) 
 	return append(environ, extraEnv...), requests
 }
 
-// startUpdateCheckRun runs a version-stamped lstk in a PTY in that environment.
 func startUpdateCheckRun(t *testing.T, binPath, configFile string, extraEnv ...string) (*ptyProc, *atomic.Int64) {
 	t.Helper()
 
 	environ, requests := updateCheckEnv(t, extraEnv...)
 
-	// Long enough for the check plus the Docker failure, short enough that a
-	// regression which blocks on an unanswerable prompt fails rather than hangs.
+	// Long enough for the check and the Docker failure, short enough that a
+	// regression blocking on an unanswerable prompt fails rather than hangs.
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	t.Cleanup(cancel)
 
@@ -76,8 +70,6 @@ func startUpdateCheckRun(t *testing.T, binPath, configFile string, extraEnv ...s
 	return startCmdInPTY(t, ctx, cmd), requests
 }
 
-// assertNoUpdateCheck asserts a run said nothing about updates and made no
-// request for release metadata.
 func assertNoUpdateCheck(t *testing.T, out string, requests *atomic.Int64) {
 	t.Helper()
 	assert.NotContains(t, out, "Update available")
@@ -85,8 +77,7 @@ func assertNoUpdateCheck(t *testing.T, out string, requests *atomic.Int64) {
 	assert.Zero(t, requests.Load(), "the check must not contact GitHub at all")
 }
 
-// TestUpdateCheckModeOff is the reason DEVX-1029 exists: a permanent opt-out.
-// "off" must suppress the notice *and* the network request.
+// "off" must suppress the notice and the network request.
 func TestUpdateCheckModeOff(t *testing.T) {
 	t.Parallel()
 
@@ -99,9 +90,8 @@ func TestUpdateCheckModeOff(t *testing.T) {
 	assertNoUpdateCheck(t, out, requests)
 }
 
-// TestUpdateCheckModeNotify covers the middle ground the reporter asked for: a
-// one-line hint that never waits for input. The run reaching the Docker failure
-// without any keypress is the proof it did not block.
+// The middle ground the reporter asked for: a one-line hint that never waits for
+// input. Reaching the Docker failure without a keypress proves it did not block.
 func TestUpdateCheckModeNotify(t *testing.T) {
 	t.Parallel()
 
@@ -115,8 +105,6 @@ func TestUpdateCheckModeNotify(t *testing.T) {
 	assert.NotContains(t, out, "Update lstk to latest version?", "notify mode must not prompt")
 }
 
-// TestUpdateCheckEnvOverridesConfig pins the documented precedence: the env var
-// wins, in both directions.
 func TestUpdateCheckEnvOverridesConfig(t *testing.T) {
 	t.Parallel()
 
@@ -143,8 +131,6 @@ func TestUpdateCheckEnvOverridesConfig(t *testing.T) {
 	})
 }
 
-// TestUpdateCheckInvalidValueWarnsAndStarts guards the decision that a typo in
-// the setting must not stop lstk: it is reported and ignored.
 func TestUpdateCheckInvalidValueWarnsAndStarts(t *testing.T) {
 	t.Parallel()
 
@@ -154,16 +140,14 @@ func TestUpdateCheckInvalidValueWarnsAndStarts(t *testing.T) {
 	p, _ := startUpdateCheckRun(t, binPath, configFile)
 	p.waitForOutput(`Ignoring update_check in [cli]: invalid update_check value "yes" (must be one of: prompt, notify, off)`,
 		"an unparsable value should be reported, not silently ignored")
-	// Falls back to the default policy rather than skipping the check, so the
-	// prompt still appears and has to be answered.
+	// Falls back to the default policy, so the prompt still has to be answered.
 	p.waitForOutput("New lstk version available", "an invalid value must not disable the check")
 	p.write("r")
 	_, _ = p.wait()
 }
 
-// TestUpdateNotifiesExternallyManagedInstallByDefault covers the reporter's
-// actual setup: an lstk that mise owns, with nothing configured. It must not
-// block, and it must point at mise rather than at `lstk update`, which refuses.
+// The reporter's setup: an lstk mise owns, nothing configured. Must not block,
+// and must point at mise rather than `lstk update`, which refuses.
 func TestUpdateNotifiesExternallyManagedInstallByDefault(t *testing.T) {
 	t.Parallel()
 
@@ -177,8 +161,7 @@ func TestUpdateNotifiesExternallyManagedInstallByDefault(t *testing.T) {
 	assert.NotContains(t, out, "Update lstk to latest version?", "an externally managed install must not be prompted")
 }
 
-// TestUpdateCheckDontAskAgain is the in-flow opt-out: a user who is being
-// nagged can turn the prompt off without reading any docs, and it must actually
+// The in-flow opt-out: turn the prompt off without reading docs, and have it
 // take effect on the next run.
 func TestUpdateCheckDontAskAgain(t *testing.T) {
 	t.Parallel()
@@ -208,9 +191,8 @@ func TestUpdateCheckDontAskAgain(t *testing.T) {
 	assert.NotContains(t, secondOut, "Update lstk to latest version?")
 }
 
-// TestUpdateNotificationHonorsSkippedVersionNonInteractive covers a bug the
-// shared-policy refactor fixes: the non-interactive path built its own
-// NotifyOptions and so ignored a skipped version entirely.
+// A bug the shared-policy refactor fixes: the non-interactive path built its own
+// NotifyOptions and so ignored a skipped version.
 func TestUpdateNotificationHonorsSkippedVersionNonInteractive(t *testing.T) {
 	t.Parallel()
 	ctx := testContext(t)
@@ -221,7 +203,7 @@ func TestUpdateNotificationHonorsSkippedVersionNonInteractive(t *testing.T) {
 	environ, _ := updateCheckEnv(t)
 	stdout, _, _ := runBinary(t, "", environ, binPath, "--config", configFile, "--non-interactive")
 
-	// Exits non-zero because Docker is unreachable; what matters is that the
-	// skipped version was honored on the way there.
+	// Exits non-zero because Docker is unreachable; what matters is the skipped
+	// version was honored on the way there.
 	assert.NotContains(t, stdout, "Update available", "a skipped version must stay suppressed non-interactively too")
 }

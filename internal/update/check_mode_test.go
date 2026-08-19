@@ -12,8 +12,7 @@ func TestParseCheckMode(t *testing.T) {
 		{"prompt", CheckModePrompt},
 		{"notify", CheckModeNotify},
 		{"off", CheckModeOff},
-		// The value is typed by hand into a shell or a CI env file, so case and
-		// stray whitespace are tolerated.
+		// Hand-typed into a shell or CI env file, so case and space are tolerated.
 		{"OFF", CheckModeOff},
 		{" off ", CheckModeOff},
 		{"Notify", CheckModeNotify},

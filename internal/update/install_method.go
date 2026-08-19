@@ -29,16 +29,13 @@ func (m InstallMethod) String() string {
 	}
 }
 
-// ExternalManager identifies the third-party package or version manager that
-// owns the lstk binary. It is empty for every method other than
-// InstallExternal.
+// ExternalManager identifies the package manager that owns the lstk binary,
+// empty unless Method is InstallExternal.
 //
-// These are managers lstk must not update on the user's behalf: replacing the
-// binary in place would leave the manager's own registry pointing at a version
-// it no longer installed (mise, asdf, Scoop, Chocolatey), or fail outright
-// against a read-only store (Nix). Homebrew and npm are deliberately absent —
-// lstk drives those through `brew upgrade` / `npm install -g`, so they stay
-// self-updatable.
+// lstk must not update these itself: replacing the binary would leave the
+// manager's registry pointing at a version it no longer installed, or fail
+// outright against Nix's read-only store. Homebrew and npm are absent because
+// lstk drives those through `brew upgrade` / `npm install -g`.
 type ExternalManager string
 
 const (
@@ -49,14 +46,11 @@ const (
 	ManagerChocolatey ExternalManager = "chocolatey"
 )
 
-// externalManagers holds the per-manager user-facing facts, one row each so
-// adding a manager is a single edit: the project's own capitalization of its
-// name, and its upgrade command.
+// externalManagers holds the user-facing facts per manager, one row each.
 //
-// upgradeCommand is deliberately empty for Nix and asdf: a Nix install may be a
+// upgradeCommand is empty for Nix and asdf on purpose: a Nix install may be a
 // profile, a nixos-rebuild generation or home-manager, and asdf has no `upgrade`
-// verb (nor an lstk plugin). Printing a command that fails is worse than naming
-// the manager and stopping there — callers fall back to UpgradeAdvice.
+// verb. Printing a command that fails is worse than naming the manager.
 var externalManagers = map[ExternalManager]struct {
 	displayName    string
 	upgradeCommand string
@@ -68,8 +62,7 @@ var externalManagers = map[ExternalManager]struct {
 	ManagerChocolatey: {"Chocolatey", "choco upgrade lstk"},
 }
 
-// DisplayName is how the manager is named in user-facing output, using each
-// project's own capitalization.
+// DisplayName is the manager's name as its own project capitalizes it.
 func (m ExternalManager) DisplayName() string {
 	if entry, ok := externalManagers[m]; ok {
 		return entry.displayName
@@ -77,15 +70,12 @@ func (m ExternalManager) DisplayName() string {
 	return string(m)
 }
 
-// UpgradeCommand is the manager's own command for upgrading lstk, or empty when
-// there is no single correct one.
 func (m ExternalManager) UpgradeCommand() string {
 	return externalManagers[m].upgradeCommand
 }
 
-// UpgradeAdvice is the imperative clause telling the user how to update through
-// the manager that owns the binary, for use inside a sentence: "run mise upgrade
-// lstk", or "update it with Nix" when no single command applies.
+// UpgradeAdvice is a clause for use inside a sentence: "run mise upgrade lstk",
+// or "update it with Nix" when no single command applies.
 func (m ExternalManager) UpgradeAdvice() string {
 	if cmd := m.UpgradeCommand(); cmd != "" {
 		return "run " + cmd
@@ -100,8 +90,7 @@ type InstallInfo struct {
 	ResolvedPath string
 }
 
-// ExternallyManaged reports whether another tool owns this binary, meaning lstk
-// must never replace it in place.
+// ExternallyManaged means lstk must never replace this binary.
 func (i InstallInfo) ExternallyManaged() bool {
 	return i.Method == InstallExternal
 }
@@ -120,23 +109,19 @@ func DetectInstallMethod() InstallInfo {
 	return classifyPath(resolved)
 }
 
-// externalManagerMarker names a manager and, when its directory name is not
-// distinctive enough on its own, the segments that may follow it.
 type externalManagerMarker struct {
 	manager ExternalManager
-	// followedBy lists the segment names that must come next for the match to
-	// count. Empty means the segment name alone is conclusive.
+	// followedBy are the segments that may come next. Empty means the segment
+	// name alone is conclusive.
 	followedBy []string
 }
 
-// externalManagerBySegment maps a lowercased path segment to the manager it
-// identifies.
+// externalManagerBySegment maps a lowercased path segment to its manager.
 //
-// Most entries require a following segment, because a bare "mise" or "scoop"
-// directory is more likely a checkout of that tool than an install of lstk by
-// it — and a false positive costs the user a refusal from `lstk update` advising
-// a command that does not apply to them. The dot-prefixed names are specific
-// enough to stand alone.
+// Most entries require a following segment: a bare "mise" or "scoop" directory
+// is more likely a checkout of that tool than an lstk it installed, and a false
+// positive means `lstk update` refuses and advises a command the user cannot
+// run. The dot-prefixed names are specific enough alone.
 var externalManagerBySegment = map[string]externalManagerMarker{
 	"mise":         {ManagerMise, []string{"installs", "shims", "tools"}},
 	"asdf":         {ManagerASDF, []string{"installs", "shims"}},
@@ -149,22 +134,16 @@ var externalManagerBySegment = map[string]externalManagerMarker{
 
 // classifyPath derives the install method from the resolved executable path.
 //
-// The ordering is the contract: lstk's own install methods are matched before
-// any manager segment, because an npm-installed lstk under a mise- or
-// asdf-managed Node.js is still an npm install and must keep updating itself
-// through npm. Reversing these two loops would break that case.
+// The loop order is the contract: lstk's own install methods match before any
+// manager segment, because an npm-installed lstk under a mise-managed Node.js is
+// still an npm install and must keep updating through npm.
 //
-// Detection is deliberately path-only. A write-permission probe was considered
-// and rejected: it cannot tell a root-owned /usr/local (self-managed, needs
-// sudo) from a manager-owned directory, and the two need different advice.
-//
-// NixOS system profiles (/run/current-system/sw/bin/lstk) and per-user profiles
-// resolve through the EvalSymlinks in DetectInstallMethod into /nix/store, so
-// matching the store covers them without listing every profile path.
+// Detection is path-only by design. A write-permission probe cannot tell a
+// root-owned /usr/local (self-managed, needs sudo) from a manager-owned
+// directory, and the two need different advice. Nix profiles resolve through
+// EvalSymlinks into /nix/store, so matching the store covers them.
 func classifyPath(resolved string) InstallInfo {
-	// Lowercased up front because every marker below is lowercase. Case folding
-	// is per-rune, so it cannot create or destroy a separator and the split is
-	// unaffected; ResolvedPath keeps the original casing.
+	// Every marker is lowercase; ResolvedPath keeps the original casing.
 	segments := splitPathSegments(strings.ToLower(resolved))
 
 	for _, seg := range segments {
@@ -190,10 +169,9 @@ func classifyPath(resolved string) InstallInfo {
 	return InstallInfo{Method: InstallBinary, ResolvedPath: resolved}
 }
 
-// splitPathSegments splits a path on both separators regardless of the host OS,
-// so a Windows path can be classified (and tested) on Linux and vice versa. A
-// Unix filename containing a literal backslash is split too; that false split
-// is accepted, since no manager segment can result from it.
+// splitPathSegments splits on both separators regardless of host OS, so a
+// Windows path classifies (and tests) on Linux and vice versa. A Unix filename
+// containing a backslash splits too; harmless, since no marker can result.
 func splitPathSegments(path string) []string {
 	return strings.FieldsFunc(filepath.Clean(path), func(r rune) bool {
 		return r == '/' || r == '\\'

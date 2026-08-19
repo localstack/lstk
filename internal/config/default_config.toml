@@ -33,14 +33,12 @@ port = "4566"    # Host port the emulator will be accessible on
 # CLI behaviour, independent of any emulator.
 #
 # [cli]
-# update_check = "prompt"  # Automatic update check on 'lstk start'. "prompt" asks whether to
-#                # update (interactive terminals only), "notify" prints a one-line note and
-#                # continues, "off" disables the check entirely — no network request.
-#                # The LSTK_UPDATE_CHECK environment variable overrides this.
-#                # 'lstk update' always checks when you run it, whatever this is set to.
-#                # An install owned by another package manager (mise, asdf, Nix, Scoop,
-#                # Chocolatey) defaults to "notify" and is never updated by lstk itself —
-#                # use that manager's own upgrade command.
+# update_check = "prompt"  # Automatic update check on 'lstk start': "prompt" asks
+#                # (interactive terminals only), "notify" prints one line and continues,
+#                # "off" disables it entirely. Overridden by LSTK_UPDATE_CHECK.
+#                # 'lstk update' always checks when you run it yourself.
+#                # Installs owned by mise, asdf, Nix, Scoop or Chocolatey default to
+#                # "notify" and are left to that manager's own upgrade command.
 
 # Environment profiles let you group environment variables and reference
 # them by name in one or more containers via the 'env' field above.

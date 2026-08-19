@@ -12,29 +12,26 @@ import (
 type versionFetcher func(ctx context.Context, token string) (string, error)
 
 type NotifyOptions struct {
-	// Mode is the resolved update-check policy. It is resolved at the command
-	// boundary (see cmd/update_check.go) rather than read from config here, so
-	// this package stays independent of Viper.
+	// Mode is resolved at the command boundary (see cmd/update_check.go) rather
+	// than read from config here, keeping this package independent of Viper.
 	Mode        CheckMode
 	GitHubToken string
 
 	SkippedVersion     string
 	PersistSkipVersion func(version string) error
 
-	// Install is the detected install, resolved once at the command boundary and
-	// reused here so the notify wording and any update applied from the prompt
-	// cannot disagree about who owns the binary.
+	// Install is detected once at the command boundary, so the notify wording and
+	// any update applied from the prompt agree on who owns the binary.
 	Install InstallInfo
 
-	// ConfigPath is the friendly path of the file the "Don't ask again" choice
-	// writes to, named in that choice's confirmation.
+	// ConfigPath is the file the "Don't ask again" choice writes to, named in its
+	// confirmation.
 	ConfigPath string
 
-	// PersistCheckMode stores the policy chosen through the prompt. A nil value
-	// hides the "Don't ask again" option entirely: on a genuine first run there
-	// is no config file yet, and creating one here would suppress the emulator
-	// picker (see config.EnsureCreated's callers), so the option is withheld
-	// rather than offered as a silent no-op.
+	// PersistCheckMode stores the policy chosen through the prompt. Nil hides the
+	// "Don't ask again" option: on a first run there is no config file yet, and
+	// creating one here would suppress the emulator picker, so the option is
+	// withheld rather than offered as a silent no-op.
 	PersistCheckMode func(mode CheckMode) error
 }
 
@@ -67,8 +64,7 @@ func NotifyUpdate(ctx context.Context, sink output.Sink, opts NotifyOptions) (ex
 }
 
 func notifyUpdateWithVersion(ctx context.Context, sink output.Sink, opts NotifyOptions, currentVersion string, fetch versionFetcher) (exitAfter bool) {
-	// Checked before anything else so "off" costs no network request at all,
-	// not merely no output.
+	// Before anything else, so "off" costs no network request, not just no output.
 	if opts.Mode == CheckModeOff {
 		return false
 	}
@@ -78,15 +74,14 @@ func notifyUpdateWithVersion(ctx context.Context, sink output.Sink, opts NotifyO
 		return false
 	}
 
-	// Gated before the mode branch so a version skipped while prompting stays
-	// suppressed after the user switches to notify.
+	// Before the mode branch, so a version skipped while prompting stays
+	// suppressed after switching to notify.
 	if opts.SkippedVersion != "" && normalizeVersion(opts.SkippedVersion) == normalizeVersion(latest) {
 		return false
 	}
 
-	// Anything other than an explicit prompt policy notifies. The fallthrough is
-	// deliberately the non-blocking branch: a zero-value Mode must never leave
-	// the CLI waiting on input.
+	// Anything but an explicit prompt notifies: the fallthrough must be the
+	// non-blocking branch so a zero-value Mode never waits on input.
 	if opts.Mode != CheckModePrompt {
 		sink.Emit(output.MessageEvent{Severity: output.SeverityNote, Text: notifyLine(current, latest, opts.Install.Manager)})
 		return false
@@ -95,9 +90,7 @@ func notifyUpdateWithVersion(ctx context.Context, sink output.Sink, opts NotifyO
 	return promptAndUpdate(ctx, sink, opts, current, latest)
 }
 
-// notifyLine is the one-line, non-blocking update notice. Installs owned by
-// another package manager point at that manager instead of `lstk update`, which
-// refuses on them.
+// Manager-owned installs point at the manager, since `lstk update` refuses.
 func notifyLine(current, latest string, manager ExternalManager) string {
 	if manager != "" {
 		return fmt.Sprintf("Update available: %s → %s (installed with %s — %s)", current, latest, manager.DisplayName(), manager.UpgradeAdvice())
@@ -160,10 +153,8 @@ func promptAndUpdate(ctx context.Context, sink output.Sink, opts NotifyOptions, 
 	return false
 }
 
-// persistCheckMode stores the "Don't ask again" choice. It saves notify rather
-// than off on purpose: the user asked not to be interrupted, not to stop hearing
-// about releases, so the one-line note stays and the confirmation says how to
-// reach the other two modes.
+// persistCheckMode stores the "Don't ask again" choice. It saves notify, not off:
+// the user asked not to be interrupted, not to stop hearing about releases.
 func persistCheckMode(sink output.Sink, opts NotifyOptions) {
 	if err := opts.PersistCheckMode(CheckModeNotify); err != nil {
 		sink.Emit(output.MessageEvent{Severity: output.SeverityWarning, Text: fmt.Sprintf("Failed to save update check preference: %v", err)})
