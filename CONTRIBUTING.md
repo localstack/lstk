@@ -1,8 +1,22 @@
 # Contributing to lstk
 
-lstk is developed by the LocalStack team and is not currently accepting external pull requests — pull request creation is restricted to repository collaborators.
+lstk is developed by the LocalStack team. You can read the source, build it, and fork it freely.
 
-Your input still matters: open an [issue](https://github.com/localstack/lstk/issues) for bugs and feature requests. This is the channel we act on.
+**We do not accept pull requests from outside collaborators.**
+
+**The way to participate is to open a well-formed issue.** A reproducible bug report or a clearly explained feature request gives us the context we need to act.
+
+## Filing an issue
+
+[Open a new issue](https://github.com/localstack/lstk/issues/new) for a bug report or feature request.
+
+For **bug reports**, include enough information for someone else to reproduce the problem without a follow-up.
+
+For **feature requests**, lead with the problem rather than only a proposed implementation.
+
+## Why we don't accept outside pull requests
+
+lstk's architecture and roadmap move quickly, and reviewing outside patches requires context and coordination we cannot currently offer fairly. An issue lets us validate the problem and decide on an approach before anyone spends time implementing it.
 
 ## Development Setup
 
@@ -100,7 +114,9 @@ This scaffolds a new Bubble Tea TUI component.
 - Unit tests for isolated logic where integration is impractical
 - When fixing a bug, always add an integration test that reproduces the scenario
 
-## Pull Requests
+## Pull Requests for Collaborators
+
+These steps are for authorized repository collaborators:
 
 1. Create a feature branch from `main`
 2. Run `make lint` and `make test` before submitting

@@ -53,8 +53,8 @@ Running `lstk` will automatically handle authentication, configuration, and cont
 
 For the full command reference, configuration options, environment variables, and troubleshooting, see the **[lstk documentation](https://docs.localstack.cloud/aws/developer-tools/running-localstack/lstk/)**.
 
-## Feedback and contributing
+## Participating
 
-lstk is developed by the LocalStack team and is not currently accepting external pull requests. Feedback is very welcome though — use the [issue tracker](https://github.com/localstack/lstk/issues) for bug reports and feature requests.
+lstk is developed by the LocalStack team. You can read the source, build it, and fork it freely — but we don't accept pull requests from outside collaborators.
 
-Development setup and architecture live in [CONTRIBUTING.md](https://github.com/localstack/lstk/blob/main/CONTRIBUTING.md).
+The best way to participate is to open a well-formed issue. A bug report we can reproduce is worth more to us than a patch, because it captures the part we can't discover ourselves. [CONTRIBUTING.md](CONTRIBUTING.md) explains what to include in bug reports and feature requests.
