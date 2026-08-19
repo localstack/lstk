@@ -93,7 +93,7 @@ func buildNotifyOptions(sink output.Sink, cfg *env.Env, appConfig *config.Config
 		GitHubToken:        cfg.GitHubToken,
 		SkippedVersion:     appConfig.CLI.UpdateSkippedVersion,
 		PersistSkipVersion: config.SetUpdateSkippedVersion,
-		Manager:            info.Manager,
+		Install:            info,
 		ConfigPath:         configPath,
 	}
 

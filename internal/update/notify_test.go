@@ -240,7 +240,7 @@ func TestNotifyUpdateNotifyLineNamesExternalManager(t *testing.T) {
 
 			exit := notifyUpdateWithVersion(context.Background(), sink, NotifyOptions{
 				Mode:    CheckModeNotify,
-				Manager: tt.manager,
+				Install: InstallInfo{Method: InstallExternal, Manager: tt.manager},
 			}, "1.0.0", testFetcher(server.URL))
 			assert.False(t, exit)
 			assert.Len(t, events, 1)

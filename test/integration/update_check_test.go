@@ -2,6 +2,7 @@ package integration_test
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -32,16 +33,38 @@ func writeUpdateCheckConfig(t *testing.T, extra string) string {
 	return path
 }
 
-// startUpdateCheckRun runs a version-stamped lstk in a PTY against a mock
-// GitHub advertising v0.0.2, with Docker unreachable so the run fails fast right
-// after the update check instead of needing a daemon. It returns the running
-// process and the mock's request counter.
+// writeUpdateCheckConfigWithMode writes a config whose [cli] section sets
+// update_check to the given raw value.
+func writeUpdateCheckConfigWithMode(t *testing.T, mode string) string {
+	t.Helper()
+	return writeUpdateCheckConfig(t, fmt.Sprintf("\n[cli]\nupdate_check = %q\n", mode))
+}
+
+// assertConfigCommentsPreserved checks that a config rewrite left the
+// user-maintained parts of updateCheckConfig untouched.
+func assertConfigCommentsPreserved(t *testing.T, configStr string) {
+	t.Helper()
+	assert.Contains(t, configStr, "# User-maintained lstk config", "file header comment should be preserved")
+	assert.Contains(t, configStr, "# Emulator type", "inline comments should be preserved")
+	assert.Contains(t, configStr, `port = "4566"`, "existing config values should be preserved")
+}
+
+// updateCheckEnv builds the environment the update-check tests run in: a mock
+// GitHub advertising v0.0.2, and Docker unreachable so the run fails fast right
+// after the update check instead of needing a daemon. It returns the environment
+// and the mock's request counter.
+func updateCheckEnv(t *testing.T, extraEnv ...string) ([]string, *atomic.Int64) {
+	t.Helper()
+	srv, requests := mockGitHubReleaseServerCounting(t, "v0.0.2", nil)
+	environ := append(mockGitHubEnv(t, srv), unreachableDockerHost)
+	return append(environ, extraEnv...), requests
+}
+
+// startUpdateCheckRun runs a version-stamped lstk in a PTY in that environment.
 func startUpdateCheckRun(t *testing.T, binPath, configFile string, extraEnv ...string) (*ptyProc, *atomic.Int64) {
 	t.Helper()
 
-	srv, requests := mockGitHubReleaseServerCounting(t, "v0.0.2", nil)
-	environ := append(mockGitHubEnv(t, srv), unreachableDockerHost)
-	environ = append(environ, extraEnv...)
+	environ, requests := updateCheckEnv(t, extraEnv...)
 
 	// Long enough for the check plus the Docker failure, short enough that a
 	// regression which blocks on an unanswerable prompt fails rather than hangs.
@@ -53,20 +76,27 @@ func startUpdateCheckRun(t *testing.T, binPath, configFile string, extraEnv ...s
 	return startCmdInPTY(t, ctx, cmd), requests
 }
 
+// assertNoUpdateCheck asserts a run said nothing about updates and made no
+// request for release metadata.
+func assertNoUpdateCheck(t *testing.T, out string, requests *atomic.Int64) {
+	t.Helper()
+	assert.NotContains(t, out, "Update available")
+	assert.NotContains(t, out, "New lstk version available")
+	assert.Zero(t, requests.Load(), "the check must not contact GitHub at all")
+}
+
 // TestUpdateCheckModeOff is the reason DEVX-1029 exists: a permanent opt-out.
 // "off" must suppress the notice *and* the network request.
 func TestUpdateCheckModeOff(t *testing.T) {
 	t.Parallel()
 
 	binPath := lstkAtInstallPath(t, testContext(t), "0.0.1", "bin")
-	configFile := writeUpdateCheckConfig(t, "\n[cli]\nupdate_check = \"off\"\n")
+	configFile := writeUpdateCheckConfigWithMode(t, "off")
 
 	p, requests := startUpdateCheckRun(t, binPath, configFile)
 	out, _ := p.wait()
 
-	assert.NotContains(t, out, "Update available")
-	assert.NotContains(t, out, "New lstk version available")
-	assert.Zero(t, requests.Load(), `update_check = "off" must not contact GitHub at all`)
+	assertNoUpdateCheck(t, out, requests)
 }
 
 // TestUpdateCheckModeNotify covers the middle ground the reporter asked for: a
@@ -76,7 +106,7 @@ func TestUpdateCheckModeNotify(t *testing.T) {
 	t.Parallel()
 
 	binPath := lstkAtInstallPath(t, testContext(t), "0.0.1", "bin")
-	configFile := writeUpdateCheckConfig(t, "\n[cli]\nupdate_check = \"notify\"\n")
+	configFile := writeUpdateCheckConfigWithMode(t, "notify")
 
 	p, _ := startUpdateCheckRun(t, binPath, configFile)
 	out, _ := p.wait()
@@ -94,7 +124,7 @@ func TestUpdateCheckEnvOverridesConfig(t *testing.T) {
 
 	t.Run("env prompt beats config off", func(t *testing.T) {
 		t.Parallel()
-		configFile := writeUpdateCheckConfig(t, "\n[cli]\nupdate_check = \"off\"\n")
+		configFile := writeUpdateCheckConfigWithMode(t, "off")
 
 		p, _ := startUpdateCheckRun(t, binPath, configFile, string(env.UpdateCheck)+"=prompt")
 		p.waitForOutput("Update lstk to latest version?", "the env var should re-enable the prompt")
@@ -104,14 +134,12 @@ func TestUpdateCheckEnvOverridesConfig(t *testing.T) {
 
 	t.Run("env off beats config prompt", func(t *testing.T) {
 		t.Parallel()
-		configFile := writeUpdateCheckConfig(t, "\n[cli]\nupdate_check = \"prompt\"\n")
+		configFile := writeUpdateCheckConfigWithMode(t, "prompt")
 
 		p, requests := startUpdateCheckRun(t, binPath, configFile, string(env.UpdateCheck)+"=off")
 		out, _ := p.wait()
 
-		assert.NotContains(t, out, "Update available")
-		assert.NotContains(t, out, "New lstk version available")
-		assert.Zero(t, requests.Load())
+		assertNoUpdateCheck(t, out, requests)
 	})
 }
 
@@ -121,7 +149,7 @@ func TestUpdateCheckInvalidValueWarnsAndStarts(t *testing.T) {
 	t.Parallel()
 
 	binPath := lstkAtInstallPath(t, testContext(t), "0.0.1", "bin")
-	configFile := writeUpdateCheckConfig(t, "\n[cli]\nupdate_check = \"yes\"\n")
+	configFile := writeUpdateCheckConfigWithMode(t, "yes")
 
 	p, _ := startUpdateCheckRun(t, binPath, configFile)
 	p.waitForOutput(`Ignoring update_check in [cli]: invalid update_check value "yes" (must be one of: prompt, notify, off)`,
@@ -171,9 +199,7 @@ func TestUpdateCheckDontAskAgain(t *testing.T) {
 	configStr := string(configData)
 	assert.Contains(t, configStr, "update_check", "the choice should be persisted")
 	assert.Contains(t, configStr, "notify", `the choice should persist "notify", not "off"`)
-	assert.Contains(t, configStr, "# User-maintained lstk config", "file header comment should be preserved")
-	assert.Contains(t, configStr, "# Emulator type", "inline comments should be preserved")
-	assert.Contains(t, configStr, `port = "4566"`, "existing config values should be preserved")
+	assertConfigCommentsPreserved(t, configStr)
 
 	// The point of persisting: the next run notifies instead of asking.
 	second, _ := startUpdateCheckRun(t, binPath, configFile)
@@ -192,8 +218,7 @@ func TestUpdateNotificationHonorsSkippedVersionNonInteractive(t *testing.T) {
 	binPath := lstkAtInstallPath(t, ctx, "0.0.1", "bin")
 	configFile := writeUpdateCheckConfig(t, "\n[cli]\nupdate_skipped_version = \"v0.0.2\"\n")
 
-	srv, _ := mockGitHubReleaseServerCounting(t, "v0.0.2", nil)
-	environ := append(mockGitHubEnv(t, srv), unreachableDockerHost)
+	environ, _ := updateCheckEnv(t)
 	stdout, _, _ := runBinary(t, "", environ, binPath, "--config", configFile, "--non-interactive")
 
 	// Exits non-zero because Docker is unreachable; what matters is that the

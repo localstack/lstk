@@ -21,10 +21,10 @@ type NotifyOptions struct {
 	SkippedVersion     string
 	PersistSkipVersion func(version string) error
 
-	// Manager is the external package manager that owns this install, or empty
-	// when lstk owns its own binary. It only changes the wording of the notify
-	// line — whether the prompt is shown at all is decided by Mode.
-	Manager ExternalManager
+	// Install is the detected install, resolved once at the command boundary and
+	// reused here so the notify wording and any update applied from the prompt
+	// cannot disagree about who owns the binary.
+	Install InstallInfo
 
 	// ConfigPath is the friendly path of the file the "Don't ask again" choice
 	// writes to, named in that choice's confirmation.
@@ -88,7 +88,7 @@ func notifyUpdateWithVersion(ctx context.Context, sink output.Sink, opts NotifyO
 	// deliberately the non-blocking branch: a zero-value Mode must never leave
 	// the CLI waiting on input.
 	if opts.Mode != CheckModePrompt {
-		sink.Emit(output.MessageEvent{Severity: output.SeverityNote, Text: notifyLine(current, latest, opts.Manager)})
+		sink.Emit(output.MessageEvent{Severity: output.SeverityNote, Text: notifyLine(current, latest, opts.Install.Manager)})
 		return false
 	}
 
@@ -136,7 +136,7 @@ func promptAndUpdate(ctx context.Context, sink output.Sink, opts NotifyOptions, 
 
 	switch resp.SelectedKey {
 	case "u":
-		if _, err := applyUpdate(ctx, sink, latest, opts.GitHubToken); err != nil {
+		if _, err := applyUpdate(ctx, sink, opts.Install, latest, opts.GitHubToken); err != nil {
 			sink.Emit(output.MessageEvent{Severity: output.SeverityWarning, Text: fmt.Sprintf("Update failed: %v", err)})
 			return false
 		}

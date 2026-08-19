@@ -18,6 +18,7 @@ import (
 	"regexp"
 	"runtime"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -319,19 +320,10 @@ func TestUpdateNotification(t *testing.T) {
 
 	ctx := testContext(t)
 
-	// Build a fake old version to a temp location
+	// Built here rather than shared via lstkAtInstallPath: the "update" subtest
+	// replaces this binary in place, so it must not be reused by other tests.
 	tmpBinary := filepath.Join(t.TempDir(), execName("lstk"))
-	repoRoot, err := filepath.Abs("../..")
-	require.NoError(t, err)
-
-	buildCmd := exec.CommandContext(ctx, "go", "build",
-		"-ldflags", "-X github.com/localstack/lstk/internal/version.version=0.0.1",
-		"-o", tmpBinary,
-		".",
-	)
-	buildCmd.Dir = repoRoot
-	out, err := buildCmd.CombinedOutput()
-	require.NoError(t, err, "go build failed: %s", string(out))
+	buildLstkWithVersion(t, ctx, "0.0.1", tmpBinary)
 
 	// Mock API server so license validation fails fast after the notification
 	mockServer := createMockLicenseServer(false)
@@ -339,14 +331,7 @@ func TestUpdateNotification(t *testing.T) {
 
 	t.Run("skip", func(t *testing.T) {
 		t.Parallel()
-		configFile := filepath.Join(t.TempDir(), "config.toml")
-		originalConfig := `# User-maintained lstk config
-[[containers]]
-type = "aws"     # Emulator type
-tag  = "latest"  # Docker image tag
-port = "4566"    # Host port
-`
-		require.NoError(t, os.WriteFile(configFile, []byte(originalConfig), 0o644))
+		configFile := writeUpdateCheckConfig(t, "")
 
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
@@ -365,9 +350,7 @@ port = "4566"    # Host port
 		require.NoError(t, err)
 		configStr := string(configData)
 		assert.Contains(t, configStr, "update_skipped_version", "skipped version should be persisted")
-		assert.Contains(t, configStr, "# User-maintained lstk config", "file header comment should be preserved")
-		assert.Contains(t, configStr, "# Emulator type", "inline comments should be preserved")
-		assert.Contains(t, configStr, `port = "4566"`, "existing config values should be preserved")
+		assertConfigCommentsPreserved(t, configStr)
 	})
 
 	t.Run("update", func(t *testing.T) {
@@ -503,17 +486,65 @@ func mockGitHubReleaseServerCounting(t *testing.T, tag string, assets map[string
 	return srv, &requests
 }
 
-// lstkAtInstallPath builds lstk with the given version stamped in, at
-// <t.TempDir()>/<segments...>/lstk, and returns its path. Install detection
-// reads the running binary's own resolved path, so placing the binary under a
-// package manager's directory layout is the only way to exercise it end to end.
+var installPathBuilds sync.Map // layout key -> *installPathBuild
+
+type installPathBuild struct {
+	once sync.Once
+	root string
+	path string
+	err  error
+}
+
+// cleanupInstallPathBuilds removes the shared binaries lstkAtInstallPath built.
+// They deliberately live outside t.TempDir() (they outlive the test that built
+// them), so nothing else would reclaim them; called from TestMain.
+func cleanupInstallPathBuilds() {
+	installPathBuilds.Range(func(_, value any) bool {
+		if build, ok := value.(*installPathBuild); ok && build.root != "" {
+			_ = os.RemoveAll(build.root)
+		}
+		return true
+	})
+}
+
+// lstkAtInstallPath returns the path to an lstk binary with the given version
+// stamped in, placed under <segments...> so install detection sees that layout.
+// Detection reads the running binary's own resolved path, so laying the binary
+// out like a package manager would is the only way to exercise it end to end.
+//
+// Each distinct (version, layout) is built once for the whole package and shared:
+// the build is the expensive part (a full link of a ~60 MB binary), several tests
+// want the same layout, and they run in parallel. Callers must therefore treat
+// the binary as read-only — a test that lets lstk replace it needs its own copy.
 func lstkAtInstallPath(t *testing.T, ctx context.Context, version string, segments ...string) string {
 	t.Helper()
-	dir := filepath.Join(append([]string{t.TempDir()}, segments...)...)
-	require.NoError(t, os.MkdirAll(dir, 0o755))
-	path := filepath.Join(dir, execName("lstk"))
-	buildLstkWithVersion(t, ctx, version, path)
-	return path
+
+	key := version + "\x00" + strings.Join(segments, "\x00")
+	entry, _ := installPathBuilds.LoadOrStore(key, &installPathBuild{})
+	build := entry.(*installPathBuild)
+
+	build.once.Do(func() {
+		// Deliberately not t.TempDir(): the binary outlives the test that built
+		// it, and t.TempDir() is removed when that test finishes.
+		root, err := os.MkdirTemp("", "lstk-install-path-*")
+		if err != nil {
+			build.err = err
+			return
+		}
+		build.root = root
+		dir := filepath.Join(append([]string{root}, segments...)...)
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			build.err = err
+			return
+		}
+		path := filepath.Join(dir, execName("lstk"))
+		buildLstkWithVersion(t, ctx, version, path)
+		build.path = path
+	})
+
+	require.NoError(t, build.err)
+	require.NotEmpty(t, build.path, "shared build failed in another test")
+	return build.path
 }
 
 // mockGitHubEnv builds an isolated test environment whose updater GitHub

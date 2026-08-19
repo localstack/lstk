@@ -21,10 +21,6 @@ const (
 	CheckModeOff CheckMode = "off"
 )
 
-// CheckModes lists every valid mode in the order they appear in user-facing
-// messages, mirroring config.SelectableEmulatorTypes.
-var CheckModes = []CheckMode{CheckModePrompt, CheckModeNotify, CheckModeOff}
-
 // ParseCheckMode validates a raw update_check value from config or the
 // LSTK_UPDATE_CHECK environment variable.
 //
@@ -33,16 +29,10 @@ var CheckModes = []CheckMode{CheckModePrompt, CheckModeNotify, CheckModeOff}
 // and unambiguous, so "OFF" is unmistakably "off". An empty string is invalid —
 // callers treat "unset" as "this source has no opinion" before calling here.
 func ParseCheckMode(s string) (CheckMode, error) {
-	normalized := CheckMode(strings.ToLower(strings.TrimSpace(s)))
-	for _, mode := range CheckModes {
-		if normalized == mode {
-			return mode, nil
-		}
+	switch mode := CheckMode(strings.ToLower(strings.TrimSpace(s))); mode {
+	case CheckModePrompt, CheckModeNotify, CheckModeOff:
+		return mode, nil
+	default:
+		return "", fmt.Errorf("invalid update_check value %q (must be one of: %s, %s, %s)", s, CheckModePrompt, CheckModeNotify, CheckModeOff)
 	}
-
-	valid := make([]string, 0, len(CheckModes))
-	for _, mode := range CheckModes {
-		valid = append(valid, string(mode))
-	}
-	return "", fmt.Errorf("invalid update_check value %q (must be one of: %s)", s, strings.Join(valid, ", "))
 }

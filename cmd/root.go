@@ -346,12 +346,16 @@ func startEmulator(ctx context.Context, rt runtime.Runtime, cfg *env.Env, tel *t
 		logger.Info("could not resolve friendly config path: %v", err)
 	}
 
+	// Everything that has to be reported before the TUI can start goes through
+	// this sink, in interactive mode too: applying --type mutates config that the
+	// auto-load loader and start options are built from, and the update policy is
+	// resolved for both output paths at once.
+	plainSink := output.NewPlainSink(os.Stdout)
+
 	// Apply the --type flag before resolving snapshot and start options so
-	// everything downstream reflects the selected emulator. Messages go to a plain
-	// sink even in interactive mode because the config mutation has to happen before
-	// the TUI starts (the auto-load loader and start options are built from it).
+	// everything downstream reflects the selected emulator.
 	if emulatorType != "" {
-		newContainers, applyErr := container.ApplyEmulatorType(ctx, rt, output.NewPlainSink(os.Stdout), emulatorType, appConfig.Containers, firstRun, configPath)
+		newContainers, applyErr := container.ApplyEmulatorType(ctx, rt, plainSink, emulatorType, appConfig.Containers, firstRun, configPath)
 		if applyErr != nil {
 			return applyErr
 		}
@@ -374,10 +378,7 @@ func startEmulator(ctx context.Context, rt runtime.Runtime, cfg *env.Env, tel *t
 	opts := buildStartOptions(cfg, appConfig, logger, tel, persist)
 
 	// Resolved once and shared by both output paths, so the interactive and
-	// non-interactive runs cannot disagree about the update policy. In
-	// interactive mode any warning from resolution prints above the TUI, for the
-	// same reason ApplyEmulatorType's messages do: it happens before ui.Run.
-	plainSink := output.NewPlainSink(os.Stdout)
+	// non-interactive runs cannot disagree about the update policy.
 	interactive := isInteractiveMode(cfg)
 	notifyOpts := buildNotifyOptions(plainSink, cfg, appConfig, configPath, firstRun, interactive)
 

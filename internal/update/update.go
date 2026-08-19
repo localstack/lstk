@@ -39,11 +39,13 @@ func Check(ctx context.Context, sink output.Sink, githubToken string) (string, b
 
 // Update checks for updates and applies the update if one is available.
 func Update(ctx context.Context, sink output.Sink, checkOnly bool, githubToken string) error {
+	info := DetectInstallMethod()
+
 	// Refused before Check so an install lstk must not touch costs no network
 	// request either. --check is read-only and stays allowed: knowing a new
 	// version exists is useful even when another tool installs it.
 	if !checkOnly {
-		if err := refuseExternalUpdate(sink, DetectInstallMethod()); err != nil {
+		if err := refuseExternalUpdate(sink, info); err != nil {
 			return err
 		}
 	}
@@ -57,7 +59,7 @@ func Update(ctx context.Context, sink output.Sink, checkOnly bool, githubToken s
 		return nil
 	}
 
-	method, err := applyUpdate(ctx, sink, latest, githubToken)
+	method, err := applyUpdate(ctx, sink, info, latest, githubToken)
 	if err != nil {
 		sink.Emit(output.ErrorEvent{Title: err.Error(), Code: output.ErrInternal})
 		return output.NewSilentError(err)
@@ -76,7 +78,7 @@ func refuseExternalUpdate(sink output.Sink, info InstallInfo) error {
 	}
 
 	manager := info.Manager.DisplayName()
-	err := fmt.Errorf("lstk was installed with %s, so it cannot update itself", manager)
+	err := externalInstallError(info)
 
 	summary := fmt.Sprintf("%s owns this binary (%s); replacing it in place would leave %s out of sync.", manager, info.ResolvedPath, manager)
 	var actions []output.ErrorAction
@@ -98,19 +100,27 @@ func refuseExternalUpdate(sink output.Sink, info InstallInfo) error {
 	return output.NewSilentError(err)
 }
 
-// applyUpdate detects the current install method and performs the update,
-// returning its canonical name ("homebrew"/"npm"/"binary") on success.
-func applyUpdate(ctx context.Context, sink output.Sink, latest, githubToken string) (string, error) {
-	info := DetectInstallMethod()
+// externalInstallError states that lstk cannot replace a binary another package
+// manager owns. Both refusal paths build their message from it so they cannot
+// describe the same situation differently. It deliberately carries no upgrade
+// advice: refuseExternalUpdate offers that as an ErrorAction instead, and
+// repeating it in the headline would say the same thing twice.
+func externalInstallError(info InstallInfo) error {
+	return fmt.Errorf("lstk was installed with %s, so it cannot update itself", info.Manager.DisplayName())
+}
 
+// applyUpdate performs the update for the given install, returning the method's
+// canonical name ("homebrew"/"npm"/"binary") on success.
+func applyUpdate(ctx context.Context, sink output.Sink, info InstallInfo, latest, githubToken string) (string, error) {
 	var err error
 	switch info.Method {
 	case InstallExternal:
 		// Defense in depth: Update refuses before reaching here, but the
 		// interactive prompt's "Update now" is also routed through applyUpdate,
 		// and a user who forces update_check = "prompt" on a managed install
-		// must still never have their binary replaced.
-		return "", fmt.Errorf("lstk was installed with %s; %s to update it", info.Manager.DisplayName(), info.Manager.UpgradeAdvice())
+		// must still never have their binary replaced. This path renders as a
+		// single warning line with no actions, so it carries the advice inline.
+		return "", fmt.Errorf("%w — %s to update it", externalInstallError(info), info.Manager.UpgradeAdvice())
 	case InstallHomebrew:
 		sink.Emit(output.MessageEvent{Severity: output.SeverityNote, Text: "Installed through Homebrew, running brew upgrade"})
 		err = updateHomebrew(ctx, sink)

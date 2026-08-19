@@ -49,43 +49,38 @@ const (
 	ManagerChocolatey ExternalManager = "chocolatey"
 )
 
+// externalManagers holds the per-manager user-facing facts, one row each so
+// adding a manager is a single edit: the project's own capitalization of its
+// name, and its upgrade command.
+//
+// upgradeCommand is deliberately empty for Nix and asdf: a Nix install may be a
+// profile, a nixos-rebuild generation or home-manager, and asdf has no `upgrade`
+// verb (nor an lstk plugin). Printing a command that fails is worse than naming
+// the manager and stopping there — callers fall back to UpgradeAdvice.
+var externalManagers = map[ExternalManager]struct {
+	displayName    string
+	upgradeCommand string
+}{
+	ManagerNix:        {"Nix", ""},
+	ManagerMise:       {"mise", "mise upgrade lstk"},
+	ManagerASDF:       {"asdf", ""},
+	ManagerScoop:      {"Scoop", "scoop update lstk"},
+	ManagerChocolatey: {"Chocolatey", "choco upgrade lstk"},
+}
+
 // DisplayName is how the manager is named in user-facing output, using each
 // project's own capitalization.
 func (m ExternalManager) DisplayName() string {
-	switch m {
-	case ManagerNix:
-		return "Nix"
-	case ManagerMise:
-		return "mise"
-	case ManagerASDF:
-		return "asdf"
-	case ManagerScoop:
-		return "Scoop"
-	case ManagerChocolatey:
-		return "Chocolatey"
-	default:
-		return string(m)
+	if entry, ok := externalManagers[m]; ok {
+		return entry.displayName
 	}
+	return string(m)
 }
 
 // UpgradeCommand is the manager's own command for upgrading lstk, or empty when
 // there is no single correct one.
-//
-// Nix and asdf deliberately return nothing: a Nix install may be a profile, a
-// nixos-rebuild generation or home-manager, and asdf has no `upgrade` verb (nor
-// an lstk plugin). Printing a command that fails is worse than naming the
-// manager and stopping there — callers fall back to UpgradeAdvice.
 func (m ExternalManager) UpgradeCommand() string {
-	switch m {
-	case ManagerMise:
-		return "mise upgrade lstk"
-	case ManagerScoop:
-		return "scoop update lstk"
-	case ManagerChocolatey:
-		return "choco upgrade lstk"
-	default:
-		return ""
-	}
+	return externalManagers[m].upgradeCommand
 }
 
 // UpgradeAdvice is the imperative clause telling the user how to update through
@@ -167,10 +162,10 @@ var externalManagerBySegment = map[string]externalManagerMarker{
 // resolve through the EvalSymlinks in DetectInstallMethod into /nix/store, so
 // matching the store covers them without listing every profile path.
 func classifyPath(resolved string) InstallInfo {
-	segments := splitPathSegments(resolved)
-	for i, seg := range segments {
-		segments[i] = strings.ToLower(seg)
-	}
+	// Lowercased up front because every marker below is lowercase. Case folding
+	// is per-rune, so it cannot create or destroy a separator and the split is
+	// unaffected; ResolvedPath keeps the original casing.
+	segments := splitPathSegments(strings.ToLower(resolved))
 
 	for _, seg := range segments {
 		switch seg {
@@ -186,10 +181,8 @@ func classifyPath(resolved string) InstallInfo {
 		if !ok {
 			continue
 		}
-		if len(marker.followedBy) > 0 {
-			if i+1 >= len(segments) || !slices.Contains(marker.followedBy, segments[i+1]) {
-				continue
-			}
+		if len(marker.followedBy) > 0 && (i+1 >= len(segments) || !slices.Contains(marker.followedBy, segments[i+1])) {
+			continue
 		}
 		return InstallInfo{Method: InstallExternal, Manager: marker.manager, ResolvedPath: resolved}
 	}

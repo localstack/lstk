@@ -43,6 +43,14 @@ func setDefaults() {
 	})
 }
 
+// loadConfig reads the config file at path into the shared viper instance.
+//
+// The Reset discards the LSTK_* env binding env.Init() installed, so viper's own
+// env-over-config precedence is not available to config values: a setting that an
+// environment variable should override has to resolve the two sources explicitly
+// at the command boundary (see resolveUpdateCheckMode in cmd/update_check.go).
+// Do not "fix" this by calling AutomaticEnv() here — that would create a second,
+// competing precedence path alongside the explicit ones.
 func loadConfig(path string) error {
 	viper.Reset()
 	setDefaults()

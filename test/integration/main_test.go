@@ -112,7 +112,9 @@ func TestMain(m *testing.M) {
 	// TLS trust on non-Linux), so a full run on any one OS never visits the
 	// other platforms' snapshots — Clean would flag them (or delete them under
 	// UPDATE_SNAPS=true). Stale snapshots here are caught by review instead.
-	m.Run()
+	code := m.Run()
+	cleanupInstallPathBuilds()
+	os.Exit(code)
 }
 
 func requireDocker(t *testing.T) {
