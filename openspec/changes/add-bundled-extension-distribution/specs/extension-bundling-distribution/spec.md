@@ -88,9 +88,9 @@ Bundled extensions are payload rather than a precondition in one sense only: **a
 - **AND** it installs the missing members of the set
 - **AND** on the binary channel, previously installed bundled extensions remain in place and still run
 
-### Requirement: Bundle provenance is pinned and verified
+### Requirement: Bundle provenance is resolved once, recorded, and verified
 
-Each lstk release SHALL be reproducibly tied to exactly one extensions bundle by a version pin committed to the lstk repository, changed only via ordinary review. The release process SHALL download the pinned bundle's prebuilt binaries and descriptions file from the private extensions repository's release assets, SHALL verify every downloaded asset against the bundle's checksum manifest before staging (hard fail on a missing or mismatching manifest), and SHALL fail when a bundled extension lacks a binary for any lstk target platform not explicitly allow-listed as unsupported. The credential used is read-only and scoped to the private extensions repository.
+Each lstk release SHALL ship exactly one extensions bundle, identified by a version file committed to the lstk repository. That file SHALL default to `latest` — the newest published bundle — and SHALL accept an explicit release tag to lock a build to one bundle. The release process SHALL resolve the value to a concrete tag once per build and use that resolved tag for every subsequent step, and SHALL record it in the published release notes so the mapping from an lstk version to an extensions bundle survives independently of build-log retention. It SHALL download the resolved bundle's prebuilt binaries and descriptions file from the private extensions repository's release assets, SHALL verify every downloaded asset against the bundle's checksum manifest before staging (hard fail on a missing or mismatching manifest), and SHALL fail when a bundled extension lacks a binary for any lstk target platform not explicitly allow-listed as unsupported. The credential used is read-only and scoped to the private extensions repository.
 
 #### Scenario: Checksum mismatch blocks the release
 
@@ -99,8 +99,19 @@ Each lstk release SHALL be reproducibly tied to exactly one extensions bundle by
 
 #### Scenario: Missing platform coverage blocks the release
 
-- **WHEN** the pinned bundle has no `lstk-deploy` binary for a supported lstk platform that is not allow-listed as unsupported
+- **WHEN** the resolved bundle has no `lstk-deploy` binary for a supported lstk platform that is not allow-listed as unsupported
 - **THEN** the release fails at the pull step with an error naming the missing platform
+
+#### Scenario: Re-running a published release reproduces the same bundle
+
+- **WHEN** the release job is re-run for a tag that has already been published
+- **THEN** it builds against the bundle recorded for that release rather than re-resolving `latest`
+- **AND** the extension binaries it publishes are identical to those the original run published
+
+#### Scenario: Bundle identity is recoverable from a released version
+
+- **WHEN** someone needs to know which extensions bundle a given released lstk version shipped
+- **THEN** the resolved bundle tag is available from that release's published notes
 
 ### Requirement: Hand-authored descriptions file, validated at release time
 
