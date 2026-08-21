@@ -11,6 +11,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	goruntime "runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -276,7 +277,7 @@ func TestSelectContainersToStart_AttachesWhenExternalContainerOnConfiguredPort(t
 	}
 
 	mockRT.EXPECT().InspectBrief(gomock.Any(), c.Name).Return(runtime.ContainerBrief{}, nil)
-	mockRT.EXPECT().FindRunningByImage(gomock.Any(), []string{"localstack/localstack-pro", "localstack/localstack", "localstack/snowflake", "localstack/localstack-azure"}, "4566/tcp").
+	mockRT.EXPECT().FindRunningByImage(gomock.Any(), config.KnownImageRepos(), "4566/tcp").
 		Return(&runtime.RunningContainer{Name: "external-container", Image: "localstack/localstack-pro:3.5.0", BoundPort: "4566"}, nil)
 	mockRT.EXPECT().ContainerEnv(gomock.Any(), "external-container").Return(nil, nil)
 
@@ -305,7 +306,7 @@ func TestSelectContainersToStart_AttachesWhenExternalContainerVersionDiffers(t *
 	}
 
 	mockRT.EXPECT().InspectBrief(gomock.Any(), c.Name).Return(runtime.ContainerBrief{}, nil)
-	mockRT.EXPECT().FindRunningByImage(gomock.Any(), []string{"localstack/localstack-pro", "localstack/localstack", "localstack/snowflake", "localstack/localstack-azure"}, "4566/tcp").
+	mockRT.EXPECT().FindRunningByImage(gomock.Any(), config.KnownImageRepos(), "4566/tcp").
 		Return(&runtime.RunningContainer{Name: "external-container", Image: "localstack/localstack-pro:3.5.0", BoundPort: "4566"}, nil)
 	mockRT.EXPECT().ContainerEnv(gomock.Any(), "external-container").Return(nil, nil)
 
@@ -339,7 +340,7 @@ func TestSelectContainersToStart_QueuesContainerWhenNoneRunningOnPort(t *testing
 	}
 
 	mockRT.EXPECT().InspectBrief(gomock.Any(), c.Name).Return(runtime.ContainerBrief{}, nil)
-	mockRT.EXPECT().FindRunningByImage(gomock.Any(), []string{"localstack/localstack-pro", "localstack/localstack", "localstack/snowflake", "localstack/localstack-azure"}, "4566/tcp").
+	mockRT.EXPECT().FindRunningByImage(gomock.Any(), config.KnownImageRepos(), "4566/tcp").
 		Return(nil, nil)
 	mockRT.EXPECT().Flavor().Return(runtime.FlavorDockerDesktop).AnyTimes()
 
@@ -366,7 +367,7 @@ func TestSelectContainersToStart_ErrorsOnEmulatorTypeMismatch(t *testing.T) {
 	}
 
 	mockRT.EXPECT().InspectBrief(gomock.Any(), c.Name).Return(runtime.ContainerBrief{}, nil)
-	mockRT.EXPECT().FindRunningByImage(gomock.Any(), []string{"localstack/localstack-pro", "localstack/localstack", "localstack/snowflake", "localstack/localstack-azure"}, "4566/tcp").
+	mockRT.EXPECT().FindRunningByImage(gomock.Any(), config.KnownImageRepos(), "4566/tcp").
 		Return(&runtime.RunningContainer{Name: "localstack-aws", Image: "localstack/localstack-pro:latest", BoundPort: "4566"}, nil)
 
 	var out bytes.Buffer
@@ -1742,4 +1743,49 @@ func TestPromptRelogin_OffersAnAdvertisedDeclineKey(t *testing.T) {
 			assert.Equal(t, "[ESC] Exit", output.OptionLabel(req.Options()[1]))
 		})
 	}
+}
+
+// TestPrepareNextStateDir_IsWritableByTheEmulatorUser pins the fix for the
+// --persist failure on native Linux Docker: the preview Snowflake emulator runs
+// as uid 1000 and creates PGDATA inside this bind-mounted directory, so a
+// directory only its host owner can write makes PostgreSQL fail to initialize
+// and the container exit during startup. It can only be reproduced end to end on
+// Linux with a host uid other than 1000 (CI), so the permission itself is
+// pinned here.
+func TestPrepareNextStateDir_IsWritableByTheEmulatorUser(t *testing.T) {
+	if goruntime.GOOS == "windows" {
+		t.Skip("POSIX permission bits do not port to Windows")
+	}
+	var out bytes.Buffer
+	volumeDir := t.TempDir()
+
+	stateDir, err := prepareNextStateDir(volumeDir, output.NewPlainSink(&out))
+	require.NoError(t, err)
+
+	info, err := os.Stat(stateDir)
+	require.NoError(t, err)
+	assert.Equal(t, os.FileMode(0777), info.Mode().Perm(),
+		"the emulator's non-root user must be able to create PGDATA inside the mount")
+	assert.Empty(t, out.String(), "a successful prepare must not warn")
+}
+
+// TestPrepareNextStateDir_WidensAnExistingDirectory covers the upgrade path: a
+// state dir left behind by an older lstk (or by a umask that masked the create
+// mode) is widened in place, so an existing install is not stuck with a start
+// that keeps failing.
+func TestPrepareNextStateDir_WidensAnExistingDirectory(t *testing.T) {
+	if goruntime.GOOS == "windows" {
+		t.Skip("POSIX permission bits do not port to Windows")
+	}
+	volumeDir := t.TempDir()
+	stateDir := filepath.Join(volumeDir, "snowflake-rs")
+	require.NoError(t, os.MkdirAll(stateDir, 0700))
+
+	got, err := prepareNextStateDir(volumeDir, output.NewPlainSink(io.Discard))
+	require.NoError(t, err)
+	require.Equal(t, stateDir, got)
+
+	info, err := os.Stat(stateDir)
+	require.NoError(t, err)
+	assert.Equal(t, os.FileMode(0777), info.Mode().Perm())
 }

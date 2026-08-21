@@ -23,16 +23,19 @@ var (
 	tableHeaderRe      = regexp.MustCompile(`(?m)^[ \t]*\[`)
 )
 
-// ParseEmulatorType validates a raw emulator type string against the selectable
-// types and returns the corresponding EmulatorType.
+// ParseEmulatorType validates a raw emulator type string against the known
+// types and returns the corresponding EmulatorType. Preview types are accepted
+// even though the interactive picker does not offer them, since --type is the
+// only way to reach them.
 func ParseEmulatorType(s string) (EmulatorType, error) {
-	for _, t := range SelectableEmulatorTypes {
+	known := KnownEmulatorTypes()
+	for _, t := range known {
 		if string(t) == s {
 			return t, nil
 		}
 	}
-	valid := make([]string, len(SelectableEmulatorTypes))
-	for i, t := range SelectableEmulatorTypes {
+	valid := make([]string, len(known))
+	for i, t := range known {
 		valid[i] = string(t)
 	}
 	return "", fmt.Errorf("invalid emulator type %q (must be one of: %s)", s, strings.Join(valid, ", "))

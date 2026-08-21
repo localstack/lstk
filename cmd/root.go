@@ -422,7 +422,7 @@ func startEmulator(ctx context.Context, rt runtime.Runtime, cfg *env.Env, tel *t
 
 // addEmulatorTypeFlag registers the --type/-t flag on a start-capable command.
 func addEmulatorTypeFlag(cmd *cobra.Command) {
-	cmd.Flags().StringP("type", "t", "", "Emulator type to start (aws, snowflake, azure)")
+	cmd.Flags().StringP("type", "t", "", "Emulator type to start (aws, snowflake, azure, snowflake-next)")
 }
 
 // resolveEmulatorTypeFlag resolves the requested emulator type from the --type
