@@ -27,14 +27,32 @@ A command SHALL only accept `--json` if it carries the JSON-capable annotation. 
 ### Requirement: Emulator lifecycle commands report per-emulator results
 `start`, `stop`, `restart`, and `status` SHALL report results as an array with one entry per emulator type configured (`internal/config.ContainerConfig`), reflecting that lstk can run more than one emulator type concurrently. `status` SHALL include every configured emulator in its array regardless of whether it is running, rather than stopping at the first one found not running.
 
+`start` SHALL use the same array shape, but its array SHALL always hold exactly one entry: starting is guarded by `checkSingleContainer`, which rejects a config with more than one enabled `[[containers]]` block before any other work, so a multi-emulator start is an error rather than a multi-entry result. The array shape is retained for consistency with the other lifecycle commands and to stay correct if concurrent multi-emulator starts are ever supported.
+
 #### Scenario: status reports all configured emulators, running or not
 - **WHEN** `lstk status --json` is run with an AWS emulator configured and stopped, and a Snowflake emulator configured and running
 - **THEN** the envelope's `data.emulators` array contains one entry for AWS with `"running": false` and one entry for Snowflake with `"running": true` and its full detail fields
 - **AND** the command does not exit with an error solely because the AWS emulator is not running
 
-#### Scenario: start reports one entry per configured emulator
-- **WHEN** `lstk start --json` is run with two emulator types configured
-- **THEN** the envelope's `data.emulators` array contains one entry per configured emulator type
+#### Scenario: start reports the single configured emulator
+- **WHEN** `lstk start --json` is run with one emulator type configured
+- **THEN** the envelope's `data.emulators` array contains exactly one entry for that emulator type
+- **AND** it carries `type`, `name`, `host`, `version`, `alreadyRunning`, and `persist`
+
+#### Scenario: start rejects more than one enabled containers block
+- **WHEN** `lstk start --json` is run with two `[[containers]]` blocks enabled
+- **THEN** the envelope has `"status": "error"` and `"error": {"code": "CONFIG_INVALID", ...}`
+- **AND** no emulator is started
+
+#### Scenario: start reports an emulator it did not start itself
+- **WHEN** `lstk start --json` is run and a LocalStack that lstk did not start is already answering on the configured port
+- **THEN** the envelope has `"status": "ok"`
+- **AND** its `data.emulators` array still contains an entry for that emulator, with `"alreadyRunning": true`
+
+#### Scenario: start always reports whether a snapshot was auto-loaded
+- **WHEN** `lstk start --json` completes successfully
+- **THEN** the envelope's `data.snapshotLoaded` key is present
+- **AND** it is `null` when no configured snapshot was auto-loaded, or an object carrying `source` and `services` when one was
 
 ### Requirement: Snapshot commands report the documented payload shapes
 `snapshot save`, `snapshot load`, `snapshot list`, `snapshot show`, and `snapshot remove` SHALL each report the payload shape documented in design.md's Command Catalog for their respective destination kind (`local`, `pod`, or `s3` where applicable).

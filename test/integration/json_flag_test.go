@@ -24,19 +24,15 @@ func TestJSONFlagRejectsUnannotatedBuiltinCommand(t *testing.T) {
 	assert.Empty(t, stderr, "the rejection is rendered as JSON on stdout, not plain text on stderr")
 }
 
-func TestJSONFlagRejectsDefaultStartBehavior(t *testing.T) {
-	t.Parallel()
-	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), testEnvWithHome(t.TempDir(), ""), "--json")
-	requireExitCode(t, 1, err)
-	decodeEnvelope(t, stdout)
-	snap.MatchJSON(t, []byte(stdout))
-	assert.Empty(t, stderr, "the rejection is rendered as JSON on stdout, not plain text on stderr")
-}
+// `start` and the bare invocation are JSON-capable; see start_json_test.go.
 
 func TestJSONFlagDoesNotLaunchTUIOnPTY(t *testing.T) {
 	t.Parallel()
 
-	out, err := runLstkInPTY(t, testContext(t), testEnvWithHome(t.TempDir(), ""), "start", "--json")
+	// Without an unreachable runtime, a machine with a live daemon gets past the
+	// runtime check into AUTH_REQUIRED (exit 4) instead of exit 1.
+	e := append(testEnvWithHome(t.TempDir(), ""), unreachableDockerHost)
+	out, err := runLstkInPTY(t, testContext(t), e, "start", "--json")
 	requireExitCode(t, 1, err)
 	require.Contains(t, out, "start")
 	// If the TUI had launched, it would have shown the auth prompt (start with

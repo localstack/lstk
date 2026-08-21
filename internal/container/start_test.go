@@ -116,7 +116,7 @@ func TestEmitPostStartPointers_WithWebApp(t *testing.T) {
 	var out bytes.Buffer
 	sink := output.NewPlainSink(&out)
 
-	emitPostStartPointers(sink, config.EmulatorAWS, "localhost.localstack.cloud:4566", "https://app.localstack.cloud/", false)
+	emitPostStartPointers(sink, startedEmulator{emulatorType: config.EmulatorAWS, resolvedHost: "localhost.localstack.cloud:4566", persist: false}, "https://app.localstack.cloud/")
 
 	got := out.String()
 	assert.Contains(t, got, "• Endpoint: localhost.localstack.cloud:4566\n")
@@ -132,7 +132,7 @@ func TestEmitPostStartPointers_WithoutWebApp(t *testing.T) {
 	var out bytes.Buffer
 	sink := output.NewPlainSink(&out)
 
-	emitPostStartPointers(sink, config.EmulatorAWS, "127.0.0.1:4566", "", false)
+	emitPostStartPointers(sink, startedEmulator{emulatorType: config.EmulatorAWS, resolvedHost: "127.0.0.1:4566", persist: false}, "")
 
 	got := out.String()
 	assert.Contains(t, got, "• Endpoint: 127.0.0.1:4566\n")
@@ -143,7 +143,7 @@ func TestEmitPostStartPointers_WithPersist(t *testing.T) {
 	var out bytes.Buffer
 	sink := output.NewPlainSink(&out)
 
-	emitPostStartPointers(sink, config.EmulatorAWS, "127.0.0.1:4566", "https://app.localstack.cloud/", true)
+	emitPostStartPointers(sink, startedEmulator{emulatorType: config.EmulatorAWS, resolvedHost: "127.0.0.1:4566", persist: true}, "https://app.localstack.cloud/")
 
 	got := out.String()
 	assert.Contains(t, got, "• Endpoint: 127.0.0.1:4566\n• Persistence: Enabled\n• Web app: https://app.localstack.cloud\n",
@@ -160,7 +160,7 @@ func TestRunPostStartSetups_EmitsPersistenceFromContainerEnv(t *testing.T) {
 	var out bytes.Buffer
 	sink := output.NewPlainSink(&out)
 
-	err := runPostStartSetups(context.Background(), mockRT, sink, []config.ContainerConfig{cfg}, false, "", "", nil)
+	err := runPostStartSetups(context.Background(), mockRT, sink, []config.ContainerConfig{cfg}, false, "", "", "", nil)
 	require.NoError(t, err)
 
 	assert.Contains(t, out.String(), "• Persistence: Enabled",
@@ -177,7 +177,7 @@ func TestRunPostStartSetups_OmitsPersistenceWhenContainerEnvLacksFlag(t *testing
 	var out bytes.Buffer
 	sink := output.NewPlainSink(&out)
 
-	err := runPostStartSetups(context.Background(), mockRT, sink, []config.ContainerConfig{cfg}, false, "", "", nil)
+	err := runPostStartSetups(context.Background(), mockRT, sink, []config.ContainerConfig{cfg}, false, "", "", "", nil)
 	require.NoError(t, err)
 
 	assert.NotContains(t, out.String(), "• Persistence:")
@@ -228,7 +228,7 @@ func TestEmitPostStartPointers_Snowflake_ReplacesEndpointWithSnowflakeEndpoint(t
 	var out bytes.Buffer
 	sink := output.NewPlainSink(&out)
 
-	emitPostStartPointers(sink, config.EmulatorSnowflake, "localhost.localstack.cloud:4566", "https://app.localstack.cloud/", false)
+	emitPostStartPointers(sink, startedEmulator{emulatorType: config.EmulatorSnowflake, resolvedHost: "localhost.localstack.cloud:4566", persist: false}, "https://app.localstack.cloud/")
 
 	got := out.String()
 	assert.Contains(t, got, "• Snowflake endpoint: http://snowflake.localhost.localstack.cloud:4566\n")
@@ -242,7 +242,7 @@ func TestEmitPostStartPointers_Snowflake_OmitsPersistenceBullet(t *testing.T) {
 	var out bytes.Buffer
 	sink := output.NewPlainSink(&out)
 
-	emitPostStartPointers(sink, config.EmulatorSnowflake, "localhost.localstack.cloud:4566", "", true)
+	emitPostStartPointers(sink, startedEmulator{emulatorType: config.EmulatorSnowflake, resolvedHost: "localhost.localstack.cloud:4566", persist: true}, "")
 
 	got := out.String()
 	assert.NotContains(t, got, "• Persistence:",
@@ -253,7 +253,7 @@ func TestEmitPostStartPointers_Snowflake_FallsBackToBareEndpointForIPHost(t *tes
 	var out bytes.Buffer
 	sink := output.NewPlainSink(&out)
 
-	emitPostStartPointers(sink, config.EmulatorSnowflake, "127.0.0.1:4566", "", false)
+	emitPostStartPointers(sink, startedEmulator{emulatorType: config.EmulatorSnowflake, resolvedHost: "127.0.0.1:4566", persist: false}, "")
 
 	got := out.String()
 	assert.Contains(t, got, "• Endpoint: 127.0.0.1:4566\n",
@@ -387,7 +387,7 @@ func TestEmitPostStartPointers_Azure(t *testing.T) {
 	var out bytes.Buffer
 	sink := output.NewPlainSink(&out)
 
-	emitPostStartPointers(sink, config.EmulatorAzure, "localhost.localstack.cloud:4566", "https://app.localstack.cloud/", false)
+	emitPostStartPointers(sink, startedEmulator{emulatorType: config.EmulatorAzure, resolvedHost: "localhost.localstack.cloud:4566", persist: false}, "https://app.localstack.cloud/")
 
 	got := out.String()
 	assert.Contains(t, got, "• Endpoint: localhost.localstack.cloud:4566\n")
@@ -401,7 +401,7 @@ func TestEmitPostStartPointers_UnknownEmulator_NoTip(t *testing.T) {
 	var out bytes.Buffer
 	sink := output.NewPlainSink(&out)
 
-	emitPostStartPointers(sink, config.EmulatorType("other"), "localhost.localstack.cloud:4566", "https://app.localstack.cloud/", false)
+	emitPostStartPointers(sink, startedEmulator{emulatorType: config.EmulatorType("other"), resolvedHost: "localhost.localstack.cloud:4566", persist: false}, "https://app.localstack.cloud/")
 
 	got := out.String()
 	assert.Contains(t, got, "• Endpoint: localhost.localstack.cloud:4566\n")

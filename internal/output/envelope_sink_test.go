@@ -53,6 +53,86 @@ func TestEnvelopeSink_EmulatorStoppedEventAccumulates(t *testing.T) {
 	}, entries)
 }
 
+func TestEnvelopeSink_EmulatorStartedEventAccumulates(t *testing.T) {
+	t.Parallel()
+
+	sink := NewEnvelopeSink(FormatJSON)
+	sink.Emit(EmulatorStartedEvent{
+		Type: "aws", Name: "localstack-aws", DisplayName: "LocalStack AWS Emulator",
+		Host: "localhost:4566", Version: "3.9.0", Persist: true,
+		// SnowflakeHost is presentation-only and must not leak into the payload.
+		SnowflakeHost: "snowflake.localhost.localstack.cloud:4566",
+	})
+
+	envelope := sink.Result("start", nil)
+	data, ok := envelope.Data.(map[string]any)
+	require.True(t, ok)
+	entries, ok := data["emulators"].([]JsonEmulatorEntry)
+	require.True(t, ok)
+	require.Equal(t, []JsonEmulatorEntry{
+		JsonStartedEmulator{
+			JsonEmulatorRef: JsonEmulatorRef{Type: "aws", Name: "localstack-aws"},
+			Host:            "localhost:4566",
+			Version:         "3.9.0",
+			AlreadyRunning:  false,
+			Persist:         true,
+		},
+	}, entries)
+}
+
+// The key is always present, null when nothing was auto-loaded.
+func TestEnvelopeSink_EmulatorStartedEventSeedsNullSnapshotLoaded(t *testing.T) {
+	t.Parallel()
+
+	sink := NewEnvelopeSink(FormatJSON)
+	sink.Emit(EmulatorStartedEvent{Type: "aws", Name: "localstack-aws", Host: "localhost:4566"})
+
+	data, ok := sink.Result("start", nil).Data.(map[string]any)
+	require.True(t, ok)
+	value, present := data["snapshotLoaded"]
+	require.True(t, present, "snapshotLoaded must be present, not omitted")
+	require.Nil(t, value)
+}
+
+func TestEnvelopeSink_SnapshotLoadedEventOverridesSeededNull(t *testing.T) {
+	t.Parallel()
+
+	sink := NewEnvelopeSink(FormatJSON)
+	sink.Emit(EmulatorStartedEvent{Type: "aws", Name: "localstack-aws", Host: "localhost:4566"})
+	sink.Emit(SnapshotLoadedEvent{Source: "pod:my-baseline", Services: []string{"s3", "sqs"}})
+
+	data, ok := sink.Result("start", nil).Data.(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, JsonSnapshotLoaded{Source: "pod:my-baseline", Services: []string{"s3", "sqs"}}, data["snapshotLoaded"])
+}
+
+// Seeding must not clobber an already-recorded snapshot if the order changes.
+func TestEnvelopeSink_SnapshotLoadedSurvivesLaterStartedEvent(t *testing.T) {
+	t.Parallel()
+
+	sink := NewEnvelopeSink(FormatJSON)
+	sink.Emit(SnapshotLoadedEvent{Source: "pod:my-baseline", Services: []string{"s3"}})
+	sink.Emit(EmulatorStartedEvent{Type: "aws", Name: "localstack-aws", Host: "localhost:4566"})
+
+	data, ok := sink.Result("start", nil).Data.(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, JsonSnapshotLoaded{Source: "pod:my-baseline", Services: []string{"s3"}}, data["snapshotLoaded"])
+}
+
+func TestEnvelopeSink_StartEnvelopeJSON(t *testing.T) {
+	t.Parallel()
+
+	sink := NewEnvelopeSink(FormatJSON)
+	sink.Emit(EmulatorStartedEvent{
+		Type: "aws", Name: "localstack-aws", DisplayName: "LocalStack AWS Emulator",
+		Host: "localhost:4566", Version: "3.9.0", AlreadyRunning: true,
+	})
+
+	raw, err := json.Marshal(sink.Result("start", nil))
+	require.NoError(t, err)
+	snap.MatchJSON(t, raw)
+}
+
 func TestEnvelopeSink_EmulatorResetEvent(t *testing.T) {
 	t.Parallel()
 

@@ -162,6 +162,22 @@ type EmulatorStoppedEvent struct {
 	WasRunning  bool
 }
 
+// EmulatorStartedEvent reports that an emulator is up, whether this run started
+// it or found it already running. Host is resolved (post DNS-rebind check), not
+// the configured port; Version is empty when it could not be determined.
+type EmulatorStartedEvent struct {
+	Type           string
+	Name           string
+	DisplayName    string
+	Host           string
+	Version        string
+	AlreadyRunning bool
+	Persist        bool
+	// Shown instead of Host when set. Derived by the caller, so internal/output
+	// holds no per-emulator hostname rules.
+	SnowflakeHost string
+}
+
 // EmulatorResetEvent reports that the named emulator's in-memory state was reset.
 type EmulatorResetEvent struct {
 	Type string
@@ -224,6 +240,7 @@ func (SnapshotDiffEvent) sealedEvent()        {}
 func (PodSnapshotRemovedEvent) sealedEvent()  {}
 func (SnapshotShownEvent) sealedEvent()       {}
 func (EmulatorStoppedEvent) sealedEvent()     {}
+func (EmulatorStartedEvent) sealedEvent()     {}
 func (EmulatorResetEvent) sealedEvent()       {}
 func (UpdateCheckedEvent) sealedEvent()       {}
 func (UpdateAppliedEvent) sealedEvent()       {}

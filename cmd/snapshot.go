@@ -145,12 +145,19 @@ func snapshotFlags(cmd *cobra.Command) (snapshotFlag string, noSnapshot bool, er
 	return snapshotFlag, noSnapshot, nil
 }
 
+// Sentinels so the start path can classify these into error codes without
+// re-matching the message text.
+var (
+	errSnapshotFlagConflict   = errors.New("--snapshot and --no-snapshot cannot be used together")
+	errSnapshotAutoLoadNotAWS = errors.New("snapshot auto-load is only supported for the AWS emulator")
+)
+
 // resolveStartSnapshotRef resolves the snapshot REF to auto-load on start.
 // Precedence: --no-snapshot disables it; otherwise --snapshot wins over the
 // AWS container's configured snapshot. Returns "" when nothing should be loaded.
 func resolveStartSnapshotRef(appConfig *config.Config, snapshotFlag string, noSnapshot bool) (string, error) {
 	if noSnapshot && snapshotFlag != "" {
-		return "", errors.New("--snapshot and --no-snapshot cannot be used together")
+		return "", errSnapshotFlagConflict
 	}
 	if noSnapshot {
 		return "", nil
@@ -185,7 +192,7 @@ func newSnapshotAutoLoader(cfg *env.Env, rt runtime.Runtime, appConfig *config.C
 		}
 	}
 	if !found {
-		return nil, fmt.Errorf("snapshot auto-load is only supported for the AWS emulator")
+		return nil, errSnapshotAutoLoadNotAWS
 	}
 
 	home, _ := os.UserHomeDir()

@@ -68,6 +68,8 @@ func FormatEventLine(event Event) (string, bool) {
 		return "", false
 	case EmulatorStoppedEvent:
 		return formatEmulatorStopped(e), true
+	case EmulatorStartedEvent:
+		return formatEmulatorStarted(e), true
 	case EmulatorResetEvent:
 		return formatEmulatorReset(e), true
 	case UpdateCheckedEvent:
@@ -200,6 +202,13 @@ func formatMessageEvent(e MessageEvent) string {
 
 func formatEmulatorStopped(e EmulatorStoppedEvent) string {
 	return SuccessMarker() + " " + fmt.Sprintf("%s stopped", e.DisplayName)
+}
+
+func formatEmulatorStarted(e EmulatorStartedEvent) string {
+	if e.SnowflakeHost != "" {
+		return fmt.Sprintf("• Snowflake endpoint: http://%s", e.SnowflakeHost)
+	}
+	return fmt.Sprintf("• Endpoint: %s", e.Host)
 }
 
 func formatEmulatorReset(e EmulatorResetEvent) string {
