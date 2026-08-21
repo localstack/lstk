@@ -26,3 +26,21 @@ type JsonStoppedEmulator struct {
 }
 
 func (JsonStoppedEmulator) sealedEmulatorEntry() {}
+
+// JsonStartedEmulator is the per-emulator entry in `start`'s data.emulators.
+type JsonStartedEmulator struct {
+	JsonEmulatorRef
+	Host           string `json:"host"`
+	Version        string `json:"version"`
+	AlreadyRunning bool   `json:"alreadyRunning"`
+	Persist        bool   `json:"persist"`
+}
+
+func (JsonStartedEmulator) sealedEmulatorEntry() {}
+
+// JsonSnapshotLoaded is `start`'s data.snapshotLoaded. The key is always
+// present, null when nothing was auto-loaded.
+type JsonSnapshotLoaded struct {
+	Source   string   `json:"source"`
+	Services []string `json:"services"`
+}

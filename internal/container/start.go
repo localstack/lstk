@@ -57,6 +57,7 @@ func Start(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts Start
 	// on container-name conflicts or shared port collisions.
 	if err := checkSingleContainer(opts.Containers); err != nil {
 		sink.Emit(output.ErrorEvent{
+			Code:    output.ErrConfigInvalid,
 			Title:   "Unsupported configuration",
 			Summary: err.Error(),
 			Actions: []output.ErrorAction{{Label: "Edit your config file so only one [[containers]] block is enabled:", Value: "lstk config path"}},
@@ -82,6 +83,20 @@ func Start(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts Start
 
 	token, err := a.GetToken(ctx)
 	if err != nil {
+		// Classified so JSON callers get AUTH_REQUIRED and its reserved exit
+		// code. Title is the sentinel's message verbatim, keeping the line
+		// plain-text output already showed.
+		if errors.Is(err, auth.ErrAuthenticationRequired) {
+			sink.Emit(output.ErrorEvent{
+				Code:  output.ErrAuthRequired,
+				Title: err.Error(),
+				Actions: []output.ErrorAction{
+					{Label: "Provide a token via the environment variable:", Value: "LOCALSTACK_AUTH_TOKEN"},
+					{Label: "Or log in from an interactive terminal:", Value: "lstk login"},
+				},
+			})
+			return "", output.NewSilentError(err)
+		}
 		return "", err
 	}
 
@@ -120,6 +135,7 @@ func Start(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts Start
 // re-login came back rejected too.
 func renderLicenseRejection(sink output.Sink, rejErr *licenseRejectedError, err error) error {
 	sink.Emit(output.ErrorEvent{
+		Code:  output.ErrLicenseInvalid,
 		Title: fmt.Sprintf("License validation failed for %s:%s: %s", rejErr.productName, rejErr.version, rejErr.licErr.Message),
 		Actions: []output.ErrorAction{
 			{Label: "Log in again to refresh your credentials:", Value: "lstk logout && lstk login"},
@@ -331,7 +347,7 @@ func startOnce(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts S
 	setups := map[config.EmulatorType]postStartSetupFunc{
 		config.EmulatorAWS: awsconfig.EnsureProfile,
 	}
-	return resolvedVersion, runPostStartSetups(ctx, rt, sink, opts.Containers, interactive, opts.LocalStackHost, opts.WebAppURL, setups)
+	return resolvedVersion, runPostStartSetups(ctx, rt, sink, opts.Containers, interactive, opts.LocalStackHost, opts.WebAppURL, resolvedVersion, setups)
 }
 
 func resolvedPinnedVersion(containers []runtime.ContainerConfig) string {
@@ -343,7 +359,7 @@ func resolvedPinnedVersion(containers []runtime.ContainerConfig) string {
 	return ""
 }
 
-func runPostStartSetups(ctx context.Context, rt runtime.Runtime, sink output.Sink, containers []config.ContainerConfig, interactive bool, localStackHost, webAppURL string, setups map[config.EmulatorType]postStartSetupFunc) error {
+func runPostStartSetups(ctx context.Context, rt runtime.Runtime, sink output.Sink, containers []config.ContainerConfig, interactive bool, localStackHost, webAppURL, resolvedVersion string, setups map[config.EmulatorType]postStartSetupFunc) error {
 	// build ordered list of unique types, keeping the first container config for each
 	firstByType := map[config.EmulatorType]config.ContainerConfig{}
 	var uniqueEmulatorTypes []config.EmulatorType
@@ -364,17 +380,24 @@ func runPostStartSetups(ctx context.Context, rt runtime.Runtime, sink output.Sin
 				return err
 			}
 		}
-		emitPostStartPointers(sink, t, resolvedHost, webAppURL, isPersistenceEnabled(ctx, rt, c.Name()))
+		emitPostStartPointers(sink, startedEmulator{
+			emulatorType:  t,
+			containerName: c.Name(),
+			resolvedHost:  resolvedHost,
+			version:       resolvedVersion,
+			persist:       isPersistenceEnabled(ctx, rt, c.Name()),
+		}, webAppURL)
 	}
 	return nil
 }
 
 func emitAlreadyRunning(ctx context.Context, sink output.Sink, c runtime.ContainerConfig, localStackHost, webAppURL string, persist bool) {
 	name := c.EmulatorType.DisplayName()
+	var version string
 	if info, err := fetchLocalStackInfo(ctx, c.Port); err == nil && info.Version != "" {
 		// /_localstack/info may report a build suffix (e.g. "2026.5.3:04ddfd3a0");
 		// keep only the version number.
-		version, _, _ := strings.Cut(info.Version, ":")
+		version, _, _ = strings.Cut(info.Version, ":")
 		name = fmt.Sprintf("%s %s", name, version)
 	}
 	sink.Emit(output.MessageEvent{Severity: output.SeverityNote, Text: fmt.Sprintf("%s is already running", name)})
@@ -382,7 +405,25 @@ func emitAlreadyRunning(ctx context.Context, sink output.Sink, c runtime.Contain
 	if !dnsOK {
 		sink.Emit(output.MessageEvent{Severity: output.SeverityNote, Text: endpoint.DNSRebindNote})
 	}
-	emitPostStartPointers(sink, c.EmulatorType, resolvedHost, webAppURL, persist)
+	emitPostStartPointers(sink, startedEmulator{
+		emulatorType:   c.EmulatorType,
+		containerName:  c.Name,
+		resolvedHost:   resolvedHost,
+		version:        version,
+		alreadyRunning: true,
+		persist:        persist,
+	}, webAppURL)
+}
+
+// startedEmulator lets the fresh-start and already-running paths converge on
+// one emitPostStartPointers call instead of parallel parameter lists.
+type startedEmulator struct {
+	emulatorType   config.EmulatorType
+	containerName  string
+	resolvedHost   string
+	version        string
+	alreadyRunning bool
+	persist        bool
 }
 
 func isPersistenceEnabled(ctx context.Context, rt runtime.Runtime, containerName string) bool {
@@ -393,19 +434,34 @@ func isPersistenceEnabled(ctx context.Context, rt runtime.Runtime, containerName
 	return slices.Contains(env, envPersistenceEnabled)
 }
 
-func emitPostStartPointers(sink output.Sink, emulatorType config.EmulatorType, resolvedHost, webAppURL string, persist bool) {
-	if sfHost := snowflake.Hostname(resolvedHost); emulatorType == config.EmulatorSnowflake && sfHost != "" {
-		sink.Emit(output.MessageEvent{Severity: output.SeveritySecondary, Text: fmt.Sprintf("• Snowflake endpoint: http://%s", sfHost)})
-	} else {
-		sink.Emit(output.MessageEvent{Severity: output.SeveritySecondary, Text: fmt.Sprintf("• Endpoint: %s", resolvedHost)})
+func startedEmulatorEvent(e startedEmulator) output.EmulatorStartedEvent {
+	var sfHost string
+	if h := snowflake.Hostname(e.resolvedHost); e.emulatorType == config.EmulatorSnowflake && h != "" {
+		sfHost = h
 	}
-	if persist && emulatorType == config.EmulatorAWS {
+	return output.EmulatorStartedEvent{
+		Type:           string(e.emulatorType),
+		Name:           e.containerName,
+		DisplayName:    e.emulatorType.DisplayName(),
+		Host:           e.resolvedHost,
+		Version:        e.version,
+		AlreadyRunning: e.alreadyRunning,
+		Persist:        e.persist,
+		SnowflakeHost:  sfHost,
+	}
+}
+
+func emitPostStartPointers(sink output.Sink, e startedEmulator, webAppURL string) {
+	// The endpoint line rides on EmulatorStartedEvent, not a MessageEvent, so
+	// JSON output gets it structured. Its formatter reproduces the line.
+	sink.Emit(startedEmulatorEvent(e))
+	if e.persist && e.emulatorType == config.EmulatorAWS {
 		sink.Emit(output.MessageEvent{Severity: output.SeveritySecondary, Text: "• Persistence: Enabled"})
 	}
 	if webAppURL != "" {
 		sink.Emit(output.MessageEvent{Severity: output.SeveritySecondary, Text: fmt.Sprintf("• Web app: %s", strings.TrimRight(webAppURL, "/"))})
 	}
-	if tips := tipsForType(emulatorType); len(tips) > 0 {
+	if tips := tipsForType(e.emulatorType); len(tips) > 0 {
 		sink.Emit(output.MessageEvent{Severity: output.SeveritySecondary, Text: tips[rand.IntN(len(tips))]})
 	}
 }
@@ -526,6 +582,7 @@ func pullImage(ctx context.Context, rt runtime.Runtime, sink output.Sink, tel *t
 			return true, nil
 		}
 		sink.Emit(output.ErrorEvent{
+			Code:    output.ErrImagePullFailed,
 			Title:   fmt.Sprintf("Failed to pull %s", c.Image),
 			Summary: err.Error(),
 		})
@@ -761,6 +818,7 @@ func (m *startupMonitor) handleFailure(ctx context.Context, c runtime.ContainerC
 	case c.EmulatorType.SelfValidatesLicense() && strings.Contains(logs, "not covered by your license"):
 		errCode = telemetry.ErrCodeLicenseInvalid
 		m.sink.Emit(output.ErrorEvent{
+			Code:  output.ErrLicenseInvalid,
 			Title: fmt.Sprintf("Your license does not include the %s emulator.", c.EmulatorType.ShortName()),
 			Actions: []output.ErrorAction{
 				{Label: "Sign up for a free trial:", Value: "https://app.localstack.cloud/sign-up"},
@@ -790,6 +848,7 @@ func (m *startupMonitor) handleFailure(ctx context.Context, c runtime.ContainerC
 			summary += "\nLast container output:\n" + tail
 		}
 		m.sink.Emit(output.ErrorEvent{
+			Code:    output.ErrEmulatorStartFailed,
 			Title:   err.Error(),
 			Summary: summary,
 			Actions: actions,
@@ -802,6 +861,7 @@ func (m *startupMonitor) handleFailure(ctx context.Context, c runtime.ContainerC
 			summary = "Last container output:\n" + tail
 		}
 		m.sink.Emit(output.ErrorEvent{
+			Code:    output.ErrEmulatorStartFailed,
 			Title:   err.Error(),
 			Summary: summary,
 			Actions: []output.ErrorAction{
@@ -850,6 +910,7 @@ func selectContainersToStart(ctx context.Context, rt runtime.Runtime, sink outpu
 			foundType := config.EmulatorTypeForImage(found.Image)
 			if foundType != "" && foundType != c.EmulatorType {
 				sink.Emit(output.ErrorEvent{
+					Code:    output.ErrEmulatorWrongType,
 					Title:   fmt.Sprintf("%s is running on port %s", foundType.DisplayName(), found.BoundPort),
 					Summary: fmt.Sprintf("Your config specifies the %s. Only one emulator can run on a port at a time.", c.EmulatorType.DisplayName()),
 					Actions: []output.ErrorAction{
@@ -867,6 +928,7 @@ func selectContainersToStart(ctx context.Context, rt runtime.Runtime, sink outpu
 			}
 			if found.BoundPort != c.Port {
 				sink.Emit(output.ErrorEvent{
+					Code:    output.ErrEmulatorAlreadyRunning,
 					Title:   fmt.Sprintf("%s is already running on port %s", c.EmulatorType.DisplayName(), found.BoundPort),
 					Summary: fmt.Sprintf("Config expects port %s. Only one instance can run at a time.", c.Port),
 					Actions: []output.ErrorAction{
@@ -889,6 +951,19 @@ func selectContainersToStart(ctx context.Context, rt runtime.Runtime, sink outpu
 		if _, err := ports.CheckAvailable(c.Port); err != nil {
 			if info, infoErr := fetchLocalStackInfo(ctx, c.Port); infoErr == nil {
 				emitLocalStackAlreadyRunningWarning(sink, c.Port, info.Version, c.Tag)
+				// A LocalStack lstk did not start (host network, compose, a
+				// foreign container) still counts as a result: without this,
+				// --json reports "ok" with no emulators entry at all.
+				runningVersion, _, _ := strings.Cut(info.Version, ":")
+				resolvedHost, _ := endpoint.ResolveHost(ctx, c.Port, localStackHost)
+				sink.Emit(startedEmulatorEvent(startedEmulator{
+					emulatorType:   c.EmulatorType,
+					containerName:  c.Name,
+					resolvedHost:   resolvedHost,
+					version:        runningVersion,
+					alreadyRunning: true,
+					persist:        isPersistenceEnabled(ctx, rt, c.Name),
+				}))
 				continue
 			}
 			emitPortInUseError(sink, c.Port)
@@ -910,6 +985,7 @@ func selectContainersToStart(ctx context.Context, rt runtime.Runtime, sink outpu
 		// a busy one is dropped with a warning instead of blocking the start.
 		if conflictPort, err := ports.CheckAvailable(requiredHostPorts(c.ExtraPorts)...); err != nil {
 			sink.Emit(output.ErrorEvent{
+				Code:    output.ErrEmulatorStartFailed,
 				Title:   fmt.Sprintf("Port %s is already in use", conflictPort),
 				Summary: "LocalStack requires this port. Free it before starting.",
 				Actions: portConflictActions(rt.Flavor(), runtime.DetectInstalledFlavor(), conflictPort),
@@ -975,6 +1051,7 @@ func healLeftoverContainer(ctx context.Context, rt runtime.Runtime, sink output.
 	removable := brief.Managed || (brief.AutoRemove && !brief.Created)
 	if !removable {
 		sink.Emit(output.ErrorEvent{
+			Code:    output.ErrEmulatorStartFailed,
 			Title:   fmt.Sprintf("Container name %q is already taken", c.Name),
 			Summary: fmt.Sprintf("An existing container (image %s) uses this name but was not created by lstk, so lstk will not remove it.", brief.Image),
 			Actions: []output.ErrorAction{{Label: "Remove or rename that container, e.g.:", Value: "docker rm " + c.Name}},
@@ -984,6 +1061,7 @@ func healLeftoverContainer(ctx context.Context, rt runtime.Runtime, sink output.
 
 	if err := rt.Remove(ctx, c.Name); err != nil {
 		sink.Emit(output.ErrorEvent{
+			Code:    output.ErrEmulatorStartFailed,
 			Title:   fmt.Sprintf("Cannot remove leftover container %q", c.Name),
 			Summary: fmt.Sprintf("A previous start left this container behind and removing it failed: %v", err),
 			Actions: []output.ErrorAction{{Label: "Remove it manually, then retry:", Value: "docker rm -f " + c.Name}},
@@ -1204,6 +1282,7 @@ func emitPortInUseError(sink output.Sink, port string) {
 		actions = append(actions, output.ErrorAction{Label: "Use another port in the configuration:", Value: configPath})
 	}
 	sink.Emit(output.ErrorEvent{
+		Code:    output.ErrEmulatorStartFailed,
 		Title:   fmt.Sprintf("Port %s already in use", port),
 		Summary: "Free the port or configure a different one.",
 		Actions: actions,

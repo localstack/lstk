@@ -12,6 +12,12 @@ import (
 
 var ErrNotLoggedIn = errors.New("not logged in")
 
+// ErrAuthenticationRequired reports that no token could be resolved and the
+// caller is non-interactive, so the device flow is unavailable. A sentinel so
+// callers can classify it (e.g. output.ErrAuthRequired); emitting an ErrorEvent
+// here instead would change plain-text output for every other caller.
+var ErrAuthenticationRequired = errors.New("authentication required: set LOCALSTACK_AUTH_TOKEN or run in interactive mode")
+
 type Auth struct {
 	tokenStorage    AuthTokenStorage
 	login           LoginProvider
@@ -71,7 +77,7 @@ func (a *Auth) GetToken(ctx context.Context) (string, error) {
 	}
 
 	if !a.allowLogin {
-		return "", fmt.Errorf("authentication required: set LOCALSTACK_AUTH_TOKEN or run in interactive mode")
+		return "", ErrAuthenticationRequired
 	}
 
 	return a.loginAndStore(ctx)
@@ -83,7 +89,7 @@ func (a *Auth) GetToken(ctx context.Context) (string, error) {
 // `lstk logout` manually before retrying.
 func (a *Auth) Relogin(ctx context.Context) (string, error) {
 	if !a.allowLogin {
-		return "", fmt.Errorf("authentication required: set LOCALSTACK_AUTH_TOKEN or run in interactive mode")
+		return "", ErrAuthenticationRequired
 	}
 
 	if err := a.tokenStorage.DeleteAuthToken(); err != nil && !errors.Is(err, ErrTokenNotFound) {

@@ -182,13 +182,23 @@ Cobra's built-in version flag (`root.InitDefaultVersionFlag()`) is handled insid
 
 **Decision**: accept the gap. `-v`/`--version` never gets `--json` support, documented as a permanent limitation alongside `login` and `config profile` (see Command Catalog and Non-Goals) rather than solved by inventing a command around it.
 
+### Decision: `start --json` is a single final envelope, not streamed NDJSON progress
+
+Settled for `start` specifically when task 5.1 was implemented, resolving that half of the Open Question below. `lstk start --json` stays silent for the duration of the start (image pull, container boot, readiness wait) and then writes exactly one envelope, matching `stop`/`reset`/`update` and what plain-text non-interactive mode already does with that progress.
+
+Three reasons it went this way rather than NDJSON-with-trailing-result. It keeps the shipped contract intact — `output-envelope`'s "exactly one JSON object on stdout" guarantee is what the integration harness's `decodeEnvelope` asserts, and every JSON test in the suite depends on it, so introducing a third wire shape means revisiting that guarantee for one command's benefit. The concrete consumer driving this work (the LocalStack Toolkit for VS Code, DEVX-1052) needs the final result to drive its UI, not a progress feed; it has `lstk logs` if it wants live output. And the specific failure the open question worried about — a CI log that looks hung — is a presentation problem with a cheaper fix than a new wire format, since `start` already fails on a bounded timeout (60s non-interactive by default) rather than hanging indefinitely.
+
+**Alternative considered**: emit `ContainerStatusEvent`/`ProgressEvent` as NDJSON progress lines with the envelope as the final line. Declined for now, not rejected on principle: it remains the natural design if a real case appears, and `start` is still the right pilot for it. Deferring costs nothing, because adding progress lines later is additive for a consumer that reads only the last line — whereas shipping them now would commit every consumer to line-splitting from day one.
+
+This decision covers `start` only. `restart`, `snapshot load`, and `snapshot save` are untouched by it and remain open.
+
 ## Command Catalog
 
 This is the artifact meant for human review: every built-in command, whether it gets `--json` support in this proposal, its `data` shape inside the envelope, and the `error.code`s it can realistically produce. Field names are `camelCase` JSON; durations are seconds (`uptimeSeconds`), timestamps are RFC 3339 strings, byte counts are `sizeBytes`. Example `name` values below (e.g. `"localstack-aws"`) are the real default container name for the AWS emulator — `fmt.Sprintf("localstack-%s", c.Type)` in `internal/config/containers.go`'s `ContainerConfig.defaultName()`, not a placeholder — so this is what a reader sees unless the `[[containers]]` block sets a custom `name`, which `ContainerConfig.Name()` returns in preference. It names the **container**, not the underlying Docker **image** (`localstack/localstack:latest`, resolved separately by `ContainerConfig.Image()`); the two are easy to conflate but the `name` field here is always the former, matching `InstanceInfoEvent.ContainerName`. Commands and flags not listed (`aws`, `terraform`, `cdk`, `sam`, `az` passthrough, extension dispatch, `docs`, `completion`, `help`, `login`, `config profile`, and the `-v`/`--version` flag) are explicitly out of scope — see Non-Goals.
 
 ### Emulator lifecycle
 
-**`lstk start`** — `data`: an emulator entry per configured container, plus whether a configured snapshot was auto-loaded.
+**`lstk start`** — `data`: an emulator entry per configured container, plus whether a configured snapshot was auto-loaded. Implemented in task 5.1; see docs/structured-output.md for the shipped contract.
 ```json
 {
   "emulators": [
@@ -197,7 +207,9 @@ This is the artifact meant for human review: every built-in command, whether it 
   "snapshotLoaded": null
 }
 ```
-Codes: `RUNTIME_UNAVAILABLE`, `AUTH_REQUIRED`, `LICENSE_INVALID`, `LICENSE_UNSUPPORTED_TAG`, `IMAGE_PULL_FAILED`, `EMULATOR_START_FAILED`, `SNAPSHOT_NOT_FOUND` (bad `--snapshot`), `VALIDATION_ERROR` (`--snapshot` with `--no-snapshot`).
+Codes: `RUNTIME_UNAVAILABLE`, `AUTH_REQUIRED`, `LICENSE_INVALID`, `IMAGE_PULL_FAILED`, `EMULATOR_START_FAILED`, `EMULATOR_WRONG_TYPE`, `EMULATOR_ALREADY_RUNNING`, `CONFIG_INVALID` (more than one enabled `[[containers]]` block), `VALIDATION_ERROR` (`--snapshot` with `--no-snapshot`), `SNAPSHOT_INVALID_REF` (malformed `--snapshot` REF), `EMULATOR_NOT_CONFIGURED` (`--snapshot` with no AWS container configured).
+
+`emulators` stays an array for consistency with `stop`/`restart`/`status`, but holds exactly one entry: `checkSingleContainer` rejects a multi-container config before anything else runs (task 5.5). `LICENSE_UNSUPPORTED_TAG` was dropped from this list as unreachable, and `SNAPSHOT_NOT_FOUND` became `SNAPSHOT_INVALID_REF` — a REF that fails to parse is malformed, not missing (tasks 5.6, 5.1).
 
 **`lstk stop`** — `data`: which configured emulators were actually running and got stopped.
 ```json
@@ -357,7 +369,7 @@ No migration for existing users — `--json` remains rejected for any command no
 
 ## Open Questions
 
-- **Should `start`, `restart`, `snapshot load`, and `snapshot save` stream NDJSON progress instead of staying silent until the final envelope?** This is the biggest open fork from the Prior Art review: Terraform's `apply -json` and Pulumi's engine events emit live `pulling`/`applying`/`provisioning`-style lines throughout a slow operation, ending in a final result line; today's design (see Decisions) discards that progress entirely under `--json`, matching what plain-text non-interactive mode already does but potentially leaving a script watching a slow image pull with no output for the whole duration. Deferred rather than decided here because it would introduce a third wire shape (NDJSON-with-trailing-result, distinct from both the single envelope and the pure `logs --follow` stream) and should be scoped as its own decision once there's a concrete case (e.g. CI logs showing an `lstk start --json` step that looks hung) rather than spec'd speculatively. If pursued, `start`/`restart` are the natural pilot given they already have the richest interactive-mode progress today (`ContainerStatusEvent`, `ProgressEvent`) that JSON mode currently drops on the floor.
+- **Should `restart`, `snapshot load`, and `snapshot save` stream NDJSON progress instead of staying silent until the final envelope?** ~~`start`~~ — answered for `start` when 5.1 landed: single final envelope, see the Decision above. Still open for the other three. This is the biggest open fork from the Prior Art review: Terraform's `apply -json` and Pulumi's engine events emit live `pulling`/`applying`/`provisioning`-style lines throughout a slow operation, ending in a final result line; today's design (see Decisions) discards that progress entirely under `--json`, matching what plain-text non-interactive mode already does but potentially leaving a script watching a slow image pull with no output for the whole duration. Deferred rather than decided here because it would introduce a third wire shape (NDJSON-with-trailing-result, distinct from both the single envelope and the pure `logs --follow` stream) and should be scoped as its own decision once there's a concrete case (e.g. CI logs showing an `lstk start --json` step that looks hung) rather than spec'd speculatively. If pursued, `start`/`restart` are the natural pilot given they already have the richest interactive-mode progress today (`ContainerStatusEvent`, `ProgressEvent`) that JSON mode currently drops on the floor.
 - Should `warnings` also surface non-fatal issues from *plain-text* mode today (e.g. the "multiple emulators of the same type" message in `start`), or only ones specifically worth a script's attention? Leaning toward: any `MessageEvent{Severity: SeverityWarning}` reachable from a JSON-capable command's path qualifies, decided per command during its implementation task rather than up front.
 - Should `snapshot list`/`show` cache platform responses to reduce load when scripts poll `--json` in a loop? Out of scope here; revisit if it becomes a real usage pattern.
 - Whether `az start-interception`/`stop-interception` belong in the first implementation wave given they mutate global `~/.azure` state — flagged in tasks.md as a candidate for a later phase rather than blocking the rest.

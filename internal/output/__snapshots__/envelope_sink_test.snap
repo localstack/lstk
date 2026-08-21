@@ -1,6 +1,29 @@
 Snapshots created by internal/snap. UPDATE_SNAPS=true go test rewrites
 this file.
 
+[TestEnvelopeSink_StartEnvelopeJSON_1]
+{
+  "command": "start",
+  "data": {
+    "emulators": [
+      {
+        "alreadyRunning": true,
+        "host": "localhost:4566",
+        "name": "localstack-aws",
+        "persist": false,
+        "type": "aws",
+        "version": "3.9.0"
+      }
+    ],
+    "snapshotLoaded": null
+  },
+  "error": null,
+  "schemaVersion": 1,
+  "status": "ok",
+  "warnings": []
+}
+---
+
 [TestEnvelopeSink_UpdateCheckedEnvelopeJSON_1]
 {
   "command": "update",

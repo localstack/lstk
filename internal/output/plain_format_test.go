@@ -188,6 +188,25 @@ func TestFormatEventLine(t *testing.T) {
 			wantOK: true,
 		},
 		{
+			// Moved off a SeveritySecondary MessageEvent, so: no marker, no prefix.
+			name:   "emulator started event",
+			event:  EmulatorStartedEvent{Type: "aws", Name: "localstack-aws", DisplayName: "LocalStack AWS Emulator", Host: "localhost.localstack.cloud:4566", Version: "3.9.0"},
+			want:   "• Endpoint: localhost.localstack.cloud:4566",
+			wantOK: true,
+		},
+		{
+			name:   "emulator started event already running renders the same endpoint line",
+			event:  EmulatorStartedEvent{Type: "aws", Name: "localstack-aws", Host: "127.0.0.1:4566", AlreadyRunning: true},
+			want:   "• Endpoint: 127.0.0.1:4566",
+			wantOK: true,
+		},
+		{
+			name:   "emulator started event with snowflake host",
+			event:  EmulatorStartedEvent{Type: "snowflake", Name: "localstack-snowflake", Host: "localhost.localstack.cloud:4566", SnowflakeHost: "snowflake.localhost.localstack.cloud:4566"},
+			want:   "• Snowflake endpoint: http://snowflake.localhost.localstack.cloud:4566",
+			wantOK: true,
+		},
+		{
 			name:   "emulator reset event",
 			event:  EmulatorResetEvent{Type: "aws", Name: "localstack-aws"},
 			want:   SuccessMarker() + " Emulator state reset",

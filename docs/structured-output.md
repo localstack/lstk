@@ -8,7 +8,7 @@ The contract described here (a shared envelope shape, a shared error-code vocabu
 
 `--json` support is being rolled out per command, not all at once. The [Command Catalog](#command-catalog) below is split into two parts:
 
-- **[Implemented in this PR](#implemented-in-this-pr)** — `stop`, `reset`, `update`. These accept `--json` today and produce exactly the shapes documented below.
+- **[Implemented](#implemented)** — `start` (and the bare `lstk` invocation), `stop`, `reset`, `update`. These accept `--json` today and produce exactly the shapes documented below.
 - **[Proposed for future work](#proposed-for-future-work-draft)** — every other built-in command. Attempting `--json` on any of these today is rejected with `NOT_JSON_CAPABLE`. This part is a **first-draft proposal only** — see the warning at the top of that section before relying on any of it.
 
 ## The envelope
@@ -187,11 +187,34 @@ A `USAGE_ERROR` that *was* successfully rendered as an envelope (because `--json
 
 ## Command Catalog
 
-There are many commands supported by `lstk`, but they'll be addressed in phases. Initially we've focused on `stop`, `reset`, and `update` commands, simply to test the generation of JSON output. The remaining commands will follow in later work, where their specific JSON schema will be considered in more depth (for now, they're simply a rough proposal)
+There are many commands supported by `lstk`, but they'll be addressed in phases. `stop`, `reset`, and `update` came first, simply to test the generation of JSON output; `start` (and the bare `lstk` invocation, which shares its behavior) followed. The remaining commands will arrive in later work, where their specific JSON schema will be considered in more depth (for now, they're simply a rough proposal).
 
-### Implemented in this PR
+### Implemented
 
-These three ship in this PR with `--json` support. The shapes below are real — they match what the code actually produces, not a proposal.
+The shapes below are real — they match what the code actually produces, not a proposal.
+
+**`lstk start`** — one emulator entry per configured container, plus whether a configured snapshot was auto-loaded. The bare `lstk --json` runs the same behavior and reports `"command": "start"`.
+```json
+{
+  "schemaVersion": 1,
+  "command": "start",
+  "status": "ok",
+  "data": {
+    "emulators": [
+      {"type": "aws", "name": "localstack-aws", "host": "localhost.localstack.cloud:4566", "version": "3.9.0", "alreadyRunning": false, "persist": false}
+    ],
+    "snapshotLoaded": null
+  },
+  "warnings": [],
+  "error": null
+}
+```
+
+`emulators` is an array for consistency with `stop`/`restart`/`status`, but it holds exactly one entry today: `start` rejects a config with more than one enabled `[[containers]]` block up front (`CONFIG_INVALID`), since running two emulators together is unsupported. `alreadyRunning` is `true` when the emulator was already up — including when it is one lstk did not start (host-network mode, docker compose, a foreign container), which is still a success. `version` is empty only when it could not be determined: a pinned tag that never went through the platform license flow, or an already-running emulator whose `/_localstack/info` did not answer. `snapshotLoaded` is always present, `null` unless a configured snapshot was auto-loaded, otherwise `{"source": "...", "services": [...]}`.
+
+Codes: `RUNTIME_UNAVAILABLE`, `AUTH_REQUIRED` (no token resolvable and no interactive terminal for the device flow — exit code `4`), `LICENSE_INVALID`, `IMAGE_PULL_FAILED`, `EMULATOR_START_FAILED` (startup timeout, a container that exited, or a port/name conflict), `EMULATOR_WRONG_TYPE`, `EMULATOR_ALREADY_RUNNING` (running on a different port than configured), `CONFIG_INVALID` (more than one enabled `[[containers]]` block), `VALIDATION_ERROR` (`--snapshot` with `--no-snapshot`), `SNAPSHOT_INVALID_REF` (malformed `--snapshot` REF), `EMULATOR_NOT_CONFIGURED` (`--snapshot` with no AWS container configured), `CONFIG_NOT_FOUND` (bad or missing `--config` path).
+
+`LICENSE_UNSUPPORTED_TAG` is deliberately **not** in that list, though earlier drafts included it: an unsupported tag is a non-fatal degradation on this path (the container validates its own bundled license) and surfaces as a warning, never as a failure.
 
 **`lstk stop`** — which configured emulators were actually running and got stopped.
 ```json
@@ -263,24 +286,6 @@ Codes: `NETWORK_ERROR` (GitHub API unreachable), `INTERNAL_ERROR` (archive downl
 > **This section is a first-draft proposal only, not a committed contract.** None of the commands below accept `--json` yet — every one of them is rejected with `NOT_JSON_CAPABLE` today. The shapes shown are a starting point for design discussion, included here in full so the whole intended surface can be reviewed at once rather than piecemeal across many small follow-up PRs. Expect fields, error codes, and possibly the overall approach for any of these to change based on human feedback before implementation — treat everything below as a proposal to critique, not a spec to build against.
 
 #### Emulator lifecycle
-
-**`lstk start`** — one emulator entry per configured container, plus whether a configured snapshot was auto-loaded.
-```json
-{
-  "schemaVersion": 1,
-  "command": "start",
-  "status": "ok",
-  "data": {
-    "emulators": [
-      {"type": "aws", "name": "localstack-aws", "host": "localhost:4566", "version": "3.9.0", "alreadyRunning": false, "persist": false}
-    ],
-    "snapshotLoaded": null
-  },
-  "warnings": [],
-  "error": null
-}
-```
-Codes: `RUNTIME_UNAVAILABLE`, `AUTH_REQUIRED`, `LICENSE_INVALID`, `LICENSE_UNSUPPORTED_TAG`, `IMAGE_PULL_FAILED`, `EMULATOR_START_FAILED`, `SNAPSHOT_NOT_FOUND` (bad `--snapshot`), `VALIDATION_ERROR` (`--snapshot` with `--no-snapshot`).
 
 **`lstk restart`** — the stop result and the start result, reusing both shapes above.
 ```json
@@ -592,3 +597,44 @@ Codes: `AUTH_REQUIRED`, `SNAPSHOT_NOT_FOUND`, `SNAPSHOT_INVALID_REF`, `CONFIRMAT
 - **`login`** — requires an interactive terminal unconditionally (browser-based OAuth) and has no defined non-interactive behavior at all today, so there's no output to render as JSON.
 - **`-v`/`--version`** — Cobra's built-in version flag is handled before any of lstk's own command dispatch runs at all (`Command.execute()` checks it before `PreRunE`/`RunE`), so there is no hook to intercept it without dropping Cobra's own version mechanism — which would newly couple `--version` to config-file loading, breaking the property (shared with `git --version`/`docker --version`) that a version check should work even against a broken environment. This is a deliberate, permanent limitation, not a gap waiting on a future PR.
 - **Proxy commands** (`aws`, `terraform`, `cdk`, `sam`, `az` passthrough) and **extension dispatch** — both already have a settled, separate `--json` contract: `--json` before the proxy command's name is rejected the same as any unsupported command, while `--json` from the command name onward is forwarded to the wrapped tool untouched (Terraform, for instance, has its own real `-json` flag). Extensions receive the resolved `--json` value in their runtime context and decide for themselves.
+
+## Adding `--json` support to a command
+
+Six steps. `start` ([cmd/start.go](../cmd/start.go), [internal/container/start.go](../internal/container/start.go)) is the most complete worked example; `stop` is the simplest.
+
+**1. Opt the command in.** Add the annotation to the `cobra.Command`:
+
+```go
+Annotations: map[string]string{jsonSupportedAnnotation: "true"},
+```
+
+Without it, `requireJSONSupport` (`cmd/root.go`) rejects `--json` with `NOT_JSON_CAPABLE`. There is no central registry — the annotation is the whole opt-in.
+
+**2. Build the sink at the command boundary.** As the first statement in `RunE`:
+
+```go
+sink := jsonAwareSink(cmd, cfg, os.Stdout)
+```
+
+This returns an `EnvelopeSink` under `--json` and a `PlainSink` otherwise, and registers the envelope sink on the command's context so the wrapper can finalize it after `RunE` returns. Pass this one sink everywhere — **every** helper on the command's path must use it. A `output.NewPlainSink(os.Stdout)` constructed anywhere downstream prints human text to stdout *alongside* the envelope and breaks the "exactly one JSON object" guarantee. This is the single most common mistake; `start` had four such sites.
+
+**3. Skip the TUI.** Guard the Bubble Tea branch with `isInteractiveMode(cfg)`, which is already false whenever `cfg.JSON` is set. Anything that waits on `UserInputRequestEvent.ResponseCh` must be guarded too — a `PlainSink`/`EnvelopeSink` never answers a prompt, so an unguarded one hangs until the context is cancelled.
+
+**4. Emit a result-bearing event.** Domain code must not know about JSON. Add a typed event to `internal/output/events.go` carrying domain facts (not pre-rendered strings), a `data` struct to `envelope_data.go`, a case in `EnvelopeSink.Emit` mapping one to the other, and a formatter in `plain_format.go`. Never add an event whose formatter returns `("", false)` while a neighbouring `MessageEvent` renders the same fact — that dead-formatter pattern was removed once already; the result event should own the line.
+
+**5. Classify every error the command can produce.** An `ErrorEvent` without a `Code` becomes `INTERNAL_ERROR`, which tells a script nothing. Set `Code` at each existing emission site:
+
+```go
+sink.Emit(output.ErrorEvent{Code: output.ErrEmulatorStartFailed, Title: ..., Summary: ...})
+return output.NewSilentError(err)
+```
+
+`Title` is the headline (it becomes `error.message`), `Summary`/`Detail` become `error.details`, and `Actions` become machine-usable `error.actions`. `CONFIRMATION_REQUIRED` and `AUTH_REQUIRED` carry reserved exit codes (`3`, `4`), so classifying them correctly is what makes those exit codes work.
+
+Watch for paths that return a bare `error` with no `ErrorEvent` at all — they fall back to `INTERNAL_ERROR`. Where the error originates in a shared package whose other callers must keep their existing plain-text output, export a sentinel and classify it at the point where a sink exists (`auth.ErrAuthenticationRequired` is the precedent), rather than emitting from inside the shared package.
+
+Adding a *new* code means updating `allErrorCodes` and `categoryByCode` in `internal/output/error_code.go` — completeness tests fail otherwise.
+
+**6. Test it, and keep plain text byte-identical.** Write the integration test first. `decodeEnvelope` in `test/integration/json_envelope_test.go` already enforces the single-object guarantee; assert `error.code`, `error.category`, `error.retryable`, and the exit code for every documented failure, not just the happy path. Most error paths need no Docker — flag validation, config errors, and `DOCKER_HOST=tcp://localhost:1` (`unreachableDockerHost`) all work on Windows CI. Then run the full integration suite: JSON support usually means moving output between sinks, and the existing plain-text assertions are what catch an accidental change in what non-JSON users see.
+
+Finally, move the command's entry from the draft section of the Command Catalog above into [Implemented](#implemented), correcting anything the draft got wrong.

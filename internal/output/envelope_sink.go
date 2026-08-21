@@ -40,6 +40,23 @@ func (s *EnvelopeSink) Emit(event Event) {
 			JsonEmulatorRef: JsonEmulatorRef{Type: e.Type, Name: e.Name},
 			WasRunning:      e.WasRunning,
 		})
+	case EmulatorStartedEvent:
+		s.appendEmulator(JsonStartedEmulator{
+			JsonEmulatorRef: JsonEmulatorRef{Type: e.Type, Name: e.Name},
+			Host:            e.Host,
+			Version:         e.Version,
+			AlreadyRunning:  e.AlreadyRunning,
+			Persist:         e.Persist,
+		})
+		// Seeded here, not in Result, which every command shares.
+		if _, ok := s.data["snapshotLoaded"]; !ok {
+			s.data["snapshotLoaded"] = nil
+		}
+	case SnapshotLoadedEvent:
+		// This nesting is start's. `snapshot load` spreads source/services at
+		// the top level, so adding --json there needs a per-command shape or a
+		// distinct event — this type switch is shared by every command.
+		s.data["snapshotLoaded"] = JsonSnapshotLoaded(e)
 	case EmulatorResetEvent:
 		s.data["emulator"] = JsonEmulatorRef(e)
 		s.data["reset"] = true
