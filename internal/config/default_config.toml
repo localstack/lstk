@@ -30,6 +30,16 @@ port = "4566"    # Host port the emulator will be accessible on
 #                # volumes = ["./test.sf.sql:/etc/localstack/init/ready.d/test.sf.sql"]
 # snapshot = "pod:my-baseline"  # Snapshot REF auto-loaded on start (AWS only); skip once with 'lstk start --no-snapshot'
 
+# CLI behaviour, independent of any emulator.
+#
+# [cli]
+# update_check = "prompt"  # Automatic update check on 'lstk start': "prompt" asks
+#                # (interactive terminals only), "notify" prints one line and continues,
+#                # "off" disables it entirely. Overridden by LSTK_UPDATE_CHECK.
+#                # 'lstk update' always checks when you run it yourself.
+#                # Installs owned by mise, asdf, Nix, Scoop or Chocolatey default to
+#                # "notify" and are left to that manager's own upgrade command.
+
 # Environment profiles let you group environment variables and reference
 # them by name in one or more containers via the 'env' field above.
 #

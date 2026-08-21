@@ -70,7 +70,7 @@ Notes:
   - `terminal/` - Plain-mode terminal helpers (spinner, TTY detection)
   - `tracing/` - OpenTelemetry setup (`LSTK_OTEL=1`)
   - `ui/` - Bubble Tea views for interactive output
-  - `update/` - Self-update logic: version check via GitHub API, binary/Homebrew/npm update paths, archive extraction; the binary path verifies the downloaded archive's SHA-256 against the release's `checksums.txt` before replacing the executable (hard fail on missing/malformed manifest or mismatch)
+  - `update/` - Self-update logic: version check via GitHub API, binary/Homebrew/npm update paths, archive extraction; the binary path verifies the downloaded archive's SHA-256 against the release's `checksums.txt` before replacing the executable (hard fail on missing/malformed manifest or mismatch). `classifyPath` also detects installs owned by another package manager (mise, asdf, Nix, Scoop, Chocolatey) from the resolved binary path — those default to a one-line notice instead of the prompt, and `lstk update` refuses on them rather than replacing a file it does not own; the automatic check's policy is `update.CheckMode`, resolved at the command boundary (see Automatic Update Check below)
   - `validate/` - Reusable input validators for user-supplied CLI values (pod names, env var names, auth tokens) rejecting malformed/hostile input (control chars, path traversal, percent-encoding, shell metacharacters)
   - `version/` - Version info
   - `volume/` - `lstk volume` domain logic
@@ -130,6 +130,14 @@ Each `[[containers]]` block may set an optional `container_name` (override the d
 
 `GATEWAY_LISTEN` (host exposure and published ports) is read from the container's resolved env, not hardcoded; parsing and derivation live in `internal/container/gateway.go`.
 
+# Automatic Update Check
+
+`lstk start` (and the bare root) checks GitHub for a newer release. The policy is `[cli] update_check` — `prompt` (default), `notify` (one-line note, no input wait), or `off` (no request at all) — overridable by `LSTK_UPDATE_CHECK`. Precedence and fallback rules live in `resolveUpdateCheckMode` (`cmd/update_check.go`): an unparsable value is warned about and skipped rather than failing the command, and `prompt` is downgraded to `notify` off a TTY, since only the TUI answers a `UserInputRequestEvent`.
+
+`buildNotifyOptions` (same file) is the one place the policy is resolved, shared by both start paths — they previously built separate `NotifyOptions`, which is how the non-interactive path came to ignore `cli.update_skipped_version`. `internal/update` never reads config; everything is injected.
+
+Installs owned by another package manager default to `notify` and are never self-updated (`lstk update` refuses with `UPDATE_EXTERNALLY_MANAGED`); an explicit `update_check` overrides that in both directions. Explicit `lstk update` always checks. Detection rules and per-manager wording are documented on `classifyPath` and `ExternalManager` (`internal/update/install_method.go`).
+
 # Offline / Enterprise Environments
 
 There is no `--offline` flag. Instead `container.Start` degrades gracefully when internet requests fail (Docker Hub unreachable, proxy/TLS interception, license server unreachable): local images are used when pulls fail, and the license pre-flight is skipped on transport-level failures, non-definitive server responses (5xx/407), or unsupported-tag rejections so the container validates its own bundled license. Definitive license rejections (HTTP 400/401/403) drop the cached license and offer an in-place re-login instead of requiring a manual `lstk logout` (DEVX-658). The exact fallback and retry rules live in `tryPrePullLicenseValidation`/`validateLicense`/`startWithLicenseRetry` (`internal/container/start.go`); pair them with a custom `image` in the config to point at a locally loaded image or an internal-registry mirror.
@@ -154,6 +162,7 @@ Environment variables:
 - `LOCALSTACK_AUTH_TOKEN` - Auth token (skips browser login if set). It takes precedence over credentials stored in the keyring, so a per-invocation token overrides a previous `lstk login` without a `lstk logout` first; resolution order is env var → keyring → browser login (`auth.GetToken`, mirrored in `cmd/root.go`'s telemetry token resolution).
 - `LSTK_STARTUP_TIMEOUT` - Startup readiness deadline for `lstk start` (Go duration). Zero/unset uses the per-mode default resolved in `resolveStartupTimeout` (`internal/container/start.go`): 20s interactive (deadline only shows a recoverable keep-waiting/stop prompt, re-armed by "keep waiting"), 60s non-interactive (fatal; the container is left running for inspection). Container exits are detected separately — and instantly, with the exit code — via the exit wait `runtime.Runtime.Start` registers between create and start. `lstk start --timeout <duration>` (also on the bare root) overrides this for a single run; the flag wins over the env var when explicitly set, and `--timeout 0` falls back to the per-mode default (`addTimeoutFlag`/`applyTimeoutFlag` in `cmd/root.go`). `restart` and the snapshot auto-start path do not expose the flag.
 - `LSTK_OTEL=1` - Enables OpenTelemetry trace export (disabled by default); when enabled, standard `OTEL_EXPORTER_OTLP_*` env vars are respected by the SDK. Requires an OTLP-compatible backend to receive and visualize telemetry — for local development, `make otel` starts one (UI at http://localhost:16686).
+- `LSTK_UPDATE_CHECK` - Policy for the automatic update check on the start path: `prompt` (default), `notify` (one-line note, no input wait), or `off` (no check, no request). Overrides `[cli] update_check` in config.toml; see Automatic Update Check below.
 - `LSTK_MERGE_STRATEGY` - Default merge strategy for `snapshot load` / `load` (`account-region-merge`, `overwrite`, or `service-merge`) when `--merge` is not passed; an explicit `--merge` always wins. Resolved in `resolveMergeStrategy` (`cmd/snapshot.go`).
 
 # Infrastructure as Code Commands

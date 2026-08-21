@@ -79,7 +79,7 @@ Within the main payload, the `error` field contains the following sub-fields:
 | Field | Type | Notes |
 |---|---|---|
 | `code` | string | One of the enumerated codes below. Never free text — see the error-codes table. The primary, stable identifier — branch on this for anything specific. |
-| `category` | string | One of 7 coarse groupings of `code` (`RUNTIME`, `EMULATOR`, `AUTH`, `RESOURCE`, `CONFIG`, `USAGE`, `INTERNAL`) — see [Error categories](#error-categories) below. Additive alongside `code`, not a replacement for it: a caller that only wants broad handling can switch on `category`'s ~7 values instead of `code`'s ~28, while a caller that already keys off a specific `code` is unaffected. |
+| `category` | string | One of 7 coarse groupings of `code` (`RUNTIME`, `EMULATOR`, `AUTH`, `RESOURCE`, `CONFIG`, `USAGE`, `INTERNAL`) — see [Error categories](#error-categories) below. Additive alongside `code`, not a replacement for it: a caller that only wants broad handling can switch on `category`'s ~7 values instead of `code`'s ~29, while a caller that already keys off a specific `code` is unaffected. |
 | `message` | string | Human-readable headline, informational only. **Not guaranteed stable across versions** — scripts must branch on `code`, not `message`. |
 | `retryable` | bool | A static property of `code` (not computed per failure) — see below. Note this is independent of `category`: a category can contain both retryable and non-retryable codes (e.g. `RUNTIME` contains both `NETWORK_ERROR` [retryable] and `DNS_RESOLUTION_REQUIRED` [not]), so `retryable` can't be inferred from `category` alone. |
 | `details` | object | Optional, code-specific structured context. Omitted when empty. Illustrative example, for a future `SNAPSHOT_BUCKET_NOT_FOUND`: `{"bucket": "my-terraform-state"}`. Also where the additional diagnostic depth plain text and the TUI show alongside the `message` headline lands, as `summary`/`detail` string keys, when available — e.g. `{"summary": "cannot connect to Docker daemon: ..."}` for `RUNTIME_UNAVAILABLE`. |
@@ -118,6 +118,7 @@ Every `error.code` is one of the following fixed constants. A failure that doesn
 | `VALIDATION_ERROR` | A semantically invalid combination of flags/arguments was given | No | `USAGE` |
 | `USAGE_ERROR` | Cobra-level flag or argument parsing failed | No | `USAGE` |
 | `NOT_JSON_CAPABLE` | The requested command has not been annotated as JSON-capable yet | No | `USAGE` |
+| `UPDATE_EXTERNALLY_MANAGED` | Another package manager owns the lstk binary, so lstk will not replace it | No | `USAGE` |
 | `NETWORK_ERROR` | An unclassified network/transport failure occurred | Yes | `RUNTIME` |
 | `CANCELLED` | The operation was interrupted (e.g. context cancellation via Ctrl+C) | Yes | `INTERNAL` |
 | `INTERNAL_ERROR` | Unclassified or unexpected failure; the universal fallback | No | `INTERNAL` |
@@ -149,7 +150,7 @@ CONFIG     CONFIG_INVALID, CONFIG_NOT_FOUND, INTEGRATION_NOT_SET_UP
            → lstk's own configuration is the problem
 
 USAGE      CONFIRMATION_REQUIRED, VALIDATION_ERROR, USAGE_ERROR,
-           NOT_JSON_CAPABLE
+           NOT_JSON_CAPABLE, UPDATE_EXTERNALLY_MANAGED
            → the invocation itself needs to change
 
 INTERNAL   CANCELLED, INTERNAL_ERROR
@@ -256,7 +257,7 @@ Codes: `EMULATOR_NOT_CONFIGURED` (no AWS container configured), `EMULATOR_NOT_RU
   "error": null
 }
 ```
-Codes: `NETWORK_ERROR` (GitHub API unreachable), `INTERNAL_ERROR` (archive download verification, extraction, or replacement failure), `CONFIG_INVALID`, `CONFIG_NOT_FOUND` (bad or missing `--config` path).
+Codes: `UPDATE_EXTERNALLY_MANAGED` (another package manager owns the binary — refused before any network request; `--check` is unaffected), `NETWORK_ERROR` (GitHub API unreachable), `INTERNAL_ERROR` (archive download verification, extraction, or replacement failure), `CONFIG_INVALID`, `CONFIG_NOT_FOUND` (bad or missing `--config` path).
 
 ### Proposed for future work (draft)
 

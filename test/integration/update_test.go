@@ -18,6 +18,8 @@ import (
 	"regexp"
 	"runtime"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -318,19 +320,10 @@ func TestUpdateNotification(t *testing.T) {
 
 	ctx := testContext(t)
 
-	// Build a fake old version to a temp location
+	// Not shared via lstkAtInstallPath: the "update" subtest replaces this binary
+	// in place, so no other test may reuse it.
 	tmpBinary := filepath.Join(t.TempDir(), execName("lstk"))
-	repoRoot, err := filepath.Abs("../..")
-	require.NoError(t, err)
-
-	buildCmd := exec.CommandContext(ctx, "go", "build",
-		"-ldflags", "-X github.com/localstack/lstk/internal/version.version=0.0.1",
-		"-o", tmpBinary,
-		".",
-	)
-	buildCmd.Dir = repoRoot
-	out, err := buildCmd.CombinedOutput()
-	require.NoError(t, err, "go build failed: %s", string(out))
+	buildLstkWithVersion(t, ctx, "0.0.1", tmpBinary)
 
 	// Mock API server so license validation fails fast after the notification
 	mockServer := createMockLicenseServer(false)
@@ -338,14 +331,7 @@ func TestUpdateNotification(t *testing.T) {
 
 	t.Run("skip", func(t *testing.T) {
 		t.Parallel()
-		configFile := filepath.Join(t.TempDir(), "config.toml")
-		originalConfig := `# User-maintained lstk config
-[[containers]]
-type = "aws"     # Emulator type
-tag  = "latest"  # Docker image tag
-port = "4566"    # Host port
-`
-		require.NoError(t, os.WriteFile(configFile, []byte(originalConfig), 0o644))
+		configFile := writeUpdateCheckConfig(t, "")
 
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
@@ -364,9 +350,7 @@ port = "4566"    # Host port
 		require.NoError(t, err)
 		configStr := string(configData)
 		assert.Contains(t, configStr, "update_skipped_version", "skipped version should be persisted")
-		assert.Contains(t, configStr, "# User-maintained lstk config", "file header comment should be preserved")
-		assert.Contains(t, configStr, "# Emulator type", "inline comments should be preserved")
-		assert.Contains(t, configStr, `port = "4566"`, "existing config values should be preserved")
+		assertConfigCommentsPreserved(t, configStr)
 	})
 
 	t.Run("update", func(t *testing.T) {
@@ -470,8 +454,19 @@ func packageReleaseArchive(t *testing.T, binaryName string, binary []byte) []byt
 // mockGitHubEnv.
 func mockGitHubReleaseServer(t *testing.T, tag string, assets map[string][]byte) *httptest.Server {
 	t.Helper()
+	srv, _ := mockGitHubReleaseServerCounting(t, tag, assets)
+	return srv
+}
+
+// mockGitHubReleaseServerCounting is mockGitHubReleaseServer plus a request
+// counter, so a test can prove no request was made rather than merely that
+// nothing was printed.
+func mockGitHubReleaseServerCounting(t *testing.T, tag string, assets map[string][]byte) (*httptest.Server, *atomic.Int64) {
+	t.Helper()
+	var requests atomic.Int64
 	downloadPrefix := "/localstack/lstk/releases/download/" + tag + "/"
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests.Add(1)
 		switch {
 		case r.URL.Path == "/repos/localstack/lstk/releases/latest":
 			w.Header().Set("Content-Type", "application/json")
@@ -488,7 +483,65 @@ func mockGitHubReleaseServer(t *testing.T, tag string, assets map[string][]byte)
 		}
 	}))
 	t.Cleanup(srv.Close)
-	return srv
+	return srv, &requests
+}
+
+var installPathBuilds sync.Map // layout key -> *installPathBuild
+
+type installPathBuild struct {
+	once sync.Once
+	root string
+	path string
+	err  error
+}
+
+// cleanupInstallPathBuilds removes the shared binaries lstkAtInstallPath built.
+// They live outside t.TempDir() (they outlive the test that built them), so
+// nothing else reclaims them. Called from TestMain.
+func cleanupInstallPathBuilds() {
+	installPathBuilds.Range(func(_, value any) bool {
+		if build, ok := value.(*installPathBuild); ok && build.root != "" {
+			_ = os.RemoveAll(build.root)
+		}
+		return true
+	})
+}
+
+// lstkAtInstallPath returns an lstk binary with the given version stamped in,
+// placed under <segments...>. Detection reads the running binary's resolved path,
+// so laying it out like a package manager is the only way to exercise it e2e.
+//
+// Each (version, layout) is built once per package and shared, since the build is
+// the expensive part. Callers must treat the binary as read-only — a test that
+// lets lstk replace it needs its own copy.
+func lstkAtInstallPath(t *testing.T, ctx context.Context, version string, segments ...string) string {
+	t.Helper()
+
+	key := version + "\x00" + strings.Join(segments, "\x00")
+	entry, _ := installPathBuilds.LoadOrStore(key, &installPathBuild{})
+	build := entry.(*installPathBuild)
+
+	build.once.Do(func() {
+		// Not t.TempDir(): the binary outlives the test that built it.
+		root, err := os.MkdirTemp("", "lstk-install-path-*")
+		if err != nil {
+			build.err = err
+			return
+		}
+		build.root = root
+		dir := filepath.Join(append([]string{root}, segments...)...)
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			build.err = err
+			return
+		}
+		path := filepath.Join(dir, execName("lstk"))
+		buildLstkWithVersion(t, ctx, version, path)
+		build.path = path
+	})
+
+	require.NoError(t, build.err)
+	require.NotEmpty(t, build.path, "shared build failed in another test")
+	return build.path
 }
 
 // mockGitHubEnv builds an isolated test environment whose updater GitHub
@@ -640,4 +693,61 @@ func TestUpdateBinaryMockGitHubMissingChecksums(t *testing.T) {
 	leftovers, err := filepath.Glob(filepath.Join(filepath.Dir(oldBinary), "lstk-update-*"))
 	require.NoError(t, err)
 	assert.Empty(t, leftovers, "aborted update must not leave temp files behind")
+}
+
+// TestUpdateRefusesExternallyManagedInstall covers the case a mise or Nix user
+// hits: lstk must not replace a binary another package manager owns. The refusal
+// has to happen before any network request, so the test also asserts the mock
+// GitHub was never contacted.
+func TestUpdateRefusesExternallyManagedInstall(t *testing.T) {
+	t.Parallel()
+	ctx := testContext(t)
+
+	srv, requests := mockGitHubReleaseServerCounting(t, "v0.0.2", nil)
+	misePath := lstkAtInstallPath(t, ctx, "0.0.1", "mise", "installs", "lstk", "0.0.1")
+
+	// Subtests share srv and run sequentially: the later ones do contact it, so
+	// the no-request assertion below is a delta rather than an absolute count.
+	t.Run("refuses to update", func(t *testing.T) {
+		requestsBefore := requests.Load()
+		stdout, stderr, err := runBinary(t, "", mockGitHubEnv(t, srv), misePath, "update", "--non-interactive")
+		requireExitCode(t, 1, err)
+
+		assert.Contains(t, stdout, "installed with mise")
+		assert.Contains(t, stdout, "mise upgrade lstk")
+		assert.Empty(t, stderr, "the error is rendered through the sink, not re-printed on stderr")
+		assert.Equal(t, requestsBefore, requests.Load(), "an externally managed install must not even check for a version")
+
+		version, _, err := runBinary(t, "", mockGitHubEnv(t, srv), misePath, "--version")
+		require.NoError(t, err)
+		assert.Contains(t, version, "0.0.1", "the binary must be left untouched")
+	})
+
+	t.Run("refusal reports a machine-readable code", func(t *testing.T) {
+		stdout, _, err := runBinary(t, "", mockGitHubEnv(t, srv), misePath, "update", "--json")
+		requireExitCode(t, 1, err)
+
+		envelope := decodeEnvelope(t, stdout)
+		require.NotNil(t, envelope.Error)
+		assert.Equal(t, "UPDATE_EXTERNALLY_MANAGED", envelope.Error.Code)
+		assert.Equal(t, "USAGE", envelope.Error.Category)
+		assert.False(t, envelope.Error.Retryable)
+	})
+
+	t.Run("check still works", func(t *testing.T) {
+		stdout, stderr, err := runBinary(t, "", mockGitHubEnv(t, srv), misePath, "update", "--check", "--non-interactive")
+		require.NoError(t, err, "stderr: %s", stderr)
+		requireExitCode(t, 0, err)
+		assert.Contains(t, stdout, "Update available: 0.0.1 → v0.0.2")
+	})
+
+	t.Run("check ignores update_check off", func(t *testing.T) {
+		// update_check governs only the automatic check on start; asking
+		// explicitly always checks.
+		environ := append(mockGitHubEnv(t, srv), string(env.UpdateCheck)+"=off")
+		stdout, stderr, err := runBinary(t, "", environ, misePath, "update", "--check", "--non-interactive")
+		require.NoError(t, err, "stderr: %s", stderr)
+		requireExitCode(t, 0, err)
+		assert.Contains(t, stdout, "Update available: 0.0.1 → v0.0.2")
+	})
 }

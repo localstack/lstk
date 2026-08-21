@@ -25,6 +25,7 @@ type Env struct {
 	JSON           bool
 	GitHubToken    string
 	MergeStrategy  string
+	UpdateCheck    string
 }
 
 // Init initializes environment variable configuration and returns the result.
@@ -51,6 +52,7 @@ func Init() *Env {
 		AnalyticsEndpoint: viper.GetString("analytics_endpoint"),
 		GitHubToken:       viper.GetString("github_token"),
 		MergeStrategy:     viper.GetString("merge_strategy"),
+		UpdateCheck:       viper.GetString("update_check"),
 	}
 
 }

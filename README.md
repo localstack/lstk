@@ -48,7 +48,7 @@ Running `lstk` will automatically handle authentication, configuration, and cont
 - **Cloud CLI proxies** — run `aws`, `az`, `terraform`, `cdk`, and `sam` commands against LocalStack with the endpoint, credentials, and region pre-configured
 - **Target an external emulator** — pass `--endpoint-url <url>` (or set `LSTK_ENDPOINT_URL`) to point most commands at an already-running LocalStack instance — docker compose, host-network mode, CI, a different machine, or a cloud-hosted ephemeral instance (`https://` is supported) — instead of one lstk manages locally
 - **Extensions** — Git-style `lstk-<name>` executables extend the CLI with new commands; see [extension authoring](https://github.com/localstack/lstk/blob/main/docs/extensions-authoring.md)
-- **Self-update** — `lstk update` checks for and installs the latest release
+- **Self-update** — `lstk update` checks for and installs the latest release. The automatic check on start is configurable via `[cli] update_check` (`prompt` / `notify` / `off`) or `LSTK_UPDATE_CHECK`; installs managed by mise, asdf, Nix, Scoop or Chocolatey are only ever notified about and left to their own manager
 - **Structured JSON output** — pass `--json` to a supported command for a machine-readable envelope instead of formatted text; see [structured output](https://github.com/localstack/lstk/blob/main/docs/structured-output.md)
 
 For the full command reference, configuration options, environment variables, and troubleshooting, see the **[lstk documentation](https://docs.localstack.cloud/aws/developer-tools/running-localstack/lstk/)**.

@@ -346,12 +346,14 @@ func startEmulator(ctx context.Context, rt runtime.Runtime, cfg *env.Env, tel *t
 		logger.Info("could not resolve friendly config path: %v", err)
 	}
 
-	// Apply the --type flag before resolving snapshot and start options so
-	// everything downstream reflects the selected emulator. Messages go to a plain
-	// sink even in interactive mode because the config mutation has to happen before
-	// the TUI starts (the auto-load loader and start options are built from it).
+	// Anything reported before the TUI can start goes through this sink, in
+	// interactive mode too.
+	plainSink := output.NewPlainSink(os.Stdout)
+
+	// Apply --type before resolving snapshot and start options so everything
+	// downstream reflects the selected emulator.
 	if emulatorType != "" {
-		newContainers, applyErr := container.ApplyEmulatorType(ctx, rt, output.NewPlainSink(os.Stdout), emulatorType, appConfig.Containers, firstRun, configPath)
+		newContainers, applyErr := container.ApplyEmulatorType(ctx, rt, plainSink, emulatorType, appConfig.Containers, firstRun, configPath)
 		if applyErr != nil {
 			return applyErr
 		}
@@ -373,14 +375,11 @@ func startEmulator(ctx context.Context, rt runtime.Runtime, cfg *env.Env, tel *t
 
 	opts := buildStartOptions(cfg, appConfig, logger, tel, persist)
 
-	notifyOpts := update.NotifyOptions{
-		GitHubToken:        cfg.GitHubToken,
-		UpdatePrompt:       true,
-		SkippedVersion:     appConfig.CLI.UpdateSkippedVersion,
-		PersistSkipVersion: config.SetUpdateSkippedVersion,
-	}
+	// Resolved once so the two output paths cannot disagree about the policy.
+	interactive := isInteractiveMode(cfg)
+	notifyOpts := buildNotifyOptions(plainSink, cfg, appConfig, configPath, firstRun, interactive)
 
-	if isInteractiveMode(cfg) {
+	if interactive {
 		return ui.Run(ctx, ui.RunOptions{
 			Runtime:                rt,
 			Version:                version.Version(),
@@ -393,16 +392,15 @@ func startEmulator(ctx context.Context, rt runtime.Runtime, cfg *env.Env, tel *t
 		})
 	}
 
-	sink := output.NewPlainSink(os.Stdout)
 	if firstRun && len(appConfig.Containers) > 0 {
 		emName := appConfig.Containers[0].Type.ShortName()
-		sink.Emit(output.MessageEvent{
+		plainSink.Emit(output.MessageEvent{
 			Severity: output.SeverityNote,
 			Text:     fmt.Sprintf("Configured with default emulator %s.", emName),
 		})
 	}
-	update.NotifyUpdate(ctx, sink, update.NotifyOptions{GitHubToken: cfg.GitHubToken})
-	resolvedVersion, err := container.Start(ctx, rt, sink, opts, false)
+	update.NotifyUpdate(ctx, plainSink, notifyOpts)
+	resolvedVersion, err := container.Start(ctx, rt, plainSink, opts, false)
 	if err != nil {
 		return err
 	}
@@ -410,7 +408,7 @@ func startEmulator(ctx context.Context, rt runtime.Runtime, cfg *env.Env, tel *t
 	// this run (resolvedVersion is empty when it was already running). This mirrors
 	// v1's AUTO_LOAD_POD: state is loaded as the emulator comes up, not on every invocation.
 	if autoLoad != nil && resolvedVersion != "" {
-		if err := autoLoad(ctx, sink); err != nil {
+		if err := autoLoad(ctx, plainSink); err != nil {
 			return err
 		}
 	}

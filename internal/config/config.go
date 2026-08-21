@@ -19,6 +19,10 @@ var defaultConfigTemplate string
 
 type CLIConfig struct {
 	UpdateSkippedVersion string `mapstructure:"update_skipped_version"`
+	// UpdateCheck is the raw [cli] update_check value, left unvalidated on
+	// purpose: Get() is called by every command, so rejecting a typo here would
+	// make one unusable setting break the whole CLI. Parsed at the boundary.
+	UpdateCheck string `mapstructure:"update_check"`
 }
 
 type Config struct {
@@ -37,6 +41,13 @@ func setDefaults() {
 	})
 }
 
+// loadConfig reads the config file at path into the shared viper instance.
+//
+// The Reset discards the LSTK_* env binding env.Init() installed, so viper's own
+// env-over-config precedence is unavailable: a setting an env var should override
+// resolves both sources explicitly at the command boundary (see
+// resolveUpdateCheckMode). Do not "fix" this with AutomaticEnv() here — that
+// would create a second, competing precedence path.
 func loadConfig(path string) error {
 	viper.Reset()
 	setDefaults()
@@ -173,6 +184,13 @@ func setInFile(path, key string, value any) error {
 
 func SetUpdateSkippedVersion(version string) error {
 	return Set("cli.update_skipped_version", version)
+}
+
+// SetUpdateCheck persists the update-check policy, preserving comments and
+// formatting (see setInFile). It takes a string rather than update.CheckMode so
+// this package need not import the update domain.
+func SetUpdateCheck(mode string) error {
+	return Set("cli.update_check", mode)
 }
 
 func Get() (*Config, error) {

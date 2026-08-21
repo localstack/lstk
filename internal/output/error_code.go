@@ -31,9 +31,12 @@ const (
 	ErrValidationError        ErrorCode = "VALIDATION_ERROR"
 	ErrUsageError             ErrorCode = "USAGE_ERROR"
 	ErrNotJSONCapable         ErrorCode = "NOT_JSON_CAPABLE"
-	ErrNetworkError           ErrorCode = "NETWORK_ERROR"
-	ErrCancelled              ErrorCode = "CANCELLED"
-	ErrInternal               ErrorCode = "INTERNAL_ERROR"
+	// Another package manager owns lstk's binary. Usage, not runtime: the fix is
+	// that manager's own upgrade command, not a retry.
+	ErrUpdateExternallyManaged ErrorCode = "UPDATE_EXTERNALLY_MANAGED"
+	ErrNetworkError            ErrorCode = "NETWORK_ERROR"
+	ErrCancelled               ErrorCode = "CANCELLED"
+	ErrInternal                ErrorCode = "INTERNAL_ERROR"
 )
 
 // retryableCodes is the single source of truth for whether a given ErrorCode
@@ -115,6 +118,7 @@ var allErrorCodes = []ErrorCode{
 	ErrValidationError,
 	ErrUsageError,
 	ErrNotJSONCapable,
+	ErrUpdateExternallyManaged,
 	ErrNetworkError,
 	ErrCancelled,
 	ErrInternal,
@@ -124,34 +128,35 @@ var allErrorCodes = []ErrorCode{
 // static ErrorCategory, mirroring retryableCodes above. Every code in
 // allErrorCodes SHALL have an entry here.
 var categoryByCode = map[ErrorCode]ErrorCategory{
-	ErrRuntimeUnavailable:     CategoryRuntime,
-	ErrImagePullFailed:        CategoryRuntime,
-	ErrDependencyMissing:      CategoryRuntime,
-	ErrDNSResolutionRequired:  CategoryRuntime,
-	ErrNetworkError:           CategoryRuntime,
-	ErrEmulatorNotRunning:     CategoryEmulator,
-	ErrEmulatorAlreadyRunning: CategoryEmulator,
-	ErrEmulatorWrongType:      CategoryEmulator,
-	ErrEmulatorNotConfigured:  CategoryEmulator,
-	ErrEmulatorStartFailed:    CategoryEmulator,
-	ErrAuthRequired:           CategoryAuth,
-	ErrAuthLoginFailed:        CategoryAuth,
-	ErrCredentialsMissing:     CategoryAuth,
-	ErrLicenseInvalid:         CategoryAuth,
-	ErrLicenseUnsupportedTag:  CategoryAuth,
-	ErrSnapshotNotFound:       CategoryResource,
-	ErrSnapshotInvalidRef:     CategoryResource,
-	ErrSnapshotRemoteError:    CategoryResource,
-	ErrSnapshotBucketNotFound: CategoryResource,
-	ErrConfigInvalid:          CategoryConfig,
-	ErrConfigNotFound:         CategoryConfig,
-	ErrIntegrationNotSetUp:    CategoryConfig,
-	ErrConfirmationRequired:   CategoryUsage,
-	ErrValidationError:        CategoryUsage,
-	ErrUsageError:             CategoryUsage,
-	ErrNotJSONCapable:         CategoryUsage,
-	ErrCancelled:              CategoryInternal,
-	ErrInternal:               CategoryInternal,
+	ErrRuntimeUnavailable:      CategoryRuntime,
+	ErrImagePullFailed:         CategoryRuntime,
+	ErrDependencyMissing:       CategoryRuntime,
+	ErrDNSResolutionRequired:   CategoryRuntime,
+	ErrNetworkError:            CategoryRuntime,
+	ErrEmulatorNotRunning:      CategoryEmulator,
+	ErrEmulatorAlreadyRunning:  CategoryEmulator,
+	ErrEmulatorWrongType:       CategoryEmulator,
+	ErrEmulatorNotConfigured:   CategoryEmulator,
+	ErrEmulatorStartFailed:     CategoryEmulator,
+	ErrAuthRequired:            CategoryAuth,
+	ErrAuthLoginFailed:         CategoryAuth,
+	ErrCredentialsMissing:      CategoryAuth,
+	ErrLicenseInvalid:          CategoryAuth,
+	ErrLicenseUnsupportedTag:   CategoryAuth,
+	ErrSnapshotNotFound:        CategoryResource,
+	ErrSnapshotInvalidRef:      CategoryResource,
+	ErrSnapshotRemoteError:     CategoryResource,
+	ErrSnapshotBucketNotFound:  CategoryResource,
+	ErrConfigInvalid:           CategoryConfig,
+	ErrConfigNotFound:          CategoryConfig,
+	ErrIntegrationNotSetUp:     CategoryConfig,
+	ErrConfirmationRequired:    CategoryUsage,
+	ErrValidationError:         CategoryUsage,
+	ErrUsageError:              CategoryUsage,
+	ErrNotJSONCapable:          CategoryUsage,
+	ErrUpdateExternallyManaged: CategoryUsage,
+	ErrCancelled:               CategoryInternal,
+	ErrInternal:                CategoryInternal,
 }
 
 // Category reports the code's static, coarse grouping. Every ErrorCode in
