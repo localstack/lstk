@@ -5,15 +5,11 @@ import (
 	"fmt"
 	"net/http"
 	"os"
-	"os/exec"
 	"path/filepath"
-	goruntime "runtime"
-	"strings"
 	"testing"
 	"time"
 
 	"github.com/localstack/lstk/test/integration/env"
-	"github.com/moby/moby/api/types/container"
 	"github.com/moby/moby/client"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -100,10 +96,11 @@ func TestFirstRunPickerOmitsSnowflakeNext(t *testing.T) {
 	p.kill()
 }
 
-// TestStartSnowflakeNextServesGatewayOnConfiguredPort is the end-to-end proof of
-// the port remap: the image listens on 8080 and ignores GATEWAY_LISTEN, so
-// without lstk rewriting its own listen variable nothing answers on the port
-// lstk publishes, health-checks and advertises.
+// TestStartSnowflakeNextServesGatewayOnConfiguredPort is the end-to-end proof
+// that the preview type needs no per-emulator adaptation: the image binds from
+// GATEWAY_LISTEN like every other emulator, so the generic start path alone has
+// to produce something answering the health contract on the configured host
+// port. It is what would fail first if the image stopped being a drop-in.
 func TestStartSnowflakeNextServesGatewayOnConfiguredPort(t *testing.T) {
 	requireDocker(t)
 	_ = env.Require(t, env.AuthToken)
@@ -135,110 +132,6 @@ func TestStartSnowflakeNextServesGatewayOnConfiguredPort(t *testing.T) {
 
 	assert.Contains(t, stdout, "• Snowflake endpoint: http://snowflake.",
 		"the preview emulator should print the snowflake-prefixed endpoint hint")
-}
-
-// TestStartSnowflakeNextKeepsStateOutOfVolumeWithoutPersist and its --persist
-// sibling pin where the emulator's PostgreSQL cluster is written. It always
-// writes to disk (there is no in-memory mode), so persistence is decided purely
-// by which path PGDATA names, and the mount over the image's own declared VOLUME
-// must be present either way — an uncovered declaration strands a whole cluster
-// in an anonymous volume on every start, since lstk recreates the container.
-func TestStartSnowflakeNextKeepsStateOutOfVolumeWithoutPersist(t *testing.T) {
-	requireDocker(t)
-	_ = env.Require(t, env.AuthToken)
-
-	cleanup()
-	cleanupSnowflakeNext()
-	t.Cleanup(cleanup)
-	t.Cleanup(cleanupSnowflakeNext)
-
-	configFile := writeSnowflakeNextConfig(t, "4578")
-
-	ctx := testContext(t)
-	_, stderr, err := runLstk(t, ctx, "", env.Environ(testEnvWithHome(t.TempDir(), "")), "--config", configFile, "start")
-	require.NoError(t, err, "lstk start failed: %s", stderr)
-
-	inspect, err := dockerClient.ContainerInspect(ctx, snowflakeNextContainerName, client.ContainerInspectOptions{})
-	require.NoError(t, err)
-	envVars := containerEnvToMap(inspect.Container.Config.Env)
-	assert.Equal(t, "0.0.0.0:4566", envVars["SNOWFLAKE_LISTEN_ADDR"],
-		"the listener must be moved onto the gateway port lstk publishes")
-	assert.Equal(t, "/tmp/snowflake-rs/data", envVars["PGDATA"],
-		"without --persist the cluster must live in the container, not the mounted volume")
-	assertStateDirMounted(t, inspect.Container.Mounts)
-}
-
-func TestStartSnowflakeNextPersistsStateIntoVolumeWithPersist(t *testing.T) {
-	requireDocker(t)
-	_ = env.Require(t, env.AuthToken)
-
-	cleanup()
-	cleanupSnowflakeNext()
-	t.Cleanup(cleanup)
-	t.Cleanup(cleanupSnowflakeNext)
-
-	configFile := writeSnowflakeNextConfig(t, "4579")
-
-	ctx := testContext(t)
-	_, stderr, err := runLstk(t, ctx, "", env.Environ(testEnvWithHome(t.TempDir(), "")), "--config", configFile, "start", "--persist")
-	require.NoError(t, err, "lstk start failed: %s", stderr)
-	removePersistedNextState(t)
-
-	inspect, err := dockerClient.ContainerInspect(ctx, snowflakeNextContainerName, client.ContainerInspectOptions{})
-	require.NoError(t, err)
-	envVars := containerEnvToMap(inspect.Container.Config.Env)
-	// The image sets PGDATA itself; --persist means lstk leaves that default
-	// alone, so the cluster is written into the mounted state dir.
-	assert.Equal(t, "/var/lib/snowflake-rs/data", envVars["PGDATA"],
-		"with --persist the cluster must land in the mounted state dir")
-	assertStateDirMounted(t, inspect.Container.Mounts)
-}
-
-// removePersistedNextState deletes the emulator's PostgreSQL cluster from inside
-// the container, as root, once the test is done with it. PostgreSQL creates PGDATA
-// as the emulator's own uid 1000 with mode 0700, so on Linux — where that uid is
-// not the test process's — nothing running on the host can descend into it, and
-// t.TempDir's own cleanup of the temporary HOME fails with "permission denied".
-// Cleanups run last-registered-first, so calling this after the start puts the
-// removal ahead of both the container removal and the temporary HOME's.
-func removePersistedNextState(t *testing.T) {
-	t.Helper()
-	t.Cleanup(func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-		defer cancel()
-		out, err := exec.CommandContext(ctx, "docker", "exec", "--user", "0",
-			snowflakeNextContainerName, "sh", "-c", "rm -rf /var/lib/snowflake-rs/*").CombinedOutput()
-		if err != nil {
-			t.Logf("could not remove the emulator's persisted state: %v: %s", err, out)
-		}
-	})
-}
-
-// assertStateDirMounted checks a host directory is bound over the image's declared
-// VOLUME, which is what keeps Docker from creating an anonymous volume per start.
-func assertStateDirMounted(t *testing.T, mounts []container.MountPoint) {
-	t.Helper()
-	for _, m := range mounts {
-		if m.Destination == "/var/lib/snowflake-rs" {
-			assert.Equal(t, "bind", string(m.Type),
-				"/var/lib/snowflake-rs must be a bind mount, not an anonymous volume")
-			assert.True(t, strings.HasSuffix(filepath.ToSlash(m.Source), "/snowflake-rs"),
-				"expected the managed volume subdirectory, got %s", m.Source)
-			if goruntime.GOOS != "windows" {
-				// The emulator runs as uid 1000 and creates PGDATA inside this
-				// mount. On native Linux Docker that uid is the container's, not
-				// the host user's, so a directory only its owner can write makes
-				// PostgreSQL fail to initialize and the container exit — the mode
-				// is the only part of that lstk can control.
-				info, err := os.Stat(m.Source)
-				require.NoError(t, err)
-				assert.Equal(t, os.FileMode(0777), info.Mode().Perm(),
-					"the mounted state dir must be writable by the emulator's non-root user")
-			}
-			return
-		}
-	}
-	t.Errorf("no mount covers /var/lib/snowflake-rs; got %+v", mounts)
 }
 
 // TestTerraformRejectsRunningSnowflakeNext covers the discovery side of the
