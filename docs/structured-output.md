@@ -79,7 +79,7 @@ Within the main payload, the `error` field contains the following sub-fields:
 | Field | Type | Notes |
 |---|---|---|
 | `code` | string | One of the enumerated codes below. Never free text — see the error-codes table. The primary, stable identifier — branch on this for anything specific. |
-| `category` | string | One of 7 coarse groupings of `code` (`RUNTIME`, `EMULATOR`, `AUTH`, `RESOURCE`, `CONFIG`, `USAGE`, `INTERNAL`) — see [Error categories](#error-categories) below. Additive alongside `code`, not a replacement for it: a caller that only wants broad handling can switch on `category`'s ~7 values instead of `code`'s ~28, while a caller that already keys off a specific `code` is unaffected. |
+| `category` | string | One of 8 coarse groupings of `code` (`RUNTIME`, `EMULATOR`, `AUTH`, `RESOURCE`, `CONFIG`, `USAGE`, `INTERNAL`, `IAC`) — see [Error categories](#error-categories) below. Additive alongside `code`, not a replacement for it: a caller that only wants broad handling can switch on `category`'s ~8 values instead of `code`'s ~29, while a caller that already keys off a specific `code` is unaffected. |
 | `message` | string | Human-readable headline, informational only. **Not guaranteed stable across versions** — scripts must branch on `code`, not `message`. |
 | `retryable` | bool | A static property of `code` (not computed per failure) — see below. Note this is independent of `category`: a category can contain both retryable and non-retryable codes (e.g. `RUNTIME` contains both `NETWORK_ERROR` [retryable] and `DNS_RESOLUTION_REQUIRED` [not]), so `retryable` can't be inferred from `category` alone. |
 | `details` | object | Optional, code-specific structured context. Omitted when empty. Illustrative example, for a future `SNAPSHOT_BUCKET_NOT_FOUND`: `{"bucket": "my-terraform-state"}`. Also where the additional diagnostic depth plain text and the TUI show alongside the `message` headline lands, as `summary`/`detail` string keys, when available — e.g. `{"summary": "cannot connect to Docker daemon: ..."}` for `RUNTIME_UNAVAILABLE`. |
@@ -121,10 +121,11 @@ Every `error.code` is one of the following fixed constants. A failure that doesn
 | `NETWORK_ERROR` | An unclassified network/transport failure occurred | Yes | `RUNTIME` |
 | `CANCELLED` | The operation was interrupted (e.g. context cancellation via Ctrl+C) | Yes | `INTERNAL` |
 | `INTERNAL_ERROR` | Unclassified or unexpected failure; the universal fallback | No | `INTERNAL` |
+| `IAC_FILE_NOT_FOUND` | A required infrastructure-as-code file or directory does not exist or cannot be read (e.g. the workspace `lstk deploy detect --dir` was pointed at) | No | `IAC` |
 
 ### Error categories
 
-`error.category` groups the 28 codes above into 7 buckets, additive alongside `code` — it exists purely so a caller that only wants coarse handling doesn't have to build and maintain its own mapping from all 28 codes. `code` is unaffected and remains the primary, stable identifier for anything more specific.
+`error.category` groups the 29 codes above into 8 buckets, additive alongside `code` — it exists purely so a caller that only wants coarse handling doesn't have to build and maintain its own mapping from all 29 codes. `code` is unaffected and remains the primary, stable identifier for anything more specific.
 
 ```
 RUNTIME    RUNTIME_UNAVAILABLE, IMAGE_PULL_FAILED, DEPENDENCY_MISSING,
@@ -154,9 +155,15 @@ USAGE      CONFIRMATION_REQUIRED, VALIDATION_ERROR, USAGE_ERROR,
 
 INTERNAL   CANCELLED, INTERNAL_ERROR
            → catch-all: unexpected failure, or a user-initiated interruption
+
+IAC        IAC_FILE_NOT_FOUND
+           → the workspace's infrastructure-as-code is the problem (the
+           domain `lstk deploy` operates in)
 ```
 
 Every code maps to exactly one category, and the mapping is static — the same code always reports the same category, regardless of which command emitted it (see the Category column above for the authoritative per-code mapping).
+
+`IAC` is the first category no built-in command emits today: `lstk deploy` is a bundled extension, and an extension renders its own envelope (see the note on extension dispatch under [Commands that will never support `--json`](#commands-that-will-never-support---json)). The vocabulary is enumerated here anyway, because the whole point of a closed enumeration is that a consumer can switch on it exhaustively without caring which binary produced the envelope — an extension's output is meant to be indistinguishable from a built-in's.
 
 ## Exit codes
 

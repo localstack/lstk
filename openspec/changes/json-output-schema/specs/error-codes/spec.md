@@ -33,6 +33,7 @@ Every `error.code` value emitted in a JSON envelope SHALL be one of a fixed, doc
 | `NETWORK_ERROR` | An unclassified network/transport failure occurred | Yes | `RUNTIME` |
 | `CANCELLED` | The operation was interrupted (e.g. context cancellation via Ctrl+C) | Yes | `INTERNAL` |
 | `INTERNAL_ERROR` | Unclassified or unexpected failure; the universal fallback | No | `INTERNAL` |
+| `IAC_FILE_NOT_FOUND` | A required infrastructure-as-code file or directory does not exist or cannot be read (e.g. the workspace `lstk deploy detect --dir` was pointed at) | No | `IAC` |
 
 #### Scenario: Error code is one of the documented constants
 - **WHEN** any JSON-capable command emits an `error` object
@@ -65,11 +66,11 @@ Every `error` object SHALL include a `retryable` boolean, a static property of `
 - **THEN** both error objects report the same `retryable` value for that code
 
 ### Requirement: Error objects declare a coarse category, additive alongside code
-Every `error` object SHALL include a `category` string, a static property of `code` (the same code always carries the same category, per the table above) drawn from a fixed, small set: `RUNTIME`, `EMULATOR`, `AUTH`, `RESOURCE`, `CONFIG`, `USAGE`, `INTERNAL`. `category` is additive: it exists so a caller that only wants to distinguish broad kinds of failure can switch on roughly 7 values instead of the full code list, without requiring `code` to change meaning or cardinality — `code` remains the primary, stable identifier for anything more specific, and every existing rule keyed on `code` (the exit-code reservations, `retryable`, every scenario elsewhere in this document) is unaffected by `category`'s presence.
+Every `error` object SHALL include a `category` string, a static property of `code` (the same code always carries the same category, per the table above) drawn from a fixed, small set: `RUNTIME`, `EMULATOR`, `AUTH`, `RESOURCE`, `CONFIG`, `USAGE`, `INTERNAL`, `IAC`. `category` is additive: it exists so a caller that only wants to distinguish broad kinds of failure can switch on roughly 8 values instead of the full code list, without requiring `code` to change meaning or cardinality — `code` remains the primary, stable identifier for anything more specific, and every existing rule keyed on `code` (the exit-code reservations, `retryable`, every scenario elsewhere in this document) is unaffected by `category`'s presence.
 
 #### Scenario: Category is one of the documented constants
 - **WHEN** any JSON-capable command emits an `error` object
-- **THEN** `error.category` is exactly one of `RUNTIME`, `EMULATOR`, `AUTH`, `RESOURCE`, `CONFIG`, `USAGE`, or `INTERNAL`
+- **THEN** `error.category` is exactly one of `RUNTIME`, `EMULATOR`, `AUTH`, `RESOURCE`, `CONFIG`, `USAGE`, `INTERNAL`, or `IAC`
 
 #### Scenario: Category is consistent for a given code
 - **WHEN** the same `error.code` is emitted by two different commands

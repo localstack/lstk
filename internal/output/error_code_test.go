@@ -31,8 +31,8 @@ func TestErrorCode_AllErrorCodesIsComplete(t *testing.T) {
 			t.Errorf("ErrorCode %q appears %d times in allErrorCodes, want exactly once", code, count)
 		}
 	}
-	if len(allErrorCodes) != 28 {
-		t.Errorf("expected 28 documented error codes, got %d — update this test's expectation alongside error-codes/spec.md if a code was intentionally added or removed", len(allErrorCodes))
+	if len(allErrorCodes) != 29 {
+		t.Errorf("expected 29 documented error codes, got %d — update this test's expectation alongside error-codes/spec.md if a code was intentionally added or removed", len(allErrorCodes))
 	}
 }
 
@@ -56,6 +56,7 @@ func TestErrorCode_Category(t *testing.T) {
 		{ErrUsageError, CategoryUsage},
 		{ErrCancelled, CategoryInternal},
 		{ErrInternal, CategoryInternal},
+		{ErrIACFileNotFound, CategoryIAC},
 	}
 	for _, c := range cases {
 		if got := c.code.Category(); got != c.want {
