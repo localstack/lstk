@@ -34,6 +34,10 @@ const (
 	ErrNetworkError           ErrorCode = "NETWORK_ERROR"
 	ErrCancelled              ErrorCode = "CANCELLED"
 	ErrInternal               ErrorCode = "INTERNAL_ERROR"
+	ErrIACFileNotFound        ErrorCode = "IAC_FILE_NOT_FOUND"
+	ErrIACNoToolDetected      ErrorCode = "IAC_NO_TOOL_DETECTED"
+	ErrIACToolAmbiguous       ErrorCode = "IAC_TOOL_AMBIGUOUS"
+	ErrIACDeployFailed        ErrorCode = "IAC_DEPLOY_FAILED"
 )
 
 // retryableCodes is the single source of truth for whether a given ErrorCode
@@ -60,7 +64,7 @@ func (c ErrorCode) Retryable() bool {
 // additive alongside Code (not a replacement for it — see design.md's
 // naming decisions). A caller that only wants to distinguish broad kinds of
 // failure (an environment problem vs. a usage problem vs. an auth problem)
-// can switch on the ~7 Category values instead of the ~28 Code values;
+// can switch on the ~8 Category values instead of the ~32 Code values;
 // Code remains the primary, stable identifier for anything more specific.
 type ErrorCategory string
 
@@ -84,6 +88,9 @@ const (
 	// CategoryInternal: catch-all — unexpected failure or user-initiated
 	// interruption.
 	CategoryInternal ErrorCategory = "INTERNAL"
+	// CategoryIAC: the workspace's infrastructure-as-code is the problem —
+	// the domain `lstk deploy` operates in.
+	CategoryIAC ErrorCategory = "IAC"
 )
 
 // allErrorCodes lists every defined ErrorCode, so tests can assert every code
@@ -118,6 +125,10 @@ var allErrorCodes = []ErrorCode{
 	ErrNetworkError,
 	ErrCancelled,
 	ErrInternal,
+	ErrIACFileNotFound,
+	ErrIACNoToolDetected,
+	ErrIACToolAmbiguous,
+	ErrIACDeployFailed,
 }
 
 // categoryByCode is the single source of truth mapping each ErrorCode to its
@@ -152,6 +163,10 @@ var categoryByCode = map[ErrorCode]ErrorCategory{
 	ErrNotJSONCapable:         CategoryUsage,
 	ErrCancelled:              CategoryInternal,
 	ErrInternal:               CategoryInternal,
+	ErrIACFileNotFound:        CategoryIAC,
+	ErrIACNoToolDetected:      CategoryIAC,
+	ErrIACToolAmbiguous:       CategoryIAC,
+	ErrIACDeployFailed:        CategoryIAC,
 }
 
 // Category reports the code's static, coarse grouping. Every ErrorCode in
