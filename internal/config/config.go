@@ -9,6 +9,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/localstack/lstk/internal/update"
 	"github.com/localstack/lstk/internal/validate"
 	"github.com/pelletier/go-toml/v2"
 	"github.com/spf13/viper"
@@ -19,6 +20,9 @@ var defaultConfigTemplate string
 
 type CLIConfig struct {
 	UpdateSkippedVersion string `mapstructure:"update_skipped_version"`
+	// UpdateCheck overrides the self-update check: "prompt", "notify", or
+	// "off" (skips the check entirely). LSTK_UPDATE_CHECK wins if both are set.
+	UpdateCheck string `mapstructure:"update_check"`
 }
 
 type Config struct {
@@ -187,6 +191,11 @@ func Get() (*Config, error) {
 	}
 	if err := validateNamedEnvs(cfg.Env); err != nil {
 		return nil, err
+	}
+	if cfg.CLI.UpdateCheck != "" {
+		if err := update.ValidateMode(cfg.CLI.UpdateCheck); err != nil {
+			return nil, fmt.Errorf("invalid cli.update_check: %w", err)
+		}
 	}
 	return &cfg, nil
 }

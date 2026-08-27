@@ -369,6 +369,49 @@ port = "4566"    # Host port
 		assert.Contains(t, configStr, `port = "4566"`, "existing config values should be preserved")
 	})
 
+	// "off" and "notify" only assert on the update-check step itself, which
+	// always runs and prints (or doesn't) before the Docker health check —
+	// they deliberately never wait on anything past that point (e.g. the
+	// license re-login prompt), since that requires a reachable Docker daemon
+	// and would hang/timeout on runners without one (e.g. Windows CI).
+	t.Run("off", func(t *testing.T) {
+		t.Parallel()
+		configFile := filepath.Join(t.TempDir(), "config.toml")
+		require.NoError(t, os.WriteFile(configFile, []byte(""), 0o644))
+
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+
+		cmd := exec.CommandContext(ctx, tmpBinary, "--config", configFile)
+		cmd.Env = env.Without(env.AuthToken).With(env.AuthToken, "fake-token").With(env.APIEndpoint, mockServer.URL).With(env.UpdateCheck, "off")
+
+		p := startCmdInPTY(t, ctx, cmd)
+		// Nothing to wait for positively (off means no output); the 30s
+		// context bounds how long we give the update-check step to have
+		// already run and printed nothing before we inspect the output.
+		out, _ := p.wait()
+		assert.NotContains(t, out, "New lstk version available", "LSTK_UPDATE_CHECK=off must suppress the update check entirely")
+		assert.NotContains(t, out, "Update available", "LSTK_UPDATE_CHECK=off must suppress the update check entirely")
+	})
+
+	t.Run("notify", func(t *testing.T) {
+		t.Parallel()
+		configFile := filepath.Join(t.TempDir(), "config.toml")
+		require.NoError(t, os.WriteFile(configFile, []byte(""), 0o644))
+
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+
+		cmd := exec.CommandContext(ctx, tmpBinary, "--config", configFile)
+		cmd.Env = env.Without(env.AuthToken).With(env.AuthToken, "fake-token").With(env.APIEndpoint, mockServer.URL).With(env.UpdateCheck, "notify")
+
+		p := startCmdInPTY(t, ctx, cmd)
+		p.waitForOutput("Update available: 0.0.1", "LSTK_UPDATE_CHECK=notify must show a passive notice instead of prompting")
+
+		out, _ := p.wait()
+		assert.NotContains(t, out, "New lstk version available", "notify mode must never show the interactive prompt")
+	})
+
 	t.Run("update", func(t *testing.T) {
 		t.Parallel()
 		// Copy binary since it will be replaced during the update
