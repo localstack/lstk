@@ -34,6 +34,9 @@ Every `error.code` value emitted in a JSON envelope SHALL be one of a fixed, doc
 | `CANCELLED` | The operation was interrupted (e.g. context cancellation via Ctrl+C) | Yes | `INTERNAL` |
 | `INTERNAL_ERROR` | Unclassified or unexpected failure; the universal fallback | No | `INTERNAL` |
 | `IAC_FILE_NOT_FOUND` | A required infrastructure-as-code file or directory does not exist or cannot be read (e.g. the workspace `lstk deploy detect --dir` was pointed at) | No | `IAC` |
+| `IAC_NO_TOOL_DETECTED` | No IaC tool could be resolved for the workspace: nothing matched, and no `--tool` was given | No | `IAC` |
+| `IAC_TOOL_AMBIGUOUS` | More than one IaC tool matched the workspace and no choice could be made (no `--tool`, and nobody to prompt) | No | `IAC` |
+| `IAC_DEPLOY_FAILED` | A delegated deployment command (e.g. `terraform apply`) exited non-zero; the tool's own status is reported in `error.details` | No | `IAC` |
 
 #### Scenario: Error code is one of the documented constants
 - **WHEN** any JSON-capable command emits an `error` object

@@ -79,7 +79,7 @@ Within the main payload, the `error` field contains the following sub-fields:
 | Field | Type | Notes |
 |---|---|---|
 | `code` | string | One of the enumerated codes below. Never free text — see the error-codes table. The primary, stable identifier — branch on this for anything specific. |
-| `category` | string | One of 8 coarse groupings of `code` (`RUNTIME`, `EMULATOR`, `AUTH`, `RESOURCE`, `CONFIG`, `USAGE`, `INTERNAL`, `IAC`) — see [Error categories](#error-categories) below. Additive alongside `code`, not a replacement for it: a caller that only wants broad handling can switch on `category`'s ~8 values instead of `code`'s ~29, while a caller that already keys off a specific `code` is unaffected. |
+| `category` | string | One of 8 coarse groupings of `code` (`RUNTIME`, `EMULATOR`, `AUTH`, `RESOURCE`, `CONFIG`, `USAGE`, `INTERNAL`, `IAC`) — see [Error categories](#error-categories) below. Additive alongside `code`, not a replacement for it: a caller that only wants broad handling can switch on `category`'s ~8 values instead of `code`'s ~32, while a caller that already keys off a specific `code` is unaffected. |
 | `message` | string | Human-readable headline, informational only. **Not guaranteed stable across versions** — scripts must branch on `code`, not `message`. |
 | `retryable` | bool | A static property of `code` (not computed per failure) — see below. Note this is independent of `category`: a category can contain both retryable and non-retryable codes (e.g. `RUNTIME` contains both `NETWORK_ERROR` [retryable] and `DNS_RESOLUTION_REQUIRED` [not]), so `retryable` can't be inferred from `category` alone. |
 | `details` | object | Optional, code-specific structured context. Omitted when empty. Illustrative example, for a future `SNAPSHOT_BUCKET_NOT_FOUND`: `{"bucket": "my-terraform-state"}`. Also where the additional diagnostic depth plain text and the TUI show alongside the `message` headline lands, as `summary`/`detail` string keys, when available — e.g. `{"summary": "cannot connect to Docker daemon: ..."}` for `RUNTIME_UNAVAILABLE`. |
@@ -122,6 +122,9 @@ Every `error.code` is one of the following fixed constants. A failure that doesn
 | `CANCELLED` | The operation was interrupted (e.g. context cancellation via Ctrl+C) | Yes | `INTERNAL` |
 | `INTERNAL_ERROR` | Unclassified or unexpected failure; the universal fallback | No | `INTERNAL` |
 | `IAC_FILE_NOT_FOUND` | A required infrastructure-as-code file or directory does not exist or cannot be read (e.g. the workspace `lstk deploy detect --dir` was pointed at) | No | `IAC` |
+| `IAC_NO_TOOL_DETECTED` | No IaC tool could be resolved for the workspace: nothing matched, and no `--tool` was given | No | `IAC` |
+| `IAC_TOOL_AMBIGUOUS` | More than one IaC tool matched the workspace and no choice could be made (no `--tool`, and nobody to prompt) | No | `IAC` |
+| `IAC_DEPLOY_FAILED` | A delegated deployment command (e.g. `terraform apply`) exited non-zero; the tool's own status is reported in `error.details` | No | `IAC` |
 
 ### Error categories
 
@@ -156,7 +159,8 @@ USAGE      CONFIRMATION_REQUIRED, VALIDATION_ERROR, USAGE_ERROR,
 INTERNAL   CANCELLED, INTERNAL_ERROR
            → catch-all: unexpected failure, or a user-initiated interruption
 
-IAC        IAC_FILE_NOT_FOUND
+IAC        IAC_FILE_NOT_FOUND, IAC_NO_TOOL_DETECTED, IAC_TOOL_AMBIGUOUS,
+           IAC_DEPLOY_FAILED
            → the workspace's infrastructure-as-code is the problem (the
            domain `lstk deploy` operates in)
 ```
