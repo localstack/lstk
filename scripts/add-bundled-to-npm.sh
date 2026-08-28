@@ -1,0 +1,88 @@
+#!/usr/bin/env bash
+#
+# Adds the bundled extensions to every npm PLATFORM package.
+#
+# The npm wrapper (@localstack/lstk) only holds the launcher; the real Go
+# binary lives in the platform package (@localstack/lstk-<os>-<cpu>) and the
+# launcher execs it from there. lstk resolves its bundled-extensions directory
+# from its own executable's location, so that platform directory is where
+# `bundled-extensions` and `lstk-extensions.toml` must live.
+#
+# goreleaser-npm-publisher has no per-platform extra-files option, so this runs
+# on its dist/npm output before `npm publish`. Two details it has to get right:
+#
+#   * Node and Go name platforms differently: win32 -> windows, x64 -> amd64
+#     (darwin, linux and arm64 are the same in both).
+#   * The generated package.json carries "files": [], which npm packs as
+#     package.json + the bin entry and nothing else. Copying alone would be
+#     silently dropped at publish, so the copied names are appended to that
+#     allowlist as well.
+#
+# Usage:
+#   scripts/add-bundled-to-npm.sh <dist/npm dir> <bundled dir>
+set -euo pipefail
+
+die() {
+  echo "add-bundled-to-npm: $*" >&2
+  exit 1
+}
+
+usage() {
+  sed -n '2,23p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//' >&2
+  exit 1
+}
+
+[ $# -eq 2 ] || usage
+NPM_DIR="$1"
+BUNDLED_DIR="$2"
+TOML="${BUNDLED_DIR}/lstk-extensions.toml"
+
+[ -d "${NPM_DIR}" ] || die "no such directory: ${NPM_DIR}"
+[ -d "${BUNDLED_DIR}" ] || die "no such directory: ${BUNDLED_DIR}"
+[ -f "${TOML}" ] || die "no descriptions file at ${TOML}; run scripts/fetch-bundled-extensions.sh first"
+command -v node >/dev/null 2>&1 || die "node is required to edit package.json"
+
+# Appends names to the package.json "files" array, de-duplicated, preserving
+# everything else. Done in node so the JSON is rewritten faithfully.
+register_files() {
+  local pkg_json="$1"; shift
+  node -e '
+    const fs = require("fs");
+    const [file, ...names] = process.argv.slice(1);
+    const pkg = JSON.parse(fs.readFileSync(file, "utf8"));
+    const files = Array.isArray(pkg.files) ? pkg.files : [];
+    for (const name of names) if (!files.includes(name)) files.push(name);
+    pkg.files = files;
+    fs.writeFileSync(file, JSON.stringify(pkg, null, 2) + "\n");
+  ' "${pkg_json}" "$@"
+}
+
+count=0
+for dir in "${NPM_DIR}"/lstk-*/; do
+  [ -d "${dir}" ] || continue
+  pkg="$(basename "${dir}")"
+  cpu="${pkg##*-}"
+  os="${pkg#lstk-}"
+  os="${os%-*}"
+  case "${os}" in win32) goos=windows ;; *) goos="${os}" ;; esac
+  case "${cpu}" in x64) goarch=amd64 ;; *) goarch="${cpu}" ;; esac
+  src="${BUNDLED_DIR}/${goos}_${goarch}"
+  [ -d "${src}" ] || die "no staged bundle for ${pkg} at ${src}"
+
+  added=""
+  for file in "${src}"/bundled-extensions*; do
+    [ -e "${file}" ] || die "no bundled-extensions binary in ${src} for ${pkg}"
+    cp -p "${file}" "${dir}"
+    added="${added} $(basename "${file}")"
+  done
+  cp "${TOML}" "${dir}"
+  added="${added} lstk-extensions.toml"
+
+  # shellcheck disable=SC2086 # deliberate word splitting of the collected names
+  register_files "${dir}/package.json" ${added}
+  echo "${pkg}: added${added}"
+  count=$((count + 1))
+done
+
+[ "${count}" -gt 0 ] || die "no platform packages found under ${NPM_DIR} (expected lstk-<os>-<cpu> directories)"
+echo "Bundled extensions added to ${count} platform package(s)."

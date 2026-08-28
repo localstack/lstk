@@ -47,6 +47,11 @@ func Invoke(ctx context.Context, ext *Extension, args []string, runCtx Context) 
 	}
 
 	cmd := exec.CommandContext(ctx, ext.Path, args...)
+	// exec.Command sets Args[0] to the path it was given; the multi-call bundle
+	// dispatches on argv[0] instead, so tell it which extension to be.
+	if ext.Argv0 != "" {
+		cmd.Args[0] = ext.Argv0
+	}
 	cmd.Env = envv
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout

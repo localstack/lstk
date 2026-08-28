@@ -5,6 +5,7 @@ lstk supports Git-style extensions. When you run `lstk <name>` and `<name>` is n
 ## The contract at a glance
 
 - **Name it `lstk-<name>`** and put it on `PATH`. `lstk <name> ...` will run it; `lstk help` will list it.
+- **You are invoked as `lstk-<name>`.** Your `argv[0]` is the base name `lstk-<name>` (plus `.exe` when your file carries that suffix on Windows), never a full path, and it is the same whether lstk found you on `PATH`, next to its own binary, or inside LocalStack's bundle. Strip a trailing `.exe` before comparing. A `<name>` starts with a letter or digit and uses only letters, digits, hyphens and underscores.
 - **Your arguments are forwarded verbatim.** Everything after `<name>` is yours — lstk does not parse it. Define and parse your own flags however you like, including flags that happen to share a name with an lstk global flag.
 - **lstk's global flags are consumed before the name.** `lstk --non-interactive <name> --foo` runs your extension with just `--foo`; the resolved global state reaches you via environment variables (below), not on your command line.
 - **Exit code and streams pass through.** Your exit status becomes lstk's exit status, and your stdin/stdout/stderr are wired straight to the terminal.
@@ -110,6 +111,21 @@ machine_id=$(printf '%s' "$LSTK_EXT_CONTEXT" | jq -r '.machineId // empty')
 Reuse `machineId` rather than deriving your own: it is already the final hashed value (never a raw Docker or system id, so there is nothing further to anonymize), and deriving it independently costs a Docker round-trip that can fail and can disagree with lstk's answer.
 
 **Absence is ambiguous, by design.** Both fields are omitted when lstk's telemetry is disabled — a disabled lstk computes neither, so they always appear and disappear together — and both are also absent on an lstk released before they existed. You cannot tell those two cases apart, so don't try. Treat absence as "no correlation available" and carry on: generate or derive your own ids if you need them, and never make either field a hard requirement.
+
+## How LocalStack's bundled extensions differ
+
+Everything above applies to bundled extensions too, with one mechanical
+difference: they are not separate `lstk-<name>` files. LocalStack ships one
+multi-call binary, `bundled-extensions`, next to `lstk`, and lstk executes it
+with `argv[0]` set to `lstk-<name>` for whichever command was requested. The
+list of commands it provides is the descriptions file `lstk-extensions.toml`
+beside it; a name that file does not list is never handed to the bundle. Read
+`os.Args[0]` (or your language's equivalent) to find out which extension you are
+being asked to be. The value is exactly `lstk-<name>`, with no path and no
+`.exe`, and lstk only ever hands the bundle a name the toml lists, so a lookup
+miss inside the binary means the toml and the binary disagree: report it
+loudly rather than guessing. See [extensions-bundling.md](extensions-bundling.md) for how
+the bundle is built and shipped.
 
 ## Help descriptions
 

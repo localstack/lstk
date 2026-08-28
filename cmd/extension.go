@@ -54,7 +54,15 @@ func dispatchExtension(ctx context.Context, cfg *env.Env, tel *telemetry.Client,
 			})
 			return output.NewSilentError(fmt.Errorf("unknown command %q for lstk", name))
 		}
-		return err
+		// Anything else is a broken bundled install (the multi-call binary is
+		// present but its command list is not loadable) — an lstk problem, not
+		// an unknown command, so it gets the styled error and a way out.
+		output.NewPlainSink(os.Stderr).Emit(output.ErrorEvent{
+			Title:   "bundled extensions are not usable",
+			Summary: err.Error(),
+			Actions: []output.ErrorAction{{Label: "Reinstall lstk to restore them:", Value: "lstk update"}},
+		})
+		return output.NewSilentError(err)
 	}
 
 	emulators := resolveEmulators(ctx, cfg, logger)
@@ -153,33 +161,32 @@ func emulatorCandidates() []config.ContainerConfig {
 }
 
 // registerExtensionHelp wires an "extensions" template function that renders the
-// Extensions section of `lstk --help`. It scans the bundled dir + PATH for
-// `lstk-*` executables (de-duplicated, bundled wins) and attaches descriptions
-// for bundled extensions from the hand-authored descriptions file; PATH and
-// custom extensions, and bundled names missing from the file, are name-only.
-// Rendering never executes an extension. A scan happens on each help render so
-// freshly installed extensions appear without restarting.
+// Extensions section of `lstk --help`. It lists the bundle's commands, then
+// `lstk-*` executables in the bundled dir and on PATH (de-duplicated, bundled
+// wins); bundled entries come with the description Resolver.List attached from
+// the hand-authored descriptions file, while PATH and custom extensions, and
+// bundled names missing from the file, are name-only. Rendering never executes
+// an extension. A scan happens on each help render so freshly installed
+// extensions appear without restarting.
 func registerExtensionHelp(logger log.Logger) {
 	cobra.AddTemplateFunc("extensions", func(namePadding int) string {
-		resolver := extension.NewResolver(logger)
-		list := resolver.List()
+		list := extension.NewResolver(logger).List()
 		if len(list) == 0 {
 			return ""
 		}
-		descriptions := extension.LoadDescriptions(resolver.BundledDir, logger)
-		return formatExtensionList(list, descriptions, namePadding)
+		return formatExtensionList(list, namePadding)
 	})
 }
 
 // formatExtensionList renders the extension help lines so they align with the
 // command sections above them. It mirrors Cobra's own scheme (see the usage
 // template's "{{rpad .Name .NamePadding}} {{.Short}}"): each name is right-padded
-// to namePadding, then a single space, then its description (bundled extensions
-// only, from the descriptions file). namePadding is the root command's
+// to namePadding, then a single space, then its Description (set for bundled
+// extensions only). namePadding is the root command's
 // .NamePadding, so the description column matches the Commands/Tools sections; a
 // name longer than namePadding widens its own row exactly as Cobra's per-row
 // rpad does. Lines are sorted by name (List already sorts).
-func formatExtensionList(list []extension.Extension, descriptions map[string]string, namePadding int) string {
+func formatExtensionList(list []extension.Extension, namePadding int) string {
 	width := namePadding
 	for _, ext := range list {
 		if len(ext.Name) > width {
@@ -189,11 +196,7 @@ func formatExtensionList(list []extension.Extension, descriptions map[string]str
 
 	var b strings.Builder
 	for _, ext := range list {
-		desc := ""
-		if ext.Bundled {
-			desc = descriptions[ext.Name]
-		}
-		if desc != "" {
+		if desc := ext.Description; desc != "" {
 			fmt.Fprintf(&b, "  %-*s %s\n", width, ext.Name, desc)
 		} else {
 			fmt.Fprintf(&b, "  %s\n", ext.Name)

@@ -641,3 +641,28 @@ func TestExtensionBundledWinsOverPath(t *testing.T) {
 	require.NoError(t, err)
 	snap.Match(t, helpOut)
 }
+
+// TestExtensionArgv0IsExtensionName pins the argv[0] half of the contract for
+// standalone extensions: resolved from PATH or from the bundled dir alike, the
+// program is invoked as `lstk-<name>` (its own file name), the same value a
+// bundle-provided command receives from the multi-call dispatch. That is what
+// lets one extension binary be shipped either way without a code change.
+func TestExtensionArgv0IsExtensionName(t *testing.T) {
+	t.Parallel()
+	extDir := t.TempDir()
+	installExtension(t, extDir, "hello")
+
+	tmpHome := t.TempDir()
+	environ := append(envWithPath(tmpHome, extDir), "DOCKER_HOST=tcp://127.0.0.1:1")
+	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), environ, "hello", "argv0")
+	require.NoError(t, err, stderr)
+	require.Contains(t, stdout, "ARGV0=lstk-hello")
+
+	// Same for a standalone file placed next to the lstk binary.
+	bundleDir := t.TempDir()
+	lstkBin := installLstkBundle(t, bundleDir)
+	installExtension(t, bundleDir, "deploy")
+	stdout, stderr, err = runBinary(t, t.TempDir(), envWithPath(tmpHome, t.TempDir()), lstkBin, "deploy", "argv0")
+	require.NoError(t, err, stderr)
+	require.Contains(t, stdout, "ARGV0=lstk-deploy")
+}
