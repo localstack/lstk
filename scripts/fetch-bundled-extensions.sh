@@ -16,12 +16,21 @@
 # containing the multi-call binary `bundled-extensions[.exe]` and the
 # descriptions file `lstk-extensions.toml`, plus a `checksums.txt` covering the
 # archives, and `lstk-<name>` alias entries for every command the binary
-# answers to (symlinks on Unix, copies on Windows). The binary and the toml are
-# staged as they are. The aliases are not: lstk dispatches to the one binary by
-# argv[0] and never needs them on disk. Their names are, though, recorded in
-# bundle-commands.txt, because they are the bundle's own declaration of which
-# commands it provides, and scripts/check-descriptions.sh verifies the toml
-# against that list. An archive with no aliases is rejected for that reason.
+# answers to (symlinks on Unix, copies on Windows).
+#
+# The binary and the toml are staged as they are. The aliases are re-created as
+# relative symlinks next to the binary, so a packaged install can also run
+# `lstk-doctor` straight from a shell — useful for testing an extension on its
+# own. lstk itself never resolves them: it dispatches to the one binary by
+# argv[0] and takes its command list from the toml, so a channel that cannot
+# carry symlinks loses only that convenience. Windows is skipped deliberately:
+# a zip symlink is re-created by most Windows extractors as a small text file
+# holding the target's name, which is worse than absent.
+#
+# The alias names are also recorded in bundle-commands.txt, because they are the
+# bundle's own declaration of which commands it provides, and
+# scripts/check-descriptions.sh verifies the toml against that list. An archive
+# with no aliases is rejected for that reason.
 #
 # Which bundle is taken comes from bundled/extensions.version — `latest` by
 # default. `latest` is resolved to a concrete tag exactly once here and
@@ -59,6 +68,7 @@ UNSUPPORTED_PLATFORMS="${LSTK_UNSUPPORTED_PLATFORMS-}"
 
 REPO="${LSTK_EXTENSIONS_REPO:-localstack/lstk-bundled-extensions}"
 BUNDLED_BINARY="bundled-extensions"
+NAME_PREFIX="lstk-"
 DESCRIPTIONS_FILE="lstk-extensions.toml"
 COMMANDS_FILE="bundle-commands.txt"
 MANIFEST_FILE="checksums.txt"
@@ -212,6 +222,15 @@ stage_assets() {
     else
       printf "%s\n" "${commands}" > "${commands_staged}"
     fi
+
+    # Re-create the aliases rather than copying the archive's own entries: the
+    # target is written relative and bare so it resolves wherever the pair is
+    # unpacked, whatever the archive happened to contain.
+    if [ "${os}" != "windows" ]; then
+      for name in ${commands}; do
+        ln -sf "${BUNDLED_BINARY}" "${BUNDLED_DIR}/${os}_${arch}/${NAME_PREFIX}${name}"
+      done
+    fi
   done
   [ -f "${toml_staged}" ] || die "the bundle publishes no ${DESCRIPTIONS_FILE}"
   echo "Staged ${staged} platform binaries into ${BUNDLED_DIR}."
@@ -264,6 +283,10 @@ write_stub_bundle() {
       printf '#!/bin/sh\necho "stub %s for %s"\n' "${name}" "${platform}" \
         > "${BUNDLED_DIR}/${platform}/${name}${suffix}"
       chmod 0755 "${BUNDLED_DIR}/${platform}/${name}${suffix}"
+      # Mirror the real layout so a snapshot build exercises the same shape.
+      if [ "${name}" = "${BUNDLED_BINARY}" ] && [ "${suffix}" = "" ]; then
+        ln -sf "${BUNDLED_BINARY}" "${BUNDLED_DIR}/${platform}/${NAME_PREFIX}doctor"
+      fi
     done
   done
   {

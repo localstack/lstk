@@ -100,11 +100,18 @@ if [ -n "${invalid}" ]; then
   die "command names must match ^[A-Za-z0-9][A-Za-z0-9_-]*$"
 fi
 
-# Standalone lstk-<name> files are not how the bundle ships. They still work
-# (lstk resolves them from its directory) but carry no description, so flag
-# them rather than fail.
+# lstk-<name> entries beside the binary are either the bundle's own aliases
+# (symlinks to it, staged so the command can also be run straight from a shell)
+# or a genuinely standalone extension. The first are expected and silent; the
+# second still works — lstk resolves it from its directory — but carries no
+# description, so it is flagged rather than failed.
 for stray in "${PLATFORM_DIR}"/lstk-*; do
-  [ -e "${stray}" ] || continue
+  [ -e "${stray}" ] || [ -L "${stray}" ] || continue
+  if [ -L "${stray}" ]; then
+    case "$(readlink "${stray}")" in
+      "${BUNDLED_BINARY}"|"${BUNDLED_BINARY}.exe") continue ;;
+    esac
+  fi
   echo "Warning: standalone extension binary $(basename "${stray}") in ${PLATFORM_DIR} is not part of the bundle and will show name-only in help."
 done
 

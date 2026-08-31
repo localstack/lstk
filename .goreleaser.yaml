@@ -49,7 +49,12 @@ archives:
       # bundled/ by scripts/fetch-bundled-extensions.sh, which the release job
       # runs first; a local snapshot build needs it too (see
       # docs/extensions-bundling.md). A glob matching nothing fails the build.
-      - src: "bundled/{{ .Os }}_{{ .Arch }}/bundled-extensions*"
+      #
+      # The whole platform directory is taken, not just the binary, so the
+      # lstk-<name> alias symlinks staged beside it (Unix only) ride along —
+      # goreleaser preserves symlinks in tar.gz. They are a convenience for
+      # running an extension straight from a shell; lstk never resolves them.
+      - src: "bundled/{{ .Os }}_{{ .Arch }}/*"
         strip_parent: true
         info:
           mode: 0o755

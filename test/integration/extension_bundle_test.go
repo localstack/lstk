@@ -3,6 +3,8 @@ package integration_test
 import (
 	"os"
 	"path/filepath"
+	"runtime"
+	"strings"
 	"testing"
 
 	"github.com/localstack/lstk/internal/snap"
@@ -129,4 +131,42 @@ func TestBundledMultiCallContextConveyed(t *testing.T) {
 	require.Contains(t, stdout, "ARGS=[--foo]")
 	require.Contains(t, stdout, "NON_INTERACTIVE=true")
 	require.Contains(t, stdout, "API_VERSION=1")
+}
+
+// Releases stage an lstk-<name> symlink next to the bundle for every command it
+// provides, so a user can also run `lstk-doctor` straight from a shell. lstk
+// must stay indifferent to them: it dispatches through the bundle by argv[0]
+// and takes its command list from the descriptions file, so an alias must not
+// produce a second help entry, and removing one must change nothing. This is
+// what lets channels that cannot carry symlinks (npm, Windows zip) ship without
+// them and behave identically.
+func TestBundledAliasSymlinksAreInertForLstk(t *testing.T) {
+	t.Parallel()
+	if runtime.GOOS == "windows" {
+		t.Skip("aliases are deliberately not staged on Windows")
+	}
+	bundleDir := t.TempDir()
+	lstkBin := installLstkBundle(t, bundleDir)
+	bundlePath := installMultiCallBundle(t, bundleDir, "doctor = \"Check the local setup\"\ndeploy = \"Deploy to LocalStack\"\n")
+	for _, name := range []string{"doctor", "deploy"} {
+		require.NoError(t, os.Symlink("bundled-extensions", filepath.Join(bundleDir, "lstk-"+name)))
+	}
+
+	tmpHome := t.TempDir()
+	environ := envWithPath(tmpHome, t.TempDir())
+
+	// Each command appears exactly once, with its description — not twice, and
+	// not as a name-only row shadowing the described one.
+	stdout, stderr, err := runBinary(t, t.TempDir(), environ, lstkBin, "--help")
+	require.NoError(t, err, stderr)
+	require.Equal(t, 1, strings.Count(stdout, "doctor      Check the local setup"))
+	require.Equal(t, 1, strings.Count(stdout, "deploy      Deploy to LocalStack"))
+
+	// Dispatch still goes through the bundle under the right argv[0].
+	stdout, stderr, err = runBinary(t, t.TempDir(), environ, lstkBin, "doctor", "argv0")
+	require.NoError(t, err, stderr)
+	require.Contains(t, stdout, "ARGV0=lstk-doctor")
+	resolved, err := filepath.EvalSymlinks(bundlePath)
+	require.NoError(t, err)
+	require.Contains(t, stdout, "SELF="+resolved)
 }

@@ -176,6 +176,17 @@ run_script "${CHECK}" "${PLATFORM_DIR}"
 assert_fails
 assert_output_contains "doc tor"
 
+begin_test "alias symlinks to the bundle are expected and do not warn"
+setup_stage
+write_binary
+( cd "${PLATFORM_DIR}" && ln -s bundled-extensions lstk-doctor )
+write_commands doctor
+write_toml 'doctor = "Check the local setup"
+'
+run_script "${CHECK}" "${PLATFORM_DIR}"
+assert_ok
+assert_output_lacks "Warning"
+
 begin_test "a stray standalone lstk-<name> binary warns but passes"
 setup_stage
 write_binary
