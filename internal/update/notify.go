@@ -16,6 +16,8 @@ type NotifyOptions struct {
 	UpdatePrompt       bool
 	SkippedVersion     string
 	PersistSkipVersion func(version string) error
+	// Skip disables the check entirely: no network call, no output.
+	Skip bool
 }
 
 const checkTimeout = 2 * time.Second
@@ -51,6 +53,10 @@ func NotifyUpdate(ctx context.Context, sink output.Sink, opts NotifyOptions) (ex
 }
 
 func notifyUpdateWithVersion(ctx context.Context, sink output.Sink, opts NotifyOptions, currentVersion string, fetch versionFetcher) (exitAfter bool) {
+	if opts.Skip {
+		return false
+	}
+
 	current, latest, available := checkQuietlyWithVersion(ctx, opts.GitHubToken, currentVersion, fetch)
 	if !available {
 		return false

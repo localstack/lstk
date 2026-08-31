@@ -373,11 +373,17 @@ func startEmulator(ctx context.Context, rt runtime.Runtime, cfg *env.Env, tel *t
 
 	opts := buildStartOptions(cfg, appConfig, logger, tel, persist)
 
+	updateCheckMode, err := resolveUpdateCheckMode(cfg.UpdateCheck, appConfig.CLI.UpdateCheck)
+	if err != nil {
+		return err
+	}
+
 	notifyOpts := update.NotifyOptions{
 		GitHubToken:        cfg.GitHubToken,
-		UpdatePrompt:       true,
+		UpdatePrompt:       updateCheckMode != update.ModeNotify,
 		SkippedVersion:     appConfig.CLI.UpdateSkippedVersion,
 		PersistSkipVersion: config.SetUpdateSkippedVersion,
+		Skip:               updateCheckMode == update.ModeOff,
 	}
 
 	if isInteractiveMode(cfg) {
@@ -401,7 +407,8 @@ func startEmulator(ctx context.Context, rt runtime.Runtime, cfg *env.Env, tel *t
 			Text:     fmt.Sprintf("Configured with default emulator %s.", emName),
 		})
 	}
-	update.NotifyUpdate(ctx, sink, update.NotifyOptions{GitHubToken: cfg.GitHubToken})
+	// PlainSink can't answer a prompt, so this always uses the plain notice.
+	update.NotifyUpdate(ctx, sink, update.NotifyOptions{GitHubToken: cfg.GitHubToken, Skip: notifyOpts.Skip})
 	resolvedVersion, err := container.Start(ctx, rt, sink, opts, false)
 	if err != nil {
 		return err
@@ -650,6 +657,21 @@ func wrapCommandsWithTracing(cmd *cobra.Command) {
 
 func isInteractiveMode(cfg *env.Env) bool {
 	return !cfg.NonInteractive && !cfg.JSON && ui.IsInteractive()
+}
+
+// resolveUpdateCheckMode picks LSTK_UPDATE_CHECK over cli.update_check.
+// Empty return means neither was set; caller keeps its own default.
+func resolveUpdateCheckMode(envValue, configValue string) (string, error) {
+	for _, v := range []string{envValue, configValue} {
+		if v == "" {
+			continue
+		}
+		if err := update.ValidateMode(v); err != nil {
+			return "", err
+		}
+		return v, nil
+	}
+	return "", nil
 }
 
 const maxLogSize = 1 << 20 // 1 MB

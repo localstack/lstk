@@ -92,6 +92,22 @@ func TestNotifyUpdateNoUpdateAvailable(t *testing.T) {
 	assert.Empty(t, events)
 }
 
+func TestNotifyUpdateSkipped(t *testing.T) {
+	called := false
+	fetch := func(ctx context.Context, token string) (string, error) {
+		called = true
+		return "v2.0.0", nil
+	}
+
+	var events []output.Event
+	sink := output.SinkFunc(func(event output.Event) { events = append(events, event) })
+
+	exit := notifyUpdateWithVersion(context.Background(), sink, NotifyOptions{Skip: true, UpdatePrompt: true}, "1.0.0", fetch)
+	assert.False(t, exit)
+	assert.Empty(t, events, "no output should be emitted when the check is skipped")
+	assert.False(t, called, "the version fetch itself should be skipped, not just its result")
+}
+
 func TestNotifyUpdatePromptDisabled(t *testing.T) {
 	server := newTestGitHubServer(t, "v2.0.0")
 	defer server.Close()

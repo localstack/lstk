@@ -25,6 +25,7 @@ const (
 	Otel              Key = "LSTK_OTEL"
 	OtelEndpoint      Key = "OTEL_EXPORTER_OTLP_ENDPOINT"
 	StartupTimeout    Key = "LSTK_STARTUP_TIMEOUT"
+	UpdateCheck       Key = "LSTK_UPDATE_CHECK"
 	// UpdateGitHubAPIEndpoint and UpdateGitHubDownloadEndpoint point the
 	// updater's release-metadata API (api.github.com) and asset downloads
 	// (github.com) at mock servers (undocumented, test-only).
