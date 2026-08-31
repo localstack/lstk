@@ -2,7 +2,7 @@ module github.com/localstack/lstk/test/integration
 
 go 1.26.1
 
-toolchain go1.26.6
+toolchain go1.27.0
 
 require (
 	github.com/aws/aws-sdk-go-v2 v1.41.5
