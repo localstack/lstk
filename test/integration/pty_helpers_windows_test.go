@@ -9,3 +9,7 @@ import "os/exec"
 // reach every attached process without POSIX session/controlling-terminal
 // setup.
 func makeSessionLeader(*exec.Cmd) {}
+
+// setCttyToStdout is a no-op on Windows for the same reason: there is no
+// controlling-terminal ioctl to redirect.
+func setCttyToStdout(*exec.Cmd) {}
