@@ -218,12 +218,31 @@ assert_file_contains "${BUNDLED}/lstk-extensions.toml" "doctor"
 assert_file_absent "${BUNDLED}/linux_amd64/lstk-extensions.toml"
 assert_file_absent "${BUNDLED}/linux_amd64/checksums.txt"
 
-begin_test "lstk-<name> alias entries in the archives are not staged"
+begin_test "alias entries are staged as symlinks beside the binary on unix"
 setup_workspace
 run_script "${FETCH}"
 assert_ok
-assert_file_absent "${BUNDLED}/linux_amd64/lstk-doctor"
+for platform in linux_amd64 linux_arm64 darwin_amd64 darwin_arm64; do
+  assert_symlink_to "${BUNDLED}/${platform}/lstk-doctor" "bundled-extensions"
+done
+
+begin_test "alias entries are skipped on Windows, where extraction would junk them"
+setup_workspace
+run_script "${FETCH}"
+assert_ok
 assert_file_absent "${BUNDLED}/windows_amd64/lstk-doctor.exe"
+assert_file_absent "${BUNDLED}/windows_arm64/lstk-doctor.exe"
+assert_executable "${BUNDLED}/windows_amd64/bundled-extensions.exe"
+
+begin_test "every described command gets an alias"
+setup_workspace
+ALIASES="doctor deploy" TOML_BODY='doctor = "x"
+deploy = "y"
+' make_release_assets "${ASSETS}"
+run_script "${FETCH}"
+assert_ok
+assert_symlink_to "${BUNDLED}/linux_amd64/lstk-doctor" "bundled-extensions"
+assert_symlink_to "${BUNDLED}/linux_amd64/lstk-deploy" "bundled-extensions"
 
 begin_test "the staged tree passes the descriptions gate"
 setup_workspace

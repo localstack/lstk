@@ -124,7 +124,9 @@ beside it; a name that file does not list is never handed to the bundle. Read
 being asked to be. The value is exactly `lstk-<name>`, with no path and no
 `.exe`, and lstk only ever hands the bundle a name the toml lists, so a lookup
 miss inside the binary means the toml and the binary disagree: report it
-loudly rather than guessing. See [extensions-bundling.md](extensions-bundling.md) for how
+loudly rather than guessing. Where the install channel allows it a release also
+places an `lstk-<name>` symlink to the binary, so the same command can be run
+straight from a shell; that is a convenience only, and lstk never resolves it. See [extensions-bundling.md](extensions-bundling.md) for how
 the bundle is built and shipped.
 
 ## Help descriptions

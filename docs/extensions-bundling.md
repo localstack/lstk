@@ -63,8 +63,9 @@ order. Every step failing fails the release.
    archive and stages only two members: the binary as
    `bundled/<os>_<arch>/bundled-extensions[.exe]` (mode 0755) and the
    descriptions file as `bundled/lstk-extensions.toml` (taken once; every
-   archive must carry an identical copy). The `lstk-<name>` alias entries in
-   the archives are not staged, but their names are recorded, sorted, in
+   archive must carry an identical copy). It re-creates one `lstk-<name>`
+   symlink to the binary per command, except on Windows (see "Running an
+   extension directly" below), and records the names, sorted, in
    `bundled/bundle-commands.txt`: they are the bundle's own declaration of
    which commands the binary answers to. An archive with no aliases, or whose
    list differs from another platform's, aborts. It fails if any of lstk's six target platforms
@@ -117,11 +118,10 @@ Each tagged release of `localstack/lstk-bundled-extensions` ships:
   containing at its root the multi-call binary `bundled-extensions` (`.exe` on
   Windows), `lstk-extensions.toml`, and one `lstk-<name>` alias entry (a
   symlink on Unix, a copy on Windows) for every command the binary answers
-  to. The aliases are never installed: lstk dispatches by `argv[0]` and does
-  not need them on disk. They are required all the same, because they are the
-  binary's own statement of its command list, and the release gate verifies
-  the toml against exactly that list, so a described command the binary cannot
-  dispatch is caught before it ships;
+  to. They serve two purposes: they are the binary's own statement of its
+  command list, which the release gate checks the toml against, and they are
+  re-created in the packaged install so a command can be run directly (see
+  below);
 - the same `lstk-extensions.toml` in every archive, hand-authored, describing
   every command the binary provides — a described command with no
   implementation would show in `lstk --help` and fail when run;
@@ -172,6 +172,25 @@ pending (section 1 of the `add-bundled-extension-distribution` change). Until
 it lands, the in-the-field updater replaces only `lstk`; the other two files
 must be extracted from the archive by hand. Updating never deletes standalone
 `lstk-<name>` files a user placed next to the binary.
+
+## Running an extension directly
+
+Where the channel allows it, a release also carries one `lstk-<name>` symlink
+to `bundled-extensions` per command, so `lstk-doctor` can be run straight from
+a shell. That is a convenience for trying an extension on its own; lstk never
+resolves those links. It dispatches to the binary by `argv[0]` and takes its
+command list from the toml, so a channel without them behaves identically.
+
+| Channel | Aliases | Why |
+| --- | --- | --- |
+| Binary archive (tar.gz) | Yes | goreleaser preserves symlinks in tar.gz. |
+| Homebrew cask | Yes | It stages the same archive. |
+| Windows (zip) | No | Most Windows extractors turn a zip symlink into a small text file holding the target's name, which is worse than absent. |
+| npm | No | `npm pack` silently drops symlinks from the published tarball. |
+
+`lstk update` on the binary channel does not currently re-create them: its
+extractor skips symlink entries. Whatever a fresh install put there is left
+alone, so an updated install keeps the links it already had.
 
 ## Diagnosing a broken install
 
