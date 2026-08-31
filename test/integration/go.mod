@@ -17,6 +17,7 @@ require (
 	github.com/moby/moby/client v0.5.1
 	github.com/stretchr/testify v1.12.0
 	github.com/zalando/go-keyring v0.2.8
+	golang.org/x/term v0.45.0
 )
 
 require (
