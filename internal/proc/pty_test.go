@@ -122,8 +122,8 @@ func TestRunInPTYForwardsKeystrokesFromTerminalStdin(t *testing.T) {
 	skipWithoutPTY(t)
 	outerPtmx, outerTTY, err := pty.Open()
 	require.NoError(t, err)
-	defer outerPtmx.Close()
-	defer outerTTY.Close()
+	defer func() { _ = outerPtmx.Close() }()
+	defer func() { _ = outerTTY.Close() }()
 
 	before, err := term.GetState(int(outerTTY.Fd()))
 	require.NoError(t, err)
@@ -173,8 +173,8 @@ func TestRunInPTYStopsReadingTerminalAfterExit(t *testing.T) {
 	skipWithoutPTY(t)
 	outerPtmx, outerTTY, err := pty.Open()
 	require.NoError(t, err)
-	defer outerPtmx.Close()
-	defer outerTTY.Close()
+	defer func() { _ = outerPtmx.Close() }()
+	defer func() { _ = outerTTY.Close() }()
 
 	out := newSyncWriter()
 	cmd := exec.Command("sh", "-c", "echo ready; IFS= read -r key <&2; echo got:$key")
@@ -227,8 +227,8 @@ func TestRunInPTYCtrlZIsANoOp(t *testing.T) {
 	skipWithoutPTY(t)
 	outerPtmx, outerTTY, err := pty.Open()
 	require.NoError(t, err)
-	defer outerPtmx.Close()
-	defer outerTTY.Close()
+	defer func() { _ = outerPtmx.Close() }()
+	defer func() { _ = outerTTY.Close() }()
 
 	out := newSyncWriter()
 	cmd := exec.Command("sh", "-c", "echo ready; IFS= read -r key <&2; echo alive:$key")
