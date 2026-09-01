@@ -11,7 +11,21 @@ SUITE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "${SUITE_DIR}/lib.sh"
 
 ADD="${SUITE_DIR}/../add-bundled-to-npm.sh"
-NPM_PLATFORMS="darwin-arm64 darwin-x64 linux-arm64 linux-x64 win32-arm64 win32-x64"
+# The publisher slugifies its output directory names (lstk-darwin-arm-64-v-8-0)
+# while the package.json inside carries the authoritative Go-style name
+# (@localstack/lstk_darwin_arm64). Fixtures reproduce both, because parsing the
+# directory name is exactly the bug these tests exist to prevent.
+NPM_DIRS="lstk-darwin-arm-64-v-8-0 lstk-darwin-amd-64-v-1 lstk-linux-arm-64-v-8-0 lstk-linux-amd-64-v-1 lstk-windows-arm-64-v-8-0 lstk-windows-amd-64-v-1"
+dir_to_goplatform() {
+  case "$1" in
+    lstk-darwin-arm-64*) echo darwin_arm64 ;;
+    lstk-darwin-amd-64*) echo darwin_amd64 ;;
+    lstk-linux-arm-64*) echo linux_arm64 ;;
+    lstk-linux-amd-64*) echo linux_amd64 ;;
+    lstk-windows-arm-64*) echo windows_arm64 ;;
+    lstk-windows-amd-64*) echo windows_amd64 ;;
+  esac
+}
 GO_PLATFORMS="darwin_arm64 darwin_amd64 linux_arm64 linux_amd64 windows_arm64 windows_amd64"
 
 # Fresh workspace with a full staged bundle and a full dist/npm tree.
@@ -31,13 +45,15 @@ setup_workspace() {
   done
   echo 'doctor = "Check the local setup"' > "${BUNDLED}/lstk-extensions.toml"
 
-  for platform in ${NPM_PLATFORMS}; do
-    mkdir -p "${NPM}/lstk-${platform}"
-    local bin="lstk"
-    case "${platform}" in win32-*) bin="lstk.exe" ;; esac
-    echo "lstk binary" > "${NPM}/lstk-${platform}/${bin}"
-    printf '{\n  "name": "@localstack/lstk-%s",\n  "version": "0.1.0",\n  "bin": {\n    "lstk": "%s"\n  },\n  "files": []\n}\n' \
-      "${platform}" "${bin}" > "${NPM}/lstk-${platform}/package.json"
+  local d goplat bin
+  for d in ${NPM_DIRS}; do
+    goplat="$(dir_to_goplatform "${d}")"
+    mkdir -p "${NPM}/${d}"
+    bin="lstk"
+    case "${goplat}" in windows_*) bin="lstk.exe" ;; esac
+    echo "lstk binary" > "${NPM}/${d}/${bin}"
+    printf '{\n  "name": "@localstack/lstk_%s",\n  "version": "0.1.0",\n  "bin": {\n    "lstk_%s": "%s"\n  },\n  "files": []\n}\n' \
+      "${goplat}" "${goplat}" "${bin}" > "${NPM}/${d}/package.json"
   done
   mkdir -p "${NPM}/lstk"
   echo "launcher" > "${NPM}/lstk/index.js"
@@ -54,30 +70,30 @@ begin_test "copies the matching platform binary and the toml into every platform
 setup_workspace
 run_script "${ADD}" "${NPM}" "${BUNDLED}"
 assert_ok
-assert_file_exists "${NPM}/lstk-darwin-arm64/bundled-extensions"
-assert_file_contains "${NPM}/lstk-darwin-arm64/bundled-extensions" "darwin_arm64"
-assert_file_exists "${NPM}/lstk-linux-x64/bundled-extensions"
-assert_file_contains "${NPM}/lstk-linux-x64/bundled-extensions" "linux_amd64"
-assert_file_exists "${NPM}/lstk-win32-x64/bundled-extensions.exe"
-assert_file_contains "${NPM}/lstk-win32-x64/bundled-extensions.exe" "windows_amd64"
-assert_file_exists "${NPM}/lstk-win32-arm64/bundled-extensions.exe"
-assert_file_contains "${NPM}/lstk-win32-arm64/bundled-extensions.exe" "windows_arm64"
-assert_file_exists "${NPM}/lstk-darwin-x64/lstk-extensions.toml"
+assert_file_exists "${NPM}/lstk-darwin-arm-64-v-8-0/bundled-extensions"
+assert_file_contains "${NPM}/lstk-darwin-arm-64-v-8-0/bundled-extensions" "darwin_arm64"
+assert_file_exists "${NPM}/lstk-linux-amd-64-v-1/bundled-extensions"
+assert_file_contains "${NPM}/lstk-linux-amd-64-v-1/bundled-extensions" "linux_amd64"
+assert_file_exists "${NPM}/lstk-windows-amd-64-v-1/bundled-extensions.exe"
+assert_file_contains "${NPM}/lstk-windows-amd-64-v-1/bundled-extensions.exe" "windows_amd64"
+assert_file_exists "${NPM}/lstk-windows-arm-64-v-8-0/bundled-extensions.exe"
+assert_file_contains "${NPM}/lstk-windows-arm-64-v-8-0/bundled-extensions.exe" "windows_arm64"
+assert_file_exists "${NPM}/lstk-darwin-amd-64-v-1/lstk-extensions.toml"
 
 begin_test "the copied binary keeps its executable bit"
 setup_workspace
 run_script "${ADD}" "${NPM}" "${BUNDLED}"
 assert_ok
-assert_executable "${NPM}/lstk-linux-arm64/bundled-extensions"
+assert_executable "${NPM}/lstk-linux-arm-64-v-8-0/bundled-extensions"
 
 begin_test "registers the files in each platform package's files allowlist"
 setup_workspace
 run_script "${ADD}" "${NPM}" "${BUNDLED}"
 assert_ok
-LAST_OUTPUT="$(files_field "${NPM}/lstk-darwin-arm64/package.json")"
+LAST_OUTPUT="$(files_field "${NPM}/lstk-darwin-arm-64-v-8-0/package.json")"
 assert_output_contains "bundled-extensions"
 assert_output_contains "lstk-extensions.toml"
-LAST_OUTPUT="$(files_field "${NPM}/lstk-win32-x64/package.json")"
+LAST_OUTPUT="$(files_field "${NPM}/lstk-windows-amd-64-v-1/package.json")"
 assert_output_contains "bundled-extensions.exe"
 assert_output_contains "lstk-extensions.toml"
 
@@ -85,7 +101,7 @@ begin_test "npm would actually pack the registered files"
 setup_workspace
 run_script "${ADD}" "${NPM}" "${BUNDLED}"
 assert_ok
-run_script npm pack --dry-run "${NPM}/lstk-darwin-arm64"
+run_script npm pack --dry-run "${NPM}/lstk-darwin-arm-64-v-8-0"
 assert_ok
 assert_output_contains "bundled-extensions"
 assert_output_contains "lstk-extensions.toml"
@@ -106,7 +122,7 @@ setup_workspace
 rm -rf "${BUNDLED}/windows_arm64"
 run_script "${ADD}" "${NPM}" "${BUNDLED}"
 assert_fails
-assert_output_contains "lstk-win32-arm64"
+assert_output_contains "lstk-windows-arm-64-v-8-0"
 assert_output_contains "windows_arm64"
 
 begin_test "fails when the toml is missing"
@@ -121,7 +137,7 @@ setup_workspace
 run_script "${ADD}" "${NPM}" "${BUNDLED}"
 run_script "${ADD}" "${NPM}" "${BUNDLED}"
 assert_ok
-count="$(files_field "${NPM}/lstk-linux-x64/package.json" | tr ' ' '\n' | grep -c '^bundled-extensions$' || true)"
+count="$(files_field "${NPM}/lstk-linux-amd-64-v-1/package.json" | tr ' ' '\n' | grep -c '^bundled-extensions$' || true)"
 [ "${count}" -eq 1 ] || fail "expected one bundled-extensions entry, got ${count}"
 
 begin_test "fails when there are no platform packages at all"

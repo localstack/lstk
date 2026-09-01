@@ -11,8 +11,11 @@
 # goreleaser-npm-publisher has no per-platform extra-files option, so this runs
 # on its dist/npm output before `npm publish`. Two details it has to get right:
 #
-#   * Node and Go name platforms differently: win32 -> windows, x64 -> amd64
-#     (darwin, linux and arm64 are the same in both).
+#   * The publisher slugifies its output directory names
+#     (dist/npm/lstk-darwin-arm-64-v-8-0), so a directory name cannot be parsed
+#     back into a platform. The package.json inside carries the authoritative
+#     name, @localstack/lstk_<goos>_<goarch>, which maps straight onto the
+#     staging directory - so that is what this reads.
 #   * The generated package.json carries "files": [], which npm packs as
 #     package.json + the bin entry and nothing else. Copying alone would be
 #     silently dropped at publish, so the copied names are appended to that
@@ -28,7 +31,7 @@ die() {
 }
 
 usage() {
-  sed -n '2,23p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//' >&2
+  sed -n '2,25p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//' >&2
   exit 1
 }
 
@@ -57,17 +60,28 @@ register_files() {
   ' "${pkg_json}" "$@"
 }
 
+# Reads the "name" field of a package.json.
+package_name() {
+  node -e '
+    const fs = require("fs");
+    const pkg = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+    process.stdout.write(pkg.name || "");
+  ' "$1"
+}
+
 count=0
-for dir in "${NPM_DIR}"/lstk-*/; do
-  [ -d "${dir}" ] || continue
+for dir in "${NPM_DIR}"/*/; do
+  [ -f "${dir}package.json" ] || continue
   pkg="$(basename "${dir}")"
-  cpu="${pkg##*-}"
-  os="${pkg#lstk-}"
-  os="${os%-*}"
-  case "${os}" in win32) goos=windows ;; *) goos="${os}" ;; esac
-  case "${cpu}" in x64) goarch=amd64 ;; *) goarch="${cpu}" ;; esac
-  src="${BUNDLED_DIR}/${goos}_${goarch}"
-  [ -d "${src}" ] || die "no staged bundle for ${pkg} at ${src}"
+  name="$(package_name "${dir}package.json")"
+  # Platform packages are @localstack/lstk_<goos>_<goarch>; the wrapper is a
+  # bare @localstack/lstk and carries no binary, so it is skipped here.
+  case "${name}" in
+    */lstk_*) goplatform="${name##*/lstk_}" ;;
+    *) continue ;;
+  esac
+  src="${BUNDLED_DIR}/${goplatform}"
+  [ -d "${src}" ] || die "no staged bundle for ${name} (${pkg}) at ${src}"
 
   added=""
   for file in "${src}"/bundled-extensions*; do
