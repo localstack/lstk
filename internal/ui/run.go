@@ -107,8 +107,8 @@ func Run(parentCtx context.Context, runOpts RunOptions) error {
 			}
 			runOpts.StartOptions.Containers = newContainers
 		}
-		var resolvedVersion string
-		resolvedVersion, err = container.Start(ctx, runOpts.Runtime, sink, runOpts.StartOptions, true)
+		var result container.StartResult
+		result, err = container.Start(ctx, runOpts.Runtime, sink, runOpts.StartOptions, true)
 		if err != nil {
 			if errors.Is(err, context.Canceled) {
 				return
@@ -116,9 +116,8 @@ func Run(parentCtx context.Context, runOpts RunOptions) error {
 			p.Send(runErrMsg{err: err})
 			return
 		}
-		// Auto-load the configured snapshot only when the emulator was freshly
-		// started this run (resolvedVersion is empty when it was already running).
-		if resolvedVersion != "" && runOpts.PostStart != nil {
+		// Auto-load only on a fresh start, not when already running.
+		if !result.AlreadyRunning && runOpts.PostStart != nil {
 			if postErr := runOpts.PostStart(ctx, sink); postErr != nil {
 				if errors.Is(postErr, context.Canceled) {
 					return
@@ -128,16 +127,16 @@ func Run(parentCtx context.Context, runOpts RunOptions) error {
 				return
 			}
 		}
-		// Empty resolvedVersion means the container was already running and Start
-		// returned early — use the cached label rather than re-resolving. Self-
-		// validating emulators never resolve a version; their label comes from the
-		// license file in the container volume, so re-resolve it on every start.
+		// An already-running container means Start returned early — use the
+		// cached label rather than re-resolving. Self-validating emulators never
+		// resolve a version; their label comes from the license file in the
+		// container volume, so re-resolve it on every start regardless.
 		containers := runOpts.StartOptions.Containers
 		selfValidating := len(containers) > 0 && containers[0].Type.SelfValidatesLicense()
-		if resolvedVersion == "" && !selfValidating {
+		if result.AlreadyRunning && !selfValidating {
 			go func() { labelCh <- config.CachedPlanLabel() }()
 		} else {
-			go container.ResolveAndCacheLabel(ctx, runOpts.StartOptions, resolvedVersion, labelCh)
+			go container.ResolveAndCacheLabel(ctx, runOpts.StartOptions, result.Version, labelCh)
 		}
 		p.Send(runDoneMsg{})
 	}()

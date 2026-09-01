@@ -160,7 +160,7 @@ func TestRunPostStartSetups_EmitsPersistenceFromContainerEnv(t *testing.T) {
 	var out bytes.Buffer
 	sink := output.NewPlainSink(&out)
 
-	err := runPostStartSetups(context.Background(), mockRT, sink, []config.ContainerConfig{cfg}, false, "", "", nil)
+	_, err := runPostStartSetups(context.Background(), mockRT, sink, []config.ContainerConfig{cfg}, false, "", "", nil, "")
 	require.NoError(t, err)
 
 	assert.Contains(t, out.String(), "• Persistence: Enabled",
@@ -177,7 +177,7 @@ func TestRunPostStartSetups_OmitsPersistenceWhenContainerEnvLacksFlag(t *testing
 	var out bytes.Buffer
 	sink := output.NewPlainSink(&out)
 
-	err := runPostStartSetups(context.Background(), mockRT, sink, []config.ContainerConfig{cfg}, false, "", "", nil)
+	_, err := runPostStartSetups(context.Background(), mockRT, sink, []config.ContainerConfig{cfg}, false, "", "", nil, "")
 	require.NoError(t, err)
 
 	assert.NotContains(t, out.String(), "• Persistence:")
@@ -283,10 +283,11 @@ func TestSelectContainersToStart_AttachesWhenExternalContainerOnConfiguredPort(t
 	var out bytes.Buffer
 	sink := output.NewPlainSink(&out)
 
-	result, err := selectContainersToStart(context.Background(), mockRT, sink, nil, []runtime.ContainerConfig{c}, "", "")
+	result, alreadyRunning, err := selectContainersToStart(context.Background(), mockRT, sink, nil, []runtime.ContainerConfig{c}, "", "")
 
 	require.NoError(t, err)
 	assert.Empty(t, result, "container should be skipped (already running)")
+	assert.Len(t, alreadyRunning, 1)
 	assert.Contains(t, out.String(), "already running")
 	assert.NotContains(t, out.String(), "config specifies")
 }
@@ -312,10 +313,11 @@ func TestSelectContainersToStart_AttachesWhenExternalContainerVersionDiffers(t *
 	var out bytes.Buffer
 	sink := output.NewPlainSink(&out)
 
-	result, err := selectContainersToStart(context.Background(), mockRT, sink, nil, []runtime.ContainerConfig{c}, "", "")
+	result, alreadyRunning, err := selectContainersToStart(context.Background(), mockRT, sink, nil, []runtime.ContainerConfig{c}, "", "")
 
 	require.NoError(t, err)
 	assert.Empty(t, result, "container should be skipped (already running)")
+	assert.Len(t, alreadyRunning, 1)
 	assert.Contains(t, out.String(), "already running")
 }
 
@@ -345,10 +347,11 @@ func TestSelectContainersToStart_QueuesContainerWhenNoneRunningOnPort(t *testing
 
 	sink := output.NewPlainSink(io.Discard)
 
-	result, err := selectContainersToStart(context.Background(), mockRT, sink, nil, []runtime.ContainerConfig{c}, "", "")
+	result, alreadyRunning, err := selectContainersToStart(context.Background(), mockRT, sink, nil, []runtime.ContainerConfig{c}, "", "")
 
 	require.NoError(t, err)
 	assert.Equal(t, []runtime.ContainerConfig{c}, result, "container should be queued for start")
+	assert.Empty(t, alreadyRunning)
 }
 
 func TestSelectContainersToStart_ErrorsOnEmulatorTypeMismatch(t *testing.T) {
@@ -372,11 +375,12 @@ func TestSelectContainersToStart_ErrorsOnEmulatorTypeMismatch(t *testing.T) {
 	var out bytes.Buffer
 	sink := output.NewPlainSink(&out)
 
-	result, err := selectContainersToStart(context.Background(), mockRT, sink, mockTel, []runtime.ContainerConfig{c}, "", "")
+	result, alreadyRunning, err := selectContainersToStart(context.Background(), mockRT, sink, mockTel, []runtime.ContainerConfig{c}, "", "")
 
 	require.Error(t, err)
 	assert.True(t, output.IsSilent(err), "error should be silent since it was already emitted")
 	assert.Empty(t, result)
+	assert.Empty(t, alreadyRunning)
 	got := out.String()
 	assert.Contains(t, got, "LocalStack AWS Emulator is running on port 4566")
 	assert.Contains(t, got, "Your config specifies the LocalStack Snowflake Emulator")

@@ -63,6 +63,10 @@ func NewRootCmd(cfg *env.Env, tel *telemetry.Client, logger log.Logger) *cobra.C
 		// <name>` falls through to extension dispatch. Built-in commands are still
 		// matched by Cobra's command resolution first, so they always win.
 		Args: cobra.ArbitraryArgs,
+		// The bare invocation starts the emulator, so it gets the same JSON
+		// support as `lstk start`. Extension dispatch (args present) is unaffected:
+		// isExtensionDispatch already bypasses this regardless of the annotation.
+		Annotations: map[string]string{jsonSupportedAnnotation: "true"},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// A non-empty arg here means the first positional was not a built-in
 			// command (Cobra would have routed those to their own command), so it
@@ -74,10 +78,11 @@ func NewRootCmd(cfg *env.Env, tel *telemetry.Client, logger log.Logger) *cobra.C
 				_, endpointURL, _ := endpoint.ResolvedSource(cmd)
 				return dispatchExtension(cmd.Context(), cfg, tel, logger, args, endpointURL)
 			}
+			sink := jsonAwareSink(cmd, cfg, os.Stdout)
 			// The bare root command starts the emulator via the same
 			// startEmulator path as `lstk start` below, so it rejects
 			// --endpoint-url the same way.
-			if err := rejectEndpointURL(cmd, output.NewPlainSink(os.Stdout), "start"); err != nil {
+			if err := rejectEndpointURL(cmd, sink, "start"); err != nil {
 				return err
 			}
 			rt, err := runtime.NewDockerRuntime(cfg.DockerHost)
@@ -101,7 +106,7 @@ func NewRootCmd(cfg *env.Env, tel *telemetry.Client, logger log.Logger) *cobra.C
 			if err := applyTimeoutFlag(cmd, cfg); err != nil {
 				return err
 			}
-			return startEmulator(cmd.Context(), rt, cfg, tel, logger, persist, firstRun, snapshotFlag, noSnapshot, emulatorType)
+			return startEmulator(cmd.Context(), rt, cfg, tel, logger, sink, persist, firstRun, snapshotFlag, noSnapshot, emulatorType)
 		},
 	}
 
@@ -335,7 +340,7 @@ func buildStartOptions(cfg *env.Env, appConfig *config.Config, logger log.Logger
 	}
 }
 
-func startEmulator(ctx context.Context, rt runtime.Runtime, cfg *env.Env, tel *telemetry.Client, logger log.Logger, persist bool, firstRun bool, snapshotFlag string, noSnapshot bool, emulatorType config.EmulatorType) error {
+func startEmulator(ctx context.Context, rt runtime.Runtime, cfg *env.Env, tel *telemetry.Client, logger log.Logger, sink output.Sink, persist bool, firstRun bool, snapshotFlag string, noSnapshot bool, emulatorType config.EmulatorType) error {
 	appConfig, err := config.Get()
 	if err != nil {
 		return fmt.Errorf("failed to get config: %w", err)
@@ -347,11 +352,11 @@ func startEmulator(ctx context.Context, rt runtime.Runtime, cfg *env.Env, tel *t
 	}
 
 	// Apply the --type flag before resolving snapshot and start options so
-	// everything downstream reflects the selected emulator. Messages go to a plain
-	// sink even in interactive mode because the config mutation has to happen before
-	// the TUI starts (the auto-load loader and start options are built from it).
+	// everything downstream reflects the selected emulator. Uses the caller's
+	// sink even in interactive mode, since the config mutation has to happen
+	// before the TUI starts.
 	if emulatorType != "" {
-		newContainers, applyErr := container.ApplyEmulatorType(ctx, rt, output.NewPlainSink(os.Stdout), emulatorType, appConfig.Containers, firstRun, configPath)
+		newContainers, applyErr := container.ApplyEmulatorType(ctx, rt, sink, emulatorType, appConfig.Containers, firstRun, configPath)
 		if applyErr != nil {
 			return applyErr
 		}
@@ -393,7 +398,6 @@ func startEmulator(ctx context.Context, rt runtime.Runtime, cfg *env.Env, tel *t
 		})
 	}
 
-	sink := output.NewPlainSink(os.Stdout)
 	if firstRun && len(appConfig.Containers) > 0 {
 		emName := appConfig.Containers[0].Type.ShortName()
 		sink.Emit(output.MessageEvent{
@@ -402,14 +406,14 @@ func startEmulator(ctx context.Context, rt runtime.Runtime, cfg *env.Env, tel *t
 		})
 	}
 	update.NotifyUpdate(ctx, sink, update.NotifyOptions{GitHubToken: cfg.GitHubToken})
-	resolvedVersion, err := container.Start(ctx, rt, sink, opts, false)
+	result, err := container.Start(ctx, rt, sink, opts, false)
 	if err != nil {
 		return err
 	}
 	// Auto-load the configured snapshot only when the emulator was freshly started
-	// this run (resolvedVersion is empty when it was already running). This mirrors
-	// v1's AUTO_LOAD_POD: state is loaded as the emulator comes up, not on every invocation.
-	if autoLoad != nil && resolvedVersion != "" {
+	// this run, not when it was already running. This mirrors v1's AUTO_LOAD_POD:
+	// state is loaded as the emulator comes up, not on every invocation.
+	if autoLoad != nil && !result.AlreadyRunning {
 		if err := autoLoad(ctx, sink); err != nil {
 			return err
 		}
