@@ -30,8 +30,6 @@ The intended future adopters constrain the contract beyond pagers — whatever i
 | `cdk` | Approval prompts, long-running `watch`/progress output, child app processes |
 | `sam` | Guided-init input, long-running local servers, Docker/debugger children |
 
-Prototypes: **A** = branch `devx-1049-lstk-aws-paged-output-ignores-all-keyboard-input`, **B** = branch `worktree-devx-1049-pager-input`.
-
 ## Options at a glance
 
 | | Option A: input bridge | Option B: full virtualization |
@@ -85,7 +83,7 @@ Measured with a throwaway harness (an outer PTY driving each wrapper architectur
 
 Remaining inherent differences not in the table: on `MakeRaw` failure, A falls back to pipes (loses DEVX-1026 streaming), B degrades to today's output-only PTY (keeps it). ^C on long runs (`terraform apply` lock release) is delivered exactly once under both — different path, same outcome.
 
-Portable hygiene, adopted regardless of the decision: A's cancelable input pump (join + surfaced restore errors) and faketool pager-mode tests with SPACE/ENTER/q coverage; B's unit guards (termios restore, piped-stdin passthrough) and unix/windows file split.
+Hygiene adopted regardless of the decision: a cancelable input pump (cancel, join, surfaced restore errors), faketool pager-mode tests with SPACE/ENTER/q coverage, unit guards for termios restoration and piped-stdin passthrough, and a unix/windows file split.
 
 ## Adopter survey (measured)
 
@@ -105,14 +103,14 @@ Two cross-tool constants: real workflows depend on the non-TTY-stdin passthrough
 
 Setting `AWS_PAGER=`/`PAGER=cat` in the child env (or documenting it as a workaround) fixes today's two symptomatic commands in a few lines. Dismissed: it silently overrides user pager configuration, and it fixes only pagers — the proposal's scope is wrapped-tool *input* (terraform prompts, REPLs, extensions), which the env variable does nothing for. It remains the user-side workaround for unfixed versions.
 
-## Decision (proposed): Option B, with A's hygiene
+## Decision (proposed): Option B — full virtualization
 
 **Full virtualization.** B reproduced native behavior byte-for-byte across every tool and scenario measured; A's divergences are silent, intermittent, or configuration-dependent — the keystroke race, the wedged `terraform console`, CDK prompts dying without their cleanup path — exactly the shape of bug DEVX-1049 was. B's one cost measured milder than expected: ^Z becomes a silent no-op (stop signal discarded), so suspension is unavailable but nothing hangs; `ssh`/`docker run -it` precedent applies. We have no usage data on suspension; if suspending wrapped runs turns out to matter to users, that flips the decision (Open Questions). Either choice is a contained revert inside `internal/proc` until more proxies adopt PTY semantics — and per the survey, only `cdk` is a motivated next adopter; `terraform` and `sam` gain nothing from a PTY, so adoption should stay per-tool rather than assumed.
 
 ## Open Questions
 
 - **Flip condition:** does anyone rely on suspending a wrapped run (^Z/`fg`)? Under B it becomes a silent no-op; keeping it native means Option A, accepting the measured race and prompt/REPL breakage.
-- Under B, a later ^Z path is plausible (the pump spotting the VSUSP byte and stopping child and self so the shell regains control — the child never stops on its own, its orphaned group discards SIGTSTP) — unprototyped; shipping B first tells us whether anyone actually hits the gap before we pay for it.
+- Under B, a later ^Z path is plausible (the pump spotting the VSUSP byte and stopping child and self so the shell regains control — the child never stops on its own, its orphaned group discards SIGTSTP) — unvalidated; shipping B first tells us whether anyone actually hits the gap before we pay for it.
 - **Mixed stdio:** input activates only when lstk's stdin is a terminal, so a run with piped stdin whose output still pages (`producer | lstk aws ...` on a terminal) leaves the pager unresponsive under both options — feeding keys there would need a second input source (`/dev/tty`) alongside the byte-exact stdin pipe. Deliberately out of scope until someone hits it; the passthrough rule wins.
 - PTY adoption stays per-tool: the survey says `cdk` is the one motivated next adopter (prompts + progress), `terraform`/`sam` gain nothing. Does anyone see a reason to wrap them anyway (uniformity)?
 - Neither option forwards SIGWINCH (size snapshotted at start) — same follow-up either way, not a differentiator.

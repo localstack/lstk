@@ -8,7 +8,7 @@
 - **One of two architectures** (the subject of `design.md`, decision pending team discussion): an *input bridge* that relays keystrokes while the real terminal keeps signal duty, or *full terminal virtualization* where the inner PTY becomes the child's complete controlling terminal.
 - **Tests**: integration coverage for pager keystrokes (SPACE/ENTER/q) on both `aws` and `az`, plus guards for terminal-state restoration and redirected-stdin passthrough.
 
-Two working prototypes exist, one per architecture; `design.md` contrasts them and proposes full virtualization. `tasks.md` is implemented against that proposed option and will be revised if the team decides otherwise.
+`design.md` contrasts the two architectures with measured evidence and proposes full virtualization. `tasks.md` is implemented against that proposed option and will be revised if the team decides otherwise.
 
 ## Capabilities
 
