@@ -180,6 +180,29 @@ type EmulatorStartedEvent struct {
 	Persistence    bool
 }
 
+// EmulatorStatusResource mirrors emulator.Resource, kept local to avoid
+// internal/output importing internal/emulator.
+type EmulatorStatusResource struct {
+	Service string
+	Name    string
+	Region  string
+	Account string
+}
+
+// EmulatorStatusEvent reports one configured emulator's running/health
+// state, fired once per emulator including non-running ones.
+type EmulatorStatusEvent struct {
+	Type          string
+	Running       bool
+	Health        string
+	Name          string
+	Version       string
+	Host          string
+	UptimeSeconds int64
+	Persistence   bool
+	Resources     []EmulatorStatusResource
+}
+
 // UpdateCheckedEvent reports the result of an update check. It always fires
 // once per Check call — DevBuild, then Available, discriminate which of the
 // three possible outcomes (dev build skipped the check / already up to date /
@@ -238,6 +261,7 @@ func (SnapshotShownEvent) sealedEvent()       {}
 func (EmulatorStoppedEvent) sealedEvent()     {}
 func (EmulatorResetEvent) sealedEvent()       {}
 func (EmulatorStartedEvent) sealedEvent()     {}
+func (EmulatorStatusEvent) sealedEvent()      {}
 func (UpdateCheckedEvent) sealedEvent()       {}
 func (UpdateAppliedEvent) sealedEvent()       {}
 func (ContainerStatusEvent) sealedEvent()     {}

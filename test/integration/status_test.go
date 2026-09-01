@@ -235,6 +235,128 @@ func TestStatusCommandShowsNoResourcesWhenEmpty(t *testing.T) {
 	assert.Contains(t, stdout, "No resources deployed")
 }
 
+func TestStatusCommandJSONRunning(t *testing.T) {
+	requireDocker(t)
+	cleanup()
+	t.Cleanup(cleanup)
+
+	ctx := testContext(t)
+	startTestContainer(t, ctx)
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/_localstack/health":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = fmt.Fprintln(w, `{"version": "4.14.1", "services": {}}`)
+		case "/_localstack/resources":
+			w.Header().Set("Content-Type", "application/x-ndjson")
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+
+	stdout, stderr, err := runLstk(t, ctx, "", env.With(env.LocalStackHost, lsHost(server)), "status", "--json")
+	require.NoError(t, err, "lstk status --json failed: %s", stderr)
+	requireExitCode(t, 0, err)
+
+	envelope := decodeEnvelope(t, stdout)
+	assert.Equal(t, "ok", envelope.Status)
+	assert.Equal(t, "status", envelope.Command)
+	assert.Nil(t, envelope.Error)
+
+	var data struct {
+		Emulators []struct {
+			Type            string `json:"type"`
+			Running         bool   `json:"running"`
+			Health          string `json:"health"`
+			Name            string `json:"name"`
+			Version         string `json:"version"`
+			Host            string `json:"host"`
+			ResourceSummary *struct {
+				Resources int `json:"resources"`
+			} `json:"resourceSummary"`
+		} `json:"emulators"`
+	}
+	require.NoError(t, json.Unmarshal(envelope.Data, &data))
+	require.Len(t, data.Emulators, 1)
+	e := data.Emulators[0]
+	assert.Equal(t, "aws", e.Type)
+	assert.True(t, e.Running)
+	assert.Equal(t, "healthy", e.Health)
+	assert.Equal(t, containerName, e.Name)
+	assert.Equal(t, "4.14.1", e.Version)
+	assert.NotEmpty(t, e.Host)
+	assert.Nil(t, e.ResourceSummary, "resources should be excluded by default")
+}
+
+func TestStatusCommandJSONNotRunning(t *testing.T) {
+	requireDocker(t)
+	cleanup()
+	t.Cleanup(cleanup)
+
+	stdout, _, err := runLstk(t, testContext(t), "", testEnvWithHome(t.TempDir(), ""), "status", "--json")
+	require.NoError(t, err, "lstk status --json should succeed when not running")
+	requireExitCode(t, 0, err)
+
+	envelope := decodeEnvelope(t, stdout)
+	assert.Equal(t, "ok", envelope.Status)
+	assert.Nil(t, envelope.Error)
+
+	var data struct {
+		Emulators []map[string]json.RawMessage `json:"emulators"`
+	}
+	require.NoError(t, json.Unmarshal(envelope.Data, &data))
+	require.Len(t, data.Emulators, 1)
+	e := data.Emulators[0]
+	assert.JSONEq(t, `"aws"`, string(e["type"]))
+	assert.JSONEq(t, `false`, string(e["running"]))
+	assert.JSONEq(t, `null`, string(e["health"]))
+	assert.NotContains(t, e, "name", "a non-running emulator should omit detail fields entirely")
+}
+
+func TestStatusCommandJSONResourcesFlag(t *testing.T) {
+	requireDocker(t)
+	cleanup()
+	t.Cleanup(cleanup)
+
+	ctx := testContext(t)
+	startTestContainer(t, ctx)
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/_localstack/health":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = fmt.Fprintln(w, `{"version": "4.14.1", "services": {}}`)
+		case "/_localstack/resources":
+			w.Header().Set("Content-Type", "application/x-ndjson")
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+
+	stdout, stderr, err := runLstk(t, ctx, "", env.With(env.LocalStackHost, lsHost(server)), "status", "--json", "--resources")
+	require.NoError(t, err, "lstk status --json --resources failed: %s", stderr)
+	requireExitCode(t, 0, err)
+
+	envelope := decodeEnvelope(t, stdout)
+	var data struct {
+		Emulators []struct {
+			ResourceSummary *struct {
+				Resources int `json:"resources"`
+				Services  int `json:"services"`
+			} `json:"resourceSummary"`
+			Resources []json.RawMessage `json:"resources"`
+		} `json:"emulators"`
+	}
+	require.NoError(t, json.Unmarshal(envelope.Data, &data))
+	require.Len(t, data.Emulators, 1)
+	require.NotNil(t, data.Emulators[0].ResourceSummary, "--resources should include a resourceSummary")
+	assert.Equal(t, 0, data.Emulators[0].ResourceSummary.Resources)
+	assert.Empty(t, data.Emulators[0].Resources)
+}
+
 func fetchSnowflakeVersion(t *testing.T, hostPort string) string {
 	t.Helper()
 	resp, err := http.Get(fmt.Sprintf("http://localhost:%s/_localstack/health", hostPort))

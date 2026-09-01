@@ -18,7 +18,8 @@ import (
 
 func TestJSONFlagRejectsUnannotatedBuiltinCommand(t *testing.T) {
 	t.Parallel()
-	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), testEnvWithHome(t.TempDir(), ""), "status", "--json")
+	// login never touches Docker, unlike status.
+	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), testEnvWithHome(t.TempDir(), ""), "login", "--json")
 	requireExitCode(t, 1, err)
 	decodeEnvelope(t, stdout)
 	snap.MatchJSON(t, []byte(stdout))

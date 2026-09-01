@@ -19,21 +19,44 @@ import (
 )
 
 func newStatusCmd(cfg *env.Env) *cobra.Command {
-	return &cobra.Command{
-		Use:     "status",
-		Short:   "Show emulator status and deployed resources",
-		Long:    "Show the status of a running emulator and its deployed resources",
-		PreRunE: initConfigDeferCreate(nil),
+	cmd := &cobra.Command{
+		Use:         "status",
+		Short:       "Show emulator status and deployed resources",
+		Long:        "Show the status of a running emulator and its deployed resources",
+		PreRunE:     initConfigDeferCreate(nil),
+		Annotations: map[string]string{jsonSupportedAnnotation: "true"},
 		RunE: func(cmd *cobra.Command, args []string) error {
-			target, err := endpoint.Resolve(cmd.Context(), cmd)
-			if err != nil {
-				return err
-			}
+			sink := jsonAwareSink(cmd, cfg, os.Stdout)
 
 			clients := map[config.EmulatorType]emulator.Client{
 				config.EmulatorAWS:       aws.NewClient(),
 				config.EmulatorSnowflake: snowflake.NewClient(),
 				config.EmulatorAzure:     azure.NewClient(),
+			}
+
+			if cfg.JSON {
+				// Check before endpoint.Resolve, which dials the target.
+				if _, _, ok := endpoint.ResolvedSource(cmd); ok {
+					err := fmt.Errorf("status --json does not yet support --endpoint-url")
+					sink.Emit(output.ErrorEvent{Title: err.Error(), Code: output.ErrValidationError})
+					return output.NewSilentError(err)
+				}
+
+				rt, err := runtime.NewDockerRuntime(cfg.DockerHost)
+				if err != nil {
+					return err
+				}
+				appCfg, err := config.Get()
+				if err != nil {
+					return failGetConfig(sink, cfg, err)
+				}
+				includeResources, _ := cmd.Flags().GetBool("resources")
+				return container.StatusJSON(cmd.Context(), rt, appCfg.Containers, cfg.LocalStackHost, clients, sink, includeResources)
+			}
+
+			target, err := endpoint.Resolve(cmd.Context(), cmd)
+			if err != nil {
+				return err
 			}
 
 			if target != nil {
@@ -58,4 +81,6 @@ func newStatusCmd(cfg *env.Env) *cobra.Command {
 			return container.Status(cmd.Context(), rt, appCfg.Containers, cfg.LocalStackHost, clients, output.NewPlainSink(os.Stdout))
 		},
 	}
+	cmd.Flags().Bool("resources", false, "Include deployed resource details (--json only)")
+	return cmd
 }
