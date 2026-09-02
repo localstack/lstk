@@ -37,6 +37,11 @@ import (
 // translates that trailing "\n" again — so a line ends "\r\r\n". Without the inner
 // PTY, lstk writes plain "\n" and only the outer PTY translates: "\r\n". The
 // doubled CR is therefore a direct, az-independent signature of the inner PTY.
+//
+// The signature is only valid while lstk's stdin is NOT a terminal: with stdin
+// on the outer PTY, the DEVX-1049 input wiring switches that terminal to raw
+// mode (OPOST off), the outer translation disappears, and inner-PTY output ends
+// in a single "\r\n" instead.
 func hasInnerPTYLineEndings(out string) bool {
 	return strings.Contains(out, "\r\r\n")
 }
@@ -93,13 +98,27 @@ func TestAzE2ERealCLIOnPTYPreservesOutput(t *testing.T) {
 	assert.NotContains(t, pipedOut, "\r", "a redirected stdout must stay a pipe, so the Azure CLI emits bare LFs")
 	assert.Equal(t, "LocalStack", cloudNameFromJSON(t, pipedOut))
 
-	// PTY path: the real az ran on a terminal, and its output is still valid JSON
-	// once the PTY's CRs are stripped — the property a `lstk az ... -o json`
-	// consumer depends on.
-	ptyOut := runLstkAzInPTY(t, ctx, workDir, baseEnv, "az", "cloud", "show", "-o", "json")
+	// Output-only PTY path: stdin redirected to /dev/null keeps the DEVX-1049
+	// input wiring off, so the outer terminal stays cooked and the inner PTY
+	// shows up as the doubled-CR signature — the real az ran on a terminal,
+	// and its output is still valid JSON once the PTY's CRs are stripped.
+	devNull, err := os.Open(os.DevNull)
+	require.NoError(t, err)
+	defer func() { _ = devNull.Close() }()
+	ptyOut := runLstkAzInPTY(t, ctx, workDir, baseEnv, devNull, "az", "cloud", "show", "-o", "json")
 	assert.True(t, hasInnerPTYLineEndings(ptyOut),
 		"the real Azure CLI must run on a PTY when lstk's stdout and stderr are terminals (DEVX-1028); got:\n%q", ptyOut)
 	assert.Equal(t, "LocalStack", cloudNameFromJSON(t, ptyOut))
+
+	// Interactive PTY path: with stdin on the terminal, DEVX-1049 switches the
+	// user's terminal to raw mode, so the doubled CR cannot appear — the inner
+	// PTY's single "\r\n" must, and the JSON must stay usable.
+	interOut := runLstkAzInPTY(t, ctx, workDir, baseEnv, nil, "az", "cloud", "show", "-o", "json")
+	assert.Contains(t, interOut, "\r\n",
+		"inner-PTY output must carry the PTY's CRLF translation; got:\n%q", interOut)
+	assert.False(t, hasInnerPTYLineEndings(interOut),
+		"with interactive stdin the outer terminal is raw (DEVX-1049), so the doubled-CR signature must not appear; got:\n%q", interOut)
+	assert.Equal(t, "LocalStack", cloudNameFromJSON(t, interOut))
 }
 
 // cloudNameFromJSON extracts .name from an `az cloud show -o json` payload,
@@ -122,7 +141,9 @@ func cloudNameFromJSON(t *testing.T, out string) string {
 // runLstkAzInPTY runs lstk on a PTY and returns everything it wrote once it
 // exits. It does not use runLstkInPTY because that helper takes no working
 // directory, and `lstk az` resolves its emulator config project-locally.
-func runLstkAzInPTY(t *testing.T, ctx context.Context, workDir string, environ []string, args ...string) string {
+// stdin overrides lstk's stdin (xpty only attaches the PTY slave to a nil
+// cmd.Stdin); pass nil to leave stdin on the PTY.
+func runLstkAzInPTY(t *testing.T, ctx context.Context, workDir string, environ []string, stdin *os.File, args ...string) string {
 	t.Helper()
 	binPath, err := filepath.Abs(binaryPath())
 	require.NoError(t, err)
@@ -130,6 +151,12 @@ func runLstkAzInPTY(t *testing.T, ctx context.Context, workDir string, environ [
 	cmd := exec.CommandContext(ctx, binPath, args...)
 	cmd.Dir = workDir
 	cmd.Env = environ
+	if stdin != nil {
+		cmd.Stdin = stdin
+		// fd 0 is no longer the PTY slave, so the controlling-terminal ioctl
+		// (Setctty inside startCmdInPTY) must target stdout instead.
+		setCttyToStdout(cmd)
+	}
 	p := startCmdInPTY(t, ctx, cmd)
 
 	type result struct {

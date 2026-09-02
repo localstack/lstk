@@ -20,3 +20,15 @@ func makeSessionLeader(cmd *exec.Cmd) {
 	cmd.SysProcAttr.Setsid = true
 	cmd.SysProcAttr.Setctty = true
 }
+
+// setCttyToStdout points Setctty's controlling-terminal ioctl at the child's
+// fd 1 instead of the default fd 0. Needed by PTY tests that redirect stdin
+// off the PTY (e.g. to /dev/null): fd 0 is then not a terminal and exec would
+// fail, while stdout still holds the PTY slave. Call before startCmdInPTY —
+// makeSessionLeader preserves an existing SysProcAttr.
+func setCttyToStdout(cmd *exec.Cmd) {
+	if cmd.SysProcAttr == nil {
+		cmd.SysProcAttr = &syscall.SysProcAttr{}
+	}
+	cmd.SysProcAttr.Ctty = 1
+}
