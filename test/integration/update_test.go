@@ -411,10 +411,22 @@ func npmPlatformPackage() string {
 // given version stamped in, writing it to outPath.
 func buildLstkWithVersion(t *testing.T, ctx context.Context, version, outPath string) {
 	t.Helper()
+	buildLstkWithBundledSet(t, ctx, version, "", outPath)
+}
+
+// buildLstkWithBundledSet builds lstk with both release stamps the updater
+// reads: the version, and the bundled set this release is expected to ship
+// (empty for a release that ships none, which is every release today).
+func buildLstkWithBundledSet(t *testing.T, ctx context.Context, version, bundledSet, outPath string) {
+	t.Helper()
 	repoRoot, err := filepath.Abs("../..")
 	require.NoError(t, err)
+	ldflags := "-X github.com/localstack/lstk/internal/version.version=" + version
+	if bundledSet != "" {
+		ldflags += " -X github.com/localstack/lstk/internal/version.bundledSet=" + bundledSet
+	}
 	buildCmd := exec.CommandContext(ctx, "go", "build",
-		"-ldflags", "-X github.com/localstack/lstk/internal/version.version="+version,
+		"-ldflags", ldflags,
 		"-o", outPath,
 		".",
 	)
@@ -433,32 +445,50 @@ func releaseAssetName(ver string) string {
 	return fmt.Sprintf("lstk_%s_%s_%s.%s", ver, runtime.GOOS, runtime.GOARCH, ext)
 }
 
+// releaseMember is one file at the root of a release archive.
+type releaseMember struct {
+	name string
+	body []byte
+	mode os.FileMode
+}
+
 // packageReleaseArchive wraps binary bytes into the release archive format the
 // updater extracts: a tar.gz (zip on Windows) with a single executable entry.
 func packageReleaseArchive(t *testing.T, binaryName string, binary []byte) []byte {
 	t.Helper()
+	return packageReleaseArchiveWith(t, []releaseMember{{name: binaryName, body: binary, mode: 0o755}})
+}
+
+// packageReleaseArchiveWith builds a release archive carrying the given members
+// at its root, so a test can express a case as "an archive containing X".
+func packageReleaseArchiveWith(t *testing.T, members []releaseMember) []byte {
+	t.Helper()
 	var buf bytes.Buffer
 	if runtime.GOOS == "windows" {
 		zw := zip.NewWriter(&buf)
-		hdr := &zip.FileHeader{Name: binaryName, Method: zip.Deflate}
-		hdr.SetMode(0o755)
-		w, err := zw.CreateHeader(hdr)
-		require.NoError(t, err)
-		_, err = w.Write(binary)
-		require.NoError(t, err)
+		for _, m := range members {
+			hdr := &zip.FileHeader{Name: m.name, Method: zip.Deflate}
+			hdr.SetMode(m.mode)
+			w, err := zw.CreateHeader(hdr)
+			require.NoError(t, err)
+			_, err = w.Write(m.body)
+			require.NoError(t, err)
+		}
 		require.NoError(t, zw.Close())
 		return buf.Bytes()
 	}
 	gw := gzip.NewWriter(&buf)
 	tw := tar.NewWriter(gw)
-	require.NoError(t, tw.WriteHeader(&tar.Header{
-		Name:     binaryName,
-		Mode:     0o755,
-		Size:     int64(len(binary)),
-		Typeflag: tar.TypeReg,
-	}))
-	_, err := tw.Write(binary)
-	require.NoError(t, err)
+	for _, m := range members {
+		require.NoError(t, tw.WriteHeader(&tar.Header{
+			Name:     m.name,
+			Mode:     int64(m.mode),
+			Size:     int64(len(m.body)),
+			Typeflag: tar.TypeReg,
+		}))
+		_, err := tw.Write(m.body)
+		require.NoError(t, err)
+	}
 	require.NoError(t, tw.Close())
 	require.NoError(t, gw.Close())
 	return buf.Bytes()
@@ -640,4 +670,136 @@ func TestUpdateBinaryMockGitHubMissingChecksums(t *testing.T) {
 	leftovers, err := filepath.Glob(filepath.Join(filepath.Dir(oldBinary), "lstk-update-*"))
 	require.NoError(t, err)
 	assert.Empty(t, leftovers, "aborted update must not leave temp files behind")
+}
+
+// bundledSetMembers is the archive-root names of the set a bundling release
+// ships on this platform: the multi-call extensions binary and the descriptions
+// file. It is what the release stamps into the binary via ldflags.
+func bundledSetMembers() (bundledBinary, descriptions string) {
+	bundledBinary = "bundled-extensions"
+	if runtime.GOOS == "windows" {
+		bundledBinary += ".exe"
+	}
+	return bundledBinary, "lstk-extensions.toml"
+}
+
+// TestUpdateRepairsIncompleteBundledSet is the transition case end to end: a
+// user whose old updater installed only the lstk binary is left current but
+// without bundled extensions, and cannot wait for a newer release to get them.
+// `lstk update` must notice the incomplete set, reinstall the same version, and
+// land the missing members.
+func TestUpdateRepairsIncompleteBundledSet(t *testing.T) {
+	t.Parallel()
+	ctx := testContext(t)
+
+	binaryName := "lstk"
+	if runtime.GOOS == "windows" {
+		binaryName = "lstk.exe"
+	}
+	bundledBinary, descriptions := bundledSetMembers()
+
+	// The installed binary is already the latest version, and was built by the
+	// bundling release — but its install directory holds nothing else, exactly
+	// as a pre-bundling updater would have left it.
+	installDir := t.TempDir()
+	installed := filepath.Join(installDir, binaryName)
+	buildLstkWithBundledSet(t, ctx, "0.0.2", bundledBinary+","+descriptions, installed)
+
+	newBytes, err := os.ReadFile(installed)
+	require.NoError(t, err)
+	archive := packageReleaseArchiveWith(t, []releaseMember{
+		{name: binaryName, body: newBytes, mode: 0o755},
+		{name: bundledBinary, body: []byte("multi-call extensions binary"), mode: 0o755},
+		{name: descriptions, body: []byte("deploy = \"Deploy your application\"\n"), mode: 0o644},
+	})
+	sum := sha256.Sum256(archive)
+	assetName := releaseAssetName("0.0.2")
+	srv := mockGitHubReleaseServer(t, "v0.0.2", map[string][]byte{
+		"checksums.txt": []byte(fmt.Sprintf("%s  %s\n", hex.EncodeToString(sum[:]), assetName)),
+		assetName:       archive,
+	})
+
+	updateCmd := exec.CommandContext(ctx, installed, "update", "--non-interactive")
+	updateCmd.Env = mockGitHubEnv(t, srv)
+	out, err := updateCmd.CombinedOutput()
+	outStr := string(out)
+	require.NoError(t, err, "lstk update failed: %s", outStr)
+	requireExitCode(t, 0, err)
+
+	assert.NotContains(t, outStr, "Already up to date",
+		"a current binary with an incomplete set must not short-circuit: %s", outStr)
+	assert.Contains(t, outStr, "Bundled extensions are missing", "should state the finding")
+	assert.Contains(t, outStr, "Reinstalling 0.0.2 to restore bundled extensions",
+		"the apply path should narrate the reinstall: %s", outStr)
+
+	// The missing members are now installed where lstk resolves them.
+	body, err := os.ReadFile(filepath.Join(installDir, bundledBinary))
+	require.NoError(t, err, "the multi-call binary should have been installed")
+	assert.Equal(t, "multi-call extensions binary", string(body))
+	body, err = os.ReadFile(filepath.Join(installDir, descriptions))
+	require.NoError(t, err, "the descriptions file should have been installed")
+	assert.Equal(t, "deploy = \"Deploy your application\"\n", string(body))
+
+	leftovers, err := filepath.Glob(filepath.Join(installDir, "*.lstk-new"))
+	require.NoError(t, err)
+	assert.Empty(t, leftovers, "a completed update leaves no staging files")
+}
+
+// TestUpdateReportsUpToDateWhenBundledSetComplete is the other half of the
+// repair gate: with the version unchanged and the set complete, the ordinary
+// up-to-date path must stay exactly as cheap as it was. The mock release serves
+// no checksums.txt and no archive, so any attempt to download would fail the
+// update loudly rather than pass unnoticed.
+func TestUpdateReportsUpToDateWhenBundledSetComplete(t *testing.T) {
+	t.Parallel()
+	ctx := testContext(t)
+
+	binaryName := "lstk"
+	if runtime.GOOS == "windows" {
+		binaryName = "lstk.exe"
+	}
+	bundledBinary, descriptions := bundledSetMembers()
+
+	installDir := t.TempDir()
+	installed := filepath.Join(installDir, binaryName)
+	buildLstkWithBundledSet(t, ctx, "0.0.2", bundledBinary+","+descriptions, installed)
+	require.NoError(t, os.WriteFile(filepath.Join(installDir, bundledBinary), []byte("multi-call"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(installDir, descriptions), []byte("deploy = \"Deploy\"\n"), 0o644))
+
+	srv := mockGitHubReleaseServer(t, "v0.0.2", map[string][]byte{})
+
+	updateCmd := exec.CommandContext(ctx, installed, "update", "--non-interactive")
+	updateCmd.Env = mockGitHubEnv(t, srv)
+	out, err := updateCmd.CombinedOutput()
+	outStr := string(out)
+	require.NoError(t, err, "lstk update should succeed without downloading anything: %s", outStr)
+	requireExitCode(t, 0, err)
+	assert.Contains(t, outStr, "Already up to date", "output was: %s", outStr)
+	assert.NotContains(t, outStr, "Downloading", "a complete set must not trigger a download: %s", outStr)
+}
+
+// TestUpdateIgnoresBundledSetOnPreBundlingRelease pins the rollback and
+// pre-bundling behavior: a binary that ships no bundle never probes the install
+// directory, so its up-to-date path is unchanged even with nothing beside it.
+func TestUpdateIgnoresBundledSetOnPreBundlingRelease(t *testing.T) {
+	t.Parallel()
+	ctx := testContext(t)
+
+	binaryName := "lstk"
+	if runtime.GOOS == "windows" {
+		binaryName = "lstk.exe"
+	}
+	installDir := t.TempDir()
+	installed := filepath.Join(installDir, binaryName)
+	buildLstkWithVersion(t, ctx, "0.0.2", installed)
+
+	srv := mockGitHubReleaseServer(t, "v0.0.2", map[string][]byte{})
+
+	updateCmd := exec.CommandContext(ctx, installed, "update", "--non-interactive")
+	updateCmd.Env = mockGitHubEnv(t, srv)
+	out, err := updateCmd.CombinedOutput()
+	outStr := string(out)
+	require.NoError(t, err, "lstk update failed: %s", outStr)
+	assert.Contains(t, outStr, "Already up to date", "output was: %s", outStr)
+	assert.NotContains(t, outStr, "Bundled extensions are missing", "output was: %s", outStr)
 }

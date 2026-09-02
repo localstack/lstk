@@ -87,6 +87,26 @@ func TestEnvelopeSink_UpdateCheckedEvent(t *testing.T) {
 	if _, hasApplied := data["updated"]; hasApplied {
 		t.Fatalf("did not expect an 'updated' key from UpdateCheckedEvent: %+v", data)
 	}
+	if _, hasRepair := data["repairBundled"]; hasRepair {
+		t.Fatalf("repairBundled must be absent on an ordinary check: %+v", data)
+	}
+}
+
+// TestEnvelopeSink_UpdateCheckedRepairBundled covers the same-version
+// bundled-set repair: the version fields differ only by the "v" prefix, so
+// the repairBundled key is the only way a JSON consumer can tell a repair
+// from an ordinary upgrade.
+func TestEnvelopeSink_UpdateCheckedRepairBundled(t *testing.T) {
+	t.Parallel()
+
+	sink := NewEnvelopeSink(FormatJSON)
+	sink.Emit(UpdateCheckedEvent{CurrentVersion: "2.3.0", LatestVersion: "v2.3.0", Available: true, RepairBundled: true})
+
+	envelope := sink.Result("update", nil)
+	data := envelope.Data.(map[string]any)
+	if data["updateAvailable"] != true || data["repairBundled"] != true {
+		t.Fatalf("unexpected data: %+v", data)
+	}
 }
 
 // TestEnvelopeSink_UpdateCheckedEnvelopeJSON pins the full serialized

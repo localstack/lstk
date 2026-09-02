@@ -252,6 +252,7 @@ Codes: `EMULATOR_NOT_CONFIGURED` (no AWS container configured), `EMULATOR_NOT_RU
   "error": null
 }
 ```
+When the installed version is current but its bundled-extension set is incomplete, `updateAvailable` is `true` with `currentVersion` equal to `latestVersion` (modulo the `v` prefix) and the check shape additionally carries `"repairBundled": true` — the key is absent otherwise, and is what distinguishes a same-version repair from an ordinary upgrade.
 ```json
 {
   "schemaVersion": 1,

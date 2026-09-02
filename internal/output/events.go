@@ -169,15 +169,21 @@ type EmulatorResetEvent struct {
 }
 
 // UpdateCheckedEvent reports the result of an update check. It always fires
-// once per Check call — DevBuild, then Available, discriminate which of the
-// three possible outcomes (dev build skipped the check / already up to date /
-// an update is available) the formatter should render. LatestVersion is empty
-// when DevBuild is true (the check never ran).
+// once per Check call — DevBuild, then RepairBundled, then Available,
+// discriminate which of the four possible outcomes (dev build skipped the
+// check / already up to date / the installed set is incomplete and is being
+// repaired / an update is available) the formatter should render.
+// LatestVersion is empty when DevBuild is true (the check never ran).
 type UpdateCheckedEvent struct {
 	CurrentVersion string
 	LatestVersion  string
 	Available      bool
 	DevBuild       bool
+	// RepairBundled reports that the check found the installed version current
+	// but its bundled-extension set incomplete, so the update reinstalls the
+	// same version rather than reporting "already up to date". Implies
+	// Available, and CurrentVersion equals LatestVersion.
+	RepairBundled bool
 }
 
 // UpdateAppliedEvent reports that an update was downloaded and installed.
