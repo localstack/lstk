@@ -1,3 +1,52 @@
+// Package update implements lstk's self-update: checking GitHub for a newer
+// release and applying it through whichever mechanism installed lstk (Homebrew,
+// npm, or replacing the binary in place).
+//
+// # What a binary-channel update installs
+//
+// An update installs the whole version-matched set a release archive carries —
+// the lstk binary, the multi-call "bundled-extensions" binary that provides
+// every bundled extension, and the descriptions file — not just lstk. Homebrew
+// and npm get this for free by replacing the whole package; the binary channel
+// implements it in extract.go as stage-then-commit: every member is copied next
+// to its destination under a ".lstk-new" name, and only once all copies succeed
+// is each renamed over its final name, lstk last.
+//
+// # The guarantee
+//
+// This is not atomicity across files, which POSIX cannot deliver. It is three
+// specific promises, and the reason the code is shaped the way it is. Preserve
+// them through any refactor:
+//
+//  1. A file visible under its real name is never truncated or half-written.
+//     New content is only ever written to a staging name; a final name only
+//     ever changes by rename, which is atomic within a directory.
+//  2. An interrupted update is repaired by re-running `lstk update`. Nothing
+//     is committed until every member is staged, staging files left by an
+//     interrupted run are cleaned up before the next one stages, and lstk
+//     itself commits last — so an interruption leaves the user either on their
+//     previous complete version or on a fully committed new one, and never in
+//     a state a re-run cannot resolve.
+//  3. The updater never deletes an "lstk-*" file that the new archive does not
+//     contain. It cannot distinguish a bundled extension a release dropped
+//     from one the user put there, and the descriptions file is not an
+//     ownership manifest (a bundled binary is permitted to have no
+//     description). The binary channel is therefore additive-only: a dropped
+//     extension keeps working and shows name-only in help, because the
+//     replaced descriptions file no longer describes it. Homebrew and npm
+//     remove such files naturally via whole-package replacement. See design
+//     Decision 4 of the add-bundled-extension-distribution change for the full
+//     reasoning.
+//
+// A release archive carrying only lstk — every pre-bundling release, and any
+// rollback to one — is a valid set of size one and installs exactly as it did
+// before bundling existed. When an archive does carry extensions they are not
+// optional: a member that fails to stage or commit fails the whole update and
+// names the member, rather than reporting success with a partial set.
+//
+// An install can also be current and still incomplete, which no version
+// comparison can detect; missingBundledMembers explains when that happens and
+// how `lstk update` repairs it.
 package update
 
 import (
@@ -11,13 +60,20 @@ import (
 	"github.com/localstack/lstk/internal/version"
 )
 
-// Check reports whether a newer version is available. Returns the latest
-// version string and true if an update is available. Always emits exactly one
-// UpdateCheckedEvent, whose DevBuild/Available fields tell the sink which of
-// the three possible outcomes (dev build skipped / already up to date / an
-// update is available) occurred.
+// Check reports whether `lstk update` has work to do. Returns the latest
+// version string and true when an update should be applied. Always emits
+// exactly one UpdateCheckedEvent, whose DevBuild/RepairBundled/Available fields
+// tell the sink which of the four possible outcomes (dev build skipped /
+// already up to date / an update is available / the installed set is
+// incomplete and is being repaired) occurred.
 func Check(ctx context.Context, sink output.Sink, githubToken string) (string, bool, error) {
-	current := version.Version()
+	return checkWithVersion(ctx, sink, githubToken, version.Version(), missingBundledMembers)
+}
+
+// checkWithVersion is Check with the running version and the set-completeness
+// probe as parameters, mirroring checkQuietlyWithVersion, so both can be driven
+// from a test.
+func checkWithVersion(ctx context.Context, sink output.Sink, githubToken, current string, missingMembers func() []string) (string, bool, error) {
 	if current == "dev" {
 		sink.Emit(output.UpdateCheckedEvent{CurrentVersion: current, DevBuild: true})
 		return "", false, nil
@@ -33,7 +89,22 @@ func Check(ctx context.Context, sink output.Sink, githubToken string) (string, b
 	}
 
 	available := normalizeVersion(current) != normalizeVersion(latest)
-	sink.Emit(output.UpdateCheckedEvent{CurrentVersion: current, LatestVersion: latest, Available: available})
+
+	// An install can be current and still incomplete — see
+	// missingBundledMembers for how that happens and why the version
+	// comparison alone cannot detect it. The probe only runs when the versions
+	// match, so the ordinary up-to-date path costs exactly what it did before.
+	repair := false
+	if !available && len(missingMembers()) > 0 {
+		available, repair = true, true
+	}
+
+	sink.Emit(output.UpdateCheckedEvent{
+		CurrentVersion: current,
+		LatestVersion:  latest,
+		Available:      available,
+		RepairBundled:  repair,
+	})
 	return latest, available, nil
 }
 
@@ -46,6 +117,17 @@ func Update(ctx context.Context, sink output.Sink, checkOnly bool, githubToken s
 	}
 	if !available || checkOnly {
 		return nil
+	}
+
+	// Available with an unchanged version can only mean a bundled-set repair
+	// (UpdateCheckedEvent.RepairBundled documents the equivalence). The checked
+	// event states only the finding, because it also renders under --check;
+	// the reinstall is narrated here, where it actually happens.
+	if normalizeVersion(current) == normalizeVersion(latest) {
+		sink.Emit(output.MessageEvent{
+			Severity: output.SeverityNote,
+			Text:     fmt.Sprintf("Reinstalling %s to restore bundled extensions", current),
+		})
 	}
 
 	method, err := applyUpdate(ctx, sink, latest, githubToken)
