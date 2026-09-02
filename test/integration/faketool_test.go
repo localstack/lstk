@@ -35,6 +35,7 @@ type fakeToolConfig struct {
 	RecordContent string         `json:"recordContent,omitempty"`
 	DumpFile      string         `json:"dumpFile,omitempty"`
 	DumpPrefix    string         `json:"dumpPrefix,omitempty"`
+	Pager         bool           `json:"pager,omitempty"`
 	ExitCode      int            `json:"exitCode,omitempty"`
 }
 
