@@ -17,6 +17,7 @@ Every `error.code` value emitted in a JSON envelope SHALL be one of a fixed, doc
 | `CREDENTIALS_MISSING` | Required third-party credentials (e.g. AWS credentials for an S3 remote) could not be resolved | No | `AUTH` |
 | `LICENSE_INVALID` | The platform rejected the configured license/token | No | `AUTH` |
 | `LICENSE_UNSUPPORTED_TAG` | The configured image tag is not covered by the license | No | `AUTH` |
+| `LICENSE_NOT_COVERED` | The token is valid but the plan does not include the requested emulator | No | `AUTH` |
 | `SNAPSHOT_NOT_FOUND` | The referenced snapshot does not exist | No | `RESOURCE` |
 | `SNAPSHOT_INVALID_REF` | The snapshot reference could not be parsed | No | `RESOURCE` |
 | `SNAPSHOT_REMOTE_ERROR` | A platform or S3 remote call failed | Yes | `RESOURCE` |
@@ -26,6 +27,7 @@ Every `error.code` value emitted in a JSON envelope SHALL be one of a fixed, doc
 | `INTEGRATION_NOT_SET_UP` | A required one-time setup step (e.g. `lstk setup azure`) has not been run | No | `CONFIG` |
 | `DEPENDENCY_MISSING` | A required external CLI (e.g. `az`) is not on `PATH` | No | `RUNTIME` |
 | `DNS_RESOLUTION_REQUIRED` | A required hostname pattern does not resolve | No | `RUNTIME` |
+| `PORT_CONFLICT` | A port lstk needs is already bound by something else | No | `RUNTIME` |
 | `CONFIRMATION_REQUIRED` | A destructive action needs `--force` outside an interactive terminal | No | `USAGE` |
 | `VALIDATION_ERROR` | A semantically invalid combination of flags/arguments was given | No | `USAGE` |
 | `USAGE_ERROR` | Cobra-level flag or argument parsing failed | No | `USAGE` |

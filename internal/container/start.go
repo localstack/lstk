@@ -33,6 +33,29 @@ const envPersistenceEnabled = "LOCALSTACK_PERSISTENCE=1"
 
 type postStartSetupFunc func(ctx context.Context, sink output.Sink, interactive bool, resolvedHost string) error
 
+// StartResult is the outcome of a Start call: which emulator ended up
+// running, whether it was already running, and how to reach it.
+type StartResult struct {
+	Type           config.EmulatorType
+	Container      string
+	Endpoint       string
+	Version        string
+	AlreadyRunning bool
+	Persistence    bool
+}
+
+// emulatorStartedEvent converts a StartResult to the matching output event.
+func emulatorStartedEvent(r StartResult) output.EmulatorStartedEvent {
+	return output.EmulatorStartedEvent{
+		Type:           string(r.Type),
+		Container:      r.Container,
+		Endpoint:       r.Endpoint,
+		Version:        r.Version,
+		AlreadyRunning: r.AlreadyRunning,
+		Persistence:    r.Persistence,
+	}
+}
+
 // StartOptions groups the user-provided options for starting an emulator.
 type StartOptions struct {
 	PlatformClient   api.PlatformAPI
@@ -51,7 +74,7 @@ type StartOptions struct {
 	AuthOptions []auth.Option
 }
 
-func Start(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts StartOptions, interactive bool) (string, error) {
+func Start(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts StartOptions, interactive bool) (StartResult, error) {
 	// Fail fast on unsupported multi-container configs before any health/auth
 	// checks or image pulls, so we don't leave a partial startup that later dies
 	// on container-name conflicts or shared port collisions.
@@ -60,37 +83,39 @@ func Start(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts Start
 			Title:   "Unsupported configuration",
 			Summary: err.Error(),
 			Actions: []output.ErrorAction{{Label: "Edit your config file so only one [[containers]] block is enabled:", Value: "lstk config path"}},
+			Code:    output.ErrConfigInvalid,
 		})
-		return "", output.NewSilentError(err)
+		return StartResult{}, output.NewSilentError(err)
 	}
 
 	if err := rt.IsHealthy(ctx); err != nil {
 		rt.EmitUnhealthyError(sink, err)
-		return "", output.NewSilentError(fmt.Errorf("runtime not healthy: %w", err))
+		return StartResult{}, output.NewSilentError(fmt.Errorf("runtime not healthy: %w", err))
 	}
 
 	licenseFilePath, err := config.LicenseFilePath()
 	if err != nil {
-		return "", fmt.Errorf("failed to determine license file path: %w", err)
+		return StartResult{}, fmt.Errorf("failed to determine license file path: %w", err)
 	}
 
 	tokenStorage, err := auth.NewTokenStorage(opts.ForceFileKeyring, opts.Logger)
 	if err != nil {
-		return "", fmt.Errorf("failed to initialize token storage: %w", err)
+		return StartResult{}, fmt.Errorf("failed to initialize token storage: %w", err)
 	}
 	a := auth.New(sink, opts.PlatformClient, tokenStorage, opts.AuthToken, opts.WebAppURL, interactive, licenseFilePath, opts.AuthOptions...)
 
 	token, err := a.GetToken(ctx)
 	if err != nil {
-		return "", err
+		sink.Emit(output.ErrorEvent{Title: err.Error(), Code: output.ErrAuthRequired})
+		return StartResult{}, output.NewSilentError(err)
 	}
 
 	opts.Telemetry.SetAuthToken(token)
 
-	version, err := startOnce(ctx, rt, sink, opts, interactive, token, licenseFilePath, false)
+	result, err := startOnce(ctx, rt, sink, opts, interactive, token, licenseFilePath, false)
 	var rejErr *licenseRejectedError
 	if err == nil || !errors.As(err, &rejErr) {
-		return version, err
+		return result, err
 	}
 
 	// The platform definitively rejected the token/license (validateLicense has
@@ -100,18 +125,18 @@ func Start(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts Start
 	if interactive && promptRelogin(ctx, sink, rejErr.licErr) {
 		newToken, loginErr := a.Relogin(ctx)
 		if loginErr != nil {
-			return "", loginErr
+			return StartResult{}, loginErr
 		}
 		opts.Telemetry.SetAuthToken(newToken)
-		version, err = startOnce(ctx, rt, sink, opts, interactive, newToken, licenseFilePath, true)
+		result, err = startOnce(ctx, rt, sink, opts, interactive, newToken, licenseFilePath, true)
 		if err == nil || !errors.As(err, &rejErr) {
-			return version, err
+			return result, err
 		}
 		// The freshly logged-in token was rejected too: render it the same way
 		// as a first rejection instead of surfacing the raw error, below.
 	}
 
-	return "", renderLicenseRejection(sink, rejErr, err)
+	return StartResult{}, renderLicenseRejection(sink, rejErr, err)
 }
 
 // renderLicenseRejection emits the actionable ErrorEvent for a definitive
@@ -125,6 +150,7 @@ func renderLicenseRejection(sink output.Sink, rejErr *licenseRejectedError, err 
 			{Label: "Log in again to refresh your credentials:", Value: "lstk logout && lstk login"},
 			{Label: "Or provide a valid token via the environment variable:", Value: "LOCALSTACK_AUTH_TOKEN"},
 		},
+		Code: output.ErrLicenseInvalid,
 	})
 	return output.NewSilentError(err)
 }
@@ -144,7 +170,7 @@ func (e *licenseRejectedError) Error() string {
 
 func (e *licenseRejectedError) Unwrap() error { return e.licErr }
 
-func startOnce(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts StartOptions, interactive bool, token, licenseFilePath string, forceLicenseValidation bool) (string, error) {
+func startOnce(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts StartOptions, interactive bool, token, licenseFilePath string, forceLicenseValidation bool) (StartResult, error) {
 	tel := opts.Telemetry
 
 	hostEnv, droppedEnv := filterHostEnv(os.Environ())
@@ -161,25 +187,25 @@ func startOnce(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts S
 	for i, c := range opts.Containers {
 		image, err := c.Image()
 		if err != nil {
-			return "", err
+			return StartResult{}, err
 		}
 		healthPath, err := c.HealthPath()
 		if err != nil {
-			return "", err
+			return StartResult{}, err
 		}
 		productName, err := c.ProductName()
 		if err != nil {
-			return "", err
+			return StartResult{}, err
 		}
 
 		containerPort, err := c.ContainerPort()
 		if err != nil {
-			return "", err
+			return StartResult{}, err
 		}
 
 		resolvedEnv, err := c.ResolvedEnv(opts.Env)
 		if err != nil {
-			return "", err
+			return StartResult{}, err
 		}
 
 		// GATEWAY_LISTEN is configurable via the [env.*] profiles. It controls
@@ -190,7 +216,7 @@ func startOnce(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts S
 		gatewayValue := envValue(resolvedEnv, "GATEWAY_LISTEN")
 		gateway, err := parseGatewayListen(gatewayValue)
 		if err != nil {
-			return "", err
+			return StartResult{}, err
 		}
 		gatewayDefaulted := strings.TrimSpace(gatewayValue) == ""
 
@@ -238,10 +264,10 @@ func startOnce(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts S
 
 		volumeDir, err := c.VolumeDir()
 		if err != nil {
-			return "", err
+			return StartResult{}, err
 		}
 		if err := os.MkdirAll(volumeDir, 0755); err != nil {
-			return "", fmt.Errorf("failed to create volume directory %s: %w", volumeDir, err)
+			return StartResult{}, fmt.Errorf("failed to create volume directory %s: %w", volumeDir, err)
 		}
 		binds = append(binds, runtime.BindMount{HostPath: volumeDir, ContainerPath: "/var/lib/localstack"})
 
@@ -250,11 +276,11 @@ func startOnce(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts S
 		// must already exist; creating it would produce a wrong empty directory.
 		extraVolumes, err := c.ExtraVolumes()
 		if err != nil {
-			return "", err
+			return StartResult{}, err
 		}
 		for _, m := range extraVolumes {
 			if _, err := os.Stat(m.Source); err != nil {
-				return "", fmt.Errorf("volume source %q does not exist: %w", m.Source, err)
+				return StartResult{}, fmt.Errorf("volume source %q does not exist: %w", m.Source, err)
 			}
 			binds = append(binds, runtime.BindMount{HostPath: m.Source, ContainerPath: m.Target, ReadOnly: m.ReadOnly})
 		}
@@ -268,7 +294,7 @@ func startOnce(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts S
 		// Ports the user asked for explicitly (e.g. 53 for DNS) are published on top.
 		exposed, err := c.ExposedPorts()
 		if err != nil {
-			return "", err
+			return StartResult{}, err
 		}
 		extraPorts = mergeExposePorts(sink, extraPorts, primaryPort, c.Port, exposed)
 
@@ -288,12 +314,18 @@ func startOnce(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts S
 		}
 	}
 
-	containers, err := selectContainersToStart(ctx, rt, sink, tel, containers, opts.LocalStackHost, opts.WebAppURL)
+	containers, alreadyRunning, err := selectContainersToStart(ctx, rt, sink, tel, containers, opts.LocalStackHost, opts.WebAppURL)
 	if err != nil {
-		return "", err
+		return StartResult{}, err
 	}
 	if len(containers) == 0 {
-		return "", nil
+		// Nothing to start: it was already running, or there was nothing configured.
+		if len(alreadyRunning) > 0 {
+			result := alreadyRunning[0]
+			sink.Emit(emulatorStartedEvent(result))
+			return result, nil
+		}
+		return StartResult{}, nil
 	}
 
 	// Validate licenses before pulling. Pinned tags are validated immediately —
@@ -301,18 +333,18 @@ func startOnce(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts S
 	// the pre-flight check are skipped. "latest" tags defer to post-pull validation.
 	postPullContainers, prePullRefreshed, err := tryPrePullLicenseValidation(ctx, rt, sink, opts, containers, token, licenseFilePath, forceLicenseValidation)
 	if err != nil {
-		return "", err
+		return StartResult{}, err
 	}
 
 	pulled, err := pullImages(ctx, rt, sink, tel, containers, interactive)
 	if err != nil {
-		return "", err
+		return StartResult{}, err
 	}
 
 	// Validate "latest" containers by inspecting the pulled image for its version.
 	resolvedVersion, postPullRefreshed, err := validateLicensesFromImages(ctx, rt, sink, opts, postPullContainers, token, licenseFilePath)
 	if err != nil {
-		return "", err
+		return StartResult{}, err
 	}
 	licenseRefreshed := prePullRefreshed || postPullRefreshed
 
@@ -323,7 +355,7 @@ func startOnce(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts S
 	}
 
 	if err := startWithLicenseRetry(ctx, rt, sink, opts, interactive, containers, pulled, token, licenseFilePath, licenseRefreshed); err != nil {
-		return "", err
+		return StartResult{}, err
 	}
 
 	// Maps emulator types to their post-start setup functions.
@@ -331,7 +363,15 @@ func startOnce(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts S
 	setups := map[config.EmulatorType]postStartSetupFunc{
 		config.EmulatorAWS: awsconfig.EnsureProfile,
 	}
-	return resolvedVersion, runPostStartSetups(ctx, rt, sink, opts.Containers, interactive, opts.LocalStackHost, opts.WebAppURL, setups)
+	results, err := runPostStartSetups(ctx, rt, sink, opts.Containers, interactive, opts.LocalStackHost, opts.WebAppURL, setups, resolvedVersion)
+	if err != nil {
+		return StartResult{}, err
+	}
+	if len(results) == 0 {
+		return StartResult{}, nil
+	}
+	sink.Emit(emulatorStartedEvent(results[0]))
+	return results[0], nil
 }
 
 func resolvedPinnedVersion(containers []runtime.ContainerConfig) string {
@@ -343,7 +383,9 @@ func resolvedPinnedVersion(containers []runtime.ContainerConfig) string {
 	return ""
 }
 
-func runPostStartSetups(ctx context.Context, rt runtime.Runtime, sink output.Sink, containers []config.ContainerConfig, interactive bool, localStackHost, webAppURL string, setups map[config.EmulatorType]postStartSetupFunc) error {
+// runPostStartSetups runs each freshly-started emulator type's post-start
+// setup and returns a StartResult per type.
+func runPostStartSetups(ctx context.Context, rt runtime.Runtime, sink output.Sink, containers []config.ContainerConfig, interactive bool, localStackHost, webAppURL string, setups map[config.EmulatorType]postStartSetupFunc, version string) ([]StartResult, error) {
 	// build ordered list of unique types, keeping the first container config for each
 	firstByType := map[config.EmulatorType]config.ContainerConfig{}
 	var uniqueEmulatorTypes []config.EmulatorType
@@ -353,6 +395,7 @@ func runPostStartSetups(ctx context.Context, rt runtime.Runtime, sink output.Sin
 			firstByType[c.Type] = c
 		}
 	}
+	var results []StartResult
 	for _, t := range uniqueEmulatorTypes {
 		c := firstByType[t]
 		resolvedHost, dnsOK := endpoint.ResolveHost(ctx, c.Port, localStackHost)
@@ -361,21 +404,33 @@ func runPostStartSetups(ctx context.Context, rt runtime.Runtime, sink output.Sin
 		}
 		if setup, ok := setups[t]; ok {
 			if err := setup(ctx, sink, interactive, resolvedHost); err != nil {
-				return err
+				return nil, err
 			}
 		}
-		emitPostStartPointers(sink, t, resolvedHost, webAppURL, isPersistenceEnabled(ctx, rt, c.Name()))
+		persist := isPersistenceEnabled(ctx, rt, c.Name())
+		emitPostStartPointers(sink, t, resolvedHost, webAppURL, persist)
+		results = append(results, StartResult{
+			Type:           t,
+			Container:      c.Name(),
+			Endpoint:       "http://" + resolvedHost,
+			Version:        version,
+			AlreadyRunning: false,
+			Persistence:    persist,
+		})
 	}
-	return nil
+	return results, nil
 }
 
-func emitAlreadyRunning(ctx context.Context, sink output.Sink, c runtime.ContainerConfig, localStackHost, webAppURL string, persist bool) {
+// emitAlreadyRunning renders the "already running" notices for c and
+// returns its StartResult.
+func emitAlreadyRunning(ctx context.Context, sink output.Sink, c runtime.ContainerConfig, localStackHost, webAppURL string, persist bool) StartResult {
 	name := c.EmulatorType.DisplayName()
+	runningVersion := ""
 	if info, err := fetchLocalStackInfo(ctx, c.Port); err == nil && info.Version != "" {
 		// /_localstack/info may report a build suffix (e.g. "2026.5.3:04ddfd3a0");
 		// keep only the version number.
-		version, _, _ := strings.Cut(info.Version, ":")
-		name = fmt.Sprintf("%s %s", name, version)
+		runningVersion, _, _ = strings.Cut(info.Version, ":")
+		name = fmt.Sprintf("%s %s", name, runningVersion)
 	}
 	sink.Emit(output.MessageEvent{Severity: output.SeverityNote, Text: fmt.Sprintf("%s is already running", name)})
 	resolvedHost, dnsOK := endpoint.ResolveHost(ctx, c.Port, localStackHost)
@@ -383,6 +438,14 @@ func emitAlreadyRunning(ctx context.Context, sink output.Sink, c runtime.Contain
 		sink.Emit(output.MessageEvent{Severity: output.SeverityNote, Text: endpoint.DNSRebindNote})
 	}
 	emitPostStartPointers(sink, c.EmulatorType, resolvedHost, webAppURL, persist)
+	return StartResult{
+		Type:           c.EmulatorType,
+		Container:      c.Name,
+		Endpoint:       "http://" + resolvedHost,
+		Version:        runningVersion,
+		AlreadyRunning: true,
+		Persistence:    persist,
+	}
 }
 
 func isPersistenceEnabled(ctx context.Context, rt runtime.Runtime, containerName string) bool {
@@ -528,6 +591,7 @@ func pullImage(ctx context.Context, rt runtime.Runtime, sink output.Sink, tel *t
 		sink.Emit(output.ErrorEvent{
 			Title:   fmt.Sprintf("Failed to pull %s", c.Image),
 			Summary: err.Error(),
+			Code:    output.ErrImagePullFailed,
 		})
 		tel.EmitEmulatorLifecycleEvent(ctx, telemetry.LifecycleEvent{
 			EventType: telemetry.LifecycleStartError,
@@ -766,6 +830,7 @@ func (m *startupMonitor) handleFailure(ctx context.Context, c runtime.ContainerC
 				{Label: "Sign up for a free trial:", Value: "https://app.localstack.cloud/sign-up"},
 				{Label: "Contact our team:", Value: "https://www.localstack.cloud/demo"},
 			},
+			Code: output.ErrLicenseNotCovered,
 		})
 		err = &licenseNotCoveredError{}
 
@@ -793,6 +858,7 @@ func (m *startupMonitor) handleFailure(ctx context.Context, c runtime.ContainerC
 			Title:   err.Error(),
 			Summary: summary,
 			Actions: actions,
+			Code:    output.ErrEmulatorStartFailed,
 		})
 
 	default:
@@ -807,6 +873,7 @@ func (m *startupMonitor) handleFailure(ctx context.Context, c runtime.ContainerC
 			Actions: []output.ErrorAction{
 				{Label: "Check your configuration and try again:", Value: "lstk start"},
 			},
+			Code: output.ErrEmulatorStartFailed,
 		})
 	}
 
@@ -825,26 +892,27 @@ func isStartupTimeout(err error) bool {
 	return errors.As(err, &timeoutErr)
 }
 
-func selectContainersToStart(ctx context.Context, rt runtime.Runtime, sink output.Sink, tel *telemetry.Client, containers []runtime.ContainerConfig, localStackHost, webAppURL string) ([]runtime.ContainerConfig, error) {
-	var filtered []runtime.ContainerConfig
+// selectContainersToStart filters containers down to the ones that still need
+// starting; alreadyRunning reports the ones already up.
+func selectContainersToStart(ctx context.Context, rt runtime.Runtime, sink output.Sink, tel *telemetry.Client, containers []runtime.ContainerConfig, localStackHost, webAppURL string) (filtered []runtime.ContainerConfig, alreadyRunning []StartResult, err error) {
 	for _, c := range containers {
 		brief, err := rt.InspectBrief(ctx, c.Name)
 		if err != nil {
-			return nil, fmt.Errorf("failed to check container status: %w", err)
+			return nil, nil, fmt.Errorf("failed to check container status: %w", err)
 		}
 		if brief.Running {
-			emitAlreadyRunning(ctx, sink, c, localStackHost, webAppURL, isPersistenceEnabled(ctx, rt, c.Name))
+			alreadyRunning = append(alreadyRunning, emitAlreadyRunning(ctx, sink, c, localStackHost, webAppURL, isPersistenceEnabled(ctx, rt, c.Name)))
 			continue
 		}
 		if brief.Exists {
 			if err := healLeftoverContainer(ctx, rt, sink, tel, c, brief); err != nil {
-				return nil, err
+				return nil, nil, err
 			}
 		}
 
 		found, err := rt.FindRunningByImage(ctx, config.KnownImageRepos(), c.ContainerPort)
 		if err != nil {
-			return nil, fmt.Errorf("failed to scan for running containers: %w", err)
+			return nil, nil, fmt.Errorf("failed to scan for running containers: %w", err)
 		}
 		if found != nil {
 			foundType := config.EmulatorTypeForImage(found.Image)
@@ -855,6 +923,7 @@ func selectContainersToStart(ctx context.Context, rt runtime.Runtime, sink outpu
 					Actions: []output.ErrorAction{
 						{Label: "Stop the running emulator:", Value: fmt.Sprintf("docker stop %s", found.Name)},
 					},
+					Code: output.ErrEmulatorWrongType,
 				})
 				tel.EmitEmulatorLifecycleEvent(ctx, telemetry.LifecycleEvent{
 					EventType: telemetry.LifecycleStartError,
@@ -863,7 +932,7 @@ func selectContainersToStart(ctx context.Context, rt runtime.Runtime, sink outpu
 					ErrorCode: telemetry.ErrCodeEmulatorMismatch,
 					ErrorMsg:  fmt.Sprintf("running %s on port %s, configured %s", foundType, found.BoundPort, c.EmulatorType),
 				})
-				return nil, output.NewSilentError(fmt.Errorf("%s is already running on port %s", foundType.DisplayName(), found.BoundPort))
+				return nil, nil, output.NewSilentError(fmt.Errorf("%s is already running on port %s", foundType.DisplayName(), found.BoundPort))
 			}
 			if found.BoundPort != c.Port {
 				sink.Emit(output.ErrorEvent{
@@ -872,6 +941,7 @@ func selectContainersToStart(ctx context.Context, rt runtime.Runtime, sink outpu
 					Actions: []output.ErrorAction{
 						{Label: "Stop existing emulator:", Value: "lstk stop"},
 					},
+					Code: output.ErrPortConflict,
 				})
 				tel.EmitEmulatorLifecycleEvent(ctx, telemetry.LifecycleEvent{
 					EventType: telemetry.LifecycleStartError,
@@ -880,15 +950,16 @@ func selectContainersToStart(ctx context.Context, rt runtime.Runtime, sink outpu
 					ErrorCode: telemetry.ErrCodePortConflict,
 					ErrorMsg:  fmt.Sprintf("running on port %s, configured port %s", found.BoundPort, c.Port),
 				})
-				return nil, output.NewSilentError(fmt.Errorf("LocalStack already running on port %s", found.BoundPort))
+				return nil, nil, output.NewSilentError(fmt.Errorf("LocalStack already running on port %s", found.BoundPort))
 			}
-			emitAlreadyRunning(ctx, sink, c, localStackHost, webAppURL, isPersistenceEnabled(ctx, rt, found.Name))
+			alreadyRunning = append(alreadyRunning, emitAlreadyRunning(ctx, sink, c, localStackHost, webAppURL, isPersistenceEnabled(ctx, rt, found.Name)))
 			continue
 		}
 
 		if _, err := ports.CheckAvailable(c.Port); err != nil {
 			if info, infoErr := fetchLocalStackInfo(ctx, c.Port); infoErr == nil {
-				emitLocalStackAlreadyRunningWarning(sink, c.Port, info.Version, c.Tag)
+				runningVersion, _, _ := strings.Cut(info.Version, ":")
+				alreadyRunning = append(alreadyRunning, emitLocalStackAlreadyRunningWarning(ctx, sink, c, localStackHost, runningVersion))
 				continue
 			}
 			emitPortInUseError(sink, c.Port)
@@ -899,7 +970,7 @@ func selectContainersToStart(ctx context.Context, rt runtime.Runtime, sink outpu
 				ErrorCode: telemetry.ErrCodePortConflict,
 				ErrorMsg:  err.Error(),
 			})
-			return nil, output.NewSilentError(err)
+			return nil, nil, output.NewSilentError(err)
 		}
 
 		// Check extra ports required by this emulator (443 for HTTPS, 4510-4559 for
@@ -913,6 +984,7 @@ func selectContainersToStart(ctx context.Context, rt runtime.Runtime, sink outpu
 				Title:   fmt.Sprintf("Port %s is already in use", conflictPort),
 				Summary: "LocalStack requires this port. Free it before starting.",
 				Actions: portConflictActions(rt.Flavor(), runtime.DetectInstalledFlavor(), conflictPort),
+				Code:    output.ErrPortConflict,
 			})
 			tel.EmitEmulatorLifecycleEvent(ctx, telemetry.LifecycleEvent{
 				EventType: telemetry.LifecycleStartError,
@@ -921,26 +993,37 @@ func selectContainersToStart(ctx context.Context, rt runtime.Runtime, sink outpu
 				ErrorCode: telemetry.ErrCodePortConflict,
 				ErrorMsg:  err.Error(),
 			})
-			return nil, output.NewSilentError(err)
+			return nil, nil, output.NewSilentError(err)
 		}
 		c.ExtraPorts = dropBusyOptionalPorts(sink, rt.Flavor(), runtime.DetectInstalledFlavor(), c.Port, c.ExtraPorts)
 
 		filtered = append(filtered, c)
 	}
-	return filtered, nil
+	return filtered, alreadyRunning, nil
 }
 
-func emitLocalStackAlreadyRunningWarning(sink output.Sink, port, runningVersion, configTag string) {
+func emitLocalStackAlreadyRunningWarning(ctx context.Context, sink output.Sink, c runtime.ContainerConfig, localStackHost, runningVersion string) StartResult {
+	configTag := c.Tag
 	if configTag == "" {
 		configTag = "latest"
 	}
 	if runningVersion != configTag {
 		sink.Emit(output.MessageEvent{Severity: output.SeverityWarning, Text: fmt.Sprintf(
 			"LocalStack %s is already running on port %s (config specifies %s) — using the running instance",
-			runningVersion, port, configTag,
+			runningVersion, c.Port, configTag,
 		)})
 	} else {
-		sink.Emit(output.MessageEvent{Severity: output.SeverityInfo, Text: fmt.Sprintf("LocalStack %s is already running on port %s", runningVersion, port)})
+		sink.Emit(output.MessageEvent{Severity: output.SeverityInfo, Text: fmt.Sprintf("LocalStack %s is already running on port %s", runningVersion, c.Port)})
+	}
+	resolvedHost, dnsOK := endpoint.ResolveHost(ctx, c.Port, localStackHost)
+	if !dnsOK {
+		sink.Emit(output.MessageEvent{Severity: output.SeverityNote, Text: endpoint.DNSRebindNote})
+	}
+	return StartResult{
+		Type:           c.EmulatorType,
+		Endpoint:       "http://" + resolvedHost,
+		Version:        runningVersion,
+		AlreadyRunning: true,
 	}
 }
 
@@ -1207,6 +1290,7 @@ func emitPortInUseError(sink output.Sink, port string) {
 		Title:   fmt.Sprintf("Port %s already in use", port),
 		Summary: "Free the port or configure a different one.",
 		Actions: actions,
+		Code:    output.ErrPortConflict,
 	})
 }
 

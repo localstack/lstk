@@ -18,6 +18,7 @@ const (
 	ErrCredentialsMissing     ErrorCode = "CREDENTIALS_MISSING"
 	ErrLicenseInvalid         ErrorCode = "LICENSE_INVALID"
 	ErrLicenseUnsupportedTag  ErrorCode = "LICENSE_UNSUPPORTED_TAG"
+	ErrLicenseNotCovered      ErrorCode = "LICENSE_NOT_COVERED"
 	ErrSnapshotNotFound       ErrorCode = "SNAPSHOT_NOT_FOUND"
 	ErrSnapshotInvalidRef     ErrorCode = "SNAPSHOT_INVALID_REF"
 	ErrSnapshotRemoteError    ErrorCode = "SNAPSHOT_REMOTE_ERROR"
@@ -27,6 +28,7 @@ const (
 	ErrIntegrationNotSetUp    ErrorCode = "INTEGRATION_NOT_SET_UP"
 	ErrDependencyMissing      ErrorCode = "DEPENDENCY_MISSING"
 	ErrDNSResolutionRequired  ErrorCode = "DNS_RESOLUTION_REQUIRED"
+	ErrPortConflict           ErrorCode = "PORT_CONFLICT"
 	ErrConfirmationRequired   ErrorCode = "CONFIRMATION_REQUIRED"
 	ErrValidationError        ErrorCode = "VALIDATION_ERROR"
 	ErrUsageError             ErrorCode = "USAGE_ERROR"
@@ -109,6 +111,7 @@ var allErrorCodes = []ErrorCode{
 	ErrCredentialsMissing,
 	ErrLicenseInvalid,
 	ErrLicenseUnsupportedTag,
+	ErrLicenseNotCovered,
 	ErrSnapshotNotFound,
 	ErrSnapshotInvalidRef,
 	ErrSnapshotRemoteError,
@@ -118,6 +121,7 @@ var allErrorCodes = []ErrorCode{
 	ErrIntegrationNotSetUp,
 	ErrDependencyMissing,
 	ErrDNSResolutionRequired,
+	ErrPortConflict,
 	ErrConfirmationRequired,
 	ErrValidationError,
 	ErrUsageError,
@@ -140,6 +144,7 @@ var categoryByCode = map[ErrorCode]ErrorCategory{
 	ErrDependencyMissing:      CategoryRuntime,
 	ErrDNSResolutionRequired:  CategoryRuntime,
 	ErrNetworkError:           CategoryRuntime,
+	ErrPortConflict:           CategoryRuntime,
 	ErrEmulatorNotRunning:     CategoryEmulator,
 	ErrEmulatorAlreadyRunning: CategoryEmulator,
 	ErrEmulatorWrongType:      CategoryEmulator,
@@ -150,6 +155,7 @@ var categoryByCode = map[ErrorCode]ErrorCategory{
 	ErrCredentialsMissing:     CategoryAuth,
 	ErrLicenseInvalid:         CategoryAuth,
 	ErrLicenseUnsupportedTag:  CategoryAuth,
+	ErrLicenseNotCovered:      CategoryAuth,
 	ErrSnapshotNotFound:       CategoryResource,
 	ErrSnapshotInvalidRef:     CategoryResource,
 	ErrSnapshotRemoteError:    CategoryResource,
