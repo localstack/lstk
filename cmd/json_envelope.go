@@ -40,7 +40,8 @@ func jsonAwareSink(cmd *cobra.Command, cfg *env.Env, w io.Writer) output.Sink {
 }
 
 // writeEnvelope marshals envelope as compact JSON and writes it to w, followed
-// by a newline, as the single line of output a JSON-capable command produces.
+// by a newline. SetEscapeHTML(false): this is CLI output, not HTML, so & < >
+// should render literally.
 func writeEnvelope(w io.Writer, envelope output.Envelope) error {
 	enc := json.NewEncoder(w)
 	enc.SetEscapeHTML(false)
