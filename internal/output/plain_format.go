@@ -70,6 +70,8 @@ func FormatEventLine(event Event) (string, bool) {
 		return formatEmulatorStopped(e), true
 	case EmulatorResetEvent:
 		return formatEmulatorReset(e), true
+	case EmulatorStatusEvent:
+		return formatEmulatorStatus(e), true
 	case UpdateCheckedEvent:
 		return formatUpdateChecked(e), true
 	case UpdateAppliedEvent:
@@ -204,6 +206,17 @@ func formatEmulatorStopped(e EmulatorStoppedEvent) string {
 
 func formatEmulatorReset(e EmulatorResetEvent) string {
 	return SuccessMarker() + " Emulator state reset"
+}
+
+func formatEmulatorStatus(e EmulatorStatusEvent) string {
+	if !e.Running {
+		return e.Type + ": not running"
+	}
+	line := e.Type + ": running"
+	if e.Health != "" {
+		line += " (" + e.Health + ")"
+	}
+	return line
 }
 
 func formatUpdateChecked(e UpdateCheckedEvent) string {

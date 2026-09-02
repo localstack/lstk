@@ -26,3 +26,34 @@ type JsonStoppedEmulator struct {
 }
 
 func (JsonStoppedEmulator) sealedEmulatorEntry() {}
+
+// JsonStatusEmulator is the per-emulator entry in `status`'s data.emulators.
+// Detail fields are omitted for a non-running emulator, not nulled.
+type JsonStatusEmulator struct {
+	Type            string               `json:"type"`
+	Running         bool                 `json:"running"`
+	Health          *string              `json:"health"`
+	Name            string               `json:"name,omitempty"`
+	Version         string               `json:"version,omitempty"`
+	Host            string               `json:"host,omitempty"`
+	UptimeSeconds   *int64               `json:"uptimeSeconds,omitempty"`
+	Persistence     *bool                `json:"persistence,omitempty"`
+	ResourceSummary *JsonResourceSummary `json:"resourceSummary,omitempty"`
+	Resources       []JsonStatusResource `json:"resources,omitempty"`
+}
+
+func (JsonStatusEmulator) sealedEmulatorEntry() {}
+
+// JsonResourceSummary is the resource/service counts for `status --resources`.
+type JsonResourceSummary struct {
+	Resources int `json:"resources"`
+	Services  int `json:"services"`
+}
+
+// JsonStatusResource is one deployed resource for `status --resources`.
+type JsonStatusResource struct {
+	Service string `json:"service"`
+	Name    string `json:"name"`
+	Region  string `json:"region"`
+	Account string `json:"account"`
+}
