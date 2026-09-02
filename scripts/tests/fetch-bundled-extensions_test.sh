@@ -24,11 +24,27 @@ sha256_of() {
   fi
 }
 
+# Writes a stand-in bundle binary that answers `list` with COMMANDS (default
+# "doctor"), the way the real one does.
+write_fake_bundle() {
+  {
+    echo '#!/bin/sh'
+    echo 'if [ "$1" = "list" ]; then'
+    for name in ${COMMANDS-doctor}; do
+      echo "  echo '${name}'"
+    done
+    echo '  exit 0'
+    echo 'fi'
+    echo "echo 'fake bundle binary for $2'"
+  } > "$1"
+  chmod 0755 "$1"
+}
+
 # Builds a fixture release for the given tag: per platform, a tar.gz (zip for
-# Windows) containing bundled-extensions[.exe], lstk-extensions.toml and an
-# lstk-<name> alias per entry in ALIASES (default "doctor"; a symlink in the
-# tarballs, a copy in the zips — exactly what the private repo's goreleaser
-# emits), plus a checksums.txt over the archives. TOML_BODY overrides the
+# Windows) containing bundled-extensions[.exe] and lstk-extensions.toml, plus a
+# checksums.txt over the archives. ALIASES adds lstk-<name> entries the way the
+# private repo used to emit them (a symlink in the tarballs, a copy in the
+# zips), so the tests can prove they are ignored. TOML_BODY overrides the
 # descriptions file for every platform.
 make_release_assets() {
   local dir="$1" tag="${2:-v1.4.0}"
@@ -41,14 +57,13 @@ make_release_assets() {
     printf '%s' "${toml_body}" > "${work}/lstk-extensions.toml"
     case "${platform}" in
       windows_*)
-        echo "fake bundle binary for ${platform}" > "${work}/bundled-extensions.exe"
-        for alias in ${ALIASES-doctor}; do cp "${work}/bundled-extensions.exe" "${work}/lstk-${alias}.exe"; done
+        write_fake_bundle "${work}/bundled-extensions.exe" "${platform}"
+        for alias in ${ALIASES-}; do cp "${work}/bundled-extensions.exe" "${work}/lstk-${alias}.exe"; done
         ( cd "${work}" && zip -q -r "${dir}/bundled-extensions_${tag}_${platform}.zip" . )
         ;;
       *)
-        echo "fake bundle binary for ${platform}" > "${work}/bundled-extensions"
-        chmod 0755 "${work}/bundled-extensions"
-        for alias in ${ALIASES-doctor}; do ( cd "${work}" && ln -s bundled-extensions "lstk-${alias}" ); done
+        write_fake_bundle "${work}/bundled-extensions" "${platform}"
+        for alias in ${ALIASES-}; do ( cd "${work}" && ln -s bundled-extensions "lstk-${alias}" ); done
         ( cd "${work}" && tar czf "${dir}/bundled-extensions_${tag}_${platform}.tar.gz" . )
         ;;
     esac
@@ -218,31 +233,29 @@ assert_file_contains "${BUNDLED}/lstk-extensions.toml" "doctor"
 assert_file_absent "${BUNDLED}/linux_amd64/lstk-extensions.toml"
 assert_file_absent "${BUNDLED}/linux_amd64/checksums.txt"
 
-begin_test "alias entries are staged as symlinks beside the binary on unix"
+begin_test "the archive's alias entries are never staged, on any platform"
 setup_workspace
 run_script "${FETCH}"
 assert_ok
 for platform in linux_amd64 linux_arm64 darwin_amd64 darwin_arm64; do
-  assert_symlink_to "${BUNDLED}/${platform}/lstk-doctor" "bundled-extensions"
+  assert_file_absent "${BUNDLED}/${platform}/lstk-doctor"
+  assert_executable "${BUNDLED}/${platform}/bundled-extensions"
 done
-
-begin_test "alias entries are skipped on Windows, where extraction would junk them"
-setup_workspace
-run_script "${FETCH}"
-assert_ok
 assert_file_absent "${BUNDLED}/windows_amd64/lstk-doctor.exe"
 assert_file_absent "${BUNDLED}/windows_arm64/lstk-doctor.exe"
 assert_executable "${BUNDLED}/windows_amd64/bundled-extensions.exe"
 
-begin_test "every described command gets an alias"
+begin_test "a multi-command bundle still stages only the binary and the toml"
 setup_workspace
-ALIASES="doctor deploy" TOML_BODY='doctor = "x"
+COMMANDS="doctor deploy" TOML_BODY='doctor = "x"
 deploy = "y"
 ' make_release_assets "${ASSETS}"
 run_script "${FETCH}"
 assert_ok
-assert_symlink_to "${BUNDLED}/linux_amd64/lstk-doctor" "bundled-extensions"
-assert_symlink_to "${BUNDLED}/linux_amd64/lstk-deploy" "bundled-extensions"
+assert_executable "${BUNDLED}/linux_amd64/bundled-extensions"
+assert_file_exists "${BUNDLED}/lstk-extensions.toml"
+assert_file_absent "${BUNDLED}/linux_amd64/lstk-doctor"
+assert_file_absent "${BUNDLED}/linux_amd64/lstk-deploy"
 
 begin_test "the staged tree passes the descriptions gate"
 setup_workspace
@@ -353,55 +366,34 @@ assert_ok
 assert_file_absent "${BUNDLED}/linux_amd64/lstk-removed"
 assert_file_exists "${BUNDLED}/extensions.version"
 
-begin_test "records the bundle's own command list from its alias entries, sorted"
+begin_test "an archive still carrying lstk-<name> entries stages neither them nor a command list"
 setup_workspace
-ALIASES="doctor deploy" TOML_BODY='doctor = "x"
-deploy = "y"
-' make_release_assets "${ASSETS}"
+ALIASES="doctor deploy" make_release_assets "${ASSETS}"
 run_script "${FETCH}"
 assert_ok
-assert_file_exists "${BUNDLED}/bundle-commands.txt"
-run_script cat "${BUNDLED}/bundle-commands.txt"
-[ "${LAST_OUTPUT}" = "deploy
-doctor" ] || fail "expected the sorted alias names, got: ${LAST_OUTPUT}"
+assert_file_absent "${BUNDLED}/linux_amd64/lstk-doctor"
+assert_file_absent "${BUNDLED}/linux_amd64/lstk-deploy"
+assert_file_absent "${BUNDLED}/bundle-commands.txt"
 
-begin_test "alias entries differing between platforms abort the fetch"
+begin_test "an archive with no lstk-<name> entries is fine; the binary declares its own commands"
 setup_workspace
 work="$(mktemp -d)"
-echo "bin" > "${work}/bundled-extensions"
-chmod 0755 "${work}/bundled-extensions"
-printf 'doctor = "Fake doctor description"\n' > "${work}/lstk-extensions.toml"
-( cd "${work}" && ln -s bundled-extensions lstk-doctor && ln -s bundled-extensions lstk-extra )
-( cd "${work}" && tar czf "${ASSETS}/bundled-extensions_v1.4.0_linux_arm64.tar.gz" . )
-refresh_manifest "${ASSETS}"
-run_script "${FETCH}"
-assert_fails
-assert_output_contains "linux_arm64"
-assert_output_contains "command list"
-
-begin_test "an archive with no alias entries aborts the fetch, naming the archive"
-setup_workspace
-work="$(mktemp -d)"
-echo "bin" > "${work}/bundled-extensions"
-chmod 0755 "${work}/bundled-extensions"
+write_fake_bundle "${work}/bundled-extensions" darwin_amd64
 printf 'doctor = "Fake doctor description"\n' > "${work}/lstk-extensions.toml"
 ( cd "${work}" && tar czf "${ASSETS}/bundled-extensions_v1.4.0_darwin_amd64.tar.gz" . )
 refresh_manifest "${ASSETS}"
 run_script "${FETCH}"
-assert_fails
-assert_output_contains "bundled-extensions_v1.4.0_darwin_amd64.tar.gz"
-assert_output_contains "alias"
-
-begin_test "the command list is not packaged next to the binaries"
-setup_workspace
-run_script "${FETCH}"
 assert_ok
-assert_file_absent "${BUNDLED}/linux_amd64/bundle-commands.txt"
+assert_executable "${BUNDLED}/darwin_amd64/bundled-extensions"
 
-begin_test "--stub records a command list matching its descriptions"
+begin_test "--stub produces a bundle that answers list and passes the gate"
 setup_workspace
 run_script "${FETCH}" --stub
 assert_ok
-assert_file_contains "${BUNDLED}/bundle-commands.txt" "doctor"
+run_script "${BUNDLED}/linux_amd64/bundled-extensions" list
+assert_ok
+assert_output_contains "doctor"
+run_script "${SUITE_DIR}/../check-descriptions.sh" "${BUNDLED}/linux_amd64"
+assert_ok
 
 finish_suite

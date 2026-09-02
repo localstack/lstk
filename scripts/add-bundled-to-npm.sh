@@ -3,7 +3,7 @@
 # Adds the bundled extensions to every npm PLATFORM package.
 #
 # The npm wrapper (@localstack/lstk) only holds the launcher; the real Go
-# binary lives in the platform package (@localstack/lstk-<os>-<cpu>) and the
+# binary lives in the platform package (@localstack/lstk_<goos>_<goarch>) and the
 # launcher execs it from there. lstk resolves its bundled-extensions directory
 # from its own executable's location, so that platform directory is where
 # `bundled-extensions` and `lstk-extensions.toml` must live.
@@ -98,5 +98,5 @@ for dir in "${NPM_DIR}"/*/; do
   count=$((count + 1))
 done
 
-[ "${count}" -gt 0 ] || die "no platform packages found under ${NPM_DIR} (expected lstk-<os>-<cpu> directories)"
+[ "${count}" -gt 0 ] || die "no platform packages found under ${NPM_DIR} (expected @localstack/lstk_<goos>_<goarch> packages)"
 echo "Bundled extensions added to ${count} platform package(s)."

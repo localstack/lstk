@@ -133,17 +133,16 @@ func TestBundledMultiCallContextConveyed(t *testing.T) {
 	require.Contains(t, stdout, "API_VERSION=1")
 }
 
-// Releases stage an lstk-<name> symlink next to the bundle for every command it
-// provides, so a user can also run `lstk-doctor` straight from a shell. lstk
-// must stay indifferent to them: it dispatches through the bundle by argv[0]
-// and takes its command list from the descriptions file, so an alias must not
-// produce a second help entry, and removing one must change nothing. This is
-// what lets channels that cannot carry symlinks (npm, Windows zip) ship without
-// them and behave identically.
+// A release ships the bundle binary and the descriptions file and nothing else,
+// but a user can still drop an lstk-<name> link to the binary next to it, and
+// installs made before aliases were dropped will have some. lstk must be
+// indifferent to them: it takes its command list from the descriptions file and
+// dispatches by argv[0], so such a link must not add a second help entry or
+// change what runs.
 func TestBundledAliasSymlinksAreInertForLstk(t *testing.T) {
 	t.Parallel()
 	if runtime.GOOS == "windows" {
-		t.Skip("aliases are deliberately not staged on Windows")
+		t.Skip("os.Symlink needs Developer Mode or elevation on Windows")
 	}
 	bundleDir := t.TempDir()
 	lstkBin := installLstkBundle(t, bundleDir)
