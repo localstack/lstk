@@ -3,6 +3,8 @@ package integration_test
 import (
 	"encoding/json"
 	"net"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"github.com/localstack/lstk/test/integration/env"
@@ -74,6 +76,41 @@ func TestStartCommandJSONAlreadyRunning(t *testing.T) {
 	require.NoError(t, json.Unmarshal(envelope.Data, &data))
 	assert.True(t, data.AlreadyRunning)
 	assert.Equal(t, containerName, data.Container)
+}
+
+func TestStartCommandJSONAttachesWhenLocalStackRespondingOnPort(t *testing.T) {
+	requireDocker(t)
+	cleanup()
+	t.Cleanup(cleanup)
+
+	ln, err := net.Listen("tcp", ":4566")
+	require.NoError(t, err, "failed to bind port 4566 for test")
+	srv := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/_localstack/info" {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"version":"3.4.0","edition":"pro"}`))
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	srv.Listener = ln
+	srv.Start()
+	defer srv.Close()
+
+	stdout, stderr, err := runLstk(t, testContext(t), "", env.With(env.AuthToken, "fake-token"), "start", "--json")
+	require.NoError(t, err, "lstk start --json should succeed when LocalStack is already running: %s", stderr)
+	requireExitCode(t, 0, err)
+
+	envelope := decodeEnvelope(t, stdout)
+	assert.Equal(t, "ok", envelope.Status)
+	assert.Nil(t, envelope.Error)
+
+	var data startJSONData
+	require.NoError(t, json.Unmarshal(envelope.Data, &data))
+	assert.Equal(t, "aws", data.Emulator)
+	assert.Equal(t, "3.4.0", data.Version)
+	assert.True(t, data.AlreadyRunning)
+	assert.Contains(t, data.Endpoint, "4566")
 }
 
 func TestStartCommandJSONPortConflict(t *testing.T) {
