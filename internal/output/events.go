@@ -168,6 +168,18 @@ type EmulatorResetEvent struct {
 	Name string
 }
 
+// EmulatorStartedEvent reports the emulator is up and reachable, whether
+// freshly started or already running. JSON-only: no plain-text line, since
+// start's existing messages already cover that.
+type EmulatorStartedEvent struct {
+	Type           string
+	Container      string
+	Endpoint       string
+	Version        string
+	AlreadyRunning bool
+	Persistence    bool
+}
+
 // UpdateCheckedEvent reports the result of an update check. It always fires
 // once per Check call — DevBuild, then Available, discriminate which of the
 // three possible outcomes (dev build skipped the check / already up to date /
@@ -225,6 +237,7 @@ func (PodSnapshotRemovedEvent) sealedEvent()  {}
 func (SnapshotShownEvent) sealedEvent()       {}
 func (EmulatorStoppedEvent) sealedEvent()     {}
 func (EmulatorResetEvent) sealedEvent()       {}
+func (EmulatorStartedEvent) sealedEvent()     {}
 func (UpdateCheckedEvent) sealedEvent()       {}
 func (UpdateAppliedEvent) sealedEvent()       {}
 func (ContainerStatusEvent) sealedEvent()     {}
