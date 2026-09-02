@@ -200,7 +200,10 @@ type EmulatorStatusEvent struct {
 	Host          string
 	UptimeSeconds int64
 	Persistence   bool
-	Resources     []EmulatorStatusResource
+	// Local is true for a Docker-managed emulator, false for an external
+	// --endpoint-url target. Name/UptimeSeconds/Persistence only apply to Local.
+	Local     bool
+	Resources []EmulatorStatusResource
 }
 
 // UpdateCheckedEvent reports the result of an update check. It always fires

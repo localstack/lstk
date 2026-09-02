@@ -175,6 +175,7 @@ func StatusJSON(ctx context.Context, rt runtime.Runtime, containers []config.Con
 		event := output.EmulatorStatusEvent{
 			Type:          string(c.Type),
 			Running:       true,
+			Local:         true,
 			Name:          name,
 			Host:          host,
 			UptimeSeconds: int64(uptime.Seconds()),
@@ -205,6 +206,40 @@ func StatusJSON(ctx context.Context, rt runtime.Runtime, containers []config.Con
 		sink.Emit(event)
 	}
 
+	return nil
+}
+
+// StatusExternalJSON is StatusJSON for an --endpoint-url target. Running is
+// always true: endpoint.Resolve already confirmed the target is reachable
+// before returning it.
+func StatusExternalJSON(ctx context.Context, target *endpoint.Target, clients map[config.EmulatorType]emulator.Client, sink output.Sink, includeResources bool) error {
+	event := output.EmulatorStatusEvent{
+		Type:    string(target.Type),
+		Running: true,
+		Host:    target.URL,
+	}
+
+	if client, ok := clients[target.Type]; ok {
+		if v, err := client.FetchVersion(ctx, target.URL); err != nil {
+			event.Health = "unhealthy"
+		} else {
+			event.Health = "healthy"
+			event.Version = v
+		}
+
+		if includeResources && target.Type == config.EmulatorAWS {
+			rows, err := client.FetchResources(ctx, target.URL)
+			if err != nil {
+				return err
+			}
+			event.Resources = make([]output.EmulatorStatusResource, len(rows))
+			for i, r := range rows {
+				event.Resources[i] = output.EmulatorStatusResource{Service: r.Service, Name: r.Name, Region: r.Region, Account: r.Account}
+			}
+		}
+	}
+
+	sink.Emit(event)
 	return nil
 }
 

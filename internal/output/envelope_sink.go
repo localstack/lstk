@@ -82,13 +82,15 @@ func newJSONStatusEmulator(e EmulatorStatusEvent) JsonStatusEmulator {
 		return entry
 	}
 
-	entry.Name = e.Name
 	entry.Version = e.Version
 	entry.Host = e.Host
-	uptime := e.UptimeSeconds
-	entry.UptimeSeconds = &uptime
-	persistence := e.Persistence
-	entry.Persistence = &persistence
+	if e.Local {
+		entry.Name = e.Name
+		uptime := e.UptimeSeconds
+		entry.UptimeSeconds = &uptime
+		persistence := e.Persistence
+		entry.Persistence = &persistence
+	}
 
 	if e.Resources != nil {
 		resources := make([]JsonStatusResource, len(e.Resources))

@@ -34,12 +34,15 @@ func newStatusCmd(cfg *env.Env) *cobra.Command {
 				config.EmulatorAzure:     azure.NewClient(),
 			}
 
+			target, err := endpoint.Resolve(cmd.Context(), cmd)
+			if err != nil {
+				return err
+			}
+
 			if cfg.JSON {
-				// Check before endpoint.Resolve, which dials the target.
-				if _, _, ok := endpoint.ResolvedSource(cmd); ok {
-					err := fmt.Errorf("status --json does not yet support --endpoint-url")
-					sink.Emit(output.ErrorEvent{Title: err.Error(), Code: output.ErrValidationError})
-					return output.NewSilentError(err)
+				includeResources, _ := cmd.Flags().GetBool("resources")
+				if target != nil {
+					return container.StatusExternalJSON(cmd.Context(), target, clients, sink, includeResources)
 				}
 
 				rt, err := runtime.NewDockerRuntime(cfg.DockerHost)
@@ -50,13 +53,7 @@ func newStatusCmd(cfg *env.Env) *cobra.Command {
 				if err != nil {
 					return failGetConfig(sink, cfg, err)
 				}
-				includeResources, _ := cmd.Flags().GetBool("resources")
 				return container.StatusJSON(cmd.Context(), rt, appCfg.Containers, cfg.LocalStackHost, clients, sink, includeResources)
-			}
-
-			target, err := endpoint.Resolve(cmd.Context(), cmd)
-			if err != nil {
-				return err
 			}
 
 			if target != nil {
