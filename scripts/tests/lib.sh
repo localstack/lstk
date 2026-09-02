@@ -94,14 +94,3 @@ finish_suite() {
   echo "${TESTS_RUN}/${TESTS_RUN} test(s) passed in $(basename "$0")"
 }
 
-# Asserts that path is a symlink whose target is exactly want. Relative targets
-# are compared verbatim: an absolute or ../-prefixed target would not survive
-# packaging, so the exact string is the thing under test.
-assert_symlink_to() {
-  if [ ! -L "$1" ]; then
-    fail "expected a symlink at: $1"
-    return
-  fi
-  got="$(readlink "$1")"
-  [ "${got}" = "$2" ] || fail "expected $1 -> $2, got -> ${got}"
-}

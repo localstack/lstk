@@ -50,11 +50,11 @@ archives:
       # runs first; a local snapshot build needs it too (see
       # docs/extensions-bundling.md). A glob matching nothing fails the build.
       #
-      # The whole platform directory is taken, not just the binary, so the
-      # lstk-<name> alias symlinks staged beside it (Unix only) ride along —
-      # goreleaser preserves symlinks in tar.gz. They are a convenience for
-      # running an extension straight from a shell; lstk never resolves them.
-      - src: "bundled/{{ .Os }}_{{ .Arch }}/*"
+      # The glob is the binary alone (bare on Unix, .exe on Windows). Nothing
+      # else in the staged platform directory is shipped: lstk finds bundled
+      # commands through lstk-extensions.toml and dispatches by argv[0], so a
+      # per-command file at the archive root would serve no purpose.
+      - src: "bundled/{{ .Os }}_{{ .Arch }}/bundled-extensions*"
         strip_parent: true
         info:
           mode: 0o755

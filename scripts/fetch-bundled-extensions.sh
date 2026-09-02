@@ -9,28 +9,22 @@
 #
 #     bundled/<os>_<arch>/bundled-extensions[.exe]   one per platform
 #     bundled/lstk-extensions.toml                   os/arch-independent
-#     bundled/bundle-commands.txt                    os/arch-independent
 #
 # The private repository publishes one archive per platform,
 # `bundled-extensions_<tag>_<os>_<arch>.tar.gz` (`.zip` for Windows), each
 # containing the multi-call binary `bundled-extensions[.exe]` and the
 # descriptions file `lstk-extensions.toml`, plus a `checksums.txt` covering the
-# archives, and `lstk-<name>` alias entries for every command the binary
-# answers to (symlinks on Unix, copies on Windows).
+# archives.
 #
-# The binary and the toml are staged as they are. The aliases are re-created as
-# relative symlinks next to the binary, so a packaged install can also run
-# `lstk-doctor` straight from a shell — useful for testing an extension on its
-# own. lstk itself never resolves them: it dispatches to the one binary by
-# argv[0] and takes its command list from the toml, so a channel that cannot
-# carry symlinks loses only that convenience. Windows is skipped deliberately:
-# a zip symlink is re-created by most Windows extractors as a small text file
-# holding the target's name, which is worse than absent.
+# Only those two files are staged, and only they reach an lstk package: lstk
+# dispatches to the one binary by argv[0] and takes its command list from the
+# toml, so a per-command file on disk would serve no purpose on any channel.
 #
-# The alias names are also recorded in bundle-commands.txt, because they are the
-# bundle's own declaration of which commands it provides, and
-# scripts/check-descriptions.sh verifies the toml against that list. An archive
-# with no aliases is rejected for that reason.
+# Which commands the binary actually provides is not this script's business —
+# `bundled-extensions list` answers that, and scripts/check-descriptions.sh
+# asks it. What this script does guarantee is that every archive carries an
+# identical toml, so that answer can be checked against one file rather than
+# six.
 #
 # Which bundle is taken comes from bundled/extensions.version — `latest` by
 # default. `latest` is resolved to a concrete tag exactly once here and
@@ -68,9 +62,7 @@ UNSUPPORTED_PLATFORMS="${LSTK_UNSUPPORTED_PLATFORMS-}"
 
 REPO="${LSTK_EXTENSIONS_REPO:-localstack/lstk-bundled-extensions}"
 BUNDLED_BINARY="bundled-extensions"
-NAME_PREFIX="lstk-"
 DESCRIPTIONS_FILE="lstk-extensions.toml"
-COMMANDS_FILE="bundle-commands.txt"
 MANIFEST_FILE="checksums.txt"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -153,9 +145,9 @@ verify_checksums() {
   echo "Verified ${count} asset(s) against ${MANIFEST_FILE}."
 }
 
-# Unpacks one archive into an empty directory. Symlinked alias entries in a
-# tarball come out as symlinks; alias_names reads them by name only, and the
-# regular-file lookups in stage_assets never pick them up.
+# Unpacks one archive into an empty directory. Whatever else it holds is
+# ignored: stage_assets looks up the binary and the toml by name and copies only
+# those two.
 extract_archive() {
   local archive="$1" kind="$2" dest="$3"
   mkdir -p "${dest}"
@@ -165,18 +157,9 @@ extract_archive() {
   esac
 }
 
-# The command names an unpacked archive declares through its lstk-<name> alias
-# entries (any entry type: symlinks in tarballs, copies in zips), one per
-# line, sorted. The descriptions file is excluded by name.
-alias_names() {
-  find "$1" -mindepth 1 -maxdepth 1 -name "lstk-*" ! -name "${DESCRIPTIONS_FILE}" -exec basename {} \; \
-    | sed -e "s/^lstk-//" -e "s/\.exe$//" | grep -v "^$" | sort -u || true
-}
-
 stage_assets() {
   local dir="$1" file base parsed os arch kind ext unpacked binary toml staged=0
   local toml_staged="${BUNDLED_DIR}/${DESCRIPTIONS_FILE}"
-  local commands commands_staged="${BUNDLED_DIR}/${COMMANDS_FILE}"
   for file in "${dir}"/*; do
     base="$(basename "${file}")"
     [ "${base}" = "${MANIFEST_FILE}" ] && continue
@@ -209,27 +192,6 @@ stage_assets() {
       cmp -s "${toml}" "${toml_staged}" || die "${DESCRIPTIONS_FILE} in ${base} differs from the one in an earlier archive of the same bundle"
     else
       cp "${toml}" "${toml_staged}"
-    fi
-
-    # The alias entries are the bundle's own statement of which commands the
-    # binary answers to. They are not staged (lstk never needs them on disk)
-    # but their names are, so the descriptions gate can verify the toml
-    # against them. Like the toml, they must agree across platforms.
-    commands="$(alias_names "${unpacked}")"
-    [ -n "${commands}" ] || die "${base} carries no lstk-<name> alias entries, so the bundle's command list cannot be verified against ${DESCRIPTIONS_FILE}"
-    if [ -f "${commands_staged}" ]; then
-      [ "${commands}" = "$(cat "${commands_staged}")" ] || die "the command list (lstk-<name> alias entries) in ${base} differs from the one in an earlier archive of the same bundle"
-    else
-      printf "%s\n" "${commands}" > "${commands_staged}"
-    fi
-
-    # Re-create the aliases rather than copying the archive's own entries: the
-    # target is written relative and bare so it resolves wherever the pair is
-    # unpacked, whatever the archive happened to contain.
-    if [ "${os}" != "windows" ]; then
-      for name in ${commands}; do
-        ln -sf "${BUNDLED_BINARY}" "${BUNDLED_DIR}/${os}_${arch}/${NAME_PREFIX}${name}"
-      done
     fi
   done
   [ -f "${toml_staged}" ] || die "the bundle publishes no ${DESCRIPTIONS_FILE}"
@@ -280,13 +242,16 @@ write_stub_bundle() {
     case "${platform}" in windows_*) suffix=".exe" ;; esac
     mkdir -p "${BUNDLED_DIR}/${platform}"
     for name in ${binaries}; do
-      printf '#!/bin/sh\necho "stub %s for %s"\n' "${name}" "${platform}" \
-        > "${BUNDLED_DIR}/${platform}/${name}${suffix}"
-      chmod 0755 "${BUNDLED_DIR}/${platform}/${name}${suffix}"
-      # Mirror the real layout so a snapshot build exercises the same shape.
-      if [ "${name}" = "${BUNDLED_BINARY}" ] && [ "${suffix}" = "" ]; then
-        ln -sf "${BUNDLED_BINARY}" "${BUNDLED_DIR}/${platform}/${NAME_PREFIX}doctor"
+      if [ "${name}" = "${BUNDLED_BINARY}" ]; then
+        # The stub answers `list` like the real bundle does, so the descriptions
+        # gate can be run against a stub tree.
+        printf '#!/bin/sh\nif [ "$1" = "list" ]; then echo "doctor"; exit 0; fi\necho "stub %s for %s"\n' \
+          "${name}" "${platform}" > "${BUNDLED_DIR}/${platform}/${name}${suffix}"
+      else
+        printf '#!/bin/sh\necho "stub %s for %s"\n' "${name}" "${platform}" \
+          > "${BUNDLED_DIR}/${platform}/${name}${suffix}"
       fi
+      chmod 0755 "${BUNDLED_DIR}/${platform}/${name}${suffix}"
     done
   done
   {
@@ -306,14 +271,6 @@ write_stub_bundle() {
       esac
     done
   } > "${BUNDLED_DIR}/${DESCRIPTIONS_FILE}"
-  {
-    for name in ${binaries}; do
-      case "${name}" in
-        "${BUNDLED_BINARY}") echo "doctor" ;;
-        lstk-*) echo "${name#lstk-}" ;;
-      esac
-    done
-  } | sort -u > "${BUNDLED_DIR}/${COMMANDS_FILE}"
 
   cat >&2 <<'BANNER'
 

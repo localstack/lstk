@@ -357,11 +357,11 @@ jobs:
           LSTK_EXTENSIONS_REPO: localstack/lstk-bundled-extensions
 
       # A command described in lstk-extensions.toml that the bundle does not
-      # provide (per bundle-commands.txt, which the fetch step records from the
-      # archives' lstk-<name> aliases) would show in help and fail when run; a
-      # binary with no command list would be unreachable. Either fails the
-      # release. Descriptions and the list are the same on every platform, so
-      # one platform dir is enough.
+      # provide would show in help and fail when run; a binary whose commands
+      # are all undescribed would be unreachable. Either fails the release. The
+      # bundle's side of the comparison comes from asking it — the gate runs
+      # `bundled-extensions list` — so it has to be pointed at the runner's own
+      # platform directory.
       - name: Check descriptions match the bundled binary
         run: scripts/check-descriptions.sh bundled/linux_amd64
 

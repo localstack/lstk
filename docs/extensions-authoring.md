@@ -124,10 +124,16 @@ beside it; a name that file does not list is never handed to the bundle. Read
 being asked to be. The value is exactly `lstk-<name>`, with no path and no
 `.exe`, and lstk only ever hands the bundle a name the toml lists, so a lookup
 miss inside the binary means the toml and the binary disagree: report it
-loudly rather than guessing. Where the install channel allows it a release also
-places an `lstk-<name>` symlink to the binary, so the same command can be run
-straight from a shell; that is a convenience only, and lstk never resolves it. See [extensions-bundling.md](extensions-bundling.md) for how
-the bundle is built and shipped.
+loudly rather than guessing.
+
+The binary is the only copy on disk — there is no `lstk-<name>` file per
+command — so it is reachable only as `lstk <name>`. It nonetheless sits in the
+install directory next to `lstk`, where somebody will eventually find it and
+run it directly. Handle that: when `LSTK_EXT_API_VERSION` is unset there is no
+runtime context to work from, so print a short message saying the binary is
+part of lstk and naming the command to use instead, then exit non-zero. Do not
+fall back to defaults. See [extensions-bundling.md](extensions-bundling.md)
+for how the bundle is built and shipped.
 
 ## Help descriptions
 
