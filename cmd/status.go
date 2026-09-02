@@ -40,7 +40,8 @@ func newStatusCmd(cfg *env.Env) *cobra.Command {
 			}
 
 			if cfg.JSON {
-				includeResources, _ := cmd.Flags().GetBool("resources")
+				noResources, _ := cmd.Flags().GetBool("no-resources")
+				includeResources := !noResources
 				if target != nil {
 					return container.StatusExternalJSON(cmd.Context(), target, clients, sink, includeResources)
 				}
@@ -78,6 +79,6 @@ func newStatusCmd(cfg *env.Env) *cobra.Command {
 			return container.Status(cmd.Context(), rt, appCfg.Containers, cfg.LocalStackHost, clients, output.NewPlainSink(os.Stdout))
 		},
 	}
-	cmd.Flags().Bool("resources", false, "Include deployed resource details (--json only)")
+	cmd.Flags().Bool("no-resources", false, "Exclude deployed resource details (--json only)")
 	return cmd
 }

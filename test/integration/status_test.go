@@ -287,7 +287,8 @@ func TestStatusCommandJSONRunning(t *testing.T) {
 	assert.Equal(t, containerName, e.Name)
 	assert.Equal(t, "4.14.1", e.Version)
 	assert.NotEmpty(t, e.Host)
-	assert.Nil(t, e.ResourceSummary, "resources should be excluded by default")
+	require.NotNil(t, e.ResourceSummary, "resources should be included by default")
+	assert.Equal(t, 0, e.ResourceSummary.Resources)
 }
 
 func TestStatusCommandJSONNotRunning(t *testing.T) {
@@ -305,7 +306,7 @@ func TestStatusCommandJSONNotRunning(t *testing.T) {
 	assert.Equal(t, "EMULATOR", envelope.Error.Category)
 }
 
-func TestStatusCommandJSONResourcesFlag(t *testing.T) {
+func TestStatusCommandJSONNoResourcesFlag(t *testing.T) {
 	requireDocker(t)
 	cleanup()
 	t.Cleanup(cleanup)
@@ -326,8 +327,8 @@ func TestStatusCommandJSONResourcesFlag(t *testing.T) {
 	}))
 	defer server.Close()
 
-	stdout, stderr, err := runLstk(t, ctx, "", env.With(env.LocalStackHost, lsHost(server)), "status", "--json", "--resources")
-	require.NoError(t, err, "lstk status --json --resources failed: %s", stderr)
+	stdout, stderr, err := runLstk(t, ctx, "", env.With(env.LocalStackHost, lsHost(server)), "status", "--json", "--no-resources")
+	require.NoError(t, err, "lstk status --json --no-resources failed: %s", stderr)
 	requireExitCode(t, 0, err)
 
 	envelope := decodeEnvelope(t, stdout)
@@ -335,15 +336,13 @@ func TestStatusCommandJSONResourcesFlag(t *testing.T) {
 		Emulators []struct {
 			ResourceSummary *struct {
 				Resources int `json:"resources"`
-				Services  int `json:"services"`
 			} `json:"resourceSummary"`
 			Resources []json.RawMessage `json:"resources"`
 		} `json:"emulators"`
 	}
 	require.NoError(t, json.Unmarshal(envelope.Data, &data))
 	require.Len(t, data.Emulators, 1)
-	require.NotNil(t, data.Emulators[0].ResourceSummary, "--resources should include a resourceSummary")
-	assert.Equal(t, 0, data.Emulators[0].ResourceSummary.Resources)
+	assert.Nil(t, data.Emulators[0].ResourceSummary, "--no-resources should exclude the resource summary")
 	assert.Empty(t, data.Emulators[0].Resources)
 }
 
@@ -396,8 +395,8 @@ func TestStatusCommandJSONExternalEndpointResources(t *testing.T) {
 	e := env.With(env.DisableEvents, "1").WithHome(t.TempDir())
 	e = append(e, unreachableDockerHost)
 
-	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), e, "--endpoint-url", srv.URL, "status", "--json", "--resources")
-	require.NoError(t, err, "lstk status --json --resources --endpoint-url failed: %s", stderr)
+	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), e, "--endpoint-url", srv.URL, "status", "--json")
+	require.NoError(t, err, "lstk status --json --endpoint-url failed: %s", stderr)
 	requireExitCode(t, 0, err)
 
 	envelope := decodeEnvelope(t, stdout)
