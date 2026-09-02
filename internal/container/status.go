@@ -131,10 +131,11 @@ func StatusExternal(ctx context.Context, target *endpoint.Target, clients map[co
 	return nil
 }
 
-// StatusJSON reports every configured emulator's running/health state, one
-// EmulatorStatusEvent per container — unlike Status above, it doesn't stop
-// at the first non-running one. Resources are only fetched when
-// includeResources is set, since this path is also polled for readiness.
+// StatusJSON reports each configured emulator's health, one
+// EmulatorStatusEvent per container. Stops at the first not-running
+// emulator, same as Status above, returning EMULATOR_NOT_RUNNING. Resources
+// are only fetched when includeResources is set, since this path is also
+// polled for readiness.
 func StatusJSON(ctx context.Context, rt runtime.Runtime, containers []config.ContainerConfig, localStackHost string, clients map[config.EmulatorType]emulator.Client, sink output.Sink, includeResources bool) error {
 	if err := rt.IsHealthy(ctx); err != nil {
 		rt.EmitUnhealthyError(sink, err)
@@ -150,8 +151,11 @@ func StatusJSON(ctx context.Context, rt runtime.Runtime, containers []config.Con
 			return fmt.Errorf("checking %s running: %w", c.Name(), err)
 		}
 		if name == "" {
-			sink.Emit(output.EmulatorStatusEvent{Type: string(c.Type), Running: false})
-			continue
+			sink.Emit(output.ErrorEvent{
+				Title: fmt.Sprintf("%s is not running", c.DisplayName()),
+				Code:  output.ErrEmulatorNotRunning,
+			})
+			return output.NewSilentError(fmt.Errorf("%s is not running", c.Name()))
 		}
 
 		port := c.Port

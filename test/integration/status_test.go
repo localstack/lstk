@@ -296,23 +296,13 @@ func TestStatusCommandJSONNotRunning(t *testing.T) {
 	t.Cleanup(cleanup)
 
 	stdout, _, err := runLstk(t, testContext(t), "", testEnvWithHome(t.TempDir(), ""), "status", "--json")
-	require.NoError(t, err, "lstk status --json should succeed when not running")
-	requireExitCode(t, 0, err)
+	requireExitCode(t, 1, err)
 
 	envelope := decodeEnvelope(t, stdout)
-	assert.Equal(t, "ok", envelope.Status)
-	assert.Nil(t, envelope.Error)
-
-	var data struct {
-		Emulators []map[string]json.RawMessage `json:"emulators"`
-	}
-	require.NoError(t, json.Unmarshal(envelope.Data, &data))
-	require.Len(t, data.Emulators, 1)
-	e := data.Emulators[0]
-	assert.JSONEq(t, `"aws"`, string(e["type"]))
-	assert.JSONEq(t, `false`, string(e["running"]))
-	assert.JSONEq(t, `null`, string(e["health"]))
-	assert.NotContains(t, e, "name", "a non-running emulator should omit detail fields entirely")
+	assert.Equal(t, "error", envelope.Status)
+	require.NotNil(t, envelope.Error)
+	assert.Equal(t, "EMULATOR_NOT_RUNNING", envelope.Error.Code)
+	assert.Equal(t, "EMULATOR", envelope.Error.Category)
 }
 
 func TestStatusCommandJSONResourcesFlag(t *testing.T) {

@@ -189,8 +189,7 @@ type EmulatorStatusResource struct {
 	Account string
 }
 
-// EmulatorStatusEvent reports one configured emulator's running/health
-// state, fired once per emulator including non-running ones.
+// EmulatorStatusEvent reports one running emulator's health state.
 type EmulatorStatusEvent struct {
 	Type          string
 	Running       bool
