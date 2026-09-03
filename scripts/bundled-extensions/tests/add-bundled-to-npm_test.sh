@@ -7,7 +7,7 @@
 set -euo pipefail
 
 SUITE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=scripts/tests/lib.sh
+# shellcheck source=scripts/bundled-extensions/tests/lib.sh
 . "${SUITE_DIR}/lib.sh"
 
 ADD="${SUITE_DIR}/../add-bundled-to-npm.sh"

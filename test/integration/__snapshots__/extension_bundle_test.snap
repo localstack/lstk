@@ -2,51 +2,8 @@ Snapshots created by internal/snap. UPDATE_SNAPS=true go test rewrites
 this file.
 
 [TestBundledMultiCallHelpListsDescribedCommands_1]
-Usage: lstk [options] [command]
-
-LSTK - LocalStack command-line interface
-
-Commands:
-  completion  Generate the autocompletion script for the specified shell
-  config      Manage configuration
-  help        Help about any command
-  load        Load a snapshot into the running emulator
-  login       Manage login
-  logout      Remove stored authentication credentials
-  logs        Show emulator logs
-  reset       Reset emulator state
-  restart     Restart emulator
-  save        Save a snapshot of the emulator state
-  setup       Set up emulator CLI integration
-  snapshot    Manage emulator snapshots
-  start       Start emulator
-  status      Show emulator status and deployed resources
-  stop        Stop emulator
-  update      Update lstk to the latest version
-  volume      Manage emulator volume
-
-Tools:
-  aws         Run AWS CLI commands against LocalStack
-  az          Run Azure CLI commands against LocalStack
-  cdk         Run AWS CDK against LocalStack
-  sam         Run the AWS SAM CLI against LocalStack
-  terraform   Run Terraform against LocalStack
-
 Extensions:
   deploy      Deploy to LocalStack
   doctor      Check the local setup
   hello
-
-Options:
-      --config string         Path to config file
-      --endpoint-url string   Target an existing, externally-managed emulator at this URL
-  -h, --help                  Show help
-      --json                  Output in JSON format (only supported by some commands)
-      --no-snapshot           Skip auto-loading the configured snapshot for this run
-      --non-interactive       Disable interactive mode
-      --persist               Persist emulator state across restarts
-      --snapshot string       Snapshot REF to load after start (overrides config for this run)
-      --timeout duration      Maximum time to wait for the emulator to become ready (overrides LSTK_STARTUP_TIMEOUT; 0 uses the default)
-  -t, --type string           Emulator type to start (aws, snowflake, azure)
-  -v, --version               Show version
 ---

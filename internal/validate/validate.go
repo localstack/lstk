@@ -221,8 +221,9 @@ func AuthToken(value string) error {
 // multi-call binary argv[0] "lstk-<name>". The first character must be a letter
 // or digit so a name can never read as a flag, and the rest is limited to
 // letters, digits, hyphens, and underscores. It is the same rule the release
-// gate (scripts/check-descriptions.sh) applies to lstk-extensions.toml keys, so
-// a descriptions file that passes the gate always loads and vice versa.
+// gate (scripts/bundled-extensions/check-descriptions.sh) applies to
+// lstk-extensions.toml keys, so a descriptions file that passes the gate always
+// loads and vice versa.
 var extensionNameRegexp = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]*$`)
 
 // ExtensionName validates an extension command name taken from the bundled

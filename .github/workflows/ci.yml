@@ -126,7 +126,7 @@ jobs:
       # packaging bundled extensions and downloading them have to land
       # together. This does, and fails the PR instead of the release.
       - name: Check bundled packaging is in step with the download
-        run: scripts/check-bundled-packaging-sync.sh
+        run: scripts/bundled-extensions/check-bundled-packaging-sync.sh
 
       - name: Test release scripts
         run: make test-scripts
@@ -345,7 +345,7 @@ jobs:
             echo "Release ${GITHUB_REF_NAME} already records bundle ${recorded}; pinning to it."
             export LSTK_EXTENSIONS_TAG="${recorded}"
           fi
-          scripts/fetch-bundled-extensions.sh | tee fetch.log
+          scripts/bundled-extensions/fetch-bundled-extensions.sh | tee fetch.log
           tag="$(sed -n 's/^Resolved extensions bundle: \([^ ]*\) .*/\1/p' fetch.log)"
           [ -n "${tag}" ] || { echo "could not determine the resolved bundle tag"; exit 1; }
           commit="$(GH_TOKEN="${LSTK_EXTENSIONS_READ_TOKEN}" gh api "repos/${LSTK_EXTENSIONS_REPO}/commits/${tag}" --jq .sha)"
@@ -363,7 +363,7 @@ jobs:
       # `bundled-extensions list` — so it has to be pointed at the runner's own
       # platform directory.
       - name: Check descriptions match the bundled binary
-        run: scripts/check-descriptions.sh bundled/linux_amd64
+        run: scripts/bundled-extensions/check-descriptions.sh bundled/linux_amd64
 
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v7
@@ -408,7 +408,7 @@ jobs:
       # package's `files` allowlist: the publisher emits "files": [], which npm
       # packs as package.json + bin only, so a bare copy would be dropped.
       - name: Add bundled extensions to the npm platform packages
-        run: scripts/add-bundled-to-npm.sh dist/npm bundled
+        run: scripts/bundled-extensions/add-bundled-to-npm.sh dist/npm bundled
 
       - name: Publish to NPM
         run: |

@@ -23,10 +23,10 @@ test:
 test-integration: build
 	@RUN="$(RUN)" ./scripts/test-integration.sh
 
-# Bash suites for the release helper scripts under scripts/. They only ever run
+# Bash suites for the bundled-extension release helper scripts. They only ever run
 # on the Linux release runner, so a bash suite is the faithful test here.
 test-scripts:
-	@./scripts/test-scripts.sh
+	@./scripts/bundled-extensions/test-scripts.sh
 
 otel:
 	docker compose -f docker-compose.tracing.yaml up -d

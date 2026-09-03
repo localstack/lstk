@@ -46,9 +46,10 @@ archives:
       - manpages/*
       # LocalStack's bundled extensions: one multi-call binary per platform plus
       # the descriptions file, at the archive root next to lstk. Staged under
-      # bundled/ by scripts/fetch-bundled-extensions.sh, which the release job
-      # runs first; a local snapshot build needs it too (see
-      # docs/extensions-bundling.md). A glob matching nothing fails the build.
+      # bundled/ by scripts/bundled-extensions/fetch-bundled-extensions.sh,
+      # which the release job runs first; a local snapshot build needs it too
+      # (see docs/extensions-bundling.md). A glob matching nothing fails the
+      # build.
       #
       # The glob is the binary alone (bare on Unix, .exe on Windows). Nothing
       # else in the staged platform directory is shipped: lstk finds bundled

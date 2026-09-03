@@ -79,10 +79,35 @@ func TestBundledMultiCallHelpListsDescribedCommands(t *testing.T) {
 	tmpHome := t.TempDir()
 	stdout, stderr, err := runBinary(t, t.TempDir(), envWithPath(tmpHome, extDir), lstkBin, "--help")
 	require.NoError(t, err, stderr)
-	// Pins: both bundled commands with their descriptions, the PATH one
-	// name-only, no `bundled-extensions` or `extensions` phantom entries, and
-	// no ARGS= line (help never executes anything).
-	snap.Match(t, stdout)
+	// Pins: both bundled commands with their descriptions and the PATH one
+	// name-only. Only the Extensions section is snapshotted; the rest of the
+	// help text belongs to commands and flags this test says nothing about.
+	snap.Match(t, helpSection(t, stdout, "Extensions:"))
+	// The bundle binary itself is not a command, and help never executes it.
+	require.NotContains(t, stdout, "bundled-extensions")
+	require.NotContains(t, stdout, "ARGS=")
+}
+
+// helpSection returns one section of `lstk --help`: the header line and the
+// indented entries under it, up to the blank line that ends it. Tests pin a
+// section rather than the whole help text, so that adding a command or a flag
+// elsewhere in lstk does not rewrite an extensions snapshot.
+func helpSection(t *testing.T, help, header string) string {
+	t.Helper()
+	lines := strings.Split(strings.ReplaceAll(help, "\r\n", "\n"), "\n")
+	start := -1
+	for i, line := range lines {
+		if line == header {
+			start = i
+			break
+		}
+	}
+	require.NotEqual(t, -1, start, "no %q section in help output:\n%s", header, help)
+	end := start + 1
+	for end < len(lines) && strings.TrimSpace(lines[end]) != "" {
+		end++
+	}
+	return strings.Join(lines[start:end], "\n")
 }
 
 func TestBundledMultiCallUndescribedCommandIsUnknown(t *testing.T) {
