@@ -2,11 +2,10 @@ package update
 
 import (
 	"context"
-	"encoding/json"
-	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	goruntime "runtime"
 	"testing"
 
 	"github.com/localstack/lstk/internal/output"
@@ -62,13 +61,12 @@ func TestMissingSetMembers(t *testing.T) {
 	}
 }
 
-// mockLatestReleaseServer serves the releases/latest API with the given tag.
-func mockLatestReleaseServer(t *testing.T, tag string) *httptest.Server {
+// newGitHubServerWithCleanup reuses the package's one mock GitHub
+// latest-release server (newTestGitHubServer in notify_test.go) and ties its
+// shutdown to the test, so this file cannot grow a drifting second mock.
+func newGitHubServerWithCleanup(t *testing.T, tag string) *httptest.Server {
 	t.Helper()
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{"tag_name": tag})
-	}))
+	srv := newTestGitHubServer(t, tag)
 	t.Cleanup(srv.Close)
 	return srv
 }
@@ -98,18 +96,19 @@ func checkedEvent(t *testing.T, events []output.Event) output.UpdateCheckedEvent
 // comparison alone would report "already up to date" and leave the user
 // without their bundled extensions until another release ships.
 func TestCheckRepairsIncompleteSetAtCurrentVersion(t *testing.T) {
-	srv := mockLatestReleaseServer(t, "v1.2.3")
+	srv := newGitHubServerWithCleanup(t, "v1.2.3")
 	t.Setenv(githubAPIEndpointEnv, srv.URL)
 
 	var events []output.Event
 	sink := output.SinkFunc(func(e output.Event) { events = append(events, e) })
-	latest, available, err := checkWithVersion(context.Background(), sink, "", "1.2.3", func() []string {
+	latest, available, repair, err := checkWithVersion(context.Background(), sink, "", "1.2.3", func() []string {
 		return []string{"bundled-extensions", "lstk-extensions.toml"}
 	})
 
 	require.NoError(t, err)
 	assert.Equal(t, "v1.2.3", latest)
 	assert.True(t, available, "an incomplete set must not short-circuit on the version")
+	assert.True(t, repair, "Check must hand the repair fact to its caller, not have it re-derived")
 
 	event := checkedEvent(t, events)
 	assert.True(t, event.Available)
@@ -120,15 +119,16 @@ func TestCheckRepairsIncompleteSetAtCurrentVersion(t *testing.T) {
 // TestCheckReportsUpToDateWhenSetIsComplete keeps the ordinary path as cheap
 // as it was: same version, complete set, nothing to do and nothing downloaded.
 func TestCheckReportsUpToDateWhenSetIsComplete(t *testing.T) {
-	srv := mockLatestReleaseServer(t, "v1.2.3")
+	srv := newGitHubServerWithCleanup(t, "v1.2.3")
 	t.Setenv(githubAPIEndpointEnv, srv.URL)
 
 	var events []output.Event
 	sink := output.SinkFunc(func(e output.Event) { events = append(events, e) })
-	_, available, err := checkWithVersion(context.Background(), sink, "", "1.2.3", func() []string { return nil })
+	_, available, repair, err := checkWithVersion(context.Background(), sink, "", "1.2.3", func() []string { return nil })
 
 	require.NoError(t, err)
 	assert.False(t, available)
+	assert.False(t, repair)
 
 	event := checkedEvent(t, events)
 	assert.False(t, event.Available)
@@ -140,17 +140,18 @@ func TestCheckReportsUpToDateWhenSetIsComplete(t *testing.T) {
 // a newer release exists, this is an ordinary upgrade even if the set is also
 // incomplete, and the installed set is repaired by that upgrade anyway.
 func TestCheckPrefersVersionUpgradeOverRepair(t *testing.T) {
-	srv := mockLatestReleaseServer(t, "v2.0.0")
+	srv := newGitHubServerWithCleanup(t, "v2.0.0")
 	t.Setenv(githubAPIEndpointEnv, srv.URL)
 
 	var events []output.Event
 	sink := output.SinkFunc(func(e output.Event) { events = append(events, e) })
-	_, available, err := checkWithVersion(context.Background(), sink, "", "1.2.3", func() []string {
+	_, available, repair, err := checkWithVersion(context.Background(), sink, "", "1.2.3", func() []string {
 		return []string{"bundled-extensions"}
 	})
 
 	require.NoError(t, err)
 	assert.True(t, available)
+	assert.False(t, repair, "a version upgrade is not a repair even when members are also missing")
 
 	event := checkedEvent(t, events)
 	assert.False(t, event.RepairBundled)
@@ -162,11 +163,68 @@ func TestCheckPrefersVersionUpgradeOverRepair(t *testing.T) {
 func TestCheckSkipsRepairForDevBuilds(t *testing.T) {
 	var events []output.Event
 	sink := output.SinkFunc(func(e output.Event) { events = append(events, e) })
-	_, available, err := checkWithVersion(context.Background(), sink, "", "dev", func() []string {
+	_, available, repair, err := checkWithVersion(context.Background(), sink, "", "dev", func() []string {
 		return []string{"bundled-extensions"}
 	})
 
 	require.NoError(t, err)
 	assert.False(t, available)
+	assert.False(t, repair)
 	assert.True(t, checkedEvent(t, events).DevBuild)
+}
+
+// TestMissingSetMembersRequiresUsableFiles: "present" must mean what the
+// extension resolver means by resolvable. A file that exists but cannot run
+// leaves the user exactly as stranded as an absent one.
+func TestMissingSetMembersRequiresUsableFiles(t *testing.T) {
+	t.Parallel()
+	if goruntime.GOOS == "windows" {
+		t.Skip("no exec bits on Windows")
+	}
+
+	t.Run("non-executable binary counts as missing", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+		require.NoError(t, os.WriteFile(filepath.Join(dir, "bundled-extensions"), []byte("x"), 0o644))
+		got := missingSetMembers(dir, []string{"bundled-extensions"})
+		assert.Equal(t, []string{"bundled-extensions"}, got)
+	})
+
+	t.Run("directory squatting on the name counts as missing", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+		require.NoError(t, os.MkdirAll(filepath.Join(dir, "bundled-extensions"), 0o755))
+		got := missingSetMembers(dir, []string{"bundled-extensions"})
+		assert.Equal(t, []string{"bundled-extensions"}, got)
+	})
+
+	t.Run("descriptions file needs no exec bit", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+		require.NoError(t, os.WriteFile(filepath.Join(dir, "lstk-extensions.toml"), []byte("x"), 0o644))
+		got := missingSetMembers(dir, []string{"lstk-extensions.toml"})
+		assert.Nil(t, got)
+	})
+}
+
+// TestMissingSetMembersIgnoresUnreadableDir: a stat failure that is not
+// "does not exist" must not count as missing. Treating a transient permission
+// or I/O error as absence would trigger a pointless full re-download on every
+// run.
+func TestMissingSetMembersIgnoresUnreadableDir(t *testing.T) {
+	if goruntime.GOOS == "windows" {
+		t.Skip("directory permission bits do not gate stat on Windows")
+	}
+	if os.Geteuid() == 0 {
+		t.Skip("root bypasses permission checks")
+	}
+	parent := t.TempDir()
+	dir := filepath.Join(parent, "inner")
+	require.NoError(t, os.MkdirAll(dir, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "bundled-extensions"), []byte("x"), 0o755))
+	require.NoError(t, os.Chmod(dir, 0o000))
+	t.Cleanup(func() { _ = os.Chmod(dir, 0o755) })
+
+	got := missingSetMembers(dir, []string{"bundled-extensions"})
+	assert.Nil(t, got, "an unreadable install dir is not evidence of a missing member")
 }

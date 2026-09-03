@@ -699,7 +699,7 @@ func TestUpdateRepairsIncompleteBundledSet(t *testing.T) {
 	bundledBinary, descriptions := bundledSetMembers()
 
 	// The installed binary is already the latest version, and was built by the
-	// bundling release — but its install directory holds nothing else, exactly
+	// bundling release, but its install directory holds nothing else, exactly
 	// as a pre-bundling updater would have left it.
 	installDir := t.TempDir()
 	installed := filepath.Join(installDir, binaryName)
@@ -802,4 +802,77 @@ func TestUpdateIgnoresBundledSetOnPreBundlingRelease(t *testing.T) {
 	require.NoError(t, err, "lstk update failed: %s", outStr)
 	assert.Contains(t, outStr, "Already up to date", "output was: %s", outStr)
 	assert.NotContains(t, outStr, "Bundled extensions are missing", "output was: %s", outStr)
+}
+
+// TestUpdateRepairFailsLoudlyWhenArchiveLacksMembers guards against the silent
+// repair loop: the binary is stamped with a bundled set, the release archive
+// for the same version does not carry it, and without a post-install check
+// every `lstk update` would re-download, report success, and fix nothing,
+// forever. The update must fail and name what the archive did not deliver.
+func TestUpdateRepairFailsLoudlyWhenArchiveLacksMembers(t *testing.T) {
+	t.Parallel()
+	ctx := testContext(t)
+
+	binaryName := "lstk"
+	if runtime.GOOS == "windows" {
+		binaryName = "lstk.exe"
+	}
+	bundledBinary, descriptions := bundledSetMembers()
+
+	installDir := t.TempDir()
+	installed := filepath.Join(installDir, binaryName)
+	buildLstkWithBundledSet(t, ctx, "0.0.2", bundledBinary+","+descriptions, installed)
+
+	// The archive carries only lstk: the stamp promises members the release
+	// does not deliver.
+	newBytes, err := os.ReadFile(installed)
+	require.NoError(t, err)
+	archive := packageReleaseArchive(t, binaryName, newBytes)
+	sum := sha256.Sum256(archive)
+	assetName := releaseAssetName("0.0.2")
+	srv := mockGitHubReleaseServer(t, "v0.0.2", map[string][]byte{
+		"checksums.txt": []byte(fmt.Sprintf("%s  %s\n", hex.EncodeToString(sum[:]), assetName)),
+		assetName:       archive,
+	})
+
+	updateCmd := exec.CommandContext(ctx, installed, "update", "--non-interactive")
+	updateCmd.Env = mockGitHubEnv(t, srv)
+	out, err := updateCmd.CombinedOutput()
+	outStr := string(out)
+	require.Error(t, err, "a repair that restored nothing must not report success: %s", outStr)
+	requireExitCode(t, 1, err)
+	assert.Contains(t, outStr, "did not restore", "should say the repair failed: %s", outStr)
+	assert.Contains(t, outStr, bundledBinary, "should name the member the archive lacks: %s", outStr)
+	assert.NotContains(t, outStr, "Updated to", "must not claim success: %s", outStr)
+}
+
+// TestUpdateUpToDateCleansStagingLeftovers: a repair interrupted between
+// committing the members and committing lstk itself leaves a staging copy of
+// lstk behind, and the next run reports up to date without ever staging. The
+// up-to-date path must still tidy those leftovers instead of leaking a
+// binary-sized file until the next release.
+func TestUpdateUpToDateCleansStagingLeftovers(t *testing.T) {
+	t.Parallel()
+	ctx := testContext(t)
+
+	binaryName := "lstk"
+	if runtime.GOOS == "windows" {
+		binaryName = "lstk.exe"
+	}
+	installDir := t.TempDir()
+	installed := filepath.Join(installDir, binaryName)
+	buildLstkWithVersion(t, ctx, "0.0.2", installed)
+	leftover := filepath.Join(installDir, binaryName+".lstk-new")
+	require.NoError(t, os.WriteFile(leftover, []byte("interrupted staging copy"), 0o755))
+
+	srv := mockGitHubReleaseServer(t, "v0.0.2", map[string][]byte{})
+
+	updateCmd := exec.CommandContext(ctx, installed, "update", "--non-interactive")
+	updateCmd.Env = mockGitHubEnv(t, srv)
+	out, err := updateCmd.CombinedOutput()
+	require.NoError(t, err, "lstk update failed: %s", string(out))
+	assert.Contains(t, string(out), "Already up to date")
+
+	_, statErr := os.Stat(leftover)
+	assert.True(t, os.IsNotExist(statErr), "the up-to-date path should clean staging leftovers")
 }

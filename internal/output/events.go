@@ -169,7 +169,7 @@ type EmulatorResetEvent struct {
 }
 
 // UpdateCheckedEvent reports the result of an update check. It always fires
-// once per Check call — DevBuild, then RepairBundled, then Available,
+// once per Check call. DevBuild, then RepairBundled, then Available,
 // discriminate which of the four possible outcomes (dev build skipped the
 // check / already up to date / the installed set is incomplete and is being
 // repaired / an update is available) the formatter should render.

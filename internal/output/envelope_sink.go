@@ -49,7 +49,7 @@ func (s *EnvelopeSink) Emit(event Event) {
 		s.data["updateAvailable"] = e.Available
 		// Only present when true, so the pre-existing shapes are unchanged. It
 		// is what lets a JSON consumer tell a same-version bundled-set repair
-		// from an ordinary upgrade — the version fields alone cannot (they
+		// from an ordinary upgrade; the version fields alone cannot (they
 		// differ only by the "v" prefix in the repair case).
 		if e.RepairBundled {
 			s.data["repairBundled"] = true
@@ -57,10 +57,11 @@ func (s *EnvelopeSink) Emit(event Event) {
 	case UpdateAppliedEvent:
 		// An UpdateCheckedEvent always precedes this on the apply path (Check
 		// fires it unconditionally now, for the plain-text "Update available"
-		// line), so clear the keys it set rather than leaving stale
-		// latestVersion/updateAvailable alongside the applied-update shape.
+		// line), so clear every key it set rather than leaving stale check
+		// fields alongside the applied-update shape.
 		delete(s.data, "latestVersion")
 		delete(s.data, "updateAvailable")
+		delete(s.data, "repairBundled")
 		s.data["currentVersion"] = e.CurrentVersion
 		s.data["updatedVersion"] = e.UpdatedVersion
 		s.data["updated"] = true

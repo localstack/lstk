@@ -9,7 +9,7 @@ var version = "dev"
 func Version() string { return version }
 
 // bundledSet is set via ldflags at build time to the comma-separated
-// archive-root names of the bundled-extension files this release ships — the
+// archive-root names of the bundled-extension files this release ships: the
 // multi-call extensions binary and the descriptions file, with ".exe" included
 // on Windows builds (e.g. "bundled-extensions,lstk-extensions.toml").
 //
