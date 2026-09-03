@@ -357,3 +357,23 @@ func TestSlugify(t *testing.T) {
 		}
 	}
 }
+
+// TestEnvelopeSink_UpdateAppliedClearsRepairBundled: the applied-update shape
+// documents no repairBundled key, so the cleanup that already scrubs
+// latestVersion and updateAvailable must scrub it too.
+func TestEnvelopeSink_UpdateAppliedClearsRepairBundled(t *testing.T) {
+	t.Parallel()
+
+	sink := NewEnvelopeSink(FormatJSON)
+	sink.Emit(UpdateCheckedEvent{CurrentVersion: "2.3.0", LatestVersion: "v2.3.0", Available: true, RepairBundled: true})
+	sink.Emit(UpdateAppliedEvent{CurrentVersion: "2.3.0", UpdatedVersion: "v2.3.0", Method: "binary"})
+
+	envelope := sink.Result("update", nil)
+	data := envelope.Data.(map[string]any)
+	if _, has := data["repairBundled"]; has {
+		t.Fatalf("repairBundled must not leak into the applied-update shape: %+v", data)
+	}
+	if data["updated"] != true {
+		t.Fatalf("expected updated: true, got %+v", data)
+	}
+}

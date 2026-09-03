@@ -4,9 +4,9 @@
 //
 // # What a binary-channel update installs
 //
-// An update installs the whole version-matched set a release archive carries —
-// the lstk binary, the multi-call "bundled-extensions" binary that provides
-// every bundled extension, and the descriptions file — not just lstk. Homebrew
+// An update installs the whole version-matched set a release archive carries
+// (the lstk binary, the multi-call "bundled-extensions" binary that provides
+// every bundled extension, and the descriptions file), not just lstk. Homebrew
 // and npm get this for free by replacing the whole package; the binary channel
 // implements it in extract.go as stage-then-commit: every member is copied next
 // to its destination under a ".lstk-new" name, and only once all copies succeed
@@ -19,14 +19,20 @@
 // them through any refactor:
 //
 //  1. A file visible under its real name is never truncated or half-written.
-//     New content is only ever written to a staging name; a final name only
-//     ever changes by rename, which is atomic within a directory.
+//     New content is only ever written to a freshly created staging file
+//     (never through anything already on disk), and a final name only ever
+//     changes by rename, which is atomic within a directory.
 //  2. An interrupted update is repaired by re-running `lstk update`. Nothing
 //     is committed until every member is staged, staging files left by an
 //     interrupted run are cleaned up before the next one stages, and lstk
-//     itself commits last — so an interruption leaves the user either on their
-//     previous complete version or on a fully committed new one, and never in
-//     a state a re-run cannot resolve.
+//     itself commits last, so an interruption leaves the user with a working
+//     lstk to re-run the update with. Members committed before an interruption
+//     stay at the new version; that skew is benign by contract (the extension
+//     API version only changes on breaking releases) and the re-run resolves
+//     it. One Windows caveat: the running lstk.exe is renamed aside before the
+//     new one is renamed in, and a crash between those two renames leaves no
+//     lstk.exe under the real name. Recovery is renaming lstk.exe.old back by
+//     hand; the commit error message says so when it can.
 //  3. The updater never deletes an "lstk-*" file that the new archive does not
 //     contain. It cannot distinguish a bundled extension a release dropped
 //     from one the user put there, and the descriptions file is not an
@@ -38,21 +44,33 @@
 //     Decision 4 of the add-bundled-extension-distribution change for the full
 //     reasoning.
 //
-// A release archive carrying only lstk — every pre-bundling release, and any
-// rollback to one — is a valid set of size one and installs exactly as it did
+// A deliberate consequence of stage-then-commit: the update needs write
+// permission in the install directory. The pre-bundling updater could fall
+// back to overwriting a writable binary in place inside a read-only directory,
+// but that fallback could leave a half-written file under the real name (the
+// exact thing promise 1 forbids) and could never install the extensions
+// anyway, so it was removed rather than kept for lstk alone. The staging error
+// names the directory when this is what failed.
+//
+// A release archive carrying only lstk (every pre-bundling release, and any
+// rollback to one) is a valid set of size one and installs exactly as it did
 // before bundling existed. When an archive does carry extensions they are not
 // optional: a member that fails to stage or commit fails the whole update and
 // names the member, rather than reporting success with a partial set.
 //
 // An install can also be current and still incomplete, which no version
 // comparison can detect; missingBundledMembers explains when that happens and
-// how `lstk update` repairs it.
+// how `lstk update` repairs it. A repair verifies afterwards that the members
+// are actually present and fails loudly when the release archive did not
+// deliver them, so a stamped-but-not-shipped release cannot loop forever
+// behind successful-looking updates.
 package update
 
 import (
 	"bytes"
 	"context"
 	"fmt"
+	"path/filepath"
 	"strings"
 	"sync"
 
@@ -61,22 +79,24 @@ import (
 )
 
 // Check reports whether `lstk update` has work to do. Returns the latest
-// version string and true when an update should be applied. Always emits
-// exactly one UpdateCheckedEvent, whose DevBuild/RepairBundled/Available fields
-// tell the sink which of the four possible outcomes (dev build skipped /
-// already up to date / an update is available / the installed set is
-// incomplete and is being repaired) occurred.
-func Check(ctx context.Context, sink output.Sink, githubToken string) (string, bool, error) {
+// version string, whether an update should be applied, and whether that work
+// is a same-version repair of an incomplete bundled set rather than a version
+// upgrade (repair implies available). Always emits exactly one
+// UpdateCheckedEvent, whose DevBuild/RepairBundled/Available fields tell the
+// sink which of the four possible outcomes (dev build skipped / already up to
+// date / an update is available / the installed set is incomplete and is being
+// repaired) occurred.
+func Check(ctx context.Context, sink output.Sink, githubToken string) (latest string, available, repair bool, err error) {
 	return checkWithVersion(ctx, sink, githubToken, version.Version(), missingBundledMembers)
 }
 
 // checkWithVersion is Check with the running version and the set-completeness
 // probe as parameters, mirroring checkQuietlyWithVersion, so both can be driven
 // from a test.
-func checkWithVersion(ctx context.Context, sink output.Sink, githubToken, current string, missingMembers func() []string) (string, bool, error) {
+func checkWithVersion(ctx context.Context, sink output.Sink, githubToken, current string, missingMembers func() []string) (string, bool, bool, error) {
 	if current == "dev" {
 		sink.Emit(output.UpdateCheckedEvent{CurrentVersion: current, DevBuild: true})
-		return "", false, nil
+		return "", false, false, nil
 	}
 
 	sink.Emit(output.SpinnerStart("Checking for updates"))
@@ -85,15 +105,15 @@ func checkWithVersion(ctx context.Context, sink output.Sink, githubToken, curren
 	if err != nil {
 		wrapped := fmt.Errorf("failed to check for updates: %w", err)
 		sink.Emit(output.ErrorEvent{Title: wrapped.Error(), Code: output.ErrNetworkError})
-		return "", false, output.NewSilentError(wrapped)
+		return "", false, false, output.NewSilentError(wrapped)
 	}
 
 	available := normalizeVersion(current) != normalizeVersion(latest)
 
-	// An install can be current and still incomplete — see
-	// missingBundledMembers for how that happens and why the version
-	// comparison alone cannot detect it. The probe only runs when the versions
-	// match, so the ordinary up-to-date path costs exactly what it did before.
+	// An install can be current and still incomplete; missingBundledMembers
+	// explains how that happens and why the version comparison alone cannot
+	// detect it. The probe only runs when the versions match, so the ordinary
+	// up-to-date path costs exactly what it did before.
 	repair := false
 	if !available && len(missingMembers()) > 0 {
 		available, repair = true, true
@@ -105,25 +125,29 @@ func checkWithVersion(ctx context.Context, sink output.Sink, githubToken, curren
 		Available:      available,
 		RepairBundled:  repair,
 	})
-	return latest, available, nil
+	return latest, available, repair, nil
 }
 
 // Update checks for updates and applies the update if one is available.
 func Update(ctx context.Context, sink output.Sink, checkOnly bool, githubToken string) error {
 	current := version.Version()
-	latest, available, err := Check(ctx, sink, githubToken)
+	latest, available, repair, err := Check(ctx, sink, githubToken)
 	if err != nil {
 		return err
 	}
-	if !available || checkOnly {
+	if !available {
+		if !checkOnly {
+			cleanupStagingLeftovers()
+		}
+		return nil
+	}
+	if checkOnly {
 		return nil
 	}
 
-	// Available with an unchanged version can only mean a bundled-set repair
-	// (UpdateCheckedEvent.RepairBundled documents the equivalence). The checked
-	// event states only the finding, because it also renders under --check;
-	// the reinstall is narrated here, where it actually happens.
-	if normalizeVersion(current) == normalizeVersion(latest) {
+	// The checked event states only the finding, because it also renders under
+	// --check; the reinstall is narrated here, where it actually happens.
+	if repair {
 		sink.Emit(output.MessageEvent{
 			Severity: output.SeverityNote,
 			Text:     fmt.Sprintf("Reinstalling %s to restore bundled extensions", current),
@@ -136,8 +160,46 @@ func Update(ctx context.Context, sink output.Sink, checkOnly bool, githubToken s
 		return output.NewSilentError(err)
 	}
 
+	// A repair re-downloads the running version, so success must mean the
+	// members are actually there now. Without this re-probe, a release whose
+	// stamped set names a member its own archive does not carry would make
+	// every `lstk update` download, "succeed", and detect the member missing
+	// again, forever, with no signal anywhere. The install itself is fine (the
+	// archive is authoritative for what an update installs), so this fails the
+	// repair claim, not the file replacement.
+	if repair {
+		if still := missingBundledMembers(); len(still) > 0 {
+			failure := fmt.Errorf("update did not restore the bundled extensions: the %s release archive does not contain %s",
+				latest, strings.Join(still, ", "))
+			sink.Emit(output.ErrorEvent{
+				Title:   failure.Error(),
+				Summary: "This is a packaging problem in the release, not in your installation.",
+				Code:    output.ErrInternal,
+				Actions: []output.ErrorAction{
+					{Label: "Report it at:", Value: "https://github.com/localstack/lstk/issues"},
+				},
+			})
+			return output.NewSilentError(failure)
+		}
+	}
+
 	sink.Emit(output.UpdateAppliedEvent{CurrentVersion: current, UpdatedVersion: latest, Method: method})
 	return nil
+}
+
+// cleanupStagingLeftovers removes staging files in the install directory when
+// an up-to-date check decides there is nothing else to do. A repair that was
+// interrupted between committing the bundled members and committing lstk
+// itself leaves an lstk staging copy behind, and every later run takes the
+// up-to-date path (same version, complete set), so without this the leftover
+// would sit there until the next release ships. Best effort: failing to tidy a
+// leftover is no reason to fail an otherwise satisfied update.
+func cleanupStagingLeftovers() {
+	info := DetectInstallMethod()
+	if info.Method != InstallBinary || info.ResolvedPath == "" {
+		return
+	}
+	_ = removeStagingFiles(filepath.Dir(info.ResolvedPath))
 }
 
 // applyUpdate detects the current install method and performs the update,

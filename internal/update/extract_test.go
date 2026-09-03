@@ -31,19 +31,13 @@ type archiveEntry struct {
 
 // lstkBinaryName is the archive-root name of the lstk binary on this platform.
 func lstkBinaryName() string {
-	if goruntime.GOOS == "windows" {
-		return "lstk.exe"
-	}
-	return "lstk"
+	return exeName("lstk", goruntime.GOOS)
 }
 
 // extBinaryName is the archive-root name of the bundled extension providing
 // the given command on this platform.
 func extBinaryName(name string) string {
-	if goruntime.GOOS == "windows" {
-		return "lstk-" + name + ".exe"
-	}
-	return "lstk-" + name
+	return exeName("lstk-"+name, goruntime.GOOS)
 }
 
 // buildArchive writes a release-shaped archive containing exactly the given
@@ -281,7 +275,7 @@ func TestExtractAndReplaceStagingFailureLeavesInstallUntouched(t *testing.T) {
 	})
 
 	// A non-empty directory squatting on beta's staging path makes its copy
-	// fail after alpha has already been staged — a failure partway through.
+	// fail after alpha has already been staged: a failure partway through.
 	blocked := filepath.Join(dir, extBinaryName("beta")+stagingSuffix)
 	require.NoError(t, os.MkdirAll(blocked, 0o755))
 	require.NoError(t, os.WriteFile(filepath.Join(blocked, "occupied"), []byte("x"), 0o644))
@@ -408,9 +402,9 @@ func TestExtractAndReplaceIgnoresNonExecutableArchiveEntries(t *testing.T) {
 	}
 }
 
-// TestReplaceSetWindowsVariant exercises the Windows shape of an update —
+// TestReplaceSetWindowsVariant exercises the Windows shape of an update:
 // zip archive, ".exe" names, and moving the running lstk.exe aside before
-// replacing it — from any host. Unit tests run on Linux only in CI, so without
+// replacing it, from any host. Unit tests run on Linux only in CI, so without
 // the goos parameter this path would ship untested.
 func TestReplaceSetWindowsVariant(t *testing.T) {
 	t.Parallel()
@@ -448,7 +442,7 @@ func TestReplaceSetWindowsVariant(t *testing.T) {
 // TestCommitRestoresRunningBinaryOnWindowsRenameFailure covers the one gap in
 // "re-run lstk update to repair" on Windows: the running lstk.exe is moved
 // aside before the final rename, so a failure there would leave nothing under
-// the real name — and no lstk to re-run. The commit must move it back.
+// the real name, and no lstk to re-run. The commit must move it back.
 func TestCommitRestoresRunningBinaryOnWindowsRenameFailure(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
@@ -456,7 +450,7 @@ func TestCommitRestoresRunningBinaryOnWindowsRenameFailure(t *testing.T) {
 	require.NoError(t, os.WriteFile(dest, []byte("old lstk"), 0o755))
 
 	// No staging file exists, so the final rename fails after the aside-move.
-	m := updateMember{dest: dest, mode: 0o755, running: true}
+	m := updateMember{dest: dest, mode: 0o755}
 	require.Error(t, m.commit("windows"))
 
 	requireFileContent(t, dest, "old lstk")
@@ -539,7 +533,7 @@ func TestExtractAndReplaceInstallsBundleWithoutDescriptions(t *testing.T) {
 // TestExtractorsSkipSymlinkEntries keeps a malformed or hostile archive from
 // installing junk. No release archive ships links, but a zip symlink entry
 // stores its target as the file body, so extracting one as a regular file
-// yields an executable whose contents are a path string — which discoverMembers
+// yields an executable whose contents are a path string, which discoverMembers
 // would then install as a bundled extension.
 func TestExtractorsSkipSymlinkEntries(t *testing.T) {
 	t.Parallel()
@@ -565,4 +559,166 @@ func TestExtractorsSkipSymlinkEntries(t *testing.T) {
 			requireFileContent(t, filepath.Join(dest, lstkBinaryName()), "new lstk")
 		})
 	}
+}
+
+// TestStagingRefusesSymlinkSquatter guards the promise the cleanup step makes:
+// a non-regular file under a staging name belongs to the user and is not
+// deleted. Staging must then refuse to write through it. Without the refusal,
+// the copy follows the symlink and destroys whatever it points at, and the
+// commit installs the symlink itself as the member.
+func TestStagingRefusesSymlinkSquatter(t *testing.T) {
+	t.Parallel()
+	skipIfNoSymlinksSquatter(t)
+	dir, exePath := newInstallDir(t, map[string]string{
+		lstkBinaryName(): "old lstk",
+	})
+
+	target := filepath.Join(t.TempDir(), "precious")
+	require.NoError(t, os.WriteFile(target, []byte("precious data"), 0o644))
+	require.NoError(t, os.Symlink(target, filepath.Join(dir, extBinaryName("alpha")+stagingSuffix)))
+
+	archive := buildArchive(t, "tar.gz", []archiveEntry{
+		{name: lstkBinaryName(), body: "new lstk", mode: 0o755},
+		{name: extBinaryName("alpha"), body: "new alpha", mode: 0o755},
+	})
+
+	err := extractAndReplace(archive, exePath, "tar.gz")
+	require.Error(t, err, "staging must refuse to write through a squatting symlink")
+	assert.Contains(t, err.Error(), extBinaryName("alpha"), "error should name the member")
+
+	requireFileContent(t, target, "precious data")
+	requireFileContent(t, exePath, "old lstk")
+	info, lerr := os.Lstat(filepath.Join(dir, extBinaryName("alpha")))
+	if lerr == nil {
+		t.Fatalf("no file should exist under the member's final name, found mode %v", info.Mode())
+	}
+}
+
+func skipIfNoSymlinksSquatter(t *testing.T) {
+	t.Helper()
+	if goruntime.GOOS == "windows" {
+		t.Skip("os.Symlink needs Developer Mode or elevation on Windows")
+	}
+}
+
+// TestStagingRefusesDirectorySquatter: a directory under a staging name cannot
+// be staged over and must produce an error that tells the user what to move,
+// not a raw open failure that blames the filesystem.
+func TestStagingRefusesDirectorySquatter(t *testing.T) {
+	t.Parallel()
+	dir, exePath := newInstallDir(t, map[string]string{
+		lstkBinaryName(): "old lstk",
+	})
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, extBinaryName("alpha")+stagingSuffix), 0o755))
+
+	archive := buildArchive(t, "tar.gz", []archiveEntry{
+		{name: lstkBinaryName(), body: "new lstk", mode: 0o755},
+		{name: extBinaryName("alpha"), body: "new alpha", mode: 0o755},
+	})
+
+	err := extractAndReplace(archive, exePath, "tar.gz")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "move it out of the way", "the error should tell the user how to recover")
+	requireFileContent(t, exePath, "old lstk")
+}
+
+// TestStagingRefusesConcurrentStagingFile: a regular file appearing at a
+// staging path after cleanup means another update is running. Staging must
+// fail rather than truncate the other process's half-written copy, which the
+// other process would then commit under the real name.
+func TestStagingRefusesConcurrentStagingFile(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	dest := filepath.Join(dir, "lstk-alpha")
+	src := filepath.Join(t.TempDir(), "src")
+	require.NoError(t, os.WriteFile(src, []byte("new alpha"), 0o755))
+	require.NoError(t, os.WriteFile(dest+stagingSuffix, []byte("another update's bytes"), 0o755))
+
+	err := stageMembers([]updateMember{{src: src, dest: dest, mode: 0o755}})
+	require.Error(t, err, "staging must not overwrite an existing staging file")
+	requireFileContent(t, dest+stagingSuffix, "another update's bytes")
+}
+
+// TestUpdateWorksInGlobMetacharacterDir: the install directory path is data,
+// not a pattern. A '[' in the path must neither fail the update nor disable
+// the leftover cleanup.
+func TestUpdateWorksInGlobMetacharacterDir(t *testing.T) {
+	t.Parallel()
+	for _, dirName := range []string{"we[ird", "we[ir]d", "sta*rs", "quest?ion"} {
+		t.Run(dirName, func(t *testing.T) {
+			t.Parallel()
+			dir := filepath.Join(t.TempDir(), dirName)
+			require.NoError(t, os.MkdirAll(dir, 0o755))
+			exePath := filepath.Join(dir, lstkBinaryName())
+			require.NoError(t, os.WriteFile(exePath, []byte("old lstk"), 0o755))
+			leftover := filepath.Join(dir, extBinaryName("gone")+stagingSuffix)
+			require.NoError(t, os.WriteFile(leftover, []byte("crashed"), 0o755))
+
+			archive := buildArchive(t, "tar.gz", []archiveEntry{
+				{name: lstkBinaryName(), body: "new lstk", mode: 0o755},
+			})
+
+			require.NoError(t, extractAndReplace(archive, exePath, "tar.gz"))
+			requireFileContent(t, exePath, "new lstk")
+			_, err := os.Stat(leftover)
+			assert.True(t, os.IsNotExist(err), "leftover staging files must be cleaned in %q", dirName)
+		})
+	}
+}
+
+// TestUpdatePreservesSpecialModeBits: an lstk installed with setgid (or
+// setuid/sticky) must keep those bits across an update, as it did before the
+// set-wise updater.
+func TestUpdatePreservesSpecialModeBits(t *testing.T) {
+	t.Parallel()
+	if goruntime.GOOS == "windows" {
+		t.Skip("no Unix mode bits on Windows")
+	}
+	dir, exePath := newInstallDir(t, map[string]string{
+		lstkBinaryName(): "old lstk",
+	})
+	_ = dir
+	require.NoError(t, os.Chmod(exePath, 0o755|os.ModeSetgid))
+	info, err := os.Stat(exePath)
+	require.NoError(t, err)
+	if info.Mode()&os.ModeSetgid == 0 {
+		t.Skip("filesystem does not support setgid on files")
+	}
+
+	archive := buildArchive(t, "tar.gz", []archiveEntry{
+		{name: lstkBinaryName(), body: "new lstk", mode: 0o755},
+	})
+	require.NoError(t, extractAndReplace(archive, exePath, "tar.gz"))
+
+	info, err = os.Stat(exePath)
+	require.NoError(t, err)
+	assert.NotZero(t, info.Mode()&os.ModeSetgid, "setgid bit must survive the update, got mode %v", info.Mode())
+}
+
+// TestReplaceSetWindowsMovesExistingMembersAside: on Windows every existing
+// member gets the move-aside treatment, not only the running lstk.exe. A user
+// can be running a bundled extension while the update commits, and a running
+// executable can be renamed but not replaced there.
+func TestReplaceSetWindowsMovesExistingMembersAside(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	exePath := filepath.Join(dir, "lstk.exe")
+	require.NoError(t, os.WriteFile(exePath, []byte("old lstk"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "lstk-alpha.exe"), []byte("old alpha"), 0o755))
+
+	archive := buildArchive(t, "zip", []archiveEntry{
+		{name: "lstk.exe", body: "new lstk", mode: 0o755},
+		{name: "lstk-alpha.exe", body: "new alpha", mode: 0o755},
+		{name: "lstk-beta.exe", body: "new beta", mode: 0o755},
+	})
+
+	require.NoError(t, replaceSet(archive, exePath, "zip", "windows"))
+
+	requireFileContent(t, filepath.Join(dir, "lstk-alpha.exe"), "new alpha")
+	requireFileContent(t, filepath.Join(dir, "lstk-alpha.exe.old"), "old alpha")
+	requireFileContent(t, filepath.Join(dir, "lstk-beta.exe"), "new beta")
+	// A member that did not exist before has nothing to move aside.
+	_, err := os.Stat(filepath.Join(dir, "lstk-beta.exe.old"))
+	assert.True(t, os.IsNotExist(err))
+	requireFileContent(t, filepath.Join(dir, "lstk.exe.old"), "old lstk")
 }
