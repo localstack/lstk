@@ -62,7 +62,7 @@ without any layout work of its own.
 | --- | --- | --- |
 | Binary archive (`curl` + `tar`) | Wherever the user extracted the archive; the files sit at the archive root next to `lstk`. | GoReleaser `archives.files` entries in `.goreleaser.yaml`. |
 | Homebrew | The cask's Caskroom staged directory, e.g. `/opt/homebrew/Caskroom/lstk/<version>/`. `bin/lstk` is a symlink into it; lstk resolves the link. | The cask stages the whole archive. Only `lstk` is symlinked into `bin`; the bundle is found via the directory, never via `PATH`. The post-install hook strips the macOS quarantine attribute from the **whole** staged directory so the bundle runs without a Gatekeeper prompt. |
-| npm | The **platform** package, e.g. `node_modules/@localstack/lstk_darwin_arm64/` (underscores; the wrapper `@localstack/lstk` holds only the launcher). The launcher execs the Go binary from there, so that is where lstk's bundled dir resolves to. | `scripts/add-bundled-to-npm.sh` copies the files into each platform package under `dist/npm/` before `npm publish`, **and** adds them to that package's `files` allowlist. The publisher generates `"files": []`, which npm reads as "only `package.json` and the `bin` entry", so a plain copy would be silently dropped at publish. Its output directories are slugified (`dist/npm/lstk-darwin-arm-64-v-8-0`) and cannot be parsed back into a platform, so the script reads the authoritative `@localstack/lstk_<goos>_<goarch>` name from each `package.json` instead. |
+| npm | The **platform** package, e.g. `node_modules/@localstack/lstk_darwin_arm64/` (underscores; the wrapper `@localstack/lstk` holds only the launcher). The launcher execs the Go binary from there, so that is where lstk's bundled dir resolves to. | `scripts/bundled-extensions/add-bundled-to-npm.sh` copies the files into each platform package under `dist/npm/` before `npm publish`, **and** adds them to that package's `files` allowlist. The publisher generates `"files": []`, which npm reads as "only `package.json` and the `bin` entry", so a plain copy would be silently dropped at publish. Its output directories are slugified (`dist/npm/lstk-darwin-arm-64-v-8-0`) and cannot be parsed back into a platform, so the script reads the authoritative `@localstack/lstk_<goos>_<goarch>` name from each `package.json` instead. |
 
 ## The release pipeline
 
@@ -72,10 +72,11 @@ order. Every step failing fails the release.
 1. **Select the bundle.** `bundled/extensions.version` (the only tracked file
    under `bundled/`) says which release of the private extensions repository to
    take. It says `latest` by default: the newest published bundle, with no
-   routine bump to remember. Set it to an explicit tag (`v0.3.1`) to hold a
+   routine bump to remember. Set it to an explicit tag (`v2026.08.19`) to hold a
    build to one bundle.
-2. **Fetch and verify.** `scripts/fetch-bundled-extensions.sh` resolves
-   `latest` to a concrete tag **once**, prints it, downloads that tag's release
+2. **Fetch and verify.**
+   `scripts/bundled-extensions/fetch-bundled-extensions.sh` resolves `latest`
+   to a concrete tag **once**, prints it, downloads that tag's release
    assets with `gh release download`, and verifies every asset against the
    `checksums.txt` published in the same release. A missing manifest, an
    unlisted asset or a mismatching hash aborts. It then unpacks each platform
@@ -88,7 +89,8 @@ order. Every step failing fails the release.
    (`linux`/`darwin`/`windows` × `amd64`/`arm64`) has no archive. A platform can be exempted only by listing it in
    `UNSUPPORTED_PLATFORMS` at the top of the script, so a gap is always a
    visible choice.
-3. **Gate the pairing.** `scripts/check-descriptions.sh bundled/linux_amd64`
+3. **Gate the pairing.**
+   `scripts/bundled-extensions/check-descriptions.sh bundled/linux_amd64`
    reads the command names from the toml (left-hand side only; values are
    never parsed) and compares them with the bundle's own answer: it runs
    `bundled-extensions list`, which prints one bare command name per line. It
@@ -105,8 +107,9 @@ order. Every step failing fails the release.
    disagree with each other is outside what this can see; the identical-toml
    check in step 2 is what makes one directory a fair sample.
 4. **Package.** GoReleaser adds the staged files to each archive at the root.
-   The cask inherits them. `scripts/add-bundled-to-npm.sh` copies them into
-   the platform packages and registers them in each package's `files`.
+   The cask inherits them. `scripts/bundled-extensions/add-bundled-to-npm.sh`
+   copies them into the platform packages and registers them in each
+   package's `files`.
 5. **Record.** After publishing, the job appends
    `Bundled extensions: <tag> (commit <sha>)` to the GitHub release notes.
    Job logs expire; release notes do not. This line is how you answer "which
@@ -128,7 +131,7 @@ notes already carry a `Bundled extensions:` line, pins the fetch to that tag.
 To do the same by hand, pass the recorded tag explicitly:
 
 ```bash
-LSTK_EXTENSIONS_READ_TOKEN=... scripts/fetch-bundled-extensions.sh --tag v0.3.1
+LSTK_EXTENSIONS_READ_TOKEN=... scripts/bundled-extensions/fetch-bundled-extensions.sh --tag v2026.08.19
 ```
 
 ## What the private repository must publish
@@ -171,14 +174,14 @@ Since the `bundled/` entries in `.goreleaser.yaml` are live, `goreleaser` fails
 on an empty staging tree. Stage a bundle first, either for real:
 
 ```bash
-LSTK_EXTENSIONS_READ_TOKEN=<token> scripts/fetch-bundled-extensions.sh
+LSTK_EXTENSIONS_READ_TOKEN=<token> scripts/bundled-extensions/fetch-bundled-extensions.sh
 goreleaser release --snapshot --clean
 ```
 
 or, without access to the private repository, with placeholders:
 
 ```bash
-scripts/fetch-bundled-extensions.sh --stub
+scripts/bundled-extensions/fetch-bundled-extensions.sh --stub
 goreleaser release --snapshot --clean
 ```
 
@@ -194,11 +197,12 @@ packaging at all. It makes the packaging path runnable — it is not a way to
 test the extensions, and the real bundle is what the release-candidate
 checklist below exercises.
 
-`scripts/check-bundled-packaging-sync.sh` runs on every PR next to
-`goreleaser check`. It fails if `.goreleaser.yaml` references `bundled/` while
-the release job has no fetch step, or the reverse. `goreleaser check` cannot
-catch this itself because it only validates config syntax and never looks at
-the filesystem. Both halves must land in the same PR.
+`scripts/bundled-extensions/check-bundled-packaging-sync.sh` runs on every PR
+next to `goreleaser check`. It fails if `.goreleaser.yaml` references
+`bundled/` while the release job has no fetch step, or the reverse.
+`goreleaser check` cannot catch this itself because it only validates config
+syntax and never looks at the filesystem. Both halves must land in the same
+PR.
 
 The bash suites for all four scripts run with `make test-scripts`.
 
@@ -209,7 +213,7 @@ three channels can be installed and exercised before anything reaches GitHub,
 Homebrew or npm. Stage a bundle and build once:
 
 ```bash
-LSTK_EXTENSIONS_READ_TOKEN=<token> scripts/fetch-bundled-extensions.sh
+LSTK_EXTENSIONS_READ_TOKEN=<token> scripts/bundled-extensions/fetch-bundled-extensions.sh
 goreleaser release --snapshot --clean
 ```
 
@@ -236,7 +240,7 @@ npx --yes goreleaser-npm-publisher@1.5.0 build --project . --prefix @localstack 
   --description "LocalStack CLI v2 - Start and manage LocalStack emulators" \
   --files README.md LICENSE
 cp npm/launcher.js dist/npm/lstk/index.js
-scripts/add-bundled-to-npm.sh dist/npm bundled
+scripts/bundled-extensions/add-bundled-to-npm.sh dist/npm bundled
 ```
 
 Then **pack the packages before installing them**. `ls dist/npm/` and pick the

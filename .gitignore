@@ -14,9 +14,10 @@ test/integration/test-samples/**/*.tfstate
 test/integration/test-samples/**/*.tfstate.*
 
 # Bundled-extension staging tree, populated by
-# scripts/fetch-bundled-extensions.sh at release-build time: per-platform
-# binaries in bundled/<os>_<arch>/ and bundled/lstk-extensions.toml. Only the
-# version file is tracked; downloaded artifacts must never be committed.
+# scripts/bundled-extensions/fetch-bundled-extensions.sh at release-build
+# time: per-platform binaries in bundled/<os>_<arch>/ and
+# bundled/lstk-extensions.toml. Only the version file is tracked; downloaded
+# artifacts must never be committed.
 # It deliberately lives outside dist/, which `goreleaser --clean` wipes.
 /bundled/*
 !/bundled/extensions.version

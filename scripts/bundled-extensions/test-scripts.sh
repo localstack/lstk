@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Runs the bash test suites for the release helper scripts under scripts/.
+# Runs the bash test suites for the bundled-extension release helper scripts
+# in this directory.
 # These scripts only ever run on the Linux release runner, so a bash suite is
 # the faithful test here; lstk's own behavior is covered by the Go suites.
 set -euo pipefail

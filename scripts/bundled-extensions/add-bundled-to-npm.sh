@@ -22,7 +22,7 @@
 #     allowlist as well.
 #
 # Usage:
-#   scripts/add-bundled-to-npm.sh <dist/npm dir> <bundled dir>
+#   scripts/bundled-extensions/add-bundled-to-npm.sh <dist/npm dir> <bundled dir>
 set -euo pipefail
 
 die() {
@@ -42,7 +42,7 @@ TOML="${BUNDLED_DIR}/lstk-extensions.toml"
 
 [ -d "${NPM_DIR}" ] || die "no such directory: ${NPM_DIR}"
 [ -d "${BUNDLED_DIR}" ] || die "no such directory: ${BUNDLED_DIR}"
-[ -f "${TOML}" ] || die "no descriptions file at ${TOML}; run scripts/fetch-bundled-extensions.sh first"
+[ -f "${TOML}" ] || die "no descriptions file at ${TOML}; run scripts/bundled-extensions/fetch-bundled-extensions.sh first"
 command -v node >/dev/null 2>&1 || die "node is required to edit package.json"
 
 # Appends names to the package.json "files" array, de-duplicated, preserving

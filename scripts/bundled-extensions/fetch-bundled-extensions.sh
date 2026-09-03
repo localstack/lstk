@@ -21,7 +21,7 @@
 # toml, so a per-command file on disk would serve no purpose on any channel.
 #
 # Which commands the binary actually provides is not this script's business —
-# `bundled-extensions list` answers that, and scripts/check-descriptions.sh
+# `bundled-extensions list` answers that, and scripts/bundled-extensions/check-descriptions.sh
 # asks it. What this script does guarantee is that every archive carries an
 # identical toml, so that answer can be checked against one file rather than
 # six.
@@ -34,7 +34,7 @@
 # `latest` re-resolves on every invocation.
 #
 # Usage:
-#   scripts/fetch-bundled-extensions.sh [--tag <tag>] [--stub]
+#   scripts/bundled-extensions/fetch-bundled-extensions.sh [--tag <tag>] [--stub]
 #
 #   --tag <tag>   Use this bundle tag instead of resolving the version file.
 #   --stub        Skip the download entirely and write placeholder files into
@@ -66,7 +66,7 @@ DESCRIPTIONS_FILE="lstk-extensions.toml"
 MANIFEST_FILE="checksums.txt"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 BUNDLED_DIR="${LSTK_BUNDLED_DIR:-${REPO_ROOT}/bundled}"
 VERSION_FILE="${BUNDLED_DIR}/extensions.version"
 

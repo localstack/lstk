@@ -12,11 +12,11 @@
 # on every PR, where it costs a red build instead of a broken release.
 #
 # Usage:
-#   scripts/check-bundled-packaging-sync.sh [goreleaser.yaml] [ci-workflow.yml]
+#   scripts/bundled-extensions/check-bundled-packaging-sync.sh [goreleaser.yaml] [ci-workflow.yml]
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 
 GORELEASER_FILE="${1:-${REPO_ROOT}/.goreleaser.yaml}"
 WORKFLOW_FILE="${2:-${REPO_ROOT}/.github/workflows/ci.yml}"

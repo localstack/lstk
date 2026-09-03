@@ -40,10 +40,10 @@
 # is the practical unit of verification.
 #
 # Usage:
-#   scripts/check-descriptions.sh <platform-dir> [descriptions-file]
+#   scripts/bundled-extensions/check-descriptions.sh <platform-dir> [descriptions-file]
 #
 #   <platform-dir>       e.g. bundled/linux_amd64, as staged by
-#                        scripts/fetch-bundled-extensions.sh
+#                        scripts/bundled-extensions/fetch-bundled-extensions.sh
 #   [descriptions-file]  defaults to <platform-dir>/../lstk-extensions.toml
 set -euo pipefail
 
