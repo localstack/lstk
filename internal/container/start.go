@@ -457,7 +457,7 @@ func isPersistenceEnabled(ctx context.Context, rt runtime.Runtime, containerName
 }
 
 func emitPostStartPointers(sink output.Sink, emulatorType config.EmulatorType, resolvedHost, webAppURL string, persist bool) {
-	if sfHost := snowflake.Hostname(resolvedHost); emulatorType == config.EmulatorSnowflake && sfHost != "" {
+	if sfHost := snowflake.Hostname(resolvedHost); (emulatorType == config.EmulatorSnowflake || emulatorType == config.EmulatorSnowflakeNext) && sfHost != "" {
 		sink.Emit(output.MessageEvent{Severity: output.SeveritySecondary, Text: fmt.Sprintf("• Snowflake endpoint: http://%s", sfHost)})
 	} else {
 		sink.Emit(output.MessageEvent{Severity: output.SeveritySecondary, Text: fmt.Sprintf("• Endpoint: %s", resolvedHost)})
@@ -480,7 +480,7 @@ func tipsForType(t config.EmulatorType) []string {
 			"> Tip: View emulator logs: lstk logs --follow",
 			"> Tip: View deployed resources: lstk status",
 		}
-	case config.EmulatorSnowflake:
+	case config.EmulatorSnowflake, config.EmulatorSnowflakeNext:
 		return []string{
 			"> Tip: View emulator logs: lstk logs --follow",
 			"> Tip: Check emulator status: lstk status",

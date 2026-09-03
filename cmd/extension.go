@@ -143,7 +143,9 @@ func emulatorCandidates() []config.ContainerConfig {
 			seen[c.Type] = struct{}{}
 		}
 	}
-	for _, t := range config.SelectableEmulatorTypes {
+	// Every known type, not just the selectable ones: this probes for running
+	// emulators to report to the extension, and a preview type runs the same way.
+	for _, t := range config.KnownEmulatorTypes() {
 		if _, ok := seen[t]; ok {
 			continue
 		}
