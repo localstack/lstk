@@ -55,13 +55,28 @@ func BundledDir(logger log.Logger) string {
 	return filepath.Dir(resolved)
 }
 
-// Resolve returns the extension for the given command name, searching the
-// bundled directory first and then PATH. It returns ErrNotFound when no
-// matching executable exists anywhere.
+// Resolve returns the extension for the given command name, searching in
+// order: the multi-call bundle in the bundled directory (for the commands its
+// descriptions file lists), standalone lstk-<name> files in the bundled
+// directory, then PATH. It returns ErrNotFound when no match exists anywhere.
+//
+// A bundle whose descriptions file cannot be loaded does not block extensions
+// found elsewhere, but when nothing else provides the name that load error is
+// returned instead of ErrNotFound: the user has the binary installed and asked
+// for a command it very likely provides, and "unknown command" would hide the
+// broken install from them.
 func (r *Resolver) Resolve(name string) (*Extension, error) {
 	base := NamePrefix + name
 
+	var bundleErr error
 	if r.BundledDir != "" {
+		bundle, err := LoadBundle(r.BundledDir, r.logger)
+		switch {
+		case err != nil:
+			bundleErr = err
+		case bundle != nil && bundle.Provides(name):
+			return &Extension{Name: name, Path: bundle.Path, Bundled: true, Argv0: base}, nil
+		}
 		if path := findExecutable(r.BundledDir, base); path != "" {
 			return NewExtension(name, path, true), nil
 		}
@@ -71,17 +86,29 @@ func (r *Resolver) Resolve(name string) (*Extension, error) {
 		return NewExtension(name, path, false), nil
 	}
 
+	if bundleErr != nil {
+		return nil, bundleErr
+	}
 	return nil, ErrNotFound
 }
 
-// List returns the extensions resolvable from the bundled directory and PATH,
-// de-duplicated by command name with bundled-then-PATH precedence (so a bundled
-// extension shadows a same-named PATH executable), sorted by command name. It
-// never executes an extension.
+// List returns the extensions resolvable from the bundle, the bundled directory
+// and PATH, de-duplicated by command name with that same precedence (so a
+// bundled extension shadows a same-named PATH executable), sorted by command
+// name. It never executes an extension. A bundle that fails to load is logged
+// and skipped rather than failing the listing, so help rendering never breaks
+// on account of it; Resolve is where that failure is reported.
+//
+// Bundled entries carry their help Description. With a bundle installed the
+// descriptions come from the load that already parsed the file; without one
+// (or with a broken one) the lenient LoadDescriptions serves the standalone
+// lstk-<name> files in the bundled dir, the pre-bundling shape. PATH entries
+// are always name-only, whatever the file says.
 func (r *Resolver) List() []Extension {
 	seen := map[string]struct{}{}
 	var found []Extension
 
+	describe := func(string) string { return "" }
 	add := func(dir string, bundled bool) {
 		for _, name := range scanDir(dir) {
 			if _, ok := seen[name]; ok {
@@ -89,11 +116,35 @@ func (r *Resolver) List() []Extension {
 			}
 			seen[name] = struct{}{}
 			path := findExecutable(dir, NamePrefix+name)
-			found = append(found, Extension{Name: name, Path: path, Bundled: bundled})
+			ext := NewExtension(name, path, bundled)
+			if bundled {
+				ext.Description = describe(name)
+			}
+			found = append(found, *ext)
 		}
 	}
 
 	if r.BundledDir != "" {
+		bundle, err := LoadBundle(r.BundledDir, r.logger)
+		if err != nil {
+			r.logger.Info("extension: skipping bundle in help listing: %v", err)
+		}
+		if bundle != nil {
+			describe = bundle.Description
+			for _, name := range bundle.Names() {
+				seen[name] = struct{}{}
+				found = append(found, Extension{
+					Name:        name,
+					Path:        bundle.Path,
+					Bundled:     true,
+					Argv0:       NamePrefix + name,
+					Description: bundle.Description(name),
+				})
+			}
+		} else {
+			descriptions := LoadDescriptions(r.BundledDir, r.logger)
+			describe = func(name string) string { return descriptions[name] }
+		}
 		add(r.BundledDir, true)
 	}
 	for _, dir := range pathDirs() {

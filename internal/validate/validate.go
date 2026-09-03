@@ -215,3 +215,40 @@ func AuthToken(value string) error {
 	}
 	return nil
 }
+
+// extensionNameRegexp matches an extension command name as lstk dispatches it:
+// `lstk <name>` runs the executable `lstk-<name>`, or hands the bundled
+// multi-call binary argv[0] "lstk-<name>". The first character must be a letter
+// or digit so a name can never read as a flag, and the rest is limited to
+// letters, digits, hyphens, and underscores. It is the same rule the release
+// gate (scripts/bundled-extensions/check-descriptions.sh) applies to
+// lstk-extensions.toml keys, so a descriptions file that passes the gate always
+// loads and vice versa.
+var extensionNameRegexp = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]*$`)
+
+// ExtensionName validates an extension command name taken from the bundled
+// descriptions file (lstk-extensions.toml). Although that file ships with lstk
+// rather than being typed by a user, TOML quoted keys make any string a valid
+// key, so the parser cannot be relied on to reject an undispatchable name. Like
+// PodName it runs ordered deny-checks so the most specific reason wins, then the
+// allow-list. The 64-character cap is a local sanity limit, not a contract.
+func ExtensionName(value string) error {
+	const field = "extension name"
+	switch {
+	case value == "":
+		return newError(field, RuleEmpty, "must not be empty")
+	case containsControlChars(value):
+		return newError(field, RuleControlChars, "contains control characters")
+	case strings.Contains(value, "%"):
+		return newError(field, RuleEncoding, "contains percent-encoding")
+	case strings.ContainsAny(value, "/?#\\"):
+		return newError(field, RuleEmbedded, "contains path or query characters (/, \\, ?, #)")
+	case strings.ContainsAny(value, shellMetaChars):
+		return newError(field, RuleMetachars, "contains shell metacharacters")
+	case len(value) > 64:
+		return newError(field, RuleRange, "must be 64 characters or fewer")
+	case !extensionNameRegexp.MatchString(value):
+		return newError(field, RuleFormat, "must start with a letter or digit and use only letters, digits, hyphens, and underscores")
+	}
+	return nil
+}

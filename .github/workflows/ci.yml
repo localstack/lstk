@@ -122,6 +122,15 @@ jobs:
           version: "~> v2"
           args: check
 
+      # `goreleaser check` only validates config syntax, so it cannot see that
+      # packaging bundled extensions and downloading them have to land
+      # together. This does, and fails the PR instead of the release.
+      - name: Check bundled packaging is in step with the download
+        run: scripts/bundled-extensions/check-bundled-packaging-sync.sh
+
+      - name: Test release scripts
+        run: make test-scripts
+
   test-unit:
     name: Unit Tests
     runs-on: ubuntu-latest
@@ -319,6 +328,43 @@ jobs:
             exit 1
           fi
 
+      # Bundled extensions. Downloads the multi-call binary for every platform
+      # and the descriptions file from the private extensions repo, verifies
+      # them against its checksum manifest, and stages them under bundled/ for
+      # GoReleaser and the npm step below. The version file says `latest`, so
+      # the script resolves that to one concrete tag here, and every later step
+      # uses that tag. On a re-run of an already-published lstk release the tag
+      # is read back from that release's notes instead of re-resolved, so the
+      # re-run ships the same extension binaries the original did.
+      - name: Fetch bundled extensions
+        id: bundle
+        run: |
+          recorded="$(gh release view "${GITHUB_REF_NAME}" --json body --jq .body 2>/dev/null \
+            | sed -n 's/^Bundled extensions: \([^ ]*\).*/\1/p' | head -n1 || true)"
+          if [ -n "${recorded}" ]; then
+            echo "Release ${GITHUB_REF_NAME} already records bundle ${recorded}; pinning to it."
+            export LSTK_EXTENSIONS_TAG="${recorded}"
+          fi
+          scripts/bundled-extensions/fetch-bundled-extensions.sh | tee fetch.log
+          tag="$(sed -n 's/^Resolved extensions bundle: \([^ ]*\) .*/\1/p' fetch.log)"
+          [ -n "${tag}" ] || { echo "could not determine the resolved bundle tag"; exit 1; }
+          commit="$(GH_TOKEN="${LSTK_EXTENSIONS_READ_TOKEN}" gh api "repos/${LSTK_EXTENSIONS_REPO}/commits/${tag}" --jq .sha)"
+          echo "tag=${tag}" >> "${GITHUB_OUTPUT}"
+          echo "commit=${commit}" >> "${GITHUB_OUTPUT}"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          LSTK_EXTENSIONS_READ_TOKEN: ${{ secrets.LSTK_EXTENSIONS_READ_TOKEN }}
+          LSTK_EXTENSIONS_REPO: localstack/lstk-bundled-extensions
+
+      # A command described in lstk-extensions.toml that the bundle does not
+      # provide would show in help and fail when run; a binary whose commands
+      # are all undescribed would be unreachable. Either fails the release. The
+      # bundle's side of the comparison comes from asking it — the gate runs
+      # `bundled-extensions list` — so it has to be pointed at the runner's own
+      # platform directory.
+      - name: Check descriptions match the bundled binary
+        run: scripts/bundled-extensions/check-descriptions.sh bundled/linux_amd64
+
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v7
         with:
@@ -356,6 +402,14 @@ jobs:
       - name: Install signal-forwarding launcher
         run: cp npm/launcher.js dist/npm/lstk/index.js
 
+      # The launcher execs the Go binary from the platform package, so that is
+      # where lstk's bundled dir resolves to and where the bundled extensions
+      # must live — not the wrapper. The script also registers them in each
+      # package's `files` allowlist: the publisher emits "files": [], which npm
+      # packs as package.json + bin only, so a bare copy would be dropped.
+      - name: Add bundled extensions to the npm platform packages
+        run: scripts/bundled-extensions/add-bundled-to-npm.sh dist/npm bundled
+
       - name: Publish to NPM
         run: |
           for dir in dist/npm/lstk-*/ dist/npm/lstk/; do
@@ -363,3 +417,21 @@ jobs:
           done
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_AUTH_TOKEN }}
+
+      # Permanent record of which bundle this release shipped. Job logs expire;
+      # the release notes do not, and they are what someone investigating a
+      # bundled-extension bug months later will read. Idempotent so a re-run
+      # does not append a second line.
+      - name: Record the bundle in the release notes
+        run: |
+          gh release view "${GITHUB_REF_NAME}" --json body --jq .body > notes.md
+          if grep -q '^Bundled extensions: ' notes.md; then
+            echo "Release notes already record the bundle."
+            exit 0
+          fi
+          printf '\n\n---\n\nBundled extensions: %s (commit %s)\n' "${TAG}" "${COMMIT}" >> notes.md
+          gh release edit "${GITHUB_REF_NAME}" --notes-file notes.md
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.bundle.outputs.tag }}
+          COMMIT: ${{ steps.bundle.outputs.commit }}

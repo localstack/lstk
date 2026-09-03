@@ -255,3 +255,50 @@ func TestServiceList(t *testing.T) {
 		})
 	}
 }
+
+func TestExtensionName(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name     string
+		value    string
+		wantErr  bool
+		wantRule string
+	}{
+		{"simple", "doctor", false, ""},
+		{"hyphenated", "deploy-app", false, ""},
+		{"underscored", "snake_case", false, ""},
+		{"leading digit", "2fa", false, ""},
+		{"single char", "a", false, ""},
+		{"maximum length", strings.Repeat("a", 64), false, ""},
+		{"too long", strings.Repeat("a", 65), true, RuleRange},
+		{"empty", "", true, RuleEmpty},
+		{"control char", "doc\x00tor", true, RuleControlChars},
+		{"percent encoding", "doc%20tor", true, RuleEncoding},
+		{"path traversal", "../doctor", true, RuleEmbedded},
+		{"slash", "a/b", true, RuleEmbedded},
+		{"shell metachar", "a;rm", true, RuleMetachars},
+		{"space", "doc tor", true, RuleFormat},
+		{"leading hyphen", "-doctor", true, RuleFormat},
+		{"leading underscore", "_doctor", true, RuleFormat},
+		{"dot", "doc.tor", true, RuleFormat},
+		{"exe suffix", "doctor.exe", true, RuleFormat},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			err := ExtensionName(tt.value)
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("ExtensionName(%q) error = %v, wantErr %v", tt.value, err, tt.wantErr)
+			}
+			if tt.wantRule != "" {
+				var ve *Error
+				if !errors.As(err, &ve) {
+					t.Fatalf("ExtensionName(%q) error is not *Error: %T", tt.value, err)
+				}
+				if ve.Rule != tt.wantRule {
+					t.Errorf("ExtensionName(%q) Rule = %q, want %q", tt.value, ve.Rule, tt.wantRule)
+				}
+			}
+		})
+	}
+}
