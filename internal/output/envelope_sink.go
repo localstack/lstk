@@ -43,6 +43,15 @@ func (s *EnvelopeSink) Emit(event Event) {
 	case EmulatorResetEvent:
 		s.data["emulator"] = JsonEmulatorRef(e)
 		s.data["reset"] = true
+	case EmulatorStartedEvent:
+		s.data["emulator"] = e.Type
+		s.data["container"] = e.Container
+		s.data["endpoint"] = e.Endpoint
+		s.data["version"] = e.Version
+		s.data["alreadyRunning"] = e.AlreadyRunning
+		s.data["persistence"] = e.Persistence
+	case EmulatorStatusEvent:
+		s.appendEmulator(newJSONStatusEmulator(e))
 	case UpdateCheckedEvent:
 		s.data["currentVersion"] = e.CurrentVersion
 		s.data["latestVersion"] = e.LatestVersion
@@ -68,6 +77,40 @@ func (s *EnvelopeSink) Emit(event Event) {
 		s.data["method"] = e.Method
 	}
 	// Every other event type is purely presentational and intentionally dropped.
+}
+
+// newJSONStatusEmulator builds a JsonStatusEmulator from an EmulatorStatusEvent.
+func newJSONStatusEmulator(e EmulatorStatusEvent) JsonStatusEmulator {
+	entry := JsonStatusEmulator{Type: e.Type, Running: e.Running}
+	if e.Health != "" {
+		health := e.Health
+		entry.Health = &health
+	}
+	if !e.Running {
+		return entry
+	}
+
+	entry.Version = e.Version
+	entry.Host = e.Host
+	if e.Local {
+		entry.Name = e.Name
+		uptime := e.UptimeSeconds
+		entry.UptimeSeconds = &uptime
+		persistence := e.Persistence
+		entry.Persistence = &persistence
+	}
+
+	if e.Resources != nil {
+		resources := make([]JsonStatusResource, len(e.Resources))
+		services := map[string]struct{}{}
+		for i, r := range e.Resources {
+			resources[i] = JsonStatusResource(r)
+			services[r.Service] = struct{}{}
+		}
+		entry.Resources = resources
+		entry.ResourceSummary = &JsonResourceSummary{Resources: len(resources), Services: len(services)}
+	}
+	return entry
 }
 
 func (s *EnvelopeSink) appendEmulator(entry JsonEmulatorEntry) {

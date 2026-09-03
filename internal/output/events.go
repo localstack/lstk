@@ -168,6 +168,43 @@ type EmulatorResetEvent struct {
 	Name string
 }
 
+// EmulatorStartedEvent reports the emulator is up and reachable, whether
+// freshly started or already running. JSON-only: no plain-text line, since
+// start's existing messages already cover that.
+type EmulatorStartedEvent struct {
+	Type           string
+	Container      string
+	Endpoint       string
+	Version        string
+	AlreadyRunning bool
+	Persistence    bool
+}
+
+// EmulatorStatusResource mirrors emulator.Resource, kept local to avoid
+// internal/output importing internal/emulator.
+type EmulatorStatusResource struct {
+	Service string
+	Name    string
+	Region  string
+	Account string
+}
+
+// EmulatorStatusEvent reports one running emulator's health state.
+type EmulatorStatusEvent struct {
+	Type          string
+	Running       bool
+	Health        string
+	Name          string
+	Version       string
+	Host          string
+	UptimeSeconds int64
+	Persistence   bool
+	// Local is true for a Docker-managed emulator, false for an external
+	// --endpoint-url target. Name/UptimeSeconds/Persistence only apply to Local.
+	Local     bool
+	Resources []EmulatorStatusResource
+}
+
 // UpdateCheckedEvent reports the result of an update check. It always fires
 // once per Check call. DevBuild, then RepairBundled, then Available,
 // discriminate which of the four possible outcomes (dev build skipped the
@@ -231,6 +268,8 @@ func (PodSnapshotRemovedEvent) sealedEvent()  {}
 func (SnapshotShownEvent) sealedEvent()       {}
 func (EmulatorStoppedEvent) sealedEvent()     {}
 func (EmulatorResetEvent) sealedEvent()       {}
+func (EmulatorStartedEvent) sealedEvent()     {}
+func (EmulatorStatusEvent) sealedEvent()      {}
 func (UpdateCheckedEvent) sealedEvent()       {}
 func (UpdateAppliedEvent) sealedEvent()       {}
 func (ContainerStatusEvent) sealedEvent()     {}

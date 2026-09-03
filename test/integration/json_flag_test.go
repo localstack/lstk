@@ -1,6 +1,7 @@
 package integration_test
 
 import (
+	"encoding/json"
 	"testing"
 
 	"github.com/localstack/lstk/internal/snap"
@@ -17,31 +18,63 @@ import (
 
 func TestJSONFlagRejectsUnannotatedBuiltinCommand(t *testing.T) {
 	t.Parallel()
-	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), testEnvWithHome(t.TempDir(), ""), "status", "--json")
+	// login never touches Docker, unlike status.
+	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), testEnvWithHome(t.TempDir(), ""), "login", "--json")
 	requireExitCode(t, 1, err)
 	decodeEnvelope(t, stdout)
 	snap.MatchJSON(t, []byte(stdout))
 	assert.Empty(t, stderr, "the rejection is rendered as JSON on stdout, not plain text on stderr")
 }
 
-func TestJSONFlagRejectsDefaultStartBehavior(t *testing.T) {
-	t.Parallel()
-	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), testEnvWithHome(t.TempDir(), ""), "--json")
-	requireExitCode(t, 1, err)
-	decodeEnvelope(t, stdout)
-	snap.MatchJSON(t, []byte(stdout))
-	assert.Empty(t, stderr, "the rejection is rendered as JSON on stdout, not plain text on stderr")
+// TestJSONFlagBareRootBehavesLikeStart proves bare `lstk --json` behaves the
+// same as `lstk start --json`.
+func TestJSONFlagBareRootBehavesLikeStart(t *testing.T) {
+	requireDocker(t)
+	_ = env.Require(t, env.AuthToken)
+	cleanup()
+	t.Cleanup(cleanup)
+
+	mockServer := createMockLicenseServer(true)
+	defer mockServer.Close()
+
+	stdout, stderr, err := runLstk(t, testContext(t), "", env.With(env.APIEndpoint, mockServer.URL), "--json")
+	require.NoError(t, err, "lstk --json failed: %s", stderr)
+	requireExitCode(t, 0, err)
+
+	envelope := decodeEnvelope(t, stdout)
+	assert.Equal(t, "ok", envelope.Status)
+	assert.Equal(t, "start", envelope.Command)
+	assert.Nil(t, envelope.Error)
+
+	var data startJSONData
+	require.NoError(t, json.Unmarshal(envelope.Data, &data))
+	assert.Equal(t, "aws", data.Emulator)
+	assert.False(t, data.AlreadyRunning)
 }
 
+// No requireDocker: must also run without Docker, so the exact error varies.
 func TestJSONFlagDoesNotLaunchTUIOnPTY(t *testing.T) {
 	t.Parallel()
 
-	out, err := runLstkInPTY(t, testContext(t), testEnvWithHome(t.TempDir(), ""), "start", "--json")
-	requireExitCode(t, 1, err)
+	e := env.Environ(testEnvWithHome(t.TempDir(), "")).Without(env.AuthToken)
+	out, err := runLstkInPTY(t, testContext(t), e, "start", "--json")
+	require.Error(t, err)
 	require.Contains(t, out, "start")
-	// If the TUI had launched, it would have shown the auth prompt (start with
-	// no auth token requires interactive login) rather than exiting immediately.
 	require.NotContains(t, out, "Press any key")
+}
+
+func TestJSONFlagAuthRequiredExitCode(t *testing.T) {
+	requireDocker(t)
+	t.Parallel()
+
+	e := env.Environ(testEnvWithHome(t.TempDir(), "")).Without(env.AuthToken)
+	stdout, _, err := runLstk(t, testContext(t), "", e, "start", "--json")
+	requireExitCode(t, 4, err)
+
+	envelope := decodeEnvelope(t, stdout)
+	assert.Equal(t, "error", envelope.Status)
+	require.NotNil(t, envelope.Error)
+	assert.Equal(t, "AUTH_REQUIRED", envelope.Error.Code)
 }
 
 // proxyCase describes one proxy command's forwarding/rejection setup, shared

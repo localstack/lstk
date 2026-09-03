@@ -194,6 +194,18 @@ func TestFormatEventLine(t *testing.T) {
 			wantOK: true,
 		},
 		{
+			name:   "emulator status event running healthy",
+			event:  EmulatorStatusEvent{Type: "aws", Running: true, Health: "healthy"},
+			want:   "aws: running (healthy)",
+			wantOK: true,
+		},
+		{
+			name:   "emulator status event not running",
+			event:  EmulatorStatusEvent{Type: "aws", Running: false},
+			want:   "aws: not running",
+			wantOK: true,
+		},
+		{
 			name:   "update checked event dev build",
 			event:  UpdateCheckedEvent{CurrentVersion: "dev", DevBuild: true},
 			want:   "> Note: Running a development build, skipping update check",

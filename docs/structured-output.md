@@ -8,7 +8,7 @@ The contract described here (a shared envelope shape, a shared error-code vocabu
 
 `--json` support is being rolled out per command, not all at once. The [Command Catalog](#command-catalog) below is split into two parts:
 
-- **[Implemented in this PR](#implemented-in-this-pr)** — `stop`, `reset`, `update`. These accept `--json` today and produce exactly the shapes documented below.
+- **[Implemented](#implemented)** — `stop`, `reset`, `update`, `start`, `status`. These accept `--json` today and produce exactly the shapes documented below.
 - **[Proposed for future work](#proposed-for-future-work-draft)** — every other built-in command. Attempting `--json` on any of these today is rejected with `NOT_JSON_CAPABLE`. This part is a **first-draft proposal only** — see the warning at the top of that section before relying on any of it.
 
 ## The envelope
@@ -105,6 +105,7 @@ Every `error.code` is one of the following fixed constants. A failure that doesn
 | `CREDENTIALS_MISSING` | Required third-party credentials (e.g. AWS credentials for an S3 remote) could not be resolved | No | `AUTH` |
 | `LICENSE_INVALID` | The platform rejected the configured license/token | No | `AUTH` |
 | `LICENSE_UNSUPPORTED_TAG` | The configured image tag is not covered by the license | No | `AUTH` |
+| `LICENSE_NOT_COVERED` | The token is valid but the plan does not include the requested emulator (e.g. Snowflake/Azure on a plan without it) — distinct from `LICENSE_INVALID`'s bad/expired token, since the remediation differs (upgrade plan vs. re-authenticate) | No | `AUTH` |
 | `SNAPSHOT_NOT_FOUND` | The referenced snapshot does not exist | No | `RESOURCE` |
 | `SNAPSHOT_INVALID_REF` | The snapshot reference could not be parsed | No | `RESOURCE` |
 | `SNAPSHOT_REMOTE_ERROR` | A platform or S3 remote call failed | Yes | `RESOURCE` |
@@ -114,6 +115,7 @@ Every `error.code` is one of the following fixed constants. A failure that doesn
 | `INTEGRATION_NOT_SET_UP` | A required one-time setup step (e.g. `lstk setup azure`) has not been run | No | `CONFIG` |
 | `DEPENDENCY_MISSING` | A required external CLI (e.g. `az`) is not on `PATH` | No | `RUNTIME` |
 | `DNS_RESOLUTION_REQUIRED` | A required hostname pattern does not resolve | No | `RUNTIME` |
+| `PORT_CONFLICT` | A port lstk needs is already bound by something else (the edge port, an extra gateway port, or an `expose_ports` entry) | No | `RUNTIME` |
 | `CONFIRMATION_REQUIRED` | A destructive action needs `--force` outside an interactive terminal | No | `USAGE` |
 | `VALIDATION_ERROR` | A semantically invalid combination of flags/arguments was given | No | `USAGE` |
 | `USAGE_ERROR` | Cobra-level flag or argument parsing failed | No | `USAGE` |
@@ -198,11 +200,11 @@ A `USAGE_ERROR` that *was* successfully rendered as an envelope (because `--json
 
 ## Command Catalog
 
-There are many commands supported by `lstk`, but they'll be addressed in phases. Initially we've focused on `stop`, `reset`, and `update` commands, simply to test the generation of JSON output. The remaining commands will follow in later work, where their specific JSON schema will be considered in more depth (for now, they're simply a rough proposal)
+There are many commands supported by `lstk`, but they'll be addressed in phases. `stop`, `reset`, and `update` shipped first, simply to test the generation of JSON output; `start` followed once a real consumer (the LocalStack Toolkit VS Code extension's migration to `lstk`) needed it. The remaining commands will follow in later work, where their specific JSON schema will be considered in more depth (for now, they're simply a rough proposal).
 
-### Implemented in this PR
+### Implemented
 
-These three ship in this PR with `--json` support. The shapes below are real — they match what the code actually produces, not a proposal.
+The shapes below are real — they match what the code actually produces, not a proposal.
 
 **`lstk stop`** — which configured emulators were actually running and got stopped.
 ```json
@@ -270,29 +272,57 @@ When the installed version is current but its bundled-extension set is incomplet
 ```
 Codes: `NETWORK_ERROR` (GitHub API unreachable), `INTERNAL_ERROR` (archive download verification, extraction, or replacement failure), `CONFIG_INVALID`, `CONFIG_NOT_FOUND` (bad or missing `--config` path).
 
-### Proposed for future work (draft)
-
-> **This section is a first-draft proposal only, not a committed contract.** None of the commands below accept `--json` yet — every one of them is rejected with `NOT_JSON_CAPABLE` today. The shapes shown are a starting point for design discussion, included here in full so the whole intended surface can be reviewed at once rather than piecemeal across many small follow-up PRs. Expect fields, error codes, and possibly the overall approach for any of these to change based on human feedback before implementation — treat everything below as a proposal to critique, not a spec to build against.
-
-#### Emulator lifecycle
-
-**`lstk start`** — one emulator entry per configured container, plus whether a configured snapshot was auto-loaded.
+**`lstk start`** — a flat object, not an `emulators: [...]` list: only one `[[containers]]` block can be enabled at a time (`container.Start`'s `checkSingleContainer` guard), so `start` only ever acts on one emulator, unlike `stop`/`status` which genuinely enumerate multiple *configured* emulators. A version/config mismatch on an already-running instance surfaces as a `warnings[]` entry rather than a new field. The bare `lstk --json` invocation (no `start`) carries identical support: it runs through the same `startEmulator` path, so `--json` behaves the same way there, and the envelope's `command` field reads `"start"` either way.
 ```json
 {
   "schemaVersion": 1,
   "command": "start",
   "status": "ok",
   "data": {
-    "emulators": [
-      {"type": "aws", "name": "localstack-aws", "host": "localhost:4566", "version": "3.9.0", "alreadyRunning": false, "persist": false}
-    ],
-    "snapshotLoaded": null
+    "emulator": "aws",
+    "container": "localstack-aws",
+    "endpoint": "http://localhost:4566",
+    "version": "3.9.0",
+    "alreadyRunning": false,
+    "persistence": false
   },
   "warnings": [],
   "error": null
 }
 ```
-Codes: `RUNTIME_UNAVAILABLE`, `AUTH_REQUIRED`, `LICENSE_INVALID`, `LICENSE_UNSUPPORTED_TAG`, `IMAGE_PULL_FAILED`, `EMULATOR_START_FAILED`, `SNAPSHOT_NOT_FOUND` (bad `--snapshot`), `VALIDATION_ERROR` (`--snapshot` with `--no-snapshot`).
+Codes: `RUNTIME_UNAVAILABLE`, `AUTH_REQUIRED`, `LICENSE_INVALID` (bad/expired/rejected token), `LICENSE_NOT_COVERED` (valid token, plan doesn't include the requested emulator), `IMAGE_PULL_FAILED`, `EMULATOR_START_FAILED` (crash or timeout waiting for health), `EMULATOR_WRONG_TYPE` (a different emulator type is already running on the configured port), `PORT_CONFLICT`, `CONFIG_INVALID` (more than one `[[containers]]` block enabled).
+
+**`lstk status`** — one entry per configured emulator. Stops at the first not-running emulator and returns `EMULATOR_NOT_RUNNING`, same as plain text and same as `stop`/`reset`. Deployed resources (AWS only) are included by default, matching plain text; `--no-resources` drops `resourceSummary`/`resources` for a faster response, useful for a caller that polls this command repeatedly (e.g. `lstk start`'s readiness check).
+```json
+{
+  "schemaVersion": 1,
+  "command": "status",
+  "status": "ok",
+  "data": {
+    "emulators": [
+      {
+        "type": "aws", "running": true, "health": "healthy", "name": "localstack-aws",
+        "version": "3.9.0", "host": "localhost:4566", "uptimeSeconds": 1234, "persistence": false,
+        "resourceSummary": {"resources": 12, "services": 4},
+        "resources": [{"service": "s3", "name": "my-bucket", "region": "us-east-1", "account": "000000000000"}]
+      }
+    ]
+  },
+  "warnings": [],
+  "error": null
+}
+```
+`--json --endpoint-url` targets an emulator lstk didn't start, same as plain-text `status`. `endpoint.Resolve` already confirms the target is reachable before returning it, so a resolved external entry always has `"running": true` — `name`, `uptimeSeconds`, and `persistence` are omitted instead, since those are Docker facts that don't exist for it:
+```json
+{ "type": "aws", "running": true, "health": "healthy", "version": "3.9.0", "host": "https://my-remote-endpoint" }
+```
+Codes: `RUNTIME_UNAVAILABLE`, `EMULATOR_NOT_RUNNING`, `CONFIG_INVALID`, `CONFIG_NOT_FOUND` (bad or missing `--config` path).
+
+### Proposed for future work (draft)
+
+> **This section is a first-draft proposal only, not a committed contract.** None of the commands below accept `--json` yet — every one of them is rejected with `NOT_JSON_CAPABLE` today. The shapes shown are a starting point for design discussion, included here in full so the whole intended surface can be reviewed at once rather than piecemeal across many small follow-up PRs. Expect fields, error codes, and possibly the overall approach for any of these to change based on human feedback before implementation — treat everything below as a proposal to critique, not a spec to build against.
+
+#### Emulator lifecycle
 
 **`lstk restart`** — the stop result and the start result, reusing both shapes above.
 ```json
@@ -304,38 +334,13 @@ Codes: `RUNTIME_UNAVAILABLE`, `AUTH_REQUIRED`, `LICENSE_INVALID`, `LICENSE_UNSUP
     "stopped": [
       {"type": "aws", "name": "localstack-aws", "wasRunning": true}
     ],
-    "started": [
-      {"type": "aws", "name": "localstack-aws", "host": "localhost:4566", "version": "3.9.0", "alreadyRunning": false, "persist": false}
-    ]
+    "started": {"emulator": "aws", "container": "localstack-aws", "endpoint": "http://localhost:4566", "version": "3.9.0", "alreadyRunning": false, "persistence": false}
   },
   "warnings": [],
   "error": null
 }
 ```
 Codes: `RUNTIME_UNAVAILABLE`, `AUTH_REQUIRED`, `LICENSE_INVALID`, `EMULATOR_START_FAILED`.
-
-**`lstk status`** — one entry per *configured* emulator, not just running ones: unlike today's plain-text behavior (which stops at the first non-running emulator), JSON mode reports every configured emulator's running/not-running state. Non-running entries omit the detail fields entirely rather than nulling them out.
-```json
-{
-  "schemaVersion": 1,
-  "command": "status",
-  "status": "ok",
-  "data": {
-    "emulators": [
-      {
-        "type": "aws", "running": true, "name": "localstack-aws", "version": "3.9.0",
-        "host": "localhost:4566", "uptimeSeconds": 1234, "persistence": false,
-        "resourceSummary": {"resources": 12, "services": 4},
-        "resources": [{"service": "s3", "name": "my-bucket", "region": "us-east-1", "account": "000000000000"}]
-      },
-      {"type": "snowflake", "running": false}
-    ]
-  },
-  "warnings": [],
-  "error": null
-}
-```
-Codes: `RUNTIME_UNAVAILABLE`.
 
 **`lstk logs`** (bounded) — `data.lines` is the same `{source, level, line}` shape used by the NDJSON stream variant (see "Streaming output" above).
 ```json

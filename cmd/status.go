@@ -19,21 +19,42 @@ import (
 )
 
 func newStatusCmd(cfg *env.Env) *cobra.Command {
-	return &cobra.Command{
-		Use:     "status",
-		Short:   "Show emulator status and deployed resources",
-		Long:    "Show the status of a running emulator and its deployed resources",
-		PreRunE: initConfigDeferCreate(nil),
+	cmd := &cobra.Command{
+		Use:         "status",
+		Short:       "Show emulator status and deployed resources",
+		Long:        "Show the status of a running emulator and its deployed resources",
+		PreRunE:     initConfigDeferCreate(nil),
+		Annotations: map[string]string{jsonSupportedAnnotation: "true"},
 		RunE: func(cmd *cobra.Command, args []string) error {
-			target, err := endpoint.Resolve(cmd.Context(), cmd)
-			if err != nil {
-				return err
-			}
+			sink := jsonAwareSink(cmd, cfg, os.Stdout)
 
 			clients := map[config.EmulatorType]emulator.Client{
 				config.EmulatorAWS:       aws.NewClient(),
 				config.EmulatorSnowflake: snowflake.NewClient(),
 				config.EmulatorAzure:     azure.NewClient(),
+			}
+
+			target, err := endpoint.Resolve(cmd.Context(), cmd)
+			if err != nil {
+				return err
+			}
+
+			if cfg.JSON {
+				noResources, _ := cmd.Flags().GetBool("no-resources")
+				includeResources := !noResources
+				if target != nil {
+					return container.StatusExternalJSON(cmd.Context(), target, clients, sink, includeResources)
+				}
+
+				rt, err := runtime.NewDockerRuntime(cfg.DockerHost)
+				if err != nil {
+					return err
+				}
+				appCfg, err := config.Get()
+				if err != nil {
+					return failGetConfig(sink, cfg, err)
+				}
+				return container.StatusJSON(cmd.Context(), rt, appCfg.Containers, cfg.LocalStackHost, clients, sink, includeResources)
 			}
 
 			if target != nil {
@@ -58,4 +79,6 @@ func newStatusCmd(cfg *env.Env) *cobra.Command {
 			return container.Status(cmd.Context(), rt, appCfg.Containers, cfg.LocalStackHost, clients, output.NewPlainSink(os.Stdout))
 		},
 	}
+	cmd.Flags().Bool("no-resources", false, "Exclude deployed resource details (--json only)")
+	return cmd
 }

@@ -213,30 +213,14 @@ Error: terraform not found in PATH
 }
 ---
 
-[TestJSONFlagRejectsDefaultStartBehavior_1]
-{
-  "command": "start",
-  "data": null,
-  "error": {
-    "category": "USAGE",
-    "code": "NOT_JSON_CAPABLE",
-    "message": "\"start\" is not able to provide output in JSON format",
-    "retryable": false
-  },
-  "schemaVersion": 1,
-  "status": "error",
-  "warnings": []
-}
----
-
 [TestJSONFlagRejectsUnannotatedBuiltinCommand_1]
 {
-  "command": "status",
+  "command": "login",
   "data": null,
   "error": {
     "category": "USAGE",
     "code": "NOT_JSON_CAPABLE",
-    "message": "\"status\" is not able to provide output in JSON format",
+    "message": "\"login\" is not able to provide output in JSON format",
     "retryable": false
   },
   "schemaVersion": 1,
