@@ -18,8 +18,8 @@ import (
 // convention the neighbouring post-start tips use (tipsForType in
 // internal/container/start.go), so it is part of the observable behavior rather
 // than styling.
-const completionTipText = "> Tip: Tab completion is available using lstk completion [bash|zsh|fish|powershell] " +
-	"as documented at https://docs.localstack.cloud/aws/developer-tools/running-localstack/lstk/#shell-completions"
+const completionTipText = "> Tip: Enable tab completion for your shell: lstk completion [bash|zsh|fish|powershell] " +
+	"See https://docs.localstack.cloud/aws/developer-tools/running-localstack/lstk/#shell-completions"
 
 // firstRunHome returns an isolated home with no lstk config, so the run under
 // test is a first run (config.toml absent is what firstRun means).
@@ -159,7 +159,10 @@ func TestFirstRunJSONEnvelopeHasNoCompletionTip(t *testing.T) {
 	stdout, stderr, err := runLstk(t, testContext(t), "", e.With(env.APIEndpoint, mockServer.URL), "start", "--json")
 	require.NoError(t, err, "lstk start --json failed: %s", stderr)
 
-	assert.NotContains(t, stdout, "Tab completion", "the tip must never reach machine-readable output")
+	// A distinctive substring rather than completionTipText: if the tip ever did
+	// leak into the envelope it would be inside a JSON string, where quoting or
+	// escaping could break an exact match and let the leak through unnoticed.
+	assert.NotContains(t, stdout, "tab completion", "the tip must never reach machine-readable output")
 
 	envelope := decodeEnvelope(t, stdout)
 	assert.Equal(t, "ok", envelope.Status)
