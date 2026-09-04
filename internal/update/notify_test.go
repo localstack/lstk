@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
 
 	"github.com/localstack/lstk/internal/output"
@@ -88,7 +87,7 @@ func TestNotifyUpdateNoUpdateAvailable(t *testing.T) {
 	var events []output.Event
 	sink := output.SinkFunc(func(event output.Event) { events = append(events, event) })
 
-	exit := notifyUpdateWithVersion(context.Background(), sink, NotifyOptions{UpdatePrompt: true}, "v1.0.0", testFetcher(server.URL), noMissingMembers)
+	exit := notifyUpdateWithVersion(context.Background(), sink, NotifyOptions{UpdatePrompt: true}, "v1.0.0", testFetcher(server.URL))
 	assert.False(t, exit)
 	assert.Empty(t, events)
 }
@@ -100,7 +99,7 @@ func TestNotifyUpdatePromptDisabled(t *testing.T) {
 	var events []output.Event
 	sink := output.SinkFunc(func(event output.Event) { events = append(events, event) })
 
-	exit := notifyUpdateWithVersion(context.Background(), sink, NotifyOptions{}, "1.0.0", testFetcher(server.URL), noMissingMembers)
+	exit := notifyUpdateWithVersion(context.Background(), sink, NotifyOptions{}, "1.0.0", testFetcher(server.URL))
 	assert.False(t, exit)
 	assert.Len(t, events, 1)
 	msg, ok := events[0].(output.MessageEvent)
@@ -128,7 +127,7 @@ func TestNotifyUpdatePromptSkip(t *testing.T) {
 			skippedVersion = v
 			return nil
 		},
-	}, "1.0.0", testFetcher(server.URL), noMissingMembers)
+	}, "1.0.0", testFetcher(server.URL))
 	assert.False(t, exit)
 	assert.Equal(t, "v2.0.0", skippedVersion)
 }
@@ -143,7 +142,7 @@ func TestNotifyUpdateSkippedVersionSuppressesPrompt(t *testing.T) {
 	exit := notifyUpdateWithVersion(context.Background(), sink, NotifyOptions{
 		UpdatePrompt:   true,
 		SkippedVersion: "v2.0.0",
-	}, "1.0.0", testFetcher(server.URL), noMissingMembers)
+	}, "1.0.0", testFetcher(server.URL))
 	assert.False(t, exit)
 	assert.Empty(t, events)
 }
@@ -160,7 +159,7 @@ func TestNotifyUpdatePromptRemind(t *testing.T) {
 		}
 	})
 
-	exit := notifyUpdateWithVersion(context.Background(), sink, NotifyOptions{UpdatePrompt: true}, "1.0.0", testFetcher(server.URL), noMissingMembers)
+	exit := notifyUpdateWithVersion(context.Background(), sink, NotifyOptions{UpdatePrompt: true}, "1.0.0", testFetcher(server.URL))
 	assert.False(t, exit)
 }
 
@@ -181,49 +180,7 @@ func TestNotifyUpdatePromptCancelled(t *testing.T) {
 		}
 	})
 
-	exit := notifyUpdateWithVersion(context.Background(), sink, NotifyOptions{UpdatePrompt: true}, "1.0.0", testFetcher(server.URL), noMissingMembers)
+	exit := notifyUpdateWithVersion(context.Background(), sink, NotifyOptions{UpdatePrompt: true}, "1.0.0", testFetcher(server.URL))
 	assert.False(t, exit)
 }
 
-// noMissingMembers is the completeness probe for tests that exercise the
-// version-upgrade paths: the installed set is complete, so only the version
-// comparison decides anything.
-func noMissingMembers() []string { return nil }
-
-// TestNotifyUpdateNudgesRepairWhenCurrent covers the transition user: current
-// version, bundled set incomplete. The passive notice must point at
-// `lstk update` instead of staying silent, or that user is never nudged toward
-// the repair at all.
-func TestNotifyUpdateNudgesRepairWhenCurrent(t *testing.T) {
-	server := newTestGitHubServer(t, "v1.0.0")
-	defer server.Close()
-
-	var events []output.Event
-	sink := output.SinkFunc(func(event output.Event) { events = append(events, event) })
-	exit := notifyUpdateWithVersion(context.Background(), sink, NotifyOptions{}, "1.0.0", testFetcher(server.URL),
-		func() []string { return []string{"bundled-extensions"} })
-
-	assert.False(t, exit)
-	found := false
-	for _, e := range events {
-		if msg, ok := e.(output.MessageEvent); ok && strings.Contains(msg.Text, "Bundled extensions are missing") {
-			assert.Contains(t, msg.Text, "lstk update", "the note should say what to run")
-			found = true
-		}
-	}
-	assert.True(t, found, "expected a repair note, got %+v", events)
-}
-
-// TestNotifyUpdateStaysQuietWhenCurrentAndComplete pins that the everyday
-// up-to-date run stays completely silent.
-func TestNotifyUpdateStaysQuietWhenCurrentAndComplete(t *testing.T) {
-	server := newTestGitHubServer(t, "v1.0.0")
-	defer server.Close()
-
-	var events []output.Event
-	sink := output.SinkFunc(func(event output.Event) { events = append(events, event) })
-	exit := notifyUpdateWithVersion(context.Background(), sink, NotifyOptions{}, "1.0.0", testFetcher(server.URL), noMissingMembers)
-
-	assert.False(t, exit)
-	assert.Empty(t, events, "an up-to-date, complete install must produce no output")
-}

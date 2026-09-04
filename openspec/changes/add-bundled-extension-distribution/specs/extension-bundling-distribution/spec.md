@@ -63,7 +63,14 @@ Bundled extensions are payload rather than a precondition in one sense only: **a
 - **WHEN** a user on a pre-bundling lstk runs `lstk update` and the latest release bundles extensions
 - **THEN** the update succeeds using the in-the-field updater (which replaces only the lstk binary and ignores the archive's extra members)
 - **AND** the install is left with an incomplete set, since that updater predates bundling and cannot be made to fail
-- **AND** the incomplete set is repaired by the next `lstk update`, which SHALL NOT wait for a newer release to become available
+- **AND** until the next release's `lstk update` (now the set-wise updater) installs the complete set, lstk points the user at a reinstall: an unknown command and an up-to-date `lstk update` both say the release ships bundled extensions that are not installed, and name the reinstall command for the install method (accepted one-release gap; a same-version repair was considered and dropped as too much machinery in PR #482)
+
+#### Scenario: Release build without its bundle hints at a reinstall
+
+- **WHEN** a release build (goreleaser stamps `version.bundlesExtensions=true`) finds neither `bundled-extensions` nor `lstk-extensions.toml` beside the running lstk
+- **THEN** `lstk <unknown command>` adds to its error that the release ships bundled extensions which are not installed in that directory, plus a "Reinstall lstk:" action naming the command for the detected install method (`brew reinstall --cask localstack/tap/lstk`, `npm install -g @localstack/lstk`, or the releases download page)
+- **AND** an `lstk update` that finds no newer version emits the same text as a warning (a `warnings` entry under `--json`)
+- **AND** a dev build, or an install with either member present, shows nothing extra
 
 #### Scenario: Pre-bundling lstk updates via Homebrew or npm
 
@@ -80,13 +87,6 @@ Bundled extensions are payload rather than a precondition in one sense only: **a
 - **WHEN** the set-wise updater applies an archive that carries bundled extensions and any member fails to stage or commit
 - **THEN** the update fails with an error naming the member that failed
 - **AND** the installation is left on its previous version rather than reporting success with an incomplete set
-
-#### Scenario: Incomplete bundled set is repaired when lstk is already current
-
-- **WHEN** `lstk update` runs on an install whose lstk binary is already the latest version but whose bundled set is incomplete
-- **THEN** the update SHALL NOT report "already up to date"
-- **AND** it installs the missing members of the set
-- **AND** on the binary channel, previously installed bundled extensions remain in place and still run
 
 ### Requirement: Bundle provenance is resolved once, recorded, and verified
 

@@ -17,6 +17,7 @@ import (
 	"github.com/localstack/lstk/internal/output"
 	"github.com/localstack/lstk/internal/runtime"
 	"github.com/localstack/lstk/internal/telemetry"
+	"github.com/localstack/lstk/internal/update"
 	"github.com/spf13/cobra"
 )
 
@@ -48,10 +49,15 @@ func dispatchExtension(ctx context.Context, cfg *env.Env, tel *telemetry.Client,
 	if err != nil {
 		if errors.Is(err, extension.ErrNotFound) {
 			// Errors go to stderr, like Cobra's own unknown-command output.
-			output.NewPlainSink(os.Stderr).Emit(output.ErrorEvent{
+			ev := output.ErrorEvent{
 				Title:   fmt.Sprintf("unknown command %q for lstk", name),
 				Actions: []output.ErrorAction{{Label: "See help:", Value: "lstk -h"}},
-			})
+			}
+			if missing, ok := update.DetectMissingBundle(); ok {
+				ev.Summary = missing.Summary()
+				ev.Actions = append(ev.Actions, output.ErrorAction{Label: "Reinstall lstk:", Value: missing.Reinstall})
+			}
+			output.NewPlainSink(os.Stderr).Emit(ev)
 			return output.NewSilentError(fmt.Errorf("unknown command %q for lstk", name))
 		}
 		return err
