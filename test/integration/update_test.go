@@ -94,7 +94,25 @@ func TestUpdateNPMInstall(t *testing.T) {
 		t.Skipf("lstk already installed at %s, would conflict with npm install -g", path)
 	}
 
-	ctx := testContext(t)
+	// Not testContext: nearly all of this test's time goes into the registry
+	// install below, and that cost is set by the registry, not by anything here.
+	// Green runs on windows-latest land at 19-81s, but on a slow day the install
+	// alone has stretched past two minutes (one run's npm reported ~3m), so the
+	// shared 2-minute budget turned a slow registry into a red build on both
+	// Linux and Windows with no code change. Five minutes clears the observed
+	// worst case several times over; what follows the install is cheap by
+	// comparison (a `go build`, then `lstk update`'s own `npm install -g`, which
+	// reuses the cache the first install just filled: ~1s each measured warm).
+	//
+	// The platforms report this timeout very differently, which is worth
+	// knowing when reading a failure. Linux is honest: "signal: killed", with
+	// the test duration pinned at exactly the deadline. Windows is not: npm
+	// there is a .cmd wrapper around node, so killing it leaves the node
+	// grandchild to finish and write its success summary into the still-open
+	// pipe, and the failure reads "exit status 1" beside output claiming the
+	// install succeeded.
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	t.Cleanup(cancel)
 
 	// Set up a fake local npm project so we get a binary inside node_modules.
 	// On Windows, t.TempDir() may return a short 8.3 path (e.g. RUNNER~1)
@@ -107,11 +125,20 @@ func TestUpdateNPMInstall(t *testing.T) {
 		0o644,
 	))
 
-	// Install @localstack/lstk locally so the node_modules structure exists
-	npmInstall := exec.CommandContext(ctx, "npm", "install", "@localstack/lstk")
+	// Install @localstack/lstk locally so the node_modules structure exists.
+	// --no-audit/--no-fund skip an audit round trip this test has no use for;
+	// small next to the cold-download time, but free. WaitDelay matters because
+	// npm is a wrapper (npm.cmd on Windows) around node: killing it on a
+	// deadline leaves the node grandchild holding the output pipe, and
+	// CombinedOutput would block for that grandchild's full lifetime (the
+	// DEVX-846 lesson).
+	npmInstall := exec.CommandContext(ctx, "npm", "install", "--no-audit", "--no-fund", "@localstack/lstk")
 	npmInstall.Dir = projectDir
+	npmInstall.WaitDelay = 10 * time.Second
 	out, err := npmInstall.CombinedOutput()
-	require.NoError(t, err, "npm install failed: %s", string(out))
+	// Report ctx.Err() alongside the output: npm prints its success summary even
+	// when it is killed part-way, so the output alone is actively misleading.
+	require.NoError(t, err, "npm install failed (ctx err: %v): %s", ctx.Err(), string(out))
 
 	// Build a fake old version binary and replace the one in node_modules
 	platformPkg := npmPlatformPackage()
@@ -141,10 +168,12 @@ func TestUpdateNPMInstall(t *testing.T) {
 	// The update should always use `npm install -g` regardless of local/global context.
 	cmd := exec.CommandContext(ctx, nmBinaryPath, "update", "--non-interactive")
 	cmd.Dir = projectDir
+	// Same grandchild reasoning as the install above: this shells out to npm.
+	cmd.WaitDelay = 10 * time.Second
 	stdout, err := cmd.CombinedOutput()
 	stdoutStr := string(stdout)
 
-	require.NoError(t, err, "lstk update failed: %s", stdoutStr)
+	require.NoError(t, err, "lstk update failed (ctx err: %v): %s", ctx.Err(), stdoutStr)
 	requireExitCode(t, 0, err)
 	assert.Contains(t, stdoutStr, "npm install -g", "should always use global install")
 	assert.Contains(t, stdoutStr, "Updated to", "should complete the update")
