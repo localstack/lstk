@@ -95,6 +95,10 @@ When `DOCKER_HOST` isn't set, `DockerRuntime` resolves the daemon endpoint in or
 
 Releases are automated: a weekly workflow (`.github/workflows/automated-release.yml` → `create-release-tag.yml`) tags and publishes via goreleaser, deriving the version bump from merged PRs' `semver:` labels. See `docs/RELEASING.md`.
 
+# GitHub Actions
+
+Every external `uses:` ref in `.github/` is pinned to a full 40-character commit SHA with a trailing `# vX.Y.Z` version comment (DEVX-978) — a mutable tag like `@v7` lets an upstream retag execute new code in a workflow holding our release and platform-API secrets. Add new steps the same way: resolve the tag with `gh api repos/<owner>/<repo>/commits/<tag> --jq .sha` and comment the concrete release it points at (the major tag alone, e.g. `# v3`, when the action publishes no patch tags — `aws-actions/setup-sam` is the one such case today). Dependabot's `github-actions` ecosystem bumps SHA and comment together, so pinning does not freeze updates. Local refs (`./.github/...`) are checked out with the repo and must stay unpinned.
+
 # Logging
 
 lstk always writes diagnostic logs to `$CONFIG_DIR/lstk.log` (appends across runs, cleared at 1 MB). Two log levels: `Info` and `Error`.
