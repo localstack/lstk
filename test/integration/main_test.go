@@ -179,6 +179,30 @@ const (
 // startTestContainer starts the test container with no port bindings by default.
 // Pass hostPort to bind 4566/tcp to a specific host port (e.g. to test that lstk status
 // uses the actual bound port rather than the port from config).
+// scheduleVolumeCleanup registers cleanup of the emulator volume under an
+// isolated tmpHome. Call it right after t.TempDir(): t.Cleanup runs LIFO, so
+// registering it later than TempDir's own cleanup is what makes it run first.
+//
+// The emulator runs as root inside the container, so on Linux the files it
+// writes into the bind-mounted volume are root-owned and Go's TempDir cleanup
+// cannot unlink them ("permission denied"), failing an otherwise passing test.
+// Docker Desktop on macOS maps them to the calling user, which is why this only
+// bites on Linux CI. Removing them from inside a container sidesteps the
+// ownership problem entirely.
+//
+// Any test that both isolates HOME under t.TempDir() and starts a real emulator
+// needs this.
+func scheduleVolumeCleanup(t *testing.T, tmpHome string) {
+	t.Helper()
+	t.Cleanup(func() {
+		volumeDir := filepath.Join(tmpHome, ".cache", "lstk", "volume")
+		if _, err := os.Stat(volumeDir); err != nil {
+			return
+		}
+		_ = exec.Command("docker", "run", "--rm", "-v", volumeDir+":/d", "alpine", "sh", "-c", "rm -rf /d/*").Run()
+	})
+}
+
 func startTestContainer(t *testing.T, ctx context.Context, hostPort ...string) {
 	t.Helper()
 

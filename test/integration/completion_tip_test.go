@@ -27,6 +27,9 @@ func firstRunHome(t *testing.T) (env.Environ, string) {
 	t.Helper()
 
 	tmpHome := t.TempDir()
+	// Every test built on this helper starts a real emulator, whose root-owned
+	// volume files would otherwise break TempDir cleanup on Linux.
+	scheduleVolumeCleanup(t, tmpHome)
 	require.NoError(t, os.MkdirAll(filepath.Join(tmpHome, ".config"), 0755))
 	e := env.Environ(testEnvWithHome(tmpHome, tmpHome)).With(env.DisableEvents, "1")
 
