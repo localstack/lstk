@@ -71,9 +71,11 @@ type RunOptions struct {
 // The literal "> Tip: " prefix and SeveritySecondary match tipsForType in
 // internal/container/start.go, whose tip lands immediately above this one in
 // the post-start block — SeverityNote would render "> Note:" there instead and
-// read as a second, unrelated idiom.
-const completionTip = "> Tip: Tab completion is available using lstk completion [bash|zsh|fish|powershell] " +
-	"as documented at https://docs.localstack.cloud/aws/developer-tools/running-localstack/lstk/#shell-completions"
+// read as a second, unrelated idiom. The wording follows the same shape for the
+// same reason: an imperative verb, then a colon, then the command to run ("View
+// emulator logs: lstk logs --follow"). Keep that form if this text changes.
+const completionTip = "> Tip: Enable tab completion for your shell: lstk completion [bash|zsh|fish|powershell] " +
+	"See https://docs.localstack.cloud/aws/developer-tools/running-localstack/lstk/#shell-completions"
 
 func Run(parentCtx context.Context, runOpts RunOptions) error {
 	ctx, cancel := context.WithCancel(parentCtx)
