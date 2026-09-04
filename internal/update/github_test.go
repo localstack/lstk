@@ -1,10 +1,6 @@
 package update
 
 import (
-	"archive/tar"
-	"archive/zip"
-	"bytes"
-	"compress/gzip"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -20,44 +16,24 @@ import (
 
 // makeReleaseArchive builds an archive in the format updateBinary expects for
 // the current GOOS (zip on windows, tar.gz elsewhere) containing a single
-// binary entry at the archive root.
+// binary entry at the archive root. It delegates to buildArchive
+// (extract_test.go) so the package has exactly one archive builder and the
+// checksum tests and the set-replacement tests cannot drift onto different
+// archive shapes.
 func makeReleaseArchive(t *testing.T, binaryContent string) []byte {
 	t.Helper()
-	var buf bytes.Buffer
+	format := "tar.gz"
 	if goruntime.GOOS == "windows" {
-		zw := zip.NewWriter(&buf)
-		w, err := zw.Create("lstk.exe")
-		if err != nil {
-			t.Fatal(err)
-		}
-		if _, err := w.Write([]byte(binaryContent)); err != nil {
-			t.Fatal(err)
-		}
-		if err := zw.Close(); err != nil {
-			t.Fatal(err)
-		}
-		return buf.Bytes()
+		format = "zip"
 	}
-	gw := gzip.NewWriter(&buf)
-	tw := tar.NewWriter(gw)
-	if err := tw.WriteHeader(&tar.Header{
-		Name:     "lstk",
-		Mode:     0o755,
-		Size:     int64(len(binaryContent)),
-		Typeflag: tar.TypeReg,
-	}); err != nil {
+	path := buildArchive(t, format, []archiveEntry{
+		{name: exeName("lstk", goruntime.GOOS), body: binaryContent, mode: 0o755},
+	})
+	data, err := os.ReadFile(path)
+	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := tw.Write([]byte(binaryContent)); err != nil {
-		t.Fatal(err)
-	}
-	if err := tw.Close(); err != nil {
-		t.Fatal(err)
-	}
-	if err := gw.Close(); err != nil {
-		t.Fatal(err)
-	}
-	return buf.Bytes()
+	return data
 }
 
 // fakeExecutable writes a stand-in for the running binary into its own temp

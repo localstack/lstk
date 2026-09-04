@@ -1,3 +1,27 @@
+// Package update implements lstk's self-update: checking GitHub for a newer
+// release and applying it through whichever mechanism installed lstk (Homebrew,
+// npm, or replacing the binary in place).
+//
+// On the binary channel an update installs the whole set a release archive
+// carries (lstk, the bundled-extensions binary, lstk-extensions.toml) with a
+// stage-then-commit scheme (extract.go). The guarantees to preserve:
+//
+//  1. A file under its real name is never truncated or half-written: content
+//     is only ever written to a fresh staging file and renamed into place.
+//  2. An interrupted update is repaired by re-running `lstk update`: nothing
+//     commits until everything is staged, leftovers are cleaned first, and
+//     lstk commits last, so a working lstk always remains. Windows caveat: a
+//     crash between renaming lstk.exe aside and renaming the new one in leaves
+//     no lstk.exe; rename lstk.exe.old back by hand.
+//  3. Nothing is deleted: an lstk-* file absent from the archive is left alone,
+//     because the updater cannot tell a dropped extension from a user's file.
+//
+// An archive carrying only lstk installs exactly as before bundling existed.
+//
+// The pre-bundling updater installs a bundling release with only its lstk
+// binary. A release build that then finds neither bundle member beside itself
+// (DetectMissingBundle) points the user at a reinstall, from the
+// unknown-command error and from an up-to-date `lstk update`.
 package update
 
 import (
@@ -44,7 +68,11 @@ func Update(ctx context.Context, sink output.Sink, checkOnly bool, githubToken s
 	if err != nil {
 		return err
 	}
-	if !available || checkOnly {
+	if !available {
+		warnIfBundleMissing(sink)
+		return nil
+	}
+	if checkOnly {
 		return nil
 	}
 
@@ -56,6 +84,19 @@ func Update(ctx context.Context, sink output.Sink, checkOnly bool, githubToken s
 
 	sink.Emit(output.UpdateAppliedEvent{CurrentVersion: current, UpdatedVersion: latest, Method: method})
 	return nil
+}
+
+// warnIfBundleMissing tells a current install that lacks its bundle that no
+// update will bring it: the state the pre-bundling updater leaves behind.
+func warnIfBundleMissing(sink output.Sink) {
+	missing, ok := DetectMissingBundle()
+	if !ok {
+		return
+	}
+	sink.Emit(output.MessageEvent{
+		Severity: output.SeverityWarning,
+		Text:     missing.Summary() + " Reinstall lstk: " + missing.Reinstall,
+	})
 }
 
 // applyUpdate detects the current install method and performs the update,

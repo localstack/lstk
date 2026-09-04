@@ -411,10 +411,19 @@ func npmPlatformPackage() string {
 // given version stamped in, writing it to outPath.
 func buildLstkWithVersion(t *testing.T, ctx context.Context, version, outPath string) {
 	t.Helper()
+	buildLstkWithLdflags(t, ctx, versionLdflag(version), outPath)
+}
+
+func versionLdflag(version string) string {
+	return "-X github.com/localstack/lstk/internal/version.version=" + version
+}
+
+func buildLstkWithLdflags(t *testing.T, ctx context.Context, ldflags, outPath string) {
+	t.Helper()
 	repoRoot, err := filepath.Abs("../..")
 	require.NoError(t, err)
 	buildCmd := exec.CommandContext(ctx, "go", "build",
-		"-ldflags", "-X github.com/localstack/lstk/internal/version.version="+version,
+		"-ldflags", ldflags,
 		"-o", outPath,
 		".",
 	)
@@ -433,32 +442,50 @@ func releaseAssetName(ver string) string {
 	return fmt.Sprintf("lstk_%s_%s_%s.%s", ver, runtime.GOOS, runtime.GOARCH, ext)
 }
 
+// releaseMember is one file at the root of a release archive.
+type releaseMember struct {
+	name string
+	body []byte
+	mode os.FileMode
+}
+
 // packageReleaseArchive wraps binary bytes into the release archive format the
 // updater extracts: a tar.gz (zip on Windows) with a single executable entry.
 func packageReleaseArchive(t *testing.T, binaryName string, binary []byte) []byte {
 	t.Helper()
+	return packageReleaseArchiveWith(t, []releaseMember{{name: binaryName, body: binary, mode: 0o755}})
+}
+
+// packageReleaseArchiveWith builds a release archive carrying the given members
+// at its root, so a test can express a case as "an archive containing X".
+func packageReleaseArchiveWith(t *testing.T, members []releaseMember) []byte {
+	t.Helper()
 	var buf bytes.Buffer
 	if runtime.GOOS == "windows" {
 		zw := zip.NewWriter(&buf)
-		hdr := &zip.FileHeader{Name: binaryName, Method: zip.Deflate}
-		hdr.SetMode(0o755)
-		w, err := zw.CreateHeader(hdr)
-		require.NoError(t, err)
-		_, err = w.Write(binary)
-		require.NoError(t, err)
+		for _, m := range members {
+			hdr := &zip.FileHeader{Name: m.name, Method: zip.Deflate}
+			hdr.SetMode(m.mode)
+			w, err := zw.CreateHeader(hdr)
+			require.NoError(t, err)
+			_, err = w.Write(m.body)
+			require.NoError(t, err)
+		}
 		require.NoError(t, zw.Close())
 		return buf.Bytes()
 	}
 	gw := gzip.NewWriter(&buf)
 	tw := tar.NewWriter(gw)
-	require.NoError(t, tw.WriteHeader(&tar.Header{
-		Name:     binaryName,
-		Mode:     0o755,
-		Size:     int64(len(binary)),
-		Typeflag: tar.TypeReg,
-	}))
-	_, err := tw.Write(binary)
-	require.NoError(t, err)
+	for _, m := range members {
+		require.NoError(t, tw.WriteHeader(&tar.Header{
+			Name:     m.name,
+			Mode:     int64(m.mode),
+			Size:     int64(len(m.body)),
+			Typeflag: tar.TypeReg,
+		}))
+		_, err := tw.Write(m.body)
+		require.NoError(t, err)
+	}
 	require.NoError(t, tw.Close())
 	require.NoError(t, gw.Close())
 	return buf.Bytes()
@@ -640,4 +667,57 @@ func TestUpdateBinaryMockGitHubMissingChecksums(t *testing.T) {
 	leftovers, err := filepath.Glob(filepath.Join(filepath.Dir(oldBinary), "lstk-update-*"))
 	require.NoError(t, err)
 	assert.Empty(t, leftovers, "aborted update must not leave temp files behind")
+}
+
+// TestUpdateBinaryInstallsBundledSet: a version bump whose archive carries the
+// bundle lands lstk, the bundled binary and the descriptions file together,
+// executable, with no staging leftovers.
+func TestUpdateBinaryInstallsBundledSet(t *testing.T) {
+	t.Parallel()
+	ctx := testContext(t)
+
+	binaryName, bundled := "lstk", "bundled-extensions"
+	if runtime.GOOS == "windows" {
+		binaryName, bundled = "lstk.exe", "bundled-extensions.exe"
+	}
+	installDir := t.TempDir()
+	oldBinary := filepath.Join(installDir, binaryName)
+	buildLstkWithVersion(t, ctx, "0.0.1", oldBinary)
+	newBinary := filepath.Join(t.TempDir(), binaryName)
+	buildLstkWithVersion(t, ctx, "0.0.2", newBinary)
+	newBytes, err := os.ReadFile(newBinary)
+	require.NoError(t, err)
+
+	archive := packageReleaseArchiveWith(t, []releaseMember{
+		{name: binaryName, body: newBytes, mode: 0o755},
+		{name: bundled, body: []byte("multi-call extensions binary"), mode: 0o755},
+		{name: "lstk-extensions.toml", body: []byte("doctor = \"Diagnose your setup\"\n"), mode: 0o644},
+	})
+	sum := sha256.Sum256(archive)
+	assetName := releaseAssetName("0.0.2")
+	srv := mockGitHubReleaseServer(t, "v0.0.2", map[string][]byte{
+		"checksums.txt": []byte(fmt.Sprintf("%s  %s\n", hex.EncodeToString(sum[:]), assetName)),
+		assetName:       archive,
+	})
+
+	updateCmd := exec.CommandContext(ctx, oldBinary, "update", "--non-interactive")
+	updateCmd.Env = mockGitHubEnv(t, srv)
+	out, err := updateCmd.CombinedOutput()
+	require.NoError(t, err, "lstk update failed: %s", string(out))
+	assert.Contains(t, string(out), "Updated to")
+
+	verOut, err := exec.CommandContext(ctx, oldBinary, "--version").CombinedOutput()
+	require.NoError(t, err)
+	assert.Contains(t, string(verOut), "0.0.2")
+	info, err := os.Stat(filepath.Join(installDir, bundled))
+	require.NoError(t, err, "the bundled binary should have been installed")
+	if runtime.GOOS != "windows" {
+		assert.NotZero(t, info.Mode().Perm()&0o111, "the bundled binary should be executable")
+	}
+	toml, err := os.ReadFile(filepath.Join(installDir, "lstk-extensions.toml"))
+	require.NoError(t, err)
+	assert.Equal(t, "doctor = \"Diagnose your setup\"\n", string(toml))
+	leftovers, err := filepath.Glob(filepath.Join(installDir, "*.lstk-new"))
+	require.NoError(t, err)
+	assert.Empty(t, leftovers)
 }
