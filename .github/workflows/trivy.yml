@@ -33,13 +33,13 @@ jobs:
       security-events: write # upload SARIF to code scanning
     steps:
       - name: Checkout code
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       # SARIF report for the Security tab covers all severities and never fails
       # the job (the gate below owns pass/fail). trivy-action ignores severity
       # filters when format is sarif, so this cannot double as the gate.
       - name: Run Trivy (SARIF report)
-        uses: aquasecurity/trivy-action@v0.36.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           scan-type: fs
           scanners: vuln
@@ -50,13 +50,13 @@ jobs:
       # (the scan + gate still run).
       - name: Upload SARIF to code scanning
         if: always() && github.event.pull_request.head.repo.fork != true
-        uses: github/codeql-action/upload-sarif@v4.37.9
+        uses: github/codeql-action/upload-sarif@cdf488f595d80d6e07e03d4674febd5ab45fa938 # v4.37.9
         with:
           sarif_file: trivy-results.sarif
 
       # The blocking gate: fail only on fixable CRITICAL/HIGH vulnerabilities.
       - name: Run Trivy (fixable CRITICAL/HIGH gate)
-        uses: aquasecurity/trivy-action@v0.36.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           scan-type: fs
           scanners: vuln
@@ -79,10 +79,10 @@ jobs:
       security-events: write # upload SARIF to code scanning
     steps:
       - name: Checkout code
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Run Trivy (all severities)
-        uses: aquasecurity/trivy-action@v0.36.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           scan-type: fs
           scanners: vuln
@@ -90,6 +90,6 @@ jobs:
           output: trivy-results.sarif
 
       - name: Upload SARIF to code scanning
-        uses: github/codeql-action/upload-sarif@v4.37.9
+        uses: github/codeql-action/upload-sarif@cdf488f595d80d6e07e03d4674febd5ab45fa938 # v4.37.9
         with:
           sarif_file: trivy-results.sarif
