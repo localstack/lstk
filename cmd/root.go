@@ -351,6 +351,13 @@ func startEmulator(ctx context.Context, rt runtime.Runtime, cfg *env.Env, tel *t
 		logger.Info("could not resolve friendly config path: %v", err)
 	}
 
+	// Captured before ApplyEmulatorType clears firstRun: `lstk start --type aws`
+	// on a fresh install is still the user's first run, and the completion tip
+	// should fire there too. firstRun itself is only cleared below to skip the
+	// emulator picker and the default-emulator notice, both of which --type has
+	// already answered.
+	wasFirstRun := firstRun
+
 	// Apply the --type flag before resolving snapshot and start options so
 	// everything downstream reflects the selected emulator. Uses the caller's
 	// sink even in interactive mode, since the config mutation has to happen
@@ -394,6 +401,7 @@ func startEmulator(ctx context.Context, rt runtime.Runtime, cfg *env.Env, tel *t
 			ConfigPath:             configPath,
 			EmulatorLabel:          config.CachedPlanLabel(),
 			NeedsEmulatorSelection: firstRun,
+			CompletionTip:          wasFirstRun,
 			PostStart:              autoLoad,
 		})
 	}
