@@ -224,12 +224,6 @@ func TestFormatEventLine(t *testing.T) {
 			wantOK: true,
 		},
 		{
-			name:   "update checked event repairing bundled set",
-			event:  UpdateCheckedEvent{CurrentVersion: "2.3.0", LatestVersion: "v2.3.0", Available: true, RepairBundled: true},
-			want:   "Bundled extensions are missing from this install (version 2.3.0)",
-			wantOK: true,
-		},
-		{
 			name:   "update applied event",
 			event:  UpdateAppliedEvent{CurrentVersion: "2.2.1", UpdatedVersion: "2.3.0", Method: "homebrew"},
 			want:   SuccessMarker() + " Updated to 2.3.0",

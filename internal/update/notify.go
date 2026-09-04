@@ -47,27 +47,12 @@ func checkQuietlyWithVersion(ctx context.Context, githubToken string, currentVer
 }
 
 func NotifyUpdate(ctx context.Context, sink output.Sink, opts NotifyOptions) (exitAfter bool) {
-	return notifyUpdateWithVersion(ctx, sink, opts, version.Version(), fetchLatestVersion, missingBundledMembers)
+	return notifyUpdateWithVersion(ctx, sink, opts, version.Version(), fetchLatestVersion)
 }
 
-func notifyUpdateWithVersion(ctx context.Context, sink output.Sink, opts NotifyOptions, currentVersion string, fetch versionFetcher, missingMembers func() []string) (exitAfter bool) {
+func notifyUpdateWithVersion(ctx context.Context, sink output.Sink, opts NotifyOptions, currentVersion string, fetch versionFetcher) (exitAfter bool) {
 	current, latest, available := checkQuietlyWithVersion(ctx, opts.GitHubToken, currentVersion, fetch)
 	if !available {
-		// Being current is not the whole story: the install can be missing its
-		// bundled extensions (see missingBundledMembers for how the transition
-		// leaves it that way). The user this happens to would otherwise never
-		// be nudged toward the repair, since only `lstk update` itself detects
-		// it. A note is enough; the interactive update prompt stays reserved
-		// for version upgrades, whose wording and skip logic assume one.
-		// The probe runs only when the version check succeeded and matched
-		// (latest is empty on a dev build or a failed fetch), mirroring the
-		// gating in checkWithVersion.
-		if latest != "" && len(missingMembers()) > 0 {
-			sink.Emit(output.MessageEvent{
-				Severity: output.SeverityNote,
-				Text:     "Bundled extensions are missing from this install. Run lstk update to restore them.",
-			})
-		}
 		return false
 	}
 

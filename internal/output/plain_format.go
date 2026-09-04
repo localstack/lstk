@@ -223,11 +223,6 @@ func formatUpdateChecked(e UpdateCheckedEvent) string {
 	switch {
 	case e.DevBuild:
 		return "> Note: Running a development build, skipping update check"
-	case e.RepairBundled:
-		// States only the finding: this line also renders under --check, where
-		// nothing is reinstalled. The apply path narrates the reinstall itself
-		// (see update.Update).
-		return fmt.Sprintf("Bundled extensions are missing from this install (version %s)", e.CurrentVersion)
 	case !e.Available:
 		return fmt.Sprintf("> Note: Already up to date (%s)", e.CurrentVersion)
 	default:
