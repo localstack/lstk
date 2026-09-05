@@ -172,8 +172,13 @@ func TestSetupAWSCreatesAWSProfileWhenConfirmed(t *testing.T) {
 
 	configContent, err := os.ReadFile(filepath.Join(tmpHome, ".aws", "config"))
 	require.NoError(t, err, "~/.aws/config should have been created")
-	assert.Contains(t, string(configContent), "[profile localstack]")
-	assert.Contains(t, string(configContent), "endpoint_url")
+	// ini.v1 writes CRLF line endings on Windows, so normalize before matching
+	// multi-line substrings below.
+	normalizedConfig := strings.ReplaceAll(string(configContent), "\r\n", "\n")
+	assert.Contains(t, normalizedConfig, "[profile localstack]")
+	assert.Contains(t, normalizedConfig, "endpoint_url")
+	assert.Contains(t, normalizedConfig, "services     = localstack")
+	assert.Contains(t, normalizedConfig, "[services localstack]\ns3 =\n    endpoint_url = http")
 
 	credsContent, err := os.ReadFile(filepath.Join(tmpHome, ".aws", "credentials"))
 	require.NoError(t, err, "~/.aws/credentials should have been created")
