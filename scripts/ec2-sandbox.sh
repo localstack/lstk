@@ -54,6 +54,8 @@ SSH_PORT=22
 # Windows convention is capitalised account names; Linux convention is lowercase.
 UNPRIV_USER_WINDOWS="User"
 UNPRIV_USER_LINUX="user"
+ADMIN_USER_WINDOWS="Administrator"
+ADMIN_USER_LINUX="ubuntu"
 # Placeholder so --help can render before set_os_profile picks the real one.
 UNPRIV_USER="User"
 
@@ -102,6 +104,7 @@ BOOTSTRAP_DEADLINE_WINDOWS=1200
 ACTION=""
 OS=""
 ARCH=""
+SOURCE_PATH=""
 CONTAINERS=""
 REGION=""
 INSTANCE_TYPE=""
@@ -135,11 +138,16 @@ ${C_BOLD}${SCRIPT_NAME}${C_RESET} - throwaway Windows or Linux desktop on EC2, o
 
 ${C_BOLD}USAGE${C_RESET}
   ${SCRIPT_NAME} <create|delete|info> <windows|linux> [options]
+  ${SCRIPT_NAME} copyto <windows|linux> [options] <path>
 
 ${C_BOLD}COMMANDS${C_RESET}
   create <os>    Launch the sandbox and print RDP connection details.
   delete <os>    Terminate the instance and delete its security group.
   info <os>      Re-print connection details for a running sandbox.
+  copyto <os> <path>
+                 Copy a local file, or a directory and its contents, onto the
+                 unprivileged account's desktop -- '${UNPRIV_USER_WINDOWS}' on Windows,
+                 '${UNPRIV_USER_LINUX}' on Linux.
 
 ${C_BOLD}OPTIONS${C_RESET}
   --region <r>        AWS region. Defaults to \$AWS_REGION, \$AWS_DEFAULT_REGION,
@@ -221,6 +229,8 @@ ${C_BOLD}EXAMPLES${C_RESET}
   ${SCRIPT_NAME} create windows --arch=x64 --region us-east-1 --open
   ${SCRIPT_NAME} create windows --containers=podman
   ${SCRIPT_NAME} info linux --as admin --open
+  ${SCRIPT_NAME} copyto windows ./dist/extension.vsix
+  ${SCRIPT_NAME} copyto linux --arch=arm64 ./testdata
   ${SCRIPT_NAME} delete windows -y
 EOF
 }
@@ -236,13 +246,13 @@ parse_args() {
     esac
   done
 
-  [ $# -gt 0 ] || { usage >&2; die "missing command (create, delete or info)"; }
+  [ $# -gt 0 ] || { usage >&2; die "missing command (create, delete, info or copyto)"; }
 
   ACTION="$1"; shift
   case "$ACTION" in
-    create|delete|info) ;;
-    -*) die "unknown option '$ACTION'; the command must come first (create, delete or info)" ;;
-    *)  die "unknown command '$ACTION'; expected create, delete or info" ;;
+    create|delete|info|copyto) ;;
+    -*) die "unknown option '$ACTION'; the command must come first (create, delete, info or copyto)" ;;
+    *)  die "unknown command '$ACTION'; expected create, delete, info or copyto" ;;
   esac
 
   [ $# -gt 0 ] || die "missing OS argument; '$ACTION' needs 'windows' or 'linux' (e.g. $SCRIPT_NAME $ACTION linux)"
@@ -278,9 +288,18 @@ parse_args() {
       --as=*) OPEN_AS="${1#*=}"; shift ;;
       --open) DO_OPEN=1; shift ;;
       -y|--yes) ASSUME_YES=1; shift ;;
-      *) die "unknown option '$1'" ;;
+      -*) die "unknown option '$1'" ;;
+      *)
+        [ "$ACTION" = "copyto" ] || die "unexpected argument '$1'; '$ACTION' takes options only"
+        [ -z "$SOURCE_PATH" ] || die "copyto takes one path, but got both '$SOURCE_PATH' and '$1'"
+        SOURCE_PATH="$1"; shift ;;
     esac
   done
+
+  if [ "$ACTION" = "copyto" ]; then
+    [ -n "$SOURCE_PATH" ] || die "copyto needs a path to copy (e.g. $SCRIPT_NAME copyto $OS ./build.zip)"
+    [ -e "$SOURCE_PATH" ] || die "no such file or directory: $SOURCE_PATH"
+  fi
 
   case "$OPEN_AS" in
     admin|user) ;;
@@ -392,7 +411,7 @@ set_os_profile() {
   case "$OS" in
     windows)
       OS_LABEL="Windows Server 2025"
-      ADMIN_USER="Administrator"
+      ADMIN_USER="$ADMIN_USER_WINDOWS"
       SSH_USER="Administrator"
       SSM_PARAM="$SSM_PARAM_WINDOWS"
       AMI_FALLBACK_OWNER="$AMI_FALLBACK_OWNER_WINDOWS"
@@ -406,7 +425,7 @@ set_os_profile() {
       ;;
     linux)
       OS_LABEL="Ubuntu 24.04 LTS + XFCE"
-      ADMIN_USER="ubuntu"
+      ADMIN_USER="$ADMIN_USER_LINUX"
       SSH_USER="ubuntu"
       SSM_PARAM="${SSM_PARAM_LINUX_TEMPLATE//@@AMI_ARCH@@/$AMI_ARCH}"
       AMI_FALLBACK_OWNER="$AMI_FALLBACK_OWNER_LINUX"
@@ -815,6 +834,30 @@ systemctl enable --now docker
 # effectively root on the host.
 usermod -aG docker '@@ADMIN@@'
 usermod -aG docker '@@USER@@'
+
+# --- VS Code launcher on the unprivileged account's desktop ---------------
+# Thunar has trusted desktop files only inside XDG_DATA_DIRS since 4.17.4, so a
+# launcher written straight into ~/Desktop is refused at click time as being "in
+# an insecure location" no matter how its permissions are set. A symlink to a
+# launcher that does live in such a directory inherits that trust, which is why
+# this is done in two steps rather than one.
+#
+# Derived from the launcher the VS Code package ships, so the Exec line and icon
+# stay whatever the vendor considers correct; only the first Name= is rewritten,
+# leaving the right-click actions their own names.
+if [ -f /usr/share/applications/code.desktop ]; then
+  awk '/^Name=/ && !seen { print "Name=VS Code"; seen = 1; next } { print }' \
+    /usr/share/applications/code.desktop > /usr/share/applications/vs-code.desktop
+else
+  printf '[Desktop Entry]\nType=Application\nName=VS Code\nExec=/usr/bin/code %%F\nIcon=vscode\nTerminal=false\nCategories=Development;IDE;\n' \
+    > /usr/share/applications/vs-code.desktop
+fi
+chmod 0644 /usr/share/applications/vs-code.desktop
+
+user_home=$(getent passwd '@@USER@@' | cut -d: -f6)
+install -d -m 0755 -o '@@USER@@' -g '@@USER@@' "$user_home/Desktop"
+ln -sfn /usr/share/applications/vs-code.desktop "$user_home/Desktop/VS Code.desktop"
+chown -h '@@USER@@:@@USER@@' "$user_home/Desktop/VS Code.desktop"
 
 mkdir -p "$(dirname '@@SENTINEL@@')"
 touch '@@SENTINEL@@'
@@ -2341,6 +2384,108 @@ cmd_info() {
   maybe_open_rdp
 }
 
+# Copies a local file or directory onto the desktop of the sandbox's unprivileged
+# account, where it shows up immediately in that account's RDP session.
+#
+# On Linux that account is not the one SSH logs in as, and its home directory is
+# not writable by the admin account, so the payload lands in a staging directory
+# first and is moved into place with sudo.
+cmd_copyto() {
+  # Two spellings of the same directory: scp wants forward slashes (a backslash
+  # would be eaten as an escape before it ever reaches the far side), while cmd
+  # and PowerShell want backslashes.
+  local iid ip dest shown name local_size remote_size stage target
+
+  iid=$(find_instance "$LIVE_STATES")
+  [ -n "$iid" ] || die "no ${OS}-${ARCH} sandbox in ${REGION}. Create one with: ${SCRIPT_NAME} create ${OS} --arch=${ARCH}"
+
+  ip=$(instance_field "$iid" "PublicIpAddress")
+  is_none "$ip" && die "instance ${iid} has no public IP address"
+  [ -f "$PEM_PATH" ] || die "${PEM_PATH} is missing, so ${iid} cannot be reached over SSH"
+
+  set_ssh_opts
+  name=$(basename "$SOURCE_PATH")
+
+  if [ "$OS" = "windows" ]; then
+    dest="C:/Users/${UNPRIV_USER_WINDOWS}/Desktop"
+    shown="C:\\Users\\${UNPRIV_USER_WINDOWS}\\Desktop"
+    # Creating the profile directory by hand is worse than failing: Windows would
+    # then build the real profile as ${UNPRIV_USER_WINDOWS}.<HOSTNAME> at the next logon.
+    if ! ssh "${SSH_OPTS[@]}" "${SSH_USER}@${ip}" \
+           "if exist \"${shown}\" (exit 0) else (exit 1)" >/dev/null 2>&1; then
+      die "${UNPRIV_USER_WINDOWS} has no profile on ${iid} yet, so there is no desktop to copy to.
+  Log in as ${UNPRIV_USER_WINDOWS} once, then retry:
+    ${SCRIPT_NAME} info ${OS} --arch=${ARCH} --open"
+    fi
+  else
+    # The home directory comes from the box rather than being assumed, and the
+    # desktop itself has to be created: XFCE only makes ~/Desktop at first login,
+    # and this may well run before anyone has logged in.
+    dest=$(ssh "${SSH_OPTS[@]}" "${SSH_USER}@${ip}" \
+             "home=\$(getent passwd '${UNPRIV_USER_LINUX}' | cut -d: -f6) \
+              && [ -n \"\$home\" ] \
+              && sudo install -d -m 0755 -o '${UNPRIV_USER_LINUX}' -g '${UNPRIV_USER_LINUX}' \"\$home/Desktop\" \
+              && printf %s \"\$home/Desktop\"" 2>/dev/null) \
+      || die "could not prepare ${UNPRIV_USER_LINUX}'s desktop on ${iid}"
+    shown="$dest"
+
+    # scp runs as the admin account, which cannot write into the unprivileged
+    # account's home, so land it somewhere writable and move it across below.
+    stage=$(ssh "${SSH_OPTS[@]}" "${SSH_USER}@${ip}" \
+              'mktemp -d /tmp/ec2-sandbox-copyto.XXXXXX' 2>/dev/null) \
+      || die "could not create a staging directory on ${iid}"
+  fi
+
+  if [ "$OS" = "windows" ]; then target="$dest"; else target="$stage"; fi
+
+  log "Copying ${name} to ${shown} on ${iid}..."
+  if [ -d "$SOURCE_PATH" ]; then
+    scp -r "${SSH_OPTS[@]}" "$SOURCE_PATH" "${SSH_USER}@${ip}:${target}/" >/dev/null \
+      || die "could not copy ${SOURCE_PATH} to ${iid}"
+  else
+    scp "${SSH_OPTS[@]}" "$SOURCE_PATH" "${SSH_USER}@${ip}:${target}/" >/dev/null \
+      || die "could not copy ${SOURCE_PATH} to ${iid}"
+  fi
+
+  if [ "$OS" != "windows" ]; then
+    # Replaced rather than merged: 'mv' onto an existing directory of the same
+    # name would nest the new copy inside the old one instead of overwriting it.
+    ssh "${SSH_OPTS[@]}" "${SSH_USER}@${ip}" \
+      "sudo rm -rf \"${dest}/${name}\" \
+       && sudo mv \"${stage}/${name}\" \"${dest}/\" \
+       && sudo chown -R '${UNPRIV_USER_LINUX}:${UNPRIV_USER_LINUX}' \"${dest}/${name}\" \
+       && rm -rf \"${stage}\"" >/dev/null 2>&1 \
+      || die "could not move ${name} into ${dest} on ${iid}"
+  fi
+
+  # scp reports success even when the far side wrote a short file, so check the
+  # bytes really arrived rather than trusting the exit code.
+  if [ -f "$SOURCE_PATH" ]; then
+    local_size=$(wc -c < "$SOURCE_PATH" | tr -d '[:space:]')
+    if [ "$OS" = "windows" ]; then
+      remote_size=$(ssh "${SSH_OPTS[@]}" "${SSH_USER}@${ip}" \
+        "powershell -NoProfile -Command \"(Get-Item -LiteralPath '${shown}\\${name}').Length\"" 2>/dev/null | tr -d '[:space:]')
+    else
+      # Via sudo and stat, not a redirect into wc: Ubuntu creates home
+      # directories 0750, so the admin account cannot even traverse this path.
+      remote_size=$(ssh "${SSH_OPTS[@]}" "${SSH_USER}@${ip}" \
+        "sudo stat -c %s \"${dest}/${name}\"" 2>/dev/null | tr -d '[:space:]')
+    fi
+    [ "$remote_size" = "$local_size" ] \
+      || die "${name} did not arrive intact: ${local_size} bytes locally, ${remote_size:-none} on ${iid}"
+    ok "Copied ${name} (${local_size} bytes) to ${shown}"
+  else
+    if [ "$OS" = "windows" ]; then
+      ssh "${SSH_OPTS[@]}" "${SSH_USER}@${ip}" "if exist \"${shown}\\${name}\" (exit 0) else (exit 1)" >/dev/null 2>&1 \
+        || die "${name} is not on ${iid} after the copy"
+    else
+      ssh "${SSH_OPTS[@]}" "${SSH_USER}@${ip}" "sudo test -d \"${dest}/${name}\"" >/dev/null 2>&1 \
+        || die "${name} is not on ${iid} after the copy"
+    fi
+    ok "Copied ${name}/ to ${shown}"
+  fi
+}
+
 confirm_delete() {
   local reply
   [ "$ASSUME_YES" -eq 1 ] && return 0
@@ -2475,6 +2620,10 @@ main() {
       [ -n "$ARCH" ] || die "no ${OS} sandbox in ${REGION}. Create one with: ${SCRIPT_NAME} create ${OS} --arch=x64"
       set_os_profile
       cmd_info ;;
+    copyto)
+      [ -n "$ARCH" ] || die "no ${OS} sandbox in ${REGION}. Create one with: ${SCRIPT_NAME} create ${OS} --arch=x64"
+      set_os_profile
+      cmd_copyto ;;
   esac
 }
 
