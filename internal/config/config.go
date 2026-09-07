@@ -18,7 +18,7 @@ import (
 var defaultConfigTemplate string
 
 type CLIConfig struct {
-	UpdateSkippedVersion string `mapstructure:"update_skipped_version"`
+	UpdateCheck string `mapstructure:"update_check"`
 }
 
 type Config struct {
@@ -171,8 +171,23 @@ func setInFile(path, key string, value any) error {
 	return os.WriteFile(path, []byte(content), 0644)
 }
 
-func SetUpdateSkippedVersion(version string) error {
-	return Set("cli.update_skipped_version", version)
+// SetUpdateCheck persists the update-check mode. Unlike Set, it fails rather
+// than succeeding in memory only when there is no config file to write to:
+// this backs the "Never ask again" prompt option, and reporting success for a
+// write that was silently dropped would tell the user their choice was saved
+// when the next run would prompt them again.
+func SetUpdateCheck(mode UpdateCheckMode) error {
+	if resolvedConfigPath() == "" {
+		return errors.New("no config file to write to yet")
+	}
+	return Set("cli.update_check", string(mode))
+}
+
+// HasFile reports whether a config file has been resolved, i.e. whether
+// settings can be persisted. The command boundary uses it to decide whether to
+// offer options that write config.
+func HasFile() bool {
+	return resolvedConfigPath() != ""
 }
 
 func Get() (*Config, error) {
@@ -187,6 +202,9 @@ func Get() (*Config, error) {
 	}
 	if err := validateNamedEnvs(cfg.Env); err != nil {
 		return nil, err
+	}
+	if _, err := ParseUpdateCheckMode(cfg.CLI.UpdateCheck); err != nil {
+		return nil, fmt.Errorf("invalid [cli] config: %w", err)
 	}
 	return &cfg, nil
 }
