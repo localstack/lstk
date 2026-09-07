@@ -61,8 +61,6 @@ homebrew_casks:
     homepage: https://github.com/localstack/lstk
     description: "LocalStack CLI v2 - Start and manage LocalStack emulators"
     license: Apache-2.0
-    url:
-      verified: github.com/localstack/lstk
     completions:
       bash: completions/lstk.bash
       zsh: completions/lstk.zsh
