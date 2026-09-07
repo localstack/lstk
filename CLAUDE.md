@@ -95,6 +95,8 @@ When `DOCKER_HOST` isn't set, `DockerRuntime` resolves the daemon endpoint in or
 
 Releases are automated: a weekly workflow (`.github/workflows/automated-release.yml` → `create-release-tag.yml`) tags and publishes via goreleaser, deriving the version bump from merged PRs' `semver:` labels. See `docs/RELEASING.md`.
 
+Every workflow that tags or publishes (`ci.yml`'s `release`, `linear-release.yml`, `automated-release.yml`, `create-release-tag.yml`) carries `if: github.repository == 'localstack/lstk'`. A fork's `GITHUB_TOKEN` is populated, so a fork supplying its own auth token could otherwise cut a real release from a `v*.*.*` tag (without one, `ci.yml`'s `needs: test-integration` is what blocks it). Add the guard to any new workflow that tags or publishes.
+
 # Logging
 
 lstk always writes diagnostic logs to `$CONFIG_DIR/lstk.log` (appends across runs, cleared at 1 MB). Two log levels: `Info` and `Error`.

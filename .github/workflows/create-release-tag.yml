@@ -25,6 +25,8 @@ concurrency:
 jobs:
   create-tag:
     name: Create next tag
+    # Pushes a tag, which triggers the publishing workflows.
+    if: github.repository == 'localstack/lstk'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
