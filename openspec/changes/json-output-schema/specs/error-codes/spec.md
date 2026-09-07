@@ -33,6 +33,7 @@ Every `error.code` value emitted in a JSON envelope SHALL be one of a fixed, doc
 | `USAGE_ERROR` | Cobra-level flag or argument parsing failed | No | `USAGE` |
 | `NOT_JSON_CAPABLE` | The requested command has not been annotated as JSON-capable | No | `USAGE` |
 | `NETWORK_ERROR` | An unclassified network/transport failure occurred | Yes | `RUNTIME` |
+| `UPDATE_EXTERNALLY_MANAGED` | `lstk update` refused to replace a binary it does not own (added by the `add-update-check-config` change) | No | `RUNTIME` |
 | `CANCELLED` | The operation was interrupted (e.g. context cancellation via Ctrl+C) | Yes | `INTERNAL` |
 | `INTERNAL_ERROR` | Unclassified or unexpected failure; the universal fallback | No | `INTERNAL` |
 | `IAC_FILE_NOT_FOUND` | A required infrastructure-as-code file or directory does not exist or cannot be read (e.g. the workspace `lstk deploy detect --dir` was pointed at) | No | `IAC` |

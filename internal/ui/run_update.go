@@ -10,7 +10,7 @@ import (
 	"github.com/localstack/lstk/internal/update"
 )
 
-func RunUpdate(parentCtx context.Context, checkOnly bool, githubToken string) error {
+func RunUpdate(parentCtx context.Context, checkOnly bool, githubToken string, force bool) error {
 	ctx, cancel := context.WithCancel(parentCtx)
 	defer cancel()
 
@@ -19,7 +19,7 @@ func RunUpdate(parentCtx context.Context, checkOnly bool, githubToken string) er
 	runErrCh := make(chan error, 1)
 
 	go func() {
-		err := update.Update(ctx, output.NewTUISink(programSender{p: p}), checkOnly, githubToken)
+		err := update.Update(ctx, output.NewTUISink(programSender{p: p}), checkOnly, githubToken, force)
 		runErrCh <- err
 		if err != nil && !errors.Is(err, context.Canceled) {
 			p.Send(runErrMsg{err: err})
