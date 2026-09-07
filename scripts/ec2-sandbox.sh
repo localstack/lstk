@@ -621,20 +621,34 @@ detect_my_cidr() {
 # remote key pair is unrecoverable -- it would neither decrypt a Windows password
 # nor open an SSH session. Reconcile the two sides rather than assuming.
 ensure_key_pair() {
-  local remote_exists=0
+  local remote_exists=0 local_usable=0
   if aws_ ec2 describe-key-pairs --key-names "$KEY_NAME" >/dev/null 2>&1; then
     remote_exists=1
   fi
 
-  if [ -f "$PEM_PATH" ] && [ "$remote_exists" -eq 1 ]; then
+  # Usable, not merely present. An empty or truncated .pem satisfies an existence
+  # check and then fails much later -- after an instance is running and billing,
+  # with no way to reach it and no way to decrypt its password.
+  if [ -s "$PEM_PATH" ] && ssh-keygen -y -f "$PEM_PATH" >/dev/null 2>&1; then
+    local_usable=1
+  fi
+
+  if [ "$local_usable" -eq 1 ] && [ "$remote_exists" -eq 1 ]; then
     log "Reusing key pair ${KEY_NAME}"
     return 0
   fi
 
-  if [ ! -f "$PEM_PATH" ] && [ "$remote_exists" -eq 1 ]; then
-    warn "key pair ${KEY_NAME} exists in AWS but ${PEM_PATH} is missing; recreating it"
+  if [ "$local_usable" -eq 0 ] && [ "$remote_exists" -eq 1 ]; then
+    if [ -e "$PEM_PATH" ]; then
+      warn "${PEM_PATH} is unusable as a private key; recreating key pair ${KEY_NAME}.
+  Any instance still running on the old key becomes unreachable."
+    else
+      warn "key pair ${KEY_NAME} exists in AWS but ${PEM_PATH} is missing; recreating it.
+  Any instance still running on the old key becomes unreachable."
+    fi
     aws_ ec2 delete-key-pair --key-name "$KEY_NAME" >/dev/null 2>&1 || true
-  elif [ -f "$PEM_PATH" ] && [ "$remote_exists" -eq 0 ]; then
+    rm -f "$PEM_PATH"
+  elif [ "$local_usable" -eq 1 ] && [ "$remote_exists" -eq 0 ]; then
     warn "${PEM_PATH} exists but key pair ${KEY_NAME} is gone from AWS; recreating both"
     rm -f "$PEM_PATH"
   fi
@@ -648,7 +662,7 @@ ensure_key_pair() {
     umask 077
     aws_ ec2 create-key-pair --key-name "$KEY_NAME" \
       --key-type rsa --key-format pem \
-      --tag-specifications "ResourceType=key-pair,Tags=[{Key=${TAG_KEY},Value=${TAG_VAL}},{Key=${OS_TAG_KEY},Value=${OS}}]" \
+      --tag-specifications "ResourceType=key-pair,Tags=[{Key=${TAG_KEY},Value=${TAG_VAL}},{Key=${OS_TAG_KEY},Value=${OS}},{Key=${ARCH_TAG_KEY},Value=${ARCH}}]" \
       --query 'KeyMaterial' --output text > "$PEM_PATH"
   )
   [ -s "$PEM_PATH" ] || { rm -f "$PEM_PATH"; die "failed to create key pair ${KEY_NAME}"; }
@@ -657,9 +671,12 @@ ensure_key_pair() {
 
 # Windows has no equivalent of cloud-init's key injection, so user-data places the
 # public half itself. A public key is not secret, unlike a password.
+# Reports failure through its exit status instead of calling die: this runs inside
+# a command substitution, where die would exit only that subshell -- leaving the
+# caller to carry on and launch an instance with no authorized key on it, which is
+# unreachable and undiagnosable once running.
 public_key() {
-  ssh-keygen -y -f "$PEM_PATH" 2>/dev/null \
-    || die "could not derive the public key from ${PEM_PATH}"
+  ssh-keygen -y -f "$PEM_PATH" 2>/dev/null
 }
 
 # ---------------------------------------------------------------------------
@@ -1942,7 +1959,7 @@ prepare_windows_docker() { # $1 = public ip, $2 = admin password
 # ---------------------------------------------------------------------------
 
 launch_instance() { # $1 ami, $2 subnet, $3 sg, $4 root dev, $5 vol gb
-  local tags vol_tags iid udfile
+  local tags vol_tags iid udfile pubkey
   local extra=()
 
   tags="ResourceType=instance,Tags=[{Key=Name,Value=${INSTANCE_NAME}},{Key=${TAG_KEY},Value=${TAG_VAL}},{Key=${OS_TAG_KEY},Value=${OS}},{Key=${ARCH_TAG_KEY},Value=${ARCH}},{Key=${ENGINE_TAG_KEY},Value=${CONTAINERS}}]"
@@ -1950,7 +1967,9 @@ launch_instance() { # $1 ami, $2 subnet, $3 sg, $4 root dev, $5 vol gb
 
   udfile="${STATE_DIR}/user-data"
   if [ "$OS" = "windows" ]; then
-    windows_user_data "$(public_key)" > "$udfile"
+    pubkey=$(public_key) || die "could not derive the public key from ${PEM_PATH}"
+    [ -n "$pubkey" ] || die "derived an empty public key from ${PEM_PATH}"
+    windows_user_data "$pubkey" > "$udfile"
     if supports_nested_virt "$INSTANCE_TYPE"; then
       extra=(--cpu-options "NestedVirtualization=enabled")
     else
