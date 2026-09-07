@@ -314,8 +314,8 @@ jobs:
 
       - name: Validate version tag
         run: |
-          if [[ ! "${GITHUB_REF_NAME}" =~ ^v0\.[0-9]+\.[0-9]+$ ]]; then
-            echo "Tag '${GITHUB_REF_NAME}' does not match version format v0.minor.patch"
+          if [[ ! "${GITHUB_REF_NAME}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Tag '${GITHUB_REF_NAME}' does not match version format vmajor.minor.patch"
             exit 1
           fi
 
