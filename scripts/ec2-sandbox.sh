@@ -6,6 +6,10 @@
 # Each sandbox gets two logins: a privileged admin account and an unprivileged
 # "User" account, with VS Code and Docker preinstalled.
 #
+# On Windows the container engine is selectable with --containers: 'docker' (the
+# default) runs Docker Engine inside WSL2 behind a proxy that rewrites Windows
+# bind-mount paths, and 'podman' keeps the older Podman-as-docker.exe arrangement.
+#
 # One instance per OS per region. Everything the script creates is tagged
 # ManagedBy=ec2-sandbox.sh so teardown never touches anything else.
 #
@@ -21,6 +25,7 @@ SCRIPT_NAME=$(basename "$0")
 TAG_KEY="ManagedBy"
 TAG_VAL="ec2-sandbox.sh"
 OS_TAG_KEY="SandboxOS"
+ENGINE_TAG_KEY="SandboxContainers"
 
 # Windows needs nested virtualization for WSL2, which rules out t3. Linux runs
 # Docker Engine natively, so it stays on the cheap type.
@@ -32,7 +37,14 @@ DEFAULT_TYPE_LINUX="t3.medium"
 # 8th, which is why that is the Windows default.
 NESTED_VIRT_FAMILIES="c8i m8i r8i x8i c8id m8id r8id c8i-flex m8i-flex r8i-flex c7i m7i r7i i7i c7i-flex m7i-flex"
 
-MIN_VOLUME_GB=40
+# The Windows AMI ships a 30 GiB root volume, and a Windows sandbox stores the WSL2
+# distro's VHD (or the podman machine image) plus whatever container images get
+# pulled on top of that, so it needs more headroom than Linux.
+MIN_VOLUME_GB_WINDOWS=60
+MIN_VOLUME_GB_LINUX=40
+# Placeholder so --help can render before set_os_profile picks the real one.
+MIN_VOLUME_GB=$MIN_VOLUME_GB_LINUX
+
 RDP_PORT=3389
 SSH_PORT=22
 
@@ -41,6 +53,27 @@ UNPRIV_USER_WINDOWS="User"
 UNPRIV_USER_LINUX="user"
 # Placeholder so --help can render before set_os_profile picks the real one.
 UNPRIV_USER="User"
+
+# Windows container engine, selected with --containers. Linux always runs Docker
+# Engine natively, so the flag is a no-op there.
+DEFAULT_CONTAINERS="docker"
+
+# Pinned so a sandbox built today matches one built last month. Docker's static
+# index has no 'latest' alias, so the CLI version has to be spelled out anyway.
+DOCKER_CLI_VERSION="29.8.0"
+DOCKER_COMPOSE_VERSION="v5.5.1"
+DOCKER_BUILDX_VERSION="v0.37.0"
+
+# The rootfs Docker Engine runs in. cloud-images.ubuntu.com stopped publishing WSL
+# tarballs in 2025; this is where they live now, and it is the same artifact that
+# 'wsl --install Ubuntu-24.04' resolves to through Microsoft's distro manifest.
+WSL_ROOTFS_URL="https://releases.ubuntu.com/24.04.4/ubuntu-24.04.4-wsl-amd64.wsl"
+WSL_ROOTFS_SHA256="9b2f7730dc68227dd04a9f3e5eab86ad85caf556b8606ad94f1f29ff5c4fd3f5"
+WSL_DISTRO="ec2-sandbox-docker"
+
+# Where the path-rewriting proxy listens inside the distro. Loopback only, reached
+# from Windows through WSL2's localhost forwarding.
+DOCKER_PROXY_PORT=2375
 
 SSM_PARAM_WINDOWS="/aws/service/ami-windows-latest/Windows_Server-2025-English-Full-Base"
 SSM_PARAM_LINUX="/aws/service/canonical/ubuntu/server/24.04/stable/current/amd64/hvm/ebs-gp3/ami-id"
@@ -64,6 +97,7 @@ BOOTSTRAP_DEADLINE_WINDOWS=1200
 
 ACTION=""
 OS=""
+CONTAINERS=""
 REGION=""
 INSTANCE_TYPE=""
 ASSUME_YES=0
@@ -106,6 +140,8 @@ ${C_BOLD}OPTIONS${C_RESET}
   --region <r>        AWS region. Defaults to \$AWS_REGION, \$AWS_DEFAULT_REGION,
                       then your configured region.
   --instance-type <t> Override the instance type.
+  --containers <e>    Windows container engine: 'docker' (default) or 'podman'.
+                      create only; info reads it back from the instance.
   --as <admin|user>   Which account --open connects as (default: user).
   --open              After create/info, launch the RDP client.
   -y, --yes           Skip the delete confirmation prompt.
@@ -126,13 +162,19 @@ ${C_BOLD}WHAT YOU GET${C_RESET}
     Firefox   Linux only, from Mozilla's apt repo (not the snap), set as the
               default browser for both accounts.
     Docker    Linux: Docker Engine + compose, running natively.
-              Windows: Podman, presented as 'docker' on the PATH. Podman
-              translates Windows volume paths, so 'docker run -v C:\dir:/x'
-              works -- a plain Linux daemon rejects those outright, which is why
-              Docker Engine is not used here. Docker Desktop cannot be installed
-              on Windows Server at all.
+              Windows, --containers=docker (default): Docker Engine inside a
+              WSL2 distro, served on \\\\.\pipe\docker_engine -- the same endpoint
+              Docker Desktop uses, so docker.exe and lstk need no configuration.
+              A proxy rewrites Windows bind-mount paths to /mnt/c/... exactly as
+              Desktop's backend does, so 'docker run -v C:\dir:/x' works for the
+              CLI and for API clients alike.
+              Windows, --containers=podman: Podman, presented as 'docker' on the
+              PATH. Its path translation is client-side, so it covers docker.exe
+              but not programs that speak the API directly.
+              Docker Desktop itself cannot be installed on Windows Server at all.
 
-  Defaults: windows ${DEFAULT_TYPE_WINDOWS}, linux ${DEFAULT_TYPE_LINUX}, ${MIN_VOLUME_GB} GiB gp3 root volume.
+  Defaults: windows ${DEFAULT_TYPE_WINDOWS}, linux ${DEFAULT_TYPE_LINUX}. Root volume ${MIN_VOLUME_GB_LINUX} GiB gp3,
+  or ${MIN_VOLUME_GB_WINDOWS} GiB on Windows, which also stores a WSL2 or podman VM image.
 
 ${C_BOLD}NOTES${C_RESET}
   * One instance per OS per region. A Windows and a Linux sandbox can run at once.
@@ -143,10 +185,18 @@ ${C_BOLD}NOTES${C_RESET}
   * Windows defaults to ${DEFAULT_TYPE_WINDOWS} because WSL2 needs nested virtualization,
     which t3 does not support. Overriding to an unsupported type disables Docker.
   * Windows reboots once during setup to enable WSL2, so create takes ~15 minutes.
-  * On Windows the Podman machine is created the first time you log in as
-    '${UNPRIV_USER_WINDOWS}', because podman machines are per-Windows-user and cannot be
-    prepared in advance. That first logon downloads ~1 GB and takes several
-    minutes; a console window is visible while it runs. The machine is set
+  * With --containers=docker, Docker is ready when create finishes and is shared
+    by both accounts -- there is no first-logon step. The daemon runs in a WSL2
+    distro owned by the admin account and is reachable machine-wide, so '${UNPRIV_USER_WINDOWS}'
+    gets Docker without a per-user setup. That also means '${UNPRIV_USER_WINDOWS}' can mount
+    any part of C: into a container with the admin account's rights; Docker access
+    is root-equivalent on every platform, but on Windows it is worth stating.
+    If the named pipe ever misbehaves, DOCKER_HOST=tcp://127.0.0.1:${DOCKER_PROXY_PORT} is the
+    same daemon without the pipe (and without the path rewriting).
+  * With --containers=podman, the Podman machine is instead created the first time
+    you log in as '${UNPRIV_USER_WINDOWS}', because podman machines are per-Windows-user and
+    cannot be prepared in advance. That first logon downloads ~1 GB and takes
+    several minutes; a console window is visible while it runs. The machine is set
     rootful so containers can bind ports below 1024 (LocalStack needs 443).
   * On Linux, '${UNPRIV_USER_LINUX}' is in the 'docker' group so it can run containers.
     Docker group membership is equivalent to root on the host, so it is
@@ -155,6 +205,7 @@ ${C_BOLD}NOTES${C_RESET}
 ${C_BOLD}EXAMPLES${C_RESET}
   ${SCRIPT_NAME} create linux
   ${SCRIPT_NAME} create windows --region us-east-1 --open
+  ${SCRIPT_NAME} create windows --containers=podman
   ${SCRIPT_NAME} info linux --as admin --open
   ${SCRIPT_NAME} delete windows -y
 EOF
@@ -199,6 +250,10 @@ parse_args() {
         [ $# -ge 2 ] || die "--instance-type needs a value"
         INSTANCE_TYPE="$2"; shift 2 ;;
       --instance-type=*) INSTANCE_TYPE="${1#*=}"; shift ;;
+      --containers)
+        [ $# -ge 2 ] || die "--containers needs a value (docker or podman)"
+        CONTAINERS="$2"; shift 2 ;;
+      --containers=*) CONTAINERS="${1#*=}"; shift ;;
       --as)
         [ $# -ge 2 ] || die "--as needs a value (admin or user)"
         OPEN_AS="$2"; shift 2 ;;
@@ -213,6 +268,21 @@ parse_args() {
     admin|user) ;;
     *) die "--as must be 'admin' or 'user', not '$OPEN_AS'" ;;
   esac
+
+  if [ -n "$CONTAINERS" ]; then
+    case "$CONTAINERS" in
+      podman|docker) ;;
+      *) die "--containers must be 'docker' or 'podman', not '$CONTAINERS'" ;;
+    esac
+    # The engine is a property of the instance, recorded as a tag at launch, so
+    # delete and info read it back rather than being told.
+    if [ "$ACTION" != "create" ]; then
+      die "--containers only applies to create; '$ACTION' reads the engine from the instance"
+    fi
+    if [ "$OS" = "linux" ] && [ "$CONTAINERS" = "podman" ]; then
+      die "the linux sandbox runs Docker Engine natively; --containers=podman is not supported"
+    fi
+  fi
 }
 
 # ---------------------------------------------------------------------------
@@ -283,7 +353,9 @@ set_os_profile() {
       READY_SENTINEL="$READY_SENTINEL_WINDOWS"
       UNPRIV_USER="$UNPRIV_USER_WINDOWS"
       BOOTSTRAP_DEADLINE="$BOOTSTRAP_DEADLINE_WINDOWS"
+      MIN_VOLUME_GB="$MIN_VOLUME_GB_WINDOWS"
       if [ -z "$INSTANCE_TYPE" ]; then INSTANCE_TYPE="$DEFAULT_TYPE_WINDOWS"; fi
+      if [ -z "$CONTAINERS" ]; then CONTAINERS="$DEFAULT_CONTAINERS"; fi
       ;;
     linux)
       OS_LABEL="Ubuntu 24.04 LTS + XFCE"
@@ -295,7 +367,9 @@ set_os_profile() {
       READY_SENTINEL="$READY_SENTINEL_LINUX"
       UNPRIV_USER="$UNPRIV_USER_LINUX"
       BOOTSTRAP_DEADLINE="$BOOTSTRAP_DEADLINE_LINUX"
+      MIN_VOLUME_GB="$MIN_VOLUME_GB_LINUX"
       if [ -z "$INSTANCE_TYPE" ]; then INSTANCE_TYPE="$DEFAULT_TYPE_LINUX"; fi
+      CONTAINERS="docker"
       ;;
   esac
 
@@ -630,10 +704,10 @@ LINUXEOF
 # a third. Compressing first roughly halves the payload.
 b64gz() { gzip -9 -c | base64 | tr -d '\n'; }
 
-# Runs inside the WSL distro, as root, while the image is being prepared.
-# Runs as the unprivileged user at every logon. Podman machines register per
-# Windows user, so SYSTEM cannot create one on their behalf -- this is the one
-# part that cannot be prepared ahead of time.
+# Runs as the unprivileged user at every logon, in podman mode only. Podman machines
+# register per Windows user, so SYSTEM cannot create one on their behalf -- this is
+# the one part that cannot be prepared ahead of time. Docker mode has no equivalent:
+# its daemon is shared machine-wide, so nothing is left to do at first logon.
 win_firstlogon_ps1() {
   cat <<'FLEOF'
 $ErrorActionPreference = 'Continue'
@@ -668,7 +742,15 @@ FLEOF
 }
 
 win_prepare_wsl_ps1() {
-  sed -e "s|@@USER@@|${UNPRIV_USER_WINDOWS}|g" <<'PWEOF'
+  win_prepare_wsl_head
+  if [ "$CONTAINERS" = "podman" ]; then
+    win_prepare_wsl_podman_task
+  fi
+  printf "\nWrite-Output 'WSL_PREP_OK'\n"
+}
+
+win_prepare_wsl_head() {
+  cat <<'PWEOF'
 $ErrorActionPreference = 'Stop'
 $base = 'C:\ProgramData\ec2-sandbox'
 $ProgressPreference = 'SilentlyContinue'
@@ -694,9 +776,10 @@ function Wsl-Text([string[]]$wslArgs) {
 
 function Test-ModernWsl { (Wsl-Text @('--version')) -match 'WSL version:' }
 
-# Podman's machine image needs systemd, which only the modern WSL build provides;
-# the inbox WSL on Server 2022 could not run it at all. 'wsl --install' is a silent
-# no-op on Server (it wants the Microsoft Store), so install the MSI directly.
+# Both engines need the modern WSL build: podman's machine image needs systemd,
+# which only modern WSL provides, and Docker Engine needs its kernel modules.
+# 'wsl --install' is a silent no-op on Server (it wants the Microsoft Store), so
+# install the MSI directly.
 if (-not (Test-ModernWsl)) {
   Write-Output 'installing WSL'
   $msi = "$env:TEMP\wsl.msi"
@@ -709,29 +792,46 @@ if (-not (Test-ModernWsl)) {
 if (-not (Test-ModernWsl)) { throw 'WSL is still not installed after running the MSI' }
 wsl.exe --set-default-version 2 | Out-Null
 
-# The podman machine itself is created at first logon, by the account that will
-# use it -- machines are per Windows user and cannot be shared.
+PWEOF
+}
+
+# Only podman needs a per-user step. The machine itself is created at first logon,
+# by the account that will use it -- machines are per Windows user and cannot be
+# shared. Docker mode's daemon is machine-wide, so it registers nothing here.
+win_prepare_wsl_podman_task() {
+  sed -e "s|@@USER@@|${UNPRIV_USER_WINDOWS}|g" <<'PWPODMANEOF'
+
 $act = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument "-ExecutionPolicy Bypass -NoProfile -WindowStyle Hidden -File $base\firstlogon.ps1"
 $trg = New-ScheduledTaskTrigger -AtLogOn -User "$env:COMPUTERNAME\@@USER@@"
 $prn = New-ScheduledTaskPrincipal -UserId "$env:COMPUTERNAME\@@USER@@" -RunLevel Limited
 Register-ScheduledTask -TaskName 'ec2-sandbox-podman' -Action $act -Trigger $trg -Principal $prn -Force | Out-Null
-
-Write-Output 'WSL_PREP_OK'
-PWEOF
+PWPODMANEOF
 }
 
 # EC2Launch v2 runs <powershell> user-data as SYSTEM, once, on first boot. Enabling
 # the WSL2 features needs a reboot, so phase 1 registers a startup task that
 # finishes the job on the way back up.
+#
+# Assembled from three parts rather than one heredoc so the engine-specific middle
+# can vary without duplicating the ~150 shared lines around it. Shipping both
+# engines' payloads unconditionally would also push user-data close to its 16 KB cap.
 windows_user_data() { # $1 = public key
-  local b_prep b_firstlogon
+  win_user_data_head "$1"
+  if [ "$CONTAINERS" = "podman" ]; then
+    win_user_data_podman
+  else
+    win_user_data_docker
+  fi
+  win_user_data_tail
+}
+
+win_user_data_head() { # $1 = public key
+  local b_prep
   b_prep=$(win_prepare_wsl_ps1 | b64gz)
-  b_firstlogon=$(win_firstlogon_ps1 | b64gz)
 
   sed -e "s|@@PUBKEY@@|$1|g" \
       -e "s|@@USER@@|${UNPRIV_USER_WINDOWS}|g" \
-      -e "s|@@B64_PREP@@|${b_prep}|g" \
-      -e "s|@@B64_FIRSTLOGON@@|${b_firstlogon}|g" <<'WINEOF'
+      -e "s|@@B64_PREP@@|${b_prep}|g" <<'WINHEADEOF'
 <powershell>
 # Deliberately 'Continue', not 'Stop'. SSH is the only channel for diagnosing this
 # machine, so a failure in a later step must never prevent sshd from coming up --
@@ -739,6 +839,9 @@ windows_user_data() { # $1 = public key
 $ErrorActionPreference = 'Continue'
 $base = 'C:\ProgramData\ec2-sandbox'
 New-Item -ItemType Directory -Force -Path $base | Out-Null
+# Whichever engine is installed puts its client here, and the tail adds it to PATH.
+$bin = "$base\bin"
+New-Item -ItemType Directory -Force -Path $bin | Out-Null
 Start-Transcript -Path "$base\phase1.log" -Append
 
 # --- OpenSSH, authorised with the launch key pair's public half ------------
@@ -791,8 +894,7 @@ function Wr($b, $p) {
   $g = New-Object IO.Compression.GZipStream($m, [IO.Compression.CompressionMode]::Decompress)
   $o = New-Object IO.MemoryStream; $g.CopyTo($o); [IO.File]::WriteAllBytes($p, $o.ToArray())
 }
-Wr '@@B64_PREP@@'       "$base\prepare-wsl.ps1"
-Wr '@@B64_FIRSTLOGON@@' "$base\firstlogon.ps1"
+Wr '@@B64_PREP@@' "$base\prepare-wsl.ps1"
 
 # Helper the host invokes over SSH. Reads the password from stdin so it never lands
 # in a command line or the remote process table.
@@ -801,6 +903,15 @@ $pw = [Console]::In.ReadToEnd().Trim()
 $sec = ConvertTo-SecureString $pw -AsPlainText -Force
 Set-LocalUser -Name "@@USER@@" -Password $sec
 '@
+WINHEADEOF
+}
+
+win_user_data_podman() {
+  local b_firstlogon
+  b_firstlogon=$(win_firstlogon_ps1 | b64gz)
+
+  sed -e "s|@@B64_FIRSTLOGON@@|${b_firstlogon}|g" <<'WINPODMANEOF'
+Wr '@@B64_FIRSTLOGON@@' "$base\firstlogon.ps1"
 
 # --- Podman: the container engine -----------------------------------------
 # ALLUSERS=1 matters: the installer defaults to a per-user install, which would
@@ -814,10 +925,59 @@ Start-Process msiexec.exe -ArgumentList '/i', $msi, '/quiet', '/norestart', 'ALL
 # binary called docker, and Podman -- unlike a plain Linux daemon -- translates
 # Windows volume paths (C:\Users\...) client-side, which is what makes bind
 # mounts from Windows work at all.
-$bin = "$base\bin"
-New-Item -ItemType Directory -Force -Path $bin | Out-Null
 Copy-Item 'C:\Program Files\Podman\podman.exe' "$bin\docker.exe" -Force
+WINPODMANEOF
+}
 
+win_user_data_docker() {
+  sed -e "s|@@CLI_VERSION@@|${DOCKER_CLI_VERSION}|g" \
+      -e "s|@@COMPOSE_VERSION@@|${DOCKER_COMPOSE_VERSION}|g" \
+      -e "s|@@BUILDX_VERSION@@|${DOCKER_BUILDX_VERSION}|g" \
+      -e "s|@@ROOTFS_URL@@|${WSL_ROOTFS_URL}|g" <<'WINDOCKEREOF'
+# --- Docker: the Windows client only --------------------------------------
+# The daemon itself runs in a WSL2 distro, which phase 2 builds -- WSL cannot
+# register a distro from the SYSTEM account that user-data runs under. What phase 1
+# can do is everything that needs no WSL: the client, its plugins, and the download.
+try {
+  $zip = "$env:TEMP\docker-cli.zip"
+  Invoke-WebRequest -Uri 'https://download.docker.com/win/static/stable/x86_64/docker-@@CLI_VERSION@@.zip' -OutFile "$zip.part" -UseBasicParsing
+  Move-Item "$zip.part" $zip -Force
+  # The archive also carries dockerd.exe, the Windows-containers daemon, which is
+  # of no use here -- take only the client.
+  Expand-Archive -Path $zip -DestinationPath "$env:TEMP\docker-cli" -Force
+  Copy-Item "$env:TEMP\docker-cli\docker\docker.exe" "$bin\docker.exe" -Force
+} catch { Write-Output "docker CLI install failed: $_" }
+
+# '$env:ProgramFiles\Docker\cli-plugins' is the only system-wide plugin directory
+# the Windows CLI searches; '~\.docker\cli-plugins' would only serve one account.
+# buildx is not optional: BuildKit is the default builder, so without it
+# 'docker build' falls back to a classic builder that is on its way out.
+$plugins = "$env:ProgramFiles\Docker\cli-plugins"
+New-Item -ItemType Directory -Force -Path $plugins | Out-Null
+try {
+  Invoke-WebRequest -Uri 'https://github.com/docker/compose/releases/download/@@COMPOSE_VERSION@@/docker-compose-windows-x86_64.exe' -OutFile "$plugins\docker-compose.exe" -UseBasicParsing
+} catch { Write-Output "compose plugin install failed: $_" }
+try {
+  Invoke-WebRequest -Uri 'https://github.com/docker/buildx/releases/download/@@BUILDX_VERSION@@/buildx-@@BUILDX_VERSION@@.windows-amd64.exe' -OutFile "$plugins\docker-buildx.exe" -UseBasicParsing
+} catch { Write-Output "buildx plugin install failed: $_" }
+
+# Fetch the distro image now, while phase 2 is still a reboot away. curl.exe is
+# in-box on Server 2025 and can resume a partial transfer; Invoke-WebRequest would
+# buffer all 390 MB in memory and has to start over on a dropped connection.
+try {
+  & curl.exe -fL --retry 3 --retry-delay 5 -C - -o "$base\rootfs.wsl.part" '@@ROOTFS_URL@@'
+  # Only promote a complete download. A partial file left as .part is what lets
+  # phase 2 resume it; renamed, it would just fail the checksum there.
+  if ($LASTEXITCODE -eq 0) { Move-Item "$base\rootfs.wsl.part" "$base\rootfs.wsl" -Force }
+  else { Write-Output "rootfs download incomplete (curl $LASTEXITCODE); phase 2 will resume it" }
+} catch { Write-Output "rootfs download failed: $_" }
+WINDOCKEREOF
+}
+
+win_user_data_tail() {
+  cat <<'WINTAILEOF'
+
+# --- the engine's client on the machine PATH ------------------------------
 $machinePath = [Environment]::GetEnvironmentVariable('Path', 'Machine')
 if ($machinePath -notlike "*$bin*") {
   [Environment]::SetEnvironmentVariable('Path', "$machinePath;$bin", 'Machine')
@@ -852,7 +1012,725 @@ New-Item -ItemType File -Force -Path "$base\phase1-ready" | Out-Null
 Stop-Transcript
 Restart-Computer -Force
 </powershell>
-WINEOF
+WINTAILEOF
+}
+
+# ---------------------------------------------------------------------------
+# Docker Engine in WSL2 (windows, --containers=docker)
+#
+# The chain a Windows client talks through:
+#
+#   lstk / docker.exe -> \\.\pipe\docker_engine   (pipe-relay.ps1, Windows)
+#                     -> tcp://127.0.0.1:PORT     (WSL2 localhost forwarding)
+#                     -> dockerproxy.py           (in the distro, rewrites paths)
+#                     -> /var/run/docker.sock     (dockerd)
+#
+# The pipe is what Docker Desktop serves, so both docker.exe and lstk find the
+# daemon with no configuration, and lstk's npipe branch -- which maps the endpoint
+# to /var/run/docker.sock for containers that need the socket bind-mounted -- stays
+# correct, which a tcp:// DOCKER_HOST would quietly break.
+#
+# Everything here is generated on the host, copied over with scp and run over SSH.
+# It is deliberately not shipped in user-data: user-data is capped at 16 KB and
+# these five files do not fit beside the rest of phase 1.
+# ---------------------------------------------------------------------------
+
+# Runs inside the distro as root, once, to turn a stock Ubuntu rootfs into a
+# Docker host. Idempotent: re-running it after a dropped SSH session is a no-op.
+wsl_provision_sh() {
+  cat <<'PROVEOF'
+#!/bin/sh
+set -eu
+export DEBIAN_FRONTEND=noninteractive
+base=/mnt/c/ProgramData/ec2-sandbox
+
+if ! command -v dockerd >/dev/null 2>&1; then
+  echo "installing docker packages"
+  apt-get update
+  apt-get install -y ca-certificates curl python3 iptables
+  install -m 0755 -d /etc/apt/keyrings
+  curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+  chmod a+r /etc/apt/keyrings/docker.asc
+  echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu noble stable" \
+    > /etc/apt/sources.list.d/docker.list
+  apt-get update
+  apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+fi
+
+# Docker Engine speaks iptables, and the WSL kernel ships every netfilter backend
+# as a module while Ubuntu 24.04 defaults to the nftables compatibility layer. Which
+# of the two actually works depends on what modprobe can load, so probe instead of
+# assuming, and fail loudly rather than leaving a daemon that cannot publish a port.
+if ! iptables -t nat -nL >/dev/null 2>&1; then
+  echo "switching to the legacy iptables backend"
+  update-alternatives --set iptables /usr/sbin/iptables-legacy
+  update-alternatives --set ip6tables /usr/sbin/ip6tables-legacy
+fi
+iptables -t nat -nL >/dev/null 2>&1 || { echo "iptables is unusable in this distro"; exit 1; }
+
+# userland-proxy must stay on. WSL forwards a published port to Windows only when
+# something in the distro is really listening on it, and with the proxy disabled
+# publishing is pure iptables DNAT, which listens on nothing -- ports would simply
+# not appear on the Windows side. 'hosts' is deliberately absent: dockerd refuses to
+# start when a directive is given both here and as a flag, and the flags win.
+mkdir -p /etc/docker
+cat > /etc/docker/daemon.json <<'JSON'
+{
+  "userland-proxy": true
+}
+JSON
+
+# systemd stays off: dockerd is supervised by the wsl.exe client that keeps this
+# distro alive, and enabling systemd hands /etc/resolv.conf to systemd-resolved,
+# whose 127.0.0.53 stub dockerd refuses to forward to.
+cat > /etc/wsl.conf <<'CONF'
+[boot]
+systemd=false
+
+[user]
+default=root
+CONF
+# 'wsl --import' keeps the image's own default-user setting, which can name a uid
+# that does not exist in a distro nobody ran the first-boot setup for.
+rm -f /etc/wsl-distribution.conf
+
+install -m 0755 "$base/dockerproxy.py"        /usr/local/bin/dockerproxy.py
+install -m 0755 "$base/dockerd-supervisor.sh" /usr/local/bin/dockerd-supervisor.sh
+
+echo PROVISION_OK
+PROVEOF
+}
+
+# The scheduled task's foreground process. This wsl.exe client is also what holds
+# the distro open -- WSL shuts a distro down once its last client exits -- so it
+# must never return.
+wsl_supervisor_sh() {
+  sed -e "s|@@PORT@@|${DOCKER_PROXY_PORT}|g" <<'SUPEOF'
+#!/bin/sh
+exec >>/var/log/ec2-sandbox-dockerd.log 2>&1
+echo "=== supervisor start $(date -u +%FT%TZ)"
+
+# Each in its own restart loop, so a crash in one does not take the other with it.
+( while :; do /usr/bin/dockerd -H unix:///var/run/docker.sock; echo "dockerd exited"; sleep 2; done ) &
+
+while :; do
+  /usr/bin/python3 /usr/local/bin/dockerproxy.py --port @@PORT@@
+  echo "proxy exited"
+  sleep 2
+done
+SUPEOF
+}
+
+wsl_dockerproxy_py() {
+  cat <<'PROXYEOF'
+#!/usr/bin/env python3
+"""Docker API proxy that rewrites Windows bind-mount paths.
+
+'docker run -v C:\\dir:/x' works under Docker Desktop because Desktop's backend
+rewrites the mount source before the request reaches dockerd. That is why it works
+for API clients -- lstk among them -- and not only for the CLI. Plain Docker Engine
+has no such thing: a Linux daemon reads 'C:\\dir' as a volume name and rejects the
+request. This proxy supplies that one missing piece and nothing else.
+
+Everything other than the mount sources of POST /containers/create is relayed
+byte-for-byte, including hijacked connections (attach, exec, interactive run) and
+streaming responses (pull progress, logs -f).
+"""
+
+import argparse
+import asyncio
+import json
+import re
+import sys
+
+SOCKET = "/var/run/docker.sock"
+LIMIT = 4 * 1024 * 1024
+
+# Matches an absolute Windows path, with or without the \\?\ long-path prefix.
+_WIN_ABS = re.compile(r"^(?:\\\\\?\\)?([A-Za-z]):[\\/]")
+_CREATE = re.compile(r"^(?:/v[0-9.]+)?/containers/create(?:\?|$)")
+
+
+def to_linux(path):
+    m = _WIN_ABS.match(path)
+    if not m:
+        return path
+    return "/mnt/" + m.group(1).lower() + "/" + path[m.end():].replace("\\", "/")
+
+
+def rewrite_bind(spec):
+    """Rewrite the source of a 'src:dst[:opts]' bind spec.
+
+    The source's own drive colon means the first colon is not the separator, so
+    scan from the end of the drive prefix instead of splitting naively.
+    """
+    m = _WIN_ABS.match(spec)
+    if not m:
+        return spec
+    sep = spec.find(":", m.end())
+    if sep < 0:
+        return spec
+    return to_linux(spec[:sep]) + spec[sep:]
+
+
+def rewrite_body(raw):
+    body = json.loads(raw)
+    host = body.get("HostConfig")
+    if not isinstance(host, dict):
+        return raw
+    binds = host.get("Binds")
+    if isinstance(binds, list):
+        host["Binds"] = [rewrite_bind(b) if isinstance(b, str) else b for b in binds]
+    mounts = host.get("Mounts")
+    if isinstance(mounts, list):
+        for mount in mounts:
+            if isinstance(mount, dict) and mount.get("Type") == "bind" \
+                    and isinstance(mount.get("Source"), str):
+                mount["Source"] = to_linux(mount["Source"])
+    return json.dumps(body).encode()
+
+
+def parse_head(head):
+    lines = head.split(b"\r\n")
+    start = lines[0].decode("latin-1")
+    headers = {}
+    for line in lines[1:]:
+        if not line or b":" not in line:
+            continue
+        name, _, value = line.partition(b":")
+        headers[name.decode("latin-1").lower()] = value.strip().decode("latin-1")
+    return start, headers
+
+
+async def copy_stream(reader, writer):
+    try:
+        while True:
+            chunk = await reader.read(65536)
+            if not chunk:
+                break
+            writer.write(chunk)
+            await writer.drain()
+    except (ConnectionError, asyncio.IncompleteReadError):
+        pass
+    finally:
+        try:
+            writer.close()
+        except Exception:
+            pass
+
+
+async def relay_chunked(reader, writer):
+    while True:
+        line = await reader.readline()
+        if not line:
+            return
+        writer.write(line)
+        size = int(line.strip().split(b";")[0] or b"0", 16)
+        if size == 0:
+            # Trailers, then the blank line that ends the message.
+            while True:
+                trailer = await reader.readline()
+                writer.write(trailer)
+                await writer.drain()
+                if trailer in (b"\r\n", b"\n", b""):
+                    return
+        data = await reader.readexactly(size + 2)
+        writer.write(data)
+        await writer.drain()
+
+
+async def relay_body(reader, writer, headers):
+    if headers.get("transfer-encoding", "").lower() == "chunked":
+        await relay_chunked(reader, writer)
+    elif headers.get("content-length"):
+        remaining = int(headers["content-length"])
+        while remaining > 0:
+            chunk = await reader.read(min(65536, remaining))
+            if not chunk:
+                return
+            remaining -= len(chunk)
+            writer.write(chunk)
+            await writer.drain()
+
+
+async def handle(client_reader, client_writer):
+    try:
+        up_reader, up_writer = await asyncio.open_unix_connection(SOCKET, limit=LIMIT)
+    except OSError as exc:
+        # The daemon is still starting, or has crashed and is being restarted.
+        client_writer.write(b"HTTP/1.1 503 Service Unavailable\r\nContent-Length: 0\r\n\r\n")
+        await client_writer.drain()
+        client_writer.close()
+        print("upstream unavailable: %s" % exc, file=sys.stderr)
+        return
+
+    try:
+        while True:
+            try:
+                head = await client_reader.readuntil(b"\r\n\r\n")
+            except (asyncio.IncompleteReadError, asyncio.LimitOverrunError):
+                return
+            start, headers = parse_head(head)
+            parts = start.split(" ")
+            path = parts[1] if len(parts) > 2 else ""
+
+            if parts[0] == "POST" and _CREATE.match(path) and headers.get("content-length"):
+                raw = await client_reader.readexactly(int(headers["content-length"]))
+                try:
+                    new = rewrite_body(raw)
+                except Exception as exc:
+                    print("rewrite skipped: %s" % exc, file=sys.stderr)
+                    new = raw
+                head = re.sub(
+                    rb"(?i)\r\ncontent-length:[^\r\n]*",
+                    b"\r\nContent-Length: %d" % len(new),
+                    head,
+                )
+                up_writer.write(head + new)
+                await up_writer.drain()
+            else:
+                up_writer.write(head)
+                await up_writer.drain()
+                await relay_body(client_reader, up_writer, headers)
+
+            try:
+                resp = await up_reader.readuntil(b"\r\n\r\n")
+            except (asyncio.IncompleteReadError, asyncio.LimitOverrunError):
+                return
+            resp_start, resp_headers = parse_head(resp)
+            client_writer.write(resp)
+            await client_writer.drain()
+
+            status = resp_start.split(" ")[1] if len(resp_start.split(" ")) > 1 else ""
+            framed = resp_headers.get("content-length") or \
+                resp_headers.get("transfer-encoding", "").lower() == "chunked"
+            if status == "101" or not framed:
+                # A hijacked connection (attach, exec, interactive run) or a body
+                # that ends at EOF. Either way the framing is gone: pump raw bytes
+                # both ways until one side hangs up.
+                await asyncio.gather(
+                    copy_stream(client_reader, up_writer),
+                    copy_stream(up_reader, client_writer),
+                )
+                return
+            await relay_body(up_reader, client_writer, resp_headers)
+    except (ConnectionError, asyncio.IncompleteReadError):
+        pass
+    finally:
+        for w in (up_writer, client_writer):
+            try:
+                w.close()
+            except Exception:
+                pass
+
+
+async def main():
+    global SOCKET
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--port", type=int, default=2375)
+    # Only the tests point this anywhere else, but it is also the quickest way to
+    # run the proxy against a second daemon while debugging.
+    ap.add_argument("--socket", default=SOCKET)
+    args = ap.parse_args()
+    SOCKET = args.socket
+    # Loopback only. Windows reaches it through WSL2's localhost forwarding; nothing
+    # outside the machine can.
+    server = await asyncio.start_server(handle, "127.0.0.1", args.port, limit=LIMIT)
+    print("listening on 127.0.0.1:%d -> %s" % (args.port, SOCKET), file=sys.stderr)
+    async with server:
+        await server.serve_forever()
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
+PROXYEOF
+}
+
+# Serves \\.\pipe\docker_engine on the Windows side and relays to the proxy inside
+# the distro. Compiled on the box with Add-Type, which uses the in-box .NET
+# Framework compiler, so there is no toolchain to install.
+#
+# It is a byte relay and nothing more: all the protocol awareness lives in
+# dockerproxy.py, where JSON can be parsed properly.
+win_pipe_relay_ps1() {
+  sed -e "s|@@PORT@@|${DOCKER_PROXY_PORT}|g" <<'RELAYEOF'
+$ErrorActionPreference = 'Stop'
+
+Add-Type -TypeDefinition @'
+using System;
+using System.IO;
+using System.IO.Pipes;
+using System.Net.Sockets;
+using System.Security.AccessControl;
+using System.Security.Principal;
+using System.Threading;
+
+public class DockerPipeRelay {
+  const string PipeName = "docker_engine";
+  // Acceptors sit blocked in WaitForConnection, so several can listen at once.
+  // Without that there is a window after each accept in which the pipe does not
+  // exist and a connecting client fails outright instead of queueing.
+  const int Acceptors = 16;
+  static int _port;
+  static string _log;
+
+  public static void Run(int port, string logPath) {
+    _port = port;
+    _log = logPath;
+    Log("relay starting: \\\\.\\pipe\\" + PipeName + " -> 127.0.0.1:" + port);
+    for (int i = 0; i < Acceptors; i++) {
+      Thread t = new Thread(new ThreadStart(AcceptLoop));
+      t.IsBackground = true;
+      t.Start();
+    }
+    Thread.Sleep(Timeout.Infinite);
+  }
+
+  static void Log(string message) {
+    try {
+      File.AppendAllText(_log, DateTime.UtcNow.ToString("s") + " " + message + Environment.NewLine);
+    } catch { }
+  }
+
+  static PipeSecurity Security() {
+    PipeSecurity ps = new PipeSecurity();
+    // Both sandbox accounts have to reach the daemon. Docker access is
+    // root-equivalent, which is the same bargain the Linux sandbox makes by
+    // putting its unprivileged user in the docker group.
+    ps.AddAccessRule(new PipeAccessRule(
+      new SecurityIdentifier(WellKnownSidType.AuthenticatedUserSid, null),
+      PipeAccessRights.ReadWrite, AccessControlType.Allow));
+    ps.AddAccessRule(new PipeAccessRule(
+      new SecurityIdentifier(WellKnownSidType.BuiltinAdministratorsSid, null),
+      PipeAccessRights.FullControl, AccessControlType.Allow));
+    ps.AddAccessRule(new PipeAccessRule(
+      new SecurityIdentifier(WellKnownSidType.LocalSystemSid, null),
+      PipeAccessRights.FullControl, AccessControlType.Allow));
+    return ps;
+  }
+
+  static void AcceptLoop() {
+    while (true) {
+      NamedPipeServerStream pipe = null;
+      try {
+        pipe = new NamedPipeServerStream(PipeName, PipeDirection.InOut,
+          NamedPipeServerStream.MaxAllowedServerInstances, PipeTransmissionMode.Byte,
+          PipeOptions.Asynchronous, 65536, 65536, Security());
+        pipe.WaitForConnection();
+      } catch (Exception e) {
+        Log("accept failed: " + e.Message);
+        if (pipe != null) { try { pipe.Dispose(); } catch { } }
+        Thread.Sleep(1000);
+        continue;
+      }
+      // Hand the connection off so this acceptor goes straight back to listening;
+      // an interactive 'docker run -it' holds its connection for the container's
+      // whole life and must not occupy an acceptor.
+      ThreadPool.QueueUserWorkItem(new WaitCallback(Serve), pipe);
+    }
+  }
+
+  static void Serve(object state) {
+    NamedPipeServerStream pipe = (NamedPipeServerStream)state;
+    TcpClient tcp = null;
+    try {
+      tcp = new TcpClient();
+      tcp.Connect("127.0.0.1", _port);
+      tcp.NoDelay = true;
+      NetworkStream net = tcp.GetStream();
+      Stream from = pipe;
+      Thread up = new Thread(new ThreadStart(delegate { Copy(from, net); }));
+      up.IsBackground = true;
+      up.Start();
+      Copy(net, pipe);
+      up.Join(2000);
+    } catch (Exception e) {
+      Log("connection failed: " + e.Message);
+    } finally {
+      try { pipe.Dispose(); } catch { }
+      if (tcp != null) { try { tcp.Close(); } catch { } }
+    }
+  }
+
+  static void Copy(Stream from, Stream to) {
+    byte[] buffer = new byte[65536];
+    try {
+      int n;
+      while ((n = from.Read(buffer, 0, buffer.Length)) > 0) {
+        to.Write(buffer, 0, n);
+        to.Flush();
+      }
+    } catch { }
+    // Close so the peer sees EOF rather than waiting on a half-dead connection.
+    try { to.Close(); } catch { }
+  }
+}
+'@
+
+[DockerPipeRelay]::Run(@@PORT@@, 'C:\ProgramData\ec2-sandbox\pipe-relay.log')
+RELAYEOF
+}
+
+# Phase 2, part one: build the distro. Runs over SSH as Administrator, and every
+# step is skipped when it has already happened, because the SSH session can drop
+# mid-run and the caller simply reconnects and runs it again.
+win_prepare_docker_ps1() {
+  sed -e "s|@@DISTRO@@|${WSL_DISTRO}|g" \
+      -e "s|@@ROOTFS_URL@@|${WSL_ROOTFS_URL}|g" \
+      -e "s|@@ROOTFS_SHA256@@|${WSL_ROOTFS_SHA256}|g" <<'PREPDOCKEREOF'
+$ErrorActionPreference = 'Stop'
+$ProgressPreference = 'SilentlyContinue'
+$base = 'C:\ProgramData\ec2-sandbox'
+Start-Transcript -Path "$base\phase2.log" -Append | Out-Null
+
+# wsl.exe writes UTF-16LE, so its output reaches PowerShell as W\0S\0L\0... and a
+# plain -match never fires. Same helper as prepare-wsl.ps1; the two scripts are
+# delivered separately and cannot share it.
+function Wsl-Text([string[]]$wslArgs) {
+  $prev = [Console]::OutputEncoding
+  $prevEA = $ErrorActionPreference
+  try {
+    [Console]::OutputEncoding = [System.Text.Encoding]::Unicode
+    $ErrorActionPreference = 'Continue'
+    return (& wsl.exe @wslArgs 2>&1 | Out-String)
+  } finally {
+    [Console]::OutputEncoding = $prev
+    $ErrorActionPreference = $prevEA
+  }
+}
+
+$distro = '@@DISTRO@@'
+$rootfs = "$base\rootfs.wsl"
+$root = "$base\wsl\docker"
+
+# Phase 1 normally fetched this before the reboot; do it here if that failed.
+if (-not (Test-Path $rootfs)) {
+  Write-Output 'downloading the distro image'
+  & curl.exe -fL --retry 3 --retry-delay 5 -C - -o "$rootfs.part" '@@ROOTFS_URL@@'
+  if ($LASTEXITCODE -ne 0) { throw "downloading the distro image failed with $LASTEXITCODE" }
+  Move-Item "$rootfs.part" $rootfs -Force
+}
+$sha = (Get-FileHash -Path $rootfs -Algorithm SHA256).Hash.ToLower()
+if ($sha -ne '@@ROOTFS_SHA256@@') { throw "distro image checksum mismatch: $sha" }
+
+# --import rather than 'wsl --install -d Ubuntu-24.04': it pins the image, fixes
+# the distro name, skips the first-boot setup and leaves root as the default user.
+if ((Wsl-Text @('-l', '-q')) -notmatch [regex]::Escape($distro)) {
+  Write-Output 'importing the distro'
+  New-Item -ItemType Directory -Force -Path $root | Out-Null
+  & wsl.exe --import $distro $root $rootfs --version 2
+  if ($LASTEXITCODE -ne 0) { throw "wsl --import failed with $LASTEXITCODE" }
+}
+
+Write-Output 'provisioning docker inside the distro'
+# 'Continue' while a native command's stderr is redirected: under 'Stop', 2>&1
+# turns anything the child writes to stderr into a terminating NativeCommandError,
+# so apt's ordinary progress chatter would abort the run. Same trap as Wsl-Text.
+$ErrorActionPreference = 'Continue'
+$out = (& wsl.exe -d $distro -u root -- /bin/sh /mnt/c/ProgramData/ec2-sandbox/provision-docker.sh 2>&1 | Out-String)
+$ErrorActionPreference = 'Stop'
+foreach ($line in ($out -split "`n")) {
+  if ($line -match '\S') { Write-Output ("  " + $line.Trim()) }
+}
+if ($out -notmatch 'PROVISION_OK') { throw 'provisioning the distro failed' }
+
+Stop-Transcript | Out-Null
+Write-Output 'DOCKER_IMPORT_OK'
+PREPDOCKEREOF
+}
+
+# Phase 2, part two: register the services and prove the whole chain works. Takes
+# the Administrator password on stdin, like set-user-password.ps1, so it never
+# reaches a command line or the remote process table.
+#
+# The tasks are not a convenience for reboots alone. Win32-OpenSSH runs each SSH
+# command inside a job object that forbids breakaway, so anything this script
+# started directly would be killed the moment the SSH command returned. Task
+# Scheduler is what puts the daemon outside that job.
+win_register_docker_ps1() {
+  sed -e "s|@@DISTRO@@|${WSL_DISTRO}|g" \
+      -e "s|@@PORT@@|${DOCKER_PROXY_PORT}|g" <<'REGDOCKEREOF'
+$pw = [Console]::In.ReadToEnd().Trim()
+$ErrorActionPreference = 'Stop'
+$ProgressPreference = 'SilentlyContinue'
+$base = 'C:\ProgramData\ec2-sandbox'
+$distro = '@@DISTRO@@'
+$docker = "$base\bin\docker.exe"
+
+# The default execution time limit is three days, which would eventually kill the
+# daemon; IgnoreNew stops a second instance if the task is ever triggered twice.
+$settings = New-ScheduledTaskSettingsSet -ExecutionTimeLimit ([TimeSpan]::Zero) `
+  -MultipleInstances IgnoreNew -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries `
+  -StartWhenAvailable -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1)
+
+# HNS and the vmcompute stack are still settling immediately after boot.
+function New-StartupTrigger {
+  $t = New-ScheduledTaskTrigger -AtStartup
+  $t.Delay = 'PT30S'
+  return $t
+}
+
+# dockerd has to run as the account whose WSL registration owns the distro: those
+# live in HKCU, so SYSTEM and Windows services read a different hive and would
+# report "no distribution with the supplied name". Task Scheduler loads the user
+# profile, which is exactly why this works where a service would not.
+$dockerAction = New-ScheduledTaskAction -Execute 'C:\Windows\System32\wsl.exe' `
+  -Argument "-d $distro -u root -- /usr/local/bin/dockerd-supervisor.sh"
+$admin = "$env:COMPUTERNAME\Administrator"
+try {
+  # Task Scheduler stores this credential on the box. On a throwaway sandbox it
+  # discloses nothing new: the same password is already recoverable from EC2 by
+  # anyone holding the launch key pair.
+  Register-ScheduledTask -TaskName 'ec2-sandbox-dockerd' -Action $dockerAction `
+    -Trigger (New-StartupTrigger) -Settings $settings -RunLevel Highest `
+    -User $admin -Password $pw -Force | Out-Null
+} catch {
+  Write-Output "password registration failed ($_); falling back to S4U"
+  $prn = New-ScheduledTaskPrincipal -UserId $admin -LogonType S4U -RunLevel Highest
+  Register-ScheduledTask -TaskName 'ec2-sandbox-dockerd' -Action $dockerAction `
+    -Trigger (New-StartupTrigger) -Settings $settings -Principal $prn -Force | Out-Null
+}
+
+# The relay only needs a named pipe and a loopback connect -- no WSL, so no user
+# hive, so no stored credential.
+$relayAction = New-ScheduledTaskAction -Execute 'powershell.exe' `
+  -Argument "-ExecutionPolicy Bypass -NoProfile -WindowStyle Hidden -File $base\pipe-relay.ps1"
+$relayPrincipal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest
+Register-ScheduledTask -TaskName 'ec2-sandbox-pipe-relay' -Action $relayAction `
+  -Trigger (New-StartupTrigger) -Settings $settings -Principal $relayPrincipal -Force | Out-Null
+
+Write-Output 'starting the daemon'
+Start-ScheduledTask -TaskName 'ec2-sandbox-dockerd'
+Start-ScheduledTask -TaskName 'ec2-sandbox-pipe-relay'
+
+# From here on every command is a native one whose stderr is captured, and under
+# 'Stop' a 2>&1 redirect turns that stderr into a terminating NativeCommandError --
+# so a daemon that is merely still starting would abort the run instead of being
+# retried. The checks below throw explicitly instead.
+$ErrorActionPreference = 'Continue'
+
+# Test-Path is unreliable on the pipe filesystem; enumerating it is not.
+function Test-DockerPipe {
+  try { return [bool](@([System.IO.Directory]::GetFiles('\\.\pipe\')) -match 'docker_engine$') }
+  catch { return $false }
+}
+
+$deadline = (Get-Date).AddMinutes(5)
+while (-not (Test-DockerPipe) -and (Get-Date) -lt $deadline) { Start-Sleep -Seconds 3 }
+if (-not (Test-DockerPipe)) { throw 'the docker_engine pipe never appeared' }
+
+# One smoke test for the whole chain rather than several for its parts: a
+# published port exercises iptables, docker-proxy and WSL's localhost forwarding,
+# and a Windows-path mount exercises the rewriting proxy -- which is the entire
+# reason this arrangement exists.
+Write-Output 'smoke test: talking to the daemon'
+$version = ''
+$versionDeadline = (Get-Date).AddMinutes(3)
+while ((Get-Date) -lt $versionDeadline) {
+  $version = (& $docker version --format '{{.Server.Version}}' 2>&1 | Out-String).Trim()
+  if ($LASTEXITCODE -eq 0) { break }
+  Start-Sleep -Seconds 5
+}
+if ($LASTEXITCODE -ne 0) { throw "docker version failed: $version" }
+Write-Output ("  server " + $version)
+
+& $docker rm -f ec2-sandbox-probe 2>&1 | Out-Null
+Write-Output 'smoke test: published port'
+& $docker run -d --rm -p 18080:80 --name ec2-sandbox-probe nginx:alpine 2>&1 | Out-Null
+if ($LASTEXITCODE -ne 0) { throw 'could not start the probe container' }
+$reachable = $false
+$portDeadline = (Get-Date).AddMinutes(2)
+while (-not $reachable -and (Get-Date) -lt $portDeadline) {
+  try {
+    Invoke-WebRequest -Uri 'http://127.0.0.1:18080' -UseBasicParsing -TimeoutSec 5 | Out-Null
+    $reachable = $true
+  } catch { Start-Sleep -Seconds 3 }
+}
+& $docker rm -f ec2-sandbox-probe 2>&1 | Out-Null
+if (-not $reachable) { throw 'a published container port was not reachable from Windows' }
+
+Write-Output 'smoke test: windows path bind mount'
+$mounted = (& $docker run --rm -v C:\ProgramData\ec2-sandbox:/probe nginx:alpine ls /probe/pipe-relay.ps1 2>&1 | Out-String)
+if ($mounted -notmatch 'pipe-relay') { throw "a Windows path bind mount failed: $mounted" }
+
+Write-Output 'DOCKER_PREP_OK'
+REGDOCKEREOF
+}
+
+# Drives phase 2 from the host. Split from prepare_windows_wsl because only the
+# docker engine needs it, and because the second call has to feed a password in.
+prepare_windows_docker() { # $1 = public ip, $2 = admin password
+  set_ssh_opts
+  local dir="${STATE_DIR}/docker"
+  local attempt out
+
+  mkdir -p "$dir"
+  chmod 700 "$dir" 2>/dev/null || true
+  wsl_provision_sh        > "${dir}/provision-docker.sh"
+  wsl_supervisor_sh       > "${dir}/dockerd-supervisor.sh"
+  wsl_dockerproxy_py      > "${dir}/dockerproxy.py"
+  win_pipe_relay_ps1      > "${dir}/pipe-relay.ps1"
+  win_prepare_docker_ps1  > "${dir}/prepare-docker.ps1"
+  win_register_docker_ps1 > "${dir}/register-docker-tasks.ps1"
+
+  # scp rather than more base64 blobs: these files run to hundreds of lines, and
+  # the Linux ones must keep their LF endings byte for byte.
+  log "Copying the Docker Engine helpers to the instance..."
+  scp "${SSH_OPTS[@]}" "${dir}"/* "${SSH_USER}@$1:C:/ProgramData/ec2-sandbox/" >/dev/null 2>&1 \
+    || die "could not copy the Docker Engine helpers to ${1}"
+
+  for attempt in 1 2 3; do
+    if [ "$attempt" -eq 1 ]; then
+      log "Building the Docker Engine distro (about 6 minutes)..."
+    else
+      log "Connection dropped; resuming the distro build (attempt ${attempt}/3)..."
+      sleep 20
+    fi
+
+    out=$(ssh "${SSH_OPTS[@]}" "${SSH_USER}@$1" \
+            'powershell -ExecutionPolicy Bypass -NoProfile -File C:\ProgramData\ec2-sandbox\prepare-docker.ps1' 2>&1 \
+          | tr -d '\000\r') || true
+
+    printf '%s\n' "$out" \
+      | grep -E '^(downloading|importing|provisioning|installing|switching|DOCKER_IMPORT_OK)' \
+      | sed 's/^/    /' >&2 || true
+
+    if printf '%s' "$out" | grep -q 'DOCKER_IMPORT_OK'; then
+      ok "Docker Engine installed in the WSL2 distro"
+      break
+    fi
+
+    if [ "$attempt" -eq 3 ]; then
+      warn "the distro build did not succeed after 3 attempts. Last output:"
+      printf '%s\n' "$out" | sed 's/^/    /' >&2
+      die "could not build the Docker Engine distro on the instance.
+  Every step is resumable, so retry by hand:
+    ssh -i ${PEM_PATH} ${SSH_USER}@$1 \\
+      \"powershell -ExecutionPolicy Bypass -File C:\\ProgramData\\ec2-sandbox\\prepare-docker.ps1\""
+    fi
+  done
+
+  log "Registering the Docker services and running a smoke test..."
+  out=$(printf '%s' "$2" \
+        | ssh "${SSH_OPTS[@]}" "${SSH_USER}@$1" \
+            'powershell -ExecutionPolicy Bypass -NoProfile -File C:\ProgramData\ec2-sandbox\register-docker-tasks.ps1' 2>&1 \
+        | tr -d '\000\r') || true
+
+  printf '%s\n' "$out" \
+    | grep -E '^(starting|smoke test|password registration|  )' \
+    | sed 's/^/    /' >&2 || true
+
+  if ! printf '%s' "$out" | grep -q 'DOCKER_PREP_OK'; then
+    warn "Docker did not pass its smoke test. Last output:"
+    printf '%s\n' "$out" | sed 's/^/    /' >&2
+    die "Docker did not come up on the instance.
+  The sandbox is otherwise usable, and every step is resumable:
+    ssh -i ${PEM_PATH} ${SSH_USER}@$1 \\
+      \"powershell -ExecutionPolicy Bypass -File C:\\ProgramData\\ec2-sandbox\\prepare-docker.ps1\"
+  Logs on the instance: C:\\ProgramData\\ec2-sandbox\\phase2.log and pipe-relay.log"
+  fi
+
+  ok "Docker Engine ready on \\\\.\\pipe\\docker_engine"
 }
 
 # ---------------------------------------------------------------------------
@@ -863,7 +1741,7 @@ launch_instance() { # $1 ami, $2 subnet, $3 sg, $4 root dev, $5 vol gb
   local tags vol_tags iid udfile
   local extra=()
 
-  tags="ResourceType=instance,Tags=[{Key=Name,Value=${INSTANCE_NAME}},{Key=${TAG_KEY},Value=${TAG_VAL}},{Key=${OS_TAG_KEY},Value=${OS}}]"
+  tags="ResourceType=instance,Tags=[{Key=Name,Value=${INSTANCE_NAME}},{Key=${TAG_KEY},Value=${TAG_VAL}},{Key=${OS_TAG_KEY},Value=${OS}},{Key=${ENGINE_TAG_KEY},Value=${CONTAINERS}}]"
   vol_tags="ResourceType=volume,Tags=[{Key=${TAG_KEY},Value=${TAG_VAL}},{Key=${OS_TAG_KEY},Value=${OS}}]"
 
   udfile="${STATE_DIR}/user-data"
@@ -968,15 +1846,15 @@ wait_for_bootstrap() { # $1 = public ip
 
   if [ "$OS" = "windows" ]; then
     die "setup did not finish within $((BOOTSTRAP_DEADLINE / 60)) minutes.
-  Check the log:  ssh -i ${PEM_PATH} ${SSH_USER}@$1 \"type C:\\ProgramData\\ec2-sandbox\\phase2.log\""
+  Check the log:  ssh -i ${PEM_PATH} ${SSH_USER}@$1 \"type C:\\ProgramData\\ec2-sandbox\\phase1.log\""
   fi
   die "setup did not finish within $((BOOTSTRAP_DEADLINE / 60)) minutes.
   Check the log:  ssh -i ${PEM_PATH} ${SSH_USER}@$1 'sudo tail -50 /var/log/cloud-init-output.log'"
 }
 
-# WSL preparation, driven from here rather than from a scheduled task, because WSL
+# WSL installation, driven from here rather than from a scheduled task, because WSL
 # refuses to register a distro from the SYSTEM account that user-data runs under.
-# Takes roughly 8 minutes: kernel MSI, ~370 MB image, Docker install, then export.
+# Shared by both engines; docker mode continues in prepare_windows_docker.
 prepare_windows_wsl() { # $1 = public ip
   set_ssh_opts
   local attempt out
@@ -1108,9 +1986,14 @@ print_connection_info() { # $1 = ip, $2 = admin pw, $3 = user pw
   printf '            open %s\n' "$RDP_USER_PATH"
   printf '\n'
   printf '  SSH         ssh -i %s %s@%s\n' "$PEM_PATH" "$SSH_USER" "$1"
-  if [ "$OS" = "windows" ]; then
-    printf '  Docker      finishes installing on first login as %s, since WSL distros\n' "$UNPRIV_USER"
-    printf '              are per-user; a console window runs for a few minutes.\n'
+  if [ "$OS" = "windows" ] && [ "$CONTAINERS" = "podman" ]; then
+    printf '  Docker      Podman, as docker.exe. Finishes installing on first login as\n'
+    printf '              %s, since podman machines are per-user; a console window\n' "$UNPRIV_USER"
+    printf '              runs for a few minutes.\n'
+  elif [ "$OS" = "windows" ]; then
+    printf '  Docker      Docker Engine in WSL2, on \\\\.\\pipe\\docker_engine. Ready now, and\n'
+    printf '              shared by both accounts. Windows paths in bind mounts are\n'
+    printf '              rewritten to /mnt/c/... the way Docker Desktop does them.\n'
   else
     printf '  Docker      ready for both accounts: docker run hello-world\n'
   fi
@@ -1206,6 +2089,9 @@ cmd_create() {
     fi
     wait_for_bootstrap "$ip"
     prepare_windows_wsl "$ip"
+    if [ "$CONTAINERS" = "docker" ]; then
+      prepare_windows_docker "$ip" "$admin_pw"
+    fi
   else
     log "Waiting for the instance to pass its status checks..."
     aws_ ec2 wait instance-status-ok --instance-ids "$iid"
@@ -1230,13 +2116,19 @@ cmd_create() {
 }
 
 cmd_info() {
-  local iid state ip admin_pw user_pw
+  local iid state ip admin_pw user_pw engine
   iid=$(find_instance "$LIVE_STATES")
   [ -n "$iid" ] || die "no ${OS} sandbox in ${REGION}. Create one with: ${SCRIPT_NAME} create ${OS}"
 
   state=$(instance_field "$iid" "State.Name")
   ip=$(instance_field "$iid" "PublicIpAddress")
   INSTANCE_TYPE=$(instance_field "$iid" "InstanceType")
+
+  # Sandboxes created before --containers existed carry no engine tag, and every
+  # one of those is podman.
+  engine=$(instance_field "$iid" "Tags[?Key=='${ENGINE_TAG_KEY}']|[0].Value")
+  if is_none "$engine"; then engine="podman"; fi
+  if [ "$OS" = "windows" ]; then CONTAINERS="$engine"; fi
 
   printf '  Instance    %s (%s)\n' "$iid" "$state" >&2
   is_none "$ip" && die "instance ${iid} is ${state} and has no public IP address"
@@ -1345,6 +2237,7 @@ cmd_delete() {
 
   rm -f "$RDP_ADMIN_PATH" "$RDP_USER_PATH" "$PW_ADMIN_PATH" "$PW_USER_PATH" \
         "${STATE_DIR}/user-data" 2>/dev/null || true
+  rm -rf "${STATE_DIR}/docker" 2>/dev/null || true
 
   if [ "$did_something" -eq 1 ]; then
     ok "Deleted the ${OS} sandbox. Key pair ${KEY_NAME} and ${PEM_PATH} were kept for reuse."
@@ -1357,7 +2250,7 @@ cmd_delete() {
 
 main() {
   parse_args "$@"
-  require_cmds aws curl ssh ssh-keygen openssl
+  require_cmds aws curl ssh scp ssh-keygen openssl
   resolve_region
   set_os_profile
   preflight_identity
