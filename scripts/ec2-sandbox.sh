@@ -26,11 +26,14 @@ TAG_KEY="ManagedBy"
 TAG_VAL="ec2-sandbox.sh"
 OS_TAG_KEY="SandboxOS"
 ENGINE_TAG_KEY="SandboxContainers"
+ARCH_TAG_KEY="SandboxArch"
 
 # Windows needs nested virtualization for WSL2, which rules out t3. Linux runs
 # Docker Engine natively, so it stays on the cheap type.
 DEFAULT_TYPE_WINDOWS="m8i.large"
-DEFAULT_TYPE_LINUX="t3.medium"
+DEFAULT_TYPE_LINUX_X64="t3.medium"
+# The arm64 counterpart of t3.medium: Graviton2, 2 vCPU, 4 GiB.
+DEFAULT_TYPE_LINUX_ARM64="t4g.medium"
 
 # Families that support --cpu-options NestedVirtualization=enabled. The AWS docs
 # list 7th gen too, but the CLI's own help restricts it to 8th gen; both agree on
@@ -76,12 +79,13 @@ WSL_DISTRO="ec2-sandbox-docker"
 DOCKER_PROXY_PORT=2375
 
 SSM_PARAM_WINDOWS="/aws/service/ami-windows-latest/Windows_Server-2025-English-Full-Base"
-SSM_PARAM_LINUX="/aws/service/canonical/ubuntu/server/24.04/stable/current/amd64/hvm/ebs-gp3/ami-id"
+# @@AMI_ARCH@@ is amd64 or arm64; set_os_profile fills it in.
+SSM_PARAM_LINUX_TEMPLATE="/aws/service/canonical/ubuntu/server/24.04/stable/current/@@AMI_ARCH@@/hvm/ebs-gp3/ami-id"
 
 AMI_FALLBACK_OWNER_WINDOWS="amazon"
 AMI_FALLBACK_NAME_WINDOWS="Windows_Server-2025-English-Full-Base-*"
 AMI_FALLBACK_OWNER_LINUX="099720109477" # Canonical
-AMI_FALLBACK_NAME_LINUX="ubuntu/images/hvm-ssd-gp3/ubuntu-noble-24.04-amd64-server-*"
+AMI_FALLBACK_NAME_LINUX_TEMPLATE="ubuntu/images/hvm-ssd-gp3/ubuntu-noble-24.04-@@AMI_ARCH@@-server-*"
 
 # Instance states that count as "this sandbox already exists". 'terminated' is
 # excluded on purpose: terminated instances stay visible to describe-instances for
@@ -97,6 +101,7 @@ BOOTSTRAP_DEADLINE_WINDOWS=1200
 
 ACTION=""
 OS=""
+ARCH=""
 CONTAINERS=""
 REGION=""
 INSTANCE_TYPE=""
@@ -140,6 +145,9 @@ ${C_BOLD}OPTIONS${C_RESET}
   --region <r>        AWS region. Defaults to \$AWS_REGION, \$AWS_DEFAULT_REGION,
                       then your configured region.
   --instance-type <t> Override the instance type.
+  --arch <a>          CPU architecture: 'x64' or 'arm64'. Required for create,
+                      which has no default. delete and info work it out from the
+                      sandboxes that exist, and only need it to break a tie.
   --containers <e>    Windows container engine: 'docker' (default) or 'podman'.
                       create only; info reads it back from the instance.
   --as <admin|user>   Which account --open connects as (default: user).
@@ -161,6 +169,9 @@ ${C_BOLD}WHAT YOU GET${C_RESET}
               both accounts at first login.
     Firefox   Linux only, from Mozilla's apt repo (not the snap), set as the
               default browser for both accounts.
+    Tooling   The AWS CLI v2, Terraform and the AWS SAM CLI, installed
+              system-wide for both accounts -- these are what 'lstk aws',
+              'lstk terraform' and 'lstk sam' shell out to.
     Docker    Linux: Docker Engine + compose, running natively.
               Windows, --containers=docker (default): Docker Engine inside a
               WSL2 distro, served on \\\\.\pipe\docker_engine -- the same endpoint
@@ -173,15 +184,18 @@ ${C_BOLD}WHAT YOU GET${C_RESET}
               but not programs that speak the API directly.
               Docker Desktop itself cannot be installed on Windows Server at all.
 
-  Defaults: windows ${DEFAULT_TYPE_WINDOWS}, linux ${DEFAULT_TYPE_LINUX}. Root volume ${MIN_VOLUME_GB_LINUX} GiB gp3,
-  or ${MIN_VOLUME_GB_WINDOWS} GiB on Windows, which also stores a WSL2 or podman VM image.
+  Defaults: windows ${DEFAULT_TYPE_WINDOWS}, linux ${DEFAULT_TYPE_LINUX_X64} on x64 and
+  ${DEFAULT_TYPE_LINUX_ARM64} on arm64. Root volume ${MIN_VOLUME_GB_LINUX} GiB gp3, or ${MIN_VOLUME_GB_WINDOWS} GiB on Windows,
+  which also stores a WSL2 or podman VM image.
 
 ${C_BOLD}NOTES${C_RESET}
-  * One instance per OS per region. A Windows and a Linux sandbox can run at once.
+  * One instance per OS and architecture per region, so a linux x64 and a linux
+    arm64 sandbox can run side by side, as can a Windows one.
+  * Windows is x64 only -- there is no arm64 Windows Server, on EC2 or anywhere.
   * RDP and SSH are opened only to your current public IP as a /32. If your IP
     changes, re-running create re-authorises it; a running instance is untouched.
   * Key pairs and their .pem are reused across create/delete cycles, not deleted.
-  * State lives in ~/.local/state/ec2-sandbox/<region>/<os>/
+  * State lives in ~/.local/state/ec2-sandbox/<region>/<os>-<arch>/
   * Windows defaults to ${DEFAULT_TYPE_WINDOWS} because WSL2 needs nested virtualization,
     which t3 does not support. Overriding to an unsupported type disables Docker.
   * Windows reboots once during setup to enable WSL2, so create takes ~15 minutes.
@@ -203,8 +217,8 @@ ${C_BOLD}NOTES${C_RESET}
     unprivileged in the ordinary sense but is not a security boundary.
 
 ${C_BOLD}EXAMPLES${C_RESET}
-  ${SCRIPT_NAME} create linux
-  ${SCRIPT_NAME} create windows --region us-east-1 --open
+  ${SCRIPT_NAME} create linux --arch=arm64
+  ${SCRIPT_NAME} create windows --arch=x64 --region us-east-1 --open
   ${SCRIPT_NAME} create windows --containers=podman
   ${SCRIPT_NAME} info linux --as admin --open
   ${SCRIPT_NAME} delete windows -y
@@ -250,6 +264,10 @@ parse_args() {
         [ $# -ge 2 ] || die "--instance-type needs a value"
         INSTANCE_TYPE="$2"; shift 2 ;;
       --instance-type=*) INSTANCE_TYPE="${1#*=}"; shift ;;
+      --arch)
+        [ $# -ge 2 ] || die "--arch needs a value (x64 or arm64)"
+        ARCH="$2"; shift 2 ;;
+      --arch=*) ARCH="${1#*=}"; shift ;;
       --containers)
         [ $# -ge 2 ] || die "--containers needs a value (docker or podman)"
         CONTAINERS="$2"; shift 2 ;;
@@ -268,6 +286,24 @@ parse_args() {
     admin|user) ;;
     *) die "--as must be 'admin' or 'user', not '$OPEN_AS'" ;;
   esac
+
+  case "$ARCH" in
+    "") ;;
+    x64|arm64) ;;
+    *) die "--arch must be 'x64' or 'arm64', not '$ARCH'" ;;
+  esac
+
+  # Deliberately no default: an architecture is not something to be guessed on
+  # your behalf when it changes which binaries the sandbox can even run.
+  if [ "$ACTION" = "create" ] && [ -z "$ARCH" ]; then
+    die "missing --arch; pass --arch=x64 or --arch=arm64 (there is no default)"
+  fi
+
+  if [ "$OS" = "windows" ] && [ "$ARCH" = "arm64" ]; then
+    die "windows is x64 only. AWS publishes no arm64 Windows AMIs, and Windows Server
+  2025 has no arm64 release at all; the AWS and SAM CLIs ship no Windows arm64
+  builds either. Use --arch=x64 for windows, or --arch=arm64 with linux."
+  fi
 
   if [ -n "$CONTAINERS" ]; then
     case "$CONTAINERS" in
@@ -331,11 +367,22 @@ preflight_identity() {
 # ---------------------------------------------------------------------------
 
 set_os_profile() {
-  INSTANCE_NAME="ec2-sandbox-${OS}"
-  SG_NAME="ec2-sandbox-${OS}-sg"
-  KEY_NAME="ec2-sandbox-${OS}-key"
+  # Architecture is part of a sandbox's identity, so an x64 and an arm64 sandbox of
+  # the same OS coexist without colliding on an instance, security group, key pair
+  # or state directory.
+  local profile="${OS}-${ARCH}"
+  INSTANCE_NAME="ec2-sandbox-${profile}"
+  SG_NAME="ec2-sandbox-${profile}-sg"
+  KEY_NAME="ec2-sandbox-${profile}-key"
 
-  STATE_DIR="${HOME}/.local/state/ec2-sandbox/${REGION}/${OS}"
+  # EC2 and the Ubuntu AMI paths spell it amd64/arm64; the flag spells it x64 to
+  # match how the rest of the world names the platform.
+  case "$ARCH" in
+    arm64) AMI_ARCH="arm64" ;;
+    *)     AMI_ARCH="amd64" ;;
+  esac
+
+  STATE_DIR="${HOME}/.local/state/ec2-sandbox/${REGION}/${profile}"
   PEM_PATH="${STATE_DIR}/key.pem"
   RDP_ADMIN_PATH="${STATE_DIR}/connect-admin.rdp"
   RDP_USER_PATH="${STATE_DIR}/connect-user.rdp"
@@ -361,14 +408,20 @@ set_os_profile() {
       OS_LABEL="Ubuntu 24.04 LTS + XFCE"
       ADMIN_USER="ubuntu"
       SSH_USER="ubuntu"
-      SSM_PARAM="$SSM_PARAM_LINUX"
+      SSM_PARAM="${SSM_PARAM_LINUX_TEMPLATE//@@AMI_ARCH@@/$AMI_ARCH}"
       AMI_FALLBACK_OWNER="$AMI_FALLBACK_OWNER_LINUX"
-      AMI_FALLBACK_NAME="$AMI_FALLBACK_NAME_LINUX"
+      AMI_FALLBACK_NAME="${AMI_FALLBACK_NAME_LINUX_TEMPLATE//@@AMI_ARCH@@/$AMI_ARCH}"
       READY_SENTINEL="$READY_SENTINEL_LINUX"
       UNPRIV_USER="$UNPRIV_USER_LINUX"
       BOOTSTRAP_DEADLINE="$BOOTSTRAP_DEADLINE_LINUX"
       MIN_VOLUME_GB="$MIN_VOLUME_GB_LINUX"
-      if [ -z "$INSTANCE_TYPE" ]; then INSTANCE_TYPE="$DEFAULT_TYPE_LINUX"; fi
+      if [ -z "$INSTANCE_TYPE" ]; then
+        if [ "$ARCH" = "arm64" ]; then
+          INSTANCE_TYPE="$DEFAULT_TYPE_LINUX_ARM64"
+        else
+          INSTANCE_TYPE="$DEFAULT_TYPE_LINUX_X64"
+        fi
+      fi
       CONTAINERS="docker"
       ;;
   esac
@@ -404,9 +457,46 @@ find_instance() { # $1 = comma-separated states
   aws_ ec2 describe-instances \
     --filters "Name=tag:${TAG_KEY},Values=${TAG_VAL}" \
               "Name=tag:${OS_TAG_KEY},Values=${OS}" \
+              "Name=tag:${ARCH_TAG_KEY},Values=${ARCH}" \
               "Name=instance-state-name,Values=$1" \
     --query 'Reservations[].Instances[].InstanceId' \
     --output text 2>/dev/null | tr '\t' '\n' | grep -v '^$' | head -1 || true
+}
+
+# Lists "<instance-id>\t<arch>" for every sandbox of this OS whatever its
+# architecture, so delete and info can work out which one the caller meant.
+find_instances_any_arch() {
+  aws_ ec2 describe-instances \
+    --filters "Name=tag:${TAG_KEY},Values=${TAG_VAL}" \
+              "Name=tag:${OS_TAG_KEY},Values=${OS}" \
+              "Name=instance-state-name,Values=${LIVE_STATES},shutting-down" \
+    --query "Reservations[].Instances[].[InstanceId,Tags[?Key=='${ARCH_TAG_KEY}']|[0].Value]" \
+    --output text 2>/dev/null | grep -v '^$' || true
+}
+
+# delete and info do not take --arch when it is unambiguous. Leaves ARCH empty
+# when there is no sandbox at all; the caller decides what that means.
+resolve_arch_from_instances() {
+  local rows count
+  rows=$(find_instances_any_arch)
+  count=$(printf '%s' "$rows" | grep -c . || true)
+
+  if [ "${count:-0}" -eq 0 ]; then
+    return 0
+  fi
+
+  if [ "${count:-0}" -eq 1 ]; then
+    ARCH=$(printf '%s\n' "$rows" | awk '{print $2}')
+    if is_none "$ARCH"; then
+      die "the ${OS} sandbox in ${REGION} predates --arch and this version cannot manage it.
+  Terminate it with an older copy of this script, or by hand:
+    aws ec2 terminate-instances --region ${REGION} --instance-ids $(printf '%s\n' "$rows" | awk '{print $1}')"
+    fi
+    return 0
+  fi
+
+  die "more than one ${OS} sandbox in ${REGION}; say which with --arch:
+$(printf '%s\n' "$rows" | awk '{printf "    %s  --arch=%s\n", $1, $2}')"
 }
 
 instance_field() { # $1 = instance id, $2 = JMESPath under Instances[]
@@ -614,7 +704,7 @@ set -eux
 export DEBIAN_FRONTEND=noninteractive
 
 apt-get update
-apt-get install -y xfce4 xfce4-goodies xrdp ca-certificates curl gnupg apt-transport-https
+apt-get install -y xfce4 xfce4-goodies xrdp ca-certificates curl gnupg apt-transport-https unzip
 
 # --- unprivileged account -------------------------------------------------
 # Deliberately not in the sudo group. Password is set over SSH afterwards.
@@ -648,7 +738,7 @@ install -m 0755 -d /etc/apt/keyrings
 curl -fsSL https://packages.microsoft.com/keys/microsoft.asc \
   -o /etc/apt/keyrings/microsoft.asc
 chmod a+r /etc/apt/keyrings/microsoft.asc
-echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/microsoft.asc] https://packages.microsoft.com/repos/code stable main" \
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/microsoft.asc] https://packages.microsoft.com/repos/code stable main" \
   > /etc/apt/sources.list.d/vscode.list
 
 # Firefox from Mozilla's own repo rather than Ubuntu's, whose 'firefox' package is
@@ -664,11 +754,19 @@ printf 'Package: *\nPin: origin packages.mozilla.org\nPin-Priority: 1000\n' \
 curl -fsSL https://download.docker.com/linux/ubuntu/gpg \
   -o /etc/apt/keyrings/docker.asc
 chmod a+r /etc/apt/keyrings/docker.asc
-echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu noble stable" \
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu noble stable" \
   > /etc/apt/sources.list.d/docker.list
 
+# Terraform from HashiCorp's own repo, which carries arm64 for noble. The AWS CLI
+# and SAM CLI have no apt package at all and are installed from their zips below.
+curl -fsSL https://apt.releases.hashicorp.com/gpg \
+  | gpg --dearmor -o /etc/apt/keyrings/hashicorp.gpg
+chmod a+r /etc/apt/keyrings/hashicorp.gpg
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/hashicorp.gpg] https://apt.releases.hashicorp.com noble main" \
+  > /etc/apt/sources.list.d/hashicorp.list
+
 apt-get update
-apt-get install -y code firefox docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+apt-get install -y code firefox docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin terraform
 
 # Make Firefox the default browser, both for xdg-open and for the alternatives
 # system, so links opened from VS Code and the desktop actually resolve.
@@ -681,6 +779,36 @@ for u in '@@ADMIN@@' '@@USER@@'; do
     > "$home/.config/mimeapps.list"
   chown "$u:$u" "$home/.config/mimeapps.list"
 done
+
+# --- AWS CLI and SAM CLI --------------------------------------------------
+# Both ship a zip whose ./install writes to /usr/local, so every account gets
+# them; the shell installers those vendors also publish default to a per-user
+# install and would leave '@@USER@@' without the tools. Note the two disagree on
+# how to spell aarch64.
+case "$(uname -m)" in
+  aarch64) awscli_arch=aarch64; sam_arch=arm64 ;;
+  *)       awscli_arch=x86_64;  sam_arch=x86_64 ;;
+esac
+
+# Deliberately not fatal, unlike everything above: this script runs under 'set -e'
+# and a download that fails here would cost the readiness sentinel, turning a
+# missing CLI into a 20-minute create timeout. verify_tools reports what landed.
+# Chained with && rather than written as separate lines: calling a function as the
+# left side of || switches errexit off for its whole body, so without the chain a
+# failed download would carry on into unzip and install and report success.
+install_awscli() {
+  curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-${awscli_arch}.zip" -o /tmp/awscliv2.zip \
+    && unzip -q -o /tmp/awscliv2.zip -d /tmp \
+    && /tmp/aws/install
+}
+install_sam() {
+  curl -fsSL "https://github.com/aws/aws-sam-cli/releases/latest/download/aws-sam-cli-linux-${sam_arch}.zip" \
+      -o /tmp/aws-sam-cli.zip \
+    && unzip -q -o /tmp/aws-sam-cli.zip -d /tmp/sam-installation \
+    && /tmp/sam-installation/install
+}
+install_awscli || echo "WARNING: the AWS CLI failed to install" >&2
+install_sam    || echo "WARNING: the SAM CLI failed to install" >&2
 
 systemctl enable --now docker
 # Both accounts can drive Docker. Note that docker group membership is
@@ -982,6 +1110,39 @@ $machinePath = [Environment]::GetEnvironmentVariable('Path', 'Machine')
 if ($machinePath -notlike "*$bin*") {
   [Environment]::SetEnvironmentVariable('Path', "$machinePath;$bin", 'Machine')
 }
+
+# --- AWS CLI, Terraform and SAM CLI ---------------------------------------
+# All three system-wide: the MSIs install into Program Files and add themselves to
+# the machine PATH, and terraform.exe lands in $bin, which the block above already
+# put there. AWS publishes a per-user MSI too (AWSCLIV2-User.msi) -- that one would
+# install into SYSTEM's profile and leave both real accounts without the CLI.
+try {
+  $m = "$env:TEMP\awscliv2.msi"
+  Invoke-WebRequest -Uri 'https://awscli.amazonaws.com/AWSCLIV2.msi' -OutFile "$m.part" -UseBasicParsing
+  Move-Item "$m.part" $m -Force
+  Start-Process msiexec.exe -ArgumentList '/i', $m, '/qn', '/norestart' -Wait
+} catch { Write-Output "AWS CLI install failed: $_" }
+
+try {
+  $m = "$env:TEMP\sam-cli.msi"
+  Invoke-WebRequest -Uri 'https://github.com/aws/aws-sam-cli/releases/latest/download/AWS_SAM_CLI_64_PY3.msi' -OutFile "$m.part" -UseBasicParsing
+  Move-Item "$m.part" $m -Force
+  Start-Process msiexec.exe -ArgumentList '/i', $m, '/qn', '/norestart' -Wait
+  # 'sam build' walks deep dependency trees and trips over MAX_PATH without this.
+  New-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem' -Name 'LongPathsEnabled' -Value 1 -PropertyType DWORD -Force | Out-Null
+} catch { Write-Output "SAM CLI install failed: $_" }
+
+# Terraform is a bare zip with no 'latest' alias, so ask HashiCorp's own version
+# endpoint which release is current. Reading the release index instead would pick
+# up the alpha builds, which sort above the stable one.
+try {
+  $tfVersion = (Invoke-RestMethod -Uri 'https://checkpoint-api.hashicorp.com/v1/check/terraform').current_version
+  $zip = "$env:TEMP\terraform.zip"
+  Invoke-WebRequest -Uri "https://releases.hashicorp.com/terraform/$tfVersion/terraform_${tfVersion}_windows_amd64.zip" -OutFile "$zip.part" -UseBasicParsing
+  Move-Item "$zip.part" $zip -Force
+  Expand-Archive -Path $zip -DestinationPath "$env:TEMP\terraform" -Force
+  Copy-Item "$env:TEMP\terraform\terraform.exe" "$bin\terraform.exe" -Force
+} catch { Write-Output "Terraform install failed: $_" }
 
 # --- VS Code: system installer, so both accounts get it -------------------
 $vs = "$env:TEMP\vscode-setup.exe"
@@ -1741,7 +1902,7 @@ launch_instance() { # $1 ami, $2 subnet, $3 sg, $4 root dev, $5 vol gb
   local tags vol_tags iid udfile
   local extra=()
 
-  tags="ResourceType=instance,Tags=[{Key=Name,Value=${INSTANCE_NAME}},{Key=${TAG_KEY},Value=${TAG_VAL}},{Key=${OS_TAG_KEY},Value=${OS}},{Key=${ENGINE_TAG_KEY},Value=${CONTAINERS}}]"
+  tags="ResourceType=instance,Tags=[{Key=Name,Value=${INSTANCE_NAME}},{Key=${TAG_KEY},Value=${TAG_VAL}},{Key=${OS_TAG_KEY},Value=${OS}},{Key=${ARCH_TAG_KEY},Value=${ARCH}},{Key=${ENGINE_TAG_KEY},Value=${CONTAINERS}}]"
   vol_tags="ResourceType=volume,Tags=[{Key=${TAG_KEY},Value=${TAG_VAL}},{Key=${OS_TAG_KEY},Value=${OS}}]"
 
   udfile="${STATE_DIR}/user-data"
@@ -1795,7 +1956,7 @@ wait_for_password() { # $1 = instance id
     fi
   done
   die "the Administrator password was not available after ~20 minutes.
-  The instance is still running; try '${SCRIPT_NAME} info ${OS}' shortly."
+  The instance is still running; try '${SCRIPT_NAME} info ${OS} --arch=${ARCH}' shortly."
 }
 
 fetch_windows_password() { # $1 = instance id
@@ -1894,6 +2055,30 @@ prepare_windows_wsl() { # $1 = public ip
       \"powershell -ExecutionPolicy Bypass -File C:\\ProgramData\\ec2-sandbox\\prepare-wsl.ps1\""
 }
 
+# Reports which of the tools lstk shells out to actually landed. Deliberately a
+# warning rather than a failure: one flaky download should not throw away an
+# otherwise working sandbox, and the bootstrap treats these installs the same way.
+verify_tools() { # $1 = public ip
+  set_ssh_opts
+  local probe out missing
+
+  if [ "$OS" = "windows" ]; then
+    probe="powershell -NoProfile -Command \"foreach (\$t in 'aws','terraform','sam') { if (Get-Command \$t -ea SilentlyContinue) { 'TOOL ' + \$t + ' ok' } else { 'TOOL ' + \$t + ' missing' } }\""
+  else
+    probe='for t in aws terraform sam; do if command -v $t >/dev/null 2>&1; then echo "TOOL $t ok"; else echo "TOOL $t missing"; fi; done'
+  fi
+
+  out=$(ssh "${SSH_OPTS[@]}" "${SSH_USER}@$1" "$probe" 2>&1 | tr -d '\000\r') || true
+  missing=$(printf '%s\n' "$out" | awk '/^TOOL .* missing$/ { print $2 }' | tr '\n' ' ' | sed 's/ *$//')
+
+  if [ -n "$missing" ]; then
+    warn "not installed: ${missing}
+  The sandbox is otherwise usable. Re-run that installer on the box, or recreate it."
+  else
+    ok "AWS CLI, Terraform and SAM CLI are installed"
+  fi
+}
+
 # A full 32 bits from urandom. $RANDOM is only 15 bits, which is smaller than the
 # word list, and awk's srand() seeds from the clock -- two calls in the same second
 # would return the same password.
@@ -1976,7 +2161,7 @@ EOF
 
 print_connection_info() { # $1 = ip, $2 = admin pw, $3 = user pw
   printf '\n'
-  printf '%s%s sandbox%s - %s on %s\n' "$C_BOLD" "$OS" "$C_RESET" "$OS_LABEL" "$INSTANCE_TYPE"
+  printf '%s%s-%s sandbox%s - %s on %s\n' "$C_BOLD" "$OS" "$ARCH" "$C_RESET" "$OS_LABEL" "$INSTANCE_TYPE"
   printf '  Region      %s\n' "$REGION"
   printf '  Address     %s:%s\n' "$1" "$RDP_PORT"
   printf '\n'
@@ -2021,7 +2206,7 @@ print_cost_note() {
   fi
   cat >&2 <<EOF
 ${C_YELLOW}Reminder:${C_RESET} this instance bills by the hour (${INSTANCE_TYPE} plus ${MIN_VOLUME_GB} GiB gp3${extra}).
-Run '${SCRIPT_NAME} delete ${OS}' when you are done with it.
+Run '${SCRIPT_NAME} delete ${OS} --arch=${ARCH}' when you are done with it.
 EOF
 }
 
@@ -2032,8 +2217,8 @@ EOF
 create_exit_trap() {
   if [ -n "$LAUNCHED_IID" ] && [ "$CREATE_DONE" -eq 0 ]; then
     warn "instance ${LAUNCHED_IID} was launched but setup did not finish; it is still billing.
-  Retry details:  ${SCRIPT_NAME} info ${OS} --region ${REGION}
-  Or remove it:   ${SCRIPT_NAME} delete ${OS} --region ${REGION}"
+  Retry details:  ${SCRIPT_NAME} info ${OS} --arch=${ARCH} --region ${REGION}
+  Or remove it:   ${SCRIPT_NAME} delete ${OS} --arch=${ARCH} --region ${REGION}"
   fi
 }
 
@@ -2042,9 +2227,9 @@ cmd_create() {
 
   existing=$(find_instance "$LIVE_STATES")
   if [ -n "$existing" ]; then
-    die "a ${OS} sandbox already exists in ${REGION} (${existing}).
-  Connection details:  ${SCRIPT_NAME} info ${OS}
-  Remove it first:     ${SCRIPT_NAME} delete ${OS}"
+    die "a ${OS}-${ARCH} sandbox already exists in ${REGION} (${existing}).
+  Connection details:  ${SCRIPT_NAME} info ${OS} --arch=${ARCH}
+  Remove it first:     ${SCRIPT_NAME} delete ${OS} --arch=${ARCH}"
   fi
 
   ensure_state_dir
@@ -2101,6 +2286,8 @@ cmd_create() {
     cache_password "$PW_ADMIN_PATH" "$admin_pw"
   fi
 
+  verify_tools "$ip"
+
   user_pw=$(generate_password)
   set_remote_password "$ip" "$UNPRIV_USER" "$user_pw"
   cache_password "$PW_USER_PATH" "$user_pw"
@@ -2118,7 +2305,7 @@ cmd_create() {
 cmd_info() {
   local iid state ip admin_pw user_pw engine
   iid=$(find_instance "$LIVE_STATES")
-  [ -n "$iid" ] || die "no ${OS} sandbox in ${REGION}. Create one with: ${SCRIPT_NAME} create ${OS}"
+  [ -n "$iid" ] || die "no ${OS}-${ARCH} sandbox in ${REGION}. Create one with: ${SCRIPT_NAME} create ${OS} --arch=${ARCH}"
 
   state=$(instance_field "$iid" "State.Name")
   ip=$(instance_field "$iid" "PublicIpAddress")
@@ -2160,7 +2347,7 @@ confirm_delete() {
   if [ ! -t 0 ]; then
     die "refusing to delete without confirmation; pass -y to proceed non-interactively"
   fi
-  printf 'Delete the %s sandbox in %s? [y/N] ' "$OS" "$REGION" >&2
+  printf 'Delete the %s-%s sandbox in %s? [y/N] ' "$OS" "$ARCH" "$REGION" >&2
   read -r reply
   case "$reply" in
     y|Y|yes|YES) return 0 ;;
@@ -2209,29 +2396,27 @@ delete_security_group() { # $1 = vpc id
   warn "security group ${sg_id} still has dependencies; delete it by hand later"
 }
 
-cmd_delete() {
-  local iid vpc sg_id did_something=0
+# Removes the instance, security group and cached state of whichever OS/arch
+# profile set_os_profile currently holds. Prints 1 to stdout when it removed
+# something, 0 when there was nothing to do -- every other message goes to stderr.
+delete_profile() { # $1 = vpc id
+  local iid sg_id did=0
 
   iid=$(find_instance "${LIVE_STATES},shutting-down")
-  vpc=$(aws_ ec2 describe-vpcs --filters "Name=isDefault,Values=true" \
-          --query 'Vpcs[0].VpcId' --output text 2>/dev/null || true)
-
   if [ -n "$iid" ]; then
     confirm_delete
     terminate_instance "$iid"
-    did_something=1
-  else
-    log "No ${OS} instance in ${REGION}; checking for leftovers."
+    did=1
   fi
 
   # Sweep an orphaned security group even when no instance exists, e.g. after a
   # create that failed partway through.
-  if ! is_none "$vpc"; then
-    sg_id=$(find_security_group "$vpc")
+  if ! is_none "$1"; then
+    sg_id=$(find_security_group "$1")
     if ! is_none "$sg_id"; then
-      if [ "$did_something" -eq 0 ]; then confirm_delete; fi
-      delete_security_group "$vpc"
-      did_something=1
+      if [ "$did" -eq 0 ]; then confirm_delete; fi
+      delete_security_group "$1"
+      did=1
     fi
   fi
 
@@ -2239,9 +2424,32 @@ cmd_delete() {
         "${STATE_DIR}/user-data" 2>/dev/null || true
   rm -rf "${STATE_DIR}/docker" 2>/dev/null || true
 
-  if [ "$did_something" -eq 1 ]; then
-    ok "Deleted the ${OS} sandbox. Key pair ${KEY_NAME} and ${PEM_PATH} were kept for reuse."
+  if [ "$did" -eq 1 ]; then
+    ok "Deleted the ${OS}-${ARCH} sandbox. Key pair ${KEY_NAME} and ${PEM_PATH} were kept for reuse."
+  fi
+  printf '%s\n' "$did"
+}
+
+cmd_delete() {
+  local vpc did_something=0 a
+  vpc=$(aws_ ec2 describe-vpcs --filters "Name=isDefault,Values=true" \
+          --query 'Vpcs[0].VpcId' --output text 2>/dev/null || true)
+
+  if [ -n "$ARCH" ]; then
+    set_os_profile
+    did_something=$(delete_profile "$vpc")
   else
+    # No instance of this OS exists in any architecture, so there is nothing to
+    # read an architecture off. Sweep both rather than guess which left leftovers.
+    log "No ${OS} instance in ${REGION}; checking both architectures for leftovers."
+    for a in x64 arm64; do
+      ARCH="$a"
+      set_os_profile
+      if [ "$(delete_profile "$vpc")" -eq 1 ]; then did_something=1; fi
+    done
+  fi
+
+  if [ "$did_something" -eq 0 ]; then
     log "Nothing to delete for ${OS} in ${REGION}."
   fi
 }
@@ -2252,13 +2460,21 @@ main() {
   parse_args "$@"
   require_cmds aws curl ssh scp ssh-keygen openssl
   resolve_region
-  set_os_profile
   preflight_identity
 
+  # create is always told the architecture; delete and info work it out from the
+  # sandboxes that exist, and cmd_delete handles "none at all" by sweeping both.
+  if [ "$ACTION" != "create" ] && [ -z "$ARCH" ]; then
+    resolve_arch_from_instances
+  fi
+
   case "$ACTION" in
-    create) cmd_create ;;
+    create) set_os_profile; cmd_create ;;
     delete) cmd_delete ;;
-    info)   cmd_info ;;
+    info)
+      [ -n "$ARCH" ] || die "no ${OS} sandbox in ${REGION}. Create one with: ${SCRIPT_NAME} create ${OS} --arch=x64"
+      set_os_profile
+      cmd_info ;;
   esac
 }
 
