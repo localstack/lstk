@@ -62,23 +62,19 @@ func Check(ctx context.Context, sink output.Sink, githubToken string) (string, b
 	return latest, available, nil
 }
 
-// Update checks for updates and applies the update if one is available.
+// Update checks for updates and applies one if available.
 //
-// When the update would be applied, it first refuses installs it must not
-// replace in place (see blockSelfUpdate) — ahead of the version check and the
-// download, so an install lstk cannot write to fails immediately instead of
-// after fetching and verifying a release archive it can never install. A
-// --check run is exempt: reporting whether a newer version exists is useful
-// however lstk was installed, and writes nothing.
+// When it would apply, it first refuses installs it must not replace (see
+// blockSelfUpdate) — ahead of the version check and download, so an install
+// lstk cannot write to fails immediately rather than after fetching and
+// verifying an archive it can never install. --check is exempt: it writes
+// nothing, and its answer is useful however lstk was installed.
 func Update(ctx context.Context, sink output.Sink, checkOnly bool, githubToken string, force bool) error {
 	info := DetectInstallMethod()
-	// This pre-check and applyUpdate's own guard both call blockSelfUpdate, so
-	// an unwritable-directory install is probed twice per `lstk update`. That
-	// is deliberate: applyUpdate must stay the choke point (every path that
-	// replaces the binary goes through it, and a caller-supplied verdict could
-	// be forgotten), while this check keeps the refusal ahead of the version
-	// check and the download. Two ~50µs probes on a command that would
-	// otherwise fetch megabytes is the cheaper half of that trade.
+	// Probes twice per `lstk update` (here and in applyUpdate), deliberately:
+	// applyUpdate stays the choke point every replacing path goes through,
+	// while this check keeps the refusal ahead of the download. Two cheap
+	// probes on a command that would otherwise fetch megabytes.
 	if !checkOnly && !force {
 		if blocker := blockSelfUpdate(info); blocker != nil {
 			return emitSelfUpdateBlocked(sink, blocker)
@@ -139,14 +135,12 @@ func emitSelfUpdateBlocked(sink output.Sink, blocker *selfUpdateBlocker) error {
 // applyUpdate performs the update for an already-detected install method,
 // returning its canonical name ("homebrew"/"npm"/"binary") on success.
 //
-// The blockSelfUpdate check here is the choke point: every path that actually
-// replaces the binary goes through this function, including the start-path
-// update prompt's "Update now". Guarding only the `lstk update` entry point
-// left that prompt able to clobber an externally-managed install.
-// It returns a non-nil blocker instead of performing the update when the
-// binary must not be replaced, leaving the caller to choose how to render it:
-// `lstk update` fails with an ErrorEvent, the start-path prompt warns and
-// carries on.
+// Its blockSelfUpdate check is the choke point: every path that replaces the
+// binary comes through here, including the start-path prompt's "Update now" —
+// guarding only the `lstk update` entry point left that prompt able to clobber
+// an externally-managed install. It returns a non-nil blocker rather than
+// updating, so each caller picks the severity: `lstk update` fails with an
+// ErrorEvent, the prompt warns and carries on.
 func applyUpdate(ctx context.Context, sink output.Sink, latest, githubToken string, force bool, info InstallInfo) (string, *selfUpdateBlocker, error) {
 	if !force {
 		if blocker := blockSelfUpdate(info); blocker != nil {

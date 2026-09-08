@@ -14,17 +14,16 @@ type versionFetcher func(ctx context.Context, token string) (string, error)
 
 type NotifyOptions struct {
 	GitHubToken string
-	// CanPrompt reports whether this call site is able to present a blocking
-	// prompt at all (an interactive TTY). It is independent of Mode, which is
-	// the user's preference: a non-interactive start can only ever emit a note,
-	// however Mode is set.
+	// CanPrompt reports whether this call site can block at all (an interactive
+	// TTY). Independent of Mode, the user's preference: a non-interactive start
+	// only ever emits a note, however Mode is set.
 	CanPrompt          bool
 	Mode               config.UpdateCheckMode
 	PersistUpdateCheck func(mode config.UpdateCheckMode) error
-	// DetectInstall resolves how lstk itself was installed. Injected rather
-	// than called directly so tests do not depend on where the test binary
-	// happens to live — which is also what makes the apply-time guard on the
-	// prompt path testable. Defaults to DetectInstallMethod when nil.
+	// DetectInstall resolves how lstk itself was installed. Injected so tests
+	// do not depend on where the test binary lives, which is also what makes
+	// the prompt path's apply-time guard testable. Defaults to
+	// DetectInstallMethod when nil.
 	DetectInstall func() InstallInfo
 }
 
@@ -78,12 +77,10 @@ func notifyUpdateWithVersion(ctx context.Context, sink output.Sink, opts NotifyO
 		return false
 	}
 
-	// Detection runs exactly once, and only now that an update is known to
-	// exist — which is what keeps it off every `lstk start`. It runs regardless
-	// of how the mode was set, because its answer feeds the note's wording as
-	// well as the prompt/note decision, and a note that says "run lstk update"
-	// on an install where that command refuses is wrong however the mode was
-	// reached.
+	// Once, and only now that an update is known to exist — which keeps
+	// detection off every `lstk start`. It runs whatever the mode, because its
+	// answer also decides the note's wording: "run lstk update" is wrong advice
+	// on an install where that command refuses.
 	info := opts.installInfo()
 	external := info.Method == InstallExternal
 
@@ -92,10 +89,9 @@ func notifyUpdateWithVersion(ctx context.Context, sink output.Sink, opts NotifyO
 		mode = config.UpdateCheckPrompt
 	}
 
-	// An externally-managed install is never prompted, even when the user asked
-	// for prompt explicitly: "Update now" would replace a binary the external
-	// tool owns, and applyUpdate refuses it anyway. Offering an action that
-	// cannot be carried out is worse than not offering it.
+	// Never prompt an externally-managed install, even under an explicit
+	// prompt: "Update now" would replace a binary the external tool owns, and
+	// applyUpdate refuses it anyway. Better not to offer it at all.
 	if !opts.CanPrompt || external || mode == config.UpdateCheckNotify {
 		sink.Emit(updateNote(current, latest, info.Manager))
 		return false
@@ -104,10 +100,9 @@ func notifyUpdateWithVersion(ctx context.Context, sink output.Sink, opts NotifyO
 	return promptAndUpdate(ctx, sink, opts, current, latest, info)
 }
 
-// updateNote is the non-blocking "a newer version exists" line. When manager is
-// set, it names that tool instead of pointing at `lstk update` — which refuses
-// on an externally-managed install, so advising it there would send the user at
-// a command that cannot work.
+// updateNote is the non-blocking "a newer version exists" line. With a manager
+// set it names that tool instead of `lstk update`, which refuses on such an
+// install.
 func updateNote(current, latest, manager string) output.MessageEvent {
 	text := fmt.Sprintf("Update available: %s → %s (run lstk update)", current, latest)
 	if manager != "" {
@@ -126,9 +121,9 @@ func promptAndUpdate(ctx context.Context, sink output.Sink, opts NotifyOptions, 
 		{Key: "u", Label: "Update now"},
 		{Key: "r", Label: "Remind me next time"},
 	}
-	// Offered only when there is somewhere to write it. On a first run
-	// config.toml does not exist yet, and persisting would be silently dropped
-	// — telling the user their choice was saved when it was not.
+	// Only offered when there is somewhere to write it: on a first run
+	// config.toml does not exist yet, so the choice would be silently dropped
+	// after telling the user it was saved.
 	if opts.PersistUpdateCheck != nil {
 		options = append(options, output.InputOption{Key: "n", Label: "Never ask again"})
 	}
@@ -149,10 +144,9 @@ func promptAndUpdate(ctx context.Context, sink output.Sink, opts NotifyOptions, 
 
 	switch resp.SelectedKey {
 	case "u":
-		// A refusal here is recoverable and the start continues, so it is
-		// surfaced as a single warning. Rendering it as an ErrorEvent (what the
-		// `lstk update` entry point does) would leave a persistent failure
-		// block on screen while the emulator comes up underneath it.
+		// A refusal here is recoverable and the start continues, so warn once.
+		// An ErrorEvent (what `lstk update` emits) would leave a persistent
+		// failure block on screen while the emulator comes up underneath it.
 		_, blocker, err := applyUpdate(ctx, sink, latest, opts.GitHubToken, false, info)
 		if blocker != nil {
 			sink.Emit(output.MessageEvent{
@@ -170,13 +164,11 @@ func promptAndUpdate(ctx context.Context, sink output.Sink, opts NotifyOptions, 
 	case "r":
 		return false
 	case "n":
-		// Persists notify rather than off: the user asked to stop being
-		// interrupted, which is not the same as asking never to hear about a
-		// release again. Silencing entirely stays a deliberate config edit.
+		// notify, not off: the user asked to stop being interrupted, not to
+		// never hear about a release. Full silence stays a deliberate edit.
 		if opts.PersistUpdateCheck == nil {
-			// Unreachable while the option is only offered when the hook is set
-			// (see above), but a future edit that always appends it must warn
-			// rather than panic mid-start.
+			// Unreachable while the option is conditional (see above), but a
+			// future edit that always appends it must warn, not panic.
 			sink.Emit(output.MessageEvent{Severity: output.SeverityWarning, Text: "Cannot save update preference: no config file"})
 			return false
 		}

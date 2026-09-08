@@ -42,6 +42,18 @@ func installLstkUnder(t *testing.T, layout string) string {
 	return dst
 }
 
+// resolvedDir reports the directory holding path after symlink evaluation —
+// the same resolution DetectInstallMethod applies, and so what lstk prints.
+// Asserting on t.TempDir() directly does not work everywhere: macOS returns
+// /var/... where lstk prints /private/var/..., and Windows returns an 8.3
+// short name (RUNNER~1) where lstk prints the long one (runneradmin).
+func resolvedDir(t *testing.T, path string) string {
+	t.Helper()
+	resolved, err := filepath.EvalSymlinks(filepath.Dir(path))
+	require.NoError(t, err)
+	return resolved
+}
+
 func TestUpdateRefusesOnMiseManagedInstall(t *testing.T) {
 	t.Parallel()
 
@@ -51,7 +63,7 @@ func TestUpdateRefusesOnMiseManagedInstall(t *testing.T) {
 	requireExitCode(t, 1, err)
 	combined := stdout + stderr
 	assert.Contains(t, combined, "mise", "the refusal must name the manager")
-	assert.Contains(t, combined, filepath.Dir(bin), "the refusal must name the resolved install path")
+	assert.Contains(t, combined, resolvedDir(t, bin), "the refusal must name the resolved install path")
 }
 
 func TestUpdateForceBypassesExternalRefusal(t *testing.T) {
@@ -145,6 +157,8 @@ func TestUpdateRefusesWhenInstallDirIsNotWritable(t *testing.T) {
 
 	bin := installLstkUnder(t, "opt/tools/bin")
 	dir := filepath.Dir(bin)
+	// Resolve before chmod, while the directory is still fully traversable.
+	want := resolvedDir(t, bin)
 	require.NoError(t, os.Chmod(dir, 0500))
 	// Restore write permission so t.TempDir cleanup can remove the binary.
 	t.Cleanup(func() { _ = os.Chmod(dir, 0700) })
@@ -152,7 +166,7 @@ func TestUpdateRefusesWhenInstallDirIsNotWritable(t *testing.T) {
 	stdout, stderr, err := runBinary(t, t.TempDir(), testEnvWithHome(t.TempDir(), ""), bin, "update")
 
 	requireExitCode(t, 1, err)
-	assert.Contains(t, stdout+stderr, dir, "the refusal must name the directory it cannot write to")
+	assert.Contains(t, stdout+stderr, want, "the refusal must name the directory it cannot write to")
 }
 
 // buildStampedLstk builds lstk with a real version number into the given

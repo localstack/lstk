@@ -8,9 +8,8 @@ import (
 	"github.com/spf13/viper"
 )
 
-// UpdateCheckVar is the environment variable that overrides the [cli]
-// update_check config key. Named here so error messages can quote the exact
-// variable a user set rather than a hardcoded string.
+// UpdateCheckVar overrides the [cli] update_check config key. Named so error
+// messages can quote the exact variable the user set.
 const UpdateCheckVar = "LSTK_UPDATE_CHECK"
 
 type Env struct {
@@ -57,8 +56,8 @@ func Init() *Env {
 		AnalyticsEndpoint: viper.GetString("analytics_endpoint"),
 		GitHubToken:       viper.GetString("github_token"),
 		MergeStrategy:     viper.GetString("merge_strategy"),
-		// Captured here rather than read from viper later: config.loadConfig
-		// calls viper.Reset(), which drops the env-var binding this relies on.
+		// Captured here, not read from viper later: config.loadConfig calls
+		// viper.Reset(), dropping the env-var binding this relies on.
 		UpdateCheck: viper.GetString("update_check"),
 	}
 

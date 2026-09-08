@@ -324,11 +324,10 @@ func configureCommandExecution(root *cobra.Command, cfg *env.Env, tel *telemetry
 	wrapPreRunEForJSON(root, cfg, stdout)
 }
 
-// resolveUpdateCheckMode applies the update-check resolution order:
-// LSTK_UPDATE_CHECK wins over the [cli] update_check config key. An unset value
-// stays UpdateCheckUnset rather than defaulting to prompt here, so the domain
-// layer can still fall through to install detection — which is what keeps that
-// detection off the path when the user did express a preference.
+// resolveUpdateCheckMode applies the resolution order: LSTK_UPDATE_CHECK wins
+// over the [cli] update_check key. An unset value stays UpdateCheckUnset rather
+// than defaulting to prompt, so the domain layer can tell "no preference" from
+// an explicit choice.
 func resolveUpdateCheckMode(cfg *env.Env, appConfig *config.Config) (config.UpdateCheckMode, error) {
 	if cfg.UpdateCheck != "" {
 		mode, err := config.ParseUpdateCheckMode(cfg.UpdateCheck)
@@ -363,8 +362,7 @@ func startEmulator(ctx context.Context, rt runtime.Runtime, cfg *env.Env, tel *t
 	}
 
 	// Resolved before anything is written or started, so a bad
-	// LSTK_UPDATE_CHECK fails as early as a bad config key already does
-	// (config.Get validates the [cli] section above).
+	// LSTK_UPDATE_CHECK fails as early as a bad config key already does.
 	updateCheckMode, err := resolveUpdateCheckMode(cfg, appConfig)
 	if err != nil {
 		sink.Emit(output.ErrorEvent{
@@ -421,10 +419,9 @@ func startEmulator(ctx context.Context, rt runtime.Runtime, cfg *env.Env, tel *t
 		Mode:          updateCheckMode,
 		DetectInstall: update.DetectInstallMethod,
 	}
-	// Only offer to persist a preference when there is a file to persist it to.
-	// On a genuine first run config.toml does not exist yet — it is created
-	// later, by the emulator picker — so the update prompt must not offer an
-	// option whose effect would be silently dropped.
+	// Only offer to persist a preference when there is a file for it. On a
+	// genuine first run config.toml does not exist yet (the emulator picker
+	// creates it), so the option would be silently dropped.
 	if config.HasFile() {
 		notifyOpts.PersistUpdateCheck = config.SetUpdateCheck
 	}
@@ -450,10 +447,9 @@ func startEmulator(ctx context.Context, rt runtime.Runtime, cfg *env.Env, tel *t
 			Text:     fmt.Sprintf("Configured with default emulator %s.", emName),
 		})
 	}
-	// Same options as the interactive path, minus the ability to prompt: the
-	// mode and the detection hook still apply, so `update_check = "off"`
-	// silences a non-interactive start too, and a note there still names an
-	// external manager rather than advising a command that would refuse.
+	// Same options as the interactive path, minus the ability to prompt, so
+	// `update_check = "off"` silences a non-interactive start too and its note
+	// still names an external manager.
 	nonInteractiveNotify := notifyOpts
 	nonInteractiveNotify.CanPrompt = false
 	update.NotifyUpdate(ctx, sink, nonInteractiveNotify)

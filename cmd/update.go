@@ -32,9 +32,8 @@ func newUpdateCmd(cfg *env.Env) *cobra.Command {
 	}
 
 	cmd.Flags().BoolVar(&checkOnly, "check", false, "Only check for updates without applying them")
-	// Exists because externally-managed-install detection is a path-marker
-	// heuristic: it cannot recognize every packaging layout, so a user whose
-	// install it misreads must still have a way through.
+	// Detection is a path-marker heuristic that cannot know every packaging
+	// layout, so a user it misreads needs a way through.
 	cmd.Flags().BoolVar(&force, "force", false, "Replace the binary even when the install is externally managed or its directory looks unwritable")
 
 	return cmd

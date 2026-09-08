@@ -171,11 +171,10 @@ func setInFile(path, key string, value any) error {
 	return os.WriteFile(path, []byte(content), 0644)
 }
 
-// SetUpdateCheck persists the update-check mode. Unlike Set, it fails rather
-// than succeeding in memory only when there is no config file to write to:
-// this backs the "Never ask again" prompt option, and reporting success for a
-// write that was silently dropped would tell the user their choice was saved
-// when the next run would prompt them again.
+// SetUpdateCheck persists the update-check mode. Unlike Set, it fails when
+// there is no config file rather than succeeding in memory only: it backs the
+// "Never ask again" option, where a dropped write would tell the user their
+// choice was saved and then prompt them again next run.
 func SetUpdateCheck(mode UpdateCheckMode) error {
 	if resolvedConfigPath() == "" {
 		return errors.New("no config file to write to yet")
@@ -184,8 +183,8 @@ func SetUpdateCheck(mode UpdateCheckMode) error {
 }
 
 // HasFile reports whether a config file has been resolved, i.e. whether
-// settings can be persisted. The command boundary uses it to decide whether to
-// offer options that write config.
+// settings can be persisted at all. The command boundary uses it to decide
+// whether to offer options that write config.
 func HasFile() bool {
 	return resolvedConfigPath() != ""
 }
