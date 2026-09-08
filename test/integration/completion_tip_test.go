@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -13,8 +15,8 @@ import (
 )
 
 // completionTipText is asserted verbatim, "> Tip: " prefix included: that
-// prefix is the convention the neighbouring post-start tips use (tipsForType in
-// internal/container/start.go), so it is observable behavior, not styling.
+// prefix is the convention the other post-start tips use (tipsForType in
+// internal/container/tips.go), so it is observable behavior, not styling.
 const completionTipText = "> Tip: Enable tab completion for your shell: lstk completion [bash|zsh|fish|powershell] " +
 	"See https://docs.localstack.cloud/aws/developer-tools/running-localstack/lstk/#shell-completions"
 
@@ -33,6 +35,23 @@ func firstRunHome(t *testing.T) (env.Environ, string) {
 	require.NoFileExists(t, configPath, "test setup: config must be absent for this to be a first run")
 
 	return e, configPath
+}
+
+// distinctTips returns the unique "> Tip:" lines in out. Bubble Tea repaints
+// lines, so a raw occurrence count would overstate.
+func distinctTips(out string) []string {
+	var tips []string
+	for _, line := range strings.Split(out, "\n") {
+		i := strings.Index(line, "> Tip:")
+		if i < 0 {
+			continue
+		}
+		tip := strings.TrimSpace(line[i:])
+		if !slices.Contains(tips, tip) {
+			tips = append(tips, tip)
+		}
+	}
+	return tips
 }
 
 func TestFirstRunShowsCompletionTip(t *testing.T) {
@@ -60,7 +79,9 @@ func TestFirstRunShowsCompletionTip(t *testing.T) {
 	out, err := p.wait()
 	require.NoError(t, err, "lstk start should exit successfully")
 
-	assert.Contains(t, out, completionTipText, "first successful interactive start should point at shell completion setup")
+	// Exactly one tip, and it is this one — two tips compete and neither lands (#484).
+	assert.Equal(t, []string{completionTipText}, distinctTips(out),
+		"first successful interactive start should point at shell completion setup, and show no other tip")
 }
 
 // --type answers the first-run picker, so it suppresses it — but the run is
@@ -117,6 +138,7 @@ func TestSubsequentRunDoesNotShowCompletionTip(t *testing.T) {
 	require.NoError(t, err, "lstk start should exit successfully")
 
 	assert.NotContains(t, out, completionTipText, "the tip must not repeat once lstk has been configured")
+	assert.Len(t, distinctTips(out), 1, "a configured run should show the rotating tip, and only that")
 }
 
 func TestFirstRunNonInteractiveShowsNoCompletionTip(t *testing.T) {
