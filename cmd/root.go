@@ -324,7 +324,7 @@ func configureCommandExecution(root *cobra.Command, cfg *env.Env, tel *telemetry
 	wrapPreRunEForJSON(root, cfg, stdout)
 }
 
-func buildStartOptions(cfg *env.Env, appConfig *config.Config, logger log.Logger, tel *telemetry.Client, persist bool) container.StartOptions {
+func buildStartOptions(cfg *env.Env, appConfig *config.Config, logger log.Logger, tel *telemetry.Client, persist, firstRun bool) container.StartOptions {
 	return container.StartOptions{
 		PlatformClient:   api.NewPlatformClient(cfg.APIEndpoint, logger),
 		AuthToken:        cfg.AuthToken,
@@ -337,6 +337,7 @@ func buildStartOptions(cfg *env.Env, appConfig *config.Config, logger log.Logger
 		StartupTimeout:   cfg.StartupTimeout,
 		Logger:           logger,
 		Telemetry:        tel,
+		FirstRun:         firstRun,
 	}
 }
 
@@ -381,7 +382,7 @@ func startEmulator(ctx context.Context, rt runtime.Runtime, cfg *env.Env, tel *t
 		return err
 	}
 
-	opts := buildStartOptions(cfg, appConfig, logger, tel, persist)
+	opts := buildStartOptions(cfg, appConfig, logger, tel, persist, wasFirstRun)
 
 	notifyOpts := update.NotifyOptions{
 		GitHubToken:        cfg.GitHubToken,
@@ -399,7 +400,6 @@ func startEmulator(ctx context.Context, rt runtime.Runtime, cfg *env.Env, tel *t
 			ConfigPath:             configPath,
 			EmulatorLabel:          config.CachedPlanLabel(),
 			NeedsEmulatorSelection: firstRun,
-			CompletionTip:          wasFirstRun,
 			PostStart:              autoLoad,
 		})
 	}
