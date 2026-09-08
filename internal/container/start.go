@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"math/rand/v2"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -72,9 +71,26 @@ type StartOptions struct {
 	// AuthOptions is passed through to auth.New; tests use it to inject a fake
 	// browser opener so a re-login flow never opens a real tab.
 	AuthOptions []auth.Option
+	// FirstRun reports that lstk had no config.toml when this run began; it
+	// selects the first-run tip.
+	FirstRun bool
 }
 
+// Start brings up the configured emulator, recovering from a definitive license
+// rejection with an in-place re-login when interactive.
+//
+// The post-start tip is emitted here, on the single entry point, so a run can
+// only ever show one — see selectTip.
 func Start(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts StartOptions, interactive bool) (StartResult, error) {
+	result, err := start(ctx, rt, sink, opts, interactive)
+	if err != nil {
+		return result, err
+	}
+	emitPostStartTip(sink, result.Type, opts.FirstRun, interactive)
+	return result, nil
+}
+
+func start(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts StartOptions, interactive bool) (StartResult, error) {
 	// Fail fast on unsupported multi-container configs before any health/auth
 	// checks or image pulls, so we don't leave a partial startup that later dies
 	// on container-name conflicts or shared port collisions.
@@ -468,30 +484,6 @@ func emitPostStartPointers(sink output.Sink, emulatorType config.EmulatorType, r
 	if webAppURL != "" {
 		sink.Emit(output.MessageEvent{Severity: output.SeveritySecondary, Text: fmt.Sprintf("• Web app: %s", strings.TrimRight(webAppURL, "/"))})
 	}
-	if tips := tipsForType(emulatorType); len(tips) > 0 {
-		sink.Emit(output.MessageEvent{Severity: output.SeveritySecondary, Text: tips[rand.IntN(len(tips))]})
-	}
-}
-
-func tipsForType(t config.EmulatorType) []string {
-	switch t {
-	case config.EmulatorAWS:
-		return []string{
-			"> Tip: View emulator logs: lstk logs --follow",
-			"> Tip: View deployed resources: lstk status",
-		}
-	case config.EmulatorSnowflake:
-		return []string{
-			"> Tip: View emulator logs: lstk logs --follow",
-			"> Tip: Check emulator status: lstk status",
-		}
-	case config.EmulatorAzure:
-		return []string{
-			"> Tip: View emulator logs: lstk logs --follow",
-			"> Tip: Check emulator status: lstk status",
-		}
-	}
-	return nil
 }
 
 func pullImages(ctx context.Context, rt runtime.Runtime, sink output.Sink, tel *telemetry.Client, containers []runtime.ContainerConfig, interactive bool) (map[string]bool, error) {

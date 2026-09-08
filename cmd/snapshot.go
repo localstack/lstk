@@ -212,7 +212,7 @@ func newSnapshotAutoLoader(cfg *env.Env, rt runtime.Runtime, appConfig *config.C
 
 func buildStarter(cfg *env.Env, rt runtime.Runtime, appConfig *config.Config, logger log.Logger, tel *telemetry.Client) snapshot.Starter {
 	return func(ctx context.Context, sink output.Sink) error {
-		opts := buildStartOptions(cfg, appConfig, logger, tel, false)
+		opts := buildStartOptions(cfg, appConfig, logger, tel, false, false)
 		_, err := container.Start(ctx, rt, sink, opts, false)
 		return err
 	}

@@ -44,7 +44,7 @@ func newRestartCmd(cfg *env.Env, tel *telemetry.Client, logger log.Logger) *cobr
 			stopOpts := container.StopOptions{
 				Telemetry: tel,
 			}
-			startOpts := buildStartOptions(cfg, appConfig, logger, tel, persist)
+			startOpts := buildStartOptions(cfg, appConfig, logger, tel, persist, false)
 
 			if isInteractiveMode(cfg) {
 				return ui.RunRestart(cmd.Context(), rt, stopOpts, startOpts)
