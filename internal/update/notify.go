@@ -84,15 +84,10 @@ func notifyUpdateWithVersion(ctx context.Context, sink output.Sink, opts NotifyO
 	info := opts.installInfo()
 	external := info.Method == InstallExternal
 
-	mode := opts.Mode
-	if mode == config.UpdateCheckUnset {
-		mode = config.UpdateCheckPrompt
-	}
-
 	// Never prompt an externally-managed install, even under an explicit
 	// prompt: "Update now" would replace a binary the external tool owns, and
 	// applyUpdate refuses it anyway. Better not to offer it at all.
-	if !opts.CanPrompt || external || mode == config.UpdateCheckNotify {
+	if !opts.CanPrompt || external || opts.Mode == config.UpdateCheckNotify {
 		sink.Emit(updateNote(current, latest, info.Manager))
 		return false
 	}

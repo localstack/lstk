@@ -44,9 +44,10 @@ func installLstkUnder(t *testing.T, layout string) string {
 
 // resolvedDir reports the directory holding path after symlink evaluation —
 // the same resolution DetectInstallMethod applies, and so what lstk prints.
-// Asserting on t.TempDir() directly does not work everywhere: macOS returns
-// /var/... where lstk prints /private/var/..., and Windows returns an 8.3
-// short name (RUNNER~1) where lstk prints the long one (runneradmin).
+// Windows requires it: t.TempDir() hands back an 8.3 short name (RUNNER~1)
+// where lstk prints the long one (runneradmin), which no substring match can
+// bridge. On macOS the unresolved form passed only by accident (/var/... is a
+// substring of /private/var/...), so this makes that assertion meaningful too.
 func resolvedDir(t *testing.T, path string) string {
 	t.Helper()
 	resolved, err := filepath.EvalSymlinks(filepath.Dir(path))
@@ -62,7 +63,7 @@ func TestUpdateRefusesOnMiseManagedInstall(t *testing.T) {
 
 	requireExitCode(t, 1, err)
 	combined := stdout + stderr
-	assert.Contains(t, combined, "mise", "the refusal must name the manager")
+	assert.Contains(t, combined, "managed by mise", "the refusal must name the manager")
 	assert.Contains(t, combined, resolvedDir(t, bin), "the refusal must name the resolved install path")
 }
 
@@ -213,7 +214,7 @@ func countingReleaseServer(t *testing.T, tag string, hits *atomic.Int32) *httpte
 // startEnv runs `lstk start` against an unreachable Docker daemon: the update
 // notification is emitted before container.Start, so its output is observable
 // without a real emulator.
-func startEnv(t *testing.T, srv *httptest.Server, configFile string, extra ...string) []string {
+func startEnv(t *testing.T, srv *httptest.Server, extra ...string) []string {
 	t.Helper()
 	e := append(testEnvWithHome(t.TempDir(), ""),
 		string(env.UpdateGitHubAPIEndpoint)+"="+srv.URL,
@@ -231,7 +232,7 @@ func TestUpdateCheckOffMakesNoRequestAndSaysNothing(t *testing.T) {
 	bin := buildStampedLstk(t, "opt/bin", "0.0.1")
 	configFile := writeConfigWithCLI(t, `update_check = "off"`)
 
-	stdout, stderr, _ := runBinary(t, t.TempDir(), startEnv(t, srv, configFile), bin,
+	stdout, stderr, _ := runBinary(t, t.TempDir(), startEnv(t, srv), bin,
 		"--config", configFile, "start", "--non-interactive")
 
 	assert.Equal(t, int32(0), hits.Load(), "off must make no request to the release API")
@@ -246,7 +247,7 @@ func TestUpdateCheckNotifyEmitsNoteWithoutBlocking(t *testing.T) {
 	bin := buildStampedLstk(t, "opt/bin", "0.0.1")
 	configFile := writeConfigWithCLI(t, `update_check = "notify"`)
 
-	stdout, stderr, _ := runBinary(t, t.TempDir(), startEnv(t, srv, configFile), bin,
+	stdout, stderr, _ := runBinary(t, t.TempDir(), startEnv(t, srv), bin,
 		"--config", configFile, "start", "--non-interactive")
 
 	assert.Equal(t, int32(1), hits.Load(), "notify must still check")
@@ -262,7 +263,7 @@ func TestUpdateCheckEnvVarOverridesConfig(t *testing.T) {
 	configFile := writeConfigWithCLI(t, `update_check = "notify"`)
 
 	stdout, stderr, _ := runBinary(t, t.TempDir(),
-		startEnv(t, srv, configFile, "LSTK_UPDATE_CHECK=off"), bin,
+		startEnv(t, srv, "LSTK_UPDATE_CHECK=off"), bin,
 		"--config", configFile, "start", "--non-interactive")
 
 	assert.Equal(t, int32(0), hits.Load(), "the env var must win over the config key")
@@ -279,7 +280,7 @@ func TestUpdateCheckNoteNamesExternalManager(t *testing.T) {
 	bin := buildStampedLstk(t, ".local/share/mise/installs/github-localstack-lstk/latest", "0.0.1")
 	configFile := writeConfigWithCLI(t, `update_check = "notify"`)
 
-	stdout, stderr, _ := runBinary(t, t.TempDir(), startEnv(t, srv, configFile), bin,
+	stdout, stderr, _ := runBinary(t, t.TempDir(), startEnv(t, srv), bin,
 		"--config", configFile, "start", "--non-interactive")
 
 	combined := stdout + stderr
@@ -296,7 +297,7 @@ func TestInvalidUpdateCheckEnvVarIsRejectedAsConfigInvalid(t *testing.T) {
 	configFile := writeConfigWithCLI(t, `update_check = "notify"`)
 
 	stdout, _, err := runBinary(t, t.TempDir(),
-		startEnv(t, srv, configFile, "LSTK_UPDATE_CHECK=quiet"), bin,
+		startEnv(t, srv, "LSTK_UPDATE_CHECK=quiet"), bin,
 		"--config", configFile, "start", "--non-interactive", "--json")
 
 	requireExitCode(t, 1, err)
@@ -340,7 +341,7 @@ func TestUpdatePromptOmitsNeverAskAgainOnFirstRun(t *testing.T) {
 
 	// No --config and a fresh HOME: config.toml does not exist.
 	cmd := exec.Command(bin, "start")
-	cmd.Env = startEnv(t, srv, "")
+	cmd.Env = startEnv(t, srv)
 	proc := startCmdInPTY(t, testContext(t), cmd)
 	t.Cleanup(proc.kill)
 
@@ -362,10 +363,23 @@ func TestUpdatePromptOffersNeverAskAgainWhenConfigExists(t *testing.T) {
 	configFile := writeConfigWithCLI(t, `update_check = "prompt"`)
 
 	cmd := exec.Command(bin, "--config", configFile, "start")
-	cmd.Env = startEnv(t, srv, configFile)
+	cmd.Env = startEnv(t, srv)
 	proc := startCmdInPTY(t, testContext(t), cmd)
 	t.Cleanup(proc.kill)
 
 	proc.waitForOutput("Update lstk to latest version?", "the update prompt should appear")
 	proc.waitForOutput("Never ask again", "the opt-out must be offered when config exists")
+}
+
+// --check reports whether a newer version exists and writes nothing, so it is
+// exempt from the refusal. Without the exemption this exits 1 on every
+// externally-managed install and every unwritable install directory.
+func TestUpdateCheckIsNotRefusedOnExternalInstall(t *testing.T) {
+	t.Parallel()
+
+	bin := installLstkUnder(t, ".local/share/mise/installs/github-localstack-lstk/latest")
+	stdout, stderr, err := runBinary(t, t.TempDir(), testEnvWithHome(t.TempDir(), ""), bin, "update", "--check")
+
+	require.NoError(t, err, stderr)
+	assert.NotContains(t, stdout+stderr, "will not update itself")
 }

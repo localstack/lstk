@@ -325,9 +325,8 @@ func configureCommandExecution(root *cobra.Command, cfg *env.Env, tel *telemetry
 }
 
 // resolveUpdateCheckMode applies the resolution order: LSTK_UPDATE_CHECK wins
-// over the [cli] update_check key. An unset value stays UpdateCheckUnset rather
-// than defaulting to prompt, so the domain layer can tell "no preference" from
-// an explicit choice.
+// over the [cli] update_check key. Neither set yields UpdateCheckUnset, which
+// the domain layer treats as prompt.
 func resolveUpdateCheckMode(cfg *env.Env, appConfig *config.Config) (config.UpdateCheckMode, error) {
 	if cfg.UpdateCheck != "" {
 		mode, err := config.ParseUpdateCheckMode(cfg.UpdateCheck)

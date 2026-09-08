@@ -2,14 +2,13 @@ package update
 
 import (
 	"context"
-
 	"encoding/json"
 	"fmt"
-	"github.com/localstack/lstk/internal/config"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
+	"github.com/localstack/lstk/internal/config"
 	"github.com/localstack/lstk/internal/output"
 	"github.com/stretchr/testify/assert"
 )
@@ -89,7 +88,8 @@ func TestNotifyUpdateNoUpdateAvailable(t *testing.T) {
 	var events []output.Event
 	sink := output.SinkFunc(func(event output.Event) { events = append(events, event) })
 
-	exit := notifyUpdateWithVersion(context.Background(), sink, NotifyOptions{CanPrompt: true}, "v1.0.0", testFetcher(server.URL))
+	exit := notifyUpdateWithVersion(context.Background(), sink, NotifyOptions{
+		DetectInstall: func() InstallInfo { return InstallInfo{Method: InstallBinary} }, CanPrompt: true}, "v1.0.0", testFetcher(server.URL))
 	assert.False(t, exit)
 	assert.Empty(t, events)
 }
@@ -101,7 +101,8 @@ func TestNotifyUpdatePromptDisabled(t *testing.T) {
 	var events []output.Event
 	sink := output.SinkFunc(func(event output.Event) { events = append(events, event) })
 
-	exit := notifyUpdateWithVersion(context.Background(), sink, NotifyOptions{}, "1.0.0", testFetcher(server.URL))
+	exit := notifyUpdateWithVersion(context.Background(), sink, NotifyOptions{
+		DetectInstall: func() InstallInfo { return InstallInfo{Method: InstallBinary} }}, "1.0.0", testFetcher(server.URL))
 	assert.False(t, exit)
 	assert.Len(t, events, 1)
 	msg, ok := events[0].(output.MessageEvent)
@@ -123,6 +124,7 @@ func TestNotifyUpdatePromptRemind(t *testing.T) {
 	})
 
 	exit := notifyUpdateWithVersion(context.Background(), sink, NotifyOptions{
+		DetectInstall:      func() InstallInfo { return InstallInfo{Method: InstallBinary} },
 		CanPrompt:          true,
 		PersistUpdateCheck: func(config.UpdateCheckMode) error { return nil },
 	}, "1.0.0", testFetcher(server.URL))
@@ -147,6 +149,7 @@ func TestNotifyUpdatePromptCancelled(t *testing.T) {
 	})
 
 	exit := notifyUpdateWithVersion(context.Background(), sink, NotifyOptions{
+		DetectInstall:      func() InstallInfo { return InstallInfo{Method: InstallBinary} },
 		CanPrompt:          true,
 		PersistUpdateCheck: func(config.UpdateCheckMode) error { return nil },
 	}, "1.0.0", testFetcher(server.URL))

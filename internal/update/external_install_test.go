@@ -1,11 +1,13 @@
 package update
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	goruntime "runtime"
 	"testing"
 
+	"github.com/localstack/lstk/internal/output"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -274,4 +276,42 @@ func TestBlockSelfUpdateUnknownPathIgnoresWorkingDirectory(t *testing.T) {
 	t.Chdir(readOnly)
 
 	assert.Nil(t, blockSelfUpdate(InstallInfo{Method: InstallBinary, ResolvedPath: ""}))
+}
+
+// --force is the documented escape hatch for an install the path markers
+// misread, so its bypass inside applyUpdate must stay reachable. Nothing else
+// covers it: the integration test for --force runs a `dev` build, which
+// short-circuits in Check before applyUpdate is ever called.
+//
+// The download is pointed at a dead address, so this asserts only that no
+// blocker was returned — i.e. that force got past the guard.
+func TestApplyUpdateForceBypassesTheBlocker(t *testing.T) {
+	t.Setenv("LSTK_UPDATE_GITHUB_DOWNLOAD_ENDPOINT", "http://127.0.0.1:1")
+
+	sink := output.SinkFunc(func(output.Event) {})
+	info := InstallInfo{
+		Method:       InstallExternal,
+		Manager:      "mise",
+		ResolvedPath: filepath.Join(t.TempDir(), "lstk"),
+	}
+
+	_, blocker, err := applyUpdate(context.Background(), sink, "v9.9.9", "", true, info)
+
+	assert.Nil(t, blocker, "--force must not be refused")
+	assert.Error(t, err, "the update itself still fails: the download endpoint is dead")
+}
+
+func TestApplyUpdateWithoutForceIsRefused(t *testing.T) {
+	sink := output.SinkFunc(func(output.Event) {})
+	info := InstallInfo{
+		Method:       InstallExternal,
+		Manager:      "mise",
+		ResolvedPath: filepath.Join(t.TempDir(), "lstk"),
+	}
+
+	_, blocker, err := applyUpdate(context.Background(), sink, "v9.9.9", "", false, info)
+
+	require.NotNil(t, blocker)
+	assert.Equal(t, "mise", blocker.Manager)
+	assert.NoError(t, err, "a refusal is not an error at this layer")
 }

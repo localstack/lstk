@@ -55,10 +55,11 @@ type externalMarker struct {
 // installed, plus immutable stores lstk cannot write to. `rtx` is mise's former
 // directory name and reports as mise, the tool the user would run.
 //
-// Each entry lists the install root *and* the launcher directory on PATH:
-// `shims`/`bin` entries are not symlinks into the install root everywhere
+// Tool-manager entries list the install root *and* the launcher directory on
+// PATH: `shims`/`bin` entries are not symlinks into the install root everywhere
 // (scoop's are launcher exes, asdf's are shell scripts), so EvalSymlinks leaves
-// them alone and the install-root marker would miss the common case.
+// them alone and the install-root marker would miss the common case. The store
+// entries need only one segment pair — nothing is installed outside the store.
 var externalMarkers = []externalMarker{
 	{first: "nix", second: []string{"store"}, manager: "nix"},
 	{first: "gnu", second: []string{"store"}, manager: "guix"},

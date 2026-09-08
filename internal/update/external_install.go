@@ -26,7 +26,7 @@ func installDirWritable(exePath string) (bool, error) {
 	dir := filepath.Dir(exePath)
 	f, err := os.CreateTemp(dir, ".lstk-update-probe-*")
 	if err != nil {
-		if errors.Is(err, fs.ErrPermission) || errors.Is(err, os.ErrPermission) {
+		if errors.Is(err, fs.ErrPermission) {
 			return false, nil
 		}
 		// A read-only filesystem surfaces as EROFS, which is not ErrPermission.
@@ -46,9 +46,11 @@ func installDirWritable(exePath string) (bool, error) {
 	return true, nil
 }
 
-// isReadOnlyFSError reports whether err is EROFS — how an immutable store
-// refuses a write, rather than with a permission error. syscall.EROFS exists on
-// Windows too, so this needs no per-platform variant.
+// isReadOnlyFSError reports whether err is EROFS — how a unix immutable store
+// (a nix store, a read-only container layer) refuses a write, rather than with
+// a permission error. syscall.EROFS compiles on Windows but is never produced
+// there, so write-protected Windows media falls through as an indeterminate
+// probe and is not refused; ACL denials still are, via ErrPermission.
 func isReadOnlyFSError(err error) bool {
 	return errors.Is(err, syscall.EROFS)
 }
