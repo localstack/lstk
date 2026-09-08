@@ -5,13 +5,10 @@ import (
 	"strings"
 )
 
-// UpdateCheckMode is the value of the `[cli] update_check` config key (and of
-// the LSTK_UPDATE_CHECK environment variable), governing the automatic update
-// check on the start path only — an explicit `lstk update` always runs.
-//
-// UpdateCheckUnset is the zero value and means "no preference expressed", which
-// is what lets a caller distinguish an unset key from an explicit "prompt" and
-// fall through to the next source in the resolution order.
+// UpdateCheckMode is the `[cli] update_check` / LSTK_UPDATE_CHECK value. It
+// governs only the automatic check on start; an explicit `lstk update` always
+// runs. The zero value means "no preference", which lets a caller tell an unset
+// key from an explicit "prompt" and fall through to the next source.
 type UpdateCheckMode string
 
 const (
@@ -27,11 +24,9 @@ const (
 // updateCheckModes is the accepted set, in the order used to build error text.
 var updateCheckModes = []UpdateCheckMode{UpdateCheckPrompt, UpdateCheckNotify, UpdateCheckOff}
 
-// ParseUpdateCheckMode validates a raw update_check value. An empty string is
-// valid and yields UpdateCheckUnset; anything else must match a mode exactly.
-// Matching is deliberately strict — no trimming or case folding — so a typo
-// surfaces as an error the user can see rather than being silently coerced into
-// a mode they did not ask for.
+// ParseUpdateCheckMode validates a raw update_check value; "" yields
+// UpdateCheckUnset. Matching is exact — no trimming or case folding — so a typo
+// is reported rather than coerced into a mode the user did not ask for.
 func ParseUpdateCheckMode(s string) (UpdateCheckMode, error) {
 	if s == "" {
 		return UpdateCheckUnset, nil

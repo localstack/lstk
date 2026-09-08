@@ -11,23 +11,17 @@ import (
 	"github.com/localstack/lstk/internal/output"
 )
 
-// installDirWritable reports whether the directory holding the given
-// executable path can be written to, which is what an in-place binary update
-// requires. It is the backstop for install methods no path marker in
-// externalMarkers recognizes — a root-owned /usr/bin install run as a normal
-// user, a read-only container layer, an immutable store lstk has not been
-// taught about.
+// installDirWritable reports whether the directory holding exePath can be
+// written to, as an in-place binary update requires. It backstops the path
+// markers for installs they do not recognize: a root-owned /usr/bin run as a
+// normal user, a read-only container layer, an unknown immutable store.
 //
-// It probes by creating and removing a file rather than calling access(2),
-// which can report success for root or under an ACL that the subsequent rename
-// would still fail. The probe costs ~50µs against access(2)'s ~5µs, which is
-// why it is confined to the explicit `lstk update` path — where it precedes a
-// multi-megabyte download and the difference is noise. It must never be put on
-// the automatic start-path check, which runs on every `lstk start`.
-//
-// A permission error means "not writable" rather than a failure; any other
-// error is returned, so a caller never reads an unrelated I/O fault as a
-// read-only install.
+// It probes with a temp file rather than access(2), which can report success
+// for root or under an ACL the later rename still fails. That costs ~10x more,
+// so it belongs only on the explicit `lstk update` path — never on the
+// start-path check, which runs on every `lstk start`. A permission or EROFS
+// error means "not writable"; any other error is returned, so an unrelated I/O
+// fault is never read as a read-only install.
 func installDirWritable(exePath string) (bool, error) {
 	dir := filepath.Dir(exePath)
 	f, err := os.CreateTemp(dir, ".lstk-update-probe-*")
@@ -52,10 +46,9 @@ func installDirWritable(exePath string) (bool, error) {
 	return true, nil
 }
 
-// isReadOnlyFSError reports whether err is a read-only filesystem error, which
-// is how an immutable store (nix, a read-only container layer) refuses a write
-// rather than with a permission error. syscall.EROFS is defined on Windows too,
-// so this needs no per-platform variant.
+// isReadOnlyFSError reports whether err is EROFS — how an immutable store
+// refuses a write, rather than with a permission error. syscall.EROFS exists on
+// Windows too, so this needs no per-platform variant.
 func isReadOnlyFSError(err error) bool {
 	return errors.Is(err, syscall.EROFS)
 }
@@ -95,14 +88,10 @@ func (b selfUpdateBlocker) action() output.ErrorAction {
 // blockSelfUpdate reports why an in-place binary replacement must not be
 // attempted, or nil when it may proceed.
 //
-// Homebrew and npm installs are never blocked: they delegate to `brew upgrade`
-// and `npm install -g`, which own the install directory themselves and work
-// even where lstk cannot write to it directly.
-//
-// An indeterminate writability probe deliberately does not block. Guessing
-// "read-only" from an unrelated I/O error would refuse an update that would
-// have worked; falling through instead leaves the pre-existing behavior, where
-// the rename reports the real failure.
+// Homebrew and npm are never blocked: they delegate to `brew upgrade` and
+// `npm install -g`, which own their install directory. An indeterminate probe
+// does not block either — guessing "read-only" from an unrelated I/O error
+// would refuse an update that would have worked.
 func blockSelfUpdate(info InstallInfo) *selfUpdateBlocker {
 	if info.Method == InstallExternal {
 		return &selfUpdateBlocker{Manager: info.Manager, Path: info.ResolvedPath}
@@ -110,9 +99,8 @@ func blockSelfUpdate(info InstallInfo) *selfUpdateBlocker {
 	if info.Method != InstallBinary {
 		return nil
 	}
-	// os.Executable() failed, so there is no install directory to probe.
-	// filepath.Dir("") is ".", which would write the probe into the user's
-	// working directory and report an unrelated path in the refusal.
+	// os.Executable() failed, so there is no install directory. filepath.Dir("")
+	// is ".", which would probe the working directory and name it in the refusal.
 	if info.ResolvedPath == "" {
 		return nil
 	}

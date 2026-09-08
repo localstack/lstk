@@ -44,23 +44,21 @@ func DetectInstallMethod() InstallInfo {
 
 // externalMarker identifies an externally-managed install by an adjacent pair
 // of path segments: `first` immediately followed by any of `second`. Requiring
-// two adjacent segments rather than one keeps an unrelated directory that
-// happens to be called "mise" or "scoop" from being read as an install root.
+// two keeps an unrelated directory named "mise" or "scoop" from matching.
 type externalMarker struct {
 	first   string
 	second  []string
 	manager string
 }
 
-// externalMarkers covers tool managers whose whole purpose is to own the
-// version of the binary they installed, and immutable stores lstk cannot write
-// to at all. `rtx` is mise's former directory name and reports as mise, since
-// that is the tool the user would run.
-// Each manager lists both its install root and the launcher directory that is
-// actually on PATH — `shims`/`bin` entries are not symlinks into the install
-// root on every platform (scoop's shims are launcher executables, asdf's are
-// shell scripts), so EvalSymlinks does not rewrite them and the install-root
-// marker alone would miss the common case.
+// externalMarkers covers tool managers that own the version of the binary they
+// installed, plus immutable stores lstk cannot write to. `rtx` is mise's former
+// directory name and reports as mise, the tool the user would run.
+//
+// Each entry lists the install root *and* the launcher directory on PATH:
+// `shims`/`bin` entries are not symlinks into the install root everywhere
+// (scoop's are launcher exes, asdf's are shell scripts), so EvalSymlinks leaves
+// them alone and the install-root marker would miss the common case.
 var externalMarkers = []externalMarker{
 	{first: "nix", second: []string{"store"}, manager: "nix"},
 	{first: "gnu", second: []string{"store"}, manager: "guix"},
@@ -75,16 +73,14 @@ var externalMarkers = []externalMarker{
 }
 
 // classifyPath determines the install method from a resolved executable path,
-// returning the recognized external manager's name for InstallExternal and an
-// empty string for every other method.
+// naming the recognized external manager for InstallExternal and "" otherwise.
 //
-// The npm and Homebrew markers are checked across the whole path *before* any
-// external marker, and that order is load-bearing: an npm- or Homebrew-managed
-// lstk may sit under a tool-manager-provisioned interpreter or prefix (e.g.
-// .../mise/installs/node/24.8.0/lib/node_modules/@localstack/lstk_.../lstk),
-// where the tool manager owns node but `npm install -g` still updates lstk
-// correctly. A single in-order segment walk would see "mise" first and refuse
-// to update a perfectly updatable install.
+// npm and Homebrew markers are checked across the whole path before any
+// external marker, and that order is load-bearing: an npm-installed lstk can
+// sit under a tool-manager-provisioned interpreter
+// (.../mise/installs/node/24.8.0/lib/node_modules/@localstack/lstk_.../lstk),
+// where `npm install -g` still updates it correctly. A single in-order walk
+// would see "mise" first and refuse an update that would have worked.
 func classifyPath(resolved string) (InstallMethod, string) {
 	cleaned := filepath.Clean(resolved)
 	segments := strings.Split(cleaned, string(os.PathSeparator))
