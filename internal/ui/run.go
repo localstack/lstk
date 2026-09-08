@@ -41,7 +41,24 @@ type RunOptions struct {
 	// auto-load a configured snapshot). It is skipped when the emulator was
 	// already running.
 	PostStart func(ctx context.Context, sink output.Sink) error
+	// CompletionTip shows completionTip once the emulator is up. The caller
+	// decides when it applies (first run), so this package holds no policy.
+	CompletionTip bool
 }
+
+// completionTip points at the completion scripts lstk ships. Only Homebrew
+// installs wire them up automatically (homebrew_casks.completions in
+// .goreleaser.yaml), so npm and binary users never find them. First run is the
+// trigger because no install path offers a usable hook (generated npm
+// package.json, no hook at all for binaries) and it needs no new persisted
+// state: config.toml was absent, and that same run creates it.
+//
+// Must stay a plain MessageEvent, not a DeferredEvent — Run does not render
+// DeferredOutput (only runWithTUI does), so a deferred event would be dropped.
+// The "> Tip: " prefix, SeveritySecondary, and verb-colon-command wording match
+// tipsForType (internal/container/start.go), whose tip renders right above it.
+const completionTip = "> Tip: Enable tab completion for your shell: lstk completion [bash|zsh|fish|powershell] " +
+	"See https://docs.localstack.cloud/aws/developer-tools/running-localstack/lstk/#shell-completions"
 
 func Run(parentCtx context.Context, runOpts RunOptions) error {
 	ctx, cancel := context.WithCancel(parentCtx)
@@ -137,6 +154,9 @@ func Run(parentCtx context.Context, runOpts RunOptions) error {
 			go func() { labelCh <- config.CachedPlanLabel() }()
 		} else {
 			go container.ResolveAndCacheLabel(ctx, runOpts.StartOptions, result.Version, labelCh)
+		}
+		if runOpts.CompletionTip {
+			sink.Emit(output.MessageEvent{Severity: output.SeveritySecondary, Text: completionTip})
 		}
 		p.Send(runDoneMsg{})
 	}()

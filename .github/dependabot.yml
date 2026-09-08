@@ -18,6 +18,24 @@ updates:
           - "minor"
           - "patch"
 
+  - package-ecosystem: "gomod"
+    directory: "/test/integration"
+    schedule:
+      interval: "daily"
+      time: "09:00"
+      timezone: "Etc/UTC"
+    open-pull-requests-limit: 10
+    labels:
+      - "semver: patch"
+      - "docs: skip"
+    groups:
+      go-dependencies:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
