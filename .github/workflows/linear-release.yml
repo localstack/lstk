@@ -10,6 +10,8 @@ permissions:
 jobs:
   linear-release:
     name: Create Linear release
+    # Same tag trigger as ci.yml's release job: never run for a fork's own tags.
+    if: github.repository == 'localstack/lstk'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code

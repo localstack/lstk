@@ -18,6 +18,9 @@ concurrency:
 jobs:
   check-changes:
     name: Check for changes since last release
+    # Root of the release graph: every other job needs it, so one guard keeps a
+    # fork's scheduled or dispatched run from tagging or releasing.
+    if: github.repository == 'localstack/lstk'
     runs-on: ubuntu-latest
     outputs:
       has_changes: ${{ steps.check.outputs.has_changes }}
