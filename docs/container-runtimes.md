@@ -1,6 +1,6 @@
 # Container runtimes
 
-`lstk` runs the LocalStack emulator as a container, so it needs a Docker-API-compatible runtime to talk to. It works with Docker Desktop, Rancher Desktop, Colima, OrbStack, Lima, and Podman — no extra flags needed in most cases.
+`lstk` runs the LocalStack emulator as a container, so it needs a Docker-API-compatible runtime to talk to. It works with Docker Desktop, Rancher Desktop, Colima, OrbStack, Lima, and Podman — with no extra flags needed in most cases.
 
 ## How lstk finds your runtime
 
