@@ -253,6 +253,34 @@ func TestExtensionInvocationRecordedInTelemetry(t *testing.T) {
 	assertCommandTelemetry(t, events, "ext:hello", 0)
 }
 
+// DEVX-1004: extensions are the only proxy that emits from dispatchExtension
+// rather than instrumentCommands, so the aws/az tests miss this path.
+func TestExtensionExitRecordedAsProxyErrorInTelemetry(t *testing.T) {
+	t.Parallel()
+	extDir := t.TempDir()
+	installExtension(t, extDir, "boom")
+
+	analyticsSrv, events := mockAnalyticsServer(t)
+
+	tmpHome := t.TempDir()
+	environ := env.Environ(envWithPath(tmpHome, extDir)).
+		With(env.AnalyticsEndpoint, analyticsSrv.URL)
+
+	_, _, err := runLstk(t, testContext(t), t.TempDir(), environ, "boom", "exit", "7")
+	requireExitCode(t, 7, err)
+
+	event := receiveEventByName(t, events, "lstk_command")
+	payload, ok := event["payload"].(map[string]any)
+	require.True(t, ok)
+	params, ok := payload["parameters"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "ext:boom", params["command"])
+	result, ok := payload["result"].(map[string]any)
+	require.True(t, ok)
+	require.InDelta(t, 7, result["exit_code"], 0)
+	require.Equal(t, true, result["proxy_error"])
+}
+
 // The conveyed sessionId exists so an extension emitting its own telemetry can be
 // joined to lstk's ext:<name> event for the same invocation. Asserting the value
 // is a UUID is not enough — the join is only exact if it is *lstk's* session id,

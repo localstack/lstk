@@ -100,9 +100,8 @@ func TestExplicitAnalyticsEndpointOverridesDefault(t *testing.T) {
 	}
 }
 
-// Guards test isolation against an ambient LOCALSTACK_DISABLE_EVENTS=1, which
-// LocalStack developers commonly export: inherited, it disables lstk's
-// telemetry client and every telemetry assertion times out.
+// An ambient LOCALSTACK_DISABLE_EVENTS=1 must not reach the binary under test:
+// it disables telemetry, and every telemetry assertion then times out.
 func TestBaseEnvDropsAmbientDisableEvents(t *testing.T) {
 	t.Setenv(string(DisableEvents), "1")
 
