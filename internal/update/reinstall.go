@@ -9,21 +9,25 @@ import (
 	"github.com/localstack/lstk/internal/version"
 )
 
-// MissingBundle describes a bundling release whose bundled extensions are not
-// installed beside lstk.
+// MissingBundle describes a binary install of a bundling release whose bundled
+// extensions are not beside lstk: what the pre-bundling updater leaves behind
+// when it installs a bundling release. Homebrew and npm replace the whole
+// package, so they never end up here.
 type MissingBundle struct {
 	Dir       string // install directory that should hold the bundle
-	Reinstall string // what restores the complete set for this install method
+	Reinstall string // what restores the complete set
 }
+
+const reinstallInstruction = "download the latest release from https://github.com/localstack/lstk/releases/latest"
 
 // Summary is the one-sentence explanation shown wherever the state is reported.
 func (m MissingBundle) Summary() string {
 	return fmt.Sprintf("This lstk release ships bundled extensions, but none are installed in %s.", m.Dir)
 }
 
-// DetectMissingBundle reports whether the running lstk was built to ship
-// bundled extensions (version.BundlesExtensions) and has none beside it. Dev
-// builds never report one.
+// DetectMissingBundle reports whether the running lstk is a release build
+// (version.BundlesExtensions), installed as a plain binary, with no bundle
+// beside it. Dev builds never report one.
 func DetectMissingBundle() (MissingBundle, bool) {
 	if !version.BundlesExtensions() {
 		return MissingBundle{}, false
@@ -35,12 +39,27 @@ func DetectMissingBundle() (MissingBundle, bool) {
 	return detectMissingBundle(info, goruntime.GOOS)
 }
 
+// DetectMissingBundleFor is DetectMissingBundle limited to the commands the
+// bundle provided at the time of the transition, so a typo never earns a
+// reinstall hint. Retire it with the hint once every supported release ships
+// the set-wise updater.
+func DetectMissingBundleFor(command string) (MissingBundle, bool) {
+	switch command {
+	case "deploy", "doctor":
+		return DetectMissingBundle()
+	}
+	return MissingBundle{}, false
+}
+
 func detectMissingBundle(info InstallInfo, goos string) (MissingBundle, bool) {
+	if info.Method != InstallBinary {
+		return MissingBundle{}, false
+	}
 	dir := filepath.Dir(info.ResolvedPath)
 	if !bundleMissing(dir, goos) {
 		return MissingBundle{}, false
 	}
-	return MissingBundle{Dir: dir, Reinstall: ReinstallCommand(info.Method)}, true
+	return MissingBundle{Dir: dir, Reinstall: reinstallInstruction}, true
 }
 
 // bundleMissing is true only when neither set member exists. A binary without
@@ -52,17 +71,4 @@ func bundleMissing(dir, goos string) bool {
 		}
 	}
 	return true
-}
-
-// ReinstallCommand returns the command, or the download page for a plain
-// binary, that installs the complete set for the given install method.
-func ReinstallCommand(m InstallMethod) string {
-	switch m {
-	case InstallHomebrew:
-		return "brew reinstall --cask localstack/tap/lstk"
-	case InstallNPM:
-		return "npm install -g @localstack/lstk"
-	default:
-		return "download the latest release from https://github.com/localstack/lstk/releases/latest"
-	}
 }

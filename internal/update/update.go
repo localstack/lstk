@@ -13,8 +13,8 @@
 //     lstk commits last, so a working lstk always remains. Windows caveat: a
 //     crash between renaming lstk.exe aside and renaming the new one in leaves
 //     no lstk.exe; rename lstk.exe.old back by hand.
-//  3. Nothing is deleted: an lstk-* file absent from the archive is left alone,
-//     because the updater cannot tell a dropped extension from a user's file.
+//  3. Nothing is deleted: only the members the archive carries are written, so
+//     an archive without the bundle (a rollback) replaces lstk alone.
 //
 // An archive carrying only lstk installs exactly as before bundling existed.
 //

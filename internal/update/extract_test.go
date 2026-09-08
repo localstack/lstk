@@ -23,8 +23,8 @@ type archiveEntry struct {
 	link string // when set, a symlink entry pointing at link (never shipped; for extractor tests)
 }
 
-func lstkBinaryName() string           { return exeName("lstk", goruntime.GOOS) }
-func extBinaryName(name string) string { return exeName("lstk-"+name, goruntime.GOOS) }
+func lstkBinaryName() string { return exeName("lstk", goruntime.GOOS) }
+func bundleName() string     { return bundledBinaryName(goruntime.GOOS) }
 
 func buildArchive(t *testing.T, format string, entries []archiveEntry) string {
 	t.Helper()
@@ -117,8 +117,9 @@ func requireNoStagingLeftovers(t *testing.T, dir string) {
 }
 
 // TestExtractAndReplaceInstallsArchiveSet covers the archive shapes the
-// updater has to handle, in both formats. The set is whatever the archive
-// contains; files the archive does not carry are never deleted.
+// updater has to handle, in both formats. The set is lstk, the
+// bundled-extensions binary and the descriptions file; anything else at the
+// archive root is ignored, and files beside lstk are never deleted.
 func TestExtractAndReplaceInstallsArchiveSet(t *testing.T) {
 	t.Parallel()
 	toml := descriptionsFileName
@@ -131,74 +132,56 @@ func TestExtractAndReplaceInstallsArchiveSet(t *testing.T) {
 		absent     []string // must not have been installed
 	}{
 		{
-			name:      "lstk plus two extensions plus toml replaces all of them",
-			installed: map[string]string{lstkBinaryName(): "old lstk", extBinaryName("alpha"): "old alpha", extBinaryName("beta"): "old beta", toml: "alpha = \"old\"\n"},
+			name:      "the whole set replaces all three members",
+			installed: map[string]string{lstkBinaryName(): "old lstk", bundleName(): "old bundle", toml: "doctor = \"old\"\n"},
 			archive: []archiveEntry{
 				{name: lstkBinaryName(), body: "new lstk", mode: 0o755},
-				{name: extBinaryName("alpha"), body: "new alpha", mode: 0o755},
-				{name: extBinaryName("beta"), body: "new beta", mode: 0o755},
-				{name: toml, body: "alpha = \"new\"\nbeta = \"new\"\n", mode: 0o644},
+				{name: bundleName(), body: "new bundle", mode: 0o755},
+				{name: toml, body: "doctor = \"new\"\ndeploy = \"new\"\n", mode: 0o644},
 			},
-			want:       map[string]string{lstkBinaryName(): "new lstk", extBinaryName("alpha"): "new alpha", extBinaryName("beta"): "new beta", toml: "alpha = \"new\"\nbeta = \"new\"\n"},
-			executable: []string{lstkBinaryName(), extBinaryName("alpha"), extBinaryName("beta")},
+			want:       map[string]string{lstkBinaryName(): "new lstk", bundleName(): "new bundle", toml: "doctor = \"new\"\ndeploy = \"new\"\n"},
+			executable: []string{lstkBinaryName(), bundleName()},
 		},
 		{
-			name:      "a new extension is installed",
+			name:      "the bundle is added to a pre-bundling install",
 			installed: map[string]string{lstkBinaryName(): "old lstk"},
 			archive: []archiveEntry{
 				{name: lstkBinaryName(), body: "new lstk", mode: 0o755},
-				{name: extBinaryName("deploy"), body: "new deploy", mode: 0o755},
+				{name: bundleName(), body: "bundle", mode: 0o755},
 				{name: toml, body: "deploy = \"Deploy\"\n", mode: 0o644},
 			},
-			want:       map[string]string{lstkBinaryName(): "new lstk", extBinaryName("deploy"): "new deploy", toml: "deploy = \"Deploy\"\n"},
-			executable: []string{extBinaryName("deploy")},
-		},
-		{
-			name:      "the multi-call bundle and its toml",
-			installed: map[string]string{lstkBinaryName(): "old lstk", bundledBinaryName(goruntime.GOOS): "old bundle", toml: "doctor = \"Doctor\"\n"},
-			archive: []archiveEntry{
-				{name: lstkBinaryName(), body: "new lstk", mode: 0o755},
-				{name: bundledBinaryName(goruntime.GOOS), body: "new bundle", mode: 0o755},
-				{name: toml, body: "doctor = \"Doctor\"\ndeploy = \"Deploy\"\n", mode: 0o644},
-			},
-			want:       map[string]string{lstkBinaryName(): "new lstk", bundledBinaryName(goruntime.GOOS): "new bundle", toml: "doctor = \"Doctor\"\ndeploy = \"Deploy\"\n"},
-			executable: []string{bundledBinaryName(goruntime.GOOS)},
+			want:       map[string]string{lstkBinaryName(): "new lstk", bundleName(): "bundle", toml: "deploy = \"Deploy\"\n"},
+			executable: []string{bundleName()},
 		},
 		{
 			name:      "bundle without a toml still installs",
 			installed: map[string]string{lstkBinaryName(): "old lstk"},
 			archive: []archiveEntry{
 				{name: lstkBinaryName(), body: "new lstk", mode: 0o755},
-				{name: bundledBinaryName(goruntime.GOOS), body: "bundle", mode: 0o755},
+				{name: bundleName(), body: "bundle", mode: 0o755},
 			},
-			want: map[string]string{lstkBinaryName(): "new lstk", bundledBinaryName(goruntime.GOOS): "bundle"},
+			want: map[string]string{lstkBinaryName(): "new lstk", bundleName(): "bundle"},
 		},
 		{
-			// The pre-bundling and rollback shape: previously installed members stay.
+			// The pre-bundling and rollback shape: previously installed files stay.
 			name:      "lstk-only archive replaces lstk and keeps the rest",
-			installed: map[string]string{lstkBinaryName(): "old lstk", extBinaryName("alpha"): "installed alpha", bundledBinaryName(goruntime.GOOS): "bundle"},
+			installed: map[string]string{lstkBinaryName(): "old lstk", bundleName(): "bundle", toml: "doctor = \"Doctor\"\n", "lstk-mine": "user extension"},
 			archive:   []archiveEntry{{name: lstkBinaryName(), body: "new lstk", mode: 0o755}},
-			want:      map[string]string{lstkBinaryName(): "new lstk", extBinaryName("alpha"): "installed alpha", bundledBinaryName(goruntime.GOOS): "bundle"},
+			want:      map[string]string{lstkBinaryName(): "new lstk", bundleName(): "bundle", toml: "doctor = \"Doctor\"\n", "lstk-mine": "user extension"},
 		},
 		{
-			name:      "a user's lstk-* file absent from the archive is left alone",
-			installed: map[string]string{lstkBinaryName(): "old lstk", extBinaryName("mine"): "user extension"},
-			archive: []archiveEntry{
-				{name: lstkBinaryName(), body: "new lstk", mode: 0o755},
-				{name: extBinaryName("deploy"), body: "new deploy", mode: 0o755},
-			},
-			want: map[string]string{extBinaryName("mine"): "user extension", extBinaryName("deploy"): "new deploy"},
-		},
-		{
-			name:      "data files at the archive root are not installed",
+			// Release archives carry completions and manpages too; an executable
+			// lstk-* file is not part of the set either (decision 7b).
+			name:      "other files at the archive root are not installed",
 			installed: map[string]string{lstkBinaryName(): "old lstk"},
 			archive: []archiveEntry{
 				{name: lstkBinaryName(), body: "new lstk", mode: 0o755},
-				{name: "lstk-notes.txt", body: "not an extension", mode: 0o644},
+				{name: exeName("lstk-alpha", goruntime.GOOS), body: "standalone extension", mode: 0o755},
+				{name: "lstk-notes.txt", body: "notes", mode: 0o644},
 				{name: "README.md", body: "readme", mode: 0o644},
 			},
 			want:   map[string]string{lstkBinaryName(): "new lstk"},
-			absent: []string{"lstk-notes.txt", "README.md"},
+			absent: []string{exeName("lstk-alpha", goruntime.GOOS), "lstk-notes.txt", "README.md"},
 		},
 	}
 	for _, tc := range cases {
@@ -225,7 +208,7 @@ func TestExtractAndReplaceInstallsArchiveSet(t *testing.T) {
 func TestExtractAndReplaceRejectsArchiveWithoutLstk(t *testing.T) {
 	t.Parallel()
 	dir, exePath := newInstallDir(t, map[string]string{lstkBinaryName(): "old lstk"})
-	archive := buildArchive(t, "tar.gz", []archiveEntry{{name: extBinaryName("alpha"), body: "alpha", mode: 0o755}})
+	archive := buildArchive(t, "tar.gz", []archiveEntry{{name: bundleName(), body: "bundle", mode: 0o755}})
 	err := extractAndReplace(archive, exePath, "tar.gz")
 	require.ErrorContains(t, err, "binary not found in archive")
 	requireFileContent(t, exePath, "old lstk")
@@ -233,23 +216,23 @@ func TestExtractAndReplaceRejectsArchiveWithoutLstk(t *testing.T) {
 }
 
 // A failure while staging leaves the installation untouched and no staging
-// files behind. Here beta's staging path is blocked by a directory after alpha
-// was already staged.
+// files behind. Here the toml's staging path is blocked by a directory after
+// the bundle was already staged (members stage in name order, lstk last).
 func TestExtractAndReplaceStagingFailureLeavesInstallUntouched(t *testing.T) {
 	t.Parallel()
-	dir, exePath := newInstallDir(t, map[string]string{lstkBinaryName(): "old lstk", extBinaryName("alpha"): "old alpha", extBinaryName("beta"): "old beta"})
-	require.NoError(t, os.MkdirAll(filepath.Join(dir, extBinaryName("beta")+stagingSuffix), 0o755))
+	dir, exePath := newInstallDir(t, map[string]string{lstkBinaryName(): "old lstk", bundleName(): "old bundle", descriptionsFileName: "old toml"})
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, descriptionsFileName+stagingSuffix), 0o755))
 	archive := buildArchive(t, "tar.gz", []archiveEntry{
 		{name: lstkBinaryName(), body: "new lstk", mode: 0o755},
-		{name: extBinaryName("alpha"), body: "new alpha", mode: 0o755},
-		{name: extBinaryName("beta"), body: "new beta", mode: 0o755},
+		{name: bundleName(), body: "new bundle", mode: 0o755},
+		{name: descriptionsFileName, body: "new toml", mode: 0o644},
 	})
 	err := extractAndReplace(archive, exePath, "tar.gz")
-	require.ErrorContains(t, err, extBinaryName("beta"))
+	require.ErrorContains(t, err, descriptionsFileName)
 	require.ErrorContains(t, err, "move it out of the way")
 	requireFileContent(t, exePath, "old lstk")
-	requireFileContent(t, filepath.Join(dir, extBinaryName("alpha")), "old alpha")
-	requireFileContent(t, filepath.Join(dir, extBinaryName("beta")), "old beta")
+	requireFileContent(t, filepath.Join(dir, bundleName()), "old bundle")
+	requireFileContent(t, filepath.Join(dir, descriptionsFileName), "old toml")
 	requireNoStagingLeftovers(t, dir)
 }
 
@@ -263,16 +246,16 @@ func TestExtractAndReplaceRefusesSymlinkSquatter(t *testing.T) {
 	dir, exePath := newInstallDir(t, map[string]string{lstkBinaryName(): "old lstk"})
 	target := filepath.Join(t.TempDir(), "precious")
 	require.NoError(t, os.WriteFile(target, []byte("precious data"), 0o644))
-	require.NoError(t, os.Symlink(target, filepath.Join(dir, extBinaryName("alpha")+stagingSuffix)))
+	require.NoError(t, os.Symlink(target, filepath.Join(dir, bundleName()+stagingSuffix)))
 	archive := buildArchive(t, "tar.gz", []archiveEntry{
 		{name: lstkBinaryName(), body: "new lstk", mode: 0o755},
-		{name: extBinaryName("alpha"), body: "new alpha", mode: 0o755},
+		{name: bundleName(), body: "bundle", mode: 0o755},
 	})
 	err := extractAndReplace(archive, exePath, "tar.gz")
-	require.ErrorContains(t, err, extBinaryName("alpha"))
+	require.ErrorContains(t, err, bundleName())
 	requireFileContent(t, target, "precious data")
 	requireFileContent(t, exePath, "old lstk")
-	requireAbsent(t, filepath.Join(dir, extBinaryName("alpha")))
+	requireAbsent(t, filepath.Join(dir, bundleName()))
 }
 
 // A regular file appearing at a staging path after cleanup means another
@@ -280,9 +263,9 @@ func TestExtractAndReplaceRefusesSymlinkSquatter(t *testing.T) {
 func TestStageMembersRefusesExistingStagingFile(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
-	dest := filepath.Join(dir, "lstk-alpha")
+	dest := filepath.Join(dir, bundledBinaryBaseName)
 	src := filepath.Join(t.TempDir(), "src")
-	require.NoError(t, os.WriteFile(src, []byte("new alpha"), 0o755))
+	require.NoError(t, os.WriteFile(src, []byte("bundle"), 0o755))
 	require.NoError(t, os.WriteFile(dest+stagingSuffix, []byte("another update's bytes"), 0o755))
 	require.Error(t, stageMembers([]updateMember{{src: src, dest: dest, mode: 0o755}}))
 	requireFileContent(t, dest+stagingSuffix, "another update's bytes")
@@ -291,17 +274,17 @@ func TestStageMembersRefusesExistingStagingFile(t *testing.T) {
 func TestExtractAndReplaceCleansLeftoverStagingFiles(t *testing.T) {
 	t.Parallel()
 	dir, exePath := newInstallDir(t, map[string]string{lstkBinaryName(): "old lstk"})
-	for _, name := range []string{lstkBinaryName(), extBinaryName("alpha"), extBinaryName("gone")} {
+	for _, name := range []string{lstkBinaryName(), bundleName(), "gone"} {
 		require.NoError(t, os.WriteFile(filepath.Join(dir, name+stagingSuffix), []byte("crashed"), 0o755))
 	}
 	archive := buildArchive(t, "tar.gz", []archiveEntry{
 		{name: lstkBinaryName(), body: "new lstk", mode: 0o755},
-		{name: extBinaryName("alpha"), body: "new alpha", mode: 0o755},
+		{name: bundleName(), body: "bundle", mode: 0o755},
 	})
 	require.NoError(t, extractAndReplace(archive, exePath, "tar.gz"))
 	requireFileContent(t, exePath, "new lstk")
-	requireFileContent(t, filepath.Join(dir, extBinaryName("alpha")), "new alpha")
-	requireAbsent(t, filepath.Join(dir, extBinaryName("gone")))
+	requireFileContent(t, filepath.Join(dir, bundleName()), "bundle")
+	requireAbsent(t, filepath.Join(dir, "gone"))
 	requireNoStagingLeftovers(t, dir)
 }
 
@@ -310,15 +293,15 @@ func TestExtractAndReplaceCleansLeftoverStagingFiles(t *testing.T) {
 func TestExtractAndReplaceCommitFailureKeepsPreviousLstk(t *testing.T) {
 	t.Parallel()
 	dir, exePath := newInstallDir(t, map[string]string{lstkBinaryName(): "old lstk"})
-	blocked := filepath.Join(dir, extBinaryName("alpha"))
+	blocked := filepath.Join(dir, bundleName())
 	require.NoError(t, os.MkdirAll(blocked, 0o755))
 	require.NoError(t, os.WriteFile(filepath.Join(blocked, "occupied"), []byte("x"), 0o644))
 	archive := buildArchive(t, "tar.gz", []archiveEntry{
 		{name: lstkBinaryName(), body: "new lstk", mode: 0o755},
-		{name: extBinaryName("alpha"), body: "new alpha", mode: 0o755},
+		{name: bundleName(), body: "bundle", mode: 0o755},
 	})
 	err := extractAndReplace(archive, exePath, "tar.gz")
-	require.ErrorContains(t, err, extBinaryName("alpha"))
+	require.ErrorContains(t, err, bundleName())
 	requireFileContent(t, exePath, "old lstk")
 }
 
@@ -332,7 +315,7 @@ func TestExtractAndReplaceWorksInGlobMetacharacterDir(t *testing.T) {
 			require.NoError(t, os.MkdirAll(dir, 0o755))
 			exePath := filepath.Join(dir, lstkBinaryName())
 			require.NoError(t, os.WriteFile(exePath, []byte("old lstk"), 0o755))
-			leftover := filepath.Join(dir, extBinaryName("gone")+stagingSuffix)
+			leftover := filepath.Join(dir, bundleName()+stagingSuffix)
 			require.NoError(t, os.WriteFile(leftover, []byte("crashed"), 0o755))
 			archive := buildArchive(t, "tar.gz", []archiveEntry{{name: lstkBinaryName(), body: "new lstk", mode: 0o755}})
 			require.NoError(t, extractAndReplace(archive, exePath, "tar.gz"))
@@ -368,25 +351,22 @@ func TestReplaceSetWindows(t *testing.T) {
 		dir := t.TempDir()
 		exePath := filepath.Join(dir, "lstk.exe")
 		require.NoError(t, os.WriteFile(exePath, []byte("old lstk"), 0o755))
-		require.NoError(t, os.WriteFile(filepath.Join(dir, "lstk-alpha.exe"), []byte("old alpha"), 0o755))
+		require.NoError(t, os.WriteFile(filepath.Join(dir, "bundled-extensions.exe"), []byte("old bundle"), 0o755))
 		archive := buildArchive(t, "zip", []archiveEntry{
 			{name: "lstk.exe", body: "new lstk", mode: 0o755},
-			{name: "lstk-alpha.exe", body: "new alpha", mode: 0o755},
-			{name: "lstk-beta.exe", body: "new beta", mode: 0o755},
-			{name: "lstk-notes.txt", body: "not an extension", mode: 0o644},
-			{name: "lstk-plain", body: "no .exe: not an extension on Windows", mode: 0o755},
-			{name: descriptionsFileName, body: "alpha = \"Alpha\"\n", mode: 0o644},
+			{name: "bundled-extensions.exe", body: "new bundle", mode: 0o755},
+			{name: "bundled-extensions", body: "no .exe: not the Windows member", mode: 0o755},
+			{name: "lstk-alpha.exe", body: "not part of the set", mode: 0o755},
+			{name: descriptionsFileName, body: "deploy = \"Deploy\"\n", mode: 0o644},
 		})
 		require.NoError(t, replaceSet(archive, exePath, "zip", "windows"))
 		requireFileContent(t, exePath, "new lstk")
 		requireFileContent(t, filepath.Join(dir, "lstk.exe.old"), "old lstk")
-		requireFileContent(t, filepath.Join(dir, "lstk-alpha.exe"), "new alpha")
-		requireFileContent(t, filepath.Join(dir, "lstk-alpha.exe.old"), "old alpha")
-		requireFileContent(t, filepath.Join(dir, "lstk-beta.exe"), "new beta")
-		requireAbsent(t, filepath.Join(dir, "lstk-beta.exe.old"))
-		requireFileContent(t, filepath.Join(dir, descriptionsFileName), "alpha = \"Alpha\"\n")
-		requireAbsent(t, filepath.Join(dir, "lstk-notes.txt"))
-		requireAbsent(t, filepath.Join(dir, "lstk-plain"))
+		requireFileContent(t, filepath.Join(dir, "bundled-extensions.exe"), "new bundle")
+		requireFileContent(t, filepath.Join(dir, "bundled-extensions.exe.old"), "old bundle")
+		requireFileContent(t, filepath.Join(dir, descriptionsFileName), "deploy = \"Deploy\"\n")
+		requireAbsent(t, filepath.Join(dir, "bundled-extensions"))
+		requireAbsent(t, filepath.Join(dir, "lstk-alpha.exe"))
 		requireNoStagingLeftovers(t, dir)
 	})
 	t.Run("lstk-only archive refreshes .old and keeps installed members", func(t *testing.T) {
@@ -395,12 +375,12 @@ func TestReplaceSetWindows(t *testing.T) {
 		exePath := filepath.Join(dir, "lstk.exe")
 		require.NoError(t, os.WriteFile(exePath, []byte("old lstk"), 0o755))
 		require.NoError(t, os.WriteFile(exePath+".old", []byte("older lstk"), 0o755))
-		require.NoError(t, os.WriteFile(filepath.Join(dir, "lstk-alpha.exe"), []byte("installed alpha"), 0o755))
+		require.NoError(t, os.WriteFile(filepath.Join(dir, "bundled-extensions.exe"), []byte("installed bundle"), 0o755))
 		archive := buildArchive(t, "zip", []archiveEntry{{name: "lstk.exe", body: "new lstk", mode: 0o755}})
 		require.NoError(t, replaceSet(archive, exePath, "zip", "windows"))
 		requireFileContent(t, exePath, "new lstk")
 		requireFileContent(t, exePath+".old", "old lstk")
-		requireFileContent(t, filepath.Join(dir, "lstk-alpha.exe"), "installed alpha")
+		requireFileContent(t, filepath.Join(dir, "bundled-extensions.exe"), "installed bundle")
 	})
 }
 
@@ -415,8 +395,8 @@ func TestCommitRestoresRunningBinaryOnWindowsRenameFailure(t *testing.T) {
 	requireAbsent(t, dest+".old")
 }
 
-// A zip symlink entry extracted as a file would be an executable holding a
-// path string, which discoverMembers would install as an extension.
+// A zip symlink entry extracted as a file would be a "binary" holding a path
+// string, which discoverMembers would then install as the bundle.
 func TestExtractorsSkipSymlinkEntries(t *testing.T) {
 	t.Parallel()
 	for _, format := range archiveFormats {
@@ -424,8 +404,7 @@ func TestExtractorsSkipSymlinkEntries(t *testing.T) {
 			t.Parallel()
 			archive := buildArchive(t, format, []archiveEntry{
 				{name: lstkBinaryName(), body: "new lstk", mode: 0o755},
-				{name: bundledBinaryBaseName, body: "bundle", mode: 0o755},
-				{name: "lstk-deploy", mode: 0o755, link: bundledBinaryBaseName},
+				{name: bundledBinaryBaseName, mode: 0o755, link: lstkBinaryName()},
 			})
 			dest := t.TempDir()
 			if format == "zip" {
@@ -433,8 +412,8 @@ func TestExtractorsSkipSymlinkEntries(t *testing.T) {
 			} else {
 				require.NoError(t, extractTarGz(archive, dest))
 			}
-			requireAbsent(t, filepath.Join(dest, "lstk-deploy"))
-			requireFileContent(t, filepath.Join(dest, bundledBinaryBaseName), "bundle")
+			requireAbsent(t, filepath.Join(dest, bundledBinaryBaseName))
+			requireFileContent(t, filepath.Join(dest, lstkBinaryName()), "new lstk")
 		})
 	}
 }

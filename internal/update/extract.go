@@ -75,10 +75,10 @@ func (m updateMember) commit(goos string) error {
 	return nil
 }
 
-// extractAndReplace installs every member the archive carries as one unit:
-// lstk, the bundled-extensions binary, any lstk-* binaries, and the
-// descriptions file. An archive carrying only lstk is a set of size one. A
-// member that fails to stage or commit fails the whole update, naming it.
+// extractAndReplace installs the set the archive carries as one unit: lstk,
+// the bundled-extensions binary and the descriptions file. An archive carrying
+// only lstk is a set of size one. A member that fails to stage or commit fails
+// the whole update, naming it.
 func extractAndReplace(archivePath, exePath, format string) error {
 	return replaceSet(archivePath, exePath, format, goruntime.GOOS)
 }
@@ -116,8 +116,9 @@ func replaceSet(archivePath, exePath, format, goos string) error {
 	return commitMembers(members, goos)
 }
 
-// discoverMembers lists the set at the extracted archive root, lstk last: a
-// failure before that final rename leaves a working lstk to re-run with.
+// discoverMembers lists the set members present at the extracted archive root,
+// lstk last: a failure before that final rename leaves a working lstk to re-run
+// with. Anything else there (completions, manpages) is not installed.
 func discoverMembers(extractDir, exePath, goos string) ([]updateMember, error) {
 	binaryName := exeName("lstk", goos)
 	newBinary := filepath.Join(extractDir, binaryName)
@@ -137,19 +138,14 @@ func discoverMembers(extractDir, exePath, goos string) ([]updateMember, error) {
 	var members []updateMember
 	for _, entry := range entries {
 		name := entry.Name()
-		if name == binaryName {
+		if name == binaryName || !entry.Type().IsRegular() {
 			continue
 		}
-		info, err := entry.Info()
-		if err != nil {
-			return nil, err
-		}
 		mode := os.FileMode(0o755)
-		switch {
-		case name == bundledBinaryName(goos):
-		case name == descriptionsFileName:
+		switch name {
+		case bundledBinaryName(goos):
+		case descriptionsFileName:
 			mode = 0o644
-		case isExtensionEntry(name, info, goos):
 		default:
 			continue
 		}
@@ -163,19 +159,6 @@ func discoverMembers(extractDir, exePath, goos string) ([]updateMember, error) {
 	// installed it under another name or with special bits (setgid), and the
 	// pre-bundling updater preserved both.
 	return append(members, updateMember{src: newBinary, dest: exePath, mode: exeInfo.Mode()}), nil
-}
-
-// isExtensionEntry accepts executable "lstk-*" regular files. On Windows only
-// ".exe" counts: an installer must not let the user's PATHEXT decide what an
-// archive installs, unlike the resolver (extension.scanDir), which honours it.
-func isExtensionEntry(name string, info os.FileInfo, goos string) bool {
-	if !strings.HasPrefix(name, extension.NamePrefix) || !info.Mode().IsRegular() {
-		return false
-	}
-	if goos == "windows" {
-		return strings.EqualFold(filepath.Ext(name), ".exe")
-	}
-	return info.Mode().Perm()&0o111 != 0
 }
 
 // removeStagingFiles deletes regular ".lstk-new" files left by an interrupted
@@ -254,9 +237,8 @@ func safePath(destDir, name string) (string, error) {
 }
 
 // The extractors skip symlink entries: release archives ship none, and a zip
-// symlink extracted as a file would be an "executable" holding a path string.
-// Modes are restored with Chmod because OpenFile's mode is umask-masked and
-// discoverMembers keys extension discovery off the exec bits.
+// symlink extracted as a file would be a "binary" holding a path string.
+// Extracted modes do not matter: copyFile applies each member's mode.
 
 func extractTarGz(archivePath, destDir string) error {
 	f, err := os.Open(archivePath)
@@ -304,9 +286,6 @@ func extractTarGz(archivePath, destDir string) error {
 				return err
 			}
 			_ = out.Close()
-			if err := os.Chmod(target, hdr.FileInfo().Mode().Perm()); err != nil {
-				return err
-			}
 		}
 	}
 	return nil
@@ -352,9 +331,6 @@ func extractZip(archivePath, destDir string) error {
 		}
 		_ = out.Close()
 		_ = rc.Close()
-		if err := os.Chmod(target, f.Mode().Perm()); err != nil {
-			return err
-		}
 	}
 	return nil
 }

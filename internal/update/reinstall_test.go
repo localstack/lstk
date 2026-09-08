@@ -34,23 +34,24 @@ func TestBundleMissing(t *testing.T) {
 	}
 }
 
-func TestDetectMissingBundleForInstall(t *testing.T) {
+// Only a plain binary install can be left without its bundle: Homebrew and npm
+// replace the whole package.
+func TestDetectMissingBundleByInstallMethod(t *testing.T) {
 	dir := t.TempDir()
-	info := InstallInfo{Method: InstallHomebrew, ResolvedPath: filepath.Join(dir, "lstk")}
+	exe := filepath.Join(dir, "lstk")
 
-	mb, ok := detectMissingBundle(info, "linux")
+	mb, ok := detectMissingBundle(InstallInfo{Method: InstallBinary, ResolvedPath: exe}, "linux")
 	require.True(t, ok)
 	assert.Equal(t, dir, mb.Dir)
-	assert.Equal(t, "brew reinstall --cask localstack/tap/lstk", mb.Reinstall)
+	assert.Contains(t, mb.Reinstall, "https://github.com/localstack/lstk/releases/latest")
 	assert.Contains(t, mb.Summary(), dir)
 
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "lstk-extensions.toml"), nil, 0o644))
-	_, ok = detectMissingBundle(info, "linux")
-	assert.False(t, ok)
-}
+	for _, m := range []InstallMethod{InstallHomebrew, InstallNPM} {
+		_, ok := detectMissingBundle(InstallInfo{Method: m, ResolvedPath: exe}, "linux")
+		assert.False(t, ok, m.String())
+	}
 
-func TestReinstallCommand(t *testing.T) {
-	assert.Equal(t, "brew reinstall --cask localstack/tap/lstk", ReinstallCommand(InstallHomebrew))
-	assert.Equal(t, "npm install -g @localstack/lstk", ReinstallCommand(InstallNPM))
-	assert.Contains(t, ReinstallCommand(InstallBinary), "https://github.com/localstack/lstk/releases/latest")
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "lstk-extensions.toml"), nil, 0o644))
+	_, ok = detectMissingBundle(InstallInfo{Method: InstallBinary, ResolvedPath: exe}, "linux")
+	assert.False(t, ok)
 }

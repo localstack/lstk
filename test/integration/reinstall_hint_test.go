@@ -36,6 +36,12 @@ func writeBundledSet(t *testing.T, dir string) {
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "lstk-extensions.toml"), []byte("doctor = \"Diagnose your setup\"\n"), 0o644))
 }
 
+// Path shapes the install-method detection recognises.
+var (
+	homebrewShape = filepath.Join("Caskroom", "lstk", "1.0.0")
+	npmShape      = filepath.Join("node_modules", "@localstack", "lstk_test", "bin")
+)
+
 func TestUnknownCommandHintsReinstallWhenBundleMissing(t *testing.T) {
 	t.Parallel()
 	ctx := testContext(t)
@@ -44,16 +50,23 @@ func TestUnknownCommandHintsReinstallWhenBundleMissing(t *testing.T) {
 		name       string
 		bundling   bool
 		withBundle bool
+		shape      string // subdirectory layout under the temp dir
+		command    string
 		wantHint   bool
 	}{
-		{name: "bundling release without its bundle", bundling: true, wantHint: true},
-		{name: "bundling release with its bundle", bundling: true, withBundle: true},
-		{name: "pre-bundling release"},
+		{name: "bundling release without its bundle, deploy", bundling: true, command: "deploy", wantHint: true},
+		{name: "bundling release without its bundle, doctor", bundling: true, command: "doctor", wantHint: true},
+		{name: "bundling release without its bundle, a typo", bundling: true, command: "strt"},
+		{name: "bundling release with its bundle", bundling: true, withBundle: true, command: "nosuchcmd"},
+		{name: "pre-bundling release", command: "deploy"},
+		{name: "Homebrew layout is never hinted", bundling: true, shape: homebrewShape, command: "deploy"},
+		{name: "npm layout is never hinted", bundling: true, shape: npmShape, command: "deploy"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			installDir := t.TempDir()
+			installDir := filepath.Join(t.TempDir(), tc.shape)
+			require.NoError(t, os.MkdirAll(installDir, 0o755))
 			lstk := filepath.Join(installDir, platformExe("lstk"))
 			if tc.bundling {
 				buildBundlingLstk(t, ctx, "0.0.2", lstk)
@@ -64,11 +77,11 @@ func TestUnknownCommandHintsReinstallWhenBundleMissing(t *testing.T) {
 				writeBundledSet(t, installDir)
 			}
 
-			cmd := exec.CommandContext(ctx, lstk, "nosuchcmd")
+			cmd := exec.CommandContext(ctx, lstk, tc.command)
 			cmd.Env = testEnvWithHome(t.TempDir(), "")
 			out, err := cmd.CombinedOutput()
 			require.Error(t, err, "an unknown command must still exit non-zero: %s", out)
-			assert.Contains(t, string(out), `unknown command "nosuchcmd"`)
+			assert.Contains(t, string(out), `unknown command "`+tc.command+`"`)
 
 			if !tc.wantHint {
 				assert.NotContains(t, string(out), "Reinstall lstk")
@@ -80,6 +93,8 @@ func TestUnknownCommandHintsReinstallWhenBundleMissing(t *testing.T) {
 			assert.Contains(t, string(out), resolvedDir)
 			assert.Contains(t, string(out), "Reinstall lstk")
 			assert.Contains(t, string(out), "https://github.com/localstack/lstk/releases")
+			assert.NotContains(t, string(out), "brew")
+			assert.NotContains(t, string(out), "npm")
 		})
 	}
 }
@@ -118,18 +133,30 @@ func TestUpdateUpToDateWarnsWhenBundleMissing(t *testing.T) {
 		assert.Contains(t, envelope.Warnings[0].Message, "Reinstall lstk")
 	})
 
-	t.Run("bundle present: no warning", func(t *testing.T) {
-		t.Parallel()
-		installDir := t.TempDir()
-		lstk := filepath.Join(installDir, platformExe("lstk"))
-		buildBundlingLstk(t, ctx, "0.0.2", lstk)
-		writeBundledSet(t, installDir)
+	for _, tc := range []struct {
+		name       string
+		withBundle bool
+		shape      string
+	}{
+		{name: "bundle present: no warning", withBundle: true},
+		{name: "Homebrew layout: no warning", shape: homebrewShape},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			installDir := filepath.Join(t.TempDir(), tc.shape)
+			require.NoError(t, os.MkdirAll(installDir, 0o755))
+			lstk := filepath.Join(installDir, platformExe("lstk"))
+			buildBundlingLstk(t, ctx, "0.0.2", lstk)
+			if tc.withBundle {
+				writeBundledSet(t, installDir)
+			}
 
-		cmd := exec.CommandContext(ctx, lstk, "update", "--non-interactive")
-		cmd.Env = mockGitHubEnv(t, srv)
-		out, err := cmd.CombinedOutput()
-		require.NoError(t, err, "lstk update failed: %s", out)
-		assert.Contains(t, string(out), "Already up to date")
-		assert.NotContains(t, string(out), "Reinstall lstk")
-	})
+			cmd := exec.CommandContext(ctx, lstk, "update", "--non-interactive")
+			cmd.Env = mockGitHubEnv(t, srv)
+			out, err := cmd.CombinedOutput()
+			require.NoError(t, err, "lstk update failed: %s", out)
+			assert.Contains(t, string(out), "Already up to date")
+			assert.NotContains(t, string(out), "Reinstall lstk")
+		})
+	}
 }

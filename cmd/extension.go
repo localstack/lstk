@@ -53,7 +53,7 @@ func dispatchExtension(ctx context.Context, cfg *env.Env, tel *telemetry.Client,
 				Title:   fmt.Sprintf("unknown command %q for lstk", name),
 				Actions: []output.ErrorAction{{Label: "See help:", Value: "lstk -h"}},
 			}
-			if missing, ok := update.DetectMissingBundle(); ok {
+			if missing, ok := update.DetectMissingBundleFor(name); ok {
 				ev.Summary = missing.Summary()
 				ev.Actions = append(ev.Actions, output.ErrorAction{Label: "Reinstall lstk:", Value: missing.Reinstall})
 			}
