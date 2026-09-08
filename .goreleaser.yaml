@@ -28,7 +28,8 @@ builds:
     flags:
       - -trimpath
     ldflags:
-      - -s -w -X github.com/localstack/lstk/internal/version.version={{ .Version }} -X github.com/localstack/lstk/internal/version.bundlesExtensions=true
+      # bundlesExtensions flips to true with the release that ships bundled extensions.
+      - -s -w -X github.com/localstack/lstk/internal/version.version={{ .Version }} -X github.com/localstack/lstk/internal/version.bundlesExtensions=false
 
 archives:
   - id: lstk
