@@ -43,7 +43,8 @@ func Run(ctx context.Context, endpointURL, region string, sink output.Sink, logg
 		return output.NewSilentError(fmt.Errorf("%s not found in PATH", cdkCmd()))
 	}
 
-	if err := CheckVersion(ctx, cdkBin); err != nil {
+	version, err := CheckVersion(ctx, cdkBin)
+	if err != nil {
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())
 		sink.Emit(output.ErrorEvent{
@@ -58,9 +59,21 @@ func Run(ctx context.Context, endpointURL, region string, sink output.Sink, logg
 	// internal/endpoint.Resolve), so it's used as-is here.
 	effectiveEndpoint := endpointURL
 
-	_, s3Endpoint := endpoint.S3Addressing(effectiveEndpoint)
+	// Addressing mode and S3 host are one matched pair, chosen by what this CDK
+	// can be told (see pathStyleFlagMajor). Path style takes the base endpoint
+	// verbatim (no s3 prefix allowed). Virtual-host addressing needs the opposite:
+	// LocalStack only recognizes a bucket subdomain on an `s3.`-prefixed host.
+	forcePathStyle := version.SupportsPathStyleFlag()
+	s3Endpoint := effectiveEndpoint
+	if !forcePathStyle {
+		_, s3Endpoint = endpoint.S3Addressing(effectiveEndpoint)
+	}
+
+	// An explicit AWS_ENDPOINT_URL_S3 means the caller is directing S3
+	// themselves, so lstk leaves the addressing mode to CDK's own default.
 	if override := s3EndpointOverride(); override != "" {
 		s3Endpoint = override
+		forcePathStyle = false
 		logger.Info("cdk: using AWS_ENDPOINT_URL_S3 override %s", override)
 	}
 
@@ -73,7 +86,7 @@ func Run(ctx context.Context, endpointURL, region string, sink output.Sink, logg
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
-	cmd.Env = BuildEnv(os.Environ(), effectiveEndpoint, s3Endpoint, region)
+	cmd.Env = BuildEnv(os.Environ(), effectiveEndpoint, s3Endpoint, region, forcePathStyle)
 
 	if err := proc.Run(cmd); err != nil {
 		var exitErr *exec.ExitError
@@ -109,7 +122,12 @@ var strippedKeys = map[string]bool{
 // CDK always resolves the default LocalStack account 000000000000. This
 // unconditionally overrides any ambient AWS_ACCESS_KEY_ID — including a 12-digit
 // value that LocalStack would otherwise treat as a custom account.
-func BuildEnv(base []string, endpointURL, s3Endpoint, region string) []string {
+func BuildEnv(base []string, endpointURL, s3Endpoint, region string, forcePathStyle bool) []string {
+	pathStyle := "1"
+	if !forcePathStyle {
+		pathStyle = "" // managed (so the caller's value is stripped) but not set
+	}
+
 	// Ordered so the produced environment is deterministic. Empty-valued
 	// entries are skipped below.
 	managed := []struct{ key, value string }{
@@ -120,6 +138,7 @@ func BuildEnv(base []string, endpointURL, s3Endpoint, region string) []string {
 		{"AWS_REGION", region},
 		{"AWS_DEFAULT_REGION", region},
 		{"CDK_DISABLE_LEGACY_EXPORT_WARNING", "1"},
+		{"CDK_S3_FORCE_PATH_STYLE", pathStyle},
 	}
 
 	managedKeys := make(map[string]bool, len(managed))

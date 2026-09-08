@@ -133,17 +133,7 @@ Examples:
 				return err
 			}
 
-			host, dnsOK := endpoint.ResolveHost(cmd.Context(), awsContainer.Port, cfg.LocalStackHost)
-			if !dnsOK {
-				// CDK has no env-only lever to force S3 path style, so on the
-				// loopback fallback its S3 asset operations (bootstrap, asset
-				// deploys) may fail virtual-host addressing. Warn rather than
-				// block — non-S3 services still work. See the cdk-proxy design.
-				sink.Emit(output.MessageEvent{
-					Severity: output.SeverityWarning,
-					Text:     "Could not resolve localhost.localstack.cloud; using 127.0.0.1. CDK S3 asset operations (bootstrap, asset deploys) may fail on this host — ensure localhost.localstack.cloud resolves, or set AWS_ENDPOINT_URL/AWS_ENDPOINT_URL_S3 to a virtual-host-capable host.",
-				})
-			}
+			host, _ := endpoint.ResolveHost(cmd.Context(), awsContainer.Port, cfg.LocalStackHost)
 
 			return cdkcli.Run(cmd.Context(), "http://"+host, region, sink, logger, cdkArgs)
 		},

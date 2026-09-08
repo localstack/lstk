@@ -367,7 +367,7 @@ func TestCDKAWSEndpointURLBypassesDockerCheck(t *testing.T) {
 	srv := awsHealthServer(t)
 	defer srv.Close()
 
-	fakeDir := writeFakeCDK(t, "2.177.0")
+	fakeDir := writeFakeCDK(t, "2.1140.0")
 	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).WithHome(t.TempDir()).
 		With("AWS_ENDPOINT_URL", srv.URL)
 	e = append(e, unreachableDockerHost)
@@ -394,7 +394,7 @@ func TestCDKAWSEndpointURLWrongTypeFails(t *testing.T) {
 	}))
 	defer azureLike.Close()
 
-	fakeDir := writeFakeCDK(t, "2.177.0")
+	fakeDir := writeFakeCDK(t, "2.1140.0")
 	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).WithHome(t.TempDir())
 	e = append(e, unreachableDockerHost)
 

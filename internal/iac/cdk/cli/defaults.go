@@ -14,6 +14,18 @@ const (
 // minCDKVersionString is the human-facing form used in error messages.
 const minCDKVersionString = "2.177.0"
 
+// pathStyleFlag* is the CDK version that introduced CDK_S3_FORCE_PATH_STYLE
+// (aws/aws-cdk-cli#1625). It gates a matched pair, not just the flag: at or
+// above it lstk forces path style and passes the S3 endpoint through
+// unprefixed; below it the flag is ignored, CDK uses virtual-host addressing,
+// and that needs the `s3.`-prefixed endpoint LocalStack recognizes. Applying
+// half of either pair breaks asset publishing, so both follow this one check.
+const (
+	pathStyleFlagMajor = 2
+	pathStyleFlagMinor = 1138
+	pathStyleFlagPatch = 0
+)
+
 // offlineCommands are the CDK subcommands that never contact AWS APIs and so do
 // not require a running emulator. Everything else (bootstrap, deploy, destroy,
 // diff, import, watch, rollback, gc, migrate, …) is treated as AWS-contacting

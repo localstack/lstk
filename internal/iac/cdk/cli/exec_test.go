@@ -20,7 +20,7 @@ func envMap(env []string) map[string]string {
 }
 
 func TestBuildEnvSetsLocalStackValues(t *testing.T) {
-	env := envMap(BuildEnv(nil, "http://localhost.localstack.cloud:4566", "http://s3.localhost.localstack.cloud:4566", "eu-west-1"))
+	env := envMap(BuildEnv(nil, "http://localhost.localstack.cloud:4566", "http://s3.localhost.localstack.cloud:4566", "eu-west-1", true))
 
 	assert.Equal(t, "http://localhost.localstack.cloud:4566", env["AWS_ENDPOINT_URL"])
 	assert.Equal(t, "http://s3.localhost.localstack.cloud:4566", env["AWS_ENDPOINT_URL_S3"])
@@ -29,6 +29,76 @@ func TestBuildEnvSetsLocalStackValues(t *testing.T) {
 	assert.Equal(t, "eu-west-1", env["AWS_REGION"])
 	assert.Equal(t, "eu-west-1", env["AWS_DEFAULT_REGION"])
 	assert.Equal(t, "1", env["CDK_DISABLE_LEGACY_EXPORT_WARNING"])
+	assert.Equal(t, "1", env["CDK_S3_FORCE_PATH_STYLE"])
+}
+
+func TestBuildEnvPathStyle(t *testing.T) {
+	endpoint := "http://localstack:4566"
+
+	t.Run("set when forced", func(t *testing.T) {
+		env := envMap(BuildEnv(nil, endpoint, endpoint, "us-east-1", true))
+		assert.Equal(t, "1", env["CDK_S3_FORCE_PATH_STYLE"])
+	})
+
+	t.Run("absent when not forced", func(t *testing.T) {
+		env := envMap(BuildEnv(nil, endpoint, endpoint, "us-east-1", false))
+		_, has := env["CDK_S3_FORCE_PATH_STYLE"]
+		assert.False(t, has, "CDK_S3_FORCE_PATH_STYLE must not be set when path style is not forced")
+	})
+
+	// The variable is lstk's to set. CDK reads any non-empty value as true, so
+	// honoring a caller's "0" would turn path style on, not off.
+	t.Run("caller value overridden when forced", func(t *testing.T) {
+		for _, value := range []string{"0", "", "yes"} {
+			base := []string{"CDK_S3_FORCE_PATH_STYLE=" + value}
+			env := envMap(BuildEnv(base, endpoint, endpoint, "us-east-1", true))
+			assert.Equal(t, "1", env["CDK_S3_FORCE_PATH_STYLE"])
+		}
+	})
+
+	// Stripped on the suppressed path too, so setting it alongside
+	// AWS_ENDPOINT_URL_S3 is not a back door to forcing path style.
+	t.Run("caller value stripped when not forced", func(t *testing.T) {
+		base := []string{"CDK_S3_FORCE_PATH_STYLE=1"}
+		env := envMap(BuildEnv(base, endpoint, endpoint, "us-east-1", false))
+		_, has := env["CDK_S3_FORCE_PATH_STYLE"]
+		assert.False(t, has, "CDK_S3_FORCE_PATH_STYLE must be stripped when path style is not forced")
+	})
+
+	// One entry, never two — a duplicate key would make the effective value
+	// depend on os/exec's last-wins behavior.
+	t.Run("no duplicate entry", func(t *testing.T) {
+		base := []string{"CDK_S3_FORCE_PATH_STYLE=caller"}
+		env := BuildEnv(base, endpoint, endpoint, "us-east-1", true)
+		count := 0
+		for _, e := range env {
+			if strings.HasPrefix(e, "CDK_S3_FORCE_PATH_STYLE=") {
+				count++
+			}
+		}
+		assert.Equal(t, 1, count)
+	})
+
+	// The addition must not disturb the values BuildEnv already manages.
+	t.Run("managed values unchanged", func(t *testing.T) {
+		for _, forced := range []bool{true, false} {
+			env := envMap(BuildEnv(nil, endpoint, "http://s3.example:4566", "eu-west-1", forced))
+			assert.Equal(t, endpoint, env["AWS_ENDPOINT_URL"])
+			assert.Equal(t, "http://s3.example:4566", env["AWS_ENDPOINT_URL_S3"])
+			assert.Equal(t, "test", env["AWS_ACCESS_KEY_ID"])
+			assert.Equal(t, "test", env["AWS_SECRET_ACCESS_KEY"])
+			assert.Equal(t, "eu-west-1", env["AWS_REGION"])
+			assert.Equal(t, "eu-west-1", env["AWS_DEFAULT_REGION"])
+		}
+	})
+
+	// The produced environment stays deterministic across calls.
+	t.Run("deterministic order", func(t *testing.T) {
+		base := []string{"PATH=/usr/bin", "HOME=/home/user"}
+		first := BuildEnv(base, endpoint, endpoint, "us-east-1", true)
+		second := BuildEnv(base, endpoint, endpoint, "us-east-1", true)
+		assert.Equal(t, first, second)
+	})
 }
 
 // A 12-digit AWS_ACCESS_KEY_ID in the environment (which LocalStack would treat
@@ -36,7 +106,7 @@ func TestBuildEnvSetsLocalStackValues(t *testing.T) {
 // default account 000000000000 — there is no env path to a non-default account.
 func TestBuildEnvForcesDefaultAccount(t *testing.T) {
 	base := []string{"AWS_ACCESS_KEY_ID=123456789012", "AWS_SECRET_ACCESS_KEY=somesecret"}
-	env := envMap(BuildEnv(base, "http://127.0.0.1:4566", "http://127.0.0.1:4566", "us-east-1"))
+	env := envMap(BuildEnv(base, "http://127.0.0.1:4566", "http://127.0.0.1:4566", "us-east-1", true))
 
 	assert.Equal(t, "test", env["AWS_ACCESS_KEY_ID"])
 	assert.Equal(t, "test", env["AWS_SECRET_ACCESS_KEY"])
@@ -52,7 +122,7 @@ func TestBuildEnvStripsAmbientAWSConfig(t *testing.T) {
 		"PATH=/usr/bin",
 		"HOME=/home/user",
 	}
-	env := envMap(BuildEnv(base, "http://127.0.0.1:4566", "http://127.0.0.1:4566", "us-east-1"))
+	env := envMap(BuildEnv(base, "http://127.0.0.1:4566", "http://127.0.0.1:4566", "us-east-1", true))
 
 	_, hasProfile := env["AWS_PROFILE"]
 	_, hasDefaultProfile := env["AWS_DEFAULT_PROFILE"]
@@ -71,7 +141,7 @@ func TestBuildEnvStripsAmbientAWSConfig(t *testing.T) {
 }
 
 func TestBuildEnvSkipsEmptyEndpoint(t *testing.T) {
-	env := envMap(BuildEnv(nil, "", "", "us-east-1"))
+	env := envMap(BuildEnv(nil, "", "", "us-east-1", true))
 	_, hasEndpoint := env["AWS_ENDPOINT_URL"]
 	_, hasS3 := env["AWS_ENDPOINT_URL_S3"]
 	assert.False(t, hasEndpoint, "empty AWS_ENDPOINT_URL must not be set")
