@@ -12,12 +12,9 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// completionTipText is the user-visible tip lstk shows once, after the first
-// successful interactive start, pointing at the documented shell-completion
-// setup. Asserted verbatim, including the "> Tip: " prefix: that prefix is the
-// convention the neighbouring post-start tips use (tipsForType in
-// internal/container/start.go), so it is part of the observable behavior rather
-// than styling.
+// completionTipText is asserted verbatim, "> Tip: " prefix included: that
+// prefix is the convention the neighbouring post-start tips use (tipsForType in
+// internal/container/start.go), so it is observable behavior, not styling.
 const completionTipText = "> Tip: Enable tab completion for your shell: lstk completion [bash|zsh|fish|powershell] " +
 	"See https://docs.localstack.cloud/aws/developer-tools/running-localstack/lstk/#shell-completions"
 
@@ -27,8 +24,6 @@ func firstRunHome(t *testing.T) (env.Environ, string) {
 	t.Helper()
 
 	tmpHome := t.TempDir()
-	// Every test built on this helper starts a real emulator, whose root-owned
-	// volume files would otherwise break TempDir cleanup on Linux.
 	scheduleVolumeCleanup(t, tmpHome)
 	require.NoError(t, os.MkdirAll(filepath.Join(tmpHome, ".config"), 0755))
 	e := env.Environ(testEnvWithHome(tmpHome, tmpHome)).With(env.DisableEvents, "1")
@@ -54,11 +49,11 @@ func TestFirstRunShowsCompletionTip(t *testing.T) {
 
 	p := startLstkInPTY(t, testContext(t), e.With(env.APIEndpoint, mockServer.URL), "start")
 
-	// First run shows the emulator picker; accept the highlighted default (AWS).
+	// First run shows the emulator picker; accept the default (AWS).
 	p.waitForOutput("Which emulator would you like to use?", "emulator selection prompt should appear on first run")
 	p.write("\r")
 
-	// Post-start setup asks about the AWS CLI profile in the isolated home; decline it.
+	// Post-start setup asks about the AWS CLI profile; decline it.
 	p.waitForOutputTimeout(awsSetupPrompt, 2*time.Minute, "container should become ready")
 	p.write("n")
 
@@ -68,9 +63,8 @@ func TestFirstRunShowsCompletionTip(t *testing.T) {
 	assert.Contains(t, out, completionTipText, "first successful interactive start should point at shell completion setup")
 }
 
-// --type is the non-interactive answer to the first-run emulator picker, so it
-// suppresses the picker — but the run is still the user's first, and the tip
-// must survive that.
+// --type answers the first-run picker, so it suppresses it — but the run is
+// still a first run and the tip must survive that.
 func TestFirstRunWithEmulatorTypeFlagShowsCompletionTip(t *testing.T) {
 	requireDocker(t)
 	_ = env.Require(t, env.AuthToken)
@@ -159,9 +153,8 @@ func TestFirstRunJSONEnvelopeHasNoCompletionTip(t *testing.T) {
 	stdout, stderr, err := runLstk(t, testContext(t), "", e.With(env.APIEndpoint, mockServer.URL), "start", "--json")
 	require.NoError(t, err, "lstk start --json failed: %s", stderr)
 
-	// A distinctive substring rather than completionTipText: if the tip ever did
-	// leak into the envelope it would be inside a JSON string, where quoting or
-	// escaping could break an exact match and let the leak through unnoticed.
+	// A distinctive substring, not completionTipText: inside a JSON string,
+	// escaping could break an exact match and hide the leak.
 	assert.NotContains(t, stdout, "tab completion", "the tip must never reach machine-readable output")
 
 	envelope := decodeEnvelope(t, stdout)
