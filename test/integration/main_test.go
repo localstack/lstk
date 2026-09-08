@@ -176,6 +176,24 @@ const (
 	testImage     = "alpine:latest"
 )
 
+// scheduleVolumeCleanup removes the emulator volume under an isolated tmpHome.
+// Call it right after t.TempDir(): t.Cleanup runs LIFO, so registering it later
+// is what makes it run before TempDir's own cleanup. The emulator runs as root
+// in the container, so on Linux its volume files are root-owned and TempDir
+// cleanup cannot unlink them (Docker Desktop on macOS maps them to the calling
+// user); deleting them from inside a container sidesteps that. Needed by any
+// test that isolates HOME under t.TempDir() and starts a real emulator.
+func scheduleVolumeCleanup(t *testing.T, tmpHome string) {
+	t.Helper()
+	t.Cleanup(func() {
+		volumeDir := filepath.Join(tmpHome, ".cache", "lstk", "volume")
+		if _, err := os.Stat(volumeDir); err != nil {
+			return
+		}
+		_ = exec.Command("docker", "run", "--rm", "-v", volumeDir+":/d", "alpine", "sh", "-c", "rm -rf /d/*").Run()
+	})
+}
+
 // startTestContainer starts the test container with no port bindings by default.
 // Pass hostPort to bind 4566/tcp to a specific host port (e.g. to test that lstk status
 // uses the actual bound port rather than the port from config).
