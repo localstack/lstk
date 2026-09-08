@@ -99,3 +99,19 @@ func TestExplicitAnalyticsEndpointOverridesDefault(t *testing.T) {
 		t.Fatalf("analytics endpoint = %q, want %q (explicit override must win over default)", got, mock)
 	}
 }
+
+// Guards test isolation against an ambient LOCALSTACK_DISABLE_EVENTS=1, which
+// LocalStack developers commonly export: inherited, it disables lstk's
+// telemetry client and every telemetry assertion times out.
+func TestBaseEnvDropsAmbientDisableEvents(t *testing.T) {
+	t.Setenv(string(DisableEvents), "1")
+
+	if _, found := resolve(With("SOME_VAR", "value"), DisableEvents); found {
+		t.Fatalf("%s must be stripped from the base test environment", DisableEvents)
+	}
+
+	got, found := resolve(With(DisableEvents, "1"), DisableEvents)
+	if !found || got != "1" {
+		t.Fatalf("an explicit With(%s) must still win, got %q (found=%v)", DisableEvents, got, found)
+	}
+}
