@@ -62,7 +62,7 @@ Write the tests in this section before the implementation — 2.1's reordering i
 ### Deliberately not changed
 
 - The `n` key for "Never ask again" is kept, with the label sharpened from "Never remind me". A reflexive `n` (meaning "no") does write config, but the write is non-destructive, reversible, and close to what someone dismissing a repeated prompt wants; `r` remains the true decline.
-- A skipped version still suppresses output in `notify` mode. Skipping a version is an explicit per-version silence request, so honoring it in every mode is consistent; the stale-state trap it created is fixed by 7.7 instead.
+- ~~A skipped version still suppresses output in `notify` mode.~~ Superseded by section 9: the skipped-version mechanism is removed entirely, so neither the suppression nor the trap remains.
 
 ## 8. Second-round adversarial review fixes
 
@@ -87,3 +87,21 @@ Write the tests in this section before the implementation — 2.1's reordering i
 - [x] 9.2 Remove the mechanism behind it: `NotifyOptions.SkippedVersion`, `NotifyOptions.PersistSkipVersion`, the suppression check, `CLIConfig.UpdateSkippedVersion`, `config.SetUpdateSkippedVersion`, and the clearing logic added by 7.7. A leftover key in an existing config is inert (viper ignores unknown keys), so no migration is needed.
 - [x] 9.3 Retarget the pre-existing `TestUpdateNotification` "skip" subtest at the surviving config-writing option and rename it — it tests that a prompt-driven write preserves the user's comments and formatting, not which preference is written.
 - [x] 9.4 Update the specs, proposal, and design rationale; leave `internal/config/config_test.go`'s use of the key as generic `setInFile` fixture data alone.
+
+## 10. Final review fixes
+
+- [x] 10.1 MAJOR: cover `--force`'s bypass inside `applyUpdate` — mutation-proven unprotected, since the integration test for `--force` runs a `dev` build that short-circuits before `applyUpdate` is reached. Added a unit test pointing the download at a dead address and asserting no blocker is returned.
+- [x] 10.2 MAJOR: cover the `--check` exemption (`update --check` from a mise-shaped path must not refuse); a regression there would have exited 1 on every externally-managed install with nothing failing.
+- [x] 10.3 Correct CLAUDE.md, which still described detection as running only "when neither is set" and omitted the `--force` caveat — the opposite of the shipped rule after 7.1/7.3.
+- [x] 10.4 Remove the dead `Unset` → `Prompt` normalization in `notifyUpdateWithVersion` (a semantic no-op: only `Notify` is ever tested), and fix the two doc comments claiming the domain layer distinguishes unset from prompt. It does not — detection decides either way.
+- [x] 10.5 `isReadOnlyFSError`'s comment claimed Windows coverage. `syscall.EROFS` compiles there but is never produced, so write-protected Windows media falls through as indeterminate; ACL denials still refuse. Comment corrected rather than adding a Windows errno.
+- [x] 10.6 `resolvedDir`'s comment implied macOS previously failed; it passed by substring accident. Reworded to say Windows requires the helper and macOS merely benefits from it.
+- [x] 10.7 `assert.Contains(combined, "mise")` was satisfied by the install path itself; tightened to `"managed by mise"`. Dropped `startEnv`'s unused `configFile` parameter.
+- [x] 10.8 Inject `DetectInstall` in the 11 unit-test option literals that fell back to the real detector, matching the field's documented rationale — mutation-verified that no unit test now depends on where the test binary lives.
+- [x] 10.9 Nits: correct the `externalMarkers` comment (store entries have no launcher directory), drop the redundant `os.ErrPermission` check (same sentinel as `fs.ErrPermission`), fix `notify_test.go` import grouping (8.8 claimed this but missed it), and rename the "Never remind" test names to match the "Never ask again" label.
+
+### Not changed
+
+- `internal/ui/app_test.go`'s `{Key: "s", Label: "Skip this version"}` fixture is pre-existing arbitrary sample data for a component test, unrelated to this prompt.
+- `cmd/root.go`'s invalid-value action always advises unsetting the env var, which would misdescribe a bad *config* key — unreachable, because `config.Get()` rejects that one statement earlier. The two validations are redundant on that path by design: `Get()` covers every command, the env branch covers only the start path.
+- For an unwritable install directory the offered `--force` will itself fail at the rename. Spec-mandated: `--force` exists for the path-marker heuristic, and suppressing it per-reason would make the flag's contract conditional.

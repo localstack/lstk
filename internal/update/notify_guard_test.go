@@ -90,10 +90,10 @@ func TestNotifyUpdateExplicitNotifyNamesTheManager(t *testing.T) {
 	assert.Contains(t, msg.Text, "asdf")
 }
 
-// Offering "Never remind me" when there is nowhere to persist it would tell the
+// Offering "Never ask again" when there is nowhere to persist it would tell the
 // user their choice was saved when it was silently dropped (the first-run case,
 // where config.toml does not exist yet).
-func TestNotifyUpdateOmitsNeverRemindWhenItCannotBePersisted(t *testing.T) {
+func TestNotifyUpdateOmitsNeverAskAgainWhenItCannotBePersisted(t *testing.T) {
 	server := newTestGitHubServer(t, "v2.0.0")
 	defer server.Close()
 
@@ -106,6 +106,7 @@ func TestNotifyUpdateOmitsNeverRemindWhenItCannotBePersisted(t *testing.T) {
 	})
 
 	notifyUpdateWithVersion(context.Background(), sink, NotifyOptions{
+		DetectInstall:      func() InstallInfo { return InstallInfo{Method: InstallBinary} },
 		Mode:               config.UpdateCheckPrompt,
 		CanPrompt:          true,
 		PersistUpdateCheck: nil,
@@ -226,6 +227,7 @@ func TestPromptOffersUpdateRemindAndNeverAskAgain(t *testing.T) {
 	})
 
 	notifyUpdateWithVersion(context.Background(), sink, NotifyOptions{
+		DetectInstall:      func() InstallInfo { return InstallInfo{Method: InstallBinary} },
 		Mode:               config.UpdateCheckPrompt,
 		CanPrompt:          true,
 		PersistUpdateCheck: func(config.UpdateCheckMode) error { return nil },

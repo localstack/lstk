@@ -7,8 +7,10 @@ import (
 
 // UpdateCheckMode is the `[cli] update_check` / LSTK_UPDATE_CHECK value. It
 // governs only the automatic check on start; an explicit `lstk update` always
-// runs. The zero value means "no preference", which lets a caller tell an unset
-// key from an explicit "prompt" and fall through to the next source.
+// runs. The zero value means "unset", which is what lets the command boundary
+// fall through from the env var to the config key. The domain layer then treats
+// unset and prompt identically, since install detection decides between
+// prompting and a note either way.
 type UpdateCheckMode string
 
 const (

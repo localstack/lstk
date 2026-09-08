@@ -29,8 +29,9 @@ func TestNotifyUpdateOffMakesNoRequestAndNoOutput(t *testing.T) {
 	})
 
 	exit := notifyUpdateWithVersion(context.Background(), sink, NotifyOptions{
-		Mode:      config.UpdateCheckOff,
-		CanPrompt: true,
+		DetectInstall: func() InstallInfo { return InstallInfo{Method: InstallBinary} },
+		Mode:          config.UpdateCheckOff,
+		CanPrompt:     true,
 	}, "1.0.0", failingFetcher(t))
 
 	assert.False(t, exit)
@@ -51,8 +52,9 @@ func TestNotifyUpdateNotifyModeEmitsNoteWithoutPrompting(t *testing.T) {
 	})
 
 	exit := notifyUpdateWithVersion(context.Background(), sink, NotifyOptions{
-		Mode:      config.UpdateCheckNotify,
-		CanPrompt: true,
+		DetectInstall: func() InstallInfo { return InstallInfo{Method: InstallBinary} },
+		Mode:          config.UpdateCheckNotify,
+		CanPrompt:     true,
 	}, "1.0.0", testFetcher(server.URL))
 
 	assert.False(t, exit)
@@ -147,7 +149,7 @@ func TestNotifyUpdateNonInteractiveEmitsExactlyOneNote(t *testing.T) {
 	require.Len(t, events, 1)
 }
 
-func TestNotifyUpdateNeverRemindPersistsNotifyAndAppliesNoUpdate(t *testing.T) {
+func TestNotifyUpdateNeverAskAgainPersistsNotifyAndAppliesNoUpdate(t *testing.T) {
 	server := newTestGitHubServer(t, "v2.0.0")
 	defer server.Close()
 
@@ -161,15 +163,16 @@ func TestNotifyUpdateNeverRemindPersistsNotifyAndAppliesNoUpdate(t *testing.T) {
 	})
 
 	exit := notifyUpdateWithVersion(context.Background(), sink, NotifyOptions{
-		Mode:      config.UpdateCheckPrompt,
-		CanPrompt: true,
+		DetectInstall: func() InstallInfo { return InstallInfo{Method: InstallBinary} },
+		Mode:          config.UpdateCheckPrompt,
+		CanPrompt:     true,
 		PersistUpdateCheck: func(mode config.UpdateCheckMode) error {
 			persisted = mode
 			return nil
 		},
 	}, "1.0.0", testFetcher(server.URL))
 
-	assert.False(t, exit, "choosing never-remind must not restart the command")
+	assert.False(t, exit, "choosing never-ask-again must not restart the command")
 	assert.Equal(t, config.UpdateCheckNotify, persisted)
 	// "applies no update" is the other half of the behavior: exit == false
 	// alone would not notice an update actually being installed.
@@ -181,7 +184,7 @@ func TestNotifyUpdateNeverRemindPersistsNotifyAndAppliesNoUpdate(t *testing.T) {
 	}
 }
 
-func TestNotifyUpdateNeverRemindWarnsWhenPersistFails(t *testing.T) {
+func TestNotifyUpdateNeverAskAgainWarnsWhenPersistFails(t *testing.T) {
 	server := newTestGitHubServer(t, "v2.0.0")
 	defer server.Close()
 
@@ -194,8 +197,9 @@ func TestNotifyUpdateNeverRemindWarnsWhenPersistFails(t *testing.T) {
 	})
 
 	exit := notifyUpdateWithVersion(context.Background(), sink, NotifyOptions{
-		Mode:      config.UpdateCheckPrompt,
-		CanPrompt: true,
+		DetectInstall: func() InstallInfo { return InstallInfo{Method: InstallBinary} },
+		Mode:          config.UpdateCheckPrompt,
+		CanPrompt:     true,
 		PersistUpdateCheck: func(mode config.UpdateCheckMode) error {
 			return assert.AnError
 		},
@@ -251,8 +255,9 @@ func TestNotifyUpdateOrdinaryNoteStillPointsAtLstkUpdate(t *testing.T) {
 	sink := output.SinkFunc(func(event output.Event) { events = append(events, event) })
 
 	notifyUpdateWithVersion(context.Background(), sink, NotifyOptions{
-		Mode:      config.UpdateCheckNotify,
-		CanPrompt: true,
+		DetectInstall: func() InstallInfo { return InstallInfo{Method: InstallBinary} },
+		Mode:          config.UpdateCheckNotify,
+		CanPrompt:     true,
 	}, "1.0.0", testFetcher(server.URL))
 
 	require.Len(t, events, 1)

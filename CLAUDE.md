@@ -224,9 +224,9 @@ The release job (`.github/workflows/ci.yml`) builds the npm packages with `gorel
 
 # Update Checks
 
-`lstk start` (and the bare root) checks for a newer lstk release and, interactively, prompts to install it. Two things gate that: `[cli] update_check` in config.toml (`prompt` default / `notify` / `off`) with `LSTK_UPDATE_CHECK` overriding it for one run, and — when neither is set — whether the install looks externally managed. `lstk update` itself is never gated by the setting; it is a direct request, not a background nag (DEVX-1029).
+`lstk start` (and the bare root) checks for a newer lstk release and, interactively, prompts to install it. `[cli] update_check` in config.toml (`prompt` default / `notify` / `off`) gates that, with `LSTK_UPDATE_CHECK` overriding it for one run. `lstk update` itself is never gated by the setting; it is a direct request, not a background nag (DEVX-1029).
 
-Resolution happens at the command boundary (`resolveUpdateCheckMode` in `cmd/root.go`), never inside `internal/update`. Externally-managed installs (recognized from path-segment markers in `classifyPath`) default to `notify` and are never updated in place — every path that replaces the binary goes through `applyUpdate`, which is the single choke point for that guard. Mechanism and rationale for each piece live on the declarations: `config.UpdateCheckMode`, `env.Env.UpdateCheck`, `NotifyOptions.CanPrompt`, `externalMarkers`, `classifyPath`, `blockSelfUpdate`, and the `--force` flag.
+Resolution happens at the command boundary (`resolveUpdateCheckMode` in `cmd/root.go`), never inside `internal/update`. Externally-managed installs (recognized from path-segment markers in `classifyPath`) are never prompted — not even under an explicit `prompt`, since applying the update is refused there anyway — and are never updated in place without `--force`. Every path that replaces the binary goes through `applyUpdate`, the single choke point for that guard. Install detection runs for every mode except `off`, and only once an update is known to exist, so it stays off the common start path. Mechanism and rationale for each piece live on the declarations: `config.UpdateCheckMode`, `env.Env.UpdateCheck`, `NotifyOptions.CanPrompt`, `externalMarkers`, `classifyPath`, `blockSelfUpdate`, and the `--force` flag.
 
 # Shell Completion
 
