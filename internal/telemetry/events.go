@@ -47,11 +47,18 @@ type CommandParameters struct {
 	Flags      []string `json:"flags"`
 }
 
-// CommandResult holds the outcome of a command invocation.
+// CommandResult holds the outcome of a command invocation. ProxyError marks a
+// failure caused by the user's own wrapped-tool invocation (see
+// proc.MarkUserToolExit), which analytics ranks apart from lstk's own; it is
+// false for every other outcome, success included — the field describes the
+// error's origin, not whether a tool was proxied. Not omitempty, so absence
+// means only "emitted before this field existed" and the consumer can date the
+// cutover.
 type CommandResult struct {
 	DurationMS int64  `json:"duration_ms"`
 	ExitCode   int    `json:"exit_code"`
 	ErrorMsg   string `json:"error_msg,omitempty"`
+	ProxyError bool   `json:"proxy_error"`
 }
 
 // LifecycleEvent is the payload for an lstk_lifecycle telemetry event.
@@ -108,7 +115,7 @@ func (c *Client) GetEnvironment(ctx context.Context) Environment {
 
 // EmitCommand emits an lstk_command telemetry event. The Environment block is
 // populated automatically from the client state.
-func (c *Client) EmitCommand(ctx context.Context, command, subcommand string, flags []string, durationMS int64, exitCode int, errorMsg string) {
+func (c *Client) EmitCommand(ctx context.Context, command, subcommand string, flags []string, durationMS int64, exitCode int, errorMsg string, proxyError bool) {
 	c.Emit(ctx, "lstk_command", ToMap(CommandEvent{
 		Environment: c.GetEnvironment(ctx),
 		Parameters:  CommandParameters{Command: command, Subcommand: subcommand, Flags: flags},
@@ -116,6 +123,7 @@ func (c *Client) EmitCommand(ctx context.Context, command, subcommand string, fl
 			DurationMS: durationMS,
 			ExitCode:   exitCode,
 			ErrorMsg:   errorMsg,
+			ProxyError: proxyError,
 		},
 	}))
 }

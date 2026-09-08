@@ -25,6 +25,7 @@ import (
 	"github.com/localstack/lstk/internal/extension"
 	"github.com/localstack/lstk/internal/log"
 	"github.com/localstack/lstk/internal/output"
+	"github.com/localstack/lstk/internal/proc"
 	"github.com/localstack/lstk/internal/runtime"
 	"github.com/localstack/lstk/internal/telemetry"
 	"github.com/localstack/lstk/internal/tracing"
@@ -691,7 +692,7 @@ func instrumentCommands(cmd *cobra.Command, tel *telemetry.Client) {
 				errorMsg = runErr.Error()
 			}
 
-			tel.EmitCommand(c.Context(), commandDisplayName(c), subcommand, flags, time.Since(startTime).Milliseconds(), exitCode, errorMsg)
+			tel.EmitCommand(c.Context(), commandDisplayName(c), subcommand, flags, time.Since(startTime).Milliseconds(), exitCode, errorMsg, proc.IsUserToolExit(runErr))
 
 			return runErr
 		}
