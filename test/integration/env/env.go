@@ -88,6 +88,11 @@ var ambientAWSKeys = []Key{
 func base() Environ {
 	return Environ(os.Environ()).
 		Without(ambientAWSKeys...).
+		// LocalStack developers commonly export LOCALSTACK_DISABLE_EVENTS=1;
+		// inherited, it silently disables lstk's telemetry client and every
+		// telemetry assertion times out waiting for an event that was never
+		// emitted. Tests covering the disabled path set it explicitly via With.
+		Without(DisableEvents).
 		With(AnalyticsEndpoint, UnreachableAnalyticsEndpoint).
 		With(AzureCollectTelemetry, "false").
 		With(SamCliTelemetry, "0")
