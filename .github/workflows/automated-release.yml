@@ -21,6 +21,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       has_changes: ${{ steps.check.outputs.has_changes }}
+      sha: ${{ steps.check.outputs.sha }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v7
@@ -36,6 +37,10 @@ jobs:
         id: check
         run: |
           set -euo pipefail
+
+          # Pin the release candidate. create-tag checks out this exact commit
+          # after the approval wait, so main moving in the meantime is harmless.
+          echo "sha=$(git rev-parse HEAD)" >> "${GITHUB_OUTPUT}"
 
           latest_tag="$(git tag --list "v*.*.*" --sort=-v:refname | grep -E "^v[0-9]+\.[0-9]+\.[0-9]+$" | head -n 1 || true)"
           if [[ -z "${latest_tag}" ]]; then
@@ -108,6 +113,23 @@ jobs:
           echo "Determined bump type: ${bump}"
           echo "bump=${bump}" >> "${GITHUB_OUTPUT}"
 
+      # Runs before the gated create-tag job so reviewers see what to test
+      # while that job is still waiting for approval.
+      - name: Print Windows smoke test checklist
+        env:
+          SHA: ${{ needs.check-changes.outputs.sha }}
+          BUMP: ${{ steps.bump.outputs.bump }}
+        run: |
+          {
+            echo "## Windows smoke test required"
+            echo
+            echo "\`Create release tag\` waits in the \`release\` environment until a reviewer approves."
+            echo "Approve only after the Windows smoke test in \`docs/RELEASING.md\` passed on this exact commit:"
+            echo
+            echo "- Commit: [\`${SHA}\`](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/commit/${SHA})"
+            echo "- Bump: \`${BUMP}\`"
+          } >> "${GITHUB_STEP_SUMMARY}"
+
   ci:
     name: CI
     needs: check-changes
@@ -120,11 +142,16 @@ jobs:
     needs: [check-changes, determine-bump, ci]
     if: needs.check-changes.outputs.has_changes == 'true'
     runs-on: ubuntu-latest
+    # Waits for a required reviewer. Approve only after the Windows smoke test
+    # in docs/RELEASING.md passed on the commit shown in the run summary.
+    environment:
+      name: release
+      url: ${{ github.server_url }}/${{ github.repository }}/commit/${{ needs.check-changes.outputs.sha }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v7
         with:
-          ref: main
+          ref: ${{ needs.check-changes.outputs.sha }}
           fetch-depth: 0
           token: ${{ secrets.PRO_ACCESS_TOKEN }}
 
