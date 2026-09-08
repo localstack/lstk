@@ -52,7 +52,7 @@ func Invoke(ctx context.Context, ext *Extension, args []string, runCtx Context) 
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
-	if err := proc.Run(cmd); err != nil {
+	if err := proc.MarkUserToolExit(proc.Run(cmd)); err != nil {
 		var exitErr *exec.ExitError
 		if errors.As(err, &exitErr) {
 			span.SetAttributes(attribute.Int("extension.exit_code", exitErr.ExitCode()))

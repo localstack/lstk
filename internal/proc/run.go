@@ -1,6 +1,7 @@
 // Package proc runs wrapped external tools (aws, terraform, cdk, sam, az, and
 // extensions) so that termination signals reach the child gracefully instead of
-// hard-killing it.
+// hard-killing it, and lets a caller record whose failure a non-zero exit was
+// (MarkUserToolExit) — a separate claim from having run through Run.
 package proc
 
 import (

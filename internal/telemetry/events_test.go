@@ -68,7 +68,7 @@ func TestEmitCommand_SendsCorrectEventNameAndStructure(t *testing.T) {
 	tel, ch := captureEvents(t)
 
 	tel.SetAuthToken("ls-token")
-	tel.EmitCommand(context.Background(), "start", "", []string{"--non-interactive"}, 1200, 0, "")
+	tel.EmitCommand(context.Background(), "start", "", []string{"--non-interactive"}, 1200, 0, "", false)
 
 	got := drainEvent(t, tel, ch)
 
@@ -102,7 +102,7 @@ func TestEmitCommand_SendsCorrectEventNameAndStructure(t *testing.T) {
 func TestEmitCommand_IncludesErrorMsgOnFailure(t *testing.T) {
 	tel, ch := captureEvents(t)
 
-	tel.EmitCommand(context.Background(), "start", "", nil, 50, 1, "port 4566 already in use")
+	tel.EmitCommand(context.Background(), "start", "", nil, 50, 1, "port 4566 already in use", false)
 
 	got := drainEvent(t, tel, ch)
 	payload := got["payload"].(map[string]any)
@@ -114,7 +114,7 @@ func TestEmitCommand_IncludesErrorMsgOnFailure(t *testing.T) {
 func TestEmitCommand_RecordsSubcommandAndRealExitCode(t *testing.T) {
 	tel, ch := captureEvents(t)
 
-	tel.EmitCommand(context.Background(), "aws", "s3 ls", nil, 80, 252, "exit status 252")
+	tel.EmitCommand(context.Background(), "aws", "s3 ls", nil, 80, 252, "exit status 252", true)
 
 	got := drainEvent(t, tel, ch)
 	payload := got["payload"].(map[string]any)
@@ -123,12 +123,27 @@ func TestEmitCommand_RecordsSubcommandAndRealExitCode(t *testing.T) {
 	assert.Equal(t, "s3 ls", params["subcommand"])
 	result := payload["result"].(map[string]any)
 	assert.InDelta(t, 252, result["exit_code"], 0)
+	assert.Equal(t, true, result["proxy_error"])
+}
+
+// An lstk failure sends proxy_error: false rather than omitting the field, so
+// it is distinguishable from an event emitted before the field existed.
+func TestEmitCommand_SendsProxyErrorFalseForLstkFailures(t *testing.T) {
+	tel, ch := captureEvents(t)
+
+	tel.EmitCommand(context.Background(), "aws", "s3 ls", nil, 80, 1, "runtime not healthy", false)
+
+	got := drainEvent(t, tel, ch)
+	payload := got["payload"].(map[string]any)
+	result := payload["result"].(map[string]any)
+	require.Contains(t, result, "proxy_error")
+	assert.Equal(t, false, result["proxy_error"])
 }
 
 func TestEmitCommand_OmitsSubcommandWhenEmpty(t *testing.T) {
 	tel, ch := captureEvents(t)
 
-	tel.EmitCommand(context.Background(), "start", "", nil, 80, 0, "")
+	tel.EmitCommand(context.Background(), "start", "", nil, 80, 0, "", false)
 
 	got := drainEvent(t, tel, ch)
 	payload := got["payload"].(map[string]any)
@@ -145,7 +160,7 @@ func TestEmitCommand_IsNoOpWhenDisabled(t *testing.T) {
 	defer srv.Close()
 
 	tel := New(srv.URL, true) // disabled
-	tel.EmitCommand(context.Background(), "start", "", nil, 0, 0, "")
+	tel.EmitCommand(context.Background(), "start", "", nil, 0, 0, "", false)
 	tel.Close()
 
 	select {

@@ -77,7 +77,7 @@ func Run(ctx context.Context, endpointURL, account, region string, regionSelecte
 	cmd.Stderr = os.Stderr
 	cmd.Env = BuildEnv(os.Environ(), effectiveEndpoint, account, region)
 
-	if err := proc.Run(cmd); err != nil {
+	if err := proc.MarkUserToolExit(proc.Run(cmd)); err != nil {
 		var exitErr *exec.ExitError
 		if errors.As(err, &exitErr) {
 			span.SetAttributes(attribute.Int("sam.exit_code", exitErr.ExitCode()))

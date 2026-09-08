@@ -31,14 +31,21 @@ func CheckInstalled() error {
 	return nil
 }
 
-// Exec runs `az <args...>`. extraEnv is appended to the inherited process environment
-// (later entries win), letting callers inject AZURE_CONFIG_DIR, proxy, and CA settings
-// without mutating the user's global Azure CLI configuration.
+// Exec runs `az <args...>` on the user's behalf — the `lstk az` passthrough.
+// lstk's own az calls go through Run instead; only Exec attributes a non-zero
+// exit to the user. extraEnv is appended to the inherited process environment
+// (later entries win), letting callers inject AZURE_CONFIG_DIR, proxy, and CA
+// settings without mutating the user's global Azure CLI configuration.
 //
 // When usePTY is true (lstk's stdout and stderr are both terminals), the child's
 // output goes through a pseudo-terminal merged into stdout — see proc.RunInPTY
 // for why; otherwise stdout/stderr are wired as given.
 func Exec(ctx context.Context, extraEnv []string, usePTY bool, stdin io.Reader, stdout, stderr io.Writer, args ...string) error {
+	return proc.MarkUserToolExit(execAz(ctx, extraEnv, usePTY, stdin, stdout, stderr, args...))
+}
+
+// execAz is the shared body of Exec and Run, and claims neither's ownership.
+func execAz(ctx context.Context, extraEnv []string, usePTY bool, stdin io.Reader, stdout, stderr io.Writer, args ...string) error {
 	ctx, span := otel.Tracer("github.com/localstack/lstk/internal/azurecli").Start(ctx, "az cli")
 	defer span.End()
 
@@ -111,11 +118,13 @@ func setIfAbsent(env *[]string, key, value string) {
 	*env = append(*env, prefix+value)
 }
 
-// Run executes `az <args...>` with extraEnv and returns the captured stdout, stderr,
-// and any error. On non-zero exit, the error wraps stderr to aid debugging.
+// Run executes an `az <args...>` call lstk composed itself — the short
+// captured-output execs behind `setup azure` and interception — and returns the
+// captured stdout, stderr, and any error. On non-zero exit, the error wraps
+// stderr to aid debugging. A failure here is lstk's own, not the user's.
 func Run(ctx context.Context, extraEnv []string, args ...string) (stdout, stderr string, err error) {
 	var outBuf, errBuf bytes.Buffer
-	runErr := Exec(ctx, extraEnv, false, nil, &outBuf, &errBuf, args...)
+	runErr := execAz(ctx, extraEnv, false, nil, &outBuf, &errBuf, args...)
 	stdout = outBuf.String()
 	stderr = errBuf.String()
 	if runErr != nil {
