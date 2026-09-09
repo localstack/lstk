@@ -1,6 +1,7 @@
 package integration_test
 
 import (
+	"net/url"
 	"strings"
 	"testing"
 
@@ -27,6 +28,7 @@ func writeFakeCDK(t *testing.T, version string) string {
 			"ENV_AWS_PROFILE={env:AWS_PROFILE:-<unset>}",
 			"ENV_AWS_DEFAULT_PROFILE={env:AWS_DEFAULT_PROFILE:-<unset>}",
 			"ENV_AWS_SESSION_TOKEN={env:AWS_SESSION_TOKEN:-<unset>}",
+			"ENV_CDK_S3_FORCE_PATH_STYLE={env:CDK_S3_FORCE_PATH_STYLE:-<unset>}",
 		},
 	})
 }
@@ -69,7 +71,7 @@ func TestCDKPropagatesExitCode(t *testing.T) {
 // that could redirect at real AWS is stripped.
 func TestCDKInjectsCleanAWSEnv(t *testing.T) {
 	t.Parallel()
-	fakeDir := writeFakeCDK(t, "2.177.0")
+	fakeDir := writeFakeCDK(t, "2.1140.0")
 	// A 12-digit AWS_ACCESS_KEY_ID would make LocalStack resolve a custom
 	// account; lstk must override it with "test" so CDK always uses the default
 	// account 000000000000.
@@ -98,7 +100,7 @@ func TestCDKOfflineCommandsNoEmulator(t *testing.T) {
 		sub := sub
 		t.Run(sub, func(t *testing.T) {
 			t.Parallel()
-			fakeDir := writeFakeCDK(t, "2.177.0")
+			fakeDir := writeFakeCDK(t, "2.1140.0")
 			e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).WithHome(t.TempDir())
 
 			stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), e,
@@ -121,7 +123,7 @@ func TestCDKHelpNoEmulator(t *testing.T) {
 		args := args
 		t.Run(strings.Join(args, "_"), func(t *testing.T) {
 			t.Parallel()
-			fakeDir := writeFakeCDK(t, "2.177.0")
+			fakeDir := writeFakeCDK(t, "2.1140.0")
 			e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).WithHome(t.TempDir())
 
 			cmdArgs := append([]string{"cdk"}, args...)
@@ -165,7 +167,7 @@ func TestCDKAccountRejected(t *testing.T) {
 		value := value
 		t.Run(value, func(t *testing.T) {
 			t.Parallel()
-			fakeDir := writeFakeCDK(t, "2.177.0")
+			fakeDir := writeFakeCDK(t, "2.1140.0")
 			e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).WithHome(t.TempDir())
 
 			stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), e,
@@ -178,10 +180,137 @@ func TestCDKAccountRejected(t *testing.T) {
 	}
 }
 
+// CDK picks path-style S3 addressing on its own only for loopback-literal
+// hosts, so any other endpoint host gets virtual-host addressing that
+// LocalStack does not recognize. lstk forces path style for every endpoint.
+func TestCDKForcesS3PathStyle(t *testing.T) {
+	t.Parallel()
+	fakeDir := writeFakeCDK(t, "2.1140.0")
+	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).WithHome(t.TempDir())
+
+	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), e, "cdk", "synth")
+	require.NoError(t, err, "stderr: %s", stderr)
+	assert.Contains(t, stdout, "ENV_CDK_S3_FORCE_PATH_STYLE=1")
+}
+
+// CDK_S3_FORCE_PATH_STYLE arrived in aws-cdk 2.1138.0. Below it the flag is
+// ignored and CDK uses virtual-host addressing, which LocalStack only
+// recognizes on an `s3.`-prefixed host — so the old branch keeps both halves of
+// the pre-change behavior: no flag, prefix retained.
+func TestCDKOldVersionKeepsVirtualHostAddressing(t *testing.T) {
+	t.Parallel()
+	fakeDir := writeFakeCDK(t, "2.1137.0")
+	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).WithHome(t.TempDir())
+
+	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), e, "cdk", "synth")
+	require.NoError(t, err, "stderr: %s", stderr)
+
+	assert.Contains(t, stdout, "ENV_CDK_S3_FORCE_PATH_STYLE=<unset>",
+		"the flag is inert below 2.1138.0 and must not be set")
+	assertS3EndpointPrefixed(t, stdout)
+}
+
+// assertS3EndpointPrefixed checks the virtual-host derivation: an `s3.` host
+// prefix for virtual-host-capable hosts, the bare endpoint otherwise. Which
+// host lstk resolves is DNS-dependent, so the expectation is derived from the
+// base endpoint the run actually used.
+func assertS3EndpointPrefixed(t *testing.T, stdout string) {
+	t.Helper()
+	base, err := url.Parse(envLineValue(t, stdout, "ENV_AWS_ENDPOINT_URL"))
+	require.NoError(t, err)
+	s3, err := url.Parse(envLineValue(t, stdout, "ENV_AWS_ENDPOINT_URL_S3"))
+	require.NoError(t, err)
+
+	if !strings.HasSuffix(base.Hostname(), "localstack.cloud") {
+		assert.Equal(t, base.Host, s3.Host, "non-virtual-host-capable host uses the bare endpoint")
+		return
+	}
+	assert.Equal(t, "s3."+base.Host, s3.Host, "virtual-host-capable host needs the s3. prefix")
+}
+
+// With path style forced, the S3 endpoint needs no virtual-host `s3.` prefix —
+// and on a sandbox instance the prefixed host has no TLS certificate, so
+// deriving one breaks the handshake. The S3 endpoint is the base endpoint
+// verbatim. Asserted as equality because the resolved host is DNS-dependent.
+func TestCDKS3EndpointHasNoHostPrefix(t *testing.T) {
+	t.Parallel()
+	fakeDir := writeFakeCDK(t, "2.1138.0")
+	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).WithHome(t.TempDir())
+
+	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), e, "cdk", "synth")
+	require.NoError(t, err, "stderr: %s", stderr)
+
+	base := envLineValue(t, stdout, "ENV_AWS_ENDPOINT_URL")
+	s3 := envLineValue(t, stdout, "ENV_AWS_ENDPOINT_URL_S3")
+	assert.Equal(t, base, s3, "S3 endpoint must be the base endpoint verbatim, with no s3. host prefix")
+	assert.Contains(t, stdout, "ENV_CDK_S3_FORCE_PATH_STYLE=1")
+}
+
+// envLineValue extracts the value of a "KEY=value" line from a fake tool's
+// echoed output.
+func envLineValue(t *testing.T, out, key string) string {
+	t.Helper()
+	for _, line := range strings.Split(out, "\n") {
+		if after, ok := strings.CutPrefix(strings.TrimSpace(line), key+"="); ok {
+			return after
+		}
+	}
+	t.Fatalf("no %s= line in output:\n%s", key, out)
+	return ""
+}
+
+// Setting AWS_ENDPOINT_URL_S3 means the caller is directing S3 themselves, so
+// lstk leaves the addressing mode to CDK's own default.
+func TestCDKS3EndpointOverrideSuppressesPathStyle(t *testing.T) {
+	t.Parallel()
+	fakeDir := writeFakeCDK(t, "2.1140.0")
+	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).WithHome(t.TempDir()).
+		With(env.Key("AWS_ENDPOINT_URL_S3"), "http://s3.example.test:4566")
+
+	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), e, "cdk", "synth")
+	require.NoError(t, err, "stderr: %s", stderr)
+	assert.Contains(t, stdout, "ENV_CDK_S3_FORCE_PATH_STYLE=<unset>")
+	// The override itself is still forwarded.
+	assert.Contains(t, stdout, "ENV_AWS_ENDPOINT_URL_S3=http://s3.example.test:4566")
+}
+
+// The variable is lstk's to set. A caller value is stripped, not honored —
+// including "0", which CDK would read as true anyway.
+func TestCDKOverridesCallerPathStyleValue(t *testing.T) {
+	t.Parallel()
+	for _, value := range []string{"0", "", "caller-value"} {
+		value := value
+		t.Run("value_"+value, func(t *testing.T) {
+			t.Parallel()
+			fakeDir := writeFakeCDK(t, "2.1140.0")
+			e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).WithHome(t.TempDir()).
+				With(env.Key("CDK_S3_FORCE_PATH_STYLE"), value)
+
+			stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), e, "cdk", "synth")
+			require.NoError(t, err, "stderr: %s", stderr)
+			assert.Contains(t, stdout, "ENV_CDK_S3_FORCE_PATH_STYLE=1")
+		})
+	}
+}
+
+// Setting the variable alongside the endpoint override must not be a back door
+// to forcing path style on the suppressed path — it is stripped there too.
+func TestCDKStripsCallerPathStyleValueWithS3Override(t *testing.T) {
+	t.Parallel()
+	fakeDir := writeFakeCDK(t, "2.1140.0")
+	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).WithHome(t.TempDir()).
+		With(env.Key("AWS_ENDPOINT_URL_S3"), "http://s3.example.test:4566").
+		With(env.Key("CDK_S3_FORCE_PATH_STYLE"), "1")
+
+	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), e, "cdk", "synth")
+	require.NoError(t, err, "stderr: %s", stderr)
+	assert.Contains(t, stdout, "ENV_CDK_S3_FORCE_PATH_STYLE=<unset>")
+}
+
 // 7.6 — flags after the subcommand are forwarded to cdk unchanged.
 func TestCDKFlagsAfterActionAreForwarded(t *testing.T) {
 	t.Parallel()
-	fakeDir := writeFakeCDK(t, "2.177.0")
+	fakeDir := writeFakeCDK(t, "2.1140.0")
 	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).WithHome(t.TempDir())
 
 	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), e,
@@ -193,7 +322,7 @@ func TestCDKFlagsAfterActionAreForwarded(t *testing.T) {
 // 7.6 — a flag before the subcommand is rejected with a clear message.
 func TestCDKFlagBeforeSubcommandRejected(t *testing.T) {
 	t.Parallel()
-	fakeDir := writeFakeCDK(t, "2.177.0")
+	fakeDir := writeFakeCDK(t, "2.1140.0")
 	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).WithHome(t.TempDir())
 
 	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), e,
@@ -225,7 +354,7 @@ func TestCDKFailsWhenEmulatorNotRunning(t *testing.T) {
 	cleanup()
 	t.Cleanup(cleanup)
 
-	fakeDir := writeFakeCDK(t, "2.177.0")
+	fakeDir := writeFakeCDK(t, "2.1140.0")
 	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).WithHome(t.TempDir())
 
 	stdout, _, err := runLstk(t, testContext(t), t.TempDir(), e, "cdk", "deploy")
@@ -247,7 +376,7 @@ func TestCDKRequiresAWSEmulator(t *testing.T) {
 	ctx := testContext(t)
 	startTestSnowflakeContainer(t, ctx)
 
-	fakeDir := writeFakeCDK(t, "2.177.0")
+	fakeDir := writeFakeCDK(t, "2.1140.0")
 	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).WithHome(t.TempDir())
 
 	stdout, _, err := runLstk(t, ctx, t.TempDir(), e, "cdk", "deploy")

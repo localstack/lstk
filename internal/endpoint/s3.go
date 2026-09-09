@@ -11,10 +11,11 @@ import (
 // host carries an `s3.` prefix and path style is off. Non-domain hosts
 // (127.0.0.1/localhost) require path style and use the bare endpoint.
 //
-// It is used both by the Terraform proxy (to set `s3_use_path_style` and the
-// `s3` endpoint key in the generated override) and by the CDK proxy (to set
-// `AWS_ENDPOINT_URL_S3`). CDK has no env-only lever for path style, so a
-// pathStyle==true result there is informational only — see the cdk-proxy design.
+// It is used by the Terraform proxy, to set `s3_use_path_style` and the `s3`
+// endpoint key in the generated override, and by the CDK proxy only for CDK
+// older than 2.1138.0, which cannot be told to use path style and so needs the
+// prefixed host. From 2.1138.0 the CDK proxy forces path style via
+// CDK_S3_FORCE_PATH_STYLE and passes the base endpoint through unprefixed
 func S3Addressing(endpointURL string) (pathStyle bool, s3Endpoint string) {
 	u, err := url.Parse(endpointURL)
 	if err != nil || u.Hostname() == "" {

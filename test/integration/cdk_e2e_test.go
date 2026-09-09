@@ -21,8 +21,9 @@ import (
 // A successful `cdk deploy` against LocalStack proves the full path: lstk
 // injected AWS_ENDPOINT_URL/AWS_ENDPOINT_URL_S3 + mock creds, CDK routed
 // CloudFormation and the S3 asset staging through them, and LocalStack served
-// the calls. The S3 staging in particular validates the virtual-host S3
-// endpoint (s3.localhost.localstack.cloud) lstk derives.
+// the calls. The S3 staging in particular validates whichever addressing pair
+// the installed CDK selects: path style with the unprefixed endpoint on
+// 2.1138.0+, virtual-host with the `s3.`-prefixed endpoint below it.
 
 func requireCDK(t *testing.T) {
 	t.Helper()
