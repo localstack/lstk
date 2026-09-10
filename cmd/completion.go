@@ -151,10 +151,10 @@ Bash:
   # Load in current session
   eval "$(%[1]s completion bash)"
 
-  # Load in future sessions (Linux)
+  # Load in new sessions (Linux)
   echo 'eval "$(%[1]s completion bash)"' >> ~/.bashrc
 
-  # Load in future sessions (macOS)
+  # Load in new sessions (macOS)
   echo 'eval "$(%[1]s completion bash)"' >> ~/.bash_profile
 
 Zsh:
@@ -163,7 +163,7 @@ Zsh:
   autoload -Uz compinit && compinit
   source <(%[1]s completion zsh)
 
-  # Load in future sessions (Linux, macOS)
+  # Load in new sessions (Linux, macOS)
   echo 'autoload -Uz compinit && compinit' >> ~/.zshrc
   echo 'source <(%[1]s completion zsh)' >> ~/.zshrc
 
@@ -172,7 +172,7 @@ Fish:
   # Load in current session
   %[1]s completion fish | source
 
-  # Load in future sessions (Linux, macOS)
+  # Load in new sessions (Linux, macOS)
   %[1]s completion fish > ~/.config/fish/completions/%[1]s.fish
 
 PowerShell:
@@ -180,7 +180,7 @@ PowerShell:
   # Load in current session
   %[1]s completion powershell | Out-String | Invoke-Expression
 
-  # Load in future sessions (Windows, Linux, macOS)
+  # Load in new sessions (Windows, Linux, macOS)
   if (!(Test-Path $PROFILE)) { New-Item -ItemType File -Path $PROFILE -Force }
   %[1]s completion powershell | Out-File -Append -Encoding utf8 $PROFILE`
 

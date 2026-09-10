@@ -12,10 +12,10 @@ Bash:
   # Load in current session
   eval "$(lstk completion bash)"
 
-  # Load in future sessions (Linux)
+  # Load in new sessions (Linux)
   echo 'eval "$(lstk completion bash)"' >> ~/.bashrc
 
-  # Load in future sessions (macOS)
+  # Load in new sessions (macOS)
   echo 'eval "$(lstk completion bash)"' >> ~/.bash_profile
 
 Zsh:
@@ -24,7 +24,7 @@ Zsh:
   autoload -Uz compinit && compinit
   source <(lstk completion zsh)
 
-  # Load in future sessions (Linux, macOS)
+  # Load in new sessions (Linux, macOS)
   echo 'autoload -Uz compinit && compinit' >> ~/.zshrc
   echo 'source <(lstk completion zsh)' >> ~/.zshrc
 
@@ -33,7 +33,7 @@ Fish:
   # Load in current session
   lstk completion fish | source
 
-  # Load in future sessions (Linux, macOS)
+  # Load in new sessions (Linux, macOS)
   lstk completion fish > ~/.config/fish/completions/lstk.fish
 
 PowerShell:
@@ -41,7 +41,7 @@ PowerShell:
   # Load in current session
   lstk completion powershell | Out-String | Invoke-Expression
 
-  # Load in future sessions (Windows, Linux, macOS)
+  # Load in new sessions (Windows, Linux, macOS)
   if (!(Test-Path $PROFILE)) { New-Item -ItemType File -Path $PROFILE -Force }
   lstk completion powershell | Out-File -Append -Encoding utf8 $PROFILE
 
