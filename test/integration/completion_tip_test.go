@@ -17,8 +17,7 @@ import (
 // completionTipText is asserted verbatim, "> Tip: " prefix included: that
 // prefix is the convention the other post-start tips use (tipsForType in
 // internal/container/tips.go), so it is observable behavior, not styling.
-const completionTipText = "> Tip: Enable tab completion for your shell: lstk completion [bash|zsh|fish|powershell] " +
-	"See https://docs.localstack.cloud/aws/developer-tools/running-localstack/lstk/#shell-completions"
+const completionTipText = "> Tip: Set up tab completion: lstk completion"
 
 // firstRunHome returns an isolated home with no lstk config, so the run under
 // test is a first run (config.toml absent is what firstRun means).
