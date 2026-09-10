@@ -3,7 +3,6 @@ package cmd
 import (
 	"fmt"
 	"io"
-	"strings"
 
 	"github.com/spf13/cobra"
 )
@@ -133,108 +132,83 @@ func selfContainBashCompletion(completionCmd *cobra.Command) {
 	}
 }
 
-// completionShells documents setup for every shell lstk generates a script for.
-// It is the single source for both the `completion` parent help and each shell
-// subcommand's help, so the two cannot drift, and `lstk docs` renders it — the
-// docs site follows the CLI instead of being kept in step by hand.
+// completionSetup is the whole of lstk's shell-completion setup documentation.
+// It lives on the `completion` command alone — the first-start tip points at
+// bare `lstk completion` (PR #495 review), so that command has to answer the
+// question with no URL to follow, and the per-shell subcommands forward here
+// rather than keeping a second copy. `lstk docs` renders it too, so the docs
+// site follows the CLI instead of being kept in step by hand.
 //
-// %[1]s is the binary name. Command lines are tab-indented because wrapText
-// (cmd/help.go) reflows unindented prose to the terminal width but leaves
-// indented lines alone. Homebrew paths are deliberately absent: those installs
-// wire completion up themselves (homebrew_casks.completions in .goreleaser.yaml).
-var completionShells = []struct {
-	name  string
-	title string
-	setup string
-	note  string
-}{
-	{
-		name:  "bash",
-		title: "Bash",
-		setup: `	# Load in current session
-	eval "$(%[1]s completion bash)"
+// %[1]s is the binary name. Command lines are indented so wrapText
+// (cmd/help.go) leaves them intact — it reflows unindented prose to the
+// terminal width, which would break a command mid-word on a narrow one.
+const completionSetup = `Generate a tab-completion script for your shell. Homebrew installs of %[1]s set this up already.
 
-	# Persist (Linux, and Windows under WSL or Git Bash)
-	mkdir -p ~/.local/share/bash-completion/completions
-	%[1]s completion bash > ~/.local/share/bash-completion/completions/%[1]s
+To load completions temporarily or permanently:
 
-	# Persist (macOS)
-	echo 'eval "$(%[1]s completion bash)"' >> ~/.bash_profile`,
-		note: `The script carries its own fallback for the bash-completion package, so it works on the stock macOS bash 3.2 — which is also why macOS persists through ~/.bash_profile: bash 3.2 reads no completion directory. Process substitution silently does nothing on that bash, so use the eval form above and never source the script.`,
-	},
-	{
-		name:  "zsh",
-		title: "Zsh",
-		setup: `	# Load in current session
-	source <(%[1]s completion zsh)
+Bash:
 
-	# Persist (Linux, macOS, Windows)
-	%[1]s completion zsh > "${fpath[1]}/_%[1]s"`,
-		note: `Any writable ${fpath} entry works; ${fpath[1]} needs sudo when it is a system directory. Completion also has to be enabled — if your ~/.zshrc never calls compinit, add 'autoload -Uz compinit && compinit'.`,
-	},
-	{
-		name:  "fish",
-		title: "Fish",
-		setup: `	# Load in current session
-	%[1]s completion fish | source
+  # Load in current session
+  eval "$(%[1]s completion bash)"
 
-	# Persist (Linux, macOS)
-	mkdir -p ~/.config/fish/completions
-	%[1]s completion fish > ~/.config/fish/completions/%[1]s.fish`,
-	},
-	{
-		name:  "powershell",
-		title: "PowerShell",
-		setup: `	# Load in current session
-	%[1]s completion powershell | Out-String | Invoke-Expression
+  # Load in future sessions (Linux)
+  echo 'eval "$(%[1]s completion bash)"' >> ~/.bashrc
 
-	# Persist (Windows, Linux, macOS)
-	if (!(Test-Path $PROFILE)) { New-Item -Type File -Path $PROFILE -Force }
-	%[1]s completion powershell | Out-File -Append -Encoding utf8 $PROFILE`,
-		note: `The explicit encoding matters: '>>' writes UTF-16LE on PowerShell 5.1, which the profile then fails to parse. Appending twice installs two copies, so edit $PROFILE rather than re-running.`,
-	},
+  # Load in future sessions (macOS)
+  echo 'eval "$(%[1]s completion bash)"' >> ~/.bash_profile
+
+Zsh:
+
+  # Load in current session
+  autoload -Uz compinit && compinit
+  source <(%[1]s completion zsh)
+
+  # Load in future sessions (Linux, macOS)
+  echo 'autoload -Uz compinit && compinit' >> ~/.zshrc
+  echo 'source <(%[1]s completion zsh)' >> ~/.zshrc
+
+Fish:
+
+  # Load in current session
+  %[1]s completion fish | source
+
+  # Load in future sessions (Linux, macOS)
+  %[1]s completion fish > ~/.config/fish/completions/%[1]s.fish
+
+PowerShell:
+
+  # Load in current session
+  %[1]s completion powershell | Out-String | Invoke-Expression
+
+  # Load in future sessions (Windows, Linux, macOS)
+  if (!(Test-Path $PROFILE)) { New-Item -ItemType File -Path $PROFILE -Force }
+  %[1]s completion powershell | Out-File -Append -Encoding utf8 $PROFILE`
+
+// completionShellTitles spells the shells the way their projects do, for the
+// per-shell help and command list.
+var completionShellTitles = map[string]string{
+	"bash":       "Bash",
+	"zsh":        "Zsh",
+	"fish":       "Fish",
+	"powershell": "PowerShell",
 }
 
-const completionEffectNote = "Persisted completion takes effect in your next shell session."
-
 // documentCompletionCommands replaces Cobra's autogenerated help on the
-// `completion` command and its per-shell subcommands with completionShells.
-// Cobra's own text recommends process substitution for bash (a silent no-op on
-// macOS bash 3.2) and offers no persist path for PowerShell.
-//
-// The parent carries every shell because the first-start tip points at bare
-// `lstk completion` (PR #495 review): the command has to answer the question on
-// its own, with no URL to follow.
+// `completion` command and its per-shell subcommands. Cobra's own text
+// recommends process substitution for bash — a silent no-op on macOS bash 3.2
+// (DEVX-950) — and offers no persist path for PowerShell.
 func documentCompletionCommands(completionCmd *cobra.Command) {
 	name := completionCmd.Root().Name()
 
-	// Bodies carry no shell title — the parent adds one to separate the shells,
-	// while a subcommand's own help already names the shell in its first line.
-	bodies := make([]string, 0, len(completionShells))
-	titled := make([]string, 0, len(completionShells))
-	for _, sh := range completionShells {
-		body := sh.setup
-		if sh.note != "" {
-			body += "\n\n" + sh.note
-		}
-		bodies = append(bodies, fmt.Sprintf(body, name))
-		titled = append(titled, sh.title+":\n\n"+bodies[len(bodies)-1])
-	}
-
 	completionCmd.Short = "Set up tab completion for your shell"
-	completionCmd.Long = strings.Join(append([]string{
-		"Generate a tab-completion script for your shell.",
-		`Run the "Load in current session" command to try completion out, then the "Persist" commands to keep it for new sessions. Homebrew installs configure completion automatically and need none of this.`,
-	}, append(titled, completionEffectNote)...), "\n\n")
+	completionCmd.Long = fmt.Sprintf(completionSetup, name)
 
 	for _, sub := range completionCmd.Commands() {
-		for i, sh := range completionShells {
-			if sub.Name() != sh.name {
-				continue
-			}
-			sub.Short = fmt.Sprintf("Set up tab completion for %s", sh.title)
-			sub.Long = fmt.Sprintf("Generate the tab-completion script for %s.", sh.title) +
-				"\n\n" + bodies[i] + "\n\n" + completionEffectNote
+		title, ok := completionShellTitles[sub.Name()]
+		if !ok {
+			continue
 		}
+		sub.Short = fmt.Sprintf("Generate the tab-completion script for %s", title)
+		sub.Long = fmt.Sprintf("Generate the tab-completion script for %s.\n\nRun '%s completion --help' for setup instructions.", title, name)
 	}
 }
