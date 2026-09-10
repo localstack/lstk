@@ -75,8 +75,8 @@ func TestCompletionHelpDocumentsEveryShell(t *testing.T) {
 		}
 	}
 	assertContains(t, out, "# Load in current session")
-	assertContains(t, out, "# Load in future sessions (Linux)")
-	assertContains(t, out, "# Load in future sessions (macOS)")
+	assertContains(t, out, "# Load in new sessions (Linux)")
+	assertContains(t, out, "# Load in new sessions (macOS)")
 
 	// Process substitution is a silent no-op on stock macOS bash 3.2, and the
 	// eval form needs no bash-completion package at all — that is what DEVX-950's
