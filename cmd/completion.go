@@ -142,7 +142,7 @@ func selfContainBashCompletion(completionCmd *cobra.Command) {
 // %[1]s is the binary name. Command lines are indented so wrapText
 // (cmd/help.go) leaves them intact — it reflows unindented prose to the
 // terminal width, which would break a command mid-word on a narrow one.
-const completionSetup = `Generate a tab-completion script for your shell. Homebrew installs of %[1]s set this up already.
+const completionSetup = `Generate a tab-completion script for your shell. If you installed via Homebrew, completions are set up automatically.
 
 To load completions temporarily or permanently:
 

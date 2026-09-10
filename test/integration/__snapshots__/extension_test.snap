@@ -7,7 +7,7 @@ Usage: lstk [options] [command]
 LSTK - LocalStack command-line interface
 
 Commands:
-  completion  Generate the autocompletion script for the specified shell
+  completion  Set up tab completion for your shell
   config      Manage configuration
   help        Help about any command
   load        Load a snapshot into the running emulator
@@ -67,7 +67,7 @@ Usage: lstk [options] [command]
 LSTK - LocalStack command-line interface
 
 Commands:
-  completion  Generate the autocompletion script for the specified shell
+  completion  Set up tab completion for your shell
   config      Manage configuration
   help        Help about any command
   load        Load a snapshot into the running emulator
@@ -116,7 +116,7 @@ Usage: lstk [options] [command]
 LSTK - LocalStack command-line interface
 
 Commands:
-  completion  Generate the autocompletion script for the specified shell
+  completion  Set up tab completion for your shell
   config      Manage configuration
   help        Help about any command
   load        Load a snapshot into the running emulator
