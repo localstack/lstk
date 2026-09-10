@@ -2,16 +2,56 @@ Snapshots created by internal/snap. UPDATE_SNAPS=true go test rewrites
 this file.
 
 [TestBareParentCommandExitsZero_completion_1]
-Generate the autocompletion script for lstk for the specified shell.
-See each sub-command's help for details on how to use the generated script.
+Generate a tab-completion script for your shell. If you installed via Homebrew,
+completions are set up automatically.
+
+To load completions temporarily or permanently:
+
+Bash:
+
+  # Load in current session
+  eval "$(lstk completion bash)"
+
+  # Load in future sessions (Linux)
+  echo 'eval "$(lstk completion bash)"' >> ~/.bashrc
+
+  # Load in future sessions (macOS)
+  echo 'eval "$(lstk completion bash)"' >> ~/.bash_profile
+
+Zsh:
+
+  # Load in current session
+  autoload -Uz compinit && compinit
+  source <(lstk completion zsh)
+
+  # Load in future sessions (Linux, macOS)
+  echo 'autoload -Uz compinit && compinit' >> ~/.zshrc
+  echo 'source <(lstk completion zsh)' >> ~/.zshrc
+
+Fish:
+
+  # Load in current session
+  lstk completion fish | source
+
+  # Load in future sessions (Linux, macOS)
+  lstk completion fish > ~/.config/fish/completions/lstk.fish
+
+PowerShell:
+
+  # Load in current session
+  lstk completion powershell | Out-String | Invoke-Expression
+
+  # Load in future sessions (Windows, Linux, macOS)
+  if (!(Test-Path $PROFILE)) { New-Item -ItemType File -Path $PROFILE -Force }
+  lstk completion powershell | Out-File -Append -Encoding utf8 $PROFILE
 
 Usage: lstk completion [flags]
 
 Commands:
-  bash        Generate the autocompletion script for bash
-  fish        Generate the autocompletion script for fish
-  powershell  Generate the autocompletion script for powershell
-  zsh         Generate the autocompletion script for zsh
+  bash        Generate the tab-completion script for Bash
+  fish        Generate the tab-completion script for Fish
+  powershell  Generate the tab-completion script for PowerShell
+  zsh         Generate the tab-completion script for Zsh
 
 Options:
   -h, --help   help for completion
