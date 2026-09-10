@@ -8,10 +8,12 @@ import (
 )
 
 // completionTip fires on first run, not install: no install path has a usable
-// hook (npm's package.json is generated, binaries have none). Must stay a plain
-// MessageEvent — ui.Run renders no DeferredOutput, so a deferred event is lost.
-const completionTip = "> Tip: Enable tab completion for your shell: lstk completion [bash|zsh|fish|powershell] " +
-	"See https://docs.localstack.cloud/aws/developer-tools/running-localstack/lstk/#shell-completions"
+// hook (npm's package.json is generated, binaries have none). It names the bare
+// command rather than a URL — `lstk completion` carries the per-shell setup
+// itself (completionShells in cmd/completion.go), so there is nothing to follow
+// and nothing to keep in sync. Must stay a plain MessageEvent — ui.Run renders
+// no DeferredOutput, so a deferred event is lost.
+const completionTip = "> Tip: Set up tab completion: lstk completion"
 
 // emitPostStartTip emits this run's tip. Start is its only caller: one emit site
 // is what makes selectTip's limit hold.
