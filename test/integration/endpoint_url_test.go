@@ -402,3 +402,35 @@ func TestCDKAWSEndpointURLWrongTypeFails(t *testing.T) {
 	require.Error(t, err)
 	snap.Match(t, sanitizeOutput(stdout))
 }
+
+// TestStatusEndpointURLSnowflakePreviewPayload pins that `status` works against
+// a remotely-hosted preview Snowflake emulator, whose health payload carries a
+// version and a services map holding the single "snowflake" key and no AWS keys
+// (localstack/snowflake-rs#2116). Before that key existed the payload could not
+// be classified and every --endpoint-url command against the preview hard-failed
+// as indeterminate. lstk collapses it onto the GA snowflake type deliberately —
+// the two are indistinguishable from the payload and every remote path treats
+// them identically — so the card reports the GA display name with the preview's
+// own version.
+func TestStatusEndpointURLSnowflakePreviewPayload(t *testing.T) {
+	t.Parallel()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/_localstack/health" {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"version":  "0.1.0+bfb557c",
+			"services": map[string]string{"snowflake": "available"},
+		})
+	}))
+	defer srv.Close()
+
+	e := env.With(env.DisableEvents, "1").WithHome(t.TempDir())
+	e = append(e, unreachableDockerHost)
+
+	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), e, "--endpoint-url", srv.URL, "status")
+	require.NoError(t, err, "stderr: %s", stderr)
+	snap.Match(t, sanitizeOutput(stdout))
+}

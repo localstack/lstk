@@ -22,6 +22,8 @@ Host environment variables prefixed with LOCALSTACK_ are forwarded to the emulat
 
 Use --type (aws, snowflake, azure) to select the emulator non-interactively; it records the selection in config, switching the configured type in place when it differs.
 
+snowflake-next is a preview of the next Snowflake emulator. It is not offered by the interactive picker, but --type snowflake-next selects it like any other type.
+
 If a snapshot is configured for the AWS emulator (the snapshot field in [[containers]]), it is auto-loaded once the emulator starts. Use --snapshot REF to override it for one run, or --no-snapshot to skip it.`,
 		Args: func(_ *cobra.Command, args []string) error {
 			if len(args) > 0 {

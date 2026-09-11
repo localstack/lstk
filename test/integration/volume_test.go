@@ -226,6 +226,47 @@ volume = "` + escapeTomlPath(volumeDir) + `"
 		assertCommandTelemetry(t, events, "volume clear", 0)
 	})
 
+	t.Run("suggests sudo when the emulator's own state directory is unreadable", func(t *testing.T) {
+		t.Parallel()
+		if runtime.GOOS == "windows" {
+			t.Skip("POSIX permission bits do not port to Windows")
+		}
+		if os.Getuid() == 0 {
+			t.Skip("test requires non-root user")
+		}
+
+		// What the preview Snowflake emulator leaves behind under --persist: its
+		// PostgreSQL cluster, created by the emulator's own uid with mode 0700, so
+		// the user running lstk can neither read nor traverse it. chmod 000
+		// reproduces that without needing a second uid. Unlike root-owned *files*,
+		// an unreadable *directory* also blocks measuring the volume, which used to
+		// abort the command before it reported anything actionable.
+		volumeDir := t.TempDir()
+		stateDir := filepath.Join(volumeDir, "snowflake-rs", "data")
+		require.NoError(t, os.MkdirAll(stateDir, 0700))
+		require.NoError(t, os.WriteFile(filepath.Join(stateDir, "PG_VERSION"), []byte("16\n"), 0600))
+		require.NoError(t, os.Chmod(stateDir, 0))
+		t.Cleanup(func() { _ = os.Chmod(stateDir, 0700) })
+
+		configContent := `
+[[containers]]
+type = "snowflake-next"
+tag = "latest"
+port = "4566"
+volume = "` + escapeTomlPath(volumeDir) + `"
+`
+		configFile := filepath.Join(t.TempDir(), "config.toml")
+		require.NoError(t, os.WriteFile(configFile, []byte(configContent), 0644))
+
+		_, stderr, err := runLstk(t, testContext(t), t.TempDir(), testEnvWithHome(t.TempDir(), ""), "--config", configFile, "--non-interactive", "volume", "clear", "--force")
+		require.Error(t, err)
+		requireExitCode(t, 1, err)
+		assert.Contains(t, stderr, "sudo",
+			"the failure must tell the user how to remove files the emulator owns")
+		assert.NotContains(t, stderr, "failed to read volume directory",
+			"an unreadable subdirectory must not abort the command before it tries to clear")
+	})
+
 	t.Run("suggests sudo when volume contains root-owned files", func(t *testing.T) {
 		t.Parallel()
 		if runtime.GOOS != "linux" {

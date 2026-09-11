@@ -43,7 +43,7 @@ func Status(ctx context.Context, rt runtime.Runtime, containers []config.Contain
 			}
 		}
 		host, _ := endpoint.ResolveHost(ctx, port, localStackHost)
-		if c.Type == config.EmulatorSnowflake {
+		if c.Type == config.EmulatorSnowflake || c.Type == config.EmulatorSnowflakeNext {
 			if h := snowflake.Hostname(host); h != "" {
 				host = h
 			}

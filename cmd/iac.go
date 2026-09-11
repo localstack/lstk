@@ -54,9 +54,13 @@ func requireRunningAWSEmulator(ctx context.Context, rt runtime.Runtime, sink out
 // (e.g. Snowflake or Azure), or "" if none is running. The IaC proxy commands
 // support only the AWS emulator, so this lets them give a specific error when a
 // different emulator is running instead of a misleading "AWS not running".
+//
+// It enumerates every known type, not just the selectable ones: the question is
+// what might be running, and a preview emulator the picker never offers can be
+// running just as well.
 func runningNonAWSEmulator(ctx context.Context, rt runtime.Runtime) string {
 	var others []config.ContainerConfig
-	for _, t := range config.SelectableEmulatorTypes {
+	for _, t := range config.KnownEmulatorTypes() {
 		if t == config.EmulatorAWS {
 			continue
 		}

@@ -45,7 +45,7 @@ Options:
       --persist               Persist emulator state across restarts
       --snapshot string       Snapshot REF to load after start (overrides config for this run)
       --timeout duration      Maximum time to wait for the emulator to become ready (overrides LSTK_STARTUP_TIMEOUT; 0 uses the default)
-  -t, --type string           Emulator type to start (aws, snowflake, azure)
+  -t, --type string           Emulator type to start (aws, snowflake, azure, snowflake-next)
   -v, --version               Show version
 ---
 
@@ -106,7 +106,7 @@ Options:
       --persist               Persist emulator state across restarts
       --snapshot string       Snapshot REF to load after start (overrides config for this run)
       --timeout duration      Maximum time to wait for the emulator to become ready (overrides LSTK_STARTUP_TIMEOUT; 0 uses the default)
-  -t, --type string           Emulator type to start (aws, snowflake, azure)
+  -t, --type string           Emulator type to start (aws, snowflake, azure, snowflake-next)
   -v, --version               Show version
 ---
 
@@ -154,7 +154,7 @@ Options:
       --persist               Persist emulator state across restarts
       --snapshot string       Snapshot REF to load after start (overrides config for this run)
       --timeout duration      Maximum time to wait for the emulator to become ready (overrides LSTK_STARTUP_TIMEOUT; 0 uses the default)
-  -t, --type string           Emulator type to start (aws, snowflake, azure)
+  -t, --type string           Emulator type to start (aws, snowflake, azure, snowflake-next)
   -v, --version               Show version
 ---
 
