@@ -229,7 +229,7 @@ func runTerraform(ctx context.Context, span trace.Span, tfBin string, args []str
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
-	if err := proc.Run(cmd); err != nil {
+	if err := proc.MarkUserToolExit(proc.Run(cmd)); err != nil {
 		var exitErr *exec.ExitError
 		if errors.As(err, &exitErr) {
 			span.SetAttributes(attribute.Int("terraform.exit_code", exitErr.ExitCode()))

@@ -15,6 +15,7 @@ import (
 	"github.com/localstack/lstk/internal/extension"
 	"github.com/localstack/lstk/internal/log"
 	"github.com/localstack/lstk/internal/output"
+	"github.com/localstack/lstk/internal/proc"
 	"github.com/localstack/lstk/internal/runtime"
 	"github.com/localstack/lstk/internal/telemetry"
 	"github.com/localstack/lstk/internal/update"
@@ -88,7 +89,7 @@ func dispatchExtension(ctx context.Context, cfg *env.Env, tel *telemetry.Client,
 	if runErr != nil {
 		errorMsg = runErr.Error()
 	}
-	tel.EmitCommand(ctx, "ext:"+name, "", nil, time.Since(start).Milliseconds(), exitCode, errorMsg)
+	tel.EmitCommand(ctx, "ext:"+name, "", nil, time.Since(start).Milliseconds(), exitCode, errorMsg, proc.IsUserToolExit(runErr))
 
 	return runErr
 }

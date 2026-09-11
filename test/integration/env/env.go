@@ -88,6 +88,10 @@ var ambientAWSKeys = []Key{
 func base() Environ {
 	return Environ(os.Environ()).
 		Without(ambientAWSKeys...).
+		// Commonly exported by LocalStack developers; inherited, it disables the
+		// telemetry client and every telemetry assertion times out. Tests
+		// covering the disabled path set it explicitly via With.
+		Without(DisableEvents).
 		With(AnalyticsEndpoint, UnreachableAnalyticsEndpoint).
 		With(AzureCollectTelemetry, "false").
 		With(SamCliTelemetry, "0")

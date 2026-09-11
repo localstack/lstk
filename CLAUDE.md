@@ -182,6 +182,11 @@ When lstk's stdout and stderr are both terminals, `lstk aws` runs the child via 
 
 `lstk az` has the identical wrapper pattern and gets the identical treatment (DEVX-1028, and the DEVX-1049 pager-input fix arrives through the shared `proc.RunInPTY`): `azurecli.Exec` takes the same `usePTY` parameter under the same both-streams-are-terminals condition, and `azurecli`'s own `execEnv` injects `PYTHONUNBUFFERED=1` (leaving a user-set value alone). Unlike the frozen aws v2 binary, every `az` distribution runs a real Python interpreter, so that env var is effective there — the PTY additionally makes az see a terminal, which is what its own terminal-gated output depends on. `azurecli.Run` (short captured-output execs behind `setup azure`/interception) always passes `usePTY: false`.
 
+# Attributing Wrapped-Tool Exits
+
+Separately from how a tool is *run*, each proxy exec site declares *whose* failure a non-zero exit is by passing the result through `proc.MarkUserToolExit`: `lstk aws`, `terraform`, `cdk`, `sam`, the `lstk az` passthrough (`azurecli.Exec` — **not** `azurecli.Run`, which is lstk's own orchestration), and extensions. Telemetry reads it back via `proc.IsUserToolExit` for `result.proxy_error` on `lstk_command` events, which keeps users' own CLI usage errors out of the lstk error ranking (DEVX-1004).
+
+Do not infer this from the runner. `proc.Run` promises signal handling only, and lstk shells out for its own purposes too (`brew upgrade` behind `lstk update`, the `aws` calls behind terraform backend provisioning). A new proxy that forgets the mark loses a data point; marking one of lstk's own execs hides an lstk bug behind the user's name — so leave it off when unsure.
 
 # Snapshots
 
