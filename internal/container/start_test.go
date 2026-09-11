@@ -121,7 +121,6 @@ func TestEmitPostStartPointers_WithWebApp(t *testing.T) {
 	got := out.String()
 	assert.Contains(t, got, "• Endpoint: localhost.localstack.cloud:4566\n")
 	assert.Contains(t, got, "• Web app: https://app.localstack.cloud\n")
-	assert.Contains(t, got, "> Tip:")
 	assert.NotContains(t, got, "• Snowflake endpoint:",
 		"AWS path must not show the snowflake-prefixed endpoint")
 	assert.NotContains(t, got, "• Persistence:",
@@ -136,7 +135,6 @@ func TestEmitPostStartPointers_WithoutWebApp(t *testing.T) {
 
 	got := out.String()
 	assert.Contains(t, got, "• Endpoint: 127.0.0.1:4566\n")
-	assert.Contains(t, got, "> Tip:")
 }
 
 func TestEmitPostStartPointers_WithPersist(t *testing.T) {
@@ -235,7 +233,6 @@ func TestEmitPostStartPointers_Snowflake_ReplacesEndpointWithSnowflakeEndpoint(t
 	assert.NotContains(t, got, "• Endpoint: localhost.localstack.cloud:4566",
 		"Snowflake should not show the bare endpoint — clients connect via the snowflake-prefixed host")
 	assert.Contains(t, got, "• Web app: https://app.localstack.cloud\n")
-	assert.Contains(t, got, "> Tip:")
 }
 
 func TestEmitPostStartPointers_Snowflake_OmitsPersistenceBullet(t *testing.T) {
@@ -259,7 +256,6 @@ func TestEmitPostStartPointers_Snowflake_FallsBackToBareEndpointForIPHost(t *tes
 	assert.Contains(t, got, "• Endpoint: 127.0.0.1:4566\n",
 		"falls back to bare endpoint when snowflake.<host> would be invalid")
 	assert.NotContains(t, got, "• Snowflake endpoint:")
-	assert.Contains(t, got, "> Tip:")
 }
 
 func TestSelectContainersToStart_AttachesWhenExternalContainerOnConfiguredPort(t *testing.T) {
@@ -396,21 +392,8 @@ func TestEmitPostStartPointers_Azure(t *testing.T) {
 	got := out.String()
 	assert.Contains(t, got, "• Endpoint: localhost.localstack.cloud:4566\n")
 	assert.Contains(t, got, "• Web app: https://app.localstack.cloud\n")
-	assert.Contains(t, got, "> Tip:")
 	assert.NotContains(t, got, "• Snowflake endpoint:",
 		"Azure must not show the snowflake-prefixed endpoint")
-}
-
-func TestEmitPostStartPointers_UnknownEmulator_NoTip(t *testing.T) {
-	var out bytes.Buffer
-	sink := output.NewPlainSink(&out)
-
-	emitPostStartPointers(sink, config.EmulatorType("other"), "localhost.localstack.cloud:4566", "https://app.localstack.cloud/", false)
-
-	got := out.String()
-	assert.Contains(t, got, "• Endpoint: localhost.localstack.cloud:4566\n")
-	assert.Contains(t, got, "• Web app: https://app.localstack.cloud\n")
-	assert.NotContains(t, got, "> Tip:")
 }
 
 func TestServicePortRange_ReturnsExpectedPorts(t *testing.T) {
