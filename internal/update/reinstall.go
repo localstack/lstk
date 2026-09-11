@@ -9,7 +9,7 @@ import (
 	"github.com/localstack/lstk/internal/version"
 )
 
-// MissingBundle describes a binary install of a bundling release whose bundled
+// MissingBundle describes an install of a bundling release whose bundled
 // extensions are not beside lstk: what the pre-bundling updater leaves behind
 // when it installs a bundling release. Homebrew and npm replace the whole
 // package, so they never end up here.
@@ -52,14 +52,24 @@ func DetectMissingBundleFor(command string) (MissingBundle, bool) {
 }
 
 func detectMissingBundle(info InstallInfo, goos string) (MissingBundle, bool) {
-	if info.Method != InstallBinary {
+	if info.Method != InstallBinary && info.Method != InstallExternal {
 		return MissingBundle{}, false
 	}
 	dir := filepath.Dir(info.ResolvedPath)
 	if !bundleMissing(dir, goos) {
 		return MissingBundle{}, false
 	}
-	return MissingBundle{Dir: dir, Reinstall: reinstallInstruction}, true
+	return MissingBundle{Dir: dir, Reinstall: reinstallInstructionFor(info)}, true
+}
+
+// reinstallInstructionFor names the tool that owns an externally-managed
+// install. Sending those to a release download would install outside the
+// manager, leaving it to overwrite the result on its next sync.
+func reinstallInstructionFor(info InstallInfo) string {
+	if info.Method == InstallExternal && info.Manager != "" {
+		return "reinstall lstk through " + info.Manager
+	}
+	return reinstallInstruction
 }
 
 // bundleMissing is true only when neither set member exists. A binary without
