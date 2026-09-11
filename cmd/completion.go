@@ -144,7 +144,7 @@ func selfContainBashCompletion(completionCmd *cobra.Command) {
 // terminal width, which would break a command mid-word on a narrow one.
 const completionSetup = `Generate shell completion scripts for lstk.
 
-To load completions temporarily or permanently:
+To load completions:
 
 Bash:
 
