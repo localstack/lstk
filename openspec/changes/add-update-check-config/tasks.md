@@ -105,3 +105,17 @@ Write the tests in this section before the implementation — 2.1's reordering i
 - `internal/ui/app_test.go`'s `{Key: "s", Label: "Skip this version"}` fixture is pre-existing arbitrary sample data for a component test, unrelated to this prompt.
 - `cmd/root.go`'s invalid-value action always advises unsetting the env var, which would misdescribe a bad *config* key — unreachable, because `config.Get()` rejects that one statement earlier. The two validations are redundant on that path by design: `Get()` covers every command, the env branch covers only the start path.
 - For an unwritable install directory the offered `--force` will itself fail at the rename. Spec-mandated: `--force` exists for the path-marker heuristic, and suppressing it per-reason would make the flag's contract conditional.
+
+## 11. Review: simplify the config option to a boolean
+
+- [x] 11.1 Replace `[cli] update_check` (`prompt`/`notify`/`off`) with `[cli] check_for_update_on_startup` (boolean, default true), and `LSTK_UPDATE_CHECK` with `LSTK_CHECK_FOR_UPDATE_ON_STARTUP`, per review. Detection alone now decides prompt vs note.
+- [x] 11.2 `CLIConfig.CheckForUpdateOnStartup` is a `*bool` so an unset key stays distinguishable from an explicit false; the env var stays a raw string for the same reason.
+- [x] 11.3 Validate a non-boolean config value before unmarshal: mapstructure's own failure names the key but neither the offending value nor the accepted ones, and the environment variable's message should match.
+- [x] 11.4 `NotifyOptions.Mode` becomes `CheckEnabled bool`, deleting the `mode == notify` branch. `internal/update` no longer imports `internal/config`.
+- [x] 11.5 The prompt's opt-out becomes "Never check again" and persists `false` — a stronger commitment than the previous "Never ask again" → notify; recorded in design.md.
+- [x] 11.6 Retire the two unit tests for a state that no longer exists (explicit `notify` on a self-managed install): one becomes "an enabled check prompts a self-managed install", the other moves to the non-interactive path where the `lstk update` note still appears.
+
+## 12. Interaction with #482 (bundled extensions)
+
+- [x] 12.1 Restore `InstallMethod.String()`, deleted here as dead code while #482 landed a new caller in parallel. Documented alongside `appliedMethodName`, which names how an update was *performed* for the `--json` envelope rather than how lstk was installed.
+- [x] 12.2 `detectMissingBundle` guarded on `InstallBinary`, so an externally-managed install silently lost the missing-bundle hint #482 introduced. It now covers `InstallExternal` and names the managing tool instead of pointing at a release download, which would install outside that tool.

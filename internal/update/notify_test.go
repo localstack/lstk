@@ -8,7 +8,6 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/localstack/lstk/internal/config"
 	"github.com/localstack/lstk/internal/output"
 	"github.com/stretchr/testify/assert"
 )
@@ -102,7 +101,9 @@ func TestNotifyUpdatePromptDisabled(t *testing.T) {
 	sink := output.SinkFunc(func(event output.Event) { events = append(events, event) })
 
 	exit := notifyUpdateWithVersion(context.Background(), sink, NotifyOptions{
-		DetectInstall: func() InstallInfo { return InstallInfo{Method: InstallBinary} }}, "1.0.0", testFetcher(server.URL))
+		DetectInstall: func() InstallInfo { return InstallInfo{Method: InstallBinary} },
+		CheckEnabled:  true,
+	}, "1.0.0", testFetcher(server.URL))
 	assert.False(t, exit)
 	assert.Len(t, events, 1)
 	msg, ok := events[0].(output.MessageEvent)
@@ -126,7 +127,7 @@ func TestNotifyUpdatePromptRemind(t *testing.T) {
 	exit := notifyUpdateWithVersion(context.Background(), sink, NotifyOptions{
 		DetectInstall:      func() InstallInfo { return InstallInfo{Method: InstallBinary} },
 		CanPrompt:          true,
-		PersistUpdateCheck: func(config.UpdateCheckMode) error { return nil },
+		PersistUpdateCheck: func(bool) error { return nil },
 	}, "1.0.0", testFetcher(server.URL))
 	assert.False(t, exit)
 }
@@ -151,7 +152,7 @@ func TestNotifyUpdatePromptCancelled(t *testing.T) {
 	exit := notifyUpdateWithVersion(context.Background(), sink, NotifyOptions{
 		DetectInstall:      func() InstallInfo { return InstallInfo{Method: InstallBinary} },
 		CanPrompt:          true,
-		PersistUpdateCheck: func(config.UpdateCheckMode) error { return nil },
+		PersistUpdateCheck: func(bool) error { return nil },
 	}, "1.0.0", testFetcher(server.URL))
 	assert.False(t, exit)
 }

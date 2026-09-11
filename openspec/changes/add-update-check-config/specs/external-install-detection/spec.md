@@ -26,7 +26,7 @@ The refusal SHALL be enforced at the point the binary is actually replaced, not 
 
 #### Scenario: The start-path prompt cannot clobber an externally-managed install
 - **GIVEN** lstk is running from a path recognized as managed by mise
-- **AND** `[cli] update_check = "prompt"` is set explicitly
+- **AND** the check is enabled
 - **WHEN** `lstk start` runs interactively with a newer version available
 - **THEN** no update prompt is presented
 - **AND** a note naming mise is emitted instead
@@ -36,7 +36,7 @@ The refusal SHALL be enforced at the point the binary is actually replaced, not 
 
 `lstk update --check` SHALL be exempt from the refusal: it reports whether a newer version exists and writes nothing, which is useful however lstk was installed.
 
-lstk SHALL also refuse an in-place binary replacement when the resolved executable's directory cannot be written to, under the same error code, reporting the directory instead of a manager. Homebrew and npm installs SHALL never be refused on this basis, since they delegate to `brew upgrade` and `npm install -g` rather than writing the file themselves. A probe that cannot determine writability SHALL NOT refuse.
+lstk SHALL also refuse an in-place binary replacement when the resolved executable's directory cannot be written to, under the same error code, reporting the directory instead of a manager. When a release build finds no bundled extensions beside it, the reinstall hint SHALL name the managing tool for an externally-managed install rather than pointing at a release download, which would install outside that tool. Homebrew and npm installs SHALL never be refused on this basis, since they delegate to `brew upgrade` and `npm install -g` rather than writing the file themselves. A probe that cannot determine writability SHALL NOT refuse.
 
 `lstk update --force` SHALL bypass the refusal and update as if the install were a standalone binary, so that a misidentified install is never left without a path forward.
 
@@ -70,12 +70,12 @@ lstk SHALL also refuse an in-place binary replacement when the resolved executab
 ### Requirement: Detection does not run on invocations that do not check for updates
 Install-method detection SHALL NOT be performed on any code path that does not otherwise reach the automatic update check or the update command.
 
-Within the **automatic start-path check** it SHALL NOT run when the resolved mode is `off`, or before the version check has reported that a newer version is available. This scoping is deliberate: `lstk update` detects unconditionally and up front, because its refusal must precede the version check and the download (see the requirement below), and that is a different code path with a different cost profile.
+Within the **automatic start-path check** it SHALL NOT run when the check is disabled, or before the version check has reported that a newer version is available. This scoping is deliberate: `lstk update` detects unconditionally and up front, because its refusal must precede the version check and the download (see the requirement below), and that is a different code path with a different cost profile.
 
-It SHALL run once an update *is* known to exist, whatever the mode (other than `off`) and whether or not the call site can prompt: its answer determines the note's wording as well as the prompt/note decision, so skipping it for an explicitly-set mode produced a note advising `lstk update` on an install where that command refuses.
+It SHALL run once an update *is* known to exist, whether or not the call site can prompt: its answer determines the note's wording as well as the prompt/note decision.
 
-#### Scenario: off never reaches detection
-- **GIVEN** `[cli] update_check = "off"`
+#### Scenario: A disabled check never reaches detection
+- **GIVEN** `[cli] check_for_update_on_startup = false`
 - **WHEN** `lstk start` runs
 - **THEN** no version check is performed and install-method detection is not consulted
 

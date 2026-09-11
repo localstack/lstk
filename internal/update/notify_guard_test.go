@@ -8,16 +8,14 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/localstack/lstk/internal/config"
 	"github.com/localstack/lstk/internal/output"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-// An explicit update_check = "prompt" must not produce a prompt on an
-// externally-managed install: pressing "Update now" would replace a binary the
-// external tool owns, which is the bug this whole feature exists to prevent.
-func TestNotifyUpdateExternalInstallNeverPromptsEvenWhenPromptIsExplicit(t *testing.T) {
+// An externally-managed install must never be prompted: pressing "Update now"
+// would replace a binary the external tool owns, the bug this feature prevents.
+func TestNotifyUpdateExternalInstallNeverPrompts(t *testing.T) {
 	server := newTestGitHubServer(t, "v2.0.0")
 	defer server.Close()
 
@@ -31,8 +29,8 @@ func TestNotifyUpdateExternalInstallNeverPromptsEvenWhenPromptIsExplicit(t *test
 	})
 
 	notifyUpdateWithVersion(context.Background(), sink, NotifyOptions{
-		Mode:      config.UpdateCheckPrompt,
-		CanPrompt: true,
+		CheckEnabled: true,
+		CanPrompt:    true,
 		DetectInstall: func() InstallInfo {
 			return InstallInfo{Method: InstallExternal, Manager: "mise"}
 		},
@@ -54,8 +52,8 @@ func TestNotifyUpdateNonInteractiveNoteNamesTheManager(t *testing.T) {
 	sink := output.SinkFunc(func(event output.Event) { events = append(events, event) })
 
 	notifyUpdateWithVersion(context.Background(), sink, NotifyOptions{
-		Mode:      config.UpdateCheckUnset,
-		CanPrompt: false,
+		CheckEnabled: true,
+		CanPrompt:    false,
 		DetectInstall: func() InstallInfo {
 			return InstallInfo{Method: InstallExternal, Manager: "nix"}
 		},
@@ -78,8 +76,8 @@ func TestNotifyUpdateExplicitNotifyNamesTheManager(t *testing.T) {
 	sink := output.SinkFunc(func(event output.Event) { events = append(events, event) })
 
 	notifyUpdateWithVersion(context.Background(), sink, NotifyOptions{
-		Mode:      config.UpdateCheckNotify,
-		CanPrompt: true,
+		CheckEnabled: true,
+		CanPrompt:    true,
 		DetectInstall: func() InstallInfo {
 			return InstallInfo{Method: InstallExternal, Manager: "asdf"}
 		},
@@ -107,7 +105,7 @@ func TestNotifyUpdateOmitsNeverAskAgainWhenItCannotBePersisted(t *testing.T) {
 
 	notifyUpdateWithVersion(context.Background(), sink, NotifyOptions{
 		DetectInstall:      func() InstallInfo { return InstallInfo{Method: InstallBinary} },
-		Mode:               config.UpdateCheckPrompt,
+		CheckEnabled:       true,
 		CanPrompt:          true,
 		PersistUpdateCheck: nil,
 	}, "1.0.0", testFetcher(server.URL))
@@ -146,8 +144,8 @@ func TestPromptUpdateNowIsRefusedWhenTheBinaryCannotBeReplaced(t *testing.T) {
 	})
 
 	exit := notifyUpdateWithVersion(context.Background(), sink, NotifyOptions{
-		Mode:      config.UpdateCheckPrompt,
-		CanPrompt: true,
+		CheckEnabled: true,
+		CanPrompt:    true,
 		DetectInstall: func() InstallInfo {
 			return InstallInfo{Method: InstallBinary, ResolvedPath: filepath.Join(readOnly, "lstk")}
 		},
@@ -200,8 +198,8 @@ func TestPromptRefusalEmitsNoErrorEvent(t *testing.T) {
 	})
 
 	notifyUpdateWithVersion(context.Background(), sink, NotifyOptions{
-		Mode:      config.UpdateCheckPrompt,
-		CanPrompt: true,
+		CheckEnabled: true,
+		CanPrompt:    true,
 		DetectInstall: func() InstallInfo {
 			return InstallInfo{Method: InstallBinary, ResolvedPath: filepath.Join(readOnly, "lstk")}
 		},
@@ -228,9 +226,9 @@ func TestPromptOffersUpdateRemindAndNeverAskAgain(t *testing.T) {
 
 	notifyUpdateWithVersion(context.Background(), sink, NotifyOptions{
 		DetectInstall:      func() InstallInfo { return InstallInfo{Method: InstallBinary} },
-		Mode:               config.UpdateCheckPrompt,
+		CheckEnabled:       true,
 		CanPrompt:          true,
-		PersistUpdateCheck: func(config.UpdateCheckMode) error { return nil },
+		PersistUpdateCheck: func(bool) error { return nil },
 	}, "1.0.0", testFetcher(server.URL))
 
 	require.Len(t, options, 3)

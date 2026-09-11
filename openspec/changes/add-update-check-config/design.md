@@ -124,3 +124,18 @@ This also means nothing in automation is affected: `lstk start --non-interactive
 Moving the notification after the picker would let the option appear on every run. **It is deliberately not moved**, because prompting early is worth more than that: a user on an old or broken CLI should be offered the update before the CLI attempts real work, which matters for both stability and usability. A late prompt would also be preempted by a Docker failure, i.e. exactly the situation where updating might be the fix.
 
 The residual gap is narrow — a first run means no config, which almost always means a fresh install already on the latest version, so there is usually nothing to prompt about. Raised here as an open question for the PR rather than settled unilaterally.
+
+## Simplified to a boolean after review
+
+Review asked whether three modes were needed, proposing `check_for_update_on_startup = false` with detection covering the rest ([#491 review](https://github.com/localstack/lstk/pull/491#discussion_r3989880826)). They were not, and the enum was over-built:
+
+| setting | self-managed, interactive | externally managed or non-interactive |
+| --- | --- | --- |
+| `true` (default) | prompt | non-blocking note |
+| `false` | no check | no check |
+
+`notify` existed so a self-managed user could ask for "tell me, but do not block". Detection already produces exactly that for the case it was designed for — an externally-managed install — and a non-interactive start produced it regardless of mode. What remained was a rarely-wanted third state every user had to read past to reach the two that matter.
+
+Two consequences worth stating. A self-managed user who wants "note but no prompt" can no longer express it; they disable the check and run `lstk update` when they choose. And "Never check again" now persists `false` — no check at all — where it previously persisted `notify`, so the prompt's opt-out is a stronger commitment than before. Both follow from the reviewer's table, and match what the reporter actually asked for ("I'd like to disable it permanently").
+
+The simplification also dissolved the layering question this design spent a paragraph on: `internal/update` no longer imports `internal/config` at all, since a bool needs no shared enum type.

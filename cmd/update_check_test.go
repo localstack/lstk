@@ -9,27 +9,31 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestResolveUpdateCheckMode(t *testing.T) {
+func boolPtr(b bool) *bool { return &b }
+
+func TestResolveUpdateCheckEnabled(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
 		name      string
 		envValue  string
-		confValue string
-		want      config.UpdateCheckMode
+		confValue *bool
+		want      bool
 	}{
-		{"neither set stays unset so detection can decide", "", "", config.UpdateCheckUnset},
-		{"config only", "", "notify", config.UpdateCheckNotify},
-		{"env only", "off", "", config.UpdateCheckOff},
-		{"env wins over config", "prompt", "off", config.UpdateCheckPrompt},
+		{"neither set defaults to enabled", "", nil, true},
+		{"config false", "", boolPtr(false), false},
+		{"config true", "", boolPtr(true), true},
+		{"env false", "false", nil, false},
+		{"env wins over config", "true", boolPtr(false), true},
+		{"env false wins over config true", "false", boolPtr(true), false},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			got, err := resolveUpdateCheckMode(
-				&env.Env{UpdateCheck: tt.envValue},
-				&config.Config{CLI: config.CLIConfig{UpdateCheck: tt.confValue}},
+			got, err := resolveUpdateCheckEnabled(
+				&env.Env{CheckForUpdateOnStartup: tt.envValue},
+				&config.Config{CLI: config.CLIConfig{CheckForUpdateOnStartup: tt.confValue}},
 			)
 			require.NoError(t, err)
 			assert.Equal(t, tt.want, got)
@@ -37,30 +41,29 @@ func TestResolveUpdateCheckMode(t *testing.T) {
 	}
 }
 
-// "quiet" is not a mode — it stands in for a plausible-sounding typo, to prove
-// a bad value is reported rather than silently coerced into some default.
-func TestResolveUpdateCheckModeRejectsInvalidEnvValue(t *testing.T) {
+// "quiet" is not a boolean — it stands in for a plausible-sounding typo, to
+// prove a bad value is reported rather than silently disabling the check.
+func TestResolveUpdateCheckEnabledRejectsInvalidEnvValue(t *testing.T) {
 	t.Parallel()
 
-	_, err := resolveUpdateCheckMode(
-		&env.Env{UpdateCheck: "quiet"},
+	_, err := resolveUpdateCheckEnabled(
+		&env.Env{CheckForUpdateOnStartup: "quiet"},
 		&config.Config{},
 	)
 
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), env.UpdateCheckVar)
+	assert.Contains(t, err.Error(), env.CheckForUpdateOnStartupVar)
 	assert.Contains(t, err.Error(), "quiet")
 }
 
-// An invalid env value must be rejected even when the config file holds a
-// perfectly good one: silently falling back would hide the user's typo and
-// apply a mode they did not ask for.
-func TestResolveUpdateCheckModeRejectsInvalidEnvValueOverValidConfig(t *testing.T) {
+// An invalid env value must be rejected even when the config file holds a good
+// one: falling back would hide the typo and apply a setting not asked for.
+func TestResolveUpdateCheckEnabledRejectsInvalidEnvValueOverValidConfig(t *testing.T) {
 	t.Parallel()
 
-	_, err := resolveUpdateCheckMode(
-		&env.Env{UpdateCheck: "quiet"},
-		&config.Config{CLI: config.CLIConfig{UpdateCheck: "notify"}},
+	_, err := resolveUpdateCheckEnabled(
+		&env.Env{CheckForUpdateOnStartup: "quiet"},
+		&config.Config{CLI: config.CLIConfig{CheckForUpdateOnStartup: boolPtr(true)}},
 	)
 
 	require.Error(t, err)

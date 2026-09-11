@@ -6,20 +6,20 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestInitReadsUpdateCheck(t *testing.T) {
-	t.Setenv("LSTK_UPDATE_CHECK", "off")
+func TestInitReadsCheckForUpdateOnStartup(t *testing.T) {
+	t.Setenv("LSTK_CHECK_FOR_UPDATE_ON_STARTUP", "false")
 
 	cfg := Init()
 
-	assert.Equal(t, "off", cfg.UpdateCheck)
+	assert.Equal(t, "false", cfg.CheckForUpdateOnStartup)
 }
 
-func TestInitLeavesUpdateCheckEmptyWhenUnset(t *testing.T) {
-	// Explicitly cleared: without this the test reads the developer's own
-	// environment and fails for anyone who exports the variable.
-	t.Setenv("LSTK_UPDATE_CHECK", "")
+// Kept raw and empty when unset, so the command boundary can tell an unset
+// variable from an explicit false.
+func TestInitLeavesCheckForUpdateOnStartupEmptyWhenUnset(t *testing.T) {
+	t.Setenv("LSTK_CHECK_FOR_UPDATE_ON_STARTUP", "")
 
 	cfg := Init()
 
-	assert.Empty(t, cfg.UpdateCheck)
+	assert.Empty(t, cfg.CheckForUpdateOnStartup)
 }

@@ -18,7 +18,7 @@ func newUpdateCmd(cfg *env.Env) *cobra.Command {
 		Short: "Update lstk to the latest version",
 		Long: "Check for and apply updates to the lstk CLI. Respects the original installation method (Homebrew, npm, or direct binary).\n\n" +
 			"An install managed by an external tool (mise, nix, guix, asdf, scoop, chocolatey), or one in a directory lstk cannot write to, is not updated in place — update it through that tool instead, or pass --force to replace the binary anyway. --check always reports whether a newer version exists, whatever the install.\n\n" +
-			"This command always checks for updates. The [cli] update_check config key and LSTK_UPDATE_CHECK only govern the automatic check on 'lstk start'.",
+			"This command always checks for updates. The [cli] check_for_update_on_startup config key and LSTK_CHECK_FOR_UPDATE_ON_STARTUP only govern the automatic check on 'lstk start'.",
 		PreRunE:     initConfigDeferCreate(nil),
 		Annotations: map[string]string{jsonSupportedAnnotation: "true"},
 		RunE: func(cmd *cobra.Command, args []string) error {

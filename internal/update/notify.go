@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/localstack/lstk/internal/config"
 	"github.com/localstack/lstk/internal/output"
 	"github.com/localstack/lstk/internal/version"
 )
@@ -17,9 +16,10 @@ type NotifyOptions struct {
 	// CanPrompt reports whether this call site can block at all (an interactive
 	// TTY). Independent of Mode, the user's preference: a non-interactive start
 	// only ever emits a note, however Mode is set.
-	CanPrompt          bool
-	Mode               config.UpdateCheckMode
-	PersistUpdateCheck func(mode config.UpdateCheckMode) error
+	CanPrompt bool
+	// CheckEnabled is the resolved `[cli] check_for_update_on_startup`.
+	CheckEnabled       bool
+	PersistUpdateCheck func(enabled bool) error
 	// DetectInstall resolves how lstk itself was installed. Injected so tests
 	// do not depend on where the test binary lives, which is also what makes
 	// the prompt path's apply-time guard testable. Defaults to
@@ -68,7 +68,7 @@ func NotifyUpdate(ctx context.Context, sink output.Sink, opts NotifyOptions) (ex
 }
 
 func notifyUpdateWithVersion(ctx context.Context, sink output.Sink, opts NotifyOptions, currentVersion string, fetch versionFetcher) (exitAfter bool) {
-	if opts.Mode == config.UpdateCheckOff {
+	if !opts.CheckEnabled {
 		return false
 	}
 
@@ -84,10 +84,10 @@ func notifyUpdateWithVersion(ctx context.Context, sink output.Sink, opts NotifyO
 	info := opts.installInfo()
 	external := info.Method == InstallExternal
 
-	// Never prompt an externally-managed install, even under an explicit
-	// prompt: "Update now" would replace a binary the external tool owns, and
-	// applyUpdate refuses it anyway. Better not to offer it at all.
-	if !opts.CanPrompt || external || opts.Mode == config.UpdateCheckNotify {
+	// Never prompt an externally-managed install: "Update now" would replace a
+	// binary the external tool owns, and applyUpdate refuses it anyway. Better
+	// not to offer it at all.
+	if !opts.CanPrompt || external {
 		sink.Emit(updateNote(current, latest, info.Manager))
 		return false
 	}
@@ -120,7 +120,7 @@ func promptAndUpdate(ctx context.Context, sink output.Sink, opts NotifyOptions, 
 	// config.toml does not exist yet, so the choice would be silently dropped
 	// after telling the user it was saved.
 	if opts.PersistUpdateCheck != nil {
-		options = append(options, output.InputOption{Key: "n", Label: "Never ask again"})
+		options = append(options, output.InputOption{Key: "n", Label: "Never check again"})
 	}
 
 	responseCh := make(chan output.InputResponse, 1)
@@ -159,19 +159,17 @@ func promptAndUpdate(ctx context.Context, sink output.Sink, opts NotifyOptions, 
 	case "r":
 		return false
 	case "n":
-		// notify, not off: the user asked to stop being interrupted, not to
-		// never hear about a release. Full silence stays a deliberate edit.
 		if opts.PersistUpdateCheck == nil {
 			// Unreachable while the option is conditional (see above), but a
 			// future edit that always appends it must warn, not panic.
 			sink.Emit(output.MessageEvent{Severity: output.SeverityWarning, Text: "Cannot save update preference: no config file"})
 			return false
 		}
-		if err := opts.PersistUpdateCheck(config.UpdateCheckNotify); err != nil {
+		if err := opts.PersistUpdateCheck(false); err != nil {
 			sink.Emit(output.MessageEvent{Severity: output.SeverityWarning, Text: fmt.Sprintf("Failed to save update preference: %v", err)})
 			return false
 		}
-		sink.Emit(output.MessageEvent{Severity: output.SeverityNote, Text: "Won't ask again — new versions will show as a note. Run lstk update to update."})
+		sink.Emit(output.MessageEvent{Severity: output.SeverityNote, Text: "Update checks disabled. Run lstk update to check and update."})
 		return false
 	}
 

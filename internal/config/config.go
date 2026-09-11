@@ -18,7 +18,8 @@ import (
 var defaultConfigTemplate string
 
 type CLIConfig struct {
-	UpdateCheck string `mapstructure:"update_check"`
+	// Pointer so an unset key is distinguishable from an explicit false.
+	CheckForUpdateOnStartup *bool `mapstructure:"check_for_update_on_startup"`
 }
 
 type Config struct {
@@ -171,15 +172,15 @@ func setInFile(path, key string, value any) error {
 	return os.WriteFile(path, []byte(content), 0644)
 }
 
-// SetUpdateCheck persists the update-check mode. Unlike Set, it fails when
-// there is no config file rather than succeeding in memory only: it backs the
-// "Never ask again" option, where a dropped write would tell the user their
+// SetCheckForUpdateOnStartup persists the update-check setting. Unlike Set, it
+// fails when there is no config file rather than succeeding in memory only: it
+// backs the prompt's opt-out, where a dropped write would tell the user their
 // choice was saved and then prompt them again next run.
-func SetUpdateCheck(mode UpdateCheckMode) error {
+func SetCheckForUpdateOnStartup(enabled bool) error {
 	if resolvedConfigPath() == "" {
 		return errors.New("no config file to write to yet")
 	}
-	return Set("cli.update_check", string(mode))
+	return Set("cli."+checkForUpdateOnStartupKey, enabled)
 }
 
 // HasFile reports whether a config file has been resolved, i.e. whether
@@ -190,6 +191,17 @@ func HasFile() bool {
 }
 
 func Get() (*Config, error) {
+	// Checked before unmarshal: mapstructure's own bool failure names the key
+	// but neither the offending value nor the accepted ones, and this is the
+	// same message the environment variable produces.
+	if raw := viper.Get("cli." + checkForUpdateOnStartupKey); raw != nil {
+		if _, ok := raw.(bool); !ok {
+			if _, err := ParseCheckForUpdateOnStartup(fmt.Sprint(raw)); err != nil {
+				return nil, fmt.Errorf("invalid [cli] config: %w", err)
+			}
+		}
+	}
+
 	var cfg Config
 	if err := viper.Unmarshal(&cfg); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal config: %w", err)
@@ -201,9 +213,6 @@ func Get() (*Config, error) {
 	}
 	if err := validateNamedEnvs(cfg.Env); err != nil {
 		return nil, err
-	}
-	if _, err := ParseUpdateCheckMode(cfg.CLI.UpdateCheck); err != nil {
-		return nil, fmt.Errorf("invalid [cli] config: %w", err)
 	}
 	return &cfg, nil
 }
