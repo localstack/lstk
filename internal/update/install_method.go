@@ -16,6 +16,23 @@ const (
 	InstallExternal                      // managed by an external tool (nix, mise, ...)
 )
 
+// String names the install method itself. Distinct from appliedMethodName,
+// which names how an update was *performed* for the --json envelope: a forced
+// update of an external install replaces the binary, so it reports "binary"
+// while the method here is still "external".
+func (m InstallMethod) String() string {
+	switch m {
+	case InstallHomebrew:
+		return "homebrew"
+	case InstallNPM:
+		return "npm"
+	case InstallExternal:
+		return "external"
+	default:
+		return "binary"
+	}
+}
+
 // InstallInfo holds the detected install method and the resolved binary path.
 type InstallInfo struct {
 	Method       InstallMethod
