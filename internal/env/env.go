@@ -8,9 +8,9 @@ import (
 	"github.com/spf13/viper"
 )
 
-// UpdateCheckVar overrides the [cli] update_check config key. Named so error
-// messages can quote the exact variable the user set.
-const UpdateCheckVar = "LSTK_UPDATE_CHECK"
+// CheckForUpdateOnStartupVar overrides the [cli] check_for_update_on_startup
+// config key. Named so error messages can quote the exact variable the user set.
+const CheckForUpdateOnStartupVar = "LSTK_CHECK_FOR_UPDATE_ON_STARTUP"
 
 type Env struct {
 	AuthToken      string
@@ -25,11 +25,11 @@ type Env struct {
 	ForceFileKeyring  bool
 	AnalyticsEndpoint string
 
-	NonInteractive bool
-	JSON           bool
-	GitHubToken    string
-	MergeStrategy  string
-	UpdateCheck    string
+	NonInteractive          bool
+	JSON                    bool
+	GitHubToken             string
+	MergeStrategy           string
+	CheckForUpdateOnStartup string
 }
 
 // Init initializes environment variable configuration and returns the result.
@@ -57,8 +57,9 @@ func Init() *Env {
 		GitHubToken:       viper.GetString("github_token"),
 		MergeStrategy:     viper.GetString("merge_strategy"),
 		// Captured here, not read from viper later: config.loadConfig calls
-		// viper.Reset(), dropping the env-var binding this relies on.
-		UpdateCheck: viper.GetString("update_check"),
+		// viper.Reset(), dropping the env-var binding this relies on. Kept raw
+		// so an unset variable stays distinguishable from an explicit false.
+		CheckForUpdateOnStartup: viper.GetString("check_for_update_on_startup"),
 	}
 
 }

@@ -130,20 +130,20 @@ func TestInvalidUpdateCheckInConfigIsRejected(t *testing.T) {
 	t.Parallel()
 
 	// "quiet" is not a valid mode; it stands in for a plausible-sounding typo.
-	configFile := writeConfigWithCLI(t, `update_check = "quiet"`)
+	configFile := writeConfigWithCLI(t, `check_for_update_on_startup = "quiet"`)
 	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), testEnvWithHome(t.TempDir(), ""),
 		"--config", configFile, "volume", "path")
 
 	requireExitCode(t, 1, err)
 	combined := stdout + stderr
-	assert.Contains(t, combined, "update_check")
+	assert.Contains(t, combined, "check_for_update_on_startup")
 	assert.Contains(t, combined, "quiet")
 }
 
 func TestValidUpdateCheckInConfigIsAccepted(t *testing.T) {
 	t.Parallel()
 
-	configFile := writeConfigWithCLI(t, `update_check = "off"`)
+	configFile := writeConfigWithCLI(t, `check_for_update_on_startup = false`)
 	_, stderr, err := runLstk(t, testContext(t), t.TempDir(), testEnvWithHome(t.TempDir(), ""),
 		"--config", configFile, "volume", "path")
 
@@ -224,33 +224,33 @@ func startEnv(t *testing.T, srv *httptest.Server, extra ...string) []string {
 	return append(e, extra...)
 }
 
-func TestUpdateCheckOffMakesNoRequestAndSaysNothing(t *testing.T) {
+func TestUpdateCheckDisabledMakesNoRequestAndSaysNothing(t *testing.T) {
 	t.Parallel()
 
 	var hits atomic.Int32
 	srv := countingReleaseServer(t, "v9.9.9", &hits)
 	bin := buildStampedLstk(t, "opt/bin", "0.0.1")
-	configFile := writeConfigWithCLI(t, `update_check = "off"`)
+	configFile := writeConfigWithCLI(t, `check_for_update_on_startup = false`)
 
 	stdout, stderr, _ := runBinary(t, t.TempDir(), startEnv(t, srv), bin,
 		"--config", configFile, "start", "--non-interactive")
 
-	assert.Equal(t, int32(0), hits.Load(), "off must make no request to the release API")
+	assert.Equal(t, int32(0), hits.Load(), "a disabled check must make no request to the release API")
 	assert.NotContains(t, stdout+stderr, "Update available")
 }
 
-func TestUpdateCheckNotifyEmitsNoteWithoutBlocking(t *testing.T) {
+func TestUpdateCheckEnabledEmitsNoteNonInteractively(t *testing.T) {
 	t.Parallel()
 
 	var hits atomic.Int32
 	srv := countingReleaseServer(t, "v9.9.9", &hits)
 	bin := buildStampedLstk(t, "opt/bin", "0.0.1")
-	configFile := writeConfigWithCLI(t, `update_check = "notify"`)
+	configFile := writeConfigWithCLI(t, `check_for_update_on_startup = true`)
 
 	stdout, stderr, _ := runBinary(t, t.TempDir(), startEnv(t, srv), bin,
 		"--config", configFile, "start", "--non-interactive")
 
-	assert.Equal(t, int32(1), hits.Load(), "notify must still check")
+	assert.Equal(t, int32(1), hits.Load(), "an enabled check still reaches the release API")
 	assert.Contains(t, stdout+stderr, "Update available: 0.0.1 → v9.9.9")
 }
 
@@ -260,10 +260,10 @@ func TestUpdateCheckEnvVarOverridesConfig(t *testing.T) {
 	var hits atomic.Int32
 	srv := countingReleaseServer(t, "v9.9.9", &hits)
 	bin := buildStampedLstk(t, "opt/bin", "0.0.1")
-	configFile := writeConfigWithCLI(t, `update_check = "notify"`)
+	configFile := writeConfigWithCLI(t, `check_for_update_on_startup = true`)
 
 	stdout, stderr, _ := runBinary(t, t.TempDir(),
-		startEnv(t, srv, "LSTK_UPDATE_CHECK=off"), bin,
+		startEnv(t, srv, "LSTK_CHECK_FOR_UPDATE_ON_STARTUP=false"), bin,
 		"--config", configFile, "start", "--non-interactive")
 
 	assert.Equal(t, int32(0), hits.Load(), "the env var must win over the config key")
@@ -278,7 +278,7 @@ func TestUpdateCheckNoteNamesExternalManager(t *testing.T) {
 	var hits atomic.Int32
 	srv := countingReleaseServer(t, "v9.9.9", &hits)
 	bin := buildStampedLstk(t, ".local/share/mise/installs/github-localstack-lstk/latest", "0.0.1")
-	configFile := writeConfigWithCLI(t, `update_check = "notify"`)
+	configFile := writeConfigWithCLI(t, `check_for_update_on_startup = true`)
 
 	stdout, stderr, _ := runBinary(t, t.TempDir(), startEnv(t, srv), bin,
 		"--config", configFile, "start", "--non-interactive")
@@ -294,10 +294,10 @@ func TestInvalidUpdateCheckEnvVarIsRejectedAsConfigInvalid(t *testing.T) {
 	var hits atomic.Int32
 	srv := countingReleaseServer(t, "v9.9.9", &hits)
 	bin := buildStampedLstk(t, "opt/bin", "0.0.1")
-	configFile := writeConfigWithCLI(t, `update_check = "notify"`)
+	configFile := writeConfigWithCLI(t, `check_for_update_on_startup = true`)
 
 	stdout, _, err := runBinary(t, t.TempDir(),
-		startEnv(t, srv, "LSTK_UPDATE_CHECK=quiet"), bin,
+		startEnv(t, srv, "LSTK_CHECK_FOR_UPDATE_ON_STARTUP=quiet"), bin,
 		"--config", configFile, "start", "--non-interactive", "--json")
 
 	requireExitCode(t, 1, err)
@@ -313,7 +313,7 @@ func TestInvalidUpdateCheckEnvVarIsRejectedAsConfigInvalid(t *testing.T) {
 func TestInvalidUpdateCheckInConfigIsConfigInvalidUnderJSON(t *testing.T) {
 	t.Parallel()
 
-	configFile := writeConfigWithCLI(t, `update_check = "quiet"`)
+	configFile := writeConfigWithCLI(t, `check_for_update_on_startup = "quiet"`)
 	stdout, _, err := runLstk(t, testContext(t), t.TempDir(),
 		append(testEnvWithHome(t.TempDir(), ""), unreachableDockerHost),
 		"--config", configFile, "start", "--non-interactive", "--json")
@@ -328,7 +328,7 @@ func TestInvalidUpdateCheckInConfigIsConfigInvalidUnderJSON(t *testing.T) {
 	assert.Equal(t, "CONFIG_INVALID", envelope.Error.Code)
 }
 
-// The "Never ask again" option writes config, so it must only appear when
+// The "Never check again" option writes config, so it must only appear when
 // there is a config file to write to. On a genuine first run config.toml does
 // not exist yet — it is created later, by the emulator picker — so offering it
 // there would tell the user a preference was saved when it was dropped.
@@ -351,7 +351,7 @@ func TestUpdatePromptOmitsNeverAskAgainOnFirstRun(t *testing.T) {
 	out := proc.output()
 	assert.Contains(t, out, "Update now")
 	assert.Contains(t, out, "Remind me next time")
-	assert.NotContains(t, out, "Never ask again", "the opt-out must be absent with no config file")
+	assert.NotContains(t, out, "Never check again", "the opt-out must be absent with no config file")
 }
 
 func TestUpdatePromptOffersNeverAskAgainWhenConfigExists(t *testing.T) {
@@ -360,7 +360,7 @@ func TestUpdatePromptOffersNeverAskAgainWhenConfigExists(t *testing.T) {
 	var hits atomic.Int32
 	srv := countingReleaseServer(t, "v9.9.9", &hits)
 	bin := buildStampedLstk(t, "opt/bin", "0.0.1")
-	configFile := writeConfigWithCLI(t, `update_check = "prompt"`)
+	configFile := writeConfigWithCLI(t, `check_for_update_on_startup = true`)
 
 	cmd := exec.Command(bin, "--config", configFile, "start")
 	cmd.Env = startEnv(t, srv)
@@ -368,7 +368,7 @@ func TestUpdatePromptOffersNeverAskAgainWhenConfigExists(t *testing.T) {
 	t.Cleanup(proc.kill)
 
 	proc.waitForOutput("Update lstk to latest version?", "the update prompt should appear")
-	proc.waitForOutput("Never ask again", "the opt-out must be offered when config exists")
+	proc.waitForOutput("Never check again", "the opt-out must be offered when config exists")
 }
 
 // --check reports whether a newer version exists and writes nothing, so it is

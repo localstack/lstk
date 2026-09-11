@@ -4,7 +4,6 @@ import (
 	"context"
 	"testing"
 
-	"github.com/localstack/lstk/internal/config"
 	"github.com/localstack/lstk/internal/output"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -30,7 +29,7 @@ func TestNotifyUpdateOffMakesNoRequestAndNoOutput(t *testing.T) {
 
 	exit := notifyUpdateWithVersion(context.Background(), sink, NotifyOptions{
 		DetectInstall: func() InstallInfo { return InstallInfo{Method: InstallBinary} },
-		Mode:          config.UpdateCheckOff,
+		CheckEnabled:  false,
 		CanPrompt:     true,
 	}, "1.0.0", failingFetcher(t))
 
@@ -38,32 +37,28 @@ func TestNotifyUpdateOffMakesNoRequestAndNoOutput(t *testing.T) {
 	assert.Empty(t, events)
 }
 
-func TestNotifyUpdateNotifyModeEmitsNoteWithoutPrompting(t *testing.T) {
+// A self-managed interactive install is prompted whenever the check is
+// enabled. There is no user-selectable "notify" state: the non-blocking note
+// is reserved for externally-managed installs and non-interactive runs.
+func TestNotifyUpdateEnabledPromptsASelfManagedInstall(t *testing.T) {
 	server := newTestGitHubServer(t, "v2.0.0")
 	defer server.Close()
 
-	var events []output.Event
+	var prompted bool
 	sink := output.SinkFunc(func(event output.Event) {
-		events = append(events, event)
 		if req, ok := event.(output.UserInputRequestEvent); ok {
-			t.Error("notify mode must never prompt")
-			req.ResponseCh() <- output.InputResponse{Cancelled: true}
+			prompted = true
+			req.ResponseCh() <- output.InputResponse{SelectedKey: "r"}
 		}
 	})
 
-	exit := notifyUpdateWithVersion(context.Background(), sink, NotifyOptions{
+	notifyUpdateWithVersion(context.Background(), sink, NotifyOptions{
 		DetectInstall: func() InstallInfo { return InstallInfo{Method: InstallBinary} },
-		Mode:          config.UpdateCheckNotify,
+		CheckEnabled:  true,
 		CanPrompt:     true,
 	}, "1.0.0", testFetcher(server.URL))
 
-	assert.False(t, exit)
-	require.Len(t, events, 1)
-	msg, ok := events[0].(output.MessageEvent)
-	require.True(t, ok)
-	assert.Equal(t, output.SeverityNote, msg.Severity)
-	assert.Contains(t, msg.Text, "1.0.0")
-	assert.Contains(t, msg.Text, "v2.0.0")
+	assert.True(t, prompted)
 }
 
 func TestNotifyUpdateExternalInstallDowngradesPromptToNote(t *testing.T) {
@@ -80,8 +75,8 @@ func TestNotifyUpdateExternalInstallDowngradesPromptToNote(t *testing.T) {
 	})
 
 	exit := notifyUpdateWithVersion(context.Background(), sink, NotifyOptions{
-		Mode:      config.UpdateCheckUnset,
-		CanPrompt: true,
+		CheckEnabled: true,
+		CanPrompt:    true,
 		DetectInstall: func() InstallInfo {
 			return InstallInfo{Method: InstallExternal, Manager: "mise"}
 		},
@@ -103,8 +98,8 @@ func TestNotifyUpdateOffSkipsDetection(t *testing.T) {
 	})
 
 	notifyUpdateWithVersion(context.Background(), sink, NotifyOptions{
-		Mode:      config.UpdateCheckOff,
-		CanPrompt: true,
+		CheckEnabled: false,
+		CanPrompt:    true,
 		DetectInstall: func() InstallInfo {
 			t.Error("off must not consult install detection")
 			return InstallInfo{}
@@ -123,8 +118,8 @@ func TestNotifyUpdateSkipsDetectionWhenNoUpdateAvailable(t *testing.T) {
 	})
 
 	notifyUpdateWithVersion(context.Background(), sink, NotifyOptions{
-		Mode:      config.UpdateCheckUnset,
-		CanPrompt: true,
+		CheckEnabled: true,
+		CanPrompt:    true,
 		DetectInstall: func() InstallInfo {
 			t.Error("detection must not run before an update is known to exist")
 			return InstallInfo{}
@@ -141,7 +136,7 @@ func TestNotifyUpdateNonInteractiveEmitsExactlyOneNote(t *testing.T) {
 	sink := output.SinkFunc(func(event output.Event) { events = append(events, event) })
 
 	notifyUpdateWithVersion(context.Background(), sink, NotifyOptions{
-		Mode:          config.UpdateCheckUnset,
+		CheckEnabled:  true,
 		CanPrompt:     false,
 		DetectInstall: func() InstallInfo { return InstallInfo{Method: InstallBinary} },
 	}, "1.0.0", testFetcher(server.URL))
@@ -153,7 +148,7 @@ func TestNotifyUpdateNeverAskAgainPersistsNotifyAndAppliesNoUpdate(t *testing.T)
 	server := newTestGitHubServer(t, "v2.0.0")
 	defer server.Close()
 
-	var persisted config.UpdateCheckMode
+	var persisted *bool
 	var events []output.Event
 	sink := output.SinkFunc(func(event output.Event) {
 		events = append(events, event)
@@ -164,16 +159,17 @@ func TestNotifyUpdateNeverAskAgainPersistsNotifyAndAppliesNoUpdate(t *testing.T)
 
 	exit := notifyUpdateWithVersion(context.Background(), sink, NotifyOptions{
 		DetectInstall: func() InstallInfo { return InstallInfo{Method: InstallBinary} },
-		Mode:          config.UpdateCheckPrompt,
+		CheckEnabled:  true,
 		CanPrompt:     true,
-		PersistUpdateCheck: func(mode config.UpdateCheckMode) error {
-			persisted = mode
+		PersistUpdateCheck: func(enabled bool) error {
+			persisted = &enabled
 			return nil
 		},
 	}, "1.0.0", testFetcher(server.URL))
 
 	assert.False(t, exit, "choosing never-ask-again must not restart the command")
-	assert.Equal(t, config.UpdateCheckNotify, persisted)
+	require.NotNil(t, persisted)
+	assert.False(t, *persisted, "the opt-out disables the check")
 	// "applies no update" is the other half of the behavior: exit == false
 	// alone would not notice an update actually being installed.
 	for _, e := range events {
@@ -198,9 +194,9 @@ func TestNotifyUpdateNeverAskAgainWarnsWhenPersistFails(t *testing.T) {
 
 	exit := notifyUpdateWithVersion(context.Background(), sink, NotifyOptions{
 		DetectInstall: func() InstallInfo { return InstallInfo{Method: InstallBinary} },
-		Mode:          config.UpdateCheckPrompt,
+		CheckEnabled:  true,
 		CanPrompt:     true,
-		PersistUpdateCheck: func(mode config.UpdateCheckMode) error {
+		PersistUpdateCheck: func(bool) error {
 			return assert.AnError
 		},
 	}, "1.0.0", testFetcher(server.URL))
@@ -231,8 +227,8 @@ func TestNotifyUpdateExternalNoteNamesTheManagerNotLstkUpdate(t *testing.T) {
 	})
 
 	notifyUpdateWithVersion(context.Background(), sink, NotifyOptions{
-		Mode:      config.UpdateCheckUnset,
-		CanPrompt: true,
+		CheckEnabled: true,
+		CanPrompt:    true,
 		DetectInstall: func() InstallInfo {
 			return InstallInfo{Method: InstallExternal, Manager: "mise"}
 		},
@@ -247,7 +243,9 @@ func TestNotifyUpdateExternalNoteNamesTheManagerNotLstkUpdate(t *testing.T) {
 
 // A note that was *not* caused by detection keeps pointing at `lstk update`,
 // which is the right advice for a self-managed install.
-func TestNotifyUpdateOrdinaryNoteStillPointsAtLstkUpdate(t *testing.T) {
+// A self-managed install's note still points at `lstk update`, which works
+// there. Reachable only when the call site cannot prompt.
+func TestNotifyUpdateSelfManagedNotePointsAtLstkUpdate(t *testing.T) {
 	server := newTestGitHubServer(t, "v2.0.0")
 	defer server.Close()
 
@@ -256,8 +254,8 @@ func TestNotifyUpdateOrdinaryNoteStillPointsAtLstkUpdate(t *testing.T) {
 
 	notifyUpdateWithVersion(context.Background(), sink, NotifyOptions{
 		DetectInstall: func() InstallInfo { return InstallInfo{Method: InstallBinary} },
-		Mode:          config.UpdateCheckNotify,
-		CanPrompt:     true,
+		CheckEnabled:  true,
+		CanPrompt:     false,
 	}, "1.0.0", testFetcher(server.URL))
 
 	require.Len(t, events, 1)
