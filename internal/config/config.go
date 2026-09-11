@@ -18,7 +18,8 @@ import (
 var defaultConfigTemplate string
 
 type CLIConfig struct {
-	UpdateSkippedVersion string `mapstructure:"update_skipped_version"`
+	// Pointer so an unset key is distinguishable from an explicit false.
+	CheckForUpdateOnStartup *bool `mapstructure:"check_for_update_on_startup"`
 }
 
 type Config struct {
@@ -171,11 +172,36 @@ func setInFile(path, key string, value any) error {
 	return os.WriteFile(path, []byte(content), 0644)
 }
 
-func SetUpdateSkippedVersion(version string) error {
-	return Set("cli.update_skipped_version", version)
+// SetCheckForUpdateOnStartup persists the update-check setting. Unlike Set, it
+// fails when there is no config file rather than succeeding in memory only: it
+// backs the prompt's opt-out, where a dropped write would tell the user their
+// choice was saved and then prompt them again next run.
+func SetCheckForUpdateOnStartup(enabled bool) error {
+	if resolvedConfigPath() == "" {
+		return errors.New("no config file to write to yet")
+	}
+	return Set("cli."+checkForUpdateOnStartupKey, enabled)
+}
+
+// HasFile reports whether a config file has been resolved, i.e. whether
+// settings can be persisted at all. The command boundary uses it to decide
+// whether to offer options that write config.
+func HasFile() bool {
+	return resolvedConfigPath() != ""
 }
 
 func Get() (*Config, error) {
+	// Checked before unmarshal: mapstructure's own bool failure names the key
+	// but neither the offending value nor the accepted ones, and this is the
+	// same message the environment variable produces.
+	if raw := viper.Get("cli." + checkForUpdateOnStartupKey); raw != nil {
+		if _, ok := raw.(bool); !ok {
+			if _, err := ParseCheckForUpdateOnStartup(fmt.Sprint(raw)); err != nil {
+				return nil, fmt.Errorf("invalid [cli] config: %w", err)
+			}
+		}
+	}
+
 	var cfg Config
 	if err := viper.Unmarshal(&cfg); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal config: %w", err)

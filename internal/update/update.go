@@ -27,6 +27,7 @@ package update
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -61,8 +62,25 @@ func Check(ctx context.Context, sink output.Sink, githubToken string) (string, b
 	return latest, available, nil
 }
 
-// Update checks for updates and applies the update if one is available.
-func Update(ctx context.Context, sink output.Sink, checkOnly bool, githubToken string) error {
+// Update checks for updates and applies one if available.
+//
+// When it would apply, it first refuses installs it must not replace (see
+// blockSelfUpdate) — ahead of the version check and download, so an install
+// lstk cannot write to fails immediately rather than after fetching and
+// verifying an archive it can never install. --check is exempt: it writes
+// nothing, and its answer is useful however lstk was installed.
+func Update(ctx context.Context, sink output.Sink, checkOnly bool, githubToken string, force bool) error {
+	info := DetectInstallMethod()
+	// Probes twice per `lstk update` (here and in applyUpdate), deliberately:
+	// applyUpdate stays the choke point every replacing path goes through,
+	// while this check keeps the refusal ahead of the download. Two cheap
+	// probes on a command that would otherwise fetch megabytes.
+	if !checkOnly && !force {
+		if blocker := blockSelfUpdate(info); blocker != nil {
+			return emitSelfUpdateBlocked(sink, blocker)
+		}
+	}
+
 	current := version.Version()
 	latest, available, err := Check(ctx, sink, githubToken)
 	if err != nil {
@@ -76,7 +94,10 @@ func Update(ctx context.Context, sink output.Sink, checkOnly bool, githubToken s
 		return nil
 	}
 
-	method, err := applyUpdate(ctx, sink, latest, githubToken)
+	method, blocker, err := applyUpdate(ctx, sink, latest, githubToken, force, info)
+	if blocker != nil {
+		return emitSelfUpdateBlocked(sink, blocker)
+	}
 	if err != nil {
 		sink.Emit(output.ErrorEvent{Title: err.Error(), Code: output.ErrInternal})
 		return output.NewSilentError(err)
@@ -99,10 +120,33 @@ func warnIfBundleMissing(sink output.Sink) {
 	})
 }
 
-// applyUpdate detects the current install method and performs the update,
+// emitSelfUpdateBlocked renders a refusal to replace lstk's own binary and
+// returns the silent error the caller should propagate.
+func emitSelfUpdateBlocked(sink output.Sink, blocker *selfUpdateBlocker) error {
+	sink.Emit(output.ErrorEvent{
+		Title:   blocker.title(),
+		Summary: blocker.summary(),
+		Actions: []output.ErrorAction{blocker.action()},
+		Code:    output.ErrUpdateExternallyManaged,
+	})
+	return output.NewSilentError(errors.New(blocker.title()))
+}
+
+// applyUpdate performs the update for an already-detected install method,
 // returning its canonical name ("homebrew"/"npm"/"binary") on success.
-func applyUpdate(ctx context.Context, sink output.Sink, latest, githubToken string) (string, error) {
-	info := DetectInstallMethod()
+//
+// Its blockSelfUpdate check is the choke point: every path that replaces the
+// binary comes through here, including the start-path prompt's "Update now" —
+// guarding only the `lstk update` entry point left that prompt able to clobber
+// an externally-managed install. It returns a non-nil blocker rather than
+// updating, so each caller picks the severity: `lstk update` fails with an
+// ErrorEvent, the prompt warns and carries on.
+func applyUpdate(ctx context.Context, sink output.Sink, latest, githubToken string, force bool, info InstallInfo) (string, *selfUpdateBlocker, error) {
+	if !force {
+		if blocker := blockSelfUpdate(info); blocker != nil {
+			return "", blocker, nil
+		}
+	}
 
 	var err error
 	switch info.Method {
@@ -118,10 +162,27 @@ func applyUpdate(ctx context.Context, sink output.Sink, latest, githubToken stri
 		sink.Emit(output.SpinnerStop())
 	}
 	if err != nil {
-		return "", fmt.Errorf("update failed: %w", err)
+		return "", nil, fmt.Errorf("update failed: %w", err)
 	}
 
-	return info.Method.String(), nil
+	return appliedMethodName(info.Method), nil, nil
+}
+
+// appliedMethodName maps an install method to the name reported in the
+// UpdateAppliedEvent (and so in the --json envelope's "method" field), whose
+// documented values are homebrew/npm/binary. InstallExternal reports "binary"
+// because the only way it reaches here is `lstk update --force`, which performs
+// exactly the binary replacement — the field says how the update happened, not
+// how lstk was originally installed.
+func appliedMethodName(m InstallMethod) string {
+	switch m {
+	case InstallHomebrew:
+		return "homebrew"
+	case InstallNPM:
+		return "npm"
+	default:
+		return "binary"
+	}
 }
 
 // logLineWriter adapts an output.Sink into an io.Writer, emitting each

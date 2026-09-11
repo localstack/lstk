@@ -324,6 +324,23 @@ func configureCommandExecution(root *cobra.Command, cfg *env.Env, tel *telemetry
 	wrapPreRunEForJSON(root, cfg, stdout)
 }
 
+// resolveUpdateCheckEnabled applies the resolution order:
+// LSTK_CHECK_FOR_UPDATE_ON_STARTUP wins over the [cli]
+// check_for_update_on_startup key, which wins over the default.
+func resolveUpdateCheckEnabled(cfg *env.Env, appConfig *config.Config) (bool, error) {
+	if cfg.CheckForUpdateOnStartup != "" {
+		enabled, err := config.ParseCheckForUpdateOnStartup(cfg.CheckForUpdateOnStartup)
+		if err != nil {
+			return false, fmt.Errorf("invalid %s: %w", env.CheckForUpdateOnStartupVar, err)
+		}
+		return enabled, nil
+	}
+	if appConfig.CLI.CheckForUpdateOnStartup != nil {
+		return *appConfig.CLI.CheckForUpdateOnStartup, nil
+	}
+	return config.CheckForUpdateOnStartupDefault, nil
+}
+
 func buildStartOptions(cfg *env.Env, appConfig *config.Config, logger log.Logger, tel *telemetry.Client, persist bool) container.StartOptions {
 	return container.StartOptions{
 		PlatformClient:   api.NewPlatformClient(cfg.APIEndpoint, logger),
@@ -343,7 +360,22 @@ func buildStartOptions(cfg *env.Env, appConfig *config.Config, logger log.Logger
 func startEmulator(ctx context.Context, rt runtime.Runtime, cfg *env.Env, tel *telemetry.Client, logger log.Logger, sink output.Sink, persist bool, firstRun bool, snapshotFlag string, noSnapshot bool, emulatorType config.EmulatorType) error {
 	appConfig, err := config.Get()
 	if err != nil {
-		return fmt.Errorf("failed to get config: %w", err)
+		return failGetConfig(sink, cfg, err)
+	}
+
+	// Resolved before anything is written or started, so a bad
+	// LSTK_CHECK_FOR_UPDATE_ON_STARTUP fails as early as a bad config key does.
+	updateCheckEnabled, err := resolveUpdateCheckEnabled(cfg, appConfig)
+	if err != nil {
+		sink.Emit(output.ErrorEvent{
+			Title: err.Error(),
+			Actions: []output.ErrorAction{{
+				Label: "Accepted values are true and false. Unset it with:",
+				Value: "unset " + env.CheckForUpdateOnStartupVar,
+			}},
+			Code: output.ErrConfigInvalid,
+		})
+		return output.NewSilentError(err)
 	}
 
 	configPath, err := config.FriendlyConfigPath()
@@ -384,10 +416,16 @@ func startEmulator(ctx context.Context, rt runtime.Runtime, cfg *env.Env, tel *t
 	opts := buildStartOptions(cfg, appConfig, logger, tel, persist)
 
 	notifyOpts := update.NotifyOptions{
-		GitHubToken:        cfg.GitHubToken,
-		UpdatePrompt:       true,
-		SkippedVersion:     appConfig.CLI.UpdateSkippedVersion,
-		PersistSkipVersion: config.SetUpdateSkippedVersion,
+		GitHubToken:   cfg.GitHubToken,
+		CanPrompt:     true,
+		CheckEnabled:  updateCheckEnabled,
+		DetectInstall: update.DetectInstallMethod,
+	}
+	// Only offer to persist a preference when there is a file for it. On a
+	// genuine first run config.toml does not exist yet (the emulator picker
+	// creates it), so the option would be silently dropped.
+	if config.HasFile() {
+		notifyOpts.PersistUpdateCheck = config.SetCheckForUpdateOnStartup
 	}
 
 	if isInteractiveMode(cfg) {
@@ -411,7 +449,12 @@ func startEmulator(ctx context.Context, rt runtime.Runtime, cfg *env.Env, tel *t
 			Text:     fmt.Sprintf("Configured with default emulator %s.", emName),
 		})
 	}
-	update.NotifyUpdate(ctx, sink, update.NotifyOptions{GitHubToken: cfg.GitHubToken})
+	// Same options as the interactive path, minus the ability to prompt, so
+	// a disabled check silences a non-interactive start too, and its note
+	// still names an external manager.
+	nonInteractiveNotify := notifyOpts
+	nonInteractiveNotify.CanPrompt = false
+	update.NotifyUpdate(ctx, sink, nonInteractiveNotify)
 	result, err := container.Start(ctx, rt, sink, opts, false)
 	if err != nil {
 		return err

@@ -6,40 +6,41 @@ package output
 type ErrorCode string
 
 const (
-	ErrRuntimeUnavailable     ErrorCode = "RUNTIME_UNAVAILABLE"
-	ErrImagePullFailed        ErrorCode = "IMAGE_PULL_FAILED"
-	ErrEmulatorNotRunning     ErrorCode = "EMULATOR_NOT_RUNNING"
-	ErrEmulatorAlreadyRunning ErrorCode = "EMULATOR_ALREADY_RUNNING"
-	ErrEmulatorWrongType      ErrorCode = "EMULATOR_WRONG_TYPE"
-	ErrEmulatorNotConfigured  ErrorCode = "EMULATOR_NOT_CONFIGURED"
-	ErrEmulatorStartFailed    ErrorCode = "EMULATOR_START_FAILED"
-	ErrAuthRequired           ErrorCode = "AUTH_REQUIRED"
-	ErrAuthLoginFailed        ErrorCode = "AUTH_LOGIN_FAILED"
-	ErrCredentialsMissing     ErrorCode = "CREDENTIALS_MISSING"
-	ErrLicenseInvalid         ErrorCode = "LICENSE_INVALID"
-	ErrLicenseUnsupportedTag  ErrorCode = "LICENSE_UNSUPPORTED_TAG"
-	ErrLicenseNotCovered      ErrorCode = "LICENSE_NOT_COVERED"
-	ErrSnapshotNotFound       ErrorCode = "SNAPSHOT_NOT_FOUND"
-	ErrSnapshotInvalidRef     ErrorCode = "SNAPSHOT_INVALID_REF"
-	ErrSnapshotRemoteError    ErrorCode = "SNAPSHOT_REMOTE_ERROR"
-	ErrSnapshotBucketNotFound ErrorCode = "SNAPSHOT_BUCKET_NOT_FOUND"
-	ErrConfigInvalid          ErrorCode = "CONFIG_INVALID"
-	ErrConfigNotFound         ErrorCode = "CONFIG_NOT_FOUND"
-	ErrIntegrationNotSetUp    ErrorCode = "INTEGRATION_NOT_SET_UP"
-	ErrDependencyMissing      ErrorCode = "DEPENDENCY_MISSING"
-	ErrDNSResolutionRequired  ErrorCode = "DNS_RESOLUTION_REQUIRED"
-	ErrPortConflict           ErrorCode = "PORT_CONFLICT"
-	ErrConfirmationRequired   ErrorCode = "CONFIRMATION_REQUIRED"
-	ErrValidationError        ErrorCode = "VALIDATION_ERROR"
-	ErrUsageError             ErrorCode = "USAGE_ERROR"
-	ErrNotJSONCapable         ErrorCode = "NOT_JSON_CAPABLE"
-	ErrNetworkError           ErrorCode = "NETWORK_ERROR"
-	ErrCancelled              ErrorCode = "CANCELLED"
-	ErrInternal               ErrorCode = "INTERNAL_ERROR"
-	ErrIACFileNotFound        ErrorCode = "IAC_FILE_NOT_FOUND"
-	ErrIACNoToolDetected      ErrorCode = "IAC_NO_TOOL_DETECTED"
-	ErrIACToolAmbiguous       ErrorCode = "IAC_TOOL_AMBIGUOUS"
-	ErrIACDeployFailed        ErrorCode = "IAC_DEPLOY_FAILED"
+	ErrRuntimeUnavailable      ErrorCode = "RUNTIME_UNAVAILABLE"
+	ErrImagePullFailed         ErrorCode = "IMAGE_PULL_FAILED"
+	ErrEmulatorNotRunning      ErrorCode = "EMULATOR_NOT_RUNNING"
+	ErrEmulatorAlreadyRunning  ErrorCode = "EMULATOR_ALREADY_RUNNING"
+	ErrEmulatorWrongType       ErrorCode = "EMULATOR_WRONG_TYPE"
+	ErrEmulatorNotConfigured   ErrorCode = "EMULATOR_NOT_CONFIGURED"
+	ErrEmulatorStartFailed     ErrorCode = "EMULATOR_START_FAILED"
+	ErrAuthRequired            ErrorCode = "AUTH_REQUIRED"
+	ErrAuthLoginFailed         ErrorCode = "AUTH_LOGIN_FAILED"
+	ErrCredentialsMissing      ErrorCode = "CREDENTIALS_MISSING"
+	ErrLicenseInvalid          ErrorCode = "LICENSE_INVALID"
+	ErrLicenseUnsupportedTag   ErrorCode = "LICENSE_UNSUPPORTED_TAG"
+	ErrLicenseNotCovered       ErrorCode = "LICENSE_NOT_COVERED"
+	ErrSnapshotNotFound        ErrorCode = "SNAPSHOT_NOT_FOUND"
+	ErrSnapshotInvalidRef      ErrorCode = "SNAPSHOT_INVALID_REF"
+	ErrSnapshotRemoteError     ErrorCode = "SNAPSHOT_REMOTE_ERROR"
+	ErrSnapshotBucketNotFound  ErrorCode = "SNAPSHOT_BUCKET_NOT_FOUND"
+	ErrConfigInvalid           ErrorCode = "CONFIG_INVALID"
+	ErrConfigNotFound          ErrorCode = "CONFIG_NOT_FOUND"
+	ErrIntegrationNotSetUp     ErrorCode = "INTEGRATION_NOT_SET_UP"
+	ErrDependencyMissing       ErrorCode = "DEPENDENCY_MISSING"
+	ErrDNSResolutionRequired   ErrorCode = "DNS_RESOLUTION_REQUIRED"
+	ErrPortConflict            ErrorCode = "PORT_CONFLICT"
+	ErrConfirmationRequired    ErrorCode = "CONFIRMATION_REQUIRED"
+	ErrValidationError         ErrorCode = "VALIDATION_ERROR"
+	ErrUsageError              ErrorCode = "USAGE_ERROR"
+	ErrNotJSONCapable          ErrorCode = "NOT_JSON_CAPABLE"
+	ErrNetworkError            ErrorCode = "NETWORK_ERROR"
+	ErrUpdateExternallyManaged ErrorCode = "UPDATE_EXTERNALLY_MANAGED"
+	ErrCancelled               ErrorCode = "CANCELLED"
+	ErrInternal                ErrorCode = "INTERNAL_ERROR"
+	ErrIACFileNotFound         ErrorCode = "IAC_FILE_NOT_FOUND"
+	ErrIACNoToolDetected       ErrorCode = "IAC_NO_TOOL_DETECTED"
+	ErrIACToolAmbiguous        ErrorCode = "IAC_TOOL_AMBIGUOUS"
+	ErrIACDeployFailed         ErrorCode = "IAC_DEPLOY_FAILED"
 )
 
 // retryableCodes is the single source of truth for whether a given ErrorCode
@@ -127,6 +128,7 @@ var allErrorCodes = []ErrorCode{
 	ErrUsageError,
 	ErrNotJSONCapable,
 	ErrNetworkError,
+	ErrUpdateExternallyManaged,
 	ErrCancelled,
 	ErrInternal,
 	ErrIACFileNotFound,
@@ -139,40 +141,44 @@ var allErrorCodes = []ErrorCode{
 // static ErrorCategory, mirroring retryableCodes above. Every code in
 // allErrorCodes SHALL have an entry here.
 var categoryByCode = map[ErrorCode]ErrorCategory{
-	ErrRuntimeUnavailable:     CategoryRuntime,
-	ErrImagePullFailed:        CategoryRuntime,
-	ErrDependencyMissing:      CategoryRuntime,
-	ErrDNSResolutionRequired:  CategoryRuntime,
-	ErrNetworkError:           CategoryRuntime,
-	ErrPortConflict:           CategoryRuntime,
-	ErrEmulatorNotRunning:     CategoryEmulator,
-	ErrEmulatorAlreadyRunning: CategoryEmulator,
-	ErrEmulatorWrongType:      CategoryEmulator,
-	ErrEmulatorNotConfigured:  CategoryEmulator,
-	ErrEmulatorStartFailed:    CategoryEmulator,
-	ErrAuthRequired:           CategoryAuth,
-	ErrAuthLoginFailed:        CategoryAuth,
-	ErrCredentialsMissing:     CategoryAuth,
-	ErrLicenseInvalid:         CategoryAuth,
-	ErrLicenseUnsupportedTag:  CategoryAuth,
-	ErrLicenseNotCovered:      CategoryAuth,
-	ErrSnapshotNotFound:       CategoryResource,
-	ErrSnapshotInvalidRef:     CategoryResource,
-	ErrSnapshotRemoteError:    CategoryResource,
-	ErrSnapshotBucketNotFound: CategoryResource,
-	ErrConfigInvalid:          CategoryConfig,
-	ErrConfigNotFound:         CategoryConfig,
-	ErrIntegrationNotSetUp:    CategoryConfig,
-	ErrConfirmationRequired:   CategoryUsage,
-	ErrValidationError:        CategoryUsage,
-	ErrUsageError:             CategoryUsage,
-	ErrNotJSONCapable:         CategoryUsage,
-	ErrCancelled:              CategoryInternal,
-	ErrInternal:               CategoryInternal,
-	ErrIACFileNotFound:        CategoryIAC,
-	ErrIACNoToolDetected:      CategoryIAC,
-	ErrIACToolAmbiguous:       CategoryIAC,
-	ErrIACDeployFailed:        CategoryIAC,
+	ErrRuntimeUnavailable:    CategoryRuntime,
+	ErrImagePullFailed:       CategoryRuntime,
+	ErrDependencyMissing:     CategoryRuntime,
+	ErrDNSResolutionRequired: CategoryRuntime,
+	ErrNetworkError:          CategoryRuntime,
+	// Runtime rather than Usage: how lstk was installed is a fact about the
+	// machine, not something the invocation can fix. --force exists, but the
+	// correct response is to update through the manager that owns the install.
+	ErrUpdateExternallyManaged: CategoryRuntime,
+	ErrPortConflict:            CategoryRuntime,
+	ErrEmulatorNotRunning:      CategoryEmulator,
+	ErrEmulatorAlreadyRunning:  CategoryEmulator,
+	ErrEmulatorWrongType:       CategoryEmulator,
+	ErrEmulatorNotConfigured:   CategoryEmulator,
+	ErrEmulatorStartFailed:     CategoryEmulator,
+	ErrAuthRequired:            CategoryAuth,
+	ErrAuthLoginFailed:         CategoryAuth,
+	ErrCredentialsMissing:      CategoryAuth,
+	ErrLicenseInvalid:          CategoryAuth,
+	ErrLicenseUnsupportedTag:   CategoryAuth,
+	ErrLicenseNotCovered:       CategoryAuth,
+	ErrSnapshotNotFound:        CategoryResource,
+	ErrSnapshotInvalidRef:      CategoryResource,
+	ErrSnapshotRemoteError:     CategoryResource,
+	ErrSnapshotBucketNotFound:  CategoryResource,
+	ErrConfigInvalid:           CategoryConfig,
+	ErrConfigNotFound:          CategoryConfig,
+	ErrIntegrationNotSetUp:     CategoryConfig,
+	ErrConfirmationRequired:    CategoryUsage,
+	ErrValidationError:         CategoryUsage,
+	ErrUsageError:              CategoryUsage,
+	ErrNotJSONCapable:          CategoryUsage,
+	ErrCancelled:               CategoryInternal,
+	ErrInternal:                CategoryInternal,
+	ErrIACFileNotFound:         CategoryIAC,
+	ErrIACNoToolDetected:       CategoryIAC,
+	ErrIACToolAmbiguous:        CategoryIAC,
+	ErrIACDeployFailed:         CategoryIAC,
 }
 
 // Category reports the code's static, coarse grouping. Every ErrorCode in

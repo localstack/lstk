@@ -87,7 +87,8 @@ func TestNotifyUpdateNoUpdateAvailable(t *testing.T) {
 	var events []output.Event
 	sink := output.SinkFunc(func(event output.Event) { events = append(events, event) })
 
-	exit := notifyUpdateWithVersion(context.Background(), sink, NotifyOptions{UpdatePrompt: true}, "v1.0.0", testFetcher(server.URL))
+	exit := notifyUpdateWithVersion(context.Background(), sink, NotifyOptions{
+		DetectInstall: func() InstallInfo { return InstallInfo{Method: InstallBinary} }, CanPrompt: true}, "v1.0.0", testFetcher(server.URL))
 	assert.False(t, exit)
 	assert.Empty(t, events)
 }
@@ -99,52 +100,16 @@ func TestNotifyUpdatePromptDisabled(t *testing.T) {
 	var events []output.Event
 	sink := output.SinkFunc(func(event output.Event) { events = append(events, event) })
 
-	exit := notifyUpdateWithVersion(context.Background(), sink, NotifyOptions{}, "1.0.0", testFetcher(server.URL))
+	exit := notifyUpdateWithVersion(context.Background(), sink, NotifyOptions{
+		DetectInstall: func() InstallInfo { return InstallInfo{Method: InstallBinary} },
+		CheckEnabled:  true,
+	}, "1.0.0", testFetcher(server.URL))
 	assert.False(t, exit)
 	assert.Len(t, events, 1)
 	msg, ok := events[0].(output.MessageEvent)
 	assert.True(t, ok)
 	assert.Equal(t, output.SeverityNote, msg.Severity)
 	assert.Contains(t, msg.Text, "Update available")
-}
-
-func TestNotifyUpdatePromptSkip(t *testing.T) {
-	server := newTestGitHubServer(t, "v2.0.0")
-	defer server.Close()
-
-	var skippedVersion string
-	var events []output.Event
-	sink := output.SinkFunc(func(event output.Event) {
-		events = append(events, event)
-		if req, ok := event.(output.UserInputRequestEvent); ok {
-			req.ResponseCh() <- output.InputResponse{SelectedKey: "s"}
-		}
-	})
-
-	exit := notifyUpdateWithVersion(context.Background(), sink, NotifyOptions{
-		UpdatePrompt: true,
-		PersistSkipVersion: func(v string) error {
-			skippedVersion = v
-			return nil
-		},
-	}, "1.0.0", testFetcher(server.URL))
-	assert.False(t, exit)
-	assert.Equal(t, "v2.0.0", skippedVersion)
-}
-
-func TestNotifyUpdateSkippedVersionSuppressesPrompt(t *testing.T) {
-	server := newTestGitHubServer(t, "v2.0.0")
-	defer server.Close()
-
-	var events []output.Event
-	sink := output.SinkFunc(func(event output.Event) { events = append(events, event) })
-
-	exit := notifyUpdateWithVersion(context.Background(), sink, NotifyOptions{
-		UpdatePrompt:   true,
-		SkippedVersion: "v2.0.0",
-	}, "1.0.0", testFetcher(server.URL))
-	assert.False(t, exit)
-	assert.Empty(t, events)
 }
 
 func TestNotifyUpdatePromptRemind(t *testing.T) {
@@ -159,7 +124,11 @@ func TestNotifyUpdatePromptRemind(t *testing.T) {
 		}
 	})
 
-	exit := notifyUpdateWithVersion(context.Background(), sink, NotifyOptions{UpdatePrompt: true}, "1.0.0", testFetcher(server.URL))
+	exit := notifyUpdateWithVersion(context.Background(), sink, NotifyOptions{
+		DetectInstall:      func() InstallInfo { return InstallInfo{Method: InstallBinary} },
+		CanPrompt:          true,
+		PersistUpdateCheck: func(bool) error { return nil },
+	}, "1.0.0", testFetcher(server.URL))
 	assert.False(t, exit)
 }
 
@@ -175,12 +144,15 @@ func TestNotifyUpdatePromptCancelled(t *testing.T) {
 			assert.Len(t, req.Options(), 3)
 			assert.Equal(t, "u", req.Options()[0].Key)
 			assert.Equal(t, "r", req.Options()[1].Key)
-			assert.Equal(t, "s", req.Options()[2].Key)
+			assert.Equal(t, "n", req.Options()[2].Key)
 			req.ResponseCh() <- output.InputResponse{Cancelled: true}
 		}
 	})
 
-	exit := notifyUpdateWithVersion(context.Background(), sink, NotifyOptions{UpdatePrompt: true}, "1.0.0", testFetcher(server.URL))
+	exit := notifyUpdateWithVersion(context.Background(), sink, NotifyOptions{
+		DetectInstall:      func() InstallInfo { return InstallInfo{Method: InstallBinary} },
+		CanPrompt:          true,
+		PersistUpdateCheck: func(bool) error { return nil },
+	}, "1.0.0", testFetcher(server.URL))
 	assert.False(t, exit)
 }
-

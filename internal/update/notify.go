@@ -12,10 +12,27 @@ import (
 type versionFetcher func(ctx context.Context, token string) (string, error)
 
 type NotifyOptions struct {
-	GitHubToken        string
-	UpdatePrompt       bool
-	SkippedVersion     string
-	PersistSkipVersion func(version string) error
+	GitHubToken string
+	// CanPrompt reports whether this call site can block at all (an interactive
+	// TTY). Independent of Mode, the user's preference: a non-interactive start
+	// only ever emits a note, however Mode is set.
+	CanPrompt bool
+	// CheckEnabled is the resolved `[cli] check_for_update_on_startup`.
+	CheckEnabled       bool
+	PersistUpdateCheck func(enabled bool) error
+	// DetectInstall resolves how lstk itself was installed. Injected so tests
+	// do not depend on where the test binary lives, which is also what makes
+	// the prompt path's apply-time guard testable. Defaults to
+	// DetectInstallMethod when nil.
+	DetectInstall func() InstallInfo
+}
+
+// installInfo resolves the install once per notification.
+func (o NotifyOptions) installInfo() InstallInfo {
+	if o.DetectInstall == nil {
+		return DetectInstallMethod()
+	}
+	return o.DetectInstall()
 }
 
 const checkTimeout = 2 * time.Second
@@ -51,35 +68,63 @@ func NotifyUpdate(ctx context.Context, sink output.Sink, opts NotifyOptions) (ex
 }
 
 func notifyUpdateWithVersion(ctx context.Context, sink output.Sink, opts NotifyOptions, currentVersion string, fetch versionFetcher) (exitAfter bool) {
+	if !opts.CheckEnabled {
+		return false
+	}
+
 	current, latest, available := checkQuietlyWithVersion(ctx, opts.GitHubToken, currentVersion, fetch)
 	if !available {
 		return false
 	}
 
-	if opts.SkippedVersion != "" && normalizeVersion(opts.SkippedVersion) == normalizeVersion(latest) {
+	// Once, and only now that an update is known to exist — which keeps
+	// detection off every `lstk start`. It runs whatever the mode, because its
+	// answer also decides the note's wording: "run lstk update" is wrong advice
+	// on an install where that command refuses.
+	info := opts.installInfo()
+	external := info.Method == InstallExternal
+
+	// Never prompt an externally-managed install: "Update now" would replace a
+	// binary the external tool owns, and applyUpdate refuses it anyway. Better
+	// not to offer it at all.
+	if !opts.CanPrompt || external {
+		sink.Emit(updateNote(current, latest, info.Manager))
 		return false
 	}
 
-	if !opts.UpdatePrompt {
-		sink.Emit(output.MessageEvent{Severity: output.SeverityNote, Text: fmt.Sprintf("Update available: %s → %s (run lstk update)", current, latest)})
-		return false
-	}
-
-	return promptAndUpdate(ctx, sink, opts, current, latest)
+	return promptAndUpdate(ctx, sink, opts, current, latest, info)
 }
 
-func promptAndUpdate(ctx context.Context, sink output.Sink, opts NotifyOptions, current, latest string) (exitAfter bool) {
+// updateNote is the non-blocking "a newer version exists" line. With a manager
+// set it names that tool instead of `lstk update`, which refuses on such an
+// install.
+func updateNote(current, latest, manager string) output.MessageEvent {
+	text := fmt.Sprintf("Update available: %s → %s (run lstk update)", current, latest)
+	if manager != "" {
+		text = fmt.Sprintf("Update available: %s → %s (installed via %s — update it there)", current, latest, manager)
+	}
+	return output.MessageEvent{Severity: output.SeverityNote, Text: text}
+}
+
+func promptAndUpdate(ctx context.Context, sink output.Sink, opts NotifyOptions, current, latest string, info InstallInfo) (exitAfter bool) {
 	releaseNotesURL := fmt.Sprintf("https://github.com/%s/releases/latest", githubRepo)
 
 	sink.Emit(output.MessageEvent{Severity: output.SeverityNote, Text: fmt.Sprintf("New lstk version available! %s → %s", current, latest)})
 	sink.Emit(output.MessageEvent{Severity: output.SeveritySecondary, Text: fmt.Sprintf("> Release notes: %s", releaseNotesURL)})
 
-	responseCh := make(chan output.InputResponse, 1)
-	sink.Emit(output.ActionChoice("Update lstk to latest version?", []output.InputOption{
+	options := []output.InputOption{
 		{Key: "u", Label: "Update now"},
 		{Key: "r", Label: "Remind me next time"},
-		{Key: "s", Label: "Skip this version"},
-	}, responseCh))
+	}
+	// Only offered when there is somewhere to write it: on a first run
+	// config.toml does not exist yet, so the choice would be silently dropped
+	// after telling the user it was saved.
+	if opts.PersistUpdateCheck != nil {
+		options = append(options, output.InputOption{Key: "n", Label: "Never check again"})
+	}
+
+	responseCh := make(chan output.InputResponse, 1)
+	sink.Emit(output.ActionChoice("Update lstk to latest version?", options, responseCh))
 
 	var resp output.InputResponse
 	select {
@@ -94,7 +139,18 @@ func promptAndUpdate(ctx context.Context, sink output.Sink, opts NotifyOptions, 
 
 	switch resp.SelectedKey {
 	case "u":
-		if _, err := applyUpdate(ctx, sink, latest, opts.GitHubToken); err != nil {
+		// A refusal here is recoverable and the start continues, so warn once.
+		// An ErrorEvent (what `lstk update` emits) would leave a persistent
+		// failure block on screen while the emulator comes up underneath it.
+		_, blocker, err := applyUpdate(ctx, sink, latest, opts.GitHubToken, false, info)
+		if blocker != nil {
+			sink.Emit(output.MessageEvent{
+				Severity: output.SeverityWarning,
+				Text:     fmt.Sprintf("%s (%s). %s", blocker.title(), blocker.summary(), blocker.action().Label),
+			})
+			return false
+		}
+		if err != nil {
 			sink.Emit(output.MessageEvent{Severity: output.SeverityWarning, Text: fmt.Sprintf("Update failed: %v", err)})
 			return false
 		}
@@ -102,13 +158,18 @@ func promptAndUpdate(ctx context.Context, sink output.Sink, opts NotifyOptions, 
 		return true
 	case "r":
 		return false
-	case "s":
-		if opts.PersistSkipVersion != nil {
-			if err := opts.PersistSkipVersion(latest); err != nil {
-				sink.Emit(output.MessageEvent{Severity: output.SeverityWarning, Text: fmt.Sprintf("Failed to persist skipped version: %v", err)})
-			}
+	case "n":
+		if opts.PersistUpdateCheck == nil {
+			// Unreachable while the option is conditional (see above), but a
+			// future edit that always appends it must warn, not panic.
+			sink.Emit(output.MessageEvent{Severity: output.SeverityWarning, Text: "Cannot save update preference: no config file"})
+			return false
 		}
-		sink.Emit(output.MessageEvent{Severity: output.SeverityNote, Text: "Skipping version " + latest})
+		if err := opts.PersistUpdateCheck(false); err != nil {
+			sink.Emit(output.MessageEvent{Severity: output.SeverityWarning, Text: fmt.Sprintf("Failed to save update preference: %v", err)})
+			return false
+		}
+		sink.Emit(output.MessageEvent{Severity: output.SeverityNote, Text: "Update checks disabled. Run lstk update to check and update."})
 		return false
 	}
 

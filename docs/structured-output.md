@@ -121,6 +121,7 @@ Every `error.code` is one of the following fixed constants. A failure that doesn
 | `USAGE_ERROR` | Cobra-level flag or argument parsing failed | No | `USAGE` |
 | `NOT_JSON_CAPABLE` | The requested command has not been annotated as JSON-capable yet | No | `USAGE` |
 | `NETWORK_ERROR` | An unclassified network/transport failure occurred | Yes | `RUNTIME` |
+| `UPDATE_EXTERNALLY_MANAGED` | `lstk update` refused to replace a binary it does not own: the install is managed by an external tool (mise, nix, guix, asdf, scoop, chocolatey) or its directory is not writable. `--force` overrides | No | `RUNTIME` |
 | `CANCELLED` | The operation was interrupted (e.g. context cancellation via Ctrl+C) | Yes | `INTERNAL` |
 | `INTERNAL_ERROR` | Unclassified or unexpected failure; the universal fallback | No | `INTERNAL` |
 | `IAC_FILE_NOT_FOUND` | A required infrastructure-as-code file or directory does not exist or cannot be read (e.g. the workspace `lstk deploy detect --dir` was pointed at) | No | `IAC` |
@@ -130,11 +131,11 @@ Every `error.code` is one of the following fixed constants. A failure that doesn
 
 ### Error categories
 
-`error.category` groups the 29 codes above into 8 buckets, additive alongside `code` — it exists purely so a caller that only wants coarse handling doesn't have to build and maintain its own mapping from all 29 codes. `code` is unaffected and remains the primary, stable identifier for anything more specific.
+`error.category` groups the 35 codes above into 8 buckets, additive alongside `code` — it exists purely so a caller that only wants coarse handling doesn't have to build and maintain its own mapping from all 35 codes. `code` is unaffected and remains the primary, stable identifier for anything more specific.
 
 ```
 RUNTIME    RUNTIME_UNAVAILABLE, IMAGE_PULL_FAILED, DEPENDENCY_MISSING,
-           DNS_RESOLUTION_REQUIRED, NETWORK_ERROR
+           DNS_RESOLUTION_REQUIRED, NETWORK_ERROR, UPDATE_EXTERNALLY_MANAGED
            → something outside lstk's control (Docker, network, a missing binary)
 
 EMULATOR   EMULATOR_NOT_RUNNING, EMULATOR_ALREADY_RUNNING, EMULATOR_WRONG_TYPE,
@@ -269,7 +270,7 @@ Codes: `EMULATOR_NOT_CONFIGURED` (no AWS container configured), `EMULATOR_NOT_RU
   "error": null
 }
 ```
-Codes: `NETWORK_ERROR` (GitHub API unreachable), `INTERNAL_ERROR` (archive download verification, extraction, or replacement failure), `CONFIG_INVALID`, `CONFIG_NOT_FOUND` (bad or missing `--config` path).
+Codes: `NETWORK_ERROR` (GitHub API unreachable), `UPDATE_EXTERNALLY_MANAGED` (the install is managed by an external tool or sits in a directory lstk cannot write to; emitted before any version check, and suppressed by `--check` and `--force`), `INTERNAL_ERROR` (archive download verification, extraction, or replacement failure), `CONFIG_INVALID`, `CONFIG_NOT_FOUND` (bad or missing `--config` path).
 
 **`lstk start`** — a flat object, not an `emulators: [...]` list: only one `[[containers]]` block can be enabled at a time (`container.Start`'s `checkSingleContainer` guard), so `start` only ever acts on one emulator, unlike `stop`/`status` which genuinely enumerate multiple *configured* emulators. A version/config mismatch on an already-running instance surfaces as a `warnings[]` entry rather than a new field. The bare `lstk --json` invocation (no `start`) carries identical support: it runs through the same `startEmulator` path, so `--json` behaves the same way there, and the envelope's `command` field reads `"start"` either way.
 ```json

@@ -55,3 +55,32 @@ func TestDetectMissingBundleByInstallMethod(t *testing.T) {
 	_, ok = detectMissingBundle(InstallInfo{Method: InstallBinary, ResolvedPath: exe}, "linux")
 	assert.False(t, ok)
 }
+
+// An externally-managed install missing its bundle must be pointed at the tool
+// that owns it: a GitHub download would install outside the manager.
+func TestDetectMissingBundleNamesTheExternalManager(t *testing.T) {
+	dir := t.TempDir()
+	exe := filepath.Join(dir, "lstk")
+
+	mb, ok := detectMissingBundle(InstallInfo{
+		Method:       InstallExternal,
+		Manager:      "mise",
+		ResolvedPath: exe,
+	}, "linux")
+
+	require.True(t, ok)
+	assert.Equal(t, dir, mb.Dir)
+	assert.Contains(t, mb.Reinstall, "mise")
+	assert.NotContains(t, mb.Reinstall, "github.com", "an external install must not be sent to a release download")
+}
+
+// A recognized external install with no manager name falls back to the
+// generic instruction rather than emitting a dangling sentence.
+func TestDetectMissingBundleFallsBackWithoutAManagerName(t *testing.T) {
+	exe := filepath.Join(t.TempDir(), "lstk")
+
+	mb, ok := detectMissingBundle(InstallInfo{Method: InstallExternal, ResolvedPath: exe}, "linux")
+
+	require.True(t, ok)
+	assert.Contains(t, mb.Reinstall, "github.com")
+}

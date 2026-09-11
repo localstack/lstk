@@ -1,0 +1,114 @@
+package update
+
+import (
+	"errors"
+	"fmt"
+	"io/fs"
+	"os"
+	"path/filepath"
+	"syscall"
+
+	"github.com/localstack/lstk/internal/output"
+)
+
+// installDirWritable reports whether the directory holding exePath can be
+// written to, as an in-place binary update requires. It backstops the path
+// markers for installs they do not recognize: a root-owned /usr/bin run as a
+// normal user, a read-only container layer, an unknown immutable store.
+//
+// It probes with a temp file rather than access(2), which can report success
+// for root or under an ACL the later rename still fails. That costs ~10x more,
+// so it belongs only on the explicit `lstk update` path — never on the
+// start-path check, which runs on every `lstk start`. A permission or EROFS
+// error means "not writable"; any other error is returned, so an unrelated I/O
+// fault is never read as a read-only install.
+func installDirWritable(exePath string) (bool, error) {
+	dir := filepath.Dir(exePath)
+	f, err := os.CreateTemp(dir, ".lstk-update-probe-*")
+	if err != nil {
+		if errors.Is(err, fs.ErrPermission) {
+			return false, nil
+		}
+		// A read-only filesystem surfaces as EROFS, which is not ErrPermission.
+		if isReadOnlyFSError(err) {
+			return false, nil
+		}
+		return false, fmt.Errorf("cannot determine whether %s is writable: %w", dir, err)
+	}
+	name := f.Name()
+	if err := f.Close(); err != nil {
+		_ = os.Remove(name)
+		return false, fmt.Errorf("cannot close write probe in %s: %w", dir, err)
+	}
+	if err := os.Remove(name); err != nil {
+		return false, fmt.Errorf("cannot remove write probe %s: %w", name, err)
+	}
+	return true, nil
+}
+
+// isReadOnlyFSError reports whether err is EROFS — how a unix immutable store
+// (a nix store, a read-only container layer) refuses a write, rather than with
+// a permission error. syscall.EROFS compiles on Windows but is never produced
+// there, so write-protected Windows media falls through as an indeterminate
+// probe and is not refused; ACL denials still are, via ErrPermission.
+func isReadOnlyFSError(err error) bool {
+	return errors.Is(err, syscall.EROFS)
+}
+
+// selfUpdateBlocker explains why lstk must not replace its own binary in place.
+// Manager names the external tool that owns the install; it is empty when the
+// only problem is that the install directory cannot be written to.
+type selfUpdateBlocker struct {
+	Manager string
+	Path    string
+}
+
+func (b selfUpdateBlocker) title() string {
+	if b.Manager != "" {
+		return fmt.Sprintf("lstk is managed by %s and will not update itself", b.Manager)
+	}
+	return "lstk cannot update itself: its install directory is not writable"
+}
+
+func (b selfUpdateBlocker) summary() string {
+	return fmt.Sprintf("Installed at %s", b.Path)
+}
+
+func (b selfUpdateBlocker) action() output.ErrorAction {
+	if b.Manager != "" {
+		return output.ErrorAction{
+			Label: fmt.Sprintf("Update it through %s, or force an in-place replacement:", b.Manager),
+			Value: "lstk update --force",
+		}
+	}
+	return output.ErrorAction{
+		Label: fmt.Sprintf("Update lstk the way it was installed, grant write access to %s, or force it:", filepath.Dir(b.Path)),
+		Value: "lstk update --force",
+	}
+}
+
+// blockSelfUpdate reports why an in-place binary replacement must not be
+// attempted, or nil when it may proceed.
+//
+// Homebrew and npm are never blocked: they delegate to `brew upgrade` and
+// `npm install -g`, which own their install directory. An indeterminate probe
+// does not block either — guessing "read-only" from an unrelated I/O error
+// would refuse an update that would have worked.
+func blockSelfUpdate(info InstallInfo) *selfUpdateBlocker {
+	if info.Method == InstallExternal {
+		return &selfUpdateBlocker{Manager: info.Manager, Path: info.ResolvedPath}
+	}
+	if info.Method != InstallBinary {
+		return nil
+	}
+	// os.Executable() failed, so there is no install directory. filepath.Dir("")
+	// is ".", which would probe the working directory and name it in the refusal.
+	if info.ResolvedPath == "" {
+		return nil
+	}
+	writable, err := installDirWritable(info.ResolvedPath)
+	if err != nil || writable {
+		return nil
+	}
+	return &selfUpdateBlocker{Path: info.ResolvedPath}
+}

@@ -61,3 +61,7 @@ port = "4566"    # Host port the emulator will be accessible on
 # [env.ci]
 # SERVICES = "s3,sqs"
 # EAGER_SERVICE_LOADING = "1"
+
+# CLI behavior
+[cli]
+# check_for_update_on_startup = false  # Skip the update check on start (default: true)
