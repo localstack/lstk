@@ -2,10 +2,9 @@ Snapshots created by internal/snap. UPDATE_SNAPS=true go test rewrites
 this file.
 
 [TestBareParentCommandExitsZero_completion_1]
-Generate a tab-completion script for your shell. If you installed via Homebrew,
-completions are set up automatically.
+Generate shell completion scripts for lstk.
 
-To load completions temporarily or permanently:
+To load completions:
 
 Bash:
 
