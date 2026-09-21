@@ -1,6 +1,6 @@
 module github.com/localstack/lstk
 
-go 1.25.0
+go 1.26.0
 
 toolchain go1.26.6
 
@@ -15,7 +15,7 @@ require (
 	github.com/docker/go-units v0.5.0
 	github.com/google/go-cmp v0.7.0
 	github.com/google/uuid v1.6.0
-	github.com/hashicorp/hcl/v2 v2.24.0
+	github.com/hashicorp/hcl/v2 v2.25.0
 	github.com/moby/moby/api v1.56.0
 	github.com/moby/moby/client v0.6.0
 	github.com/muesli/cancelreader v0.2.2
@@ -34,8 +34,8 @@ require (
 	go.opentelemetry.io/otel/sdk v1.46.0
 	go.opentelemetry.io/otel/trace v1.46.0
 	go.uber.org/mock v0.6.0
-	golang.org/x/sys v0.47.0
-	golang.org/x/term v0.45.0
+	golang.org/x/sys v0.48.0
+	golang.org/x/term v0.46.0
 	gopkg.in/ini.v1 v1.67.3
 	gotest.tools/v3 v3.5.2
 )
