@@ -11,6 +11,10 @@
 //
 //	(default)   Echo the received args and decoded context, then exit 0.
 //	exit N      Echo, then exit with status N (for exit-code propagation tests).
+//	argv0       Echo, then print the name the binary was invoked as. Backs the
+//	            multi-call bundle tests: lstk execs the one bundled binary with
+//	            Args[0] set to lstk-<name>, which is how a real bundle selects
+//	            which extension to be.
 //	auth        Perform a stubbed self-authorization: succeed (exit 0) only when
 //	            the conveyed context carries an auth token, otherwise refuse
 //	            (exit 13). A real extension would verify the token server-side
@@ -30,7 +34,9 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 )
@@ -79,6 +85,11 @@ func run(args []string) int {
 		return 0
 	}
 	switch args[0] {
+	case "argv0":
+		// Base name only, with any .exe stripped, so the value is identical on
+		// every platform regardless of how lstk spelled the path.
+		fmt.Printf("ARGV0=%s\n", strings.TrimSuffix(filepath.Base(os.Args[0]), ".exe"))
+		return 0
 	case "exit":
 		if len(args) < 2 {
 			fmt.Fprintln(os.Stderr, "lstk-ref: exit requires a status code")
