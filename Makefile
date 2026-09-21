@@ -5,7 +5,7 @@ endif
 BUILD_DIR=bin
 export CGO_ENABLED=0
 
-.PHONY: build clean test test-integration test-scripts lint govulncheck mock-generate otel
+.PHONY: build clean test test-integration test-scripts check-cask lint-cask lint govulncheck mock-generate otel
 
 # Always invoke `go build` and let Go's build cache handle incrementality; a
 # file target on bin/lstk would be skipped when the binary exists, even with
@@ -27,6 +27,12 @@ test-integration: build
 # on the Linux release runner, so a bash suite is the faithful test here.
 test-scripts:
 	@./scripts/bundled-extensions/test-scripts.sh
+
+check-cask:
+	@./scripts/check-cask.sh
+
+lint-cask:
+	@./scripts/lint-cask.sh
 
 otel:
 	docker compose -f docker-compose.tracing.yaml up -d
