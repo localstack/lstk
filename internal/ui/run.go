@@ -43,10 +43,8 @@ type RunOptions struct {
 	PostStart func(ctx context.Context, sink output.Sink) error
 }
 
-// Run drives an interactive emulator start through the Bubble Tea program.
-//
-// It emits no "> Tip:" line — container.Start owns the run's single post-start
-// tip (see selectTip there).
+// Run drives an interactive emulator start through the Bubble Tea program. It
+// emits no tip: container.Start owns the run's single one.
 func Run(parentCtx context.Context, runOpts RunOptions) error {
 	ctx, cancel := context.WithCancel(parentCtx)
 	defer cancel()
