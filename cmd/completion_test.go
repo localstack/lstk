@@ -33,10 +33,8 @@ func TestCompletionBashNoDescriptionsFlagStillHonored(t *testing.T) {
 	assertContains(t, out, "__completeNoDesc")
 }
 
-// The first-start tip says only `lstk completion` (PR #495 review), so that one
-// command has to answer the whole question — these are the commands a user must
-// be able to copy straight out of it. Asserted on the indented command lines
-// only: wrapText reflows unindented prose to the terminal width.
+// The commands a user must be able to copy straight out of `lstk completion`.
+// Only indented lines are asserted — wrapText reflows the surrounding prose.
 var completionShellHelp = []struct {
 	shell string
 	title string
@@ -78,15 +76,13 @@ func TestCompletionHelpDocumentsEveryShell(t *testing.T) {
 	assertContains(t, out, "# Load in new sessions (Linux)")
 	assertContains(t, out, "# Load in new sessions (macOS)")
 
-	// Process substitution is a silent no-op on stock macOS bash 3.2, and the
-	// eval form needs no bash-completion package at all — that is what DEVX-950's
-	// bundled fallback bought.
+	// Process substitution is a silent no-op on stock macOS bash 3.2; the eval
+	// form needs no bash-completion package (DEVX-950).
 	assertNotContains(t, out, "source <(lstk completion bash)")
 	assertNotContains(t, out, "bash_completion.d")
 
 	// Cobra's zsh script calls compdef on line 2, which does not exist until
-	// compinit has run: sourcing it first fails with "compdef: command not found"
-	// and registers nothing.
+	// compinit has run.
 	zsh := out[strings.Index(out, "Zsh:"):strings.Index(out, "Fish:")]
 	for _, recipe := range strings.Split(zsh, "\n\n") {
 		if strings.Contains(recipe, "completion zsh") && !strings.Contains(recipe, "compinit") {
@@ -95,8 +91,6 @@ func TestCompletionHelpDocumentsEveryShell(t *testing.T) {
 	}
 }
 
-// Per-shell help forwards rather than repeating the instructions, so there is
-// one copy to read and one to maintain.
 func TestCompletionShellHelpForwardsToParent(t *testing.T) {
 	for _, tc := range completionShellHelp {
 		out, err := executeWithArgs(t, "completion", tc.shell, "--help")

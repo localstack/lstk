@@ -71,16 +71,13 @@ type StartOptions struct {
 	// AuthOptions is passed through to auth.New; tests use it to inject a fake
 	// browser opener so a re-login flow never opens a real tab.
 	AuthOptions []auth.Option
-	// FirstRun reports that lstk had no config.toml when this run began; it
-	// selects the first-run tip.
+	// FirstRun reports that lstk had no config.toml when this run began.
 	FirstRun bool
 }
 
 // Start brings up the configured emulator, recovering from a definitive license
-// rejection with an in-place re-login when interactive.
-//
-// The post-start tip is emitted here, on the single entry point, so a run can
-// only ever show one — see selectTip.
+// rejection with an in-place re-login when interactive. The single post-start
+// tip is emitted here, so a run can only ever show one.
 func Start(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts StartOptions, interactive bool) (StartResult, error) {
 	result, err := start(ctx, rt, sink, opts, interactive)
 	if err != nil {

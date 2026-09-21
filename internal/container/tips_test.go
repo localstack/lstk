@@ -11,9 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// The tip names the command instead of linking to docs (#495 review): a URL in
-// terminal output cannot be clicked, rots, and drifts from the CLI, while
-// `lstk completion` documents itself.
+// A URL in terminal output cannot be clicked and drifts from the shipped binary.
 func TestCompletionTip_NamesTheCommandWithoutAURL(t *testing.T) {
 	assert.Contains(t, completionTip, "lstk completion")
 	assert.NotContains(t, completionTip, "http")

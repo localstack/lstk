@@ -14,9 +14,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// completionTipText is asserted verbatim, "> Tip: " prefix included: that
-// prefix is the convention the other post-start tips use (tipsForType in
-// internal/container/tips.go), so it is observable behavior, not styling.
+// Asserted verbatim, "> Tip: " prefix included: the prefix is the shared
+// convention for post-start tips, so it is observable behavior, not styling.
 const completionTipText = "> Tip: Set up tab completion: lstk completion"
 
 // firstRunHome returns an isolated home with no lstk config, so the run under
@@ -78,7 +77,6 @@ func TestFirstRunShowsCompletionTip(t *testing.T) {
 	out, err := p.wait()
 	require.NoError(t, err, "lstk start should exit successfully")
 
-	// Exactly one tip, and it is this one — two tips compete and neither lands (#484).
 	assert.Equal(t, []string{completionTipText}, distinctTips(out),
 		"first successful interactive start should point at shell completion setup, and show no other tip")
 }
