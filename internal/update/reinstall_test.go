@@ -3,6 +3,7 @@ package update
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -72,6 +73,18 @@ func TestDetectMissingBundleNamesTheExternalManager(t *testing.T) {
 	assert.Equal(t, dir, mb.Dir)
 	assert.Contains(t, mb.Reinstall, "mise")
 	assert.NotContains(t, mb.Reinstall, "github.com", "an external install must not be sent to a release download")
+}
+
+// The label introduces the instruction at both call sites, so only one of the
+// two may name the action.
+func TestReinstallLabelDoesNotRestateTheInstruction(t *testing.T) {
+	for _, instruction := range []string{
+		reinstallInstruction,
+		reinstallInstructionFor(InstallInfo{Method: InstallExternal, Manager: "mise"}),
+	} {
+		line := strings.ToLower(ReinstallLabel + " " + instruction)
+		assert.LessOrEqual(t, strings.Count(line, "reinstall"), 1, line)
+	}
 }
 
 // A recognized external install with no manager name falls back to the

@@ -116,7 +116,7 @@ func warnIfBundleMissing(sink output.Sink) {
 	}
 	sink.Emit(output.MessageEvent{
 		Severity: output.SeverityWarning,
-		Text:     missing.Summary() + " Reinstall lstk: " + missing.Reinstall,
+		Text:     missing.Summary() + " " + ReinstallLabel + " " + missing.Reinstall,
 	})
 }
 

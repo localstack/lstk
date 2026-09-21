@@ -68,7 +68,7 @@ Bundled extensions are payload rather than a precondition in one sense only: **a
 #### Scenario: Release build without its bundle hints at a reinstall
 
 - **WHEN** a release build (goreleaser stamps `version.bundlesExtensions=true`) installed as a plain binary finds neither `bundled-extensions` nor `lstk-extensions.toml` beside the running lstk
-- **THEN** `lstk deploy` and `lstk doctor` (the bundled commands at the time of the transition) add to their unknown-command error that the release ships bundled extensions which are not installed in that directory, plus a "Reinstall lstk:" action pointing at the releases download page
+- **THEN** `lstk deploy` and `lstk doctor` (the bundled commands at the time of the transition) add to their unknown-command error that the release ships bundled extensions which are not installed in that directory, plus a "Restore extensions:" action pointing at the releases download page
 - **AND** any other unknown command, a typo included, reports only the plain unknown-command error
 - **AND** an `lstk update` that finds no newer version emits the same text as a warning (a `warnings` entry under `--json`)
 - **AND** a dev build, a Homebrew or npm install, or an install with either member present, shows nothing extra

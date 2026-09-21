@@ -20,6 +20,11 @@ type MissingBundle struct {
 
 const reinstallInstruction = "download the latest release from https://github.com/localstack/lstk/releases/latest"
 
+// ReinstallLabel introduces Reinstall wherever it is rendered: as an error
+// action's label, and inside the update warning's sentence. It names the goal
+// rather than the action, so it does not restate the instruction it labels.
+const ReinstallLabel = "Restore extensions:"
+
 // Summary is the one-sentence explanation shown wherever the state is reported.
 func (m MissingBundle) Summary() string {
 	return fmt.Sprintf("This lstk release ships bundled extensions, but none are installed in %s.", m.Dir)
@@ -65,6 +70,10 @@ func detectMissingBundle(info InstallInfo, goos string) (MissingBundle, bool) {
 // reinstallInstructionFor names the tool that owns an externally-managed
 // install. Sending those to a release download would install outside the
 // manager, leaving it to overwrite the result on its next sync.
+//
+// It asks for a reinstall, not an upgrade: the missing members are in the
+// archive of the version already installed, and the warning's other caller
+// reaches it precisely when there is no newer version to move to.
 func reinstallInstructionFor(info InstallInfo) string {
 	if info.Method == InstallExternal && info.Manager != "" {
 		return "reinstall lstk through " + info.Manager
