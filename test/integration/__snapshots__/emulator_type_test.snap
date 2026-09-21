@@ -12,7 +12,7 @@ Error: failed to switch emulator type: no [[containers]] block found in config
 ---
 
 [TestStartTypeInvalidValue_1]
-Error: invalid emulator type "bogus" (must be one of: aws, snowflake, azure)
+Error: invalid emulator type "bogus" (must be one of: aws, snowflake, azure, snowflake-next)
 ---
 
 [TestStartTypePositionalRejected_1]

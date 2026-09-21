@@ -7,7 +7,8 @@
 # 'lstk start' refuses to start with more than one block.
 
 [[containers]]
-type = "aws"     # Emulator type. Currently supported: "aws", "snowflake", "azure"
+type = "aws"     # Emulator type. Currently supported: "aws", "snowflake", "azure",
+#                # and "snowflake-next" (preview of the next Snowflake emulator).
 tag  = "latest"  # Docker image tag, e.g. "latest", "2026.4"
 port = "4566"    # Host port the emulator will be accessible on
 # container_name = ""   # Container name (default: "localstack-<type>", plus "-<tag>"

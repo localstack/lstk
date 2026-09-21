@@ -72,7 +72,7 @@ func clearDir(dir string) error {
 	for _, entry := range entries {
 		if err := os.RemoveAll(filepath.Join(dir, entry.Name())); err != nil {
 			if os.IsPermission(err) {
-				return fmt.Errorf("%w — some files are owned by root (created by Docker); try: sudo lstk volume clear", err)
+				return fmt.Errorf("%w — some files were created by the emulator and belong to another user; try: sudo lstk volume clear", err)
 			}
 			return err
 		}
@@ -80,15 +80,34 @@ func clearDir(dir string) error {
 	return nil
 }
 
+// dirSize sums the volume's files for the "here is what will be deleted" listing.
+//
+// A subtree the caller cannot read is skipped rather than failing the walk: the
+// emulators write into the volume as their own container user, and the preview
+// Snowflake emulator's PostgreSQL cluster in particular is a 0700 directory owned
+// by uid 1000, which the user running lstk cannot traverse. Failing here aborted
+// `volume clear` before it printed anything or reached the removal that tells the
+// user what to do about exactly those files. The reported size is therefore a
+// lower bound whenever the volume holds such a directory — better than refusing to
+// run over a number the command only uses to describe what it is about to remove.
 func dirSize(path string) (int64, error) {
 	var size int64
 	err := filepath.WalkDir(path, func(_ string, d fs.DirEntry, err error) error {
 		if err != nil {
+			if os.IsPermission(err) {
+				if d != nil && d.IsDir() {
+					return fs.SkipDir
+				}
+				return nil
+			}
 			return err
 		}
 		if !d.IsDir() {
 			info, err := d.Info()
 			if err != nil {
+				if os.IsPermission(err) {
+					return nil
+				}
 				return err
 			}
 			size += info.Size()

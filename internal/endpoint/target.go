@@ -203,12 +203,6 @@ var awsSignatureServices = []string{"s3", "sqs", "sts", "iam", "lambda", "dynamo
 // its health/info surface, and doubles as the reachability check: an
 // unreachable or non-LocalStack-shaped response fails closed rather than
 // silently proceeding.
-//
-// NOTE: the AWS-vs-Snowflake classification below (via "services" map
-// contents) is a best-effort heuristic pending confirmation against a real
-// LocalStack Snowflake health payload — the Snowflake product requires a
-// licensed emulator to inspect, which wasn't available to verify this
-// against. See design.md's Open Questions for add-endpoint-url-flag.
 func probeType(ctx context.Context, endpointURL string) (config.EmulatorType, error) {
 	health, err := fetchJSON[healthResponse](ctx, endpointURL+"/_localstack/health")
 	if err != nil {
@@ -275,6 +269,21 @@ func swapScheme(endpointURL string) (string, bool) {
 
 // classifyByServices inspects a health response's "services" map for a
 // per-product signature, returning "" when neither is recognized.
+//
+// Snowflake is checked before AWS because the Snowflake image reports the whole
+// AWS service catalog alongside its own "snowflake" key, so an AWS key proves
+// nothing on its own. Verified against localstack/snowflake:latest and a
+// community localstack image.
+//
+// The preview Snowflake emulator (config.EmulatorSnowflakeNext) reports the same
+// "snowflake" key and nothing else (localstack/snowflake-rs#2116, LAV-1678), so a
+// remote preview resolves to EmulatorSnowflake. That collapse is deliberate: the
+// two are indistinguishable from the payload, and every path a resolved Target
+// reaches treats them identically (same emulator client, same side of every
+// AWS-only and Azure-only branch), so the only visible difference is the GA
+// display name in `lstk status`. A type is never inferred from what a payload
+// lacks — reading an absent or AWS-key-free map as "the preview" would misread
+// every future emulator with a minimal payload.
 func classifyByServices(services map[string]string) config.EmulatorType {
 	if _, ok := services["snowflake"]; ok {
 		return config.EmulatorSnowflake
