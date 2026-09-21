@@ -7,9 +7,15 @@
 # same PR. Packaging without the download makes every release fail on a glob
 # that matches nothing; the download without packaging silently ships nothing.
 #
-# `goreleaser check` cannot catch either direction: it validates config syntax
-# and never looks at the filesystem or at the workflow. So this runs beside it
-# on every PR, where it costs a red build instead of a broken release.
+# The build flag internal/version.bundlesExtensions (an ldflag in the same
+# .goreleaser.yaml) is the third half: it tells a release binary to expect the
+# bundle beside it and gates the reinstall hints. It must be `true` exactly when
+# packaging is live, or the hints stay silent on a release that ships a bundle
+# (or fire on one that does not).
+#
+# `goreleaser check` cannot catch any of this: it validates config syntax and
+# never looks at the filesystem or at the workflow. So this runs beside it on
+# every PR, where it costs a red build instead of a broken release.
 #
 # Usage:
 #   scripts/bundled-extensions/check-bundled-packaging-sync.sh [goreleaser.yaml] [ci-workflow.yml]
@@ -23,6 +29,7 @@ WORKFLOW_FILE="${2:-${REPO_ROOT}/.github/workflows/ci.yml}"
 
 FETCH_SCRIPT="fetch-bundled-extensions.sh"
 STAGING_DIR="bundled/"
+BUNDLE_FLAG="internal/version.bundlesExtensions"
 
 die() {
   echo "check-bundled-packaging-sync: $*" >&2
@@ -58,6 +65,11 @@ if release_job_steps "${WORKFLOW_FILE}" | grep -q -- "${FETCH_SCRIPT}"; then
   fetch_wired=1
 fi
 
+flag_on=0
+if uncommented "${GORELEASER_FILE}" | grep -q -- "${BUNDLE_FLAG}=true"; then
+  flag_on=1
+fi
+
 if [ "${packaging_live}" -eq 1 ] && [ "${fetch_wired}" -eq 0 ]; then
   die "$(basename "${GORELEASER_FILE}") packages files from ${STAGING_DIR}, but the
   release job in $(basename "${WORKFLOW_FILE}") never runs ${FETCH_SCRIPT}.
@@ -73,8 +85,21 @@ if [ "${packaging_live}" -eq 0 ] && [ "${fetch_wired}" -eq 1 ]; then
   entries, or remove the fetch step."
 fi
 
+if [ "${packaging_live}" -eq 1 ] && [ "${flag_on}" -eq 0 ]; then
+  die "$(basename "${GORELEASER_FILE}") packages files from ${STAGING_DIR}, but its
+  ldflags do not stamp ${BUNDLE_FLAG}=true. Release binaries would not know a
+  bundle ships beside them, so the reinstall hints for a missing bundle would
+  never show. Set the flag to true."
+fi
+
+if [ "${packaging_live}" -eq 0 ] && [ "${flag_on}" -eq 1 ]; then
+  die "$(basename "${GORELEASER_FILE}") stamps ${BUNDLE_FLAG}=true, but packages
+  nothing from ${STAGING_DIR}. Every release binary would report its bundle as
+  missing. Set the flag to false, or enable the packaging entries."
+fi
+
 if [ "${packaging_live}" -eq 1 ]; then
-  echo "In step: bundled extensions are downloaded by the release job and packaged."
+  echo "In step: bundled extensions are downloaded by the release job, packaged, and the build flag is on."
 else
-  echo "In step: bundled-extension packaging is not enabled, and nothing downloads it."
+  echo "In step: bundled-extension packaging is not enabled, nothing downloads it, and the build flag is off."
 fi
