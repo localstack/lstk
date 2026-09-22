@@ -83,17 +83,14 @@ homebrew_casks:
       bash: completions/lstk.bash
       zsh: completions/lstk.zsh
       fish: completions/lstk.fish
-    # hooks.post.install emits Homebrew's deprecated `postflight`; the
-    # replacement arrives as hooks.post.install_steps in GoReleaser v2.19
-    # (goreleaser/goreleaser#6873). Until then custom_block writes the stanza,
-    # escaping `{{staged_path}}` past GoReleaser's template pass. It renders
-    # first in the cask, so `brew style` reports stanza-order offences.
-    custom_block: |
-      postflight_steps do
-        on_macos do
-          # The whole staged dir, not only lstk: the bundled extensions binary
-          # sits next to it and would otherwise be blocked by Gatekeeper on its
-          # first run.
-          run "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "{{ "{{staged_path}}" }}"]
-        end
-      end
+    hooks:
+      post:
+        # `.StagedPath` is GoReleaser's field; it renders to Homebrew's own
+        # `{{staged_path}}` token, which resolves at install time.
+        install_steps: |
+          on_macos do
+            # The whole staged dir, not only lstk: the bundled extensions binary
+            # sits next to it and would otherwise be blocked by Gatekeeper on its
+            # first run.
+            run "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "{{ .StagedPath }}"]
+          end
