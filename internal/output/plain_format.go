@@ -307,7 +307,7 @@ func formatPodSnapshotSaved(e PodSnapshotSavedEvent) string {
 	var sb strings.Builder
 	sb.WriteString(SuccessMarker() + fmt.Sprintf(" Snapshot saved to pod:%s", e.PodName))
 	if e.Version > 0 {
-		sb.WriteString(fmt.Sprintf("\n• Version: %d", e.Version))
+		fmt.Fprintf(&sb, "\n• Version: %d", e.Version)
 	}
 	if len(e.Services) > 0 {
 		sb.WriteString("\n• Services: " + strings.Join(e.Services, ", "))
@@ -334,7 +334,7 @@ func formatRemoteSnapshotSaved(e RemoteSnapshotSavedEvent) string {
 	var sb strings.Builder
 	sb.WriteString(SuccessMarker() + fmt.Sprintf(" Snapshot saved to %s as %q", e.Location, e.PodName))
 	if e.Version > 0 {
-		sb.WriteString(fmt.Sprintf("\n• Version: %d", e.Version))
+		fmt.Fprintf(&sb, "\n• Version: %d", e.Version)
 	}
 	if len(e.Services) > 0 {
 		sb.WriteString("\n• Services: " + strings.Join(e.Services, ", "))
@@ -361,7 +361,7 @@ func formatSnapshotShown(e SnapshotShownEvent) string {
 		if sb.Len() > 0 {
 			sb.WriteString("\n")
 		}
-		sb.WriteString(fmt.Sprintf("%-*s%s", snapshotShowLabelWidth, label, value))
+		fmt.Fprintf(&sb, "%-*s%s", snapshotShowLabelWidth, label, value)
 	}
 
 	row("Name", e.Name)
@@ -379,7 +379,7 @@ func formatSnapshotShown(e SnapshotShownEvent) string {
 
 	if len(e.Services) > 0 {
 		sb.WriteString("\n\n")
-		sb.WriteString(fmt.Sprintf("%-*s%s", snapshotShowLabelWidth, "Services", strings.Join(e.Services, ", ")))
+		fmt.Fprintf(&sb, "%-*s%s", snapshotShowLabelWidth, "Services", strings.Join(e.Services, ", "))
 	}
 
 	if len(e.Resources) > 0 {
@@ -390,7 +390,7 @@ func formatSnapshotShown(e SnapshotShownEvent) string {
 				parts[i] = fmt.Sprintf("%d %s", c.Count, c.Noun)
 			}
 			sb.WriteString("\n")
-			sb.WriteString(fmt.Sprintf("  %-*s%s", snapshotShowLabelWidth-2, r.Service, strings.Join(parts, ", ")))
+			fmt.Fprintf(&sb, "  %-*s%s", snapshotShowLabelWidth-2, r.Service, strings.Join(parts, ", "))
 		}
 	}
 	return sb.String()
@@ -398,9 +398,9 @@ func formatSnapshotShown(e SnapshotShownEvent) string {
 
 func formatSnapshotDiff(e SnapshotDiffEvent) string {
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("Dry-run results for pod:%s", e.PodName))
+	fmt.Fprintf(&sb, "Dry-run results for pod:%s", e.PodName)
 	if e.Version > 0 {
-		sb.WriteString(fmt.Sprintf(":%d", e.Version))
+		fmt.Fprintf(&sb, ":%d", e.Version)
 	}
 
 	services := make([]string, 0, len(e.Services))
@@ -425,13 +425,13 @@ func formatSnapshotDiff(e SnapshotDiffEvent) string {
 			continue
 		}
 		var row strings.Builder
-		row.WriteString(fmt.Sprintf("  %-*s", maxWidth+2, svc))
+		fmt.Fprintf(&row, "  %-*s", maxWidth+2, svc)
 		if counts.Additions > 0 {
 			noun := "additions"
 			if counts.Additions == 1 {
 				noun = "addition"
 			}
-			row.WriteString(fmt.Sprintf("+ %d %s", counts.Additions, noun))
+			fmt.Fprintf(&row, "+ %d %s", counts.Additions, noun)
 		}
 		if counts.Modifications > 0 {
 			if counts.Additions > 0 {
@@ -443,7 +443,7 @@ func formatSnapshotDiff(e SnapshotDiffEvent) string {
 			if counts.Modifications == 1 {
 				noun = "modification"
 			}
-			row.WriteString(fmt.Sprintf("~ %d %s %s", counts.Modifications, noun, WarningMarker()))
+			fmt.Fprintf(&row, "~ %d %s %s", counts.Modifications, noun, WarningMarker())
 		}
 		rows = append(rows, row.String())
 	}
@@ -463,7 +463,7 @@ func formatSnapshotDiff(e SnapshotDiffEvent) string {
 		if totalMods == 1 {
 			noun = "modification"
 		}
-		sb.WriteString(fmt.Sprintf("\n\n> Note: %d %s will be resolved using the %s strategy.", totalMods, noun, e.Strategy))
+		fmt.Fprintf(&sb, "\n\n> Note: %d %s will be resolved using the %s strategy.", totalMods, noun, e.Strategy)
 	}
 
 	sb.WriteString("\n\n" + SuccessMarker() + " No state was modified.")
