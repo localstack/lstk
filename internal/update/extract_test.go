@@ -351,21 +351,21 @@ func TestReplaceSetWindows(t *testing.T) {
 		dir := t.TempDir()
 		exePath := filepath.Join(dir, "lstk.exe")
 		require.NoError(t, os.WriteFile(exePath, []byte("old lstk"), 0o755))
-		require.NoError(t, os.WriteFile(filepath.Join(dir, "bundled-extensions.exe"), []byte("old bundle"), 0o755))
+		require.NoError(t, os.WriteFile(filepath.Join(dir, bundledBinaryName("windows")), []byte("old bundle"), 0o755))
 		archive := buildArchive(t, "zip", []archiveEntry{
 			{name: "lstk.exe", body: "new lstk", mode: 0o755},
-			{name: "bundled-extensions.exe", body: "new bundle", mode: 0o755},
-			{name: "bundled-extensions", body: "no .exe: not the Windows member", mode: 0o755},
+			{name: bundledBinaryName("windows"), body: "new bundle", mode: 0o755},
+			{name: bundledBinaryBaseName, body: "no .exe: not the Windows member", mode: 0o755},
 			{name: "lstk-alpha.exe", body: "not part of the set", mode: 0o755},
 			{name: descriptionsFileName, body: "deploy = \"Deploy\"\n", mode: 0o644},
 		})
 		require.NoError(t, replaceSet(archive, exePath, "zip", "windows"))
 		requireFileContent(t, exePath, "new lstk")
 		requireFileContent(t, filepath.Join(dir, "lstk.exe.old"), "old lstk")
-		requireFileContent(t, filepath.Join(dir, "bundled-extensions.exe"), "new bundle")
-		requireFileContent(t, filepath.Join(dir, "bundled-extensions.exe.old"), "old bundle")
+		requireFileContent(t, filepath.Join(dir, bundledBinaryName("windows")), "new bundle")
+		requireFileContent(t, filepath.Join(dir, bundledBinaryName("windows")+".old"), "old bundle")
 		requireFileContent(t, filepath.Join(dir, descriptionsFileName), "deploy = \"Deploy\"\n")
-		requireAbsent(t, filepath.Join(dir, "bundled-extensions"))
+		requireAbsent(t, filepath.Join(dir, bundledBinaryBaseName))
 		requireAbsent(t, filepath.Join(dir, "lstk-alpha.exe"))
 		requireNoStagingLeftovers(t, dir)
 	})
@@ -375,12 +375,12 @@ func TestReplaceSetWindows(t *testing.T) {
 		exePath := filepath.Join(dir, "lstk.exe")
 		require.NoError(t, os.WriteFile(exePath, []byte("old lstk"), 0o755))
 		require.NoError(t, os.WriteFile(exePath+".old", []byte("older lstk"), 0o755))
-		require.NoError(t, os.WriteFile(filepath.Join(dir, "bundled-extensions.exe"), []byte("installed bundle"), 0o755))
+		require.NoError(t, os.WriteFile(filepath.Join(dir, bundledBinaryName("windows")), []byte("installed bundle"), 0o755))
 		archive := buildArchive(t, "zip", []archiveEntry{{name: "lstk.exe", body: "new lstk", mode: 0o755}})
 		require.NoError(t, replaceSet(archive, exePath, "zip", "windows"))
 		requireFileContent(t, exePath, "new lstk")
 		requireFileContent(t, exePath+".old", "old lstk")
-		requireFileContent(t, filepath.Join(dir, "bundled-extensions.exe"), "installed bundle")
+		requireFileContent(t, filepath.Join(dir, bundledBinaryName("windows")), "installed bundle")
 	})
 }
 
