@@ -34,11 +34,7 @@ TAP_CASKS="$(brew --repository "$TAP")/Casks"
 mkdir -p "$TAP_CASKS"
 cp "$CASK" "$TAP_CASKS/lstk.rb"
 
-# TODO(#512): drop --except-cops once hooks.post.install_steps replaces
-# custom_block, which renders the stanza first and so trips Cask/StanzaOrder on
-# every stanza after it. Scoped to that one cop, so the deprecation cops this
-# exists for still fire.
-brew style --except-cops=Cask/StanzaOrder "$TAP_CASKS/lstk.rb"
+brew style "$TAP_CASKS/lstk.rb"
 
 # Passes on a deprecated stanza, so it guards other faults, not #501. The
 # `--online` form checks urls and checksums, but a rendered cask points at an

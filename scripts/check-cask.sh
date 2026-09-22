@@ -56,9 +56,9 @@ grep -q 'postflight_steps do' "$CASK" ||
 grep -q 'com.apple.quarantine' "$CASK" ||
   fail "cask no longer clears com.apple.quarantine"
 
-# Homebrew's tokens share GoReleaser's delimiters, so `{{staged_path}}` must
-# survive the template pass. An unescaped token fails the release; a broken
-# escape would emit a literal that resolves to the wrong path.
+# `.StagedPath` must reach the cask as Homebrew's `{{staged_path}}` token,
+# resolved at install time. A literal path would clear quarantine elsewhere, or
+# nowhere.
 grep -q '"{{staged_path}}"' "$CASK" ||
   fail "quarantine step does not target the whole staged dir"
 
