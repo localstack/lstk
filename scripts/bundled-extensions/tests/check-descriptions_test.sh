@@ -245,4 +245,26 @@ run_script "${CHECK}"
 assert_fails
 assert_output_contains "sage"
 
+# The published toml has ended without a trailing newline; `read` returns
+# non-zero on such a last line, and a loop that stops there never sees it.
+begin_test "a described command on a last line with no trailing newline counts as described"
+setup_stage
+write_bundle doctor deploy
+write_toml 'doctor = "Check the local setup"
+deploy = "Deploy to LocalStack"'
+run_script "${CHECK}" "${PLATFORM_DIR}"
+assert_ok
+assert_output_lacks "Warning"
+assert_output_contains "2 described command(s)"
+
+begin_test "an unprovided command on a last line with no trailing newline still fails"
+setup_stage
+write_bundle doctor
+write_toml 'doctor = "Check the local setup"
+deploy = "Deploy to LocalStack"'
+run_script "${CHECK}" "${PLATFORM_DIR}"
+assert_fails
+assert_output_contains "deploy"
+assert_output_contains "does not provide"
+
 finish_suite

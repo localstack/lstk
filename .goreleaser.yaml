@@ -28,8 +28,9 @@ builds:
     flags:
       - -trimpath
     ldflags:
-      # bundlesExtensions flips to true with the release that ships bundled extensions.
-      - -s -w -X github.com/localstack/lstk/internal/version.version={{ .Version }} -X github.com/localstack/lstk/internal/version.bundlesExtensions=false
+      # bundlesExtensions must match whether the archives below ship the bundle;
+      # scripts/bundled-extensions/check-bundled-packaging-sync.sh enforces it.
+      - -s -w -X github.com/localstack/lstk/internal/version.version={{ .Version }} -X github.com/localstack/lstk/internal/version.bundlesExtensions=true
 
 archives:
   - id: lstk

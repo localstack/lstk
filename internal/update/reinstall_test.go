@@ -17,11 +17,11 @@ func TestBundleMissing(t *testing.T) {
 		want  bool
 	}{
 		{name: "nothing beside lstk", goos: "linux", want: true},
-		{name: "binary present", files: []string{"bundled-extensions"}, goos: "linux"},
-		{name: "toml present", files: []string{"lstk-extensions.toml"}, goos: "linux"},
-		{name: "both present", files: []string{"bundled-extensions", "lstk-extensions.toml"}, goos: "linux"},
-		{name: "windows binary present", files: []string{"bundled-extensions.exe"}, goos: "windows"},
-		{name: "unix binary name does not count on windows", files: []string{"bundled-extensions"}, goos: "windows", want: true},
+		{name: "binary present", files: []string{bundledBinaryName("linux")}, goos: "linux"},
+		{name: "toml present", files: []string{descriptionsFileName}, goos: "linux"},
+		{name: "both present", files: []string{bundledBinaryName("linux"), descriptionsFileName}, goos: "linux"},
+		{name: "windows binary present", files: []string{bundledBinaryName("windows")}, goos: "windows"},
+		{name: "unix binary name does not count on windows", files: []string{bundledBinaryName("linux")}, goos: "windows", want: true},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -51,7 +51,7 @@ func TestDetectMissingBundleByInstallMethod(t *testing.T) {
 		assert.False(t, ok, m.String())
 	}
 
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "lstk-extensions.toml"), nil, 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, descriptionsFileName), nil, 0o644))
 	_, ok = detectMissingBundle(InstallInfo{Method: InstallBinary, ResolvedPath: exe}, "linux")
 	assert.False(t, ok)
 }

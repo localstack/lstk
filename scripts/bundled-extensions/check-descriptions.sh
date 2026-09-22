@@ -85,7 +85,9 @@ done
 names=""
 invalid=""
 if [ -f "${TOML}" ]; then
-  while IFS= read -r line; do
+  # `|| [ -n "$line" ]`: read fails on a last line with no trailing newline
+  # while still filling $line, and the published toml ends exactly like that.
+  while IFS= read -r line || [ -n "${line}" ]; do
     line="${line%%#*}"
     case "${line}" in *=*) ;; *) continue ;; esac
     key="${line%%=*}"
@@ -145,7 +147,7 @@ fi
 # change in the bundle must surface here and not as a silently shorter list.
 provided=""
 malformed=""
-while IFS= read -r line; do
+while IFS= read -r line || [ -n "${line}" ]; do
   line="$(printf '%s' "${line}" | tr -d '\r' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
   [ -n "${line}" ] || continue
   if echo "${line}" | grep -Eq "${NAME_RULE}"; then

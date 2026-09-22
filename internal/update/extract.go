@@ -23,8 +23,7 @@ const descriptionsFileName = extension.DescriptionsFileName
 
 // bundledBinaryBaseName is the multi-call binary providing every bundled
 // extension; it is the one set member that does not match "lstk-*".
-// TODO(dpx-692): alias from extension.BundledBinaryName once that branch lands.
-const bundledBinaryBaseName = "bundled-extensions"
+const bundledBinaryBaseName = extension.BundledBinaryName
 
 func exeName(base, goos string) string {
 	if goos == "windows" {
