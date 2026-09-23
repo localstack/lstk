@@ -23,14 +23,15 @@ func RenderWrappedMessage(e output.MessageEvent, width int) string {
 		return style.Render(strings.Join(wrap.SoftWrap(e.Text, width), "\n"))
 	}
 
-	if width <= len([]rune(prefixText))+1 {
-		return prefix + " " + styles.Message.Render(e.Text)
-	}
-
-	availableWidth := width - len([]rune(prefixText)) - 1
-	lines := wrap.SoftWrap(e.Text, availableWidth)
-	if len(lines) == 0 {
-		return prefix
+	// Wrap each explicit line on its own: SoftWrap splits on whitespace, so it
+	// would otherwise fold a deliberate line break back into the sentence.
+	var lines []string
+	for _, line := range strings.Split(e.Text, "\n") {
+		if width <= len([]rune(prefixText))+1 {
+			lines = append(lines, line)
+			continue
+		}
+		lines = append(lines, wrap.SoftWrap(line, width-len([]rune(prefixText))-1)...)
 	}
 
 	indent := strings.Repeat(" ", len([]rune(prefixText)))

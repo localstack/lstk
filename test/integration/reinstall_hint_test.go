@@ -104,7 +104,7 @@ func TestUnknownCommandHintsReinstallWhenBundleMissing(t *testing.T) {
 				assert.NotContains(t, string(out), "https://github.com/localstack/lstk/releases")
 				return
 			}
-			assert.Contains(t, string(out), "==> Restore extensions: reinstall lstk from the latest release archive:\n        https://github.com/localstack/lstk/releases/latest")
+			assert.Contains(t, string(out), "==> Restore extensions: reinstall lstk from the latest release archive:\n      https://github.com/localstack/lstk/releases/latest")
 			assert.NotContains(t, string(out), "brew")
 			assert.NotContains(t, string(out), "npm")
 		})
@@ -128,7 +128,8 @@ func TestUpdateUpToDateWarnsWhenBundleMissing(t *testing.T) {
 		require.NoError(t, err, "lstk update failed: %s", out)
 		assert.Contains(t, string(out), "Already up to date")
 		assert.Contains(t, string(out), "bundled extensions")
-		assert.Contains(t, string(out), "Restore extensions:")
+		assert.Contains(t, string(out), "Restore extensions: reinstall lstk from the latest release archive:\n           https://github.com/localstack/lstk/releases/latest",
+			"the link must hang under the warning text")
 
 		cmd = exec.CommandContext(ctx, lstk, "update", "--check", "--json")
 		cmd.Env = mockGitHubEnv(t, srv)

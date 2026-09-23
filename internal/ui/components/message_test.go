@@ -1,6 +1,7 @@
 package components
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/localstack/lstk/internal/output"
@@ -28,4 +29,21 @@ func TestRenderMessage_LeavesRegularInfoLinesUnchanged(t *testing.T) {
 		Severity: output.SeverityInfo,
 		Text:     "hello",
 	}))
+}
+
+// An explicit line break survives wrapping, and every continuation line hangs
+// under the text rather than under the prefix.
+func TestRenderWrappedMessage_KeepsExplicitLineBreaksAligned(t *testing.T) {
+	e := output.MessageEvent{
+		Severity: output.SeverityWarning,
+		Text:     "a sentence long enough to wrap onto a second line before the link:\nhttps://example.com/latest",
+	}
+	for _, width := range []int{0, 40, 200} {
+		lines := strings.Split(RenderWrappedMessage(e, width), "\n")
+		last := lines[len(lines)-1]
+		assert.Equal(t, strings.Repeat(" ", len("> Warning: "))+"https://example.com/latest", last, "width %d", width)
+		for _, line := range lines[1:] {
+			assert.True(t, strings.HasPrefix(line, strings.Repeat(" ", len("> Warning: "))), "width %d: %q", width, line)
+		}
+	}
 }

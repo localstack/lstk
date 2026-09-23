@@ -18,7 +18,8 @@ type MissingBundle struct {
 	Reinstall string // what restores the complete set
 }
 
-const reinstallInstruction = "reinstall lstk from the latest release archive:\n        https://github.com/localstack/lstk/releases/latest"
+const reinstallInstruction = "reinstall lstk from the latest release archive:\n" +
+	"https://github.com/localstack/lstk/releases/latest"
 
 // ReinstallLabel introduces Reinstall wherever it is rendered: as an error
 // action's label, and inside the update warning's sentence. It names the goal

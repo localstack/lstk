@@ -7,6 +7,7 @@ import (
 
 	"github.com/localstack/lstk/internal/output"
 	"github.com/localstack/lstk/internal/ui/wrap"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestErrorDisplay_ShowView(t *testing.T) {
@@ -126,4 +127,19 @@ func TestErrorDisplay_MinimalEvent(t *testing.T) {
 	if !strings.Contains(view, "Something went wrong") {
 		t.Fatalf("expected view to contain title, got: %q", view)
 	}
+}
+
+func TestErrorDisplay_ActionContinuationAlignsUnderLabel(t *testing.T) {
+	t.Parallel()
+
+	e := NewErrorDisplay().Show(output.ErrorEvent{
+		Title: "Extensions missing",
+		Actions: []output.ErrorAction{
+			{Label: "See help:", Value: "lstk -h"},
+			{Label: "Restore extensions:", Value: "reinstall from:\nhttps://example.com"},
+		},
+	})
+
+	indent := strings.Repeat(" ", len(output.ErrorActionPrefix))
+	assert.Contains(t, e.View(80), output.ErrorActionPrefix+"Restore extensions: reinstall from:\n"+indent+"https://example.com")
 }
