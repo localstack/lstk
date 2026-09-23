@@ -57,7 +57,7 @@ func TestClassifyPath(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			got := classifyPath(tt.path)
+			got, _ := classifyPath(tt.path)
 			if got != tt.want {
 				t.Fatalf("classifyPath(%q) = %v, want %v", tt.path, got, tt.want)
 			}

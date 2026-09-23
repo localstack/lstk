@@ -55,7 +55,7 @@ func dispatchExtension(ctx context.Context, cfg *env.Env, tel *telemetry.Client,
 			}
 			if missing, ok := update.DetectMissingBundleFor(name); ok {
 				ev.Summary = missing.Summary()
-				ev.Actions = append(ev.Actions, output.ErrorAction{Label: "Reinstall lstk:", Value: missing.Reinstall})
+				ev.Actions = append(ev.Actions, output.ErrorAction{Label: update.ReinstallLabel, Value: missing.Reinstall})
 			}
 			output.NewPlainSink(os.Stderr).Emit(ev)
 			return output.NewSilentError(fmt.Errorf("unknown command %q for lstk", name))

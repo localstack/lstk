@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -40,6 +41,7 @@ func writeBundledSet(t *testing.T, dir string) {
 var (
 	homebrewShape = filepath.Join("Caskroom", "lstk", "1.0.0")
 	npmShape      = filepath.Join("node_modules", "@localstack", "lstk_test", "bin")
+	miseShape     = filepath.Join("mise", "installs", "lstk", "0.0.2")
 )
 
 func TestUnknownCommandHintsReinstallWhenBundleMissing(t *testing.T) {
@@ -53,9 +55,11 @@ func TestUnknownCommandHintsReinstallWhenBundleMissing(t *testing.T) {
 		shape      string // subdirectory layout under the temp dir
 		command    string
 		wantHint   bool
+		manager    string // external tool expected to own the install
 	}{
 		{name: "bundling release without its bundle, deploy", bundling: true, command: "deploy", wantHint: true},
 		{name: "bundling release without its bundle, doctor", bundling: true, command: "doctor", wantHint: true},
+		{name: "bundling release without its bundle, mise", bundling: true, shape: miseShape, command: "deploy", wantHint: true, manager: "mise"},
 		{name: "bundling release without its bundle, a typo", bundling: true, command: "strt"},
 		{name: "bundling release with its bundle", bundling: true, withBundle: true, command: "nosuchcmd"},
 		{name: "pre-bundling release", command: "deploy"},
@@ -84,15 +88,23 @@ func TestUnknownCommandHintsReinstallWhenBundleMissing(t *testing.T) {
 			assert.Contains(t, string(out), `unknown command "`+tc.command+`"`)
 
 			if !tc.wantHint {
-				assert.NotContains(t, string(out), "Reinstall lstk")
+				assert.NotContains(t, string(out), "Restore extensions:")
 				return
 			}
 			resolvedDir, err := filepath.EvalSymlinks(installDir)
 			require.NoError(t, err)
 			assert.Contains(t, string(out), "bundled extensions")
 			assert.Contains(t, string(out), resolvedDir)
-			assert.Contains(t, string(out), "Reinstall lstk")
-			assert.Contains(t, string(out), "https://github.com/localstack/lstk/releases")
+			assert.Contains(t, string(out), "Restore extensions:")
+			assert.LessOrEqual(t, strings.Count(strings.ToLower(string(out)), "reinstall lstk"), 1,
+				"the hint must not name the action twice")
+
+			if tc.manager != "" {
+				assert.Contains(t, string(out), "through "+tc.manager)
+				assert.NotContains(t, string(out), "https://github.com/localstack/lstk/releases")
+				return
+			}
+			assert.Contains(t, string(out), "==> Restore extensions: reinstall lstk from the latest release archive:\n      https://github.com/localstack/lstk/releases/latest")
 			assert.NotContains(t, string(out), "brew")
 			assert.NotContains(t, string(out), "npm")
 		})
@@ -116,7 +128,8 @@ func TestUpdateUpToDateWarnsWhenBundleMissing(t *testing.T) {
 		require.NoError(t, err, "lstk update failed: %s", out)
 		assert.Contains(t, string(out), "Already up to date")
 		assert.Contains(t, string(out), "bundled extensions")
-		assert.Contains(t, string(out), "Reinstall lstk")
+		assert.Contains(t, string(out), ".\n  Restore extensions: reinstall lstk from the latest release archive:\n  https://github.com/localstack/lstk/releases/latest",
+			"the action and the link must each start a line aligned after the warning marker")
 
 		cmd = exec.CommandContext(ctx, lstk, "update", "--check", "--json")
 		cmd.Env = mockGitHubEnv(t, srv)
@@ -130,7 +143,25 @@ func TestUpdateUpToDateWarnsWhenBundleMissing(t *testing.T) {
 		}
 		require.NoError(t, json.Unmarshal(out, &envelope), "not a JSON envelope: %s", out)
 		require.Len(t, envelope.Warnings, 1)
-		assert.Contains(t, envelope.Warnings[0].Message, "Reinstall lstk")
+		assert.Contains(t, envelope.Warnings[0].Message, "Restore extensions:")
+	})
+
+	// `lstk update` itself is refused on an externally-managed install before
+	// the version check, so --check is where that install sees the warning.
+	t.Run("externally managed: the warning points at the managing tool", func(t *testing.T) {
+		t.Parallel()
+		installDir := filepath.Join(t.TempDir(), miseShape)
+		require.NoError(t, os.MkdirAll(installDir, 0o755))
+		lstk := filepath.Join(installDir, platformExe("lstk"))
+		buildBundlingLstk(t, ctx, "0.0.2", lstk)
+
+		cmd := exec.CommandContext(ctx, lstk, "update", "--check")
+		cmd.Env = mockGitHubEnv(t, srv)
+		out, err := cmd.CombinedOutput()
+		require.NoError(t, err, "lstk update --check failed: %s", out)
+		assert.Contains(t, string(out), "Restore extensions: reinstall lstk through mise")
+		assert.LessOrEqual(t, strings.Count(strings.ToLower(string(out)), "reinstall lstk"), 1,
+			"the hint must not name the action twice")
 	})
 
 	for _, tc := range []struct {
@@ -156,7 +187,7 @@ func TestUpdateUpToDateWarnsWhenBundleMissing(t *testing.T) {
 			out, err := cmd.CombinedOutput()
 			require.NoError(t, err, "lstk update failed: %s", out)
 			assert.Contains(t, string(out), "Already up to date")
-			assert.NotContains(t, string(out), "Reinstall lstk")
+			assert.NotContains(t, string(out), "Restore extensions:")
 		})
 	}
 }

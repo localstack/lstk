@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 const (
@@ -190,9 +191,9 @@ func formatMessageEvent(e MessageEvent) string {
 	case SeveritySuccess:
 		return SuccessMarker() + " " + e.Text
 	case SeverityNote:
-		return "> Note: " + e.Text
+		return "> Note: " + indentLineBreaks(e.Text)
 	case SeverityWarning:
-		return "> Warning: " + e.Text
+		return "> Warning: " + indentLineBreaks(e.Text)
 	case SeveritySecondary:
 		return e.Text
 	default:
@@ -234,6 +235,21 @@ func formatUpdateApplied(e UpdateAppliedEvent) string {
 	return SuccessMarker() + " " + fmt.Sprintf("Updated to %s", e.UpdatedVersion)
 }
 
+// hangingIndent aligns every line after the first under the text that follows
+// prefix, so a value carrying its own line break (e.g. a URL) stays in column.
+func hangingIndent(prefix, text string) string {
+	indent := strings.Repeat(" ", utf8.RuneCountInString(strings.TrimLeft(prefix, "\n")))
+	return prefix + strings.ReplaceAll(text, "\n", "\n"+indent)
+}
+
+// MessageLineBreakIndent aligns a line a message breaks itself after the "> "
+// marker rather than under the text following "> Warning: ".
+const MessageLineBreakIndent = "  "
+
+func indentLineBreaks(text string) string {
+	return strings.ReplaceAll(text, "\n", "\n"+MessageLineBreakIndent)
+}
+
 func formatErrorEvent(e ErrorEvent) string {
 	var sb strings.Builder
 	sb.WriteString("Error: ")
@@ -247,10 +263,7 @@ func formatErrorEvent(e ErrorEvent) string {
 		sb.WriteString(e.Detail)
 	}
 	for _, action := range e.Actions {
-		sb.WriteString("\n  " + ErrorActionPrefix)
-		sb.WriteString(action.Label)
-		sb.WriteString(" ")
-		sb.WriteString(action.Value)
+		sb.WriteString(hangingIndent("\n  "+ErrorActionPrefix, action.Label+" "+action.Value))
 	}
 	return sb.String()
 }

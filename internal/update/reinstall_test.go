@@ -3,6 +3,7 @@ package update
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -54,4 +55,45 @@ func TestDetectMissingBundleByInstallMethod(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(dir, descriptionsFileName), nil, 0o644))
 	_, ok = detectMissingBundle(InstallInfo{Method: InstallBinary, ResolvedPath: exe}, "linux")
 	assert.False(t, ok)
+}
+
+// An externally-managed install missing its bundle must be pointed at the tool
+// that owns it: a GitHub download would install outside the manager.
+func TestDetectMissingBundleNamesTheExternalManager(t *testing.T) {
+	dir := t.TempDir()
+	exe := filepath.Join(dir, "lstk")
+
+	mb, ok := detectMissingBundle(InstallInfo{
+		Method:       InstallExternal,
+		Manager:      "mise",
+		ResolvedPath: exe,
+	}, "linux")
+
+	require.True(t, ok)
+	assert.Equal(t, dir, mb.Dir)
+	assert.Contains(t, mb.Reinstall, "mise")
+	assert.NotContains(t, mb.Reinstall, "github.com", "an external install must not be sent to a release download")
+}
+
+// The label introduces the instruction at both call sites, so only one of the
+// two may name the action.
+func TestReinstallLabelDoesNotRestateTheInstruction(t *testing.T) {
+	for _, instruction := range []string{
+		reinstallInstruction,
+		reinstallInstructionFor(InstallInfo{Method: InstallExternal, Manager: "mise"}),
+	} {
+		line := strings.ToLower(ReinstallLabel + " " + instruction)
+		assert.LessOrEqual(t, strings.Count(line, "reinstall"), 1, line)
+	}
+}
+
+// A recognized external install with no manager name falls back to the
+// generic instruction rather than emitting a dangling sentence.
+func TestDetectMissingBundleFallsBackWithoutAManagerName(t *testing.T) {
+	exe := filepath.Join(t.TempDir(), "lstk")
+
+	mb, ok := detectMissingBundle(InstallInfo{Method: InstallExternal, ResolvedPath: exe}, "linux")
+
+	require.True(t, ok)
+	assert.Contains(t, mb.Reinstall, "github.com")
 }

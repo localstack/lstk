@@ -41,6 +41,12 @@ func TestFormatEventLine(t *testing.T) {
 			wantOK: true,
 		},
 		{
+			name:   "message event warning continuation aligns after the marker",
+			event:  MessageEvent{Severity: SeverityWarning, Text: "careful:\nhttps://example.com"},
+			want:   "> Warning: careful:\n  https://example.com",
+			wantOK: true,
+		},
+		{
 			name:   "instructions event full",
 			event:  AuthEvent{Preamble: "Welcome", Code: "ABCD-1234", URL: "https://example.com"},
 			want:   "Welcome\nOpening browser to login...\nBrowser didn't open? Visit https://example.com\n\nOne-time code: ABCD-1234",
@@ -110,6 +116,15 @@ func TestFormatEventLine(t *testing.T) {
 				},
 			},
 			want:   "Error: Docker not running\n  Cannot connect to Docker daemon\n  ==> Start Docker: open -a Docker",
+			wantOK: true,
+		},
+		{
+			name: "error event action continuation aligns under the label",
+			event: ErrorEvent{
+				Title:   "Extensions missing",
+				Actions: []ErrorAction{{Label: "Restore extensions:", Value: "reinstall from:\nhttps://example.com"}},
+			},
+			want:   "Error: Extensions missing\n  ==> Restore extensions: reinstall from:\n      https://example.com",
 			wantOK: true,
 		},
 		{

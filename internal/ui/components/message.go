@@ -23,21 +23,27 @@ func RenderWrappedMessage(e output.MessageEvent, width int) string {
 		return style.Render(strings.Join(wrap.SoftWrap(e.Text, width), "\n"))
 	}
 
-	if width <= len([]rune(prefixText))+1 {
-		return prefix + " " + styles.Message.Render(e.Text)
-	}
-
-	availableWidth := width - len([]rune(prefixText)) - 1
-	lines := wrap.SoftWrap(e.Text, availableWidth)
-	if len(lines) == 0 {
-		return prefix
-	}
-
-	indent := strings.Repeat(" ", len([]rune(prefixText)))
-	rendered := make([]string, 0, len(lines))
-	rendered = append(rendered, prefix+" "+styles.Message.Render(lines[0]))
-	for _, line := range lines[1:] {
-		rendered = append(rendered, styles.Secondary.Render(indent)+" "+styles.Message.Render(line))
+	// Wrap each explicit line on its own: SoftWrap splits on whitespace, so it
+	// would otherwise fold a deliberate line break back into the sentence.
+	// Soft-wrapped lines hang under the text; explicit ones after the marker.
+	hanging := strings.Repeat(" ", len([]rune(prefixText))+1)
+	var rendered []string
+	for i, paragraph := range strings.Split(e.Text, "\n") {
+		indent := hanging
+		if i > 0 {
+			indent = output.MessageLineBreakIndent
+		}
+		lines := []string{paragraph}
+		if width > len(indent) {
+			lines = wrap.SoftWrap(paragraph, width-len(indent))
+		}
+		for j, line := range lines {
+			if i == 0 && j == 0 {
+				rendered = append(rendered, prefix+" "+styles.Message.Render(line))
+				continue
+			}
+			rendered = append(rendered, indent+styles.Message.Render(line))
+		}
 	}
 	return strings.Join(rendered, "\n")
 }

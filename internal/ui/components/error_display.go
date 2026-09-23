@@ -72,7 +72,9 @@ func (e ErrorDisplay) View(maxWidth int) string {
 
 	if len(e.event.Actions) > 0 {
 		sb.WriteString("\n")
+		indent := "\n" + strings.Repeat(" ", len(output.ErrorActionPrefix))
 		for i, action := range e.event.Actions {
+			action.Value = strings.ReplaceAll(action.Value, "\n", indent)
 			if i > 0 {
 				sb.WriteString(styles.SecondaryMessage.Render(output.ErrorActionPrefix + action.Label + " " + action.Value))
 			} else {

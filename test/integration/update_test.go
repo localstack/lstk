@@ -365,7 +365,7 @@ func TestUpdateNotification(t *testing.T) {
 	mockServer := createMockLicenseServer(false)
 	t.Cleanup(mockServer.Close)
 
-	t.Run("skip", func(t *testing.T) {
+	t.Run("never check again", func(t *testing.T) {
 		t.Parallel()
 		configFile := filepath.Join(t.TempDir(), "config.toml")
 		originalConfig := `# User-maintained lstk config
@@ -384,7 +384,10 @@ port = "4566"    # Host port
 
 		p := startCmdInPTY(t, ctx, cmd)
 		p.waitForOutput("New lstk version available", "update notification prompt should appear")
-		p.write("s")
+		// "Never check again" replaced "Skip this version" as the prompt's
+		// config-writing option; this test is about the write preserving the
+		// user's file, not about which preference is written.
+		p.write("n")
 
 		out, _ := p.wait()
 		assert.Contains(t, out, "New lstk version available")
@@ -392,7 +395,7 @@ port = "4566"    # Host port
 		configData, err := os.ReadFile(configFile)
 		require.NoError(t, err)
 		configStr := string(configData)
-		assert.Contains(t, configStr, "update_skipped_version", "skipped version should be persisted")
+		assert.Contains(t, configStr, "check_for_update_on_startup", "the chosen preference should be persisted")
 		assert.Contains(t, configStr, "# User-maintained lstk config", "file header comment should be preserved")
 		assert.Contains(t, configStr, "# Emulator type", "inline comments should be preserved")
 		assert.Contains(t, configStr, `port = "4566"`, "existing config values should be preserved")
