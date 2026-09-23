@@ -191,9 +191,9 @@ func formatMessageEvent(e MessageEvent) string {
 	case SeveritySuccess:
 		return SuccessMarker() + " " + e.Text
 	case SeverityNote:
-		return hangingIndent("> Note: ", e.Text)
+		return "> Note: " + indentLineBreaks(e.Text)
 	case SeverityWarning:
-		return hangingIndent("> Warning: ", e.Text)
+		return "> Warning: " + indentLineBreaks(e.Text)
 	case SeveritySecondary:
 		return e.Text
 	default:
@@ -240,6 +240,14 @@ func formatUpdateApplied(e UpdateAppliedEvent) string {
 func hangingIndent(prefix, text string) string {
 	indent := strings.Repeat(" ", utf8.RuneCountInString(strings.TrimLeft(prefix, "\n")))
 	return prefix + strings.ReplaceAll(text, "\n", "\n"+indent)
+}
+
+// MessageLineBreakIndent aligns a line a message breaks itself after the "> "
+// marker rather than under the text following "> Warning: ".
+const MessageLineBreakIndent = "  "
+
+func indentLineBreaks(text string) string {
+	return strings.ReplaceAll(text, "\n", "\n"+MessageLineBreakIndent)
 }
 
 func formatErrorEvent(e ErrorEvent) string {

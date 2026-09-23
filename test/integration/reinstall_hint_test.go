@@ -128,8 +128,8 @@ func TestUpdateUpToDateWarnsWhenBundleMissing(t *testing.T) {
 		require.NoError(t, err, "lstk update failed: %s", out)
 		assert.Contains(t, string(out), "Already up to date")
 		assert.Contains(t, string(out), "bundled extensions")
-		assert.Contains(t, string(out), "Restore extensions: reinstall lstk from the latest release archive:\n           https://github.com/localstack/lstk/releases/latest",
-			"the link must hang under the warning text")
+		assert.Contains(t, string(out), ".\n  Restore extensions: reinstall lstk from the latest release archive:\n  https://github.com/localstack/lstk/releases/latest",
+			"the action and the link must each start a line aligned after the warning marker")
 
 		cmd = exec.CommandContext(ctx, lstk, "update", "--check", "--json")
 		cmd.Env = mockGitHubEnv(t, srv)

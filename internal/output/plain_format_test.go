@@ -41,9 +41,9 @@ func TestFormatEventLine(t *testing.T) {
 			wantOK: true,
 		},
 		{
-			name:   "message event warning continuation aligns under the text",
+			name:   "message event warning continuation aligns after the marker",
 			event:  MessageEvent{Severity: SeverityWarning, Text: "careful:\nhttps://example.com"},
-			want:   "> Warning: careful:\n           https://example.com",
+			want:   "> Warning: careful:\n  https://example.com",
 			wantOK: true,
 		},
 		{
