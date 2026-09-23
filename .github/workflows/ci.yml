@@ -110,17 +110,26 @@ jobs:
   goreleaser-check:
     name: GoReleaser Check
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Run GoReleaser check
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+
+      - name: Install GoReleaser
         uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7.2.3
         with:
           distribution: goreleaser
-          version: "~> v2"
-          args: check
+          version-file: .tool-versions
+          install-only: true
+
+      - name: Run GoReleaser check
+        run: goreleaser check
 
       # `goreleaser check` only validates config syntax, so it cannot see that
       # packaging bundled extensions and downloading them have to land
@@ -130,6 +139,39 @@ jobs:
 
       - name: Test release scripts
         run: make test-scripts
+
+      # Nothing else reads the generated cask before a release publishes it.
+      # Render it and check what would ship.
+      - name: Check generated Homebrew cask
+        run: make check-cask
+
+      - name: Upload generated cask
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: generated-cask
+          path: dist/homebrew/Casks/lstk.rb
+          if-no-files-found: error
+
+  # The cask cops need Homebrew, absent on the Linux runners. Lints the bytes
+  # the job above rendered, not a second render that could diverge. Left out of
+  # `release`'s `needs:` for now, like govulncheck, until it has proven itself.
+  cask-lint:
+    name: Cask Lint
+    runs-on: macos-latest
+    needs: goreleaser-check
+    timeout-minutes: 15
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Download generated cask
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          name: generated-cask
+          path: dist/homebrew/Casks
+
+      - name: Run Homebrew linters
+        run: make lint-cask
 
   test-unit:
     name: Unit Tests
@@ -376,7 +418,7 @@ jobs:
         uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7.2.3
         with:
           distribution: goreleaser
-          version: "~> v2"
+          version-file: .tool-versions
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
