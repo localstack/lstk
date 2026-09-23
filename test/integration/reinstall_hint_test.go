@@ -104,7 +104,7 @@ func TestUnknownCommandHintsReinstallWhenBundleMissing(t *testing.T) {
 				assert.NotContains(t, string(out), "https://github.com/localstack/lstk/releases")
 				return
 			}
-			assert.Contains(t, string(out), "https://github.com/localstack/lstk/releases")
+			assert.Contains(t, string(out), "==> Restore extensions: reinstall lstk from the latest release archive:\n        https://github.com/localstack/lstk/releases/latest")
 			assert.NotContains(t, string(out), "brew")
 			assert.NotContains(t, string(out), "npm")
 		})
