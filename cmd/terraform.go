@@ -42,6 +42,7 @@ Examples:
   lstk terraform --region us-west-2 plan
   lstk tf apply`,
 		DisableFlagParsing: true,
+		Annotations:        map[string]string{proxyCommandAnnotation: "true"},
 		PreRunE: func(cmd *cobra.Command, args []string) error {
 			// --endpoint-url is recognized only when it precedes
 			// "terraform"/"tf", the same pre-command-only placement --json

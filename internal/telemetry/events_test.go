@@ -68,7 +68,7 @@ func TestEmitCommand_SendsCorrectEventNameAndStructure(t *testing.T) {
 	tel, ch := captureEvents(t)
 
 	tel.SetAuthToken("ls-token")
-	tel.EmitCommand(context.Background(), "start", "", []string{"--non-interactive"}, 1200, 0, "", false)
+	tel.EmitCommand(context.Background(), CommandParameters{Command: "start", Flags: []string{"--non-interactive"}}, CommandResult{DurationMS: 1200})
 
 	got := drainEvent(t, tel, ch)
 
@@ -102,7 +102,7 @@ func TestEmitCommand_SendsCorrectEventNameAndStructure(t *testing.T) {
 func TestEmitCommand_IncludesErrorMsgOnFailure(t *testing.T) {
 	tel, ch := captureEvents(t)
 
-	tel.EmitCommand(context.Background(), "start", "", nil, 50, 1, "port 4566 already in use", false)
+	tel.EmitCommand(context.Background(), CommandParameters{Command: "start"}, CommandResult{DurationMS: 50, ExitCode: 1, ErrorMsg: "port 4566 already in use"})
 
 	got := drainEvent(t, tel, ch)
 	payload := got["payload"].(map[string]any)
@@ -114,36 +114,79 @@ func TestEmitCommand_IncludesErrorMsgOnFailure(t *testing.T) {
 func TestEmitCommand_RecordsSubcommandAndRealExitCode(t *testing.T) {
 	tel, ch := captureEvents(t)
 
-	tel.EmitCommand(context.Background(), "aws", "s3 ls", nil, 80, 252, "exit status 252", true)
+	code := 252
+	tel.EmitCommand(context.Background(),
+		CommandParameters{Command: "aws", Subcommand: "s3 ls", Proxied: true},
+		CommandResult{DurationMS: 80, ExitCode: 252, ErrorMsg: "exit status 252", ProxyExitCode: &code})
 
 	got := drainEvent(t, tel, ch)
 	payload := got["payload"].(map[string]any)
 	params := payload["parameters"].(map[string]any)
 	assert.Equal(t, "aws", params["command"])
 	assert.Equal(t, "s3 ls", params["subcommand"])
+	assert.Equal(t, true, params["proxied"])
 	result := payload["result"].(map[string]any)
 	assert.InDelta(t, 252, result["exit_code"], 0)
-	assert.Equal(t, true, result["proxy_error"])
+	assert.InDelta(t, 252, result["proxy_exit_code"], 0)
 }
 
-// An lstk failure sends proxy_error: false rather than omitting the field, so
-// it is distinguishable from an event emitted before the field existed.
-func TestEmitCommand_SendsProxyErrorFalseForLstkFailures(t *testing.T) {
+// The pipe reads the presence of proxy_exit_code as "the tool ran", so a tool
+// that exited 0 must still emit the key with 0.
+func TestEmitCommand_EmitsZeroProxyExitCodeWhenToolSucceeded(t *testing.T) {
 	tel, ch := captureEvents(t)
 
-	tel.EmitCommand(context.Background(), "aws", "s3 ls", nil, 80, 1, "runtime not healthy", false)
+	code := 0
+	tel.EmitCommand(context.Background(),
+		CommandParameters{Command: "aws", Subcommand: "s3 ls", Proxied: true},
+		CommandResult{DurationMS: 80, ProxyExitCode: &code})
 
 	got := drainEvent(t, tel, ch)
 	payload := got["payload"].(map[string]any)
 	result := payload["result"].(map[string]any)
-	require.Contains(t, result, "proxy_error")
-	assert.Equal(t, false, result["proxy_error"])
+	require.Contains(t, result, "proxy_exit_code")
+	assert.InDelta(t, 0, result["proxy_exit_code"], 0)
+}
+
+// proxied and cancelled are sent as false, not omitted: JSONHas on either key
+// marks a post-cutover row. A nil ProxyExitCode must be absent, not null,
+// which JSONHas also reports as present.
+func TestEmitCommand_ZeroValueResultShapesTheCutoverMarkers(t *testing.T) {
+	tel, ch := captureEvents(t)
+
+	tel.EmitCommand(context.Background(),
+		CommandParameters{Command: "aws", Subcommand: "s3 ls", Proxied: true},
+		CommandResult{DurationMS: 80, ExitCode: 1, ErrorMsg: "runtime not healthy"})
+
+	got := drainEvent(t, tel, ch)
+	payload := got["payload"].(map[string]any)
+	params := payload["parameters"].(map[string]any)
+	require.Contains(t, params, "proxied")
+	result := payload["result"].(map[string]any)
+	require.Contains(t, result, "cancelled")
+	assert.Equal(t, false, result["cancelled"])
+	assert.NotContains(t, result, "proxy_exit_code")
+	assert.NotContains(t, result, "proxy_error", "replaced by proxied/proxy_exit_code/cancelled")
+}
+
+func TestEmitCommand_RecordsCancellation(t *testing.T) {
+	tel, ch := captureEvents(t)
+
+	tel.EmitCommand(context.Background(),
+		CommandParameters{Command: "start"},
+		CommandResult{DurationMS: 80, ExitCode: 1, ErrorMsg: "context canceled", Cancelled: true})
+
+	got := drainEvent(t, tel, ch)
+	payload := got["payload"].(map[string]any)
+	params := payload["parameters"].(map[string]any)
+	assert.Equal(t, false, params["proxied"])
+	result := payload["result"].(map[string]any)
+	assert.Equal(t, true, result["cancelled"])
 }
 
 func TestEmitCommand_OmitsSubcommandWhenEmpty(t *testing.T) {
 	tel, ch := captureEvents(t)
 
-	tel.EmitCommand(context.Background(), "start", "", nil, 80, 0, "", false)
+	tel.EmitCommand(context.Background(), CommandParameters{Command: "start"}, CommandResult{DurationMS: 80})
 
 	got := drainEvent(t, tel, ch)
 	payload := got["payload"].(map[string]any)
@@ -160,7 +203,7 @@ func TestEmitCommand_IsNoOpWhenDisabled(t *testing.T) {
 	defer srv.Close()
 
 	tel := New(srv.URL, true) // disabled
-	tel.EmitCommand(context.Background(), "start", "", nil, 0, 0, "", false)
+	tel.EmitCommand(context.Background(), CommandParameters{Command: "start"}, CommandResult{})
 	tel.Close()
 
 	select {

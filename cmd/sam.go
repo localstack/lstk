@@ -44,6 +44,7 @@ Examples:
   lstk sam --region us-west-2 deploy
   lstk sam validate`,
 		DisableFlagParsing: true,
+		Annotations:        map[string]string{proxyCommandAnnotation: "true"},
 		PreRunE: func(cmd *cobra.Command, args []string) error {
 			// --endpoint-url is recognized only when it precedes "sam", the
 			// same pre-command-only placement --json already gets here.
