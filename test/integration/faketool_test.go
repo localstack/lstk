@@ -41,14 +41,15 @@ type fakeToolConfig struct {
 
 var (
 	fakeToolOnce sync.Once
+	fakeToolDir  string
 	fakeToolPath string
 	fakeToolErr  error
 )
 
-// fakeToolBinary builds test-samples/faketool once and returns the path to the
-// compiled binary, following the referenceExtensionBinary pattern.
-func fakeToolBinary(t *testing.T) string {
-	t.Helper()
+// buildFakeTool builds test-samples/faketool once and returns the path to the
+// compiled binary, following the referenceExtensionBinary pattern. It returns
+// its error because TestMain calls it before any *testing.T exists.
+func buildFakeTool() (string, error) {
 	fakeToolOnce.Do(func() {
 		moduleRoot, err := filepath.Abs(".")
 		if err != nil {
@@ -60,6 +61,7 @@ func fakeToolBinary(t *testing.T) string {
 			fakeToolErr = err
 			return
 		}
+		fakeToolDir = dir
 		out := filepath.Join(dir, execName("faketool"))
 		cmd := exec.Command("go", "build", "-o", out, "./test-samples/faketool")
 		cmd.Dir = moduleRoot
@@ -69,19 +71,46 @@ func fakeToolBinary(t *testing.T) string {
 		}
 		fakeToolPath = out
 	})
-	require.NoError(t, fakeToolErr)
-	return fakeToolPath
+	return fakeToolPath, fakeToolErr
+}
+
+// cleanupFakeToolBuild removes buildFakeTool's build directory after m.Run,
+// including one left behind by a failed build.
+func cleanupFakeToolBuild() {
+	if fakeToolDir == "" {
+		return
+	}
+	_ = os.RemoveAll(fakeToolDir)
+}
+
+// installFakeToolAt copies the faketool binary into dir under the given tool
+// name (execName-suffixed on Windows), writes its JSON config sidecar and
+// returns the installed path. It is the *testing.T-free variant, for TestMain.
+func installFakeToolAt(dir, name string, cfg fakeToolConfig) (string, error) {
+	src, err := buildFakeTool()
+	if err != nil {
+		return "", err
+	}
+	bin := filepath.Join(dir, execName(name))
+	if err := copyExecutableTo(src, bin); err != nil {
+		return "", err
+	}
+	b, err := json.Marshal(cfg)
+	if err != nil {
+		return "", err
+	}
+	if err := os.WriteFile(bin+".fakecfg", b, 0o644); err != nil {
+		return "", err
+	}
+	return bin, nil
 }
 
 // installFakeTool copies the faketool binary into dir under the given tool
 // name (execName-suffixed on Windows) and writes its JSON config sidecar.
 func installFakeTool(t *testing.T, dir, name string, cfg fakeToolConfig) {
 	t.Helper()
-	bin := filepath.Join(dir, execName(name))
-	copyExecutable(t, fakeToolBinary(t), bin)
-	b, err := json.Marshal(cfg)
+	_, err := installFakeToolAt(dir, name, cfg)
 	require.NoError(t, err)
-	require.NoError(t, os.WriteFile(bin+".fakecfg", b, 0o644))
 }
 
 // writeFakeTool installs the faketool binary as `name` in a fresh temp dir

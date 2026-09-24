@@ -13,17 +13,22 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// emulatorSelectEnv is firstRunHome plus a fake token and mock platform API, so
+// `start` reaches the selector without device login or the real platform.
+func emulatorSelectEnv(t *testing.T) (env.Environ, string) {
+	t.Helper()
+	e, configPath := firstRunHome(t)
+	licenseSrv := createMockLicenseServer(true)
+	t.Cleanup(licenseSrv.Close)
+	return e.With(env.AuthToken, "test-token").With(env.APIEndpoint, licenseSrv.URL), configPath
+}
+
 func TestNoEmulatorSelectionWhenConfigExists(t *testing.T) {
 	t.Parallel()
 
-	tmpHome := t.TempDir()
-	require.NoError(t, os.MkdirAll(filepath.Join(tmpHome, ".config"), 0755))
-	e := env.Environ(testEnvWithHome(tmpHome, tmpHome)).
-		With(env.DisableEvents, "1")
+	e, configPath := emulatorSelectEnv(t)
 
 	// Pre-create the config so lstk does not treat this as a first run.
-	configPath, _, err := runLstk(t, testContext(t), "", e, "config", "path")
-	require.NoError(t, err)
 	require.NoError(t, os.MkdirAll(filepath.Dir(configPath), 0755))
 	require.NoError(t, os.WriteFile(configPath, []byte("[[containers]]\ntype = \"aws\"\ntag = \"latest\"\nport = \"4566\"\n"), 0644))
 
@@ -43,15 +48,7 @@ func TestFirstRunShowsEmulatorSelectionPrompt(t *testing.T) {
 	requireDocker(t)
 	t.Parallel()
 
-	tmpHome := t.TempDir()
-	require.NoError(t, os.MkdirAll(filepath.Join(tmpHome, ".config"), 0755))
-	e := env.Environ(testEnvWithHome(tmpHome, tmpHome)).
-		With(env.DisableEvents, "1")
-
-	// Confirm no config exists at the path lstk would use — this is what triggers first-run.
-	configPath, _, err := runLstk(t, testContext(t), "", e, "config", "path")
-	require.NoError(t, err)
-	require.NoFileExists(t, configPath)
+	e, configPath := emulatorSelectEnv(t)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -90,19 +87,12 @@ func TestFirstRunStillShowsSelectionPromptAfterRunningAnotherCommand(t *testing.
 	requireDocker(t)
 	t.Parallel()
 
-	tmpHome := t.TempDir()
-	require.NoError(t, os.MkdirAll(filepath.Join(tmpHome, ".config"), 0755))
-	e := env.Environ(testEnvWithHome(tmpHome, tmpHome)).
-		With(env.DisableEvents, "1")
-
-	configPath, _, err := runLstk(t, testContext(t), "", e, "config", "path")
-	require.NoError(t, err)
-	require.NoFileExists(t, configPath)
+	e, configPath := emulatorSelectEnv(t)
 
 	// Run a command that doesn't start the emulator — this used to eagerly
 	// create the default (type = "aws") config via config.Init, consuming
 	// firstRun before the user ever saw the selector.
-	_, _, err = runLstk(t, testContext(t), "", e, "volume", "path")
+	_, _, err := runLstk(t, testContext(t), "", e, "volume", "path")
 	require.NoError(t, err)
 	require.NoFileExists(t, configPath, "running an unrelated command must not create the default config")
 
@@ -121,14 +111,7 @@ func TestFirstRunCanSelectAzureEmulator(t *testing.T) {
 	requireDocker(t)
 	t.Parallel()
 
-	tmpHome := t.TempDir()
-	require.NoError(t, os.MkdirAll(filepath.Join(tmpHome, ".config"), 0755))
-	e := env.Environ(testEnvWithHome(tmpHome, tmpHome)).
-		With(env.DisableEvents, "1")
-
-	configPath, _, err := runLstk(t, testContext(t), "", e, "config", "path")
-	require.NoError(t, err)
-	require.NoFileExists(t, configPath)
+	e, configPath := emulatorSelectEnv(t)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -163,6 +146,7 @@ func TestFirstRunPromptsForLoginBeforeEmulatorSelection(t *testing.T) {
 	e := env.Environ(testEnvWithHome(tmpHome, tmpHome)).
 		Without(env.AuthToken).
 		With(env.APIEndpoint, mockServer.URL).
+		With(env.WebAppURL, mockServer.URL).
 		With(env.DisableEvents, "1")
 
 	// No config exists so this is a first run; no token means login fires before emulator selection.
@@ -210,13 +194,7 @@ func TestEmulatorSelectionReappearsAfterFailedFirstRun(t *testing.T) {
 	requireDocker(t)
 	t.Parallel()
 
-	tmpHome := t.TempDir()
-	require.NoError(t, os.MkdirAll(filepath.Join(tmpHome, ".config"), 0755))
-	base := env.Environ(testEnvWithHome(tmpHome, tmpHome)).With(env.DisableEvents, "1")
-
-	configPath, _, err := runLstk(t, testContext(t), "", base, "config", "path")
-	require.NoError(t, err)
-	require.NoFileExists(t, configPath)
+	base, configPath := emulatorSelectEnv(t)
 
 	noDocker := base.With(env.Key("DOCKER_HOST"), "tcp://localhost:1")
 	stdout, _, runErr := runLstk(t, testContext(t), "", noDocker, "--non-interactive")
@@ -242,16 +220,10 @@ func TestEmulatorSelectionReappearsAfterConfigDirDeleted(t *testing.T) {
 	requireDocker(t)
 	t.Parallel()
 
-	tmpHome := t.TempDir()
-	require.NoError(t, os.MkdirAll(filepath.Join(tmpHome, ".config"), 0755))
-	e := env.Environ(testEnvWithHome(tmpHome, tmpHome)).
-		With(env.DisableEvents, "1").
-		With(env.AuthToken, "test-token")
+	e, configPath := emulatorSelectEnv(t)
 
-	// Resolve where lstk would create the config, then pre-create it so lstk
-	// believes this is not a first run (simulates a previous successful start).
-	configPath, _, err := runLstk(t, testContext(t), "", e, "config", "path")
-	require.NoError(t, err)
+	// Pre-create the config so lstk believes this is not a first run (simulates
+	// a previous successful start).
 	require.NoError(t, os.MkdirAll(filepath.Dir(configPath), 0755))
 	require.NoError(t, os.WriteFile(configPath, []byte("[[containers]]\ntype = \"aws\"\ntag = \"latest\"\nport = \"4566\"\n"), 0644))
 	require.FileExists(t, configPath)

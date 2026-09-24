@@ -18,23 +18,6 @@ import (
 // convention for post-start tips, so it is observable behavior, not styling.
 const completionTipText = "> Tip: Set up tab completion: lstk completion"
 
-// firstRunHome returns an isolated home with no lstk config, so the run under
-// test is a first run (config.toml absent is what firstRun means).
-func firstRunHome(t *testing.T) (env.Environ, string) {
-	t.Helper()
-
-	tmpHome := t.TempDir()
-	scheduleVolumeCleanup(t, tmpHome)
-	require.NoError(t, os.MkdirAll(filepath.Join(tmpHome, ".config"), 0755))
-	e := env.Environ(testEnvWithHome(tmpHome, tmpHome)).With(env.DisableEvents, "1")
-
-	configPath, _, err := runLstk(t, testContext(t), "", e, "config", "path")
-	require.NoError(t, err)
-	require.NoFileExists(t, configPath, "test setup: config must be absent for this to be a first run")
-
-	return e, configPath
-}
-
 // distinctTips returns the unique "> Tip:" lines in out. Bubble Tea repaints
 // lines, so a raw occurrence count would overstate.
 func distinctTips(out string) []string {

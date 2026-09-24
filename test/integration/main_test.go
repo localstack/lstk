@@ -106,6 +106,19 @@ func TestMain(m *testing.M) {
 		}
 	}
 
+	// Suite-wide no-op browser launcher; see installNoopBrowserLauncher.
+	noopBrowserDir, err := installNoopBrowserLauncher()
+	removeTempBuilds := func() {
+		_ = os.RemoveAll(noopBrowserDir)
+		cleanupFakeToolBuild()
+	}
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to install the no-op browser launcher: %v\n", err)
+		removeTempBuilds()
+		os.Exit(1)
+	}
+	defer removeTempBuilds()
+
 	// snap.Clean is deliberately NOT wired here (unlike unit-test packages):
 	// it treats unvisited snapshots as obsolete, but this package skips whole
 	// test groups per platform (Docker on Windows CI, PTY/sh fakes on Windows,
@@ -175,6 +188,23 @@ const (
 	containerName = "localstack-aws"
 	testImage     = "alpine:latest"
 )
+
+// firstRunHome returns an isolated home with no lstk config, so the run under
+// test is a first run (config.toml absent is what firstRun means).
+func firstRunHome(t *testing.T) (env.Environ, string) {
+	t.Helper()
+
+	tmpHome := t.TempDir()
+	scheduleVolumeCleanup(t, tmpHome)
+	require.NoError(t, os.MkdirAll(filepath.Join(tmpHome, ".config"), 0755))
+	e := env.Environ(testEnvWithHome(tmpHome, tmpHome)).With(env.DisableEvents, "1")
+
+	configPath, _, err := runLstk(t, testContext(t), "", e, "config", "path")
+	require.NoError(t, err)
+	require.NoFileExists(t, configPath, "test setup: config must be absent for this to be a first run")
+
+	return e, configPath
+}
 
 // scheduleVolumeCleanup removes the emulator volume under an isolated tmpHome.
 // Call it right after t.TempDir(): t.Cleanup runs LIFO, so registering it later
