@@ -29,6 +29,8 @@ Rewrite the four `proxy_error` tests from #499 rather than adding beside them; a
 - [x] 4.7 Extension exiting 7 (`extension_test.go`) → `proxied: false`, no `proxy_exit_code`, `exit_code: 7` — extensions are lstk's own code
 - [x] 4.8 Signalled child (`signal_forwarding_test.go`, `!windows`): SIGTERM to `lstk sig signal-wait` → `cancelled: true`, `exit_code: 41` — the child traps the signal and exits normally, so this is the case an exit-code test would misclassify
 
+- [x] 4.9 Interactive Ctrl-C on `lstk aws` in a PTY (fake `aws` with `trapExitCode: 130`, `startLstkInPTY`, `!windows`) → `cancelled: true`, `proxy_exit_code: 130` — found by manual testing; lstk never receives the SIGINT on this path, so `proc.RunInPTY` marks the forwarded ETX byte (`proc.WasInterrupted`)
+
 ## 5. Docs in this repo
 
 - [x] 5.1 Update `CLAUDE.md` "Attributing Wrapped-Tool Exits" to name `proxied` / `proxy_exit_code` / `cancelled` instead of `proxy_error`

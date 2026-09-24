@@ -74,3 +74,11 @@ func TestMarkUserToolExitPreservesExitError(t *testing.T) {
 	assert.Equal(t, 252, exitErr.ExitCode())
 	assert.Equal(t, "exit status 252", err.Error())
 }
+
+func TestWasInterruptedSeesThroughWrappers(t *testing.T) {
+	base := errors.New("exit status 130")
+	err := fmt.Errorf("wrapped: %w", MarkUserToolExit(markInterrupted(base)))
+	assert.True(t, WasInterrupted(err))
+	assert.False(t, WasInterrupted(base))
+	assert.Nil(t, markInterrupted(nil), "nothing to mark on success")
+}

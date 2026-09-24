@@ -3,9 +3,11 @@
 package proc
 
 import (
+	"bytes"
 	"io"
 	"os"
 	"os/exec"
+	"sync/atomic"
 	"syscall"
 
 	"github.com/creack/pty"
@@ -43,7 +45,7 @@ func RunInPTY(cmd *exec.Cmd, out io.Writer) (started bool, err error) {
 	cmd.Stdout = tty
 	cmd.Stderr = tty
 
-	restore := wireInteractiveStdin(cmd, ptmx, tty)
+	restore, interrupted := wireInteractiveStdin(cmd, ptmx, tty)
 
 	copied := make(chan struct{})
 	go func() {
@@ -61,6 +63,9 @@ func RunInPTY(cmd *exec.Cmd, out io.Writer) (started bool, err error) {
 	// louder than the child's own error.
 	if restoreErr := restore(); restoreErr != nil && runErr == nil {
 		runErr = restoreErr
+	}
+	if interrupted() {
+		runErr = markInterrupted(runErr)
 	}
 	return true, runErr
 }
@@ -92,24 +97,29 @@ func RunInPTY(cmd *exec.Cmd, out io.Writer) (started bool, err error) {
 // pump left blocked past the child's exit would steal the next bytes typed at
 // whatever reads the terminal after lstk (see
 // TestRunInPTYStopsReadingTerminalAfterExit).
-func wireInteractiveStdin(cmd *exec.Cmd, ptmx, tty *os.File) (restore func() error) {
+//
+// interrupted reports whether the pump forwarded a Ctrl-C (ETX) byte: since
+// lstk no longer receives SIGINT here, that byte is the only record that the
+// user interrupted the run (see WasInterrupted).
+func wireInteractiveStdin(cmd *exec.Cmd, ptmx, tty *os.File) (restore func() error, interrupted func() bool) {
 	noop := func() error { return nil }
+	never := func() bool { return false }
 	stdin, ok := cmd.Stdin.(*os.File)
 	if !ok || !terminal.IsTerminal(stdin) {
-		return noop
+		return noop, never
 	}
 	prev, err := term.MakeRaw(int(stdin.Fd()))
 	if err != nil {
 		// A terminal that refuses raw mode keeps the old output-only wiring:
 		// the pager stays unresponsive there, but nothing else regresses.
-		return noop
+		return noop, never
 	}
 	reader, err := cancelreader.NewReader(stdin)
 	if err != nil {
 		// Without a cancelable reader the pump could not be torn down; keep
 		// the output-only wiring here too.
 		_ = term.Restore(int(stdin.Fd()), prev)
-		return noop
+		return noop, never
 	}
 
 	cmd.Stdin = tty
@@ -120,15 +130,31 @@ func wireInteractiveStdin(cmd *exec.Cmd, ptmx, tty *os.File) (restore func() err
 	cmd.SysProcAttr.Setctty = true // Ctty 0: the child's fd 0, the tty above
 
 	pumped := make(chan struct{})
+	pump := &interruptWatcher{w: ptmx}
 	go func() {
-		_, _ = io.Copy(ptmx, reader)
+		_, _ = io.Copy(pump, reader)
 		close(pumped)
 	}()
 
-	return func() error {
+	restore = func() error {
 		reader.Cancel()
 		<-pumped
 		_ = reader.Close()
 		return term.Restore(int(stdin.Fd()), prev)
 	}
+	return restore, func() bool { return pump.seen.Load() }
+}
+
+// interruptWatcher forwards pumped bytes and remembers whether an ETX (Ctrl-C
+// in raw mode) went through.
+type interruptWatcher struct {
+	w    io.Writer
+	seen atomic.Bool
+}
+
+func (p *interruptWatcher) Write(b []byte) (int, error) {
+	if bytes.IndexByte(b, 0x03) >= 0 {
+		p.seen.Store(true)
+	}
+	return p.w.Write(b)
 }

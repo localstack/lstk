@@ -599,6 +599,8 @@ func ExitCode(err error) int {
 // nil means the tool exited 0 (LSTK_TF_DRY_RUN is the accepted exception).
 // Cancellation comes from lstk's own context, not the child's exit code: a
 // tool that traps SIGINT exits normally, and Windows has no signal exit code.
+// proc.WasInterrupted covers the interactive PTY path, where only the child
+// receives the Ctrl-C.
 // Design: openspec/changes/distinguish-proxied-command-errors/design.md.
 func commandResult(ctx context.Context, runErr error, proxied bool) telemetry.CommandResult {
 	result := telemetry.CommandResult{ExitCode: ExitCode(runErr)}
@@ -609,7 +611,7 @@ func commandResult(ctx context.Context, runErr error, proxied bool) telemetry.Co
 		code := result.ExitCode
 		result.ProxyExitCode = &code
 	}
-	result.Cancelled = ctx.Err() != nil || errors.Is(runErr, context.Canceled)
+	result.Cancelled = ctx.Err() != nil || errors.Is(runErr, context.Canceled) || proc.WasInterrupted(runErr)
 	return result
 }
 

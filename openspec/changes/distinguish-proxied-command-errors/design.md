@@ -85,7 +85,9 @@ The switch is behavior-neutral: exactly five commands set `DisableFlagParsing`; 
 
 ### Decision 5: `cancelled` is lstk's own signal context, not the child's exit code
 
-`cancelled` is true when, at emit time, the root context is done (`ctx.Err() != nil`) or the returned error `errors.Is` `context.Canceled`. The root context is `main.go`'s `signal.NotifyContext(os.Interrupt, SIGTERM)`, already passed through `root.ExecuteContext` and available as `c.Context()` at the emit site; the `errors.Is` clause catches the TUI's `q`, which sets `context.Canceled` without a signal.
+`cancelled` is true when, at emit time, the root context is done (`ctx.Err() != nil`), the returned error `errors.Is` `context.Canceled`, or `proc.WasInterrupted` reports that the interactive PTY pump forwarded a Ctrl-C. The root context is `main.go`'s `signal.NotifyContext(os.Interrupt, SIGTERM)`, already passed through `root.ExecuteContext` and available as `c.Context()` at the emit site; the `errors.Is` clause catches the TUI's `q`, which sets `context.Canceled` without a signal.
+
+**The interactive PTY path needs the third clause.** When stdin, stdout and stderr are all terminals, `lstk aws`/`lstk az` run the tool in a PTY with the user's terminal in raw mode and pump keystrokes into it (DEVX-1049). Raw mode stops the terminal from turning Ctrl-C into SIGINT; the byte is pumped through and the PTY's line discipline delivers SIGINT to the child alone. lstk's own context never fires. Manual testing found exactly this: Ctrl-C on an interactive `lstk aws` recorded `proxy_exit_code: 130, cancelled: false`, i.e. a proxy failure. `RunInPTY` therefore watches the pumped bytes for ETX and marks the returned error (`proc.WasInterrupted`); the non-interactive paths, where lstk is in the foreground process group and receives the signal itself, are covered by the context clause.
 
 **Why not the child's exit code.** `proc.Run` exists precisely so a wrapped tool *handles* SIGINT and cleans up rather than being SIGKILLed. A tool that cleans up exits with an ordinary code: terraform exits 1, the aws CLI exits 130, the reference extension exits 41. Only an untrapped child yields `signal: interrupt` and `ExitCode() == -1`. And on Windows `ExitCode()` never returns -1 — a Ctrl-C'd child surfaces `STATUS_CONTROL_C_EXIT` (3221225786). lstk's own context is true whether or not the child trapped the signal, and true on Windows, where Go delivers `os.Interrupt` for console Ctrl-C.
 
@@ -93,7 +95,7 @@ The switch is behavior-neutral: exactly five commands set `DisableFlagParsing`; 
 
 **Why the emit still happens**: `NotifyContext` replaces the default disposition, so `RunE` returns normally; `Emit` stores `context.WithoutCancel(ctx)` so a cancelled context does not abort the POST; and `Close` hands off to a detached subprocess.
 
-**Accepted**: in the TUI, `q` sets the same `context.Canceled` as Ctrl-C (`internal/ui/app.go`), so quitting `lstk logs` with `q` records `cancelled: true` with exit code 1. That is today's exit-code behavior, not something this change introduces — but it means the value counts intentional quits, not only interruptions.
+**Accepted**: in the streaming TUIs, `q` sets the same `context.Canceled` as Ctrl-C (`internal/ui/app.go`), so quitting `lstk start` or `lstk logs --follow` with `q` records `cancelled: true` with exit code 1 (verified manually). That is today's exit-code behavior, not something this change introduces — but it means the value counts intentional quits, not only interruptions. `lstk logs` without `--follow` exits 0 on its own and is unaffected.
 
 **Not covered**: SIGHUP is absent from the notify set, so a closed terminal kills lstk at the default disposition and emits nothing at all. Adding it is a one-line change with a real behavior consequence, offered as an optional task rather than folded in.
 
