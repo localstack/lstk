@@ -127,7 +127,7 @@ Examples:
 
 			if err := rt.IsHealthy(cmd.Context()); err != nil {
 				rt.EmitUnhealthyError(sink, err)
-				return output.NewSilentError(fmt.Errorf("runtime not healthy: %w", err))
+				return runtime.UnhealthyError(err)
 			}
 
 			if err := requireRunningAWSEmulator(cmd.Context(), rt, sink, awsContainer, "cdk"); err != nil {

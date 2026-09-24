@@ -39,7 +39,7 @@ func DiffPod(ctx context.Context, rt runtime.Runtime, containers []config.Contai
 
 	if err := rt.IsHealthy(ctx); err != nil {
 		rt.EmitUnhealthyError(sink, err)
-		return output.NewSilentError(fmt.Errorf("runtime not healthy: %w", err))
+		return runtime.UnhealthyError(err)
 	}
 
 	runningContainers, err := container.RunningEmulators(ctx, rt, containers)

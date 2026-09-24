@@ -200,7 +200,7 @@ func LoadRemoteS3(ctx context.Context, rt runtime.Runtime, containers []config.C
 func ListRemoteS3(ctx context.Context, rt runtime.Runtime, containers []config.ContainerConfig, client RemoteClient, host, s3URL string, creds S3Credentials, authToken string, sink output.Sink) error {
 	if err := rt.IsHealthy(ctx); err != nil {
 		rt.EmitUnhealthyError(sink, err)
-		return output.NewSilentError(fmt.Errorf("runtime not healthy: %w", err))
+		return runtime.UnhealthyError(err)
 	}
 
 	if err := ensureBucketExists(ctx, client, s3URL, sink); err != nil {

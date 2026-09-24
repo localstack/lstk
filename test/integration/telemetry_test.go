@@ -426,6 +426,42 @@ func TestInteractiveCtrlCOnProxyRecordsCancellation(t *testing.T) {
 	assert.Equal(t, true, result["cancelled"], "Ctrl-C forwarded through the PTY is the user's interruption, not the tool's failure")
 }
 
+// The why axis: a user's own input error on a proxy command is lstk's failure
+// to complete the invocation, but not an lstk defect. The code the user saw
+// rides the event so the pipe can tell the two apart.
+func TestProxyValidationErrorTelemetryIsClassifiedAsUsage(t *testing.T) {
+	t.Parallel()
+
+	emulatorSrv := awsHealthServer(t)
+	defer emulatorSrv.Close()
+	analyticsSrv, events := mockAnalyticsServer(t)
+	fakeBinDir := writeFakeTool(t, "aws", fakeToolConfig{})
+
+	_, _, err := runLstk(t, testContext(t), "", proxyEnviron(t, analyticsSrv.URL, fakeBinDir),
+		"--endpoint-url", emulatorSrv.URL, "aws", "--account", "123", "s3", "ls")
+	require.Error(t, err)
+
+	params, result := commandEventParts(t, receiveEventByName(t, events, "lstk_command"))
+	assert.Equal(t, true, params["proxied"])
+	assert.NotContains(t, result, "proxy_exit_code")
+	assert.Equal(t, "VALIDATION_ERROR", result["error_code"])
+	assert.Equal(t, "USAGE", result["error_category"])
+}
+
+func TestProxyPreflightDockerDownTelemetryIsClassifiedAsRuntime(t *testing.T) {
+	t.Parallel()
+
+	analyticsSrv, events := mockAnalyticsServer(t)
+	fakeBinDir := writeFakeTool(t, "aws", fakeToolConfig{})
+
+	_, _, err := runLstk(t, testContext(t), "", proxyEnviron(t, analyticsSrv.URL, fakeBinDir), "aws", "s3", "ls")
+	require.Error(t, err)
+
+	_, result := commandEventParts(t, receiveEventByName(t, events, "lstk_command"))
+	assert.Equal(t, "RUNTIME_UNAVAILABLE", result["error_code"])
+	assert.Equal(t, "RUNTIME", result["error_category"])
+}
+
 // receiveEventByName waits up to 3s for an event with the given name.
 // Events with a different name are skipped until the deadline.
 func receiveEventByName(t *testing.T, events <-chan map[string]any, name string) map[string]any {

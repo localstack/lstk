@@ -18,7 +18,7 @@ const statusTimeout = 10 * time.Second
 func Status(ctx context.Context, rt runtime.Runtime, containers []config.ContainerConfig, localStackHost string, clients map[config.EmulatorType]emulator.Client, sink output.Sink) error {
 	if err := rt.IsHealthy(ctx); err != nil {
 		rt.EmitUnhealthyError(sink, err)
-		return output.NewSilentError(fmt.Errorf("runtime not healthy: %w", err))
+		return runtime.UnhealthyError(err)
 	}
 
 	ctx, cancel := context.WithTimeout(ctx, statusTimeout)
@@ -139,7 +139,7 @@ func StatusExternal(ctx context.Context, target *endpoint.Target, clients map[co
 func StatusJSON(ctx context.Context, rt runtime.Runtime, containers []config.ContainerConfig, localStackHost string, clients map[config.EmulatorType]emulator.Client, sink output.Sink, includeResources bool) error {
 	if err := rt.IsHealthy(ctx); err != nil {
 		rt.EmitUnhealthyError(sink, err)
-		return output.NewSilentError(fmt.Errorf("runtime not healthy: %w", err))
+		return runtime.UnhealthyError(err)
 	}
 
 	ctx, cancel := context.WithTimeout(ctx, statusTimeout)
@@ -151,11 +151,10 @@ func StatusJSON(ctx context.Context, rt runtime.Runtime, containers []config.Con
 			return fmt.Errorf("checking %s running: %w", c.Name(), err)
 		}
 		if name == "" {
-			sink.Emit(output.ErrorEvent{
+			return output.Fail(sink, output.ErrorEvent{
 				Title: fmt.Sprintf("%s is not running", c.DisplayName()),
 				Code:  output.ErrEmulatorNotRunning,
-			})
-			return output.NewSilentError(fmt.Errorf("%s is not running", c.Name()))
+			}, fmt.Errorf("%s is not running", c.Name()))
 		}
 
 		port := c.Port

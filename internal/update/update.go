@@ -53,8 +53,7 @@ func Check(ctx context.Context, sink output.Sink, githubToken string) (string, b
 	sink.Emit(output.SpinnerStop())
 	if err != nil {
 		wrapped := fmt.Errorf("failed to check for updates: %w", err)
-		sink.Emit(output.ErrorEvent{Title: wrapped.Error(), Code: output.ErrNetworkError})
-		return "", false, output.NewSilentError(wrapped)
+		return "", false, output.Fail(sink, output.ErrorEvent{Title: wrapped.Error(), Code: output.ErrNetworkError}, wrapped)
 	}
 
 	available := normalizeVersion(current) != normalizeVersion(latest)
@@ -99,8 +98,7 @@ func Update(ctx context.Context, sink output.Sink, checkOnly bool, githubToken s
 		return emitSelfUpdateBlocked(sink, blocker)
 	}
 	if err != nil {
-		sink.Emit(output.ErrorEvent{Title: err.Error(), Code: output.ErrInternal})
-		return output.NewSilentError(err)
+		return output.Fail(sink, output.ErrorEvent{Title: err.Error(), Code: output.ErrInternal}, err)
 	}
 
 	sink.Emit(output.UpdateAppliedEvent{CurrentVersion: current, UpdatedVersion: latest, Method: method})
@@ -123,13 +121,12 @@ func warnIfBundleMissing(sink output.Sink) {
 // emitSelfUpdateBlocked renders a refusal to replace lstk's own binary and
 // returns the silent error the caller should propagate.
 func emitSelfUpdateBlocked(sink output.Sink, blocker *selfUpdateBlocker) error {
-	sink.Emit(output.ErrorEvent{
+	return output.Fail(sink, output.ErrorEvent{
 		Title:   blocker.title(),
 		Summary: blocker.summary(),
 		Actions: []output.ErrorAction{blocker.action()},
 		Code:    output.ErrUpdateExternallyManaged,
-	})
-	return output.NewSilentError(errors.New(blocker.title()))
+	}, errors.New(blocker.title()))
 }
 
 // applyUpdate performs the update for an already-detected install method,

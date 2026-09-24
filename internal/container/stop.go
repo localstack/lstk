@@ -19,7 +19,7 @@ type StopOptions struct {
 func Stop(ctx context.Context, rt runtime.Runtime, sink output.Sink, containers []config.ContainerConfig, opts StopOptions) error {
 	if err := rt.IsHealthy(ctx); err != nil {
 		rt.EmitUnhealthyError(sink, err)
-		return output.NewSilentError(fmt.Errorf("runtime not healthy: %w", err))
+		return runtime.UnhealthyError(err)
 	}
 
 	const stopTimeout = 30 * time.Second
@@ -29,11 +29,10 @@ func Stop(ctx context.Context, rt runtime.Runtime, sink output.Sink, containers 
 			return err
 		}
 		if name == "" {
-			sink.Emit(output.ErrorEvent{
+			return output.Fail(sink, output.ErrorEvent{
 				Title: fmt.Sprintf("%s is not running", c.DisplayName()),
 				Code:  output.ErrEmulatorNotRunning,
-			})
-			return output.NewSilentError(fmt.Errorf("%s is not running", c.Name()))
+			}, fmt.Errorf("%s is not running", c.Name()))
 		}
 
 		// Fetch localstack info before stopping so it can be included in telemetry.
@@ -47,8 +46,7 @@ func Stop(ctx context.Context, rt runtime.Runtime, sink output.Sink, containers 
 			stopCancel()
 			sink.Emit(output.SpinnerStop())
 			wrapped := fmt.Errorf("failed to stop LocalStack: %w", err)
-			sink.Emit(output.ErrorEvent{Title: wrapped.Error(), Code: output.ErrRuntimeUnavailable})
-			return output.NewSilentError(wrapped)
+			return output.Fail(sink, output.ErrorEvent{Title: wrapped.Error(), Code: output.ErrRuntimeUnavailable}, wrapped)
 		}
 		stopCancel()
 		sink.Emit(output.SpinnerStop())

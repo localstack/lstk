@@ -186,18 +186,17 @@ func newAzStopInterceptionCmd(cfg *env.Env) *cobra.Command {
 // --endpoint-url (see design.md's Non-Goals).
 func azPreflight(ctx context.Context, cfg *env.Env, sink output.Sink, target *endpoint.Target) (string, error) {
 	if err := azurecli.CheckInstalled(); err != nil {
-		sink.Emit(output.ErrorEvent{
+		return "", output.Fail(sink, output.ErrorEvent{
 			Title:   "az CLI not found in PATH",
 			Actions: []output.ErrorAction{{Label: "Install Azure CLI:", Value: azurecli.InstallURL}},
-		})
-		return "", output.NewSilentError(err)
+			Code:    output.ErrDependencyMissing,
+		}, err)
 	}
 
 	if target != nil {
 		if target.Type != config.EmulatorAzure {
 			err := fmt.Errorf("lstk az requires the Azure emulator, but the endpoint at %s is a %s emulator", target.URL, target.Type.DisplayName())
-			sink.Emit(output.ErrorEvent{Title: err.Error()})
-			return "", output.NewSilentError(err)
+			return "", output.Fail(sink, output.ErrorEvent{Title: err.Error(), Code: output.ErrEmulatorWrongType}, err)
 		}
 		return azureconfig.BuildEndpoint(target.HostPort()), nil
 	}
@@ -220,7 +219,7 @@ func azPreflight(ctx context.Context, cfg *env.Env, sink output.Sink, target *en
 	}
 	if err := rt.IsHealthy(ctx); err != nil {
 		rt.EmitUnhealthyError(sink, err)
-		return "", output.NewSilentError(fmt.Errorf("runtime not healthy: %w", err))
+		return "", runtime.UnhealthyError(err)
 	}
 
 	runningName, err := container.ResolveRunningContainerName(ctx, rt, azureContainer)

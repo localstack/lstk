@@ -20,7 +20,7 @@ type StateResetter interface {
 func Reset(ctx context.Context, rt runtime.Runtime, containers []config.ContainerConfig, resetter StateResetter, host string, force bool, sink output.Sink) (retErr error) {
 	if err := rt.IsHealthy(ctx); err != nil {
 		rt.EmitUnhealthyError(sink, err)
-		return output.NewSilentError(fmt.Errorf("runtime not healthy: %w", err))
+		return runtime.UnhealthyError(err)
 	}
 
 	runningContainers, err := container.RunningEmulators(ctx, rt, containers)
@@ -28,15 +28,14 @@ func Reset(ctx context.Context, rt runtime.Runtime, containers []config.Containe
 		return fmt.Errorf("checking emulator status: %w", err)
 	}
 	if len(runningContainers) == 0 {
-		sink.Emit(output.ErrorEvent{
+		return output.Fail(sink, output.ErrorEvent{
 			Title: "LocalStack is not running",
 			Actions: []output.ErrorAction{
 				{Label: "Start LocalStack:", Value: "lstk"},
 				{Label: "See help:", Value: "lstk -h"},
 			},
 			Code: output.ErrEmulatorNotRunning,
-		})
-		return output.NewSilentError(fmt.Errorf("LocalStack is not running"))
+		}, fmt.Errorf("LocalStack is not running"))
 	}
 
 	if !force {

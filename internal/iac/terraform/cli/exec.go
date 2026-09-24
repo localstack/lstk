@@ -54,11 +54,11 @@ func Run(ctx context.Context, endpointURL, region, account, chdir string, sink o
 		if tfCmd() == "tofu" {
 			installLabel, installURL = "Install OpenTofu CLI:", "https://opentofu.org/docs/intro/install/"
 		}
-		sink.Emit(output.ErrorEvent{
+		return output.Fail(sink, output.ErrorEvent{
 			Title:   fmt.Sprintf("%s not found in PATH", tfCmd()),
 			Actions: []output.ErrorAction{{Label: installLabel, Value: installURL}},
-		})
-		return output.NewSilentError(fmt.Errorf("%s not found in PATH", tfCmd()))
+			Code:    output.ErrDependencyMissing,
+		}, fmt.Errorf("%s not found in PATH", tfCmd()))
 	}
 	span.SetAttributes(attribute.StringSlice("terraform.args", args), attribute.Bool("terraform.unproxied", IsUnproxied(args)))
 

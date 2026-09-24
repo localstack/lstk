@@ -35,8 +35,8 @@ Rewrite the four `proxy_error` tests from #499 rather than adding beside them; a
 
 - [x] 4b.1 Unit tests: `output.Fail` carries the code on the returned `SilentError`; `ErrorCodeOf` sees through `%w` and `ExitCodeError`; `CommandResult` emits `error_code`/`error_category` only when set; `commandResult` reads them
 - [x] 4b.2 Plumbing: `SilentError.Code`, `output.Fail`, `output.ErrorCodeOf`, the two fields, the builder read
-- [ ] 4b.3 Integration tests: `lstk aws --account 123 s3 ls` → `VALIDATION_ERROR`/`USAGE`; Docker down → `RUNTIME_UNAVAILABLE`/`RUNTIME`
-- [ ] 4b.4 Convert sites to `output.Fail`: `emitValidationError` (new code `VALIDATION_ERROR`), the five proxies' `runtime not healthy` preflight, `HandleNoRunningContainer` (new code `EMULATOR_NOT_RUNNING`), the wrong-emulator and az-not-installed preflights, and the sites that already set a `Code` but returned a bare `SilentError`
+- [x] 4b.3 Integration tests: `lstk aws --account 123 s3 ls` → `VALIDATION_ERROR`/`USAGE`; Docker down → `RUNTIME_UNAVAILABLE`/`RUNTIME`
+- [x] 4b.4 Convert sites to `output.Fail`: `emitValidationError` (new code `VALIDATION_ERROR`), the five proxies' `runtime not healthy` preflight, `HandleNoRunningContainer` (new code `EMULATOR_NOT_RUNNING`), the wrong-emulator and az-not-installed preflights, and the sites that already set a `Code` but returned a bare `SilentError`
 - [ ] 4b.5 Follow-up ticket: classify the remaining `ErrorEvent` sites; add the pipe coverage query
 
 ## 5. Docs in this repo

@@ -93,7 +93,7 @@ type PodLoader interface {
 func load(ctx context.Context, rt runtime.Runtime, containers []config.ContainerConfig, sink output.Sink, starter Starter, spinnerText string, onSuccess func(), do func() error) (retErr error) {
 	if err := rt.IsHealthy(ctx); err != nil {
 		rt.EmitUnhealthyError(sink, err)
-		return output.NewSilentError(fmt.Errorf("runtime not healthy: %w", err))
+		return runtime.UnhealthyError(err)
 	}
 
 	emitExperimentalWarning(containers, sink)

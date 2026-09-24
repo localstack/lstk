@@ -38,7 +38,7 @@ type PodSaver interface {
 func save(ctx context.Context, rt runtime.Runtime, containers []config.ContainerConfig, sink output.Sink, spinnerText string, onSuccess func(), do func() error) (retErr error) {
 	if err := rt.IsHealthy(ctx); err != nil {
 		rt.EmitUnhealthyError(sink, err)
-		return output.NewSilentError(fmt.Errorf("runtime not healthy: %w", err))
+		return runtime.UnhealthyError(err)
 	}
 
 	runningContainers, err := container.RunningEmulators(ctx, rt, containers)

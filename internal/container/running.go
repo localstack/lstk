@@ -66,12 +66,12 @@ func ResolveRunningContainerName(ctx context.Context, rt runtime.Runtime, c conf
 // resolved ResolveRunningContainerName to "" should use this instead of
 // duplicating the ErrorEvent/Actions boilerplate.
 func HandleNoRunningContainer(sink output.Sink, c config.ContainerConfig) error {
-	sink.Emit(output.ErrorEvent{
+	return output.Fail(sink, output.ErrorEvent{
 		Title: fmt.Sprintf("%s is not running", c.DisplayName()),
 		Actions: []output.ErrorAction{
 			{Label: "Start LocalStack:", Value: "lstk"},
 			{Label: "See help:", Value: "lstk -h"},
 		},
-	})
-	return output.NewSilentError(fmt.Errorf("%s is not running", c.Name()))
+		Code: output.ErrEmulatorNotRunning,
+	}, fmt.Errorf("%s is not running", c.Name()))
 }
