@@ -161,14 +161,14 @@ func Run(ctx context.Context, endpointURL, region, account, chdir string, sink o
 			span.RecordError(err)
 			span.SetStatus(codes.Error, err.Error())
 			if errors.Is(err, awscli.ErrNotInstalled) {
-				sink.Emit(output.ErrorEvent{
+				return output.Fail(sink, output.ErrorEvent{
 					Title:   "aws CLI not found in PATH",
 					Summary: "lstk uses the AWS CLI to provision the S3 state bucket and lock table in LocalStack.",
 					Actions: []output.ErrorAction{{Label: "Install AWS CLI:", Value: awscli.InstallURL}},
-				})
-				return output.NewSilentError(err)
+					Code:    output.ErrDependencyMissing,
+				}, err)
 			}
-			return err
+			return output.WithCode(err, output.ErrIACDeployFailed)
 		}
 	}
 

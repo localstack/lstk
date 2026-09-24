@@ -117,7 +117,7 @@ Examples:
 			var endpointURL string
 			if target != nil {
 				if target.Type != config.EmulatorAWS {
-					return emitValidationError(sink, fmt.Errorf("lstk terraform requires the AWS emulator, but the endpoint at %s is a %s emulator", target.URL, target.Type.DisplayName()))
+					return emitCodedError(sink, output.ErrEmulatorWrongType, fmt.Errorf("lstk terraform requires the AWS emulator, but the endpoint at %s is a %s emulator", target.URL, target.Type.DisplayName()))
 				}
 				endpointURL = target.URL
 			} else {

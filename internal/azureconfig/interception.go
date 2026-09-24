@@ -26,7 +26,7 @@ func StartInterception(ctx context.Context, sink output.Sink, endpointURL string
 	defer span.End()
 
 	if err := IsHealthy(ctx, endpointURL); err != nil {
-		return fmt.Errorf("LocalStack Azure emulator not reachable at %s — run 'lstk' to start it before running 'lstk az start-interception': %w", endpointURL, err)
+		return output.WithCode(fmt.Errorf("LocalStack Azure emulator not reachable at %s — run 'lstk' to start it before running 'lstk az start-interception': %w", endpointURL, err), output.ErrEmulatorNotRunning)
 	}
 
 	// nil azEnv -> az uses the user's global ~/.azure, which is the whole point of interception.
@@ -67,7 +67,7 @@ func StopInterception(ctx context.Context, sink output.Sink, targetCloud string)
 
 	active, err := ActiveCloud(ctx, nil)
 	if err != nil {
-		return fmt.Errorf("could not determine the active Azure cloud: %w", err)
+		return output.WithCode(fmt.Errorf("could not determine the active Azure cloud: %w", err), output.ErrInternal)
 	}
 	if active != CloudName {
 		sink.Emit(output.MessageEvent{
@@ -79,14 +79,14 @@ func StopInterception(ctx context.Context, sink output.Sink, targetCloud string)
 
 	clouds, err := ListClouds(ctx, nil)
 	if err != nil {
-		return fmt.Errorf("could not list Azure clouds: %w", err)
+		return output.WithCode(fmt.Errorf("could not list Azure clouds: %w", err), output.ErrInternal)
 	}
 	if !slices.Contains(clouds, targetCloud) {
-		return fmt.Errorf("unknown Azure cloud '%s' — available clouds: %s", targetCloud, strings.Join(clouds, ", "))
+		return output.WithCode(fmt.Errorf("unknown Azure cloud '%s' — available clouds: %s", targetCloud, strings.Join(clouds, ", ")), output.ErrValidationError)
 	}
 
 	if _, _, err := azurecli.Run(ctx, nil, "cloud", "set", "--name", targetCloud, "--only-show-errors"); err != nil {
-		return fmt.Errorf("could not activate '%s' cloud: %w", targetCloud, err)
+		return output.WithCode(fmt.Errorf("could not activate '%s' cloud: %w", targetCloud, err), output.ErrInternal)
 	}
 	// Restore the public-AAD authority validation that interception disabled.
 	if _, _, err := azurecli.Run(ctx, nil, "config", "set", "core.instance_discovery=true", "--only-show-errors"); err != nil {

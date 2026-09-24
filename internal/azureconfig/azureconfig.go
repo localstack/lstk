@@ -187,7 +187,7 @@ func Setup(ctx context.Context, sink output.Sink, endpointURL, azureConfigDir st
 	}
 
 	if err := IsHealthy(ctx, endpointURL); err != nil {
-		return fmt.Errorf("LocalStack Azure emulator not reachable at %s — run 'lstk' to start it before running 'lstk setup azure': %w", endpointURL, err)
+		return output.WithCode(fmt.Errorf("LocalStack Azure emulator not reachable at %s — run 'lstk' to start it before running 'lstk setup azure': %w", endpointURL, err), output.ErrEmulatorNotRunning)
 	}
 
 	if err := os.MkdirAll(azureConfigDir, 0700); err != nil {
@@ -225,7 +225,7 @@ func registerLocalStackCloud(ctx context.Context, sink output.Sink, azEnv []stri
 
 	exists, err := cloudExists(ctx, azEnv)
 	if err != nil {
-		return fmt.Errorf("could not list Azure clouds: %w", err)
+		return output.WithCode(fmt.Errorf("could not list Azure clouds: %w", err), output.ErrInternal)
 	}
 	action, verb := "register", "Registering"
 	if exists {

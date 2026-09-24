@@ -32,12 +32,36 @@ func Fail(sink Sink, event ErrorEvent, err error) error {
 	return &SilentError{Err: err, Code: event.Code}
 }
 
+// CodedError classifies an error that the caller's display layer will still
+// render — the shape for domain code that returns errors instead of emitting
+// them. SilentError is for errors already shown. Set it through WithCode.
+type CodedError struct {
+	Err  error
+	Code ErrorCode
+}
+
+func (e *CodedError) Error() string { return e.Err.Error() }
+func (e *CodedError) Unwrap() error { return e.Err }
+
+// WithCode attaches code to err for telemetry without silencing it; nil stays nil.
+func WithCode(err error, code ErrorCode) error {
+	if err == nil {
+		return nil
+	}
+	return &CodedError{Err: err, Code: code}
+}
+
 // ErrorCodeOf returns the first classification carried in err's chain, or ""
 // when no site classified the failure.
 func ErrorCodeOf(err error) ErrorCode {
 	for err != nil {
-		if silent, ok := err.(*SilentError); ok && silent.Code != "" {
-			return silent.Code
+		switch e := err.(type) {
+		case *SilentError:
+			if e.Code != "" {
+				return e.Code
+			}
+		case *CodedError:
+			return e.Code
 		}
 		err = errors.Unwrap(err)
 	}
