@@ -26,8 +26,8 @@ func MarkUserToolExit(err error) error {
 	return &userToolExitError{err: err}
 }
 
-// IsUserToolExit backs result.proxy_error on lstk_command telemetry events
-// (DEVX-1004).
+// IsUserToolExit backs result.proxy_exit_code on lstk_command telemetry
+// events (see cmd.commandResult; DEVX-1004).
 func IsUserToolExit(err error) bool {
 	var userTool *userToolExitError
 	return errors.As(err, &userTool)

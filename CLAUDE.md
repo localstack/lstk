@@ -21,6 +21,7 @@ make test-integration   # Run integration tests (rebuilds bin/lstk via `build`, 
 make lint               # Run golangci-lint (version pinned via .tool-versions)
 make govulncheck        # Run govulncheck (reachability-based vuln scan)
 make mock-generate      # Regenerate mocks (mockgen via go:generate)
+make telemetry-sink     # Print telemetry events sent to LSTK_ANALYTICS_ENDPOINT=http://127.0.0.1:8089 (clear LOCALSTACK_DISABLE_EVENTS first)
 make clean              # Remove build artifacts
 ```
 
@@ -185,7 +186,7 @@ When lstk's stdout and stderr are both terminals, `lstk aws` runs the child via 
 
 # Attributing Wrapped-Tool Exits
 
-Separately from how a tool is *run*, each proxy exec site declares *whose* failure a non-zero exit is by passing the result through `proc.MarkUserToolExit`: `lstk aws`, `terraform`, `cdk`, `sam`, the `lstk az` passthrough (`azurecli.Exec` — **not** `azurecli.Run`, which is lstk's own orchestration), and extensions. Telemetry reads it back via `proc.IsUserToolExit` for `result.proxy_error` on `lstk_command` events, which keeps users' own CLI usage errors out of the lstk error ranking (DEVX-1004).
+Separately from how a tool is *run*, each proxy exec site declares *whose* failure a non-zero exit is by passing the result through `proc.MarkUserToolExit`: `lstk aws`, `terraform`, `cdk`, `sam`, the `lstk az` passthrough (`azurecli.Exec` — **not** `azurecli.Run`, which is lstk's own orchestration), and extensions. Telemetry reads it back via `proc.IsUserToolExit` in `commandResult` (`cmd/root.go`), which fills `result.proxy_exit_code` on `lstk_command` events — present exactly when the user's tool ran to completion, 0 included — alongside `parameters.proxied` (from `proxyCommandAnnotation` on the five proxy commands, or set directly for extensions) and `result.cancelled` (lstk's own signal context, never the child's exit code). The pipe derives whose failure it was from those three raw fields, which keeps users' own CLI usage errors and interruptions out of the lstk error ranking (DEVX-1004). Contract and consumer changes: `openspec/changes/distinguish-proxied-command-errors/design.md`.
 
 Do not infer this from the runner. `proc.Run` promises signal handling only, and lstk shells out for its own purposes too (`brew upgrade` behind `lstk update`, the `aws` calls behind terraform backend provisioning). A new proxy that forgets the mark loses a data point; marking one of lstk's own execs hides an lstk bug behind the user's name — so leave it off when unsure.
 

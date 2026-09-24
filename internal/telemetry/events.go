@@ -38,27 +38,31 @@ type CommandEvent struct {
 	Result      CommandResult     `json:"result"`
 }
 
-// CommandParameters holds the command name and set flags. Subcommand carries
-// the safe leading command-path tokens of a proxied tool invocation (e.g. "s3
-// ls" for `lstk aws s3 ls`); empty for lstk's own commands.
+// CommandParameters holds the command name and set flags. Subcommand is the
+// safe leading tokens of a proxied tool invocation ("s3 ls" for `lstk aws s3
+// ls`), empty for lstk's own commands. Proxied says the invocation asked for
+// a wrapped tool, whatever happened next. It is never omitempty: JSONHas on
+// the key is the pipe's cutover marker.
 type CommandParameters struct {
 	Command    string   `json:"command"`
 	Subcommand string   `json:"subcommand,omitempty"`
 	Flags      []string `json:"flags"`
+	Proxied    bool     `json:"proxied"`
 }
 
-// CommandResult holds the outcome of a command invocation. ProxyError marks a
-// failure caused by the user's own wrapped-tool invocation (see
-// proc.MarkUserToolExit), which analytics ranks apart from lstk's own; it is
-// false for every other outcome, success included — the field describes the
-// error's origin, not whether a tool was proxied. Not omitempty, so absence
-// means only "emitted before this field existed" and the consumer can date the
-// cutover.
+// CommandResult holds the outcome of a command invocation (DEVX-1004).
+// ProxyExitCode is the wrapped tool's exit code and is present exactly when
+// the tool ran to completion (0 included, -1 when an untrapped signal killed
+// it). nil must marshal as an absent key, not null: ClickHouse's JSONHas
+// reports a null key as present and JSONExtractInt reads it as 0, a success.
+// Cancelled is raw (a zero ExitCode is still a success) and, like Proxied,
+// never omitempty. Contract: openspec/changes/distinguish-proxied-command-errors.
 type CommandResult struct {
-	DurationMS int64  `json:"duration_ms"`
-	ExitCode   int    `json:"exit_code"`
-	ErrorMsg   string `json:"error_msg,omitempty"`
-	ProxyError bool   `json:"proxy_error"`
+	DurationMS    int64  `json:"duration_ms"`
+	ExitCode      int    `json:"exit_code"`
+	ErrorMsg      string `json:"error_msg,omitempty"`
+	ProxyExitCode *int   `json:"proxy_exit_code,omitempty"`
+	Cancelled     bool   `json:"cancelled"`
 }
 
 // LifecycleEvent is the payload for an lstk_lifecycle telemetry event.
@@ -115,16 +119,11 @@ func (c *Client) GetEnvironment(ctx context.Context) Environment {
 
 // EmitCommand emits an lstk_command telemetry event. The Environment block is
 // populated automatically from the client state.
-func (c *Client) EmitCommand(ctx context.Context, command, subcommand string, flags []string, durationMS int64, exitCode int, errorMsg string, proxyError bool) {
+func (c *Client) EmitCommand(ctx context.Context, params CommandParameters, result CommandResult) {
 	c.Emit(ctx, "lstk_command", ToMap(CommandEvent{
 		Environment: c.GetEnvironment(ctx),
-		Parameters:  CommandParameters{Command: command, Subcommand: subcommand, Flags: flags},
-		Result: CommandResult{
-			DurationMS: durationMS,
-			ExitCode:   exitCode,
-			ErrorMsg:   errorMsg,
-			ProxyError: proxyError,
-		},
+		Parameters:  params,
+		Result:      result,
 	}))
 }
 

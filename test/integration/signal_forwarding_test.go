@@ -13,6 +13,8 @@ import (
 	"time"
 
 	"github.com/creack/pty"
+	"github.com/localstack/lstk/test/integration/env"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -174,4 +176,31 @@ func TestWrappedToolSingleSIGINTOnCtrlCWithRedirectedStdin(t *testing.T) {
 	err = cmd.Wait()
 	<-copied
 	requireExitCode(t, 41, err)
+}
+
+// DEVX-1004: a wrapped tool that traps the signal exits with an ordinary code
+// (41 here, terraform 1, aws 130), which reads as the tool's own failure. Only
+// lstk's signal context knows it was interrupted; the event carries both facts.
+func TestSignalledWrappedToolTelemetryRecordsCancellation(t *testing.T) {
+	t.Parallel()
+	analyticsSrv, events := mockAnalyticsServer(t)
+
+	out := &syncBuffer{}
+	cmd := startSignalWait(t, func(c *exec.Cmd) {
+		c.Stdout = out
+		c.Stderr = out
+		c.Env = env.Environ(c.Env).With(env.AnalyticsEndpoint, analyticsSrv.URL)
+	})
+	require.NoError(t, cmd.Start())
+
+	waitForMarker(t, out)
+	require.NoError(t, cmd.Process.Signal(syscall.SIGTERM))
+	requireExitCode(t, 41, cmd.Wait())
+
+	params, result := commandEventParts(t, receiveEventByName(t, events, "lstk_command"))
+	assert.Equal(t, "ext:sig", params["command"])
+	assert.Equal(t, true, params["proxied"])
+	assert.InDelta(t, 41, result["exit_code"], 0)
+	assert.InDelta(t, 41, result["proxy_exit_code"], 0, "the tool ran to completion; its code is preserved")
+	assert.Equal(t, true, result["cancelled"], "lstk's own SIGTERM, not the tool's 41, is the interruption signal")
 }

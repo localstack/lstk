@@ -100,9 +100,12 @@ func TestStartCommandSendsTelemetryEvent(t *testing.T) {
 			params, ok := payload["parameters"].(map[string]any)
 			require.True(t, ok)
 			assert.Equal(t, "start", params["command"])
+			assert.Equal(t, false, params["proxied"], "lstk's own command is out of the proxy population")
 
 			result, ok := payload["result"].(map[string]any)
 			require.True(t, ok)
+			assert.NotContains(t, result, "proxy_exit_code", "no wrapped tool ran")
+			assert.Equal(t, false, result["cancelled"])
 			assert.InDelta(t, 0, result["exit_code"], 0)
 		case <-time.After(3 * time.Second):
 			t.Fatal("timed out waiting for telemetry event")
@@ -211,47 +214,84 @@ func TestStartCommandDoesNotSendTelemetryWhenDisabled(t *testing.T) {
 	}
 }
 
-// DEVX-1003: a proxied `lstk aws` failure must record the wrapped CLI's real
-// exit code and the leading service/operation tokens in telemetry, instead of
-// a flattened exit_code=1 whose only signal is the "exit status 252" string.
-func TestAWSProxyTelemetryRecordsExitCodeAndSubcommand(t *testing.T) {
+// commandEventParts unpacks an lstk_command event into its parameters and
+// result blocks.
+func commandEventParts(t *testing.T, event map[string]any) (params, result map[string]any) {
+	t.Helper()
+	payload, ok := event["payload"].(map[string]any)
+	require.True(t, ok, "payload: %v", event)
+	params, ok = payload["parameters"].(map[string]any)
+	require.True(t, ok, "parameters: %v", payload)
+	result, ok = payload["result"].(map[string]any)
+	require.True(t, ok, "result: %v", payload)
+	return params, result
+}
+
+// proxyEnviron is the shared environment of the no-Docker proxy tests:
+// analytics at the mock server, the fake tool first on PATH, Docker unreachable.
+func proxyEnviron(t *testing.T, analyticsURL, fakeBinDir string) []string {
+	t.Helper()
+	environ := env.Environ(testEnvWithHome(t.TempDir(), "")).
+		With(env.AnalyticsEndpoint, analyticsURL).
+		With(env.Path, fakeBinDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	return append(environ, unreachableDockerHost)
+}
+
+// DEVX-1003/DEVX-1004: a proxied `lstk aws` failure records the wrapped CLI's
+// real exit code as exit_code and as proxy_exit_code, plus the leading
+// service/operation tokens.
+func TestAWSProxyTelemetryRecordsToolExit(t *testing.T) {
 	t.Parallel()
 
 	emulatorSrv := awsHealthServer(t)
 	defer emulatorSrv.Close()
-
 	analyticsSrv, events := mockAnalyticsServer(t)
 
 	// Fake aws on PATH exiting like the real CLI does on a usage error, so the
 	// test needs neither the AWS CLI installed nor a real malformed request.
 	fakeBinDir := writeFakeTool(t, "aws", fakeToolConfig{ExitCode: 252})
 
-	environ := env.Environ(testEnvWithHome(t.TempDir(), "")).
-		With(env.AnalyticsEndpoint, analyticsSrv.URL).
-		With(env.Path, fakeBinDir+string(os.PathListSeparator)+os.Getenv("PATH"))
-	environ = append(environ, unreachableDockerHost)
-
-	_, _, err := runLstk(t, testContext(t), "", environ,
+	_, _, err := runLstk(t, testContext(t), "", proxyEnviron(t, analyticsSrv.URL, fakeBinDir),
 		"--endpoint-url", emulatorSrv.URL, "aws", "s3", "lss")
 	require.Error(t, err)
 	requireExitCode(t, 252, err)
 
-	event := receiveEventByName(t, events, "lstk_command")
-	payload, ok := event["payload"].(map[string]any)
-	require.True(t, ok)
-	params, ok := payload["parameters"].(map[string]any)
-	require.True(t, ok)
+	params, result := commandEventParts(t, receiveEventByName(t, events, "lstk_command"))
 	assert.Equal(t, "aws", params["command"])
 	assert.Equal(t, "s3 lss", params["subcommand"])
-	result, ok := payload["result"].(map[string]any)
-	require.True(t, ok)
+	assert.Equal(t, true, params["proxied"])
 	assert.InDelta(t, 252, result["exit_code"], 0)
-	assert.Equal(t, true, result["proxy_error"], "the AWS CLI ran and exited non-zero, so the failure is not lstk's")
+	assert.InDelta(t, 252, result["proxy_exit_code"], 0, "the AWS CLI ran and exited non-zero, so the failure is not lstk's")
+	assert.Equal(t, false, result["cancelled"])
+}
+
+// The row the failure-rate denominator needs: a proxy invocation whose tool
+// succeeded is still proxied and records the tool's 0.
+func TestAWSProxyTelemetryRecordsSuccessfulToolExit(t *testing.T) {
+	t.Parallel()
+
+	emulatorSrv := awsHealthServer(t)
+	defer emulatorSrv.Close()
+	analyticsSrv, events := mockAnalyticsServer(t)
+
+	fakeBinDir := writeFakeTool(t, "aws", fakeToolConfig{Stdout: []string{"2026-09-23 my-bucket"}})
+
+	_, _, err := runLstk(t, testContext(t), "", proxyEnviron(t, analyticsSrv.URL, fakeBinDir),
+		"--endpoint-url", emulatorSrv.URL, "aws", "s3", "ls")
+	require.NoError(t, err)
+
+	params, result := commandEventParts(t, receiveEventByName(t, events, "lstk_command"))
+	assert.Equal(t, "aws", params["command"])
+	assert.Equal(t, true, params["proxied"])
+	assert.InDelta(t, 0, result["exit_code"], 0)
+	require.Contains(t, result, "proxy_exit_code", "presence is how the pipe knows the tool ran")
+	assert.InDelta(t, 0, result["proxy_exit_code"], 0)
 }
 
 // DEVX-1004: a preflight failure shares the command name and exit-code space
-// with the wrapped tool's own failures, so only the mark separates them.
-func TestProxyPreflightFailureTelemetryHasNoProxyError(t *testing.T) {
+// with the wrapped tool's own failures. The invocation is still proxied, but
+// no tool ran, so proxy_exit_code must be absent, not 0.
+func TestProxyPreflightFailureTelemetryHasNoToolExit(t *testing.T) {
 	t.Parallel()
 
 	analyticsSrv, events := mockAnalyticsServer(t)
@@ -259,29 +299,22 @@ func TestProxyPreflightFailureTelemetryHasNoProxyError(t *testing.T) {
 	// Gets the run past the installed check so it fails on preflight instead.
 	fakeBinDir := writeFakeTool(t, "aws", fakeToolConfig{})
 
-	environ := env.Environ(testEnvWithHome(t.TempDir(), "")).
-		With(env.AnalyticsEndpoint, analyticsSrv.URL).
-		With(env.Path, fakeBinDir+string(os.PathListSeparator)+os.Getenv("PATH"))
-	environ = append(environ, unreachableDockerHost)
-
-	_, _, err := runLstk(t, testContext(t), "", environ, "aws", "s3", "ls")
+	_, _, err := runLstk(t, testContext(t), "", proxyEnviron(t, analyticsSrv.URL, fakeBinDir), "aws", "s3", "ls")
 	require.Error(t, err)
 	requireExitCode(t, 1, err)
 
-	event := receiveEventByName(t, events, "lstk_command")
-	payload, ok := event["payload"].(map[string]any)
-	require.True(t, ok)
-	params, ok := payload["parameters"].(map[string]any)
-	require.True(t, ok)
+	params, result := commandEventParts(t, receiveEventByName(t, events, "lstk_command"))
 	assert.Equal(t, "aws", params["command"])
-	result, ok := payload["result"].(map[string]any)
-	require.True(t, ok)
-	assert.Equal(t, false, result["proxy_error"], "an unreachable runtime is lstk's own failure")
+	assert.Equal(t, true, params["proxied"])
+	assert.InDelta(t, 1, result["exit_code"], 0)
+	assert.NotContains(t, result, "proxy_exit_code", "an unreachable runtime is lstk's own failure; no tool ran")
+	assert.Equal(t, false, result["cancelled"])
 }
 
-// DEVX-1004: `setup azure` and interception shell out to `az` as well, but lstk
-// composed those calls — marking them would hide an lstk bug as the user's.
-func TestLstkOrchestratedAzFailureTelemetryHasNoProxyError(t *testing.T) {
+// DEVX-1004: `setup azure` and interception shell out to `az` too, but lstk
+// composed those calls; recording a tool exit would hide an lstk bug as the
+// user's. The command runs under the `az` proxy without being proxied.
+func TestLstkOrchestratedAzFailureTelemetryIsNotProxied(t *testing.T) {
 	t.Parallel()
 
 	analyticsSrv, events := mockAnalyticsServer(t)
@@ -295,23 +328,20 @@ func TestLstkOrchestratedAzFailureTelemetryHasNoProxyError(t *testing.T) {
 		With(env.AnalyticsEndpoint, analyticsSrv.URL).
 		With(env.Path, fakeBinDir+string(os.PathListSeparator)+os.Getenv("PATH"))
 
-	_, _, err := runLstk(t, testContext(t), "", environ, "az", "stop-interception")
+	_, stderr, err := runLstk(t, testContext(t), "", environ, "az", "stop-interception")
 	require.Error(t, err)
+	require.Contains(t, stderr, "fake az failure", "the failure must come from the az call lstk composed, not an earlier guard")
 
-	event := receiveEventByName(t, events, "lstk_command")
-	payload, ok := event["payload"].(map[string]any)
-	require.True(t, ok)
-	params, ok := payload["parameters"].(map[string]any)
-	require.True(t, ok)
+	params, result := commandEventParts(t, receiveEventByName(t, events, "lstk_command"))
 	assert.Equal(t, "az stop-interception", params["command"])
-	result, ok := payload["result"].(map[string]any)
-	require.True(t, ok)
-	assert.Equal(t, false, result["proxy_error"], "lstk composed this az call, so its failure is lstk's")
+	assert.Equal(t, false, params["proxied"])
+	assert.InDelta(t, 1, result["exit_code"], 0)
+	assert.NotContains(t, result, "proxy_exit_code", "lstk composed this az call, so its failure is lstk's")
 }
 
 // The other half of the azurecli Exec/Run split: `lstk az` forwards the user's
 // own args, so a refactor must not unmark it while keeping Run correct.
-func TestAzPassthroughFailureTelemetryHasProxyError(t *testing.T) {
+func TestAzPassthroughFailureTelemetryRecordsToolExit(t *testing.T) {
 	t.Parallel()
 
 	emulatorSrv := azureHealthServer(t)
@@ -330,13 +360,37 @@ func TestAzPassthroughFailureTelemetryHasProxyError(t *testing.T) {
 	require.Error(t, err)
 	requireExitCode(t, 3, err)
 
-	event := receiveEventByName(t, events, "lstk_command")
-	payload, ok := event["payload"].(map[string]any)
-	require.True(t, ok)
-	result, ok := payload["result"].(map[string]any)
-	require.True(t, ok)
+	params, result := commandEventParts(t, receiveEventByName(t, events, "lstk_command"))
+	assert.Equal(t, "az", params["command"])
+	assert.Equal(t, true, params["proxied"])
 	assert.InDelta(t, 3, result["exit_code"], 0)
-	assert.Equal(t, true, result["proxy_error"], "the user typed these az args, so the exit is theirs")
+	assert.InDelta(t, 3, result["proxy_exit_code"], 0, "the user typed these az args, so the exit is theirs")
+}
+
+// The tool is not installed: still a proxy invocation, but nothing ran.
+func TestProxyToolNotInstalledTelemetryHasNoToolExit(t *testing.T) {
+	t.Parallel()
+
+	emulatorSrv := awsHealthServer(t)
+	defer emulatorSrv.Close()
+	analyticsSrv, events := mockAnalyticsServer(t)
+
+	// PATH is an empty temp dir, so `aws` resolves nowhere.
+	environ := env.Environ(testEnvWithHome(t.TempDir(), "")).
+		With(env.AnalyticsEndpoint, analyticsSrv.URL).
+		With(env.Path, t.TempDir())
+	environ = append(environ, unreachableDockerHost)
+
+	stdout, _, err := runLstk(t, testContext(t), "", environ, "--endpoint-url", emulatorSrv.URL, "aws", "s3", "ls")
+	require.Error(t, err)
+	requireExitCode(t, 1, err)
+	require.Contains(t, stdout, "aws CLI not found in PATH")
+
+	params, result := commandEventParts(t, receiveEventByName(t, events, "lstk_command"))
+	assert.Equal(t, "aws", params["command"])
+	assert.Equal(t, true, params["proxied"])
+	assert.InDelta(t, 1, result["exit_code"], 0)
+	assert.NotContains(t, result, "proxy_exit_code")
 }
 
 // receiveEventByName waits up to 3s for an event with the given name.

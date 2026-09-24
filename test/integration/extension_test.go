@@ -255,7 +255,7 @@ func TestExtensionInvocationRecordedInTelemetry(t *testing.T) {
 
 // DEVX-1004: extensions are the only proxy that emits from dispatchExtension
 // rather than instrumentCommands, so the aws/az tests miss this path.
-func TestExtensionExitRecordedAsProxyErrorInTelemetry(t *testing.T) {
+func TestExtensionExitRecordedAsToolExitInTelemetry(t *testing.T) {
 	t.Parallel()
 	extDir := t.TempDir()
 	installExtension(t, extDir, "boom")
@@ -278,7 +278,9 @@ func TestExtensionExitRecordedAsProxyErrorInTelemetry(t *testing.T) {
 	result, ok := payload["result"].(map[string]any)
 	require.True(t, ok)
 	require.InDelta(t, 7, result["exit_code"], 0)
-	require.Equal(t, true, result["proxy_error"])
+	require.Equal(t, true, params["proxied"])
+	require.InDelta(t, 7, result["proxy_exit_code"], 0)
+	require.Equal(t, false, result["cancelled"])
 }
 
 // The conveyed sessionId exists so an extension emitting its own telemetry can be

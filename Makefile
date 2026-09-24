@@ -5,7 +5,7 @@ endif
 BUILD_DIR=bin
 export CGO_ENABLED=0
 
-.PHONY: build clean test test-integration test-scripts check-cask lint-cask lint govulncheck mock-generate otel
+.PHONY: build clean test test-integration test-scripts check-cask lint-cask lint govulncheck mock-generate otel telemetry-sink
 
 # Always invoke `go build` and let Go's build cache handle incrementality; a
 # file target on bin/lstk would be skipped when the binary exists, even with
@@ -36,6 +36,10 @@ lint-cask:
 
 otel:
 	docker compose -f docker-compose.tracing.yaml up -d
+
+# Print lstk telemetry events locally; point LSTK_ANALYTICS_ENDPOINT at it.
+telemetry-sink:
+	python3 scripts/telemetry-sink.py
 
 mock-generate:
 	go generate ./...

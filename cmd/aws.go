@@ -55,6 +55,7 @@ Examples:
   lstk aws sqs list-queues
   lstk aws --account 111111111111 s3 mb s3://my-bucket`,
 		DisableFlagParsing: true,
+		Annotations:        map[string]string{proxyCommandAnnotation: "true"},
 		// Shell completion for `lstk aws` is delegated to the aws CLI's own
 		// completer (DEVX-846). Routing it through Cobra's ValidArgsFunction
 		// rather than registering `complete -C aws_completer` means every shell
