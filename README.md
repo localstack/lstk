@@ -57,4 +57,6 @@ For the full command reference, configuration options, environment variables, an
 
 lstk is developed by the LocalStack team. You can read the source, build it, and fork it freely — but we don't accept pull requests from outside collaborators.
 
+The lstk core is licensed under Apache 2.0. Certain bundled first-party extensions, including doctor and deploy, are proprietary and are not licensed under Apache 2.0. See [LICENSE](LICENSE) for the core's terms and [THIRD_PARTY_NOTICES.txt](THIRD_PARTY_NOTICES.txt) for the open-source components it includes.
+
 The best way to participate is to open a well-formed issue. A bug report we can reproduce is worth more to us than a patch, because it captures the part we can't discover ourselves. [CONTRIBUTING.md](CONTRIBUTING.md) explains what to include in bug reports and feature requests.

@@ -140,6 +140,12 @@ jobs:
       - name: Test release scripts
         run: make test-scripts
 
+      # THIRD_PARTY_NOTICES.txt ships in every package; a dependency change
+      # that leaves it stale, or brings in a licence outside the allowlist,
+      # fails here rather than shipping.
+      - name: Check third-party notices
+        run: make check-notices
+
       # Nothing else reads the generated cask before a release publishes it.
       # Render it and check what would ship.
       - name: Check generated Homebrew cask
@@ -414,6 +420,9 @@ jobs:
       - name: Check descriptions match the bundled binary
         run: scripts/bundled-extensions/check-descriptions.sh bundled/linux_amd64
 
+      - name: Check third-party notices
+        run: make check-notices
+
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7.2.3
         with:
@@ -434,6 +443,9 @@ jobs:
       # GoReleaser output. This is the same tool the previous
       # evg4b/goreleaser-npm-publisher-action wrapped, split into an explicit
       # build step so we can swap in our own launcher before publishing.
+      # --files and --license apply to every package. Apache-2.0 is right for
+      # the wrapper, which holds only the launcher; the platform packages, which
+      # hold the proprietary bundle, are relabelled by add-bundled-to-npm.sh.
       - name: Build npm packages
         run: >
           npx --yes goreleaser-npm-publisher@1.5.0 build
@@ -441,7 +453,7 @@ jobs:
           --prefix @localstack
           --license Apache-2.0
           --description "LocalStack CLI v2 - Start and manage LocalStack emulators"
-          --files README.md LICENSE
+          --files README.md LICENSE THIRD_PARTY_NOTICES.txt
           --keywords cli developer-tools local-development localstack
 
       # Replace the auto-generated wrapper with our launcher, which forwards
@@ -453,9 +465,10 @@ jobs:
 
       # The launcher execs the Go binary from the platform package, so that is
       # where lstk's bundled dir resolves to and where the bundled extensions
-      # must live — not the wrapper. The script also registers them in each
-      # package's `files` allowlist: the publisher emits "files": [], which npm
-      # packs as package.json + bin only, so a bare copy would be dropped.
+      # and their licence documents must live, not the wrapper. The script also
+      # registers them in each package's `files` allowlist (npm packs only what
+      # is listed there, so a bare copy would be dropped) and sets the package's
+      # `license` to the compound expression.
       - name: Add bundled extensions to the npm platform packages
         run: scripts/bundled-extensions/add-bundled-to-npm.sh dist/npm bundled
 
