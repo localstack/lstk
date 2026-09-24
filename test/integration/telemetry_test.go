@@ -393,6 +393,39 @@ func TestProxyToolNotInstalledTelemetryHasNoToolExit(t *testing.T) {
 	assert.NotContains(t, result, "proxy_exit_code")
 }
 
+// DEVX-1004: with stdin, stdout and stderr all terminals, `lstk aws` runs the
+// tool in a PTY and pumps Ctrl-C to it as a byte, so only the child gets
+// SIGINT and lstk's own signal context never fires. The forwarded interrupt is
+// the only trace, and it must still record as cancelled.
+func TestInteractiveCtrlCOnProxyRecordsCancellation(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("proc.RunInPTY is unix-only")
+	}
+	t.Parallel()
+
+	emulatorSrv := awsHealthServer(t)
+	defer emulatorSrv.Close()
+	analyticsSrv, events := mockAnalyticsServer(t)
+
+	// The aws CLI traps SIGINT and exits 130 rather than dying by the signal,
+	// which is what makes the exit code alone indistinguishable from a failure.
+	fakeBinDir := writeFakeTool(t, "aws", fakeToolConfig{Stdout: []string{"READY"}, SleepSeconds: 30, TrapExitCode: 130})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	p := startLstkInPTY(t, ctx, proxyEnviron(t, analyticsSrv.URL, fakeBinDir),
+		"--endpoint-url", emulatorSrv.URL, "aws", "s3", "ls")
+	p.waitForOutput("READY")
+	p.write("\x03")
+	_, err := p.wait()
+	requireExitCode(t, 130, err)
+
+	params, result := commandEventParts(t, receiveEventByName(t, events, "lstk_command"))
+	assert.Equal(t, true, params["proxied"])
+	assert.InDelta(t, 130, result["proxy_exit_code"], 0)
+	assert.Equal(t, true, result["cancelled"], "Ctrl-C forwarded through the PTY is the user's interruption, not the tool's failure")
+}
+
 // receiveEventByName waits up to 3s for an event with the given name.
 // Events with a different name are skipped until the deadline.
 func receiveEventByName(t *testing.T, events <-chan map[string]any, name string) map[string]any {

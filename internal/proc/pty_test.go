@@ -291,3 +291,61 @@ func TestRunInPTYMergesStderrIntoOut(t *testing.T) {
 	assert.Contains(t, out.String(), "to-stdout")
 	assert.Contains(t, out.String(), "to-stderr")
 }
+
+// A Ctrl-C typed while the child owns the terminal reaches only the child
+// (DEVX-1049), so RunInPTY must record that it forwarded the interrupt: it
+// is the only evidence telemetry has that the run was cancelled rather than
+// failed (DEVX-1004).
+func TestRunInPTYMarksForwardedInterrupt(t *testing.T) {
+	skipWithoutPTY(t)
+	outerPtmx, outerTTY, err := pty.Open()
+	require.NoError(t, err)
+	defer func() { _ = outerPtmx.Close() }()
+	defer func() { _ = outerTTY.Close() }()
+
+	out := newSyncWriter()
+	cmd := exec.Command("sh", "-c", "trap 'exit 130' INT; echo ready; sleep 5; exit 0")
+	cmd.Stdin = outerTTY
+
+	done := make(chan error, 1)
+	go func() {
+		_, err := RunInPTY(cmd, out)
+		done <- err
+	}()
+	require.Eventually(t, func() bool { return strings.Contains(out.String(), "ready") },
+		5*time.Second, 10*time.Millisecond)
+
+	_, err = outerPtmx.Write([]byte{0x03})
+	require.NoError(t, err)
+
+	select {
+	case err := <-done:
+		var exitErr *exec.ExitError
+		require.ErrorAs(t, err, &exitErr)
+		assert.Equal(t, 130, exitErr.ExitCode(), "the child trapped the signal and exited normally")
+		assert.True(t, WasInterrupted(err))
+	case <-time.After(10 * time.Second):
+		_ = cmd.Process.Kill()
+		t.Fatal("child never exited after Ctrl-C")
+	}
+}
+
+func TestRunInPTYDoesNotMarkInterruptWithoutCtrlC(t *testing.T) {
+	skipWithoutPTY(t)
+	outerPtmx, outerTTY, err := pty.Open()
+	require.NoError(t, err)
+	defer func() { _ = outerPtmx.Close() }()
+	defer func() { _ = outerTTY.Close() }()
+
+	out := newSyncWriter()
+	cmd := exec.Command("sh", "-c", "IFS= read -r key <&2; exit 3")
+	cmd.Stdin = outerTTY
+	done := make(chan error, 1)
+	go func() { _, err := RunInPTY(cmd, out); done <- err }()
+	time.Sleep(200 * time.Millisecond)
+	_, err = outerPtmx.WriteString("x\n")
+	require.NoError(t, err)
+	err = <-done
+	require.Error(t, err)
+	assert.False(t, WasInterrupted(err), "ordinary keystrokes are not an interruption")
+}
