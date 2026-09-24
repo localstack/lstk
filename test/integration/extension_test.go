@@ -253,9 +253,10 @@ func TestExtensionInvocationRecordedInTelemetry(t *testing.T) {
 	assertCommandTelemetry(t, events, "ext:hello", 0)
 }
 
-// DEVX-1004: extensions are the only proxy that emits from dispatchExtension
-// rather than instrumentCommands, so the aws/az tests miss this path.
-func TestExtensionExitRecordedAsToolExitInTelemetry(t *testing.T) {
+// DEVX-1004: an extension is lstk's own code shipped separately, not a wrapped
+// third-party tool, so its exit is lstk's: not proxied, no proxy_exit_code.
+// dispatchExtension emits this event itself, so the aws/az tests miss the path.
+func TestExtensionExitRecordedAsLstkExitInTelemetry(t *testing.T) {
 	t.Parallel()
 	extDir := t.TempDir()
 	installExtension(t, extDir, "boom")
@@ -269,17 +270,11 @@ func TestExtensionExitRecordedAsToolExitInTelemetry(t *testing.T) {
 	_, _, err := runLstk(t, testContext(t), t.TempDir(), environ, "boom", "exit", "7")
 	requireExitCode(t, 7, err)
 
-	event := receiveEventByName(t, events, "lstk_command")
-	payload, ok := event["payload"].(map[string]any)
-	require.True(t, ok)
-	params, ok := payload["parameters"].(map[string]any)
-	require.True(t, ok)
+	params, result := commandEventParts(t, receiveEventByName(t, events, "lstk_command"))
 	require.Equal(t, "ext:boom", params["command"])
-	result, ok := payload["result"].(map[string]any)
-	require.True(t, ok)
+	require.Equal(t, false, params["proxied"])
 	require.InDelta(t, 7, result["exit_code"], 0)
-	require.Equal(t, true, params["proxied"])
-	require.InDelta(t, 7, result["proxy_exit_code"], 0)
+	require.NotContains(t, result, "proxy_exit_code")
 	require.Equal(t, false, result["cancelled"])
 }
 

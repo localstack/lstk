@@ -1,4 +1,4 @@
-TDD throughout: each test task precedes its implementation task and must be run and seen to fail for the stated reason before the code lands. Kept from PR #499 (already on this branch): the exec-site marker (`internal/proc/exit.go` + tests), the six marked sites, the `azurecli` Exec/Run split, and the `test/integration/env/env.go` fix.
+TDD throughout: each test task precedes its implementation task and must be run and seen to fail for the stated reason before the code lands. Kept from PR #499 (already on this branch): the exec-site marker (`internal/proc/exit.go` + tests), the five marked third-party sites, the `azurecli` Exec/Run split, and the `test/integration/env/env.go` fix. Dropped from it: the mark on `extension.Invoke` (extensions are lstk's own code).
 
 ## 1. Event schema
 
@@ -26,8 +26,8 @@ Rewrite the four `proxy_error` tests from #499 rather than adding beside them; a
 - [x] 4.4 `lstk az group lst` passthrough exiting 3 → `proxied: true`, `proxy_exit_code: 3`
 - [x] 4.5 **Successful** proxy invocation (fake `aws` exiting 0 against `awsHealthServer`) → `proxied: true`, `proxy_exit_code: 0`, `exit_code: 0` — the case that makes the denominator computable
 - [x] 4.6 `lstk start` against a pre-started container (extend `TestStartCommandSendsTelemetryEvent`) → `proxied: false`, no `proxy_exit_code`
-- [x] 4.7 Extension exiting 7 (`extension_test.go`) → `proxied: true`, `proxy_exit_code: 7`
-- [x] 4.8 Signalled proxy (`signal_forwarding_test.go`, `!windows`): SIGTERM to `lstk sig signal-wait` → `cancelled: true`, `proxied: true`, `proxy_exit_code: 41` — the extension traps the signal and exits normally, so this is the case an exit-code test would misclassify
+- [x] 4.7 Extension exiting 7 (`extension_test.go`) → `proxied: false`, no `proxy_exit_code`, `exit_code: 7` — extensions are lstk's own code
+- [x] 4.8 Signalled child (`signal_forwarding_test.go`, `!windows`): SIGTERM to `lstk sig signal-wait` → `cancelled: true`, `exit_code: 41` — the child traps the signal and exits normally, so this is the case an exit-code test would misclassify
 
 ## 5. Docs in this repo
 

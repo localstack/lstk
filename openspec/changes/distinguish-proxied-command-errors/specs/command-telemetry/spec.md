@@ -4,9 +4,9 @@
 
 Every `lstk_command` event SHALL carry `parameters.proxied`, true when the invocation asked lstk to run a wrapped external tool on the user's behalf and false otherwise. The value SHALL describe the request, not the outcome: it is true for a proxy invocation that succeeded, for one whose tool exited non-zero, and for one that failed lstk's preflight before the tool ever ran. It SHALL be emitted on every event, false included.
 
-The proxied set SHALL be the proxy commands `aws`, `az`, `cdk`, `sam`, and `terraform` — including their aliases — together with every resolved extension invocation. A command SHALL declare membership explicitly rather than have it inferred from an implementation detail such as flag-parsing configuration, and the same declaration SHALL govern the existing `parameters.subcommand` field so the two cannot disagree.
+The proxied set SHALL be the proxy commands `aws`, `az`, `cdk`, `sam`, and `terraform`, including their aliases. A command SHALL declare membership explicitly rather than have it inferred from an implementation detail such as flag-parsing configuration, and the same declaration SHALL govern the existing `parameters.subcommand` field so the two cannot disagree.
 
-Subcommands of a proxy command that perform lstk's own work rather than forwarding to the wrapped tool SHALL report `proxied` as false.
+Subcommands of a proxy command that perform lstk's own work rather than forwarding to the wrapped tool SHALL report `proxied` as false. Extension invocations SHALL report `proxied` as false: an extension is lstk's own code shipped separately, not a wrapped third-party tool, and lstk cannot observe whether the extension in turn wraps one.
 
 #### Scenario: A successful proxy invocation is still proxied
 
@@ -38,10 +38,11 @@ Subcommands of a proxy command that perform lstk's own work rather than forwardi
 - **THEN** the event has `parameters.proxied` false
 - **AND** the command is recorded under a name distinct from the `az` passthrough's
 
-#### Scenario: Extension invocations are proxied
+#### Scenario: Extension invocations are lstk's own
 
-- **WHEN** lstk resolves and runs the extension `deploy`
-- **THEN** the `ext:deploy` event has `parameters.proxied` true
+- **WHEN** lstk resolves and runs the extension `deploy` and it exits 7
+- **THEN** the `ext:deploy` event has `parameters.proxied` false
+- **AND** `result.exit_code` is 7 with no `result.proxy_exit_code`
 
 ### Requirement: Command events record the wrapped tool's own exit when it ran
 
