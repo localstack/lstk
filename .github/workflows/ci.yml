@@ -394,8 +394,11 @@ jobs:
             echo "Release ${GITHUB_REF_NAME} already records bundle ${recorded}; pinning to it."
             export LSTK_EXTENSIONS_TAG="${recorded}"
           fi
-          scripts/bundled-extensions/fetch-bundled-extensions.sh | tee fetch.log
-          tag="$(sed -n 's/^Resolved extensions bundle: \([^ ]*\) .*/\1/p' fetch.log)"
+          # Kept out of the checkout: an untracked file makes goreleaser refuse
+          # to release on a dirty tree.
+          fetch_log="${RUNNER_TEMP}/fetch.log"
+          scripts/bundled-extensions/fetch-bundled-extensions.sh | tee "${fetch_log}"
+          tag="$(sed -n 's/^Resolved extensions bundle: \([^ ]*\) .*/\1/p' "${fetch_log}")"
           [ -n "${tag}" ] || { echo "could not determine the resolved bundle tag"; exit 1; }
           commit="$(GH_TOKEN="${LSTK_EXTENSIONS_READ_TOKEN}" gh api "repos/${LSTK_EXTENSIONS_REPO}/commits/${tag}" --jq .sha)"
           echo "tag=${tag}" >> "${GITHUB_OUTPUT}"
