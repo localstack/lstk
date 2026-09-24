@@ -40,7 +40,7 @@ Rewrite the four `proxy_error` tests from #499 rather than adding beside them; a
 - [x] 4b.5 Split `emitValidationError` (`NETWORK_ERROR` for an unreachable endpoint, `EMULATOR_WRONG_TYPE` for a wrong emulator behind it); classify terraform backend provisioning (`IAC_DEPLOY_FAILED`) and the Azure setup/interception failures (`EMULATOR_NOT_RUNNING`, `INTERNAL_ERROR`, `VALIDATION_ERROR`) via `output.WithCode`
 - [x] 4b.6 Ratchet: `TestEveryNewErrorEventSetsACode` fails when a file gains an `ErrorEvent` literal without a `Code`
 - [x] 4b.7 Classify the 33 unambiguous remaining `ErrorEvent` literals (snapshot not-found/auth/not-running, DNS, integration-not-set-up, dependency-missing, config-invalid, confirmation-required, TUI passthrough via `ErrorCodeOf`)
-- [ ] 4b.8 Decide and classify the 7 open sites (ratchet baseline): cdk/sam version-check failures, terraform provider not installed, invalid and incompatible snapshot files, leftover-container conflicts on start
+- [x] 4b.8 Classify the 7 open sites: cdk/sam version-check failures → `DEPENDENCY_MISSING`, terraform provider not installed → `IAC_FILE_NOT_FOUND`, invalid or incompatible snapshot file → `SNAPSHOT_INVALID_REF`, leftover-container conflicts on start → `EMULATOR_START_FAILED`; the three widened definitions are in `docs/structured-output.md`. The ratchet baseline is now empty: every `ErrorEvent` sets a `Code`
 - [ ] 4b.9 Follow-up: add the pipe coverage query
 
 ## 5. Docs in this repo

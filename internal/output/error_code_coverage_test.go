@@ -15,17 +15,12 @@ import (
 )
 
 // unclassifiedErrorEventBaseline is the number of ErrorEvent literals per file
-// that set no Code, as of the last time someone classified sites. The test
-// fails when a file gains one (classify it: every ErrorEvent needs a Code, and
-// Fail carries it into result.error_code on lstk_command telemetry) and when a
-// file loses one (lower the number here, so the ratchet only ever tightens).
-var unclassifiedErrorEventBaseline = map[string]int{
-	"internal/container/start.go":        2,
-	"internal/iac/cdk/cli/exec.go":       1,
-	"internal/iac/sam/cli/exec.go":       1,
-	"internal/iac/terraform/cli/exec.go": 1,
-	"internal/snapshot/load.go":          2,
-}
+// that set no Code. It is empty: every ErrorEvent sets a Code, which Fail
+// carries into result.error_code on lstk_command telemetry and the --json
+// envelope renders. A new literal without one fails this test — pick a code
+// from error_code.go (ErrInternal when nothing fits) rather than adding a
+// baseline entry.
+var unclassifiedErrorEventBaseline = map[string]int{}
 
 func TestEveryNewErrorEventSetsACode(t *testing.T) {
 	root := filepath.Join("..", "..")

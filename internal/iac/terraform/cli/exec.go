@@ -109,11 +109,11 @@ func Run(ctx context.Context, endpointURL, region, account, chdir string, sink o
 			span.RecordError(err)
 			span.SetStatus(codes.Error, err.Error())
 			if errors.Is(err, ErrInitRequired) {
-				sink.Emit(output.ErrorEvent{
+				return output.Fail(sink, output.ErrorEvent{
 					Title:   "Terraform AWS provider is not installed",
 					Actions: []output.ErrorAction{{Label: "Initialize the project:", Value: tfCmd() + " init"}},
-				})
-				return output.NewSilentError(err)
+					Code:    output.ErrIACFileNotFound,
+				}, err)
 			}
 			return err
 		}

@@ -1038,7 +1038,7 @@ func healLeftoverContainer(ctx context.Context, rt runtime.Runtime, sink output.
 			ErrorCode: telemetry.ErrCodeStartFailed,
 			ErrorMsg:  msg,
 		})
-		return output.NewSilentError(errors.New(msg))
+		return &output.SilentError{Err: errors.New(msg), Code: output.ErrEmulatorStartFailed}
 	}
 
 	removable := brief.Managed || (brief.AutoRemove && !brief.Created)
@@ -1047,6 +1047,7 @@ func healLeftoverContainer(ctx context.Context, rt runtime.Runtime, sink output.
 			Title:   fmt.Sprintf("Container name %q is already taken", c.Name),
 			Summary: fmt.Sprintf("An existing container (image %s) uses this name but was not created by lstk, so lstk will not remove it.", brief.Image),
 			Actions: []output.ErrorAction{{Label: "Remove or rename that container, e.g.:", Value: "docker rm " + c.Name}},
+			Code:    output.ErrEmulatorStartFailed,
 		})
 		return emitStartError(fmt.Sprintf("container name %s taken by a foreign container (image %s)", c.Name, brief.Image))
 	}
@@ -1056,6 +1057,7 @@ func healLeftoverContainer(ctx context.Context, rt runtime.Runtime, sink output.
 			Title:   fmt.Sprintf("Cannot remove leftover container %q", c.Name),
 			Summary: fmt.Sprintf("A previous start left this container behind and removing it failed: %v", err),
 			Actions: []output.ErrorAction{{Label: "Remove it manually, then retry:", Value: "docker rm -f " + c.Name}},
+			Code:    output.ErrEmulatorStartFailed,
 		})
 		return emitStartError(fmt.Sprintf("failed to remove leftover container %s: %v", c.Name, err))
 	}

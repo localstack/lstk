@@ -47,11 +47,11 @@ func Run(ctx context.Context, endpointURL, region string, sink output.Sink, logg
 	if err != nil {
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())
-		sink.Emit(output.ErrorEvent{
+		return output.Fail(sink, output.ErrorEvent{
 			Title:   err.Error(),
 			Actions: []output.ErrorAction{{Label: "Upgrade CDK CLI:", Value: "npm install -g aws-cdk@latest"}},
-		})
-		return output.NewSilentError(err)
+			Code:    output.ErrDependencyMissing,
+		}, err)
 	}
 
 	// endpointURL is already fully resolved by the command boundary

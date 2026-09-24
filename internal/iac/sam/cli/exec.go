@@ -50,11 +50,11 @@ func Run(ctx context.Context, endpointURL, account, region string, regionSelecte
 	if err := CheckVersion(ctx, samBin); err != nil {
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())
-		sink.Emit(output.ErrorEvent{
+		return output.Fail(sink, output.ErrorEvent{
 			Title:   err.Error(),
 			Actions: []output.ErrorAction{{Label: "Upgrade AWS SAM CLI:", Value: installDocsURL}},
-		})
-		return output.NewSilentError(err)
+			Code:    output.ErrDependencyMissing,
+		}, err)
 	}
 
 	// endpointURL is already fully resolved by the command boundary

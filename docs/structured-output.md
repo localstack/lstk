@@ -99,7 +99,7 @@ Every `error.code` is one of the following fixed constants. A failure that doesn
 | `EMULATOR_ALREADY_RUNNING` | An emulator is already running where the command expected it not to be | No | `EMULATOR` |
 | `EMULATOR_WRONG_TYPE` | The command requires a specific emulator type but a different one is configured/running | No | `EMULATOR` |
 | `EMULATOR_NOT_CONFIGURED` | No container of the requested type exists in the resolved config | No | `EMULATOR` |
-| `EMULATOR_START_FAILED` | The emulator failed to reach a healthy state after starting | Yes | `EMULATOR` |
+| `EMULATOR_START_FAILED` | The emulator could not be started (e.g. its container name is held by a container lstk did not create, or a leftover container could not be removed) or failed to reach a healthy state after starting | Yes | `EMULATOR` |
 | `AUTH_REQUIRED` | The operation needs a LocalStack auth token and none is available | No | `AUTH` |
 | `AUTH_LOGIN_FAILED` | An authentication flow failed | Yes | `AUTH` |
 | `CREDENTIALS_MISSING` | Required third-party credentials (e.g. AWS credentials for an S3 remote) could not be resolved | No | `AUTH` |
@@ -107,13 +107,13 @@ Every `error.code` is one of the following fixed constants. A failure that doesn
 | `LICENSE_UNSUPPORTED_TAG` | The configured image tag is not covered by the license | No | `AUTH` |
 | `LICENSE_NOT_COVERED` | The token is valid but the plan does not include the requested emulator (e.g. Snowflake/Azure on a plan without it) — distinct from `LICENSE_INVALID`'s bad/expired token, since the remediation differs (upgrade plan vs. re-authenticate) | No | `AUTH` |
 | `SNAPSHOT_NOT_FOUND` | The referenced snapshot does not exist | No | `RESOURCE` |
-| `SNAPSHOT_INVALID_REF` | The snapshot reference could not be parsed | No | `RESOURCE` |
+| `SNAPSHOT_INVALID_REF` | The snapshot reference could not be parsed, or the file it names is not a usable snapshot (not a snapshot at all, or incompatible with the running LocalStack version) | No | `RESOURCE` |
 | `SNAPSHOT_REMOTE_ERROR` | A platform or S3 remote call failed | Yes | `RESOURCE` |
 | `SNAPSHOT_BUCKET_NOT_FOUND` | The pre-flight S3 bucket-existence check failed | No | `RESOURCE` |
 | `CONFIG_INVALID` | The config file failed to parse or validate | No | `CONFIG` |
 | `CONFIG_NOT_FOUND` | An explicit config path does not exist | No | `CONFIG` |
 | `INTEGRATION_NOT_SET_UP` | A required one-time setup step (e.g. `lstk setup azure`) has not been run | No | `CONFIG` |
-| `DEPENDENCY_MISSING` | A required external CLI (e.g. `az`) is not on `PATH` | No | `RUNTIME` |
+| `DEPENDENCY_MISSING` | A required external CLI (e.g. `az`) is not on `PATH`, or is installed in a version lstk cannot use | No | `RUNTIME` |
 | `DNS_RESOLUTION_REQUIRED` | A required hostname pattern does not resolve | No | `RUNTIME` |
 | `PORT_CONFLICT` | A port lstk needs is already bound by something else (the edge port, an extra gateway port, or an `expose_ports` entry) | No | `RUNTIME` |
 | `CONFIRMATION_REQUIRED` | A destructive action needs `--force` outside an interactive terminal | No | `USAGE` |

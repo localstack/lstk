@@ -132,18 +132,18 @@ func load(ctx context.Context, rt runtime.Runtime, containers []config.Container
 		return emitFeatureUnavailableError(sink)
 	}
 	if errors.Is(err, ErrIncompatibleSnapshot) {
-		sink.Emit(output.ErrorEvent{
+		return output.Fail(sink, output.ErrorEvent{
 			Title:   "Could not load snapshot",
 			Summary: "Snapshot is incompatible with the running LocalStack version",
-		})
-		return output.NewSilentError(err)
+			Code:    output.ErrSnapshotInvalidRef,
+		}, err)
 	}
 	if errors.Is(err, ErrInvalidSnapshotFile) {
-		sink.Emit(output.ErrorEvent{
+		return output.Fail(sink, output.ErrorEvent{
 			Title:   "Could not load snapshot",
 			Summary: "This file is not a valid snapshot",
-		})
-		return output.NewSilentError(err)
+			Code:    output.ErrSnapshotInvalidRef,
+		}, err)
 	}
 	if errors.Is(err, ErrPodNotFound) {
 		return output.Fail(sink, output.ErrorEvent{
