@@ -178,10 +178,12 @@ func TestWrappedToolSingleSIGINTOnCtrlCWithRedirectedStdin(t *testing.T) {
 	requireExitCode(t, 41, err)
 }
 
-// DEVX-1004: a wrapped tool that traps the signal exits with an ordinary code
-// (41 here, terraform 1, aws 130), which reads as the tool's own failure. Only
-// lstk's signal context knows it was interrupted; the event carries both facts.
-func TestSignalledWrappedToolTelemetryRecordsCancellation(t *testing.T) {
+// DEVX-1004: a child that traps the signal exits with an ordinary code (41
+// here, terraform 1, aws 130), which reads as a plain failure. Only lstk's
+// signal context knows it was interrupted. The reference extension stands in
+// for any wrapped child here; as an extension it is lstk's own code, so the
+// event is not proxied and carries no proxy_exit_code.
+func TestSignalledChildTelemetryRecordsCancellation(t *testing.T) {
 	t.Parallel()
 	analyticsSrv, events := mockAnalyticsServer(t)
 
@@ -199,8 +201,8 @@ func TestSignalledWrappedToolTelemetryRecordsCancellation(t *testing.T) {
 
 	params, result := commandEventParts(t, receiveEventByName(t, events, "lstk_command"))
 	assert.Equal(t, "ext:sig", params["command"])
-	assert.Equal(t, true, params["proxied"])
+	assert.Equal(t, false, params["proxied"])
 	assert.InDelta(t, 41, result["exit_code"], 0)
-	assert.InDelta(t, 41, result["proxy_exit_code"], 0, "the tool ran to completion; its code is preserved")
-	assert.Equal(t, true, result["cancelled"], "lstk's own SIGTERM, not the tool's 41, is the interruption signal")
+	assert.NotContains(t, result, "proxy_exit_code")
+	assert.Equal(t, true, result["cancelled"], "lstk's own SIGTERM, not the child's 41, is the interruption signal")
 }

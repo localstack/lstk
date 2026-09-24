@@ -24,7 +24,7 @@ result.cancelled            bool   always emitted   lstk's signal context was ca
 
 | `proxied` | `proxy_exit_code` | `cancelled` | Reading |
 |---|---|---|---|
-| false | — | false | lstk's own command; `exit_code` is lstk's verdict |
+| false | absent | false | lstk's own command, extensions included; `exit_code` is lstk's verdict |
 | true | absent | false | proxy invocation that failed before the tool ran (preflight, Docker down, tool not on PATH) — lstk's failure |
 | true | `0` | false | tool ran and succeeded |
 | true | `252` | false | tool ran and failed, with its real code |
@@ -38,7 +38,7 @@ The pipe derives `error_source ∈ {none, lstk, proxy, cancelled}` from these (s
 
 **What it does not capture**: a tool that exits 0 after which lstk itself fails (a PTY teardown error, for instance) returns an unmarked non-exit error, so `proxy_exit_code` is absent and the row reads as lstk's failure with no tool exit. That is a true statement about whose failure it was; the lost information is only that the tool had finished. Marking successes at every exec site to recover it was judged not worth the plumbing for a path this rare.
 
-**Why store `proxied` rather than derive it from `command`**: it *is* exactly derivable today (`command IN ('aws','az','cdk','sam','terraform') OR command LIKE 'ext:%'`, verified by walking the real Cobra tree — see Decision 4 for the traps). It is rejected as the going-forward mechanism because it puts the rule in the consumer, where a sixth proxy command silently files its successes and its preflight failures into the "lstk's own commands" population. A test can pin the annotated set in this repo (task 3.5) but cannot make the dashboard update. The derivation is retained only for pre-cutover rows.
+**Why store `proxied` rather than derive it from `command`**: it *is* exactly derivable today (`command IN ('aws','az','cdk','sam','terraform')`, verified by walking the real Cobra tree — see Decision 4 for the traps). It is rejected as the going-forward mechanism because it puts the rule in the consumer, where a sixth proxy command silently files its successes and its preflight failures into the "lstk's own commands" population. A test can pin the annotated set in this repo (task 3.5) but cannot make the dashboard update. The derivation is retained only for pre-cutover rows.
 
 **Alternatives rejected**: `proxied` + `proxy_error` booleans (#499's shape; no home for cancellation, and `proxy_error=false` conflates success with lstk failure); `proxy_exit_code` alone (absence would conflate "not proxied" with "proxy whose tool never ran", the most common proxy failure); `proxied` + `error_source` enum (above).
 
@@ -52,19 +52,21 @@ The pipe derives `error_source ∈ {none, lstk, proxy, cancelled}` from these (s
 
 `proc.MarkUserToolExit(err)` wraps a non-zero exit from a tool the user asked for; `proc.IsUserToolExit(err)` reports it. The wrapper is transparent — `Error` and `Unwrap` delegate — so `cmd.ExitCode`'s `errors.As` still reaches the underlying `*exec.ExitError`. This is PR #499's mechanism, kept as-is.
 
-Six call sites mark: `internal/awscli.Exec`, `internal/azurecli.Exec`, `internal/extension.Invoke`, and `internal/iac/{cdk,sam,terraform}/cli`. Running through `proc.Run` is deliberately *not* the claim — lstk's own captured-output execs use the same package. Review audited the full non-test exec inventory and confirmed the six are exactly the user-requested ones, and that the marker survives every wrapper between the exec site and the emit (`output.NewSilentError`, `output.ExitCodeError`, the tracing wrapper).
+Five call sites mark: `internal/awscli.Exec`, `internal/azurecli.Exec`, and `internal/iac/{cdk,sam,terraform}/cli`. Running through `proc.Run` is deliberately *not* the claim — lstk's own captured-output execs use the same package. Review audited the full non-test exec inventory and confirmed these are exactly the user-requested third-party tools, and that the marker survives every wrapper between the exec site and the emit (`output.NewSilentError`, `output.ExitCodeError`, the tracing wrapper).
+
+**Extensions are not marked and not proxied.** An extension is lstk's own code shipped separately — the mechanism for proprietary lstk commands — so its exit is lstk's, exactly like a built-in's. lstk cannot see whether an extension in turn wraps a third-party CLI; an extension that does attributes that in its own telemetry, joined to the `ext:<name>` event on the conveyed `sessionId`. Should a declared-proxy extension ever be needed, the place for it is the extension contract (`LSTK_EXT_CONTEXT` has no manifest today), not a heuristic in lstk.
 
 **Failure modes are asymmetric on purpose**: forgetting the marker on a future proxy attributes the user's failure to lstk, which shows up as a spike in an lstk-owned metric and gets investigated. Marking one of lstk's own execs hides an lstk bug under the user's name, where nobody looks.
 
 `azurecli.Exec` served both the `lstk az` passthrough and lstk's own `setup azure`/interception calls; #499 rewired `azurecli.Run` onto a shared unexported body so only `Exec` marks. Kept.
 
-**How "the tool ran" is observed.** The exec sites mark failures only; a tool that exited 0 returns plain `nil`. At the emit site the tool is therefore known to have run when the invocation is proxied and *either* the error is marked (`proxy_exit_code` = the marked code) *or* there is no error (`proxy_exit_code` = 0). The second clause is an inference: it holds because every proxy's `RunE` returns `nil` only by way of the exec site (audited: `aws`, `az`, `cdk`, `sam`, `terraform`, extensions). The one exception is terraform's developer-only `LSTK_TF_DRY_RUN`, which writes the override file and returns `nil` without running terraform; it is a debugging knob, not a user path, and is accepted. A future proxy that returns `nil` without running its tool would record a phantom `proxy_exit_code: 0`; task 3.5's pinned set is where a reviewer meets that question.
+**How "the tool ran" is observed.** The exec sites mark failures only; a tool that exited 0 returns plain `nil`. At the emit site the tool is therefore known to have run when the invocation is proxied and *either* the error is marked (`proxy_exit_code` = the marked code) *or* there is no error (`proxy_exit_code` = 0). The second clause is an inference: it holds because every proxy's `RunE` returns `nil` only by way of the exec site (audited: `aws`, `az`, `cdk`, `sam`, `terraform`). The one exception is terraform's developer-only `LSTK_TF_DRY_RUN`, which writes the override file and returns `nil` without running terraform; it is a debugging knob, not a user path, and is accepted. A future proxy that returns `nil` without running its tool would record a phantom `proxy_exit_code: 0`; task 3.5's pinned set is where a reviewer meets that question.
 
 **Known limits**: a tool that fails to *start* (not on PATH, ENOEXEC, permission denied) produces no `*exec.ExitError`, so it records no `proxy_exit_code` and the pipe classifies it `lstk`. That is the intended reading — no wrapped tool produced the failure — and it is one instance of the broader "lstk is not a reliability metric" risk below. A tool that exits 0 and is followed by an lstk failure is recorded the same way (Decision 1).
 
 ### Decision 4: `proxied` comes from an explicit annotation, not `DisableFlagParsing`
 
-A `proxyCommandAnnotation` on `aws`, `az`, `cdk`, `sam`, `terraform`; `dispatchExtension` passes `proxied: true` directly, since extensions are resolved rather than registered. `instrumentCommands` reads the annotation for both `proxied` and the existing `subcommand` derivation.
+A `proxyCommandAnnotation` on `aws`, `az`, `cdk`, `sam`, `terraform`. `instrumentCommands` reads it for both `proxied` and the existing `subcommand` derivation. Extensions are resolved rather than registered and cannot carry it; `dispatchExtension` emits `proxied: false` (Decision 3). This is what makes the split reliable: the five proxies are the only commands in the tree with the annotation (pinned by a unit test), and the extension path has no way to acquire it.
 
 **Rationale**: `DisableFlagParsing` is the mechanism that lets a proxy forward unknown flags, not a statement about who the invocation is for; a future command setting it for an unrelated reason would silently start reporting as proxied. The repo already expresses command-level facts this way (`canonicalCommandAnnotation`, `jsonSupportedAnnotation`). One declaration governing both fields keeps them from drifting apart.
 
@@ -79,7 +81,7 @@ The switch is behavior-neutral: exactly five commands set `DisableFlagParsing`; 
 | `aws`, `az`, `cdk`, `sam`, `terraform` | yes | `tf` never appears; `commandDisplayName` resolves via `CommandPath()` |
 | `az start-interception`, `az stop-interception` | no | own `RunE`; `IN ('az')` excludes them |
 | `setup azure` | no | carries the alias `az`, so the retroactive rule must use `IN`, never `LIKE 'az%'` |
-| `ext:<name>` | yes | `dispatchExtension` is the sole emitter and always prefixes |
+| `ext:<name>` | no | lstk's own code; `dispatchExtension` is the sole emitter and always prefixes |
 
 ### Decision 5: `cancelled` is lstk's own signal context, not the child's exit code
 
@@ -112,14 +114,14 @@ A row is post-cutover iff `JSONHas(parameters, 'proxied')`. Because the field is
 Pre-cutover rows derive both facts:
 
 ```sql
-proxied      := command IN ('aws','az','cdk','sam','terraform') OR startsWith(command, 'ext:')
+proxied      := command IN ('aws','az','cdk','sam','terraform')
 error_source := exit_code = 0                                         → 'none'
                 error_bucket = 'user cancelled'                       → 'cancelled'
                 proxied AND startsWith(error_msg, 'exit status ')     → 'proxy'
                 otherwise                                             → 'lstk'
 ```
 
-**Parentheses are load-bearing** wherever the proxied predicate is inlined: `a IN (...) OR b AND c` binds as `a IN (...) OR (b AND c)`, which turns every pre-cutover proxy-command failure into `proxy` regardless of the message — DEVX-1003 in reverse.
+`ext:` rows are lstk's own (Decision 3) in both eras; PR #499's earlier draft counted them as proxied, and any rule copied from it must not.
 
 **Honest strength of the rule**: `error_msg LIKE 'exit status %'` holds against the tree at this change's commit as convention, not invariant — three lstk-owned subprocess errors reach the top nearly bare and are saved only by a wrapper one frame up (`update failed: %w` over `homebrew.go`'s raw `cmd.Run()`; `azurecli.Run` returning bare when stderr is empty; terraform's `provision.go` runner). Trapped-signal interruptions of wrapped tools cannot be recovered retroactively at all.
 
@@ -136,8 +138,7 @@ toInt32(JSONExtractInt(result, 'proxy_exit_code')) AS proxy_exit_code,
 toUInt8(JSONExtractBool(result, 'cancelled'))      AS cancelled,
 
 -- classified: the rule, once, over both eras
-if(has_origin = 1, proxied_raw,
-   command IN ('aws','az','cdk','sam','terraform') OR startsWith(command, 'ext:')) AS proxied,
+if(has_origin = 1, proxied_raw, command IN ('aws','az','cdk','sam','terraform')) AS proxied,
 multiIf(
   exit_code = 0,                                                        'none',
   has_origin = 1 AND cancelled = 1,                                     'cancelled',
@@ -168,8 +169,8 @@ countIf(error_source = 'proxy') / countIf(has_result = 1 AND proxied = 1)
 --   error_source = 'lstk'
 
 -- New panel: top proxied tool exits. `command` is required, not optional —
--- extensions all have subcommand '', `cdk deploy` and `sam deploy` would merge,
--- and codes from different tools are not comparable.
+-- `cdk deploy` and `sam deploy` would merge, and codes from different tools
+-- are not comparable.
 WHERE error_source = 'proxy' GROUP BY command, subcommand, proxy_exit_code
 ```
 
