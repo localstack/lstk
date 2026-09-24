@@ -40,11 +40,11 @@ func Run(ctx context.Context, endpointURL, account, region string, regionSelecte
 	if err != nil {
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())
-		sink.Emit(output.ErrorEvent{
+		return output.Fail(sink, output.ErrorEvent{
 			Title:   fmt.Sprintf("%s not found in PATH", samCmd()),
 			Actions: []output.ErrorAction{{Label: "Install AWS SAM CLI:", Value: installDocsURL}},
-		})
-		return output.NewSilentError(fmt.Errorf("%s not found in PATH", samCmd()))
+			Code:    output.ErrDependencyMissing,
+		}, fmt.Errorf("%s not found in PATH", samCmd()))
 	}
 
 	if err := CheckVersion(ctx, samBin); err != nil {

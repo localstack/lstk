@@ -73,10 +73,10 @@ func Run(ctx context.Context, endpointURL, region, account, chdir string, sink o
 	if chdir != "" {
 		workdir = ResolveChdir(workdir, chdir)
 		if info, statErr := os.Stat(workdir); statErr != nil || !info.IsDir() {
-			sink.Emit(output.ErrorEvent{
+			return output.Fail(sink, output.ErrorEvent{
 				Title: fmt.Sprintf("-chdir directory does not exist: %s", chdir),
-			})
-			return output.NewSilentError(fmt.Errorf("-chdir directory does not exist: %s", workdir))
+				Code:  output.ErrIACFileNotFound,
+			}, fmt.Errorf("-chdir directory does not exist: %s", workdir))
 		}
 	}
 

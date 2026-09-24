@@ -37,14 +37,14 @@ func Remove(ctx context.Context, rt runtime.Runtime, containers []config.Contain
 		return fmt.Errorf("checking emulator status: %w", err)
 	}
 	if len(runningContainers) == 0 {
-		sink.Emit(output.ErrorEvent{
+		return output.Fail(sink, output.ErrorEvent{
 			Title: "LocalStack is not running",
 			Actions: []output.ErrorAction{
 				{Label: "Start LocalStack:", Value: "lstk"},
 				{Label: "See help:", Value: "lstk -h"},
 			},
-		})
-		return output.NewSilentError(fmt.Errorf("LocalStack is not running"))
+			Code: output.ErrEmulatorNotRunning,
+		}, fmt.Errorf("LocalStack is not running"))
 	}
 
 	if !force {

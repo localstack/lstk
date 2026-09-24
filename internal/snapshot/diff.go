@@ -48,14 +48,14 @@ func DiffPod(ctx context.Context, rt runtime.Runtime, containers []config.Contai
 	}
 
 	if len(runningContainers) == 0 {
-		sink.Emit(output.ErrorEvent{
+		return output.Fail(sink, output.ErrorEvent{
 			Title: "LocalStack is not running",
 			Actions: []output.ErrorAction{
 				{Label: "Start LocalStack:", Value: "lstk"},
 				{Label: "See help:", Value: "lstk -h"},
 			},
-		})
-		return output.NewSilentError(fmt.Errorf("LocalStack is not running"))
+			Code: output.ErrEmulatorNotRunning,
+		}, fmt.Errorf("LocalStack is not running"))
 	}
 
 	spinnerText := fmt.Sprintf("Checking diff for pod %q...", podName)
@@ -72,14 +72,14 @@ func DiffPod(ctx context.Context, rt runtime.Runtime, containers []config.Contai
 		return emitPodVersionNotFound(err, podName, "Could not check pod diff", sink)
 	}
 	if errors.Is(err, ErrPodNotFound) {
-		sink.Emit(output.ErrorEvent{
+		return output.Fail(sink, output.ErrorEvent{
 			Title:   "Could not check pod diff",
 			Summary: "Snapshot was not found on the LocalStack platform",
 			Actions: []output.ErrorAction{
 				{Label: "List your snapshots:", Value: "lstk snapshot list"},
 			},
-		})
-		return output.NewSilentError(err)
+			Code: output.ErrSnapshotNotFound,
+		}, err)
 	}
 	if err != nil {
 		return err

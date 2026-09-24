@@ -19,14 +19,14 @@ type CloudPodInspector interface {
 // version 0 shows the latest version; a non-zero version shows that exact one.
 func Show(ctx context.Context, inspector CloudPodInspector, authToken, podName string, version int, sink output.Sink) error {
 	if authToken == "" {
-		sink.Emit(output.ErrorEvent{
+		return output.Fail(sink, output.ErrorEvent{
 			Title: "Authentication required to show snapshots",
 			Actions: []output.ErrorAction{
 				{Label: "Log in:", Value: "lstk login"},
 				{Label: "Or set a token:", Value: "export LOCALSTACK_AUTH_TOKEN=<token>"},
 			},
-		})
-		return output.NewSilentError(fmt.Errorf("authentication required: no auth token"))
+			Code: output.ErrAuthRequired,
+		}, fmt.Errorf("authentication required: no auth token"))
 	}
 
 	spinnerText := "Fetching snapshot"
@@ -41,26 +41,26 @@ func Show(ctx context.Context, inspector CloudPodInspector, authToken, podName s
 			return emitFeatureUnavailableError(sink)
 		}
 		if errors.Is(err, api.ErrCloudPodNotFound) {
-			sink.Emit(output.ErrorEvent{
+			return output.Fail(sink, output.ErrorEvent{
 				Title: fmt.Sprintf("Snapshot 'pod:%s' not found", podName),
 				Actions: []output.ErrorAction{
 					{Label: "List your snapshots:", Value: "lstk snapshot list"},
 				},
-			})
-			return output.NewSilentError(err)
+				Code: output.ErrSnapshotNotFound,
+			}, err)
 		}
 		// The pod exists but that version does not — point at its version list
 		// rather than the list of pods.
 		var versionErr *api.CloudPodVersionNotFoundError
 		if errors.As(err, &versionErr) {
-			sink.Emit(output.ErrorEvent{
+			return output.Fail(sink, output.ErrorEvent{
 				Title:   fmt.Sprintf("Version %d of 'pod:%s' not found", version, podName),
 				Summary: fmt.Sprintf("The highest available version is %d.", versionErr.MaxVersion),
 				Actions: []output.ErrorAction{
 					{Label: "List available versions:", Value: "lstk snapshot versions pod:" + podName},
 				},
-			})
-			return output.NewSilentError(err)
+				Code: output.ErrSnapshotNotFound,
+			}, err)
 		}
 		return fmt.Errorf("show snapshot: %w", err)
 	}

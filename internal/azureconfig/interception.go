@@ -54,11 +54,11 @@ func StopInterception(ctx context.Context, sink output.Sink, targetCloud string)
 	defer span.End()
 
 	if err := azurecli.CheckInstalled(); err != nil {
-		sink.Emit(output.ErrorEvent{
+		return output.Fail(sink, output.ErrorEvent{
 			Title:   "az CLI not found in PATH",
 			Actions: []output.ErrorAction{{Label: "Install Azure CLI:", Value: azurecli.InstallURL}},
-		})
-		return output.NewSilentError(err)
+			Code:    output.ErrDependencyMissing,
+		}, err)
 	}
 
 	if targetCloud == "" {

@@ -570,6 +570,49 @@ func TestTerraformBackendProvisioningFailureTelemetryIsClassified(t *testing.T) 
 	assert.Equal(t, "IAC", result["error_category"])
 }
 
+// Two of the previously unclassified sites, one per carrier shape: a preflight
+// that emits and returns (INTEGRATION_NOT_SET_UP) and a platform-side
+// precondition (AUTH_REQUIRED).
+func TestAzWithoutSetupTelemetryIsClassified(t *testing.T) {
+	t.Parallel()
+
+	emulatorSrv := azureHealthServer(t)
+	analyticsSrv, events := mockAnalyticsServer(t)
+	fakeBinDir := writeFakeTool(t, "az", fakeToolConfig{})
+	configPath := filepath.Join(t.TempDir(), "config.toml")
+	require.NoError(t, os.WriteFile(configPath, []byte("[[containers]]\ntype = \"azure\"\ntag = \"latest\"\nport = \"4566\"\n"), 0o644))
+	environ := env.Environ(testEnvWithHome(t.TempDir(), "")).
+		With(env.AnalyticsEndpoint, analyticsSrv.URL).
+		With(env.Path, fakeBinDir)
+	environ = append(environ, unreachableDockerHost)
+
+	_, _, err := runLstk(t, testContext(t), t.TempDir(), environ,
+		"--endpoint-url", emulatorSrv.URL, "--config", configPath, "--non-interactive", "az", "group", "list")
+	require.Error(t, err)
+
+	params, result := commandEventParts(t, receiveEventByName(t, events, "lstk_command"))
+	assert.Equal(t, true, params["proxied"])
+	assert.NotContains(t, result, "proxy_exit_code")
+	assert.Equal(t, "INTEGRATION_NOT_SET_UP", result["error_code"])
+	assert.Equal(t, "CONFIG", result["error_category"])
+}
+
+func TestSnapshotShowWithoutAuthTelemetryIsClassified(t *testing.T) {
+	t.Parallel()
+
+	analyticsSrv, events := mockAnalyticsServer(t)
+	environ := env.Environ(testEnvWithHome(t.TempDir(), "")).
+		With(env.AnalyticsEndpoint, analyticsSrv.URL).
+		Without(env.AuthToken)
+
+	_, _, err := runLstk(t, testContext(t), "", environ, "snapshot", "show", "pod:does-not-exist")
+	require.Error(t, err)
+
+	_, result := commandEventParts(t, receiveEventByName(t, events, "lstk_command"))
+	assert.Equal(t, "AUTH_REQUIRED", result["error_code"])
+	assert.Equal(t, "AUTH", result["error_category"])
+}
+
 // receiveEventByName waits up to 3s for an event with the given name.
 // Events with a different name are skipped until the deadline.
 func receiveEventByName(t *testing.T, events <-chan map[string]any, name string) map[string]any {

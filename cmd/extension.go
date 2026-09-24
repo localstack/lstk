@@ -52,6 +52,7 @@ func dispatchExtension(ctx context.Context, cfg *env.Env, tel *telemetry.Client,
 			ev := output.ErrorEvent{
 				Title:   fmt.Sprintf("unknown command %q for lstk", name),
 				Actions: []output.ErrorAction{{Label: "See help:", Value: "lstk -h"}},
+				Code:    output.ErrUsageError,
 			}
 			if missing, ok := update.DetectMissingBundleFor(name); ok {
 				ev.Summary = missing.Summary()
@@ -67,6 +68,7 @@ func dispatchExtension(ctx context.Context, cfg *env.Env, tel *telemetry.Client,
 			Title:   "bundled extensions are not usable",
 			Summary: err.Error(),
 			Actions: []output.ErrorAction{{Label: "Reinstall lstk to restore them:", Value: "lstk update"}},
+			Code:    output.ErrInternal,
 		})
 		return output.NewSilentError(err)
 	}

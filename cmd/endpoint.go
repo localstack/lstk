@@ -24,6 +24,5 @@ func rejectEndpointURL(cmd *cobra.Command, sink output.Sink, label string) error
 		how = source + " was passed"
 	}
 	err := fmt.Errorf("%s does not support %s: it operates on a local Docker container or local filesystem state with no remote equivalent (%s)", label, source, how)
-	sink.Emit(output.ErrorEvent{Title: err.Error()})
-	return output.NewSilentError(err)
+	return output.Fail(sink, output.ErrorEvent{Title: err.Error(), Code: output.ErrValidationError}, err)
 }

@@ -20,24 +20,11 @@ import (
 // Fail carries it into result.error_code on lstk_command telemetry) and when a
 // file loses one (lower the number here, so the ratchet only ever tightens).
 var unclassifiedErrorEventBaseline = map[string]int{
-	"cmd/az.go":                            2,
-	"cmd/endpoint.go":                      1,
-	"cmd/extension.go":                     2,
-	"internal/awsconfig/awsconfig.go":      5,
-	"internal/azureconfig/interception.go": 1,
-	"internal/container/emulator_type.go":  4,
-	"internal/container/start.go":          2,
-	"internal/iac/cdk/cli/exec.go":         2,
-	"internal/iac/sam/cli/exec.go":         2,
-	"internal/iac/terraform/cli/exec.go":   2,
-	"internal/snapshot/diff.go":            2,
-	"internal/snapshot/list.go":            1,
-	"internal/snapshot/load.go":            6,
-	"internal/snapshot/remove.go":          1,
-	"internal/snapshot/save.go":            1,
-	"internal/snapshot/show.go":            3,
-	"internal/snapshot/versions.go":        2,
-	"internal/ui/app.go":                   1,
+	"internal/container/start.go":        2,
+	"internal/iac/cdk/cli/exec.go":       1,
+	"internal/iac/sam/cli/exec.go":       1,
+	"internal/iac/terraform/cli/exec.go": 1,
+	"internal/snapshot/load.go":          2,
 }
 
 func TestEveryNewErrorEventSetsACode(t *testing.T) {
