@@ -55,13 +55,17 @@ type CommandParameters struct {
 // ran to completion (0 included, -1 when an untrapped signal killed it); nil
 // must marshal as an absent key, never null, because the pipe reads presence
 // as "the tool ran". Cancelled is raw (a zero ExitCode is still a success) and,
-// like Proxied, never omitempty. Contract: openspec/changes/distinguish-proxied-command-errors.
+// like Proxied, never omitempty. ErrorCode and ErrorCategory are the
+// output.ErrorCode the failing site showed the user and its category; absent
+// when the site set none. Contract: openspec/changes/distinguish-proxied-command-errors.
 type CommandResult struct {
 	DurationMS    int64  `json:"duration_ms"`
 	ExitCode      int    `json:"exit_code"`
 	ErrorMsg      string `json:"error_msg,omitempty"`
 	ProxyExitCode *int   `json:"proxy_exit_code,omitempty"`
 	Cancelled     bool   `json:"cancelled"`
+	ErrorCode     string `json:"error_code,omitempty"`
+	ErrorCategory string `json:"error_category,omitempty"`
 }
 
 // LifecycleEvent is the payload for an lstk_lifecycle telemetry event.

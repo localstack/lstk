@@ -212,3 +212,30 @@ func TestEmitCommand_IsNoOpWhenDisabled(t *testing.T) {
 	default:
 	}
 }
+
+// error_code and error_category are the "why" axis: present only when the
+// failing site classified its error, absent otherwise, so the pipe can
+// measure classification coverage.
+func TestEmitCommand_RecordsErrorCodeAndCategoryWhenClassified(t *testing.T) {
+	tel, ch := captureEvents(t)
+
+	tel.EmitCommand(context.Background(),
+		CommandParameters{Command: "aws", Proxied: true},
+		CommandResult{ExitCode: 1, ErrorMsg: "--account must be a 12-digit AWS account id", ErrorCode: "VALIDATION_ERROR", ErrorCategory: "USAGE"})
+
+	got := drainEvent(t, tel, ch)
+	result := got["payload"].(map[string]any)["result"].(map[string]any)
+	assert.Equal(t, "VALIDATION_ERROR", result["error_code"])
+	assert.Equal(t, "USAGE", result["error_category"])
+}
+
+func TestEmitCommand_OmitsErrorCodeWhenUnclassified(t *testing.T) {
+	tel, ch := captureEvents(t)
+
+	tel.EmitCommand(context.Background(), CommandParameters{Command: "start"}, CommandResult{ExitCode: 1, ErrorMsg: "boom"})
+
+	got := drainEvent(t, tel, ch)
+	result := got["payload"].(map[string]any)["result"].(map[string]any)
+	assert.NotContains(t, result, "error_code")
+	assert.NotContains(t, result, "error_category")
+}

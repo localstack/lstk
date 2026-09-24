@@ -607,6 +607,10 @@ func commandResult(ctx context.Context, runErr error, proxied bool) telemetry.Co
 		result.ProxyExitCode = &code
 	}
 	result.Cancelled = ctx.Err() != nil || errors.Is(runErr, context.Canceled) || proc.WasInterrupted(runErr)
+	if code := output.ErrorCodeOf(runErr); code != "" {
+		result.ErrorCode = string(code)
+		result.ErrorCategory = string(code.Category())
+	}
 	return result
 }
 
