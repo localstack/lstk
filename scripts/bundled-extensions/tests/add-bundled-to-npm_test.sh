@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # Tests for scripts/add-bundled-to-npm.sh — the release step that copies the
-# bundled extensions into each npm PLATFORM package and registers them in that
-# package's `files` allowlist. Fixtures mirror goreleaser-npm-publisher's
-# dist/npm layout: platform dirs named lstk-<node-os>-<node-cpu> with a
-# package.json carrying "files": [], plus the lstk wrapper dir.
+# bundled extensions and their licence documents into each npm PLATFORM
+# package, registers them in that package's `files` allowlist and relabels the
+# package's licence. Fixtures mirror goreleaser-npm-publisher's dist/npm
+# layout: platform dirs named lstk-<node-os>-<node-cpu> with a package.json
+# carrying the publisher's "files" and "license", plus the lstk wrapper dir.
 set -euo pipefail
 
 SUITE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -44,6 +45,7 @@ setup_workspace() {
     chmod 0755 "${BUNDLED}/${platform}"/bundled-extensions*
   done
   echo 'doctor = "Check the local setup"' > "${BUNDLED}/lstk-extensions.toml"
+  echo 'fake bundle notices' > "${BUNDLED}/bundled-extensions.THIRD_PARTY_NOTICES.txt"
 
   local d goplat bin
   for d in ${NPM_DIRS}; do
@@ -52,12 +54,17 @@ setup_workspace() {
     bin="lstk"
     case "${goplat}" in windows_*) bin="lstk.exe" ;; esac
     echo "lstk binary" > "${NPM}/${d}/${bin}"
-    printf '{\n  "name": "@localstack/lstk_%s",\n  "version": "0.1.0",\n  "bin": {\n    "lstk_%s": "%s"\n  },\n  "files": []\n}\n' \
+    echo "apache" > "${NPM}/${d}/LICENSE"
+    printf '{\n  "name": "@localstack/lstk_%s",\n  "version": "0.1.0",\n  "bin": {\n    "lstk_%s": "%s"\n  },\n  "files": [\n    "LICENSE"\n  ],\n  "license": "Apache-2.0"\n}\n' \
       "${goplat}" "${goplat}" "${bin}" > "${NPM}/${d}/package.json"
   done
   mkdir -p "${NPM}/lstk"
   echo "launcher" > "${NPM}/lstk/index.js"
-  printf '{\n  "name": "@localstack/lstk",\n  "version": "0.1.0",\n  "bin": {\n    "lstk": "index.js"\n  },\n  "files": []\n}\n' > "${NPM}/lstk/package.json"
+  printf '{\n  "name": "@localstack/lstk",\n  "version": "0.1.0",\n  "bin": {\n    "lstk": "index.js"\n  },\n  "files": [],\n  "license": "Apache-2.0"\n}\n' > "${NPM}/lstk/package.json"
+}
+
+license_field() {
+  node -e 'const p=JSON.parse(require("fs").readFileSync(process.argv[1]));console.log(p.license||"")' "$1"
 }
 
 files_field() {
@@ -79,6 +86,37 @@ assert_file_contains "${NPM}/lstk-windows-amd-64-v-1/bundled-extensions.exe" "wi
 assert_file_exists "${NPM}/lstk-windows-arm-64-v-8-0/bundled-extensions.exe"
 assert_file_contains "${NPM}/lstk-windows-arm-64-v-8-0/bundled-extensions.exe" "windows_arm64"
 assert_file_exists "${NPM}/lstk-darwin-amd-64-v-1/lstk-extensions.toml"
+
+begin_test "copies the bundle's licence documents into every platform package and registers them"
+setup_workspace
+run_script "${ADD}" "${NPM}" "${BUNDLED}"
+assert_ok
+for d in ${NPM_DIRS}; do
+  assert_file_contains "${NPM}/${d}/bundled-extensions.THIRD_PARTY_NOTICES.txt" "fake bundle notices"
+done
+LAST_OUTPUT="$(files_field "${NPM}/lstk-linux-amd-64-v-1/package.json")"
+assert_output_contains "bundled-extensions.THIRD_PARTY_NOTICES.txt"
+# The publisher's own entries survive.
+assert_output_contains "LICENSE"
+
+begin_test "relabels the platform packages, which hold the proprietary bundle, and not the wrapper"
+setup_workspace
+run_script "${ADD}" "${NPM}" "${BUNDLED}"
+assert_ok
+LAST_OUTPUT="$(license_field "${NPM}/lstk-darwin-arm-64-v-8-0/package.json")"
+assert_output_contains "Apache-2.0 AND LicenseRef-LocalStack-Proprietary"
+LAST_OUTPUT="$(license_field "${NPM}/lstk-windows-amd-64-v-1/package.json")"
+assert_output_contains "Apache-2.0 AND LicenseRef-LocalStack-Proprietary"
+LAST_OUTPUT="$(license_field "${NPM}/lstk/package.json")"
+assert_output_contains "Apache-2.0"
+assert_output_lacks "Proprietary"
+
+begin_test "fails when the bundle's licence documents are missing"
+setup_workspace
+rm "${BUNDLED}/bundled-extensions.THIRD_PARTY_NOTICES.txt"
+run_script "${ADD}" "${NPM}" "${BUNDLED}"
+assert_fails
+assert_output_contains "bundled-extensions.THIRD_PARTY_NOTICES.txt"
 
 begin_test "the copied binary keeps its executable bit"
 setup_workspace
@@ -105,6 +143,7 @@ run_script npm pack --dry-run "${NPM}/lstk-darwin-arm-64-v-8-0"
 assert_ok
 assert_output_contains "bundled-extensions"
 assert_output_contains "lstk-extensions.toml"
+assert_output_contains "bundled-extensions.THIRD_PARTY_NOTICES.txt"
 assert_output_contains " lstk"
 
 begin_test "leaves the wrapper package untouched"
