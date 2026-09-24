@@ -37,7 +37,9 @@ Rewrite the four `proxy_error` tests from #499 rather than adding beside them; a
 - [x] 4b.2 Plumbing: `SilentError.Code`, `output.Fail`, `output.ErrorCodeOf`, the two fields, the builder read
 - [x] 4b.3 Integration tests: `lstk aws --account 123 s3 ls` → `VALIDATION_ERROR`/`USAGE`; Docker down → `RUNTIME_UNAVAILABLE`/`RUNTIME`
 - [x] 4b.4 Convert sites to `output.Fail`: `emitValidationError` (new code `VALIDATION_ERROR`), the five proxies' `runtime not healthy` preflight, `HandleNoRunningContainer` (new code `EMULATOR_NOT_RUNNING`), the wrong-emulator and az-not-installed preflights, and the sites that already set a `Code` but returned a bare `SilentError`
-- [ ] 4b.5 Follow-up ticket: classify the remaining `ErrorEvent` sites; add the pipe coverage query
+- [x] 4b.5 Split `emitValidationError` (`NETWORK_ERROR` for an unreachable endpoint, `EMULATOR_WRONG_TYPE` for a wrong emulator behind it); classify terraform backend provisioning (`IAC_DEPLOY_FAILED`) and the Azure setup/interception failures (`EMULATOR_NOT_RUNNING`, `INTERNAL_ERROR`, `VALIDATION_ERROR`) via `output.WithCode`
+- [x] 4b.6 Ratchet: `TestEveryNewErrorEventSetsACode` fails when a file gains an `ErrorEvent` literal without a `Code`
+- [ ] 4b.7 Follow-up ticket: classify the remaining 40 unclassified `ErrorEvent` literals (baseline in the ratchet test); add the pipe coverage query
 
 ## 5. Docs in this repo
 
