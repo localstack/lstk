@@ -4,6 +4,7 @@ package runtime
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"time"
 
@@ -111,4 +112,11 @@ type Runtime interface {
 	// Flavor* constants, e.g. FlavorRancherDesktop) so callers can tailor
 	// user-facing messages. FlavorUnknown (empty) when unrecognized.
 	Flavor() string
+}
+
+// UnhealthyError is the error to return right after EmitUnhealthyError. It
+// carries ErrRuntimeUnavailable so command telemetry attributes the failure to
+// the environment rather than to lstk (DEVX-1004).
+func UnhealthyError(err error) error {
+	return &output.SilentError{Err: fmt.Errorf("runtime not healthy: %w", err), Code: output.ErrRuntimeUnavailable}
 }

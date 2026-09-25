@@ -36,22 +36,22 @@ func Run(ctx context.Context, endpointURL, region string, sink output.Sink, logg
 	if err != nil {
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())
-		sink.Emit(output.ErrorEvent{
+		return output.Fail(sink, output.ErrorEvent{
 			Title:   fmt.Sprintf("%s not found in PATH", cdkCmd()),
 			Actions: []output.ErrorAction{{Label: "Install CDK CLI:", Value: "npm install -g aws-cdk"}},
-		})
-		return output.NewSilentError(fmt.Errorf("%s not found in PATH", cdkCmd()))
+			Code:    output.ErrDependencyMissing,
+		}, fmt.Errorf("%s not found in PATH", cdkCmd()))
 	}
 
 	version, err := CheckVersion(ctx, cdkBin)
 	if err != nil {
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())
-		sink.Emit(output.ErrorEvent{
+		return output.Fail(sink, output.ErrorEvent{
 			Title:   err.Error(),
 			Actions: []output.ErrorAction{{Label: "Upgrade CDK CLI:", Value: "npm install -g aws-cdk@latest"}},
-		})
-		return output.NewSilentError(err)
+			Code:    output.ErrDependencyMissing,
+		}, err)
 	}
 
 	// endpointURL is already fully resolved by the command boundary

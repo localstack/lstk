@@ -307,7 +307,7 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.spinner = a.spinner.ForceStop()
 		a.flushBufferedLines()
 		if !output.IsSilent(msg.err) {
-			a.errorDisplay = a.errorDisplay.Show(output.ErrorEvent{Title: msg.err.Error()})
+			a.errorDisplay = a.errorDisplay.Show(output.ErrorEvent{Title: msg.err.Error(), Code: output.ErrorCodeOf(msg.err)})
 		}
 		return a, tea.Quit
 	case output.TableEvent:

@@ -15,14 +15,14 @@ type CloudPodLister interface {
 
 func List(ctx context.Context, lister CloudPodLister, authToken, creator string, sink output.Sink) error {
 	if authToken == "" {
-		sink.Emit(output.ErrorEvent{
+		return output.Fail(sink, output.ErrorEvent{
 			Title: "Authentication required to list snapshots",
 			Actions: []output.ErrorAction{
 				{Label: "Log in:", Value: "lstk login"},
 				{Label: "Or set a token:", Value: "export LOCALSTACK_AUTH_TOKEN=<token>"},
 			},
-		})
-		return output.NewSilentError(fmt.Errorf("authentication required: no auth token"))
+			Code: output.ErrAuthRequired,
+		}, fmt.Errorf("authentication required: no auth token"))
 	}
 
 	sink.Emit(output.SpinnerStart("Fetching snapshots"))

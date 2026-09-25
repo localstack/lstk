@@ -4,9 +4,12 @@ import "errors"
 
 // SilentError wraps an error that has already been displayed to the user
 // through the sink mechanism. Callers should check for this type and skip
-// printing the error again.
+// printing the error again. Code is the ErrorEvent classification the site
+// showed for it, so telemetry can report why the command failed
+// (cmd.commandResult); empty when the site set none. Set it through Fail.
 type SilentError struct {
-	Err error
+	Err  error
+	Code ErrorCode
 }
 
 func (e *SilentError) Error() string {
@@ -19,6 +22,50 @@ func (e *SilentError) Unwrap() error {
 
 func NewSilentError(err error) *SilentError {
 	return &SilentError{Err: err}
+}
+
+// Fail shows event through sink and returns the SilentError to propagate,
+// carrying event.Code. It replaces the two-step `sink.Emit(ErrorEvent{...});
+// return NewSilentError(err)`, which dropped the code on the floor.
+func Fail(sink Sink, event ErrorEvent, err error) error {
+	sink.Emit(event)
+	return &SilentError{Err: err, Code: event.Code}
+}
+
+// CodedError classifies an error that the caller's display layer will still
+// render — the shape for domain code that returns errors instead of emitting
+// them. SilentError is for errors already shown. Set it through WithCode.
+type CodedError struct {
+	Err  error
+	Code ErrorCode
+}
+
+func (e *CodedError) Error() string { return e.Err.Error() }
+func (e *CodedError) Unwrap() error { return e.Err }
+
+// WithCode attaches code to err for telemetry without silencing it; nil stays nil.
+func WithCode(err error, code ErrorCode) error {
+	if err == nil {
+		return nil
+	}
+	return &CodedError{Err: err, Code: code}
+}
+
+// ErrorCodeOf returns the first classification carried in err's chain, or ""
+// when no site classified the failure.
+func ErrorCodeOf(err error) ErrorCode {
+	for err != nil {
+		switch e := err.(type) {
+		case *SilentError:
+			if e.Code != "" {
+				return e.Code
+			}
+		case *CodedError:
+			return e.Code
+		}
+		err = errors.Unwrap(err)
+	}
+	return ""
 }
 
 // IsSilent returns true if the error (or any error in its chain) is a SilentError.

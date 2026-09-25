@@ -54,11 +54,11 @@ func Run(ctx context.Context, endpointURL, region, account, chdir string, sink o
 		if tfCmd() == "tofu" {
 			installLabel, installURL = "Install OpenTofu CLI:", "https://opentofu.org/docs/intro/install/"
 		}
-		sink.Emit(output.ErrorEvent{
+		return output.Fail(sink, output.ErrorEvent{
 			Title:   fmt.Sprintf("%s not found in PATH", tfCmd()),
 			Actions: []output.ErrorAction{{Label: installLabel, Value: installURL}},
-		})
-		return output.NewSilentError(fmt.Errorf("%s not found in PATH", tfCmd()))
+			Code:    output.ErrDependencyMissing,
+		}, fmt.Errorf("%s not found in PATH", tfCmd()))
 	}
 	span.SetAttributes(attribute.StringSlice("terraform.args", args), attribute.Bool("terraform.unproxied", IsUnproxied(args)))
 
@@ -73,10 +73,10 @@ func Run(ctx context.Context, endpointURL, region, account, chdir string, sink o
 	if chdir != "" {
 		workdir = ResolveChdir(workdir, chdir)
 		if info, statErr := os.Stat(workdir); statErr != nil || !info.IsDir() {
-			sink.Emit(output.ErrorEvent{
+			return output.Fail(sink, output.ErrorEvent{
 				Title: fmt.Sprintf("-chdir directory does not exist: %s", chdir),
-			})
-			return output.NewSilentError(fmt.Errorf("-chdir directory does not exist: %s", workdir))
+				Code:  output.ErrIACFileNotFound,
+			}, fmt.Errorf("-chdir directory does not exist: %s", workdir))
 		}
 	}
 
@@ -109,11 +109,11 @@ func Run(ctx context.Context, endpointURL, region, account, chdir string, sink o
 			span.RecordError(err)
 			span.SetStatus(codes.Error, err.Error())
 			if errors.Is(err, ErrInitRequired) {
-				sink.Emit(output.ErrorEvent{
+				return output.Fail(sink, output.ErrorEvent{
 					Title:   "Terraform AWS provider is not installed",
 					Actions: []output.ErrorAction{{Label: "Initialize the project:", Value: tfCmd() + " init"}},
-				})
-				return output.NewSilentError(err)
+					Code:    output.ErrIACFileNotFound,
+				}, err)
 			}
 			return err
 		}
@@ -161,14 +161,14 @@ func Run(ctx context.Context, endpointURL, region, account, chdir string, sink o
 			span.RecordError(err)
 			span.SetStatus(codes.Error, err.Error())
 			if errors.Is(err, awscli.ErrNotInstalled) {
-				sink.Emit(output.ErrorEvent{
+				return output.Fail(sink, output.ErrorEvent{
 					Title:   "aws CLI not found in PATH",
 					Summary: "lstk uses the AWS CLI to provision the S3 state bucket and lock table in LocalStack.",
 					Actions: []output.ErrorAction{{Label: "Install AWS CLI:", Value: awscli.InstallURL}},
-				})
-				return output.NewSilentError(err)
+					Code:    output.ErrDependencyMissing,
+				}, err)
 			}
-			return err
+			return output.WithCode(err, output.ErrIACDeployFailed)
 		}
 	}
 

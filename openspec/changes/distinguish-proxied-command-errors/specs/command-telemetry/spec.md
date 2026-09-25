@@ -118,3 +118,25 @@ Consumers SHALL NOT infer a failure's origin from `exit_code`. lstk propagates a
 - **WHEN** the wrapped tool exits 0 and lstk fails afterwards
 - **THEN** the event has no `result.proxy_exit_code`, since the failure is not the tool's exit
 - **AND** `result.exit_code` is non-zero
+
+### Requirement: Command events record the classification shown to the user
+
+When the failing site classified its error with an `output.ErrorCode`, the `lstk_command` event SHALL carry `result.error_code` with that code and `result.error_category` with the code's category. Both SHALL be absent when the site set no code, so that absence reads as "unclassified" and the share of unclassified failures can be measured.
+
+The code SHALL travel on the error value the command returns, not only on the event a sink renders, because the sinks used outside `--json` discard it.
+
+#### Scenario: A validation error on a proxy command is classified as usage
+
+- **WHEN** `lstk aws --account 123 s3 ls` runs
+- **THEN** the event has `parameters.proxied` true, no `result.proxy_exit_code`
+- **AND** `result.error_code` is `VALIDATION_ERROR` and `result.error_category` is `USAGE`
+
+#### Scenario: Docker being down is classified as runtime
+
+- **WHEN** `lstk aws s3 ls` runs with the Docker daemon unreachable
+- **THEN** `result.error_code` is `RUNTIME_UNAVAILABLE` and `result.error_category` is `RUNTIME`
+
+#### Scenario: An unclassified failure records no code
+
+- **WHEN** a command fails at a site that shows an error without a code
+- **THEN** the event has neither `result.error_code` nor `result.error_category`

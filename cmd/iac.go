@@ -2,11 +2,13 @@ package cmd
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 
 	"github.com/localstack/lstk/internal/config"
 	"github.com/localstack/lstk/internal/container"
+	"github.com/localstack/lstk/internal/endpoint"
 	"github.com/localstack/lstk/internal/output"
 	"github.com/localstack/lstk/internal/runtime"
 )
@@ -39,13 +41,13 @@ func requireRunningAWSEmulator(ctx context.Context, rt runtime.Runtime, sink out
 	// is running, say so specifically rather than reporting a misleading
 	// "AWS not running".
 	if other := runningNonAWSEmulator(ctx, rt); other != "" {
-		sink.Emit(output.ErrorEvent{
+		return output.Fail(sink, output.ErrorEvent{
 			Title: fmt.Sprintf("lstk %s requires the %s, but the %s is running", cmdLabel, awsContainer.DisplayName(), other),
 			Actions: []output.ErrorAction{
 				{Label: "Start the AWS emulator:", Value: "lstk"},
 			},
-		})
-		return output.NewSilentError(fmt.Errorf("lstk %s requires the AWS emulator, but the %s is running", cmdLabel, other))
+			Code: output.ErrEmulatorWrongType,
+		}, fmt.Errorf("lstk %s requires the AWS emulator, but the %s is running", cmdLabel, other))
 	}
 	return container.HandleNoRunningContainer(sink, awsContainer)
 }
@@ -89,8 +91,20 @@ func resolveAWSContainer() config.ContainerConfig {
 // sink (consistent with the other IaC proxy error events) and returns a silent
 // error so the top-level handler does not print it a second time.
 func emitValidationError(sink output.Sink, err error) error {
-	sink.Emit(output.ErrorEvent{Title: err.Error()})
-	return output.NewSilentError(err)
+	code := output.ErrValidationError
+	var unreachable *endpoint.UnreachableError
+	if errors.As(err, &unreachable) {
+		// resolveEndpointTarget probes the endpoint, so its failures include
+		// connectivity, which is not the user's arguments.
+		code = output.ErrNetworkError
+	}
+	return emitCodedError(sink, code, err)
+}
+
+// emitCodedError shows err with the given classification and returns the
+// silent error to propagate.
+func emitCodedError(sink output.Sink, code output.ErrorCode, err error) error {
+	return output.Fail(sink, output.ErrorEvent{Title: err.Error(), Code: code}, err)
 }
 
 // resolveRegionSelection applies the precedence --region flag → AWS_REGION →

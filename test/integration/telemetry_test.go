@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"sync"
@@ -424,6 +425,208 @@ func TestInteractiveCtrlCOnProxyRecordsCancellation(t *testing.T) {
 	assert.Equal(t, true, params["proxied"])
 	assert.InDelta(t, 130, result["proxy_exit_code"], 0)
 	assert.Equal(t, true, result["cancelled"], "Ctrl-C forwarded through the PTY is the user's interruption, not the tool's failure")
+}
+
+// The why axis: a user's own input error on a proxy command is lstk's failure
+// to complete the invocation, but not an lstk defect. The code the user saw
+// rides the event so the pipe can tell the two apart.
+func TestProxyValidationErrorTelemetryIsClassifiedAsUsage(t *testing.T) {
+	t.Parallel()
+
+	emulatorSrv := awsHealthServer(t)
+	defer emulatorSrv.Close()
+	analyticsSrv, events := mockAnalyticsServer(t)
+	fakeBinDir := writeFakeTool(t, "aws", fakeToolConfig{})
+
+	_, _, err := runLstk(t, testContext(t), "", proxyEnviron(t, analyticsSrv.URL, fakeBinDir),
+		"--endpoint-url", emulatorSrv.URL, "aws", "--account", "123", "s3", "ls")
+	require.Error(t, err)
+
+	params, result := commandEventParts(t, receiveEventByName(t, events, "lstk_command"))
+	assert.Equal(t, true, params["proxied"])
+	assert.NotContains(t, result, "proxy_exit_code")
+	assert.Equal(t, "VALIDATION_ERROR", result["error_code"])
+	assert.Equal(t, "USAGE", result["error_category"])
+}
+
+func TestProxyPreflightDockerDownTelemetryIsClassifiedAsRuntime(t *testing.T) {
+	t.Parallel()
+
+	analyticsSrv, events := mockAnalyticsServer(t)
+	fakeBinDir := writeFakeTool(t, "aws", fakeToolConfig{})
+
+	_, _, err := runLstk(t, testContext(t), "", proxyEnviron(t, analyticsSrv.URL, fakeBinDir), "aws", "s3", "ls")
+	require.Error(t, err)
+
+	_, result := commandEventParts(t, receiveEventByName(t, events, "lstk_command"))
+	assert.Equal(t, "RUNTIME_UNAVAILABLE", result["error_code"])
+	assert.Equal(t, "RUNTIME", result["error_category"])
+}
+
+// The endpoint-preflight failures are not the user's arguments: an unreachable
+// endpoint is connectivity, a wrong emulator type behind it is an emulator
+// mismatch. Both used to share VALIDATION_ERROR with `--account 123`.
+func TestUnreachableEndpointTelemetryIsClassifiedAsNetwork(t *testing.T) {
+	t.Parallel()
+
+	analyticsSrv, events := mockAnalyticsServer(t)
+	fakeBinDir := writeFakeTool(t, "aws", fakeToolConfig{})
+
+	_, _, err := runLstk(t, testContext(t), "", proxyEnviron(t, analyticsSrv.URL, fakeBinDir),
+		"--endpoint-url", "http://127.0.0.1:1", "aws", "s3", "ls")
+	require.Error(t, err)
+
+	_, result := commandEventParts(t, receiveEventByName(t, events, "lstk_command"))
+	assert.Equal(t, "NETWORK_ERROR", result["error_code"])
+	assert.Equal(t, "RUNTIME", result["error_category"])
+}
+
+func TestWrongEmulatorTypeEndpointTelemetryIsClassifiedAsEmulator(t *testing.T) {
+	t.Parallel()
+
+	emulatorSrv := azureHealthServer(t)
+	analyticsSrv, events := mockAnalyticsServer(t)
+	fakeBinDir := writeFakeTool(t, "aws", fakeToolConfig{})
+
+	_, _, err := runLstk(t, testContext(t), "", proxyEnviron(t, analyticsSrv.URL, fakeBinDir),
+		"--endpoint-url", emulatorSrv.URL, "aws", "s3", "ls")
+	require.Error(t, err)
+
+	_, result := commandEventParts(t, receiveEventByName(t, events, "lstk_command"))
+	assert.Equal(t, "EMULATOR_WRONG_TYPE", result["error_code"])
+	assert.Equal(t, "EMULATOR", result["error_category"])
+}
+
+// lstk's own az call failing is lstk's failure with no better code than
+// INTERNAL_ERROR; the point is that it is classified at all, so the
+// unclassified share does not hide it.
+func TestLstkOrchestratedAzFailureTelemetryIsClassified(t *testing.T) {
+	t.Parallel()
+
+	analyticsSrv, events := mockAnalyticsServer(t)
+	fakeBinDir := writeFakeTool(t, "az", fakeToolConfig{Stderr: []string{"ERROR: fake az failure"}, ExitCode: 1})
+	environ := env.Environ(testEnvWithHome(t.TempDir(), "")).
+		With(env.AnalyticsEndpoint, analyticsSrv.URL).
+		With(env.Path, fakeBinDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	_, _, err := runLstk(t, testContext(t), "", environ, "az", "stop-interception")
+	require.Error(t, err)
+
+	_, result := commandEventParts(t, receiveEventByName(t, events, "lstk_command"))
+	assert.Equal(t, "INTERNAL_ERROR", result["error_code"])
+	assert.Equal(t, "INTERNAL", result["error_category"])
+}
+
+// `setup azure` probes the emulator before touching az; with none running
+// the domain function returns a classified error for the command layer to
+// render (output.WithCode), which must reach telemetry without a sink.
+func TestSetupAzureUnreachableEmulatorTelemetryIsClassified(t *testing.T) {
+	t.Parallel()
+
+	analyticsSrv, events := mockAnalyticsServer(t)
+	fakeBinDir := writeFakeTool(t, "az", fakeToolConfig{})
+	configPath := filepath.Join(t.TempDir(), "config.toml")
+	require.NoError(t, os.WriteFile(configPath, []byte("[[containers]]\ntype = \"azure\"\ntag = \"latest\"\nport = \"4566\"\n"), 0o644))
+	environ := env.Environ(testEnvWithHome(t.TempDir(), "")).
+		With(env.AnalyticsEndpoint, analyticsSrv.URL).
+		With(env.Path, fakeBinDir)
+	environ = append(environ, unreachableDockerHost)
+
+	_, _, err := runLstk(t, testContext(t), t.TempDir(), environ, "--config", configPath, "setup", "azure", "--non-interactive")
+	require.Error(t, err)
+
+	params, result := commandEventParts(t, receiveEventByName(t, events, "lstk_command"))
+	assert.Equal(t, "setup azure", params["command"])
+	assert.Equal(t, false, params["proxied"])
+	assert.Equal(t, "EMULATOR_NOT_RUNNING", result["error_code"])
+	assert.Equal(t, "EMULATOR", result["error_category"])
+}
+
+// lstk's own `aws s3api create-bucket` failing while provisioning a terraform
+// S3 backend propagates the child's exit code (Decision 6) and must carry a
+// code, or it reads as an unclassified lstk failure with an odd exit code.
+func TestTerraformBackendProvisioningFailureTelemetryIsClassified(t *testing.T) {
+	requireTerraform(t)
+	t.Parallel()
+
+	emulatorSrv := awsHealthServer(t)
+	defer emulatorSrv.Close()
+	analyticsSrv, events := mockAnalyticsServer(t)
+	fakeBinDir := writeFakeTool(t, "aws", fakeToolConfig{Stderr: []string{"An error occurred (fake) when calling CreateBucket"}, ExitCode: 5})
+
+	work := t.TempDir()
+	require.NoError(t, os.WriteFile(work+"/main.tf", []byte("terraform {\n  backend \"s3\" {\n    bucket = \"lstk-tfstate-test\"\n    key    = \"state\"\n    region = \"us-east-1\"\n  }\n}\n"), 0o644))
+
+	_, _, err := runLstk(t, testContext(t), work, proxyEnviron(t, analyticsSrv.URL, fakeBinDir),
+		"--endpoint-url", emulatorSrv.URL, "terraform", "init", "-input=false")
+	require.Error(t, err)
+	requireExitCode(t, 5, err)
+
+	params, result := commandEventParts(t, receiveEventByName(t, events, "lstk_command"))
+	assert.Equal(t, true, params["proxied"])
+	assert.NotContains(t, result, "proxy_exit_code")
+	assert.InDelta(t, 5, result["exit_code"], 0)
+	assert.Equal(t, "IAC_DEPLOY_FAILED", result["error_code"])
+	assert.Equal(t, "IAC", result["error_category"])
+}
+
+// Two of the previously unclassified sites, one per carrier shape: a preflight
+// that emits and returns (INTEGRATION_NOT_SET_UP) and a platform-side
+// precondition (AUTH_REQUIRED).
+func TestAzWithoutSetupTelemetryIsClassified(t *testing.T) {
+	t.Parallel()
+
+	emulatorSrv := azureHealthServer(t)
+	analyticsSrv, events := mockAnalyticsServer(t)
+	fakeBinDir := writeFakeTool(t, "az", fakeToolConfig{})
+	configPath := filepath.Join(t.TempDir(), "config.toml")
+	require.NoError(t, os.WriteFile(configPath, []byte("[[containers]]\ntype = \"azure\"\ntag = \"latest\"\nport = \"4566\"\n"), 0o644))
+	environ := env.Environ(testEnvWithHome(t.TempDir(), "")).
+		With(env.AnalyticsEndpoint, analyticsSrv.URL).
+		With(env.Path, fakeBinDir)
+	environ = append(environ, unreachableDockerHost)
+
+	_, _, err := runLstk(t, testContext(t), t.TempDir(), environ,
+		"--endpoint-url", emulatorSrv.URL, "--config", configPath, "--non-interactive", "az", "group", "list")
+	require.Error(t, err)
+
+	params, result := commandEventParts(t, receiveEventByName(t, events, "lstk_command"))
+	assert.Equal(t, true, params["proxied"])
+	assert.NotContains(t, result, "proxy_exit_code")
+	assert.Equal(t, "INTEGRATION_NOT_SET_UP", result["error_code"])
+	assert.Equal(t, "CONFIG", result["error_category"])
+}
+
+func TestSnapshotShowWithoutAuthTelemetryIsClassified(t *testing.T) {
+	t.Parallel()
+
+	analyticsSrv, events := mockAnalyticsServer(t)
+	environ := env.Environ(testEnvWithHome(t.TempDir(), "")).
+		With(env.AnalyticsEndpoint, analyticsSrv.URL).
+		Without(env.AuthToken)
+
+	_, _, err := runLstk(t, testContext(t), "", environ, "snapshot", "show", "pod:does-not-exist")
+	require.Error(t, err)
+
+	_, result := commandEventParts(t, receiveEventByName(t, events, "lstk_command"))
+	assert.Equal(t, "AUTH_REQUIRED", result["error_code"])
+	assert.Equal(t, "AUTH", result["error_category"])
+}
+
+// A snapshot REF naming a file that does not exist is returned as a bare error
+// for the command layer to render; it must still be classified.
+func TestSnapshotLoadMissingFileTelemetryIsClassified(t *testing.T) {
+	t.Parallel()
+
+	analyticsSrv, events := mockAnalyticsServer(t)
+	environ := env.Environ(testEnvWithHome(t.TempDir(), "")).With(env.AnalyticsEndpoint, analyticsSrv.URL)
+
+	_, _, err := runLstk(t, testContext(t), t.TempDir(), environ, "snapshot", "load", "/nonexistent.snapshot")
+	require.Error(t, err)
+
+	_, result := commandEventParts(t, receiveEventByName(t, events, "lstk_command"))
+	assert.Equal(t, "SNAPSHOT_NOT_FOUND", result["error_code"])
+	assert.Equal(t, "RESOURCE", result["error_category"])
 }
 
 // receiveEventByName waits up to 3s for an event with the given name.

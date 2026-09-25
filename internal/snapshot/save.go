@@ -38,7 +38,7 @@ type PodSaver interface {
 func save(ctx context.Context, rt runtime.Runtime, containers []config.ContainerConfig, sink output.Sink, spinnerText string, onSuccess func(), do func() error) (retErr error) {
 	if err := rt.IsHealthy(ctx); err != nil {
 		rt.EmitUnhealthyError(sink, err)
-		return output.NewSilentError(fmt.Errorf("runtime not healthy: %w", err))
+		return runtime.UnhealthyError(err)
 	}
 
 	runningContainers, err := container.RunningEmulators(ctx, rt, containers)
@@ -46,14 +46,14 @@ func save(ctx context.Context, rt runtime.Runtime, containers []config.Container
 		return fmt.Errorf("checking emulator status: %w", err)
 	}
 	if len(runningContainers) == 0 {
-		sink.Emit(output.ErrorEvent{
+		return output.Fail(sink, output.ErrorEvent{
 			Title: "LocalStack is not running",
 			Actions: []output.ErrorAction{
 				{Label: "Start LocalStack:", Value: "lstk"},
 				{Label: "See help:", Value: "lstk -h"},
 			},
-		})
-		return output.NewSilentError(fmt.Errorf("LocalStack is not running"))
+			Code: output.ErrEmulatorNotRunning,
+		}, fmt.Errorf("LocalStack is not running"))
 	}
 
 	emitExperimentalWarning(containers, sink)

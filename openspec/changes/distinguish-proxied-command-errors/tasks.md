@@ -31,6 +31,18 @@ Rewrite the four `proxy_error` tests from #499 rather than adding beside them; a
 
 - [x] 4.9 Interactive Ctrl-C on `lstk aws` in a PTY (fake `aws` with `trapExitCode: 130`, `startLstkInPTY`, `!windows`) → `cancelled: true`, `proxy_exit_code: 130` — found by manual testing; lstk never receives the SIGINT on this path, so `proc.RunInPTY` marks the forwarded ETX byte (`proc.WasInterrupted`)
 
+## 4b. Error code (the why axis)
+
+- [x] 4b.1 Unit tests: `output.Fail` carries the code on the returned `SilentError`; `ErrorCodeOf` sees through `%w` and `ExitCodeError`; `CommandResult` emits `error_code`/`error_category` only when set; `commandResult` reads them
+- [x] 4b.2 Plumbing: `SilentError.Code`, `output.Fail`, `output.ErrorCodeOf`, the two fields, the builder read
+- [x] 4b.3 Integration tests: `lstk aws --account 123 s3 ls` → `VALIDATION_ERROR`/`USAGE`; Docker down → `RUNTIME_UNAVAILABLE`/`RUNTIME`
+- [x] 4b.4 Convert sites to `output.Fail`: `emitValidationError` (new code `VALIDATION_ERROR`), the five proxies' `runtime not healthy` preflight, `HandleNoRunningContainer` (new code `EMULATOR_NOT_RUNNING`), the wrong-emulator and az-not-installed preflights, and the sites that already set a `Code` but returned a bare `SilentError`
+- [x] 4b.5 Split `emitValidationError` (`NETWORK_ERROR` for an unreachable endpoint, `EMULATOR_WRONG_TYPE` for a wrong emulator behind it); classify terraform backend provisioning (`IAC_DEPLOY_FAILED`) and the Azure setup/interception failures (`EMULATOR_NOT_RUNNING`, `INTERNAL_ERROR`, `VALIDATION_ERROR`) via `output.WithCode`
+- [x] 4b.6 Ratchet: `TestEveryNewErrorEventSetsACode` fails when a file gains an `ErrorEvent` literal without a `Code`
+- [x] 4b.7 Classify the 33 unambiguous remaining `ErrorEvent` literals (snapshot not-found/auth/not-running, DNS, integration-not-set-up, dependency-missing, config-invalid, confirmation-required, TUI passthrough via `ErrorCodeOf`)
+- [x] 4b.8 Classify the 7 open sites: cdk/sam version-check failures → `DEPENDENCY_MISSING`, terraform provider not installed → `IAC_FILE_NOT_FOUND`, invalid or incompatible snapshot file → `SNAPSHOT_INVALID_REF`, leftover-container conflicts on start → `EMULATOR_START_FAILED`; the three widened definitions are in `docs/structured-output.md`. The ratchet baseline is now empty: every `ErrorEvent` sets a `Code`
+- [ ] 4b.9 Follow-up: add the pipe coverage query
+
 ## 5. Docs in this repo
 
 - [x] 5.1 Update `CLAUDE.md` "Attributing Wrapped-Tool Exits" to name `proxied` / `proxy_exit_code` / `cancelled` instead of `proxy_error`

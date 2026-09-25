@@ -20,7 +20,11 @@ One field is not enough. A failure-origin marker describes failures, and an erro
 parameters.proxied          bool   always emitted   the invocation asked for a wrapped tool
 result.proxy_exit_code      int    only if the tool ran to completion; its own code, 0 included
 result.cancelled            bool   always emitted   lstk's signal context was cancelled
+result.error_code           str    only if the failing site classified it: the output.ErrorCode shown to the user
+result.error_category       str    with error_code: its output.ErrorCategory (USAGE, RUNTIME, EMULATOR, ...)
 ```
+
+The first three answer *who* failed; the last two answer *why*, and are what separates a user's `--account 123` from an lstk defect (Decision 8).
 
 | `proxied` | `proxy_exit_code` | `cancelled` | Reading |
 |---|---|---|---|
@@ -127,6 +131,20 @@ error_source := exit_code = 0                                         → 'none'
 
 **Honest strength of the rule**: `error_msg LIKE 'exit status %'` holds against the tree at this change's commit as convention, not invariant — three lstk-owned subprocess errors reach the top nearly bare and are saved only by a wrapper one frame up (`update failed: %w` over `homebrew.go`'s raw `cmd.Run()`; `azurecli.Run` returning bare when stderr is empty; terraform's `provision.go` runner). Trapped-signal interruptions of wrapped tools cannot be recovered retroactively at all.
 
+### Decision 8: The error code rides the returned error, via `output.Fail`
+
+An `ErrorEvent.Code` used to live only on the event the sink consumed; `PlainSink` and `TUISink` discard it, and the error value `instrumentCommands` receives was a bare `SilentError`. Manual testing showed the cost: `lstk aws --account 123 s3 ls`, a missing `aws` binary and a wrong-type endpoint all classify as lstk's failure with nothing to tell them from a defect.
+
+`SilentError` now carries `Code`, set by `output.Fail(sink, event, err)`, which emits and returns in one call. `commandResult` reads it with `output.ErrorCodeOf` and emits `error_code` plus its `Category()`. The category is emitted from Go rather than derived in the pipe because the code-to-category map is versioned with the binary.
+
+Domain code that returns errors for the command layer to render (the `azureconfig` functions, terraform's backend provisioning) uses `output.WithCode(err, code)` instead: a non-silent carrier that `ErrorCodeOf` reads the same way, so classifying it does not change who prints it.
+
+**Coverage is the limit, and it is ratcheted.** Only sites that go through `Fail` or `WithCode` populate the fields; a site that emits an event and returns a bare error, or returns a bare error to Cobra's fallback printer, records nothing. Absence therefore means "unclassified", which the pipe should report as a share. In the repo, `TestEveryNewErrorEventSetsACode` (`internal/output`) parses `cmd/` and `internal/` and compares the per-file count of `ErrorEvent` literals without a `Code` against a baseline: a new unclassified site fails the test, and classifying one forces the baseline down. The baseline at this change's commit is 40 literals in 18 files.
+
+**Code choice for lstk's own subprocesses.** lstk composing an `az` or `aws` call that then fails has no precise code in the taxonomy, and the taxonomy forbids inventing one; those sites use `INTERNAL_ERROR` (Azure setup and interception) or `IAC_DEPLOY_FAILED` (terraform backend provisioning). The endpoint preflights are split: an unreachable `--endpoint-url` is `NETWORK_ERROR`, a wrong emulator type behind it is `EMULATOR_WRONG_TYPE`, and only argument checks remain `VALIDATION_ERROR`.
+
+**Not emitted**: `CANCELLED` (the `cancelled` field is the observation; a code would be the same fact twice) and anything for proxied tool exits (no `ErrorEvent` is shown for them; `proxy_exit_code` is their axis).
+
 ## Analytics contract
 
 Changes to `fct_lstk_command.pipe` (repo `localstack/localstack-dwh`). Field names below are proposals for the pipe author.
@@ -138,6 +156,8 @@ toUInt8(JSONExtractBool(parameters, 'proxied'))    AS proxied_raw,
 toUInt8(JSONHas(result, 'proxy_exit_code'))        AS tool_ran,         -- never read proxy_exit_code without it
 toInt32(JSONExtractInt(result, 'proxy_exit_code')) AS proxy_exit_code,
 toUInt8(JSONExtractBool(result, 'cancelled'))      AS cancelled,
+JSONExtractString(result, 'error_code')            AS error_code,        -- '' = unclassified
+JSONExtractString(result, 'error_category')        AS error_category,
 
 -- classified: the rule, once, over both eras
 if(has_origin = 1, proxied_raw, command IN ('aws','az','cdk','sam','terraform')) AS proxied,
@@ -165,6 +185,15 @@ countIf(error_source = 'lstk') / countIf(has_result = 1)
 -- Product-health: how often users' wrapped-tool calls fail.
 countIf(error_source = 'proxy') / countIf(has_result = 1 AND proxied = 1)
 
+-- Reliability (the metric DEVX-1004 could not build before): lstk failures
+-- that are not the user's input or environment. Which categories count is
+-- a team decision; USAGE, CONFIG, AUTH and RUNTIME are clearly not lstk's.
+countIf(error_source = 'lstk' AND error_category NOT IN ('USAGE','CONFIG','AUTH','RUNTIME'))
+  / countIf(has_result = 1 AND proxied = 0)
+
+-- Coverage: the share of lstk failures with no classification. Watch it.
+countIf(error_source = 'lstk' AND error_code = '') / countIf(error_source = 'lstk')
+
 -- Panel 15 "Top command errors": replace
 --   exit_code != 0 AND error_bucket != 'user cancelled'
 -- with
@@ -186,6 +215,6 @@ WHERE error_source = 'proxy' GROUP BY command, subcommand, proxy_exit_code
 ## Risks
 
 - **`error_source = 'lstk'` is not a measure of lstk's reliability.** For `lstk aws` it includes: the AWS CLI not on PATH, `--account` misplaced, an invalid account id, a bad `--endpoint-url`, a non-AWS endpoint, Docker down, the emulator not running. None is an lstk defect. The field answers "did lstk fail to complete the invocation", which is what the panel should be titled.
-- **The repo already has the why axis, unused here.** `internal/output/error_code.go` ships an `ErrorCode` taxonomy and an `ErrorCategory` grouping whose `CategoryRuntime` is documented as "outside lstk's control". Telemetry cannot read it: the code rides the `ErrorEvent` the sink consumes, not the error value `instrumentCommands` receives, and most emit sites set none. Wiring it in is the change that would make a real reliability metric possible — a separate ticket.
+- **The why axis is only as good as its coverage.** Decision 8 makes `error_code` reachable, but at this change's commit only the converted sites populate it; 67 `ErrorEvent` emit sites exist and most set no code. Until the remainder are classified, the reliability metric's numerator over-counts (unclassified failures cannot be excluded) and the coverage query above is the honest companion.
 - **The "tool ran" inference on success** (Decision 3) is a convention over the proxies' `RunE` bodies, pinned by a test on the annotated set rather than by the type system.
 - **Three fields land before any panel reads them.** Events are additive and old consumers ignore unknown keys, so the CLI side can ship first; the ranking stays wrong until the pipe and panels change.

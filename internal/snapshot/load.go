@@ -49,14 +49,14 @@ var ErrSnapshotFeatureUnavailable = errors.New("feature not available on this pl
 // and returns the silent error the top-level handler expects. Every snapshot
 // operation funnels through here so the wording and CTAs live in one place.
 func emitFeatureUnavailableError(sink output.Sink) error {
-	sink.Emit(output.ErrorEvent{
+	return output.Fail(sink, output.ErrorEvent{
 		Title:   "Snapshots require a paid LocalStack plan",
 		Summary: "Your plan does not include the snapshot feature.",
 		Actions: []output.ErrorAction{
 			{Label: "Compare plans:", Value: "https://www.localstack.cloud/pricing"},
 		},
-	})
-	return output.NewSilentError(ErrSnapshotFeatureUnavailable)
+		Code: output.ErrLicenseNotCovered,
+	}, ErrSnapshotFeatureUnavailable)
 }
 
 func ValidateMergeStrategy(strategy string) error {
@@ -93,7 +93,7 @@ type PodLoader interface {
 func load(ctx context.Context, rt runtime.Runtime, containers []config.ContainerConfig, sink output.Sink, starter Starter, spinnerText string, onSuccess func(), do func() error) (retErr error) {
 	if err := rt.IsHealthy(ctx); err != nil {
 		rt.EmitUnhealthyError(sink, err)
-		return output.NewSilentError(fmt.Errorf("runtime not healthy: %w", err))
+		return runtime.UnhealthyError(err)
 	}
 
 	emitExperimentalWarning(containers, sink)
@@ -105,14 +105,14 @@ func load(ctx context.Context, rt runtime.Runtime, containers []config.Container
 
 	if len(runningContainers) == 0 {
 		if starter == nil {
-			sink.Emit(output.ErrorEvent{
+			return output.Fail(sink, output.ErrorEvent{
 				Title: "LocalStack is not running",
 				Actions: []output.ErrorAction{
 					{Label: "Start LocalStack:", Value: "lstk"},
 					{Label: "See help:", Value: "lstk -h"},
 				},
-			})
-			return output.NewSilentError(fmt.Errorf("LocalStack is not running"))
+				Code: output.ErrEmulatorNotRunning,
+			}, fmt.Errorf("LocalStack is not running"))
 		}
 		if err := starter(ctx, sink); err != nil {
 			return err
@@ -132,28 +132,28 @@ func load(ctx context.Context, rt runtime.Runtime, containers []config.Container
 		return emitFeatureUnavailableError(sink)
 	}
 	if errors.Is(err, ErrIncompatibleSnapshot) {
-		sink.Emit(output.ErrorEvent{
+		return output.Fail(sink, output.ErrorEvent{
 			Title:   "Could not load snapshot",
 			Summary: "Snapshot is incompatible with the running LocalStack version",
-		})
-		return output.NewSilentError(err)
+			Code:    output.ErrSnapshotInvalidRef,
+		}, err)
 	}
 	if errors.Is(err, ErrInvalidSnapshotFile) {
-		sink.Emit(output.ErrorEvent{
+		return output.Fail(sink, output.ErrorEvent{
 			Title:   "Could not load snapshot",
 			Summary: "This file is not a valid snapshot",
-		})
-		return output.NewSilentError(err)
+			Code:    output.ErrSnapshotInvalidRef,
+		}, err)
 	}
 	if errors.Is(err, ErrPodNotFound) {
-		sink.Emit(output.ErrorEvent{
+		return output.Fail(sink, output.ErrorEvent{
 			Title:   "Could not load snapshot",
 			Summary: "Snapshot was not found on the LocalStack platform",
 			Actions: []output.ErrorAction{
 				{Label: "List your snapshots:", Value: "lstk snapshot list"},
 			},
-		})
-		return output.NewSilentError(err)
+			Code: output.ErrSnapshotNotFound,
+		}, err)
 	}
 	return err
 }
@@ -233,12 +233,12 @@ func LoadPod(ctx context.Context, rt runtime.Runtime, containers []config.Contai
 // message already names the highest available version, so it is surfaced verbatim
 // as the summary rather than being restated.
 func emitPodVersionNotFound(err error, podName, title string, sink output.Sink) error {
-	sink.Emit(output.ErrorEvent{
+	return output.Fail(sink, output.ErrorEvent{
 		Title:   title,
 		Summary: strings.TrimPrefix(err.Error(), ErrPodVersionNotFound.Error()+": "),
 		Actions: []output.ErrorAction{
 			{Label: "List available versions:", Value: "lstk snapshot versions pod:" + podName},
 		},
-	})
-	return output.NewSilentError(err)
+		Code: output.ErrSnapshotNotFound,
+	}, err)
 }

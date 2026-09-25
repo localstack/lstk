@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -326,6 +327,13 @@ func TestCommandResult(t *testing.T) {
 			name: "signal arrives as the command finishes",
 			ctx:  done, err: nil, proxied: false,
 			want: telemetry.CommandResult{ExitCode: 0, Cancelled: true},
+		},
+		{
+			// A site that classified its failure through output.Fail: the code
+			// and its category ride the error into the event.
+			name: "classified lstk failure carries its error code",
+			ctx:  live, err: fmt.Errorf("checking: %w", output.Fail(output.NewPlainSink(io.Discard), output.ErrorEvent{Title: "bad account", Code: output.ErrValidationError}, errors.New("bad account"))), proxied: true,
+			want: telemetry.CommandResult{ExitCode: 1, ErrorMsg: "checking: bad account", ErrorCode: "VALIDATION_ERROR", ErrorCategory: "USAGE"},
 		},
 	}
 	for _, tc := range tests {

@@ -62,12 +62,12 @@ func ApplyEmulatorType(ctx context.Context, rt runtime.Runtime, sink output.Sink
 	// actionable error instead of the raw rewrite failure.
 	if len(containers) == 0 {
 		err := fmt.Errorf("config has no [[containers]] block")
-		sink.Emit(output.ErrorEvent{
+		return nil, output.Fail(sink, output.ErrorEvent{
 			Title:   "Incomplete configuration",
 			Summary: "The config file has no [[containers]] block, so there is no emulator to select.",
 			Actions: []output.ErrorAction{{Label: "Add a [[containers]] block, or delete the file to regenerate it:", Value: "lstk config path"}},
-		})
-		return nil, output.NewSilentError(err)
+			Code:    output.ErrConfigInvalid,
+		}, err)
 	}
 
 	// Reject a multi-block config before touching the file: only one block can
@@ -75,12 +75,12 @@ func ApplyEmulatorType(ctx context.Context, rt runtime.Runtime, sink output.Sink
 	// one block's type while the start is doomed to fail would leave a confusing
 	// half-changed config.
 	if err := checkSingleContainer(containers); err != nil {
-		sink.Emit(output.ErrorEvent{
+		return nil, output.Fail(sink, output.ErrorEvent{
 			Title:   "Unsupported configuration",
 			Summary: err.Error(),
 			Actions: []output.ErrorAction{{Label: "Edit your config file so only one [[containers]] block is enabled:", Value: "lstk config path"}},
-		})
-		return nil, output.NewSilentError(err)
+			Code:    output.ErrConfigInvalid,
+		}, err)
 	}
 
 	current := containers[0]
@@ -100,15 +100,15 @@ func ApplyEmulatorType(ctx context.Context, rt runtime.Runtime, sink output.Sink
 	}
 
 	if current.CustomImage != "" {
-		sink.Emit(output.ErrorEvent{
+		return nil, output.Fail(sink, output.ErrorEvent{
 			Title:   fmt.Sprintf("Cannot switch emulator to %s while a custom image is set", requested.ShortName()),
 			Summary: "A custom image pins a specific product, so lstk would run the previous product's image under the new emulator type and health checks.",
 			Actions: []output.ErrorAction{
 				{Label: "Remove or update 'image' in", Value: location},
 				{Label: "Or keep a separate profile with", Value: "lstk start --type " + string(requested) + " --config <path>"},
 			},
-		})
-		return nil, output.NewSilentError(fmt.Errorf("cannot switch emulator type while a custom image is set"))
+			Code: output.ErrValidationError,
+		}, fmt.Errorf("cannot switch emulator type while a custom image is set"))
 	}
 
 	if current.Tag != "" && current.Tag != "latest" {
@@ -163,12 +163,12 @@ func rejectIfConflictingEmulatorRunning(ctx context.Context, rt runtime.Runtime,
 		return nil
 	}
 
-	sink.Emit(output.ErrorEvent{
+	return output.Fail(sink, output.ErrorEvent{
 		Title:   fmt.Sprintf("%s is running on port %s", foundType.DisplayName(), found.BoundPort),
 		Summary: fmt.Sprintf("Switching to the %s was skipped — only one emulator can run on a port at a time, and your config was not changed.", requested.ShortName()),
 		Actions: []output.ErrorAction{
 			{Label: "Stop the running emulator, then retry:", Value: fmt.Sprintf("docker stop %s", found.Name)},
 		},
-	})
-	return output.NewSilentError(fmt.Errorf("%s is already running on port %s", foundType.DisplayName(), found.BoundPort))
+		Code: output.ErrEmulatorWrongType,
+	}, fmt.Errorf("%s is already running on port %s", foundType.DisplayName(), found.BoundPort))
 }

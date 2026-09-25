@@ -80,13 +80,13 @@ Examples:
 			}
 			azureConfigDir := azureconfig.ConfigDir(configDir)
 			if !azureconfig.IsSetUp(azureConfigDir) {
-				sink.Emit(output.ErrorEvent{
+				return output.Fail(sink, output.ErrorEvent{
 					Title: "Azure CLI integration is not set up",
 					Actions: []output.ErrorAction{
 						{Label: "Set it up:", Value: "lstk setup azure"},
 					},
-				})
-				return output.NewSilentError(fmt.Errorf("azure CLI integration not set up"))
+					Code: output.ErrIntegrationNotSetUp,
+				}, fmt.Errorf("azure CLI integration not set up"))
 			}
 
 			target, err := endpoint.Resolve(cmd.Context(), cmd)
@@ -186,18 +186,17 @@ func newAzStopInterceptionCmd(cfg *env.Env) *cobra.Command {
 // --endpoint-url (see design.md's Non-Goals).
 func azPreflight(ctx context.Context, cfg *env.Env, sink output.Sink, target *endpoint.Target) (string, error) {
 	if err := azurecli.CheckInstalled(); err != nil {
-		sink.Emit(output.ErrorEvent{
+		return "", output.Fail(sink, output.ErrorEvent{
 			Title:   "az CLI not found in PATH",
 			Actions: []output.ErrorAction{{Label: "Install Azure CLI:", Value: azurecli.InstallURL}},
-		})
-		return "", output.NewSilentError(err)
+			Code:    output.ErrDependencyMissing,
+		}, err)
 	}
 
 	if target != nil {
 		if target.Type != config.EmulatorAzure {
 			err := fmt.Errorf("lstk az requires the Azure emulator, but the endpoint at %s is a %s emulator", target.URL, target.Type.DisplayName())
-			sink.Emit(output.ErrorEvent{Title: err.Error()})
-			return "", output.NewSilentError(err)
+			return "", output.Fail(sink, output.ErrorEvent{Title: err.Error(), Code: output.ErrEmulatorWrongType}, err)
 		}
 		return azureconfig.BuildEndpoint(target.HostPort()), nil
 	}
@@ -220,7 +219,7 @@ func azPreflight(ctx context.Context, cfg *env.Env, sink output.Sink, target *en
 	}
 	if err := rt.IsHealthy(ctx); err != nil {
 		rt.EmitUnhealthyError(sink, err)
-		return "", output.NewSilentError(fmt.Errorf("runtime not healthy: %w", err))
+		return "", runtime.UnhealthyError(err)
 	}
 
 	runningName, err := container.ResolveRunningContainerName(ctx, rt, azureContainer)
@@ -233,15 +232,15 @@ func azPreflight(ctx context.Context, cfg *env.Env, sink output.Sink, target *en
 
 	resolvedHost, dnsOK := endpoint.ResolveHost(ctx, azureContainer.Port, cfg.LocalStackHost)
 	if !dnsOK {
-		sink.Emit(output.ErrorEvent{
+		return "", output.Fail(sink, output.ErrorEvent{
 			Title: "DNS resolution required for 'lstk az'",
 			Actions: []output.ErrorAction{
 				{Label: "Note:", Value: "Could not resolve *." + endpoint.Hostname + " to 127.0.0.1."},
 				{Label: "Why:", Value: "the Azure emulator serves endpoints under *." + endpoint.Hostname + ", which the Azure CLI must be able to resolve"},
 				{Label: "Fix:", Value: "configure DNS or set LOCALSTACK_HOST"},
 			},
-		})
-		return "", output.NewSilentError(fmt.Errorf("dns resolution required for 'lstk az'"))
+			Code: output.ErrDNSResolutionRequired,
+		}, fmt.Errorf("dns resolution required for 'lstk az'"))
 	}
 
 	return azureconfig.BuildEndpoint(resolvedHost), nil

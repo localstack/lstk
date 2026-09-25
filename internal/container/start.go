@@ -92,18 +92,17 @@ func start(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts Start
 	// checks or image pulls, so we don't leave a partial startup that later dies
 	// on container-name conflicts or shared port collisions.
 	if err := checkSingleContainer(opts.Containers); err != nil {
-		sink.Emit(output.ErrorEvent{
+		return StartResult{}, output.Fail(sink, output.ErrorEvent{
 			Title:   "Unsupported configuration",
 			Summary: err.Error(),
 			Actions: []output.ErrorAction{{Label: "Edit your config file so only one [[containers]] block is enabled:", Value: "lstk config path"}},
 			Code:    output.ErrConfigInvalid,
-		})
-		return StartResult{}, output.NewSilentError(err)
+		}, err)
 	}
 
 	if err := rt.IsHealthy(ctx); err != nil {
 		rt.EmitUnhealthyError(sink, err)
-		return StartResult{}, output.NewSilentError(fmt.Errorf("runtime not healthy: %w", err))
+		return StartResult{}, runtime.UnhealthyError(err)
 	}
 
 	licenseFilePath, err := config.LicenseFilePath()
@@ -119,8 +118,7 @@ func start(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts Start
 
 	token, err := a.GetToken(ctx)
 	if err != nil {
-		sink.Emit(output.ErrorEvent{Title: err.Error(), Code: output.ErrAuthRequired})
-		return StartResult{}, output.NewSilentError(err)
+		return StartResult{}, output.Fail(sink, output.ErrorEvent{Title: err.Error(), Code: output.ErrAuthRequired}, err)
 	}
 
 	opts.Telemetry.SetAuthToken(token)
@@ -157,15 +155,14 @@ func start(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts Start
 // renders identically whether it's the initial failure or a retry after
 // re-login came back rejected too.
 func renderLicenseRejection(sink output.Sink, rejErr *licenseRejectedError, err error) error {
-	sink.Emit(output.ErrorEvent{
+	return output.Fail(sink, output.ErrorEvent{
 		Title: fmt.Sprintf("License validation failed for %s:%s: %s", rejErr.productName, rejErr.version, rejErr.licErr.Message),
 		Actions: []output.ErrorAction{
 			{Label: "Log in again to refresh your credentials:", Value: "lstk logout && lstk login"},
 			{Label: "Or provide a valid token via the environment variable:", Value: "LOCALSTACK_AUTH_TOKEN"},
 		},
 		Code: output.ErrLicenseInvalid,
-	})
-	return output.NewSilentError(err)
+	}, err)
 }
 
 // licenseRejectedError carries the product/version context of a definitive
@@ -906,14 +903,14 @@ func selectContainersToStart(ctx context.Context, rt runtime.Runtime, sink outpu
 		if found != nil {
 			foundType := config.EmulatorTypeForImage(found.Image)
 			if foundType != "" && foundType != c.EmulatorType {
-				sink.Emit(output.ErrorEvent{
+				failure := output.Fail(sink, output.ErrorEvent{
 					Title:   fmt.Sprintf("%s is running on port %s", foundType.DisplayName(), found.BoundPort),
 					Summary: fmt.Sprintf("Your config specifies the %s. Only one emulator can run on a port at a time.", c.EmulatorType.DisplayName()),
 					Actions: []output.ErrorAction{
 						{Label: "Stop the running emulator:", Value: fmt.Sprintf("docker stop %s", found.Name)},
 					},
 					Code: output.ErrEmulatorWrongType,
-				})
+				}, fmt.Errorf("%s is already running on port %s", foundType.DisplayName(), found.BoundPort))
 				tel.EmitEmulatorLifecycleEvent(ctx, telemetry.LifecycleEvent{
 					EventType: telemetry.LifecycleStartError,
 					Emulator:  c.EmulatorType,
@@ -921,17 +918,17 @@ func selectContainersToStart(ctx context.Context, rt runtime.Runtime, sink outpu
 					ErrorCode: telemetry.ErrCodeEmulatorMismatch,
 					ErrorMsg:  fmt.Sprintf("running %s on port %s, configured %s", foundType, found.BoundPort, c.EmulatorType),
 				})
-				return nil, nil, output.NewSilentError(fmt.Errorf("%s is already running on port %s", foundType.DisplayName(), found.BoundPort))
+				return nil, nil, failure
 			}
 			if found.BoundPort != c.Port {
-				sink.Emit(output.ErrorEvent{
+				failure := output.Fail(sink, output.ErrorEvent{
 					Title:   fmt.Sprintf("%s is already running on port %s", c.EmulatorType.DisplayName(), found.BoundPort),
 					Summary: fmt.Sprintf("Config expects port %s. Only one instance can run at a time.", c.Port),
 					Actions: []output.ErrorAction{
 						{Label: "Stop existing emulator:", Value: "lstk stop"},
 					},
 					Code: output.ErrPortConflict,
-				})
+				}, fmt.Errorf("LocalStack already running on port %s", found.BoundPort))
 				tel.EmitEmulatorLifecycleEvent(ctx, telemetry.LifecycleEvent{
 					EventType: telemetry.LifecycleStartError,
 					Emulator:  c.EmulatorType,
@@ -939,7 +936,7 @@ func selectContainersToStart(ctx context.Context, rt runtime.Runtime, sink outpu
 					ErrorCode: telemetry.ErrCodePortConflict,
 					ErrorMsg:  fmt.Sprintf("running on port %s, configured port %s", found.BoundPort, c.Port),
 				})
-				return nil, nil, output.NewSilentError(fmt.Errorf("LocalStack already running on port %s", found.BoundPort))
+				return nil, nil, failure
 			}
 			alreadyRunning = append(alreadyRunning, emitAlreadyRunning(ctx, sink, c, localStackHost, webAppURL, isPersistenceEnabled(ctx, rt, found.Name)))
 			continue
@@ -1041,7 +1038,7 @@ func healLeftoverContainer(ctx context.Context, rt runtime.Runtime, sink output.
 			ErrorCode: telemetry.ErrCodeStartFailed,
 			ErrorMsg:  msg,
 		})
-		return output.NewSilentError(errors.New(msg))
+		return &output.SilentError{Err: errors.New(msg), Code: output.ErrEmulatorStartFailed}
 	}
 
 	removable := brief.Managed || (brief.AutoRemove && !brief.Created)
@@ -1050,6 +1047,7 @@ func healLeftoverContainer(ctx context.Context, rt runtime.Runtime, sink output.
 			Title:   fmt.Sprintf("Container name %q is already taken", c.Name),
 			Summary: fmt.Sprintf("An existing container (image %s) uses this name but was not created by lstk, so lstk will not remove it.", brief.Image),
 			Actions: []output.ErrorAction{{Label: "Remove or rename that container, e.g.:", Value: "docker rm " + c.Name}},
+			Code:    output.ErrEmulatorStartFailed,
 		})
 		return emitStartError(fmt.Sprintf("container name %s taken by a foreign container (image %s)", c.Name, brief.Image))
 	}
@@ -1059,6 +1057,7 @@ func healLeftoverContainer(ctx context.Context, rt runtime.Runtime, sink output.
 			Title:   fmt.Sprintf("Cannot remove leftover container %q", c.Name),
 			Summary: fmt.Sprintf("A previous start left this container behind and removing it failed: %v", err),
 			Actions: []output.ErrorAction{{Label: "Remove it manually, then retry:", Value: "docker rm -f " + c.Name}},
+			Code:    output.ErrEmulatorStartFailed,
 		})
 		return emitStartError(fmt.Sprintf("failed to remove leftover container %s: %v", c.Name, err))
 	}

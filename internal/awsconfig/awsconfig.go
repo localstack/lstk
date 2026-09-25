@@ -339,8 +339,7 @@ func SetupNonInteractive(ctx context.Context, sink output.Sink, resolvedHost str
 
 	status, configOK, credsOK, err := checkProfileSetup(resolvedHost)
 	if err != nil {
-		sink.Emit(output.ErrorEvent{Title: "Could not check the LocalStack AWS profile", Summary: err.Error()})
-		return output.NewSilentError(err)
+		return output.Fail(sink, output.ErrorEvent{Title: "Could not check the LocalStack AWS profile", Summary: err.Error(), Code: output.ErrConfigInvalid}, err)
 	}
 	if !status.anyNeeded() {
 		sink.Emit(output.MessageEvent{Severity: output.SeverityNote, Text: "LocalStack AWS profile is already configured."})
@@ -349,8 +348,7 @@ func SetupNonInteractive(ctx context.Context, sink output.Sink, resolvedHost str
 
 	configPath, credsPath, err := awsPaths()
 	if err != nil {
-		sink.Emit(output.ErrorEvent{Title: "Could not determine AWS config paths", Summary: err.Error()})
-		return output.NewSilentError(err)
+		return output.Fail(sink, output.ErrorEvent{Title: "Could not determine AWS config paths", Summary: err.Error(), Code: output.ErrInternal}, err)
 	}
 
 	// A write is only an "overwrite" when a section already exists with differing
@@ -359,17 +357,16 @@ func SetupNonInteractive(ctx context.Context, sink output.Sink, resolvedHost str
 	overwriting := (configOK && status.configNeeded) || (credsOK && status.credsNeeded)
 	if overwriting && !force {
 		err := errors.New("a 'localstack' AWS profile already exists with different values")
-		sink.Emit(output.ErrorEvent{
+		return output.Fail(sink, output.ErrorEvent{
 			Title:   "Refusing to overwrite the existing LocalStack AWS profile",
 			Summary: err.Error(),
 			Actions: []output.ErrorAction{{Label: "Overwrite it:", Value: "lstk setup aws --force"}},
-		})
-		return output.NewSilentError(err)
+			Code:    output.ErrConfirmationRequired,
+		}, err)
 	}
 
 	if err := applyProfile(sink, resolvedHost, configPath, credsPath, status); err != nil {
-		sink.Emit(output.ErrorEvent{Title: "Could not write the LocalStack AWS profile", Summary: err.Error()})
-		return output.NewSilentError(err)
+		return output.Fail(sink, output.ErrorEvent{Title: "Could not write the LocalStack AWS profile", Summary: err.Error(), Code: output.ErrInternal}, err)
 	}
 	return nil
 }
@@ -380,12 +377,12 @@ func SetupNonInteractive(ctx context.Context, sink output.Sink, resolvedHost str
 // warns and returns nil so an already-running emulator's start is not aborted.
 func reportSetupErr(sink output.Sink, err error, explicit bool) error {
 	if explicit {
-		sink.Emit(output.ErrorEvent{
+		return output.Fail(sink, output.ErrorEvent{
 			Title:   "Could not set up the LocalStack AWS profile",
 			Summary: err.Error(),
 			Actions: []output.ErrorAction{{Label: "Check the permissions of ~/.aws, then re-run:", Value: "lstk setup aws"}},
-		})
-		return output.NewSilentError(err)
+			Code:    output.ErrInternal,
+		}, err)
 	}
 	sink.Emit(output.MessageEvent{Severity: output.SeverityWarning, Text: err.Error()})
 	return nil

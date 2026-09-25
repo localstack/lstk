@@ -376,15 +376,14 @@ func startEmulator(ctx context.Context, rt runtime.Runtime, cfg *env.Env, tel *t
 	// LSTK_CHECK_FOR_UPDATE_ON_STARTUP fails as early as a bad config key does.
 	updateCheckEnabled, err := resolveUpdateCheckEnabled(cfg, appConfig)
 	if err != nil {
-		sink.Emit(output.ErrorEvent{
+		return output.Fail(sink, output.ErrorEvent{
 			Title: err.Error(),
 			Actions: []output.ErrorAction{{
 				Label: "Accepted values are true and false. Unset it with:",
 				Value: "unset " + env.CheckForUpdateOnStartupVar,
 			}},
 			Code: output.ErrConfigInvalid,
-		})
-		return output.NewSilentError(err)
+		}, err)
 	}
 
 	configPath, err := config.FriendlyConfigPath()
@@ -607,6 +606,10 @@ func commandResult(ctx context.Context, runErr error, proxied bool) telemetry.Co
 		result.ProxyExitCode = &code
 	}
 	result.Cancelled = ctx.Err() != nil || errors.Is(runErr, context.Canceled) || proc.WasInterrupted(runErr)
+	if code := output.ErrorCodeOf(runErr); code != "" {
+		result.ErrorCode = string(code)
+		result.ErrorCategory = string(code.Category())
+	}
 	return result
 }
 

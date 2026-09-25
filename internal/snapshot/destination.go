@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"errors"
 	"fmt"
+	"github.com/localstack/lstk/internal/output"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -336,7 +337,7 @@ func resolveSourcePath(abs string) (string, error) {
 	if dirHit != "" {
 		return "", fmt.Errorf("%q is a directory — specify a snapshot file, e.g. ./my-snapshot.snapshot", dirHit)
 	}
-	return "", fmt.Errorf("snapshot file not found: %q (also tried %q and %q)", abs, withSnapshot, withZip)
+	return "", output.WithCode(fmt.Errorf("snapshot file not found: %q (also tried %q and %q)", abs, withSnapshot, withZip), output.ErrSnapshotNotFound)
 }
 
 // ParseDestination resolves a user-supplied destination to a local path (KindLocal) or validated pod name (KindPod).

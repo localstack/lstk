@@ -123,11 +123,11 @@ Examples:
 			sink := output.NewPlainSink(os.Stdout)
 
 			if err := awscli.CheckInstalled(); err != nil {
-				sink.Emit(output.ErrorEvent{
+				return output.Fail(sink, output.ErrorEvent{
 					Title:   "aws CLI not found in PATH",
 					Actions: []output.ErrorAction{{Label: "Install AWS CLI:", Value: awscli.InstallURL}},
-				})
-				return output.NewSilentError(err)
+					Code:    output.ErrDependencyMissing,
+				}, err)
 			}
 
 			if err := rejectPreSubcommandFlags(cmd.CalledAs(), "--account"); err != nil {
@@ -160,7 +160,7 @@ Examples:
 			var endpointURL string
 			if target != nil {
 				if target.Type != config.EmulatorAWS {
-					return emitValidationError(sink, fmt.Errorf("lstk aws requires the AWS emulator, but the endpoint at %s is a %s emulator", target.URL, target.Type.DisplayName()))
+					return emitCodedError(sink, output.ErrEmulatorWrongType, fmt.Errorf("lstk aws requires the AWS emulator, but the endpoint at %s is a %s emulator", target.URL, target.Type.DisplayName()))
 				}
 				endpointURL = target.URL
 			} else {
@@ -184,7 +184,7 @@ Examples:
 
 				if err := rt.IsHealthy(cmd.Context()); err != nil {
 					rt.EmitUnhealthyError(sink, err)
-					return output.NewSilentError(fmt.Errorf("runtime not healthy: %w", err))
+					return runtime.UnhealthyError(err)
 				}
 
 				runningName, err := container.ResolveRunningContainerName(cmd.Context(), rt, awsContainer)
