@@ -2,6 +2,8 @@
 
 lstk is developed by the LocalStack team. You can read the source, build it, and fork it freely.
 
+The lstk core is licensed under Apache 2.0. Certain bundled first-party extensions, including doctor and deploy, are proprietary and are not licensed under Apache 2.0.
+
 **We do not accept pull requests from outside collaborators.**
 
 **The way to participate is to open a well-formed issue.** A reproducible bug report or a clearly explained feature request gives us the context we need to act.

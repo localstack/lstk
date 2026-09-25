@@ -99,6 +99,15 @@ func requireExecutable(t *testing.T, path string) {
 	}
 }
 
+func requirePlainFile(t *testing.T, path string) {
+	t.Helper()
+	info, err := os.Stat(path)
+	require.NoError(t, err)
+	if goruntime.GOOS != "windows" {
+		assert.Zero(t, info.Mode().Perm()&0o111, "%s should not be executable", path)
+	}
+}
+
 func requireAbsent(t *testing.T, path string) {
 	t.Helper()
 	_, err := os.Lstat(path)
@@ -118,8 +127,9 @@ func requireNoStagingLeftovers(t *testing.T, dir string) {
 
 // TestExtractAndReplaceInstallsArchiveSet covers the archive shapes the
 // updater has to handle, in both formats. The set is lstk, the
-// bundled-extensions binary and the descriptions file; anything else at the
-// archive root is ignored, and files beside lstk are never deleted.
+// bundled-extensions binary, the descriptions file and the licence documents;
+// anything else at the archive root is ignored, and files beside lstk are never
+// deleted.
 func TestExtractAndReplaceInstallsArchiveSet(t *testing.T) {
 	t.Parallel()
 	toml := descriptionsFileName
@@ -129,6 +139,7 @@ func TestExtractAndReplaceInstallsArchiveSet(t *testing.T) {
 		archive    []archiveEntry
 		want       map[string]string // content under the real names after the update
 		executable []string
+		plain      []string // installed without the executable bit
 		absent     []string // must not have been installed
 	}{
 		{
@@ -170,6 +181,37 @@ func TestExtractAndReplaceInstallsArchiveSet(t *testing.T) {
 			want:      map[string]string{lstkBinaryName(): "new lstk", bundleName(): "bundle", toml: "doctor = \"Doctor\"\n", "lstk-mine": "user extension"},
 		},
 		{
+			// The licence documents ship beside the proprietary bundle and travel
+			// with it: lstk's own licence and notices, and the bundle's.
+			name:      "the licence documents install beside the bundle",
+			installed: map[string]string{lstkBinaryName(): "old lstk", "LICENSE": "old licence"},
+			archive: []archiveEntry{
+				{name: lstkBinaryName(), body: "new lstk", mode: 0o755},
+				{name: bundleName(), body: "bundle", mode: 0o755},
+				{name: toml, body: "doctor = \"Doctor\"\n", mode: 0o644},
+				{name: "LICENSE", body: "apache", mode: 0o644},
+				{name: "THIRD_PARTY_NOTICES.txt", body: "lstk notices", mode: 0o644},
+				{name: "bundled-extensions.LICENSE.txt", body: "proprietary terms", mode: 0o644},
+				{name: "bundled-extensions.THIRD_PARTY_NOTICES.txt", body: "bundle notices", mode: 0o644},
+			},
+			want: map[string]string{
+				lstkBinaryName(): "new lstk", bundleName(): "bundle", toml: "doctor = \"Doctor\"\n",
+				"LICENSE": "apache", "THIRD_PARTY_NOTICES.txt": "lstk notices",
+				"bundled-extensions.LICENSE.txt": "proprietary terms", "bundled-extensions.THIRD_PARTY_NOTICES.txt": "bundle notices",
+			},
+			plain: []string{"LICENSE", "THIRD_PARTY_NOTICES.txt", "bundled-extensions.LICENSE.txt", "bundled-extensions.THIRD_PARTY_NOTICES.txt"},
+		},
+		{
+			// Archives published before the documents existed must still update.
+			name:      "an archive without licence documents keeps the installed ones",
+			installed: map[string]string{lstkBinaryName(): "old lstk", "LICENSE": "installed licence"},
+			archive: []archiveEntry{
+				{name: lstkBinaryName(), body: "new lstk", mode: 0o755},
+				{name: bundleName(), body: "bundle", mode: 0o755},
+			},
+			want: map[string]string{lstkBinaryName(): "new lstk", bundleName(): "bundle", "LICENSE": "installed licence"},
+		},
+		{
 			// Release archives carry completions and manpages too; an executable
 			// lstk-* file is not part of the set either (decision 7b).
 			name:      "other files at the archive root are not installed",
@@ -195,6 +237,9 @@ func TestExtractAndReplaceInstallsArchiveSet(t *testing.T) {
 				}
 				for _, name := range tc.executable {
 					requireExecutable(t, filepath.Join(dir, name))
+				}
+				for _, name := range tc.plain {
+					requirePlainFile(t, filepath.Join(dir, name))
 				}
 				for _, name := range tc.absent {
 					requireAbsent(t, filepath.Join(dir, name))
@@ -352,19 +397,27 @@ func TestReplaceSetWindows(t *testing.T) {
 		exePath := filepath.Join(dir, "lstk.exe")
 		require.NoError(t, os.WriteFile(exePath, []byte("old lstk"), 0o755))
 		require.NoError(t, os.WriteFile(filepath.Join(dir, bundledBinaryName("windows")), []byte("old bundle"), 0o755))
+		require.NoError(t, os.WriteFile(filepath.Join(dir, "LICENSE"), []byte("old licence"), 0o644))
 		archive := buildArchive(t, "zip", []archiveEntry{
 			{name: "lstk.exe", body: "new lstk", mode: 0o755},
+			{name: "LICENSE", body: "new licence", mode: 0o644},
 			{name: bundledBinaryName("windows"), body: "new bundle", mode: 0o755},
 			{name: bundledBinaryBaseName, body: "no .exe: not the Windows member", mode: 0o755},
 			{name: "lstk-alpha.exe", body: "not part of the set", mode: 0o755},
 			{name: descriptionsFileName, body: "deploy = \"Deploy\"\n", mode: 0o644},
+			{name: "bundled-extensions.THIRD_PARTY_NOTICES.txt", body: "bundle notices", mode: 0o644},
 		})
 		require.NoError(t, replaceSet(archive, exePath, "zip", "windows"))
 		requireFileContent(t, exePath, "new lstk")
+		requireFileContent(t, filepath.Join(dir, "bundled-extensions.THIRD_PARTY_NOTICES.txt"), "bundle notices")
 		requireFileContent(t, filepath.Join(dir, "lstk.exe.old"), "old lstk")
 		requireFileContent(t, filepath.Join(dir, bundledBinaryName("windows")), "new bundle")
 		requireFileContent(t, filepath.Join(dir, bundledBinaryName("windows")+".old"), "old bundle")
 		requireFileContent(t, filepath.Join(dir, descriptionsFileName), "deploy = \"Deploy\"\n")
+		// Only a running executable needs moving aside; documents are renamed over.
+		requireFileContent(t, filepath.Join(dir, "LICENSE"), "new licence")
+		requireAbsent(t, filepath.Join(dir, "LICENSE.old"))
+		requireAbsent(t, filepath.Join(dir, descriptionsFileName+".old"))
 		requireAbsent(t, filepath.Join(dir, bundledBinaryBaseName))
 		requireAbsent(t, filepath.Join(dir, "lstk-alpha.exe"))
 		requireNoStagingLeftovers(t, dir)
@@ -389,7 +442,7 @@ func TestCommitRestoresRunningBinaryOnWindowsRenameFailure(t *testing.T) {
 	t.Parallel()
 	dest := filepath.Join(t.TempDir(), "lstk.exe")
 	require.NoError(t, os.WriteFile(dest, []byte("old lstk"), 0o755))
-	m := updateMember{dest: dest, mode: 0o755} // no staging file: the rename fails
+	m := updateMember{dest: dest, mode: 0o755, binary: true} // no staging file: the rename fails
 	require.Error(t, m.commit("windows"))
 	requireFileContent(t, dest, "old lstk")
 	requireAbsent(t, dest+".old")
