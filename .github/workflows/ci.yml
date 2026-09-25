@@ -292,6 +292,8 @@ jobs:
           CREATE_JUNIT_REPORT: "true"
           LOCALSTACK_AUTH_TOKEN: ${{ secrets.LOCALSTACK_AUTH_TOKEN }}
           LSTK_TEST_HOMEBREW: ${{ matrix.os == 'macos-latest' && '1' || '0' }}
+          # Ephemeral runner: safe to exercise Windows Credential Manager.
+          LSTK_TEST_SYSTEM_KEYRING: ${{ matrix.os == 'windows-latest' && '1' || '0' }}
           LSTK_GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SHARD_INDEX: ${{ matrix.shard }}
           SHARD_TOTAL: ${{ matrix.shard_total }}
