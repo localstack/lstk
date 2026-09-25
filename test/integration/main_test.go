@@ -95,14 +95,16 @@ func TestMain(m *testing.M) {
 		dockerAvailable = err == nil
 	}
 
-	// Determine whether to use file-based keyring: forced via env var or
-	// probed by attempting a system keyring read.
-	if env.Get(env.Keyring) == "file" {
-		useFileKeyring = true
-	} else {
-		_, err := keyring.Get(keyringService, keyringAuthTokenKey)
-		if err != nil && !errors.Is(err, keyring.ErrNotFound) {
-			useFileKeyring = true
+	// The file keyring is the default for the whole suite: the helpers below
+	// write and delete the `lstk` token, and the old "probe the system keyring"
+	// default made them wipe a logged-in developer's real keychain entry
+	// whenever LSTK_KEYRING=file was not exported. LSTK_TEST_SYSTEM_KEYRING=1
+	// opts back in; LSTK_KEYRING=file is then also forced into every spawned
+	// lstk so the binary and the helpers agree on where the token lives.
+	useFileKeyring = os.Getenv("LSTK_TEST_SYSTEM_KEYRING") != "1"
+	if useFileKeyring {
+		if err := os.Setenv(string(env.Keyring), "file"); err != nil {
+			panic(err)
 		}
 	}
 
