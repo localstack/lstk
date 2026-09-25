@@ -15,7 +15,7 @@ The event gains three **raw observations**; every interpretation (whose failure 
 - **Add `result.cancelled`** (bool, always emitted): lstk's own signal context was cancelled (SIGINT/SIGTERM, or the TUI was quit) by the time the invocation finished. Determined from lstk's context, never from the child's exit code — a tool that traps the signal exits with an ordinary code, and Windows has no signal exit code at all.
 - **Determine the origin at the exec site, never from the error's type.** `proc.MarkUserToolExit` marks the five places that run a third-party tool the user asked for. lstk shells out for its own purposes too (`brew upgrade`, `az cloud list`, `aws s3api create-bucket`), and those exits read `exit status N` exactly like the user's.
 - **Mark proxy commands with an explicit annotation** rather than reusing `DisableFlagParsing`, so one declaration governs both `proxied` and the existing `subcommand` derivation.
-- **Supersede draft PR #499**, whose `result.proxy_error` boolean is removed. Its exec-site marker, its `azurecli` split, and its integration-environment fix are kept.
+- **Replace the earlier `result.proxy_error` boolean** of this change's first revision. Its exec-site marker, its `azurecli` split, and its integration-environment fix are kept.
 - Not changed: `exit_code` (already the wrapped tool's own, from #396), `error_msg`, `subcommand`, and every other event field.
 
 ## Non-goals
@@ -35,7 +35,7 @@ The event gains three **raw observations**; every interpretation (whose failure 
 
 - **Touched code**: `internal/telemetry/events.go` (three fields and a struct-shaped `EmitCommand` argument — the positional list would otherwise reach ten), `internal/proc/exit.go` (the marker, from #499), `cmd/root.go` (the annotation, the result builder beside `ExitCode`, the emit call), `cmd/extension.go`, `cmd/{aws,az,cdk,sam,terraform}.go` (annotation), `internal/{awscli,azurecli,extension}` and `internal/iac/{cdk,sam,terraform}/cli` (marker at the exec sites, from #499).
 - **Tests**: `internal/proc/exit_test.go`, `internal/telemetry/events_test.go`, `cmd/instrument_test.go`, `test/integration/telemetry_test.go`, `test/integration/extension_test.go`, `test/integration/signal_forwarding_test.go`.
-- **Extensions**: `internal/extension.Invoke` no longer marks its exit (PR #499's draft did); `dispatchExtension` emits `proxied: false`.
+- **Extensions**: `internal/extension.Invoke` no longer marks its exit (the `proxy_error` revision did); `dispatchExtension` emits `proxied: false`.
 - **Docs**: none user-facing. No command, flag, output, env var, or documented behavior changes — this is the internal analytics payload, which nothing under `docs/` describes. `CLAUDE.md`'s "Attributing Wrapped-Tool Exits" paragraph is updated to name the new fields.
 - **Consumers**: `fct_lstk_command` (repo `localstack/localstack-dwh`) unpacks three more keys and derives `proxied`, `tool_ran`, and `error_source`; the two Grafana panels swap their failure predicate. The contract, the per-row cutover marker, and the retroactive rule are specified in design.md. The dashboard work is outside this repo.
 - **Coordination**: `proxied` matches what DEVX-1004 specifies; `proxy_exit_code` replacing the `proxy_error` boolean is what the DevX Weekly of 2026-09-21 converged on; `cancelled` is the one addition, justified in design.md Decision 5.

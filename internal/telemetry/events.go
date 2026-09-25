@@ -51,12 +51,11 @@ type CommandParameters struct {
 }
 
 // CommandResult holds the outcome of a command invocation (DEVX-1004).
-// ProxyExitCode is the wrapped tool's exit code and is present exactly when
-// the tool ran to completion (0 included, -1 when an untrapped signal killed
-// it). nil must marshal as an absent key, not null: ClickHouse's JSONHas
-// reports a null key as present and JSONExtractInt reads it as 0, a success.
-// Cancelled is raw (a zero ExitCode is still a success) and, like Proxied,
-// never omitempty. Contract: openspec/changes/distinguish-proxied-command-errors.
+// ProxyExitCode is the wrapped tool's exit code, present exactly when the tool
+// ran to completion (0 included, -1 when an untrapped signal killed it); nil
+// must marshal as an absent key, never null, because the pipe reads presence
+// as "the tool ran". Cancelled is raw (a zero ExitCode is still a success) and,
+// like Proxied, never omitempty. Contract: openspec/changes/distinguish-proxied-command-errors.
 type CommandResult struct {
 	DurationMS    int64  `json:"duration_ms"`
 	ExitCode      int    `json:"exit_code"`
