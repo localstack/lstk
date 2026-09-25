@@ -18,15 +18,15 @@
 package main
 
 import (
-	"os/signal"
-	"syscall"
 	"bufio"
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/signal"
 	"regexp"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"golang.org/x/term"
@@ -74,8 +74,8 @@ type config struct {
 	ExitCode int  `json:"exitCode,omitempty"`
 	// TrapExitCode, when set, models a tool that traps SIGINT/SIGTERM and
 	// shuts down cleanly (terraform exits 1, the aws CLI 130): after Stdout
-	// is printed the tool waits for a signal, or SleepSeconds, then exits
-	// with this code instead of dying by the signal.
+	// is printed the tool waits for a signal (or gives up after SleepSeconds,
+	// when set) and exits with this code instead of dying by the signal.
 	TrapExitCode int `json:"trapExitCode,omitempty"`
 }
 
@@ -200,9 +200,13 @@ func main() {
 		for _, line := range cfg.Stdout {
 			fmt.Println(expand(line, args, shifted))
 		}
+		var giveUp <-chan time.Time
+		if cfg.SleepSeconds > 0 {
+			giveUp = time.After(time.Duration(cfg.SleepSeconds) * time.Second)
+		}
 		select {
 		case <-sigs:
-		case <-time.After(time.Duration(cfg.SleepSeconds) * time.Second):
+		case <-giveUp:
 		}
 		os.Exit(cfg.TrapExitCode)
 	}

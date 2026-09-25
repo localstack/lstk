@@ -16,7 +16,14 @@ import os
 
 class Sink(http.server.BaseHTTPRequestHandler):
     def do_POST(self):
-        body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+        raw = self.rfile.read(int(self.headers.get("Content-Length") or 0))
+        try:
+            body = json.loads(raw)
+        except ValueError:
+            print(f"ignoring non-JSON body ({len(raw)} bytes)", flush=True)
+            self.send_response(400)
+            self.end_headers()
+            return
         for event in body.get("events", [body]):
             if isinstance(event.get("payload"), str):
                 event["payload"] = json.loads(event["payload"])

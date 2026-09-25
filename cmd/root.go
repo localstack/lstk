@@ -571,14 +571,11 @@ func commandDisplayName(c *cobra.Command) string {
 }
 
 // ExitCode maps a command error to the exit code the lstk process terminates
-// with: the first *exec.ExitError in the chain carries that child's exact code,
-// an output.ExitCodeError carries the --json exit-code convention (3
-// CONFIRMATION_REQUIRED, 4 AUTH_REQUIRED), anything else collapses to 1.
-// errors.As unwraps through the SilentError wrapper to reach either type.
-// main.go and instrumentCommands both use this, so the telemetry exit_code
-// always matches the real process exit code.
-// The ExitError need not be a proxied tool's: sam/cdk version probes,
-// terraform's S3 provisioning, and `lstk update`'s brew propagate theirs too.
+// with: the first *exec.ExitError in the chain carries that child's exact code
+// (a proxied tool's, or one of lstk's own subprocesses), an
+// output.ExitCodeError carries the --json convention (3 CONFIRMATION_REQUIRED,
+// 4 AUTH_REQUIRED), anything else collapses to 1. main.go and
+// instrumentCommands share it, so the recorded exit_code is the real one.
 func ExitCode(err error) int {
 	if err == nil {
 		return 0
@@ -596,12 +593,10 @@ func ExitCode(err error) int {
 
 // commandResult builds the result block of an lstk_command event; the caller
 // adds DurationMS. A proxied RunE returns nil only through its exec site, so
-// nil means the tool exited 0 (LSTK_TF_DRY_RUN is the accepted exception).
-// Cancellation comes from lstk's own context, not the child's exit code: a
-// tool that traps SIGINT exits normally, and Windows has no signal exit code.
-// proc.WasInterrupted covers the interactive PTY path, where only the child
-// receives the Ctrl-C.
-// Design: openspec/changes/distinguish-proxied-command-errors/design.md.
+// nil means the tool exited 0 (LSTK_TF_DRY_RUN excepted). Cancellation comes
+// from lstk's own context or the PTY pump (proc.WasInterrupted), never the
+// child's exit code: a tool that traps SIGINT exits normally, and Windows has
+// no signal exit code. Design: openspec/changes/distinguish-proxied-command-errors.
 func commandResult(ctx context.Context, runErr error, proxied bool) telemetry.CommandResult {
 	result := telemetry.CommandResult{ExitCode: ExitCode(runErr)}
 	if runErr != nil {

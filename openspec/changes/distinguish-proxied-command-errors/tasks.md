@@ -1,4 +1,4 @@
-TDD throughout: each test task precedes its implementation task and must be run and seen to fail for the stated reason before the code lands. Kept from PR #499 (already on this branch): the exec-site marker (`internal/proc/exit.go` + tests), the five marked third-party sites, the `azurecli` Exec/Run split, and the `test/integration/env/env.go` fix. Dropped from it: the mark on `extension.Invoke` (extensions are lstk's own code).
+TDD throughout: each test task precedes its implementation task and must be run and seen to fail for the stated reason before the code lands. Kept from the earlier `proxy_error` revision of this change: the exec-site marker (`internal/proc/exit.go` + tests), the five marked third-party sites, the `azurecli` Exec/Run split, and the `test/integration/env/env.go` fix. Dropped from it: the mark on `extension.Invoke` (extensions are lstk's own code).
 
 ## 1. Event schema
 
@@ -13,7 +13,7 @@ TDD throughout: each test task precedes its implementation task and must be run 
 ## 3. Result builder
 
 - [x] 3.1 Unit test (`cmd/instrument_test.go`): the builder over the matrix — not proxied + nil; not proxied + plain error; proxied + nil (`proxy_exit_code` 0); proxied + marked exit 252 (`proxy_exit_code` 252, `exit_code` 252); proxied + unmarked `*exec.ExitError` (no `proxy_exit_code`); proxied + plain error (none); any + done context (`cancelled`); any + `context.Canceled` wrapped in `SilentError` (`cancelled`); nil + done context (`cancelled: true, exit_code: 0`, raw)
-- [x] 3.2 Add `commandResult(ctx, err, proxied)` beside `cmd.ExitCode` in `cmd/root.go`; wire it into `instrumentCommands` (proxied from the annotation) and `dispatchExtension` (proxied `true`). Record on it why the child's exit code is not consulted for cancellation and why `nil` on a proxied invocation reads as the tool exiting 0
+- [x] 3.2 Add `commandResult(ctx, err, proxied)` beside `cmd.ExitCode` in `cmd/root.go`; wire it into `instrumentCommands` (proxied from the annotation) and `dispatchExtension` (proxied `false`: extensions are lstk's own code). Record on it why the child's exit code is not consulted for cancellation and why `nil` on a proxied invocation reads as the tool exiting 0
 - [x] 3.3 Correct `cmd.ExitCode`'s doc comment: lstk's own failures do not all collapse to 1 (`sam`/`cdk` version probes, terraform's S3 provisioning, `lstk update`'s `brew`)
 
 ## 4. End-to-end coverage (`test/integration`)
@@ -46,4 +46,4 @@ Rewrite the four `proxy_error` tests from #499 rather than adding beside them; a
 - [ ] 7.2 Update the two Grafana panels (15, 19) to `error_source = 'lstk'` and the `proxied = 0` denominator; add the proxied-exits panel
 - [ ] 7.3 Open a follow-up to plumb `output.ErrorCode`/`ErrorCategory` into the command event (the why axis)
 - [ ] 7.4 Open a follow-up for the invocations that emit no event at all — `PreRunE` failures, flag-parse errors, unresolved extension names
-- [ ] 7.5 Retarget PR #499 to this branch's content (same branch name) rather than opening a second PR
+- [x] 7.5 PR #499 carries this change (same branch as the earlier `proxy_error` revision)
