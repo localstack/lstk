@@ -43,6 +43,7 @@ Examples:
   lstk az start-interception
   lstk az stop-interception`,
 		DisableFlagParsing: true,
+		Annotations:        map[string]string{proxyCommandAnnotation: "true"},
 		PreRunE: func(cmd *cobra.Command, args []string) error {
 			if jsonPrecedesCommandName(cmd.CalledAs()) {
 				cfg.JSON = true

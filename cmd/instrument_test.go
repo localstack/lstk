@@ -10,12 +10,15 @@ import (
 	"net/http/httptest"
 	"os/exec"
 	"runtime"
+	"sort"
 	"strconv"
 	"strings"
 	"testing"
 
 	"github.com/localstack/lstk/internal/env"
+	"github.com/localstack/lstk/internal/log"
 	"github.com/localstack/lstk/internal/output"
+	"github.com/localstack/lstk/internal/proc"
 	"github.com/localstack/lstk/internal/telemetry"
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
@@ -211,5 +214,124 @@ func TestCommandInstrumentationRecordsFinalJSONExitCode(t *testing.T) {
 		assert.InDelta(t, 3, result["exit_code"], 0)
 	default:
 		t.Fatal("no telemetry event received")
+	}
+}
+
+// The pipe derives `proxied` from this set for rows older than the field, and
+// the failure-rate denominator depends on it going forward. A sixth proxy
+// command must update this list and the analytics contract in
+// openspec/changes/distinguish-proxied-command-errors/design.md.
+func TestProxyCommandAnnotationSetIsExactlyTheDocumentedProxies(t *testing.T) {
+	root := NewRootCmd(&env.Env{}, telemetry.New("", true), log.Nop())
+
+	var annotated []string
+	var walk func(c *cobra.Command)
+	walk = func(c *cobra.Command) {
+		if _, ok := c.Annotations[proxyCommandAnnotation]; ok {
+			annotated = append(annotated, c.CommandPath())
+		}
+		for _, child := range c.Commands() {
+			walk(child)
+		}
+	}
+	walk(root)
+	sort.Strings(annotated)
+
+	assert.Equal(t, []string{"lstk aws", "lstk az", "lstk cdk", "lstk sam", "lstk terraform"}, annotated)
+}
+
+// The annotation marks a command; `proxied` describes an invocation. The
+// interception subcommands and `setup azure` (alias `az`) do lstk's own work
+// and must not carry it.
+func TestProxyCommandAnnotationIsNotInherited(t *testing.T) {
+	root := NewRootCmd(&env.Env{}, telemetry.New("", true), log.Nop())
+
+	for _, path := range [][]string{{"az", "start-interception"}, {"az", "stop-interception"}, {"setup", "azure"}} {
+		c, _, err := root.Find(path)
+		require.NoError(t, err, path)
+		_, ok := c.Annotations[proxyCommandAnnotation]
+		assert.False(t, ok, "%v must not be annotated", path)
+	}
+}
+
+func TestCommandResult(t *testing.T) {
+	live := context.Background()
+	done, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	intp := func(v int) *int { return &v }
+
+	tests := []struct {
+		name    string
+		ctx     context.Context
+		err     error
+		proxied bool
+		want    telemetry.CommandResult
+	}{
+		{
+			name: "lstk command succeeds",
+			ctx:  live, err: nil, proxied: false,
+			want: telemetry.CommandResult{ExitCode: 0},
+		},
+		{
+			name: "lstk command fails",
+			ctx:  live, err: errors.New("port 4566 already in use"), proxied: false,
+			want: telemetry.CommandResult{ExitCode: 1, ErrorMsg: "port 4566 already in use"},
+		},
+		{
+			// A proxied RunE returns nil only through its exec site, so nil
+			// means the tool exited 0.
+			name: "proxied tool succeeds",
+			ctx:  live, err: nil, proxied: true,
+			want: telemetry.CommandResult{ExitCode: 0, ProxyExitCode: intp(0)},
+		},
+		{
+			name: "proxied tool fails with its own code",
+			ctx:  live, err: output.NewSilentError(proc.MarkUserToolExit(realExitError(t, 252))), proxied: true,
+			want: telemetry.CommandResult{ExitCode: 252, ErrorMsg: "exit status 252", ProxyExitCode: intp(252)},
+		},
+		{
+			// lstk's own subprocess failed (a version probe, S3 provisioning):
+			// the code propagates, but no wrapped tool ran.
+			name: "proxied invocation fails on an unmarked child exit",
+			ctx:  live, err: realExitError(t, 2), proxied: true,
+			want: telemetry.CommandResult{ExitCode: 2, ErrorMsg: "exit status 2"},
+		},
+		{
+			name: "proxied invocation fails preflight",
+			ctx:  live, err: output.NewSilentError(errors.New("runtime not healthy")), proxied: true,
+			want: telemetry.CommandResult{ExitCode: 1, ErrorMsg: "runtime not healthy"},
+		},
+		{
+			// The tool trapped the signal and exited normally; only lstk's
+			// context knows it was interrupted.
+			name: "signalled proxied tool that exited normally",
+			ctx:  done, err: output.NewSilentError(proc.MarkUserToolExit(realExitError(t, 130))), proxied: true,
+			want: telemetry.CommandResult{ExitCode: 130, ErrorMsg: "exit status 130", ProxyExitCode: intp(130), Cancelled: true},
+		},
+		{
+			name: "signalled lstk command",
+			ctx:  done, err: output.NewSilentError(context.Canceled), proxied: false,
+			want: telemetry.CommandResult{ExitCode: 1, ErrorMsg: "context canceled", Cancelled: true},
+		},
+		{
+			// TUI `q` cancels the run context without a signal.
+			name: "TUI quit without a signal",
+			ctx:  live, err: output.NewSilentError(context.Canceled), proxied: false,
+			want: telemetry.CommandResult{ExitCode: 1, ErrorMsg: "context canceled", Cancelled: true},
+		},
+		{
+			// Raw: the signal is recorded although the command finished. The
+			// pipe reads exit_code = 0 as success.
+			name: "signal arrives as the command finishes",
+			ctx:  done, err: nil, proxied: false,
+			want: telemetry.CommandResult{ExitCode: 0, Cancelled: true},
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := commandResult(tc.ctx, tc.err, tc.proxied)
+			assert.Equal(t, tc.want, got)
+		})
 	}
 }

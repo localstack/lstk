@@ -23,6 +23,7 @@ import (
 	"github.com/localstack/lstk/internal/env"
 	"github.com/localstack/lstk/internal/log"
 	"github.com/localstack/lstk/internal/output"
+	"github.com/localstack/lstk/internal/proc"
 	"github.com/localstack/lstk/internal/runtime"
 	"github.com/localstack/lstk/internal/telemetry"
 	"github.com/localstack/lstk/internal/tracing"
@@ -43,6 +44,12 @@ const canonicalCommandAnnotation = "lstk.canonical"
 // --json output. Commands without this annotation reject --json instead of
 // silently rendering plain text; see requireJSONSupport.
 const jsonSupportedAnnotation = "lstk.jsonSupported"
+
+// proxyCommandAnnotation marks a command that forwards the user's arguments
+// to a wrapped tool. It drives both parameters.proxied and the subcommand
+// derivation, so the two cannot disagree. Children do not inherit it:
+// `az start-interception` runs under a proxy command but is not proxied.
+const proxyCommandAnnotation = "lstk.proxyCommand"
 
 // Command group IDs used to separate the proxy "tool" commands (aws, terraform,
 // cdk, sam, az) from the rest of lstk's commands in the help output.
@@ -564,12 +571,11 @@ func commandDisplayName(c *cobra.Command) string {
 }
 
 // ExitCode maps a command error to the exit code the lstk process terminates
-// with: a proxied tool's *exec.ExitError carries that tool's exact code, an
-// output.ExitCodeError carries the --json exit-code convention (3
-// CONFIRMATION_REQUIRED, 4 AUTH_REQUIRED), anything else collapses to 1.
-// errors.As unwraps through the SilentError wrapper to reach either type.
-// main.go and instrumentCommands both use this, so the telemetry exit_code
-// always matches the real process exit code.
+// with: the first *exec.ExitError in the chain carries that child's exact code
+// (a proxied tool's, or one of lstk's own subprocesses), an
+// output.ExitCodeError carries the --json convention (3 CONFIRMATION_REQUIRED,
+// 4 AUTH_REQUIRED), anything else collapses to 1. main.go and
+// instrumentCommands share it, so the recorded exit_code is the real one.
 func ExitCode(err error) int {
 	if err == nil {
 		return 0
@@ -583,6 +589,25 @@ func ExitCode(err error) int {
 		return codeErr.Code
 	}
 	return 1
+}
+
+// commandResult builds the result block of an lstk_command event; the caller
+// adds DurationMS. A proxied RunE returns nil only through its exec site, so
+// nil means the tool exited 0 (LSTK_TF_DRY_RUN excepted). Cancellation comes
+// from lstk's own context or the PTY pump (proc.WasInterrupted), never the
+// child's exit code: a tool that traps SIGINT exits normally, and Windows has
+// no signal exit code. Design: openspec/changes/distinguish-proxied-command-errors.
+func commandResult(ctx context.Context, runErr error, proxied bool) telemetry.CommandResult {
+	result := telemetry.CommandResult{ExitCode: ExitCode(runErr)}
+	if runErr != nil {
+		result.ErrorMsg = runErr.Error()
+	}
+	if proxied && (runErr == nil || proc.IsUserToolExit(runErr)) {
+		code := result.ExitCode
+		result.ProxyExitCode = &code
+	}
+	result.Cancelled = ctx.Err() != nil || errors.Is(runErr, context.Canceled) || proc.WasInterrupted(runErr)
+	return result
 }
 
 // instrumentCommands walks the Cobra command tree and wraps every RunE with telemetry emission.
@@ -605,11 +630,11 @@ func instrumentCommands(cmd *cobra.Command, tel *telemetry.Client) {
 				flags = append(flags, "--"+f.Name)
 			})
 
-			// Proxy commands disable flag parsing, so their wrapped tool's
-			// subcommand is invisible in the command path; record its safe
-			// leading command-path tokens so failures are attributable.
+			// A proxy disables flag parsing, so the wrapped tool's subcommand
+			// is missing from the command path; record its safe leading tokens.
+			_, proxied := c.Annotations[proxyCommandAnnotation]
 			subcommand := ""
-			if c.DisableFlagParsing {
+			if proxied {
 				// Cobra leaves a root flag that preceded a DisableFlagParsing
 				// command in args. Use the same corrected view as the proxy's
 				// PreRunE so a global --endpoint-url does not hide the command.
@@ -619,13 +644,14 @@ func instrumentCommands(cmd *cobra.Command, tel *telemetry.Client) {
 				subcommand = proxySubcommand(c.Name(), args)
 			}
 
-			exitCode := ExitCode(runErr)
-			errorMsg := ""
-			if runErr != nil {
-				errorMsg = runErr.Error()
-			}
-
-			tel.EmitCommand(c.Context(), commandDisplayName(c), subcommand, flags, time.Since(startTime).Milliseconds(), exitCode, errorMsg)
+			result := commandResult(c.Context(), runErr, proxied)
+			result.DurationMS = time.Since(startTime).Milliseconds()
+			tel.EmitCommand(c.Context(), telemetry.CommandParameters{
+				Command:    commandDisplayName(c),
+				Subcommand: subcommand,
+				Flags:      flags,
+				Proxied:    proxied,
+			}, result)
 
 			return runErr
 		}

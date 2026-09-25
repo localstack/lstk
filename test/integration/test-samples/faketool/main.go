@@ -22,9 +22,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/signal"
 	"regexp"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"golang.org/x/term"
@@ -70,6 +72,11 @@ type config struct {
 	// under `lstk aws`/`lstk az` is lstk's inner PTY (DEVX-1049).
 	Pager    bool `json:"pager,omitempty"`
 	ExitCode int  `json:"exitCode,omitempty"`
+	// TrapExitCode, when set, models a tool that traps SIGINT/SIGTERM and
+	// shuts down cleanly (terraform exits 1, the aws CLI 130): after Stdout
+	// is printed the tool waits for a signal (or gives up after SleepSeconds,
+	// when set) and exits with this code instead of dying by the signal.
+	TrapExitCode int `json:"trapExitCode,omitempty"`
 }
 
 var placeholder = regexp.MustCompile(`\{arg(\d+)\}|\{args\}|\{env:([A-Za-z0-9_]+)((:?-)([^}]*))?\}`)
@@ -185,11 +192,28 @@ func main() {
 		os.Exit(c.ExitCode)
 	}
 
+	shifted := shiftArgs(args, cfg.Shift)
+
+	if cfg.TrapExitCode != 0 {
+		sigs := make(chan os.Signal, 1)
+		signal.Notify(sigs, os.Interrupt, syscall.SIGTERM)
+		for _, line := range cfg.Stdout {
+			fmt.Println(expand(line, args, shifted))
+		}
+		var giveUp <-chan time.Time
+		if cfg.SleepSeconds > 0 {
+			giveUp = time.After(time.Duration(cfg.SleepSeconds) * time.Second)
+		}
+		select {
+		case <-sigs:
+		case <-giveUp:
+		}
+		os.Exit(cfg.TrapExitCode)
+	}
+
 	if cfg.SleepSeconds > 0 {
 		time.Sleep(time.Duration(cfg.SleepSeconds) * time.Second)
 	}
-
-	shifted := shiftArgs(args, cfg.Shift)
 
 	if cfg.RecordFile != "" {
 		if err := os.WriteFile(cfg.RecordFile, []byte(expand(cfg.RecordContent, args, shifted)), 0o644); err != nil {

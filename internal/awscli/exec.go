@@ -108,7 +108,7 @@ func Exec(ctx context.Context, opts ExecOptions, stdout, stderr io.Writer, args 
 		runErr = proc.Run(cmd)
 	}
 
-	if err := runErr; err != nil {
+	if err := proc.MarkUserToolExit(runErr); err != nil {
 		var exitErr *exec.ExitError
 		if errors.As(err, &exitErr) {
 			span.SetAttributes(attribute.Int("aws.exit_code", exitErr.ExitCode()))

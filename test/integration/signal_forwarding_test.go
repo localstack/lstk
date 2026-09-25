@@ -13,6 +13,8 @@ import (
 	"time"
 
 	"github.com/creack/pty"
+	"github.com/localstack/lstk/test/integration/env"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -174,4 +176,33 @@ func TestWrappedToolSingleSIGINTOnCtrlCWithRedirectedStdin(t *testing.T) {
 	err = cmd.Wait()
 	<-copied
 	requireExitCode(t, 41, err)
+}
+
+// DEVX-1004: a child that traps the signal exits with an ordinary code (41
+// here, terraform 1, aws 130), which reads as a plain failure. Only lstk's
+// signal context knows it was interrupted. The reference extension stands in
+// for any wrapped child here; as an extension it is lstk's own code, so the
+// event is not proxied and carries no proxy_exit_code.
+func TestSignalledChildTelemetryRecordsCancellation(t *testing.T) {
+	t.Parallel()
+	analyticsSrv, events := mockAnalyticsServer(t)
+
+	out := &syncBuffer{}
+	cmd := startSignalWait(t, func(c *exec.Cmd) {
+		c.Stdout = out
+		c.Stderr = out
+		c.Env = env.Environ(c.Env).With(env.AnalyticsEndpoint, analyticsSrv.URL)
+	})
+	require.NoError(t, cmd.Start())
+
+	waitForMarker(t, out)
+	require.NoError(t, cmd.Process.Signal(syscall.SIGTERM))
+	requireExitCode(t, 41, cmd.Wait())
+
+	params, result := commandEventParts(t, receiveEventByName(t, events, "lstk_command"))
+	assert.Equal(t, "ext:sig", params["command"])
+	assert.Equal(t, false, params["proxied"])
+	assert.InDelta(t, 41, result["exit_code"], 0)
+	assert.NotContains(t, result, "proxy_exit_code")
+	assert.Equal(t, true, result["cancelled"], "lstk's own SIGTERM, not the child's 41, is the interruption signal")
 }

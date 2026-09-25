@@ -92,11 +92,11 @@ func dispatchExtension(ctx context.Context, cfg *env.Env, tel *telemetry.Client,
 	start := time.Now()
 	runErr := extension.Invoke(ctx, ext, extArgs, runCtx)
 
-	exitCode, errorMsg := ExitCode(runErr), ""
-	if runErr != nil {
-		errorMsg = runErr.Error()
-	}
-	tel.EmitCommand(ctx, "ext:"+name, "", nil, time.Since(start).Milliseconds(), exitCode, errorMsg)
+	// An extension is lstk's own code shipped separately, not a wrapped
+	// third-party tool, so its exit is lstk's and the event is not proxied.
+	result := commandResult(ctx, runErr, false)
+	result.DurationMS = time.Since(start).Milliseconds()
+	tel.EmitCommand(ctx, telemetry.CommandParameters{Command: "ext:" + name}, result)
 
 	return runErr
 }

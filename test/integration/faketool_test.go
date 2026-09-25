@@ -37,6 +37,7 @@ type fakeToolConfig struct {
 	DumpPrefix    string         `json:"dumpPrefix,omitempty"`
 	Pager         bool           `json:"pager,omitempty"`
 	ExitCode      int            `json:"exitCode,omitempty"`
+	TrapExitCode  int            `json:"trapExitCode,omitempty"`
 }
 
 var (

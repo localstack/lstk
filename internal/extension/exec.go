@@ -57,6 +57,8 @@ func Invoke(ctx context.Context, ext *Extension, args []string, runCtx Context) 
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
+	// Not proc.MarkUserToolExit: an extension is lstk's own code, so its exit
+	// is attributed to lstk in telemetry (DEVX-1004).
 	if err := proc.Run(cmd); err != nil {
 		var exitErr *exec.ExitError
 		if errors.As(err, &exitErr) {
