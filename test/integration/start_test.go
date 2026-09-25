@@ -1286,7 +1286,18 @@ func TestStartHidesHeaderUntilAuthComplete(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	p := startLstkInPTY(t, ctx, env.Without(env.AuthToken).With(env.APIEndpoint, mockServer.URL), "start")
+	// Fresh HOME so no stored token can pre-empt the login flow, and --config so
+	// firstRun stays false — its emulator selector would follow auth instead of
+	// the header this test is about.
+	home := t.TempDir()
+	configFile := filepath.Join(home, "config.toml")
+	require.NoError(t, os.WriteFile(configFile, []byte("[[containers]]\ntype = \"aws\"\ntag = \"latest\"\nport = \"4566\"\n"), 0644))
+	e := env.Environ(testEnvWithHome(home, "")).
+		Without(env.AuthToken).
+		With(env.APIEndpoint, mockServer.URL).
+		With(env.WebAppURL, mockServer.URL)
+
+	p := startLstkInPTY(t, ctx, e, "start", "--config", configFile)
 
 	// Wait for the login prompt — header must not be visible yet.
 	p.waitForOutput("Press any key when complete", "auth prompt should appear")

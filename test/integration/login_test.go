@@ -73,6 +73,22 @@ func createMockAPIServer(t *testing.T, licenseToken string, confirmed bool) *htt
 	}))
 }
 
+// installNoopBrowserLauncher sets LSTK_BROWSER_CMD in this process's env, which
+// every test env inherits, to a stand-in that exits 0, and returns its dir. It is
+// suite-wide because any interactive `start`/`login` without a token reaches the
+// device flow, so per-test stubbing kept leaking real browser tabs.
+func installNoopBrowserLauncher() (string, error) {
+	dir, err := os.MkdirTemp("", "lstk-browser-noop-*")
+	if err != nil {
+		return "", err
+	}
+	bin, err := installFakeToolAt(dir, "browser-noop", fakeToolConfig{})
+	if err != nil {
+		return dir, err
+	}
+	return dir, os.Setenv(string(env.BrowserCmd), bin)
+}
+
 // fakeBrowserOpener redirects the login flow's browser launch to a recorder
 // that captures the URL instead of spawning a real browser tab. It returns
 // the augmented environment and a reader for the recorded URL. On unix the
@@ -92,7 +108,10 @@ func fakeBrowserOpener(t *testing.T, environ env.Environ) (env.Environ, func() s
 		for _, name := range []string{"open", "xdg-open", "x-www-browser", "www-browser"} {
 			installFakeTool(t, dir, name, fakeToolConfig{RecordFile: record, RecordContent: "{arg1}"})
 		}
-		environ = environ.With(env.Path, dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+		// The hook takes precedence over PATH, so TestMain's suite-wide no-op
+		// has to go for these fakes to be reached at all.
+		environ = environ.Without(env.BrowserCmd).
+			With(env.Path, dir+string(os.PathListSeparator)+os.Getenv("PATH"))
 	}
 	return environ, func() string {
 		b, _ := os.ReadFile(record)
@@ -209,4 +228,42 @@ func TestLoginShortCircuitsWhenStoredTokenExists(t *testing.T) {
 	assert.Contains(t, out, "You're already logged in")
 	assert.NotContains(t, out, "Opening browser")
 	assert.NotContains(t, out, "Waiting for authorization")
+}
+
+// TestDefaultTestEnvironmentDoesNotOpenARealBrowser pins installNoopBrowserLauncher:
+// it stubs nothing itself, puts recorders on PATH under the names pkg/browser runs,
+// and requires lstk never reach them. Unix only: Windows launches via ShellExecute,
+// which is unobservable; TestDeviceFlowSuccess covers the hook there.
+func TestDefaultTestEnvironmentDoesNotOpenARealBrowser(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("a browser launch via ShellExecute is not observable")
+	}
+	t.Parallel()
+
+	mockServer := createMockAPIServer(t, "test-license-token", true)
+	defer mockServer.Close()
+
+	dir := t.TempDir()
+	record := filepath.Join(dir, "opened-url")
+	for _, name := range []string{"open", "xdg-open", "x-www-browser", "www-browser"} {
+		installFakeTool(t, dir, name, fakeToolConfig{RecordFile: record, RecordContent: "{arg1}"})
+	}
+
+	environ := env.Environ(testEnvWithHome(t.TempDir(), "")).
+		Without(env.AuthToken).
+		With(env.APIEndpoint, mockServer.URL).
+		With(env.WebAppURL, mockServer.URL).
+		With(env.Path, dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	p := startLstkInPTY(t, ctx, environ, "login")
+	p.waitForOutput("Press any key when complete", "auth completion prompt should appear")
+	p.write("\r")
+
+	out, err := p.wait()
+	require.NoError(t, err, "login should succeed: %s", out)
+	assert.NoFileExists(t, record, "no test may reach the OS browser launcher")
+	assert.NotContains(t, out, "Failed to open browser", "the stubbed launcher must still report success")
 }

@@ -33,6 +33,7 @@ const (
 	// BrowserCmd replaces the OS browser launcher for the login flow
 	// (undocumented, test-only): on Windows pkg/browser opens URLs via the
 	// ShellExecute Win32 call, which fake binaries on PATH cannot intercept.
+	// TestMain sets it suite-wide to a no-op; fakeBrowserOpener clears it.
 	BrowserCmd         Key = "LSTK_BROWSER_CMD"
 	AWSAccessKeyID     Key = "AWS_ACCESS_KEY_ID"
 	AWSSecretAccessKey Key = "AWS_SECRET_ACCESS_KEY"

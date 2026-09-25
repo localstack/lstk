@@ -71,14 +71,25 @@ func execName(base string) string {
 
 func copyExecutable(t *testing.T, src, dst string) {
 	t.Helper()
+	require.NoError(t, copyExecutableTo(src, dst))
+}
+
+// copyExecutableTo is copyExecutable for callers without a *testing.T.
+func copyExecutableTo(src, dst string) error {
 	in, err := os.Open(src)
-	require.NoError(t, err)
+	if err != nil {
+		return err
+	}
 	defer func() { _ = in.Close() }()
 	out, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o755)
-	require.NoError(t, err)
-	_, err = io.Copy(out, in)
-	require.NoError(t, err)
-	require.NoError(t, out.Close())
+	if err != nil {
+		return err
+	}
+	if _, err := io.Copy(out, in); err != nil {
+		_ = out.Close()
+		return err
+	}
+	return out.Close()
 }
 
 // installExtension places the reference extension under the name `lstk-<name>`
