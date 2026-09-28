@@ -5,7 +5,7 @@ endif
 BUILD_DIR=bin
 export CGO_ENABLED=0
 
-.PHONY: build clean test test-integration test-scripts check-cask lint-cask lint govulncheck mock-generate otel
+.PHONY: build clean test test-integration test-scripts check-cask lint-cask lint lint-actions govulncheck mock-generate otel
 
 # Always invoke `go build` and let Go's build cache handle incrementality; a
 # file target on bin/lstk would be skipped when the binary exists, even with
@@ -46,6 +46,11 @@ lint:
 	[ "$$INSTALLED" = "$$EXPECTED" ] || { echo "golangci-lint $$EXPECTED required (found: $$INSTALLED)"; exit 1; }
 	golangci-lint run --tests ./...
 	(cd test/integration && golangci-lint run --tests ./...)
+
+# zizmor audit of workflows, actions and dependabot/pre-commit config, at the
+# hook's pinned version. Export GH_TOKEN to match CI's online audits.
+lint-actions:
+	pre-commit run zizmor --all-files
 
 govulncheck:
 	go run golang.org/x/vuln/cmd/govulncheck@latest ./...

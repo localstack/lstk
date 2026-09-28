@@ -43,4 +43,4 @@ jobs:
       - name: Run zizmor
         env:
           GH_TOKEN: ${{ github.token }}
-        run: pre-commit run zizmor --all-files
+        run: make lint-actions
