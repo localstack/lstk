@@ -1,4 +1,7 @@
 version: 2
+
+# The 7-day cooldown skips freshly published (possibly compromised) releases;
+# security updates are exempt.
 updates:
   - package-ecosystem: "gomod"
     directory: "/"
@@ -6,6 +9,8 @@ updates:
       interval: "daily"
       time: "09:00"
       timezone: "Etc/UTC"
+    cooldown:
+      default-days: 7
     open-pull-requests-limit: 10
     labels:
       - "semver: patch"
@@ -24,6 +29,8 @@ updates:
       interval: "daily"
       time: "09:00"
       timezone: "Etc/UTC"
+    cooldown:
+      default-days: 7
     open-pull-requests-limit: 10
     labels:
       - "semver: patch"
@@ -42,6 +49,8 @@ updates:
       interval: "daily"
       time: "10:00"
       timezone: "Etc/UTC"
+    cooldown:
+      default-days: 7
     open-pull-requests-limit: 10
     labels:
       - "semver: patch"
@@ -53,3 +62,31 @@ updates:
         update-types:
           - "minor"
           - "patch"
+
+  # Bumps the hook revs, including the zizmor version zizmor.yml runs in CI.
+  - package-ecosystem: "pre-commit"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "10:00"
+      timezone: "Etc/UTC"
+    cooldown:
+      default-days: 7
+    labels:
+      - "semver: patch"
+      - "docs: skip"
+
+  # Bumps pre-commit itself, which zizmor.yml installs from this file.
+  - package-ecosystem: "pip"
+    directory: "/.github/tools"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "10:00"
+      timezone: "Etc/UTC"
+    cooldown:
+      default-days: 7
+    labels:
+      - "semver: patch"
+      - "docs: skip"

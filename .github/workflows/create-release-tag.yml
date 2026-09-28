@@ -15,8 +15,9 @@ on:
           - patch
           - minor
 
+# The tag push authenticates with PRO_ACCESS_TOKEN, not GITHUB_TOKEN.
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: create-release-tag
@@ -29,7 +30,7 @@ jobs:
     if: github.repository == 'localstack/lstk'
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
+      - name: Checkout code # zizmor: ignore[artipacked] the tag push needs it; this job uploads no artifacts
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ inputs.release_ref }}
@@ -39,7 +40,8 @@ jobs:
       - name: Fetch tags
         run: git fetch --tags --force
 
+      # $/ runs the action from this workflow's commit, not the checked-out release_ref.
       - name: Create release tag
-        uses: ./.github/actions/create-release-tag
+        uses: $/.github/actions/create-release-tag
         with:
           bump: ${{ inputs.bump }}

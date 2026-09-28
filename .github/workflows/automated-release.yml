@@ -5,11 +5,9 @@ on:
     - cron: "0 10 * * 4"  # Every Thursday at 10 AM UTC
   workflow_dispatch:
 
+# Only the `ci` job needs write scopes, granted there for ci.yml's jobs.
 permissions:
-  contents: write
-  pull-requests: write
-  checks: write
-  security-events: write
+  contents: read
 
 concurrency:
   group: create-release-tag
@@ -28,9 +26,9 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          persist-credentials: false
           ref: main
           fetch-depth: 0
-          token: ${{ secrets.PRO_ACCESS_TOKEN }}
 
       - name: Fetch tags
         run: git fetch --tags --force
@@ -66,9 +64,9 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          persist-credentials: false
           ref: main
           fetch-depth: 0
-          token: ${{ secrets.PRO_ACCESS_TOKEN }}
 
       - name: Fetch tags
         run: git fetch --tags --force
@@ -115,8 +113,14 @@ jobs:
     name: CI
     needs: check-changes
     if: needs.check-changes.outputs.has_changes == 'true'
-    uses: ./.github/workflows/ci.yml
-    secrets: inherit
+    uses: $/.github/workflows/ci.yml
+    # Must cover every scope ci.yml's jobs declare, even `release`, which is
+    # skipped here but still validated.
+    permissions:
+      contents: write
+      security-events: write # govulncheck SARIF upload
+    secrets:
+      LOCALSTACK_AUTH_TOKEN: ${{ secrets.LOCALSTACK_AUTH_TOKEN }}
 
   create-tag:
     name: Create release tag
@@ -124,7 +128,7 @@ jobs:
     if: needs.check-changes.outputs.has_changes == 'true'
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
+      - name: Checkout code # zizmor: ignore[artipacked] the tag push needs it; this job uploads no artifacts
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: main
@@ -135,6 +139,6 @@ jobs:
         run: git fetch --tags --force
 
       - name: Create release tag
-        uses: ./.github/actions/create-release-tag
+        uses: $/.github/actions/create-release-tag
         with:
           bump: ${{ needs.determine-bump.outputs.bump }}

@@ -1,7 +1,14 @@
 name: Enforce Labels
 on:
+  # Runs the base branch's copy, so a PR can't weaken its own label gate.
+  # Never check out or run PR code here.
+  # zizmor: ignore[dangerous-triggers] reads labels only, never checks out PR code
   pull_request_target:
     types: [labeled, unlabeled, opened, synchronize]
+
+permissions:
+  # Enough while add_comment stays at its default of false.
+  pull-requests: read
 
 jobs:
   docs:

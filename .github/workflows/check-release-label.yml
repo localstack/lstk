@@ -4,6 +4,9 @@ on:
   pull_request:
     types: [opened, labeled, unlabeled, synchronize, reopened]
 
+# The check reads labels off the event payload, so it needs no API access.
+permissions: {}
+
 jobs:
   check-label:
     name: Require release label
