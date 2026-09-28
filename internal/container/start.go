@@ -18,6 +18,7 @@ import (
 	"github.com/localstack/lstk/internal/awsconfig"
 	"github.com/localstack/lstk/internal/caller"
 	"github.com/localstack/lstk/internal/config"
+	"github.com/localstack/lstk/internal/container/tips"
 	"github.com/localstack/lstk/internal/emulator/snowflake"
 	"github.com/localstack/lstk/internal/endpoint"
 	"github.com/localstack/lstk/internal/log"
@@ -73,6 +74,9 @@ type StartOptions struct {
 	AuthOptions []auth.Option
 	// FirstRun reports that lstk had no config.toml when this run began.
 	FirstRun bool
+	// DetectorTips to add to the rotating post-start tips. Might require data that's
+	// only available at the cmd level.
+	DetectorTips []tips.Tip
 }
 
 // Start brings up the configured emulator, recovering from a definitive license
@@ -83,8 +87,15 @@ func Start(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts Start
 	if err != nil {
 		return result, err
 	}
-	emitPostStartTip(sink, result.Type, opts.FirstRun, interactive)
+	emitPostStartTip(ctx, sink, result.Type, opts.FirstRun, interactive, opts.DetectorTips, opts.Logger)
 	return result, nil
+}
+
+// emit a start-up tip to help educate the user on what they might do next.
+func emitPostStartTip(ctx context.Context, sink output.Sink, emulatorType config.EmulatorType, firstRun, interactive bool, detectorTips []tips.Tip, logger log.Logger) {
+	if tip := tips.Select(ctx, emulatorType, firstRun, interactive, detectorTips, logger); tip != "" {
+		sink.Emit(output.MessageEvent{Severity: output.SeveritySecondary, Text: tip})
+	}
 }
 
 func start(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts StartOptions, interactive bool) (StartResult, error) {

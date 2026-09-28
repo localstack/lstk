@@ -19,8 +19,10 @@ import (
 	"github.com/localstack/lstk/internal/auth"
 	"github.com/localstack/lstk/internal/config"
 	"github.com/localstack/lstk/internal/container"
+	"github.com/localstack/lstk/internal/container/tips"
 	"github.com/localstack/lstk/internal/endpoint"
 	"github.com/localstack/lstk/internal/env"
+	"github.com/localstack/lstk/internal/extension"
 	"github.com/localstack/lstk/internal/log"
 	"github.com/localstack/lstk/internal/output"
 	"github.com/localstack/lstk/internal/runtime"
@@ -356,7 +358,20 @@ func buildStartOptions(cfg *env.Env, appConfig *config.Config, logger log.Logger
 		Logger:           logger,
 		Telemetry:        tel,
 		FirstRun:         firstRun,
+		DetectorTips:     buildDetectorTips(cfg, logger),
 	}
+}
+
+// buildDetectorTips assembles the post-start tips that need dependencies only
+// the command boundary can build. A tip whose dependencies fail is dropped:
+// a missing tip must never fail a start.
+func buildDetectorTips(cfg *env.Env, logger log.Logger) []tips.Tip {
+	configDir, err := config.ConfigDir()
+	if err != nil {
+		logger.Info("deploy tip disabled: %v", err)
+		return nil
+	}
+	return []tips.Tip{tips.NewDeployTip(extension.NewResolver(logger), configDir, cfg.AuthToken)}
 }
 
 func startEmulator(ctx context.Context, rt runtime.Runtime, cfg *env.Env, tel *telemetry.Client, logger log.Logger, sink output.Sink, persist bool, firstRun bool, snapshotFlag string, noSnapshot bool, emulatorType config.EmulatorType) error {
