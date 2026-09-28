@@ -15,6 +15,7 @@ const (
 	APIEndpoint       Key = "LSTK_API_ENDPOINT"
 	WebAppURL         Key = "LSTK_WEB_APP_URL"
 	Keyring           Key = "LSTK_KEYRING"
+	TestSystemKeyring Key = "LSTK_TEST_SYSTEM_KEYRING"
 	CI                Key = "CI"
 	AnalyticsEndpoint Key = "LSTK_ANALYTICS_ENDPOINT"
 	DisableEvents     Key = "LOCALSTACK_DISABLE_EVENTS"

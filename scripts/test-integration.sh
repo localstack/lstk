@@ -21,10 +21,6 @@ if [ -n "${CREATE_JUNIT_REPORT:-}" ]; then
   JUNIT_FLAG=(--junitfile ../../test-integration-results.xml)
 fi
 
-if [ "$(uname)" = "Darwin" ]; then
-  export LSTK_KEYRING=file
-fi
-
 RUN_FLAG=()
 if [ -n "${SHARD_TOTAL:-}" ]; then
   IDX="${SHARD_INDEX:-1}"
