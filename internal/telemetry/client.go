@@ -76,11 +76,30 @@ func (c *Client) MachineID(ctx context.Context) string {
 	return c.machineID
 }
 
-func New(endpoint string, disabled bool) *Client {
+// Option configures a Client built by New.
+type Option func(*Client)
+
+// WithSessionID replaces the generated session id with a caller-supplied one
+// (LSTK_SESSION_ID), so lstk's events join the caller's analytics session. It is
+// internal-only and deliberately undocumented. An empty id keeps the generated one.
+func WithSessionID(id string) Option {
+	return func(c *Client) {
+		if id != "" {
+			c.sessionID = id
+		}
+	}
+}
+
+// New builds a telemetry client. A disabled client ignores opts: it has no session.
+func New(endpoint string, disabled bool, opts ...Option) *Client {
 	if disabled {
 		return &Client{enabled: false}
 	}
-	return newClient(endpoint, caller.New().Classify())
+	c := newClient(endpoint, caller.New().Classify())
+	for _, opt := range opts {
+		opt(c)
+	}
+	return c
 }
 
 func newClient(endpoint string, cl caller.Classification) *Client {

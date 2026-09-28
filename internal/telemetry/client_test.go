@@ -106,6 +106,21 @@ func TestSessionID_MatchesEmittedEventsAndIsEmptyWhenDisabled(t *testing.T) {
 	assert.Empty(t, New("http://localhost", true).SessionID())
 }
 
+func TestWithSessionID_OverridesGeneratedID(t *testing.T) {
+	t.Parallel()
+
+	c := New("http://localhost", false, WithSessionID("caller-session-123"))
+	assert.Equal(t, "caller-session-123", c.SessionID())
+	c.Emit(context.Background(), "cli_cmd", map[string]any{"cmd": "lstk ref"})
+	require.Len(t, c.pending, 1)
+	assert.Equal(t, "caller-session-123", c.pending[0].Metadata.SessionID)
+
+	_, err := uuid.Parse(New("http://localhost", false, WithSessionID("")).SessionID())
+	assert.NoError(t, err, "an empty override should keep the generated UUID")
+
+	assert.Empty(t, New("http://localhost", true, WithSessionID("caller-session-123")).SessionID())
+}
+
 // The machine id is conveyed to extension processes (see internal/extension.Context),
 // so it must be readable from outside the package and must be the very same value
 // stamped on the events this client emits — an extension's telemetry is only

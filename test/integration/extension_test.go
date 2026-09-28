@@ -677,3 +677,45 @@ func TestExtensionArgv0IsExtensionName(t *testing.T) {
 	require.NoError(t, err, stderr)
 	require.Contains(t, stdout, "ARGV0=lstk-deploy")
 }
+
+// An LSTK_SESSION_ID override must reach the extension as its sessionId, and be
+// the same id lstk stamps on its own ext:<name> event.
+func TestExtensionSessionIDOverrideConveyed(t *testing.T) {
+	t.Parallel()
+
+	t.Run("telemetry enabled", func(t *testing.T) {
+		t.Parallel()
+		extDir := t.TempDir()
+		installExtension(t, extDir, "ref")
+		analyticsSrv, events := mockAnalyticsServer(t)
+
+		environ := env.Environ(envWithPath(t.TempDir(), extDir)).
+			With(env.AnalyticsEndpoint, analyticsSrv.URL).
+			With(env.SessionID, "caller-session-123").
+			With(env.Key("DOCKER_HOST"), "tcp://127.0.0.1:1")
+
+		stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), environ, "ref")
+		require.NoError(t, err, stderr)
+		require.Equal(t, "caller-session-123", echoedValue(t, stdout, "SESSION_ID"))
+
+		event := receiveEventByName(t, events, "lstk_command")
+		metadata, ok := event["metadata"].(map[string]any)
+		require.True(t, ok, "event has no metadata object: %v", event)
+		require.Equal(t, "caller-session-123", metadata["session_id"])
+	})
+
+	t.Run("telemetry disabled", func(t *testing.T) {
+		t.Parallel()
+		extDir := t.TempDir()
+		installExtension(t, extDir, "ref")
+
+		environ := env.Environ(envWithPath(t.TempDir(), extDir)).
+			With(env.DisableEvents, "1").
+			With(env.SessionID, "caller-session-123").
+			With(env.Key("DOCKER_HOST"), "tcp://127.0.0.1:1")
+
+		stdout, _, err := runLstk(t, testContext(t), t.TempDir(), environ, "ref", "exit", "7")
+		requireExitCode(t, 7, err)
+		require.NotContains(t, stdout, "SESSION_ID=")
+	})
+}

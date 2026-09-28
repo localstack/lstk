@@ -216,6 +216,28 @@ func AuthToken(value string) error {
 	return nil
 }
 
+// SessionID validates a caller-supplied analytics session id (LSTK_SESSION_ID).
+// Like AuthToken the value is opaque — no UUID or charset requirement — so only
+// values that could corrupt an event payload or log line are rejected. Callers
+// should TrimSpace first.
+func SessionID(value string) error {
+	if value == "" {
+		return newError("session id", RuleEmpty, "is empty")
+	}
+	for _, r := range value {
+		if unicode.IsControl(r) {
+			return newError("session id", RuleControlChars, "contains control characters")
+		}
+		if unicode.IsSpace(r) {
+			return newError("session id", RuleFormat, "contains whitespace")
+		}
+	}
+	if len(value) > 256 {
+		return newError("session id", RuleRange, "is implausibly long (over 256 characters)")
+	}
+	return nil
+}
+
 // extensionNameRegexp matches an extension command name as lstk dispatches it:
 // `lstk <name>` runs the executable `lstk-<name>`, or hands the bundled
 // multi-call binary argv[0] "lstk-<name>". The first character must be a letter

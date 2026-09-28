@@ -247,6 +247,20 @@ func requireSubcommand(cmd *cobra.Command) {
 	}
 }
 
+// resolveSessionIDOption applies an LSTK_SESSION_ID override. A malformed value
+// is only logged: an internal analytics knob must never fail a user's command.
+func resolveSessionIDOption(raw string, logger log.Logger) []telemetry.Option {
+	if raw == "" {
+		return nil
+	}
+	id := strings.TrimSpace(raw)
+	if err := validate.SessionID(id); err != nil {
+		logger.Error("ignoring LSTK_SESSION_ID: %v", err)
+		return nil
+	}
+	return []telemetry.Option{telemetry.WithSessionID(id)}
+}
+
 func Execute(ctx context.Context) error {
 	if len(os.Args) > 1 && os.Args[1] == telemetry.FlushCommandName {
 		return runFlushTelemetry(ctx, os.Args[2:])
@@ -276,7 +290,7 @@ func Execute(ctx context.Context) error {
 		}
 	}()
 
-	tel := telemetry.New(cfg.AnalyticsEndpoint, cfg.DisableEvents)
+	tel := telemetry.New(cfg.AnalyticsEndpoint, cfg.DisableEvents, resolveSessionIDOption(cfg.SessionID, logger)...)
 	defer tel.Close()
 
 	logger.Info("lstk %s starting", version.Version())

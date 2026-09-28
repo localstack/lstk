@@ -472,3 +472,70 @@ func collectTelemetryByName(t *testing.T, events <-chan map[string]any, count in
 	}
 	return byName
 }
+
+// runAWSProxyForSessionID runs a no-op `lstk aws` (fake aws, stub emulator) with
+// LSTK_SESSION_ID set to sessionID, or unset when nil, and returns the command's
+// output alongside the session_id on the lstk_command event it emitted.
+func runAWSProxyForSessionID(t *testing.T, sessionID *string) (stdout, stderr, eventSessionID string) {
+	t.Helper()
+	emulatorSrv := awsHealthServer(t)
+	defer emulatorSrv.Close()
+	analyticsSrv, events := mockAnalyticsServer(t)
+	fakeBinDir := writeFakeTool(t, "aws", fakeToolConfig{Stdout: []string{"ok"}})
+
+	environ := env.Environ(testEnvWithHome(t.TempDir(), "")).
+		With(env.AnalyticsEndpoint, analyticsSrv.URL).
+		With(env.Path, fakeBinDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	if sessionID != nil {
+		environ = environ.With(env.SessionID, *sessionID)
+	}
+	environ = append(environ, unreachableDockerHost)
+
+	stdout, stderr, err := runLstk(t, testContext(t), "", environ,
+		"--endpoint-url", emulatorSrv.URL, "aws", "s3", "ls")
+	require.NoError(t, err, stderr)
+
+	event := receiveEventByName(t, events, "lstk_command")
+	metadata, ok := event["metadata"].(map[string]any)
+	require.True(t, ok, "event has no metadata object: %v", event)
+	id, _ := metadata["session_id"].(string)
+	return stdout, stderr, id
+}
+
+func TestSessionIDOverrideAppliedToEvents(t *testing.T) {
+	t.Parallel()
+	for name, value := range map[string]string{
+		"plain":            "caller-session-123",
+		"trailing newline": "caller-session-123\n",
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			_, _, got := runAWSProxyForSessionID(t, &value)
+			assert.Equal(t, "caller-session-123", got)
+		})
+	}
+}
+
+// A malformed LSTK_SESSION_ID must never surface to the user: output and exit
+// code match an unset run, and events fall back to a generated id.
+func TestSessionIDOverrideMalformedIgnored(t *testing.T) {
+	t.Parallel()
+	wantStdout, wantStderr, _ := runAWSProxyForSessionID(t, nil)
+
+	for name, value := range map[string]string{
+		"embedded space": "caller session",
+		"control char":   "caller\x01session",
+		"blank":          "   ",
+		"too long":       strings.Repeat("a", 257),
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			stdout, stderr, got := runAWSProxyForSessionID(t, &value)
+			assert.Equal(t, wantStdout, stdout)
+			assert.Equal(t, wantStderr, stderr)
+			assert.NotEqual(t, value, got)
+			_, err := uuid.Parse(got)
+			assert.NoError(t, err, "fallback session_id must be a generated UUID, got %q", got)
+		})
+	}
+}
