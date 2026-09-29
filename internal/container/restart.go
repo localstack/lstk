@@ -15,6 +15,9 @@ func Restart(ctx context.Context, rt runtime.Runtime, sink output.Sink, stopOpts
 	if !startOpts.Persist {
 		startOpts.Persist = runningPersistenceEnabled(ctx, rt, startOpts.Containers)
 	}
+	if startOpts.ImageOverride == "" {
+		startOpts.ImageOverride = runningImageOverride(ctx, rt, startOpts.Containers)
+	}
 
 	if err := Stop(ctx, rt, sink, startOpts.Containers, stopOpts); err != nil {
 		return err
@@ -36,4 +39,23 @@ func runningPersistenceEnabled(ctx context.Context, rt runtime.Runtime, containe
 		}
 	}
 	return false
+}
+
+// runningImageOverride returns the image of a container started with --image, so restart
+// keeps it. It returns "" for a config image, so config edits still apply on restart.
+func runningImageOverride(ctx context.Context, rt runtime.Runtime, containers []config.ContainerConfig) string {
+	for _, c := range containers {
+		name, err := ResolveRunningContainerName(ctx, rt, c)
+		if err != nil || name == "" {
+			continue
+		}
+		brief, err := rt.InspectBrief(ctx, name)
+		if err != nil {
+			continue
+		}
+		if brief.ImageOverride {
+			return brief.Image
+		}
+	}
+	return ""
 }

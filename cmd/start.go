@@ -22,6 +22,8 @@ Host environment variables prefixed with LOCALSTACK_ are forwarded to the emulat
 
 Use --type (aws, snowflake, azure) to select the emulator non-interactively; it records the selection in config, switching the configured type in place when it differs.
 
+Use --image to run a different container image for this start only, such as a pulled or offline image (e.g. lstk start --type snowflake --image localstack/snowflake-next). It is never written to config, and lstk restart keeps it.
+
 If a snapshot is configured for the AWS emulator (the snapshot field in [[containers]]), it is auto-loaded once the emulator starts. Use --snapshot REF to override it for one run, or --no-snapshot to skip it.`,
 		Args: func(_ *cobra.Command, args []string) error {
 			if len(args) > 0 {
@@ -54,14 +56,19 @@ If a snapshot is configured for the AWS emulator (the snapshot field in [[contai
 			if err != nil {
 				return err
 			}
+			imageOverride, err := resolveImageFlag(c)
+			if err != nil {
+				return err
+			}
 			if err := applyTimeoutFlag(c, cfg); err != nil {
 				return err
 			}
-			return startEmulator(c.Context(), rt, cfg, tel, logger, sink, persist, firstRun, snapshotFlag, noSnapshot, emulatorType)
+			return startEmulator(c.Context(), rt, cfg, tel, logger, sink, persist, firstRun, snapshotFlag, noSnapshot, emulatorType, imageOverride)
 		},
 	}
 	cmd.Flags().Bool("persist", false, "Persist emulator state across restarts")
 	addEmulatorTypeFlag(cmd)
+	addImageFlag(cmd)
 	addSnapshotStartFlags(cmd)
 	addTimeoutFlag(cmd)
 	return cmd

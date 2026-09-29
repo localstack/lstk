@@ -105,10 +105,14 @@ func NewRootCmd(cfg *env.Env, tel *telemetry.Client, logger log.Logger) *cobra.C
 			if err != nil {
 				return err
 			}
+			imageOverride, err := resolveImageFlag(cmd)
+			if err != nil {
+				return err
+			}
 			if err := applyTimeoutFlag(cmd, cfg); err != nil {
 				return err
 			}
-			return startEmulator(cmd.Context(), rt, cfg, tel, logger, sink, persist, firstRun, snapshotFlag, noSnapshot, emulatorType)
+			return startEmulator(cmd.Context(), rt, cfg, tel, logger, sink, persist, firstRun, snapshotFlag, noSnapshot, emulatorType, imageOverride)
 		},
 	}
 
@@ -154,6 +158,7 @@ func NewRootCmd(cfg *env.Env, tel *telemetry.Client, logger log.Logger) *cobra.C
 	root.PersistentFlags().String("endpoint-url", "", "Target an existing, externally-managed emulator at this URL")
 	root.Flags().Bool("persist", false, "Persist emulator state across restarts")
 	addEmulatorTypeFlag(root)
+	addImageFlag(root)
 	addSnapshotStartFlags(root)
 	addTimeoutFlag(root)
 
@@ -358,7 +363,7 @@ func resolveUpdateCheckEnabled(cfg *env.Env, appConfig *config.Config) (bool, er
 	return config.CheckForUpdateOnStartupDefault, nil
 }
 
-func buildStartOptions(cfg *env.Env, appConfig *config.Config, logger log.Logger, tel *telemetry.Client, persist, firstRun bool) container.StartOptions {
+func buildStartOptions(cfg *env.Env, appConfig *config.Config, logger log.Logger, tel *telemetry.Client, persist, firstRun bool, imageOverride string) container.StartOptions {
 	return container.StartOptions{
 		PlatformClient:   api.NewPlatformClient(cfg.APIEndpoint, logger),
 		AuthToken:        cfg.AuthToken,
@@ -373,6 +378,7 @@ func buildStartOptions(cfg *env.Env, appConfig *config.Config, logger log.Logger
 		Telemetry:        tel,
 		FirstRun:         firstRun,
 		DetectorTips:     buildDetectorTips(cfg, logger),
+		ImageOverride:    imageOverride,
 	}
 }
 
@@ -388,7 +394,7 @@ func buildDetectorTips(cfg *env.Env, logger log.Logger) []tips.Tip {
 	return []tips.Tip{tips.NewDeployTip(extension.NewResolver(logger), configDir, cfg.AuthToken)}
 }
 
-func startEmulator(ctx context.Context, rt runtime.Runtime, cfg *env.Env, tel *telemetry.Client, logger log.Logger, sink output.Sink, persist bool, firstRun bool, snapshotFlag string, noSnapshot bool, emulatorType config.EmulatorType) error {
+func startEmulator(ctx context.Context, rt runtime.Runtime, cfg *env.Env, tel *telemetry.Client, logger log.Logger, sink output.Sink, persist bool, firstRun bool, snapshotFlag string, noSnapshot bool, emulatorType config.EmulatorType, imageOverride string) error {
 	appConfig, err := config.Get()
 	if err != nil {
 		return failGetConfig(sink, cfg, err)
@@ -419,6 +425,19 @@ func startEmulator(ctx context.Context, rt runtime.Runtime, cfg *env.Env, tel *t
 	// still a first run, so the completion tip must fire there too.
 	wasFirstRun := firstRun
 
+	// Check before ApplyEmulatorType so a bad --image never changes the config.
+	if imageOverride != "" {
+		target := emulatorType
+		if target == "" && !firstRun && len(appConfig.Containers) == 1 {
+			target = appConfig.Containers[0].Type
+		}
+		if target != "" {
+			if err := container.RejectImageOfOtherType(sink, imageOverride, target); err != nil {
+				return err
+			}
+		}
+	}
+
 	// Apply the --type flag before resolving snapshot and start options so
 	// everything downstream reflects the selected emulator. Uses the caller's
 	// sink even in interactive mode, since the config mutation has to happen
@@ -444,7 +463,7 @@ func startEmulator(ctx context.Context, rt runtime.Runtime, cfg *env.Env, tel *t
 		return err
 	}
 
-	opts := buildStartOptions(cfg, appConfig, logger, tel, persist, wasFirstRun)
+	opts := buildStartOptions(cfg, appConfig, logger, tel, persist, wasFirstRun, imageOverride)
 
 	notifyOpts := update.NotifyOptions{
 		GitHubToken:   cfg.GitHubToken,
@@ -519,6 +538,24 @@ func resolveEmulatorTypeFlag(cmd *cobra.Command) (config.EmulatorType, error) {
 		return "", nil
 	}
 	return config.ParseEmulatorType(flagVal)
+}
+
+func addImageFlag(cmd *cobra.Command) {
+	cmd.Flags().String("image", "", "Container image to run for this start only (not saved to config)")
+}
+
+func resolveImageFlag(cmd *cobra.Command) (string, error) {
+	image, err := cmd.Flags().GetString("image")
+	if err != nil {
+		return "", err
+	}
+	if !cmd.Flags().Changed("image") {
+		return "", nil
+	}
+	if err := validate.ImageReference(image); err != nil {
+		return "", fmt.Errorf("invalid image %q: %w", image, err)
+	}
+	return image, nil
 }
 
 // addTimeoutFlag registers the --timeout flag on a start-capable command. It is

@@ -136,6 +136,41 @@ func TestContainerName(t *testing.T) {
 	}
 }
 
+func TestImageReference(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name     string
+		value    string
+		wantErr  bool
+		wantRule string
+	}{
+		{"docker hub repo", "localstack/snowflake-next", false, ""},
+		{"registry with port", "my-registry:5000/team/localstack-pro:latest", false, ""},
+		{"empty", "", true, RuleEmpty},
+		{"control char", "local\x00stack", true, RuleControlChars},
+		{"shell metachar semicolon", "localstack;rm", true, RuleMetachars},
+		{"uppercase repo path", "localstack/SnowFlake", true, RuleFormat},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			err := ImageReference(tt.value)
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("ImageReference(%q) error = %v, wantErr %v", tt.value, err, tt.wantErr)
+			}
+			if tt.wantRule != "" {
+				var ve *Error
+				if !errors.As(err, &ve) {
+					t.Fatalf("ImageReference(%q) error is not *validate.Error: %v", tt.value, err)
+				}
+				if ve.Rule != tt.wantRule {
+					t.Errorf("ImageReference(%q) Rule = %q, want %q", tt.value, ve.Rule, tt.wantRule)
+				}
+			}
+		})
+	}
+}
+
 func TestAuthToken(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
