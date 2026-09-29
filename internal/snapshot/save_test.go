@@ -189,6 +189,38 @@ func TestSave_ExporterError(t *testing.T) {
 	assert.True(t, os.IsNotExist(statErr), "no file should be created on exporter error")
 }
 
+// A re-save that fails after writing part of the new archive must leave the
+// previous snapshot untouched. Truncating dest up front deletes that backup
+// even when the export then errors or the user cancels.
+func TestSave_FailedExportPreservesExistingFile(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	dest := filepath.Join(dir, "snap")
+	const previous = "PREVIOUS-SNAPSHOT"
+	require.NoError(t, os.WriteFile(dest, []byte(previous), 0o600))
+
+	ctrl := gomock.NewController(t)
+	exporter := NewMockStateExporter(ctrl)
+	exporter.EXPECT().ExportState(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, _ string, _ []string, dst io.Writer) ([]string, error) {
+			_, _ = dst.Write([]byte("PARTIAL"))
+			return nil, fmt.Errorf("connection reset")
+		},
+	)
+
+	err := snapshot.SaveLocal(context.Background(), healthyRunningMock(t), awsContainers, exporter, "", dest, nil, output.NewPlainSink(io.Discard))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "connection reset")
+
+	data, readErr := os.ReadFile(dest)
+	require.NoError(t, readErr)
+	assert.Equal(t, previous, string(data))
+
+	entries, readErr := os.ReadDir(dir)
+	require.NoError(t, readErr)
+	assert.Len(t, entries, 1, "a failed save must not leave a partial file beside the snapshot")
+}
+
 func TestSave_DestinationDirNotExist(t *testing.T) {
 	t.Parallel()
 	dest := "/no/such/dir/snap"
@@ -338,4 +370,3 @@ func TestSavePod_SaverError(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "platform unreachable")
 }
-

@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
+	goruntime "runtime"
 
 	"github.com/localstack/lstk/internal/config"
 	"github.com/localstack/lstk/internal/container"
@@ -91,20 +93,68 @@ func SaveLocal(ctx context.Context, rt runtime.Runtime, containers []config.Cont
 			})
 		},
 		func() error {
-			w, err := os.Create(dest)
+			// Stage beside dest and rename into place only after the export
+			// succeeds. Creating dest first would truncate a previous snapshot,
+			// so a failed or cancelled re-save would destroy that backup.
+			f, err := os.CreateTemp(filepath.Dir(dest), ".lstk-snapshot-*")
 			if err != nil {
 				return fmt.Errorf("save to %s: %w", dest, err)
 			}
+			tmp := f.Name()
+			committed := false
+			defer func() {
+				if !committed {
+					_ = f.Close()
+					_ = os.Remove(tmp)
+				}
+			}()
+
 			var exportErr error
-			extracted, exportErr = exporter.ExportState(ctx, host, services, w)
+			extracted, exportErr = exporter.ExportState(ctx, host, services, f)
 			if exportErr != nil {
-				_ = w.Close()
-				_ = os.Remove(dest)
 				return fmt.Errorf("export state from LocalStack: %w", exportErr)
 			}
-			return w.Close()
+			if err := f.Sync(); err != nil {
+				return fmt.Errorf("save to %s: %w", dest, err)
+			}
+			if err := f.Close(); err != nil {
+				return fmt.Errorf("save to %s: %w", dest, err)
+			}
+			if err := replaceFile(tmp, dest); err != nil {
+				return fmt.Errorf("save to %s: %w", dest, err)
+			}
+			committed = true
+			return nil
 		},
 	)
+}
+
+// replaceFile moves src onto dst. On Windows a rename cannot replace an
+// existing file, so dst is moved aside first and restored if the new name
+// does not land.
+func replaceFile(src, dst string) error {
+	if err := os.Rename(src, dst); err == nil || goruntime.GOOS != "windows" {
+		return err
+	}
+
+	backup := dst + ".lstk-old"
+	if err := os.Remove(backup); err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	if err := os.Rename(dst, backup); err != nil {
+		if os.IsNotExist(err) {
+			return os.Rename(src, dst)
+		}
+		return err
+	}
+	if err := os.Rename(src, dst); err != nil {
+		if rerr := os.Rename(backup, dst); rerr != nil {
+			return fmt.Errorf("%w (restoring the previous snapshot also failed: %v; rename %s back to %s by hand)", err, rerr, backup, dst)
+		}
+		return err
+	}
+	_ = os.Remove(backup)
+	return nil
 }
 
 // fileSize returns dest's size on disk, or 0 if it can't be stat'd. Used for
