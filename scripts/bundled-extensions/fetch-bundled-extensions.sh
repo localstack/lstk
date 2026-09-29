@@ -7,24 +7,29 @@
 # manifest, and arranges the contents under bundled/ in the layout the
 # packaging step consumes:
 #
-#     bundled/<os>_<arch>/bundled-extensions[.exe]   one per platform
-#     bundled/lstk-extensions.toml                   os/arch-independent
+#     bundled/<os>_<arch>/bundled-extensions[.exe]       one per platform
+#     bundled/lstk-extensions.toml                       os/arch-independent
+#     bundled/bundled-extensions.THIRD_PARTY_NOTICES.txt os/arch-independent
 #
 # The private repository publishes one archive per platform,
 # `bundled-extensions_<tag>_<os>_<arch>.tar.gz` (`.zip` for Windows), each
-# containing the multi-call binary `bundled-extensions[.exe]` and the
-# descriptions file `lstk-extensions.toml`, plus a `checksums.txt` covering the
-# archives.
+# containing the multi-call binary `bundled-extensions[.exe]`, the
+# descriptions file `lstk-extensions.toml` and the bundle's licence documents
+# (BUNDLE_DOCUMENTS below), plus a `checksums.txt` covering the archives.
 #
-# Only those two files are staged, and only they reach an lstk package: lstk
+# Only those files are staged, and only they reach an lstk package: lstk
 # dispatches to the one binary by argv[0] and takes its command list from the
 # toml, so a per-command file on disk would serve no purpose on any channel.
+# The bundle is proprietary, so its licence documents must travel with it into
+# every package; they are staged under a `bundled-extensions.` prefix so they
+# can sit next to lstk's own LICENSE and THIRD_PARTY_NOTICES.txt without being
+# taken for them.
 #
 # Which commands the binary actually provides is not this script's business —
 # `bundled-extensions list` answers that, and scripts/bundled-extensions/check-descriptions.sh
 # asks it. What this script does guarantee is that every archive carries an
-# identical toml, so that answer can be checked against one file rather than
-# six.
+# identical toml and identical documents, so each can be checked against one
+# file rather than six.
 #
 # Which bundle is taken comes from bundled/extensions.version — `latest` by
 # default. `latest` is resolved to a concrete tag exactly once here and
@@ -63,6 +68,11 @@ UNSUPPORTED_PLATFORMS="${LSTK_UNSUPPORTED_PLATFORMS-}"
 REPO="${LSTK_EXTENSIONS_REPO:-localstack/lstk-bundled-extensions}"
 BUNDLED_BINARY="bundled-extensions"
 DESCRIPTIONS_FILE="lstk-extensions.toml"
+# Licence documents the bundle must publish at its archive root, identical
+# across platforms like the toml. Each is staged as
+# bundled/${BUNDLED_BINARY}.<name>; .goreleaser.yaml and internal/update list
+# the staged names, so adding one here means adding it there too.
+BUNDLE_DOCUMENTS="THIRD_PARTY_NOTICES.txt"
 MANIFEST_FILE="checksums.txt"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -146,8 +156,8 @@ verify_checksums() {
 }
 
 # Unpacks one archive into an empty directory. Whatever else it holds is
-# ignored: stage_assets looks up the binary and the toml by name and copies only
-# those two.
+# ignored: stage_assets looks up the binary, the toml and the documents by name
+# and copies only those.
 extract_archive() {
   local archive="$1" kind="$2" dest="$3"
   mkdir -p "${dest}"
@@ -157,8 +167,27 @@ extract_archive() {
   esac
 }
 
+# Stages an os/arch-independent file: taken from the first archive, and every
+# other archive must carry an identical copy, since a bundle whose platforms
+# disagree about what they describe or what terms they carry is a bug in the
+# bundle.
+stage_shared_file() {
+  local unpacked="$1" archive="$2" name="$3" staged="$4" found
+  # The contract puts the file at the archive root; -type f never matches a
+  # symlink, so a link in the archive cannot redirect the copy.
+  found="$(find "${unpacked}" -maxdepth 1 -type f -name "${name}" | head -n1)"
+  [ -n "${found}" ] || die "${archive} contains no ${name}"
+  [ -s "${found}" ] || die "${name} in ${archive} is empty"
+  if [ -f "${staged}" ]; then
+    cmp -s "${found}" "${staged}" || die "${name} in ${archive} differs from the one in an earlier archive of the same bundle"
+  else
+    cp "${found}" "${staged}"
+    chmod 0644 "${staged}"
+  fi
+}
+
 stage_assets() {
-  local dir="$1" file base parsed os arch kind ext unpacked binary toml staged=0
+  local dir="$1" file base parsed os arch kind ext unpacked binary doc staged=0
   local toml_staged="${BUNDLED_DIR}/${DESCRIPTIONS_FILE}"
   for file in "${dir}"/*; do
     base="$(basename "${file}")"
@@ -183,16 +212,10 @@ stage_assets() {
     chmod 0755 "${BUNDLED_DIR}/${os}_${arch}/${BUNDLED_BINARY}${ext}"
     staged=$((staged + 1))
 
-    # The descriptions file is os/arch-independent: take it from the first
-    # archive and insist every other archive agrees, since a bundle whose
-    # platforms describe different commands is a bug in the bundle.
-    toml="$(find "${unpacked}" -type f -name "${DESCRIPTIONS_FILE}" | head -n1)"
-    [ -n "${toml}" ] || die "${base} contains no ${DESCRIPTIONS_FILE}"
-    if [ -f "${toml_staged}" ]; then
-      cmp -s "${toml}" "${toml_staged}" || die "${DESCRIPTIONS_FILE} in ${base} differs from the one in an earlier archive of the same bundle"
-    else
-      cp "${toml}" "${toml_staged}"
-    fi
+    stage_shared_file "${unpacked}" "${base}" "${DESCRIPTIONS_FILE}" "${toml_staged}"
+    for doc in ${BUNDLE_DOCUMENTS}; do
+      stage_shared_file "${unpacked}" "${base}" "${doc}" "${BUNDLED_DIR}/${BUNDLED_BINARY}.${doc}"
+    done
   done
   [ -f "${toml_staged}" ] || die "the bundle publishes no ${DESCRIPTIONS_FILE}"
   echo "Staged ${staged} platform binaries into ${BUNDLED_DIR}."
@@ -271,6 +294,13 @@ write_stub_bundle() {
       esac
     done
   } > "${BUNDLED_DIR}/${DESCRIPTIONS_FILE}"
+  for doc in ${BUNDLE_DOCUMENTS}; do
+    {
+      echo "STUB: placeholder written by fetch-bundled-extensions.sh --stub."
+      echo "The real ${doc} is generated in the private extensions repository and"
+      echo "ships in every bundle archive. This file must never be released."
+    } > "${BUNDLED_DIR}/${BUNDLED_BINARY}.${doc}"
+  done
 
   cat >&2 <<'BANNER'
 
@@ -298,7 +328,7 @@ while [ $# -gt 0 ]; do
       ;;
     --tag=*) TAG="${1#--tag=}" ;;
     -h|--help)
-      sed -n '2,45p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+      awk 'NR > 1 && !/^#/ { exit } NR > 1 { sub(/^# ?/, ""); print }' "${BASH_SOURCE[0]}"
       exit 0
       ;;
     *) die "unknown argument: $1" ;;

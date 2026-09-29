@@ -36,20 +36,23 @@ func bundledBinaryName(goos string) string { return exeName(bundledBinaryBaseNam
 
 // updateMember is one file of the set an update installs.
 type updateMember struct {
-	src  string      // path inside the extracted archive
-	dest string      // final path in the install directory
-	mode os.FileMode // mode to install with
+	src    string      // path inside the extracted archive
+	dest   string      // final path in the install directory
+	mode   os.FileMode // mode to install with
+	binary bool        // an executable that may be running while it is replaced
 }
 
 func (m updateMember) staging() string { return m.dest + stagingSuffix }
 
 // commit renames the staged copy over the final name. On Windows a running
-// executable can be renamed but not replaced, so an existing member is moved to
+// executable can be renamed but not replaced, so an existing binary is moved to
 // ".old" first (lstk.exe itself, or a bundled extension the user is running);
-// the ".old" is removed by the next update's commit.
+// the ".old" is removed by the next update's commit. Documents are renamed over
+// directly: nothing holds them open, and on Windows the mode bits cannot tell
+// them apart from a binary.
 func (m updateMember) commit(goos string) error {
 	movedAside := ""
-	if goos == "windows" {
+	if goos == "windows" && m.binary {
 		oldPath := m.dest + ".old"
 		if err := os.Remove(oldPath); err != nil && !os.IsNotExist(err) {
 			return fmt.Errorf("cannot remove old binary %s: %w", oldPath, err)
@@ -75,9 +78,9 @@ func (m updateMember) commit(goos string) error {
 }
 
 // extractAndReplace installs the set the archive carries as one unit: lstk,
-// the bundled-extensions binary and the descriptions file. An archive carrying
-// only lstk is a set of size one. A member that fails to stage or commit fails
-// the whole update, naming it.
+// the bundled-extensions binary, the descriptions file and the licence
+// documents. An archive carrying only lstk is a set of size one. A member that
+// fails to stage or commit fails the whole update, naming it.
 func extractAndReplace(archivePath, exePath, format string) error {
 	return replaceSet(archivePath, exePath, format, goruntime.GOOS)
 }
@@ -140,24 +143,34 @@ func discoverMembers(extractDir, exePath, goos string) ([]updateMember, error) {
 		if name == binaryName || !entry.Type().IsRegular() {
 			continue
 		}
-		mode := os.FileMode(0o755)
+		mode, binary := os.FileMode(0o755), true
 		switch name {
 		case bundledBinaryName(goos):
 		case descriptionsFileName:
-			mode = 0o644
+			mode, binary = 0o644, false
+		// The licence texts and third-party notices published at the archive root
+		// (lstk's own, then the proprietary bundle's): they travel with the bundle
+		// so an update never leaves a proprietary binary without its terms.
+		// Archives predating them carry none, which is not an error. The first
+		// two are generic names, installed into lstk's directory like the rest of
+		// the set; on a curl install that is the user's bin directory.
+		case "LICENSE", "THIRD_PARTY_NOTICES.txt",
+			"bundled-extensions.LICENSE.txt", "bundled-extensions.THIRD_PARTY_NOTICES.txt":
+			mode, binary = 0o644, false
 		default:
 			continue
 		}
 		members = append(members, updateMember{
-			src:  filepath.Join(extractDir, name),
-			dest: filepath.Join(destDir, name),
-			mode: mode,
+			src:    filepath.Join(extractDir, name),
+			dest:   filepath.Join(destDir, name),
+			mode:   mode,
+			binary: binary,
 		})
 	}
 	// Destination and mode come from the running binary: the user may have
 	// installed it under another name or with special bits (setgid), and the
 	// pre-bundling updater preserved both.
-	return append(members, updateMember{src: newBinary, dest: exePath, mode: exeInfo.Mode()}), nil
+	return append(members, updateMember{src: newBinary, dest: exePath, mode: exeInfo.Mode(), binary: true}), nil
 }
 
 // removeStagingFiles deletes regular ".lstk-new" files left by an interrupted

@@ -5,7 +5,7 @@ endif
 BUILD_DIR=bin
 export CGO_ENABLED=0
 
-.PHONY: build clean test test-integration test-scripts check-cask lint-cask lint govulncheck mock-generate otel
+.PHONY: build clean test test-integration test-scripts check-cask lint-cask lint govulncheck mock-generate notices check-notices otel
 
 # Always invoke `go build` and let Go's build cache handle incrementality; a
 # file target on bin/lstk would be skipped when the binary exists, even with
@@ -30,6 +30,14 @@ test-scripts:
 
 check-cask:
 	@./scripts/check-cask.sh
+
+# Rewrite THIRD_PARTY_NOTICES.txt after a dependency change; check-notices is
+# the CI gate that fails when it is stale or a licence is not allowlisted.
+notices:
+	@./scripts/third-party-notices/generate.sh
+
+check-notices:
+	@./scripts/third-party-notices/generate.sh --check
 
 lint-cask:
 	@./scripts/lint-cask.sh
