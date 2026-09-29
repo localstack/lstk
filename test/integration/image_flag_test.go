@@ -137,6 +137,7 @@ func TestRestartKeepsImageFromImageFlag(t *testing.T) {
 	})
 
 	home := t.TempDir()
+	scheduleVolumeCleanup(t, home)
 	configFile := writeTestConfig(t, "[[containers]]\ntype = \"aws\"\ntag = \"latest\"\nport = \"4566\"\n")
 
 	mockServer := createMockLicenseServer(true)
