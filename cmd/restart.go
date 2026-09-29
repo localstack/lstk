@@ -19,7 +19,7 @@ func newRestartCmd(cfg *env.Env, tel *telemetry.Client, logger log.Logger) *cobr
 	cmd := &cobra.Command{
 		Use:     "restart",
 		Short:   "Restart emulator",
-		Long:    "Stop and restart emulator and services.\n\nAn emulator started with --image restarts from the same image. Pass --image to restart from a different one.",
+		Long:    "Stop and restart emulator and services.\n\nRestart keeps an image set with --image. Pass --image to change it, or run lstk stop and lstk start to go back to the config image.",
 		PreRunE: initConfigDeferCreate(nil),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := rejectEndpointURL(cmd, output.NewPlainSink(os.Stdout), "restart"); err != nil {

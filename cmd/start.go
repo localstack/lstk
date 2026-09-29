@@ -22,7 +22,7 @@ Host environment variables prefixed with LOCALSTACK_ are forwarded to the emulat
 
 Use --type (aws, snowflake, azure) to select the emulator non-interactively; it records the selection in config, switching the configured type in place when it differs.
 
-Use --image to run a different container image for this start only, such as a pulled or offline image (e.g. lstk start --type snowflake --image localstack/snowflake-next). It is never written to config, and lstk restart keeps it.
+Use --image to run a different container image for this start only, such as a pulled or offline image (e.g. lstk start --type snowflake --image localstack/snowflake-next). It is never saved to config. lstk restart keeps it until you run lstk stop.
 
 If a snapshot is configured for the AWS emulator (the snapshot field in [[containers]]), it is auto-loaded once the emulator starts. Use --snapshot REF to override it for one run, or --no-snapshot to skip it.`,
 		Args: func(_ *cobra.Command, args []string) error {
