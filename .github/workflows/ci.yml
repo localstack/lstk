@@ -9,11 +9,16 @@ on:
   pull_request:
   workflow_dispatch:
   workflow_call:
+    # Replaces `secrets: inherit`. Only governs workflow_call runs, which skip
+    # `release`; a direct tag push still sees every repo secret.
+    secrets:
+      LOCALSTACK_AUTH_TOKEN:
+        required: false
 
+# A scope added to any job below must also be granted by automated-release.yml's
+# `ci` job, or the weekly release fails at startup with no job logs.
 permissions:
   contents: read
-  pull-requests: write
-  checks: write
 
 # Cancel superseded runs on the same PR. Non-PR runs (push/tag/release) each
 # get a unique group via run_id, so cancel-in-progress can never touch them —
@@ -30,8 +35,10 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
-      - name: Set up Go
+      - name: Set up Go # zizmor: ignore[cache-poisoning] non-publishing job
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
@@ -54,6 +61,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       # SARIF report for the Security tab; never fails the job (gate steps
       # below own pass/fail). repo-checkout: false everywhere: the action's
@@ -114,8 +123,10 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
-      - name: Set up Go
+      - name: Set up Go # zizmor: ignore[cache-poisoning] non-publishing job
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
@@ -163,6 +174,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Download generated cask
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
@@ -180,8 +193,10 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
-      - name: Set up Go
+      - name: Set up Go # zizmor: ignore[cache-poisoning] non-publishing job
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
@@ -236,8 +251,10 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
-      - name: Set up Go
+      - name: Set up Go # zizmor: ignore[cache-poisoning] non-publishing job
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
@@ -270,7 +287,7 @@ jobs:
       # (cdk_e2e_test.go) run on the Docker-capable Linux shards. They skip
       # automatically wherever cdk is absent (macOS/Windows). lstk requires
       # CDK >= 2.177.0; the latest release satisfies that.
-      - name: Install AWS CDK
+      - name: Install AWS CDK # zizmor: ignore[adhoc-packages] unpinned on purpose, see above
         if: matrix.os == 'ubuntu-latest'
         run: npm install -g aws-cdk
 
@@ -323,9 +340,11 @@ jobs:
     timeout-minutes: 5
     steps:
       - name: Verify integration matrix succeeded
+        env:
+          RESULT: ${{ needs.test-integration.result }}
         run: |
-          if [ "${{ needs.test-integration.result }}" != "success" ]; then
-            echo "test-integration matrix result: ${{ needs.test-integration.result }}"
+          if [ "${RESULT}" != "success" ]; then
+            echo "test-integration matrix result: ${RESULT}"
             exit 1
           fi
 
@@ -335,8 +354,10 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
-      - name: Set up Node.js
+      - name: Set up Node.js # zizmor: ignore[cache-poisoning] non-publishing job
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: "20"
@@ -364,13 +385,15 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          persist-credentials: false
           fetch-depth: 0
 
+      # No cache in the publishing job, so a poisoned entry can't reach a release.
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
-          cache-dependency-path: go.sum
+          cache: false
 
       - name: Validate version tag
         run: |
@@ -434,6 +457,7 @@ jobs:
         with:
           node-version: "20"
           registry-url: "https://registry.npmjs.org"
+          package-manager-cache: false
 
       # Build the platform packages and main wrapper package from the
       # GoReleaser output. This is the same tool the previous
@@ -464,7 +488,7 @@ jobs:
       - name: Add bundled extensions to the npm platform packages
         run: scripts/bundled-extensions/add-bundled-to-npm.sh dist/npm bundled
 
-      - name: Publish to NPM
+      - name: Publish to NPM # zizmor: ignore[use-trusted-publishing] needs npm-side setup first
         run: |
           for dir in dist/npm/lstk-*/ dist/npm/lstk/; do
             npm publish "$dir" --access public

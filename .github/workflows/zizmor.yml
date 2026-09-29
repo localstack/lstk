@@ -1,0 +1,46 @@
+name: Zizmor Workflow Audit
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  schedule:
+    # Online audits check pins against upstream, which can change without a commit.
+    - cron: "30 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Cancel superseded PR runs only (mirrors ci.yml).
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  audit:
+    name: Audit workflows
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.13"
+
+      # Pinned in a requirements file so Dependabot's pip ecosystem bumps it.
+      - name: Install pre-commit
+        run: pip install -r .github/tools/requirements.txt
+
+      # Uses the hook's zizmor pin, so CI and local runs match. Fails on every
+      # finding; accepted ones carry an inline `# zizmor: ignore[...]`.
+      - name: Run zizmor
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: make lint-actions
