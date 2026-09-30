@@ -116,6 +116,35 @@ func TestStartImageFlagOverridesConfiguredImage(t *testing.T) {
 	assert.Equal(t, content, string(data), "--image must never be written to the config")
 }
 
+func TestStartExplainsImageThatIsNotAnAWSEmulator(t *testing.T) {
+	requireDocker(t)
+	cleanup()
+	t.Cleanup(cleanup)
+
+	ctx := testContext(t)
+	const localImage = "lstk-not-an-emulator"
+	reader, err := dockerClient.ImagePull(ctx, testImage, client.ImagePullOptions{})
+	require.NoError(t, err, "failed to pull test image")
+	_, _ = io.Copy(io.Discard, reader)
+	_ = reader.Close()
+	_, err = dockerClient.ImageTag(ctx, client.ImageTagOptions{Source: testImage, Target: localImage + ":latest"})
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		_, _ = dockerClient.ImageRemove(context.Background(), localImage+":latest", client.ImageRemoveOptions{})
+	})
+
+	configFile := writeTestConfig(t, "[[containers]]\ntype = \"aws\"\ntag = \"latest\"\nport = \"4566\"\n")
+	e := env.Environ(testEnvWithHome(t.TempDir(), "")).With(env.AuthToken, "dummy-token")
+	stdout, stderr, err := runLstk(t, ctx, "", e, "--config", configFile, "--non-interactive", "start", "--image", localImage)
+
+	require.Error(t, err)
+	requireExitCode(t, 1, err)
+	out := stdout + stderr
+	assert.Contains(t, out, "lstk-not-an-emulator:latest does not look like a LocalStack AWS emulator image")
+	assert.Contains(t, out, "lstk --type <snowflake|azure> --image lstk-not-an-emulator:latest")
+	assert.NotContains(t, out, "LOCALSTACK_BUILD_VERSION")
+}
+
 func TestRestartKeepsImageFromImageFlag(t *testing.T) {
 	requireDocker(t)
 	authToken := env.Require(t, env.AuthToken)

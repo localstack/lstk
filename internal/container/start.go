@@ -663,6 +663,14 @@ func validateLicensesFromImages(ctx context.Context, rt runtime.Runtime, sink ou
 		}
 
 		v, err := rt.GetImageVersion(ctx, c.Image)
+		if errors.Is(err, runtime.ErrNoImageVersion) {
+			sink.Emit(output.ErrorEvent{
+				Title:   fmt.Sprintf("%s does not look like a LocalStack %s emulator image", c.Image, c.EmulatorType.ShortName()),
+				Actions: []output.ErrorAction{{Label: "If it is another emulator, pass --type:", Value: "lstk --type <snowflake|azure> --image " + c.Image}},
+				Code:    output.ErrEmulatorWrongType,
+			})
+			return "", false, output.NewSilentError(err)
+		}
 		if err != nil {
 			return "", false, fmt.Errorf("could not resolve version from image %s: %w", c.Image, err)
 		}
