@@ -164,6 +164,40 @@ func TestAuthToken(t *testing.T) {
 	}
 }
 
+func TestSessionID(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name     string
+		value    string
+		wantRule string
+	}{
+		{"uuid", "3c7b5a35-8876-4061-9825-d740f7c377a6", ""},
+		{"opaque non-uuid", "caller-session-123", ""},
+		{"max length", strings.Repeat("a", 256), ""},
+		{"empty", "", RuleEmpty},
+		{"with null byte", "ses\x00sion", RuleControlChars},
+		{"with newline", "session\n", RuleControlChars},
+		{"with space", "ses sion", RuleFormat},
+		{"too long", strings.Repeat("a", 257), RuleRange},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			err := SessionID(tt.value)
+			if tt.wantRule == "" {
+				if err != nil {
+					t.Errorf("SessionID(%q) unexpected error: %v", tt.value, err)
+				}
+				return
+			}
+			var vErr *Error
+			if !errors.As(err, &vErr) || vErr.Rule != tt.wantRule {
+				t.Errorf("SessionID(%q) error = %v, want rule %q", tt.value, err, tt.wantRule)
+			}
+		})
+	}
+}
+
 func TestAWSAccountID(t *testing.T) {
 	t.Parallel()
 	tests := []struct {

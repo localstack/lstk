@@ -19,6 +19,7 @@ const (
 	CI                Key = "CI"
 	AnalyticsEndpoint Key = "LSTK_ANALYTICS_ENDPOINT"
 	DisableEvents     Key = "LOCALSTACK_DISABLE_EVENTS"
+	SessionID         Key = "LSTK_SESSION_ID"
 	Home              Key = "HOME"
 	UserProfile       Key = "USERPROFILE"
 	Path              Key = "PATH"

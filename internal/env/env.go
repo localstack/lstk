@@ -30,6 +30,9 @@ type Env struct {
 	GitHubToken             string
 	MergeStrategy           string
 	CheckForUpdateOnStartup string
+	// SessionID (LSTK_SESSION_ID) overrides the analytics session id.
+	// Internal-only: deliberately absent from docs and help.
+	SessionID string
 }
 
 // Init initializes environment variable configuration and returns the result.
@@ -60,6 +63,7 @@ func Init() *Env {
 		// viper.Reset(), dropping the env-var binding this relies on. Kept raw
 		// so an unset variable stays distinguishable from an explicit false.
 		CheckForUpdateOnStartup: viper.GetString("check_for_update_on_startup"),
+		SessionID:               os.Getenv("LSTK_SESSION_ID"),
 	}
 
 }
