@@ -3,6 +3,7 @@ package runtime
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -37,8 +38,9 @@ const dockerNativeSocket = "/var/run/docker.sock"
 // can positively identify an lstk leftover instead of guessing from the image
 // or name — self-healing must never remove a container lstk didn't create.
 const (
-	managedLabelKey   = "cloud.localstack.lstk"
-	managedLabelValue = "true"
+	managedLabelKey       = "cloud.localstack.lstk"
+	managedLabelValue     = "true"
+	imageOverrideLabelKey = "cloud.localstack.lstk.image-override"
 )
 
 type DockerRuntime struct {
@@ -493,12 +495,17 @@ func (d *DockerRuntime) Start(ctx context.Context, config ContainerConfig) (stri
 		binds = append(binds, bind)
 	}
 
+	labels := map[string]string{managedLabelKey: managedLabelValue}
+	if config.ImageOverride {
+		labels[imageOverrideLabelKey] = "true"
+	}
+
 	resp, err := d.client.ContainerCreate(ctx, client.ContainerCreateOptions{
 		Config: &container.Config{
 			Image:        config.Image,
 			ExposedPorts: exposedPorts,
 			Env:          config.Env,
-			Labels:       map[string]string{managedLabelKey: managedLabelValue},
+			Labels:       labels,
 		},
 		HostConfig: &container.HostConfig{
 			PortBindings: portBindings,
@@ -601,6 +608,7 @@ func (d *DockerRuntime) InspectBrief(ctx context.Context, containerName string) 
 	if cfg := inspect.Container.Config; cfg != nil {
 		brief.Image = cfg.Image
 		brief.Managed = cfg.Labels[managedLabelKey] == managedLabelValue
+		brief.ImageOverride = cfg.Labels[imageOverrideLabelKey] == "true"
 	}
 	return brief, nil
 }
@@ -787,8 +795,11 @@ func (d *DockerRuntime) GetImageVersion(ctx context.Context, imageName string) (
 		}
 	}
 
-	return "", fmt.Errorf("LOCALSTACK_BUILD_VERSION not found in image environment")
+	return "", ErrNoImageVersion
 }
+
+// ErrNoImageVersion means the image has no LOCALSTACK_BUILD_VERSION, so it is not a LocalStack AWS emulator image.
+var ErrNoImageVersion = errors.New("LOCALSTACK_BUILD_VERSION not found in image environment")
 
 func (d *DockerRuntime) ImageExists(ctx context.Context, image string) (bool, error) {
 	if _, err := d.client.ImageInspect(ctx, image); err != nil {

@@ -12,6 +12,7 @@ require (
 	github.com/charmbracelet/x/exp/teatest v0.0.0-20260216111343-536eb63c1f4c
 	github.com/containerd/errdefs v1.0.0
 	github.com/creack/pty v1.1.24
+	github.com/distribution/reference v0.6.0
 	github.com/docker/go-units v0.5.0
 	github.com/google/go-cmp v0.7.0
 	github.com/google/uuid v1.6.0
@@ -59,7 +60,6 @@ require (
 	github.com/containerd/errdefs/pkg v0.3.0 // indirect
 	github.com/cpuguy83/go-md2man/v2 v2.0.6 // indirect
 	github.com/danieljoos/wincred v1.2.3 // indirect
-	github.com/distribution/reference v0.6.0 // indirect
 	github.com/docker/go-connections v0.7.0 // indirect
 	github.com/erikgeiser/coninput v0.0.0-20211004153227-1c3628e74d0f // indirect
 	github.com/felixge/httpsnoop v1.1.0 // indirect

@@ -15,6 +15,8 @@ import (
 	"regexp"
 	"strings"
 	"unicode"
+
+	"github.com/distribution/reference"
 )
 
 // Rule classifies why a value was rejected. The values are stable and intended to
@@ -137,6 +139,23 @@ func ContainerName(value string) error {
 		return newError(field, RuleRange, "must be 128 characters or fewer")
 	case !containerNameRegexp.MatchString(value):
 		return newError(field, RuleFormat, "must start with a letter or digit and use only letters, digits, dots, hyphens, and underscores")
+	}
+	return nil
+}
+
+// ImageReference validates a Docker image reference. The value is not normalized.
+func ImageReference(value string) error {
+	const field = "image"
+	switch {
+	case value == "":
+		return newError(field, RuleEmpty, "must not be empty")
+	case containsControlChars(value):
+		return newError(field, RuleControlChars, "contains control characters")
+	case strings.ContainsAny(value, shellMetaChars):
+		return newError(field, RuleMetachars, "contains shell metacharacters")
+	}
+	if _, err := reference.ParseNormalizedNamed(value); err != nil {
+		return newError(field, RuleFormat, "must be a valid image reference such as localstack/snowflake-next or registry/name:tag")
 	}
 	return nil
 }

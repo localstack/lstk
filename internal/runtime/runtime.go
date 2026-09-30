@@ -43,6 +43,7 @@ type ContainerConfig struct {
 	ProductName   string
 	Binds         []BindMount
 	ExtraPorts    []PortMapping
+	ImageOverride bool // started with --image
 }
 
 type PullProgress struct {
@@ -62,12 +63,13 @@ type RunningContainer struct {
 // callers can tell an lstk leftover (safe to self-heal) from a foreign
 // container that happens to use the same name.
 type ContainerBrief struct {
-	Exists     bool
-	Running    bool
-	Created    bool   // state "created": created but never started
-	AutoRemove bool   // created with --rm: removes itself once it exits
-	Image      string // full image the container was created from
-	Managed    bool   // carries the label Start stamps on every lstk container
+	Exists        bool
+	Running       bool
+	Created       bool   // state "created": created but never started
+	AutoRemove    bool   // created with --rm: removes itself once it exits
+	Image         string // full image the container was created from
+	Managed       bool   // carries the label Start stamps on every lstk container
+	ImageOverride bool   // started with --image
 }
 
 // ExitResult reports a container's exit as observed by the exit wait that

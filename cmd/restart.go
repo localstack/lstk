@@ -19,7 +19,7 @@ func newRestartCmd(cfg *env.Env, tel *telemetry.Client, logger log.Logger) *cobr
 	cmd := &cobra.Command{
 		Use:     "restart",
 		Short:   "Restart emulator",
-		Long:    "Stop and restart emulator and services.",
+		Long:    "Stop and restart emulator and services.\n\nRestart keeps an image set with --image. Pass --image to change it, or run lstk stop and lstk start to go back to the config image.",
 		PreRunE: initConfigDeferCreate(nil),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := rejectEndpointURL(cmd, output.NewPlainSink(os.Stdout), "restart"); err != nil {
@@ -44,7 +44,17 @@ func newRestartCmd(cfg *env.Env, tel *telemetry.Client, logger log.Logger) *cobr
 			stopOpts := container.StopOptions{
 				Telemetry: tel,
 			}
-			startOpts := buildStartOptions(cfg, appConfig, logger, tel, persist, false)
+			imageOverride, err := resolveImageFlag(cmd)
+			if err != nil {
+				return err
+			}
+			if imageOverride != "" && len(appConfig.Containers) == 1 {
+				if err := container.RejectImageOfOtherType(output.NewPlainSink(os.Stdout), imageOverride, appConfig.Containers[0].Type); err != nil {
+					return err
+				}
+			}
+
+			startOpts := buildStartOptions(cfg, appConfig, logger, tel, persist, false, imageOverride)
 
 			if isInteractiveMode(cfg) {
 				return ui.RunRestart(cmd.Context(), rt, stopOpts, startOpts)
@@ -55,5 +65,6 @@ func newRestartCmd(cfg *env.Env, tel *telemetry.Client, logger log.Logger) *cobr
 		},
 	}
 	cmd.Flags().Bool("persist", false, "Persist emulator state across restarts")
+	addImageFlag(cmd)
 	return cmd
 }

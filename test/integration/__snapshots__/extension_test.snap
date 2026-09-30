@@ -39,6 +39,7 @@ Options:
       --config string         Path to config file
       --endpoint-url string   Target an existing, externally-managed emulator at this URL
   -h, --help                  Show help
+      --image string          Container image to run for this start only (not saved to config)
       --json                  Output in JSON format (only supported by some commands)
       --no-snapshot           Skip auto-loading the configured snapshot for this run
       --non-interactive       Disable interactive mode
@@ -100,6 +101,7 @@ Options:
       --config string         Path to config file
       --endpoint-url string   Target an existing, externally-managed emulator at this URL
   -h, --help                  Show help
+      --image string          Container image to run for this start only (not saved to config)
       --json                  Output in JSON format (only supported by some commands)
       --no-snapshot           Skip auto-loading the configured snapshot for this run
       --non-interactive       Disable interactive mode
@@ -148,6 +150,7 @@ Options:
       --config string         Path to config file
       --endpoint-url string   Target an existing, externally-managed emulator at this URL
   -h, --help                  Show help
+      --image string          Container image to run for this start only (not saved to config)
       --json                  Output in JSON format (only supported by some commands)
       --no-snapshot           Skip auto-loading the configured snapshot for this run
       --non-interactive       Disable interactive mode

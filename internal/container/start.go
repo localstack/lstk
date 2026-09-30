@@ -77,6 +77,9 @@ type StartOptions struct {
 	// DetectorTips to add to the rotating post-start tips. Might require data that's
 	// only available at the cmd level.
 	DetectorTips []tips.Tip
+	// ImageOverride is the --image value. It is never saved to config. It is applied
+	// here so it also covers the first-run emulator picker.
+	ImageOverride string
 }
 
 // Start brings up the configured emulator, recovering from a definitive license
@@ -209,6 +212,9 @@ func startOnce(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts S
 
 	containers := make([]runtime.ContainerConfig, len(opts.Containers))
 	for i, c := range opts.Containers {
+		if opts.ImageOverride != "" {
+			c.CustomImage = opts.ImageOverride
+		}
 		image, err := c.Image()
 		if err != nil {
 			return StartResult{}, err
@@ -335,6 +341,7 @@ func startOnce(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts S
 			ProductName:   productName,
 			Binds:         binds,
 			ExtraPorts:    extraPorts,
+			ImageOverride: opts.ImageOverride != "",
 		}
 	}
 
@@ -656,6 +663,14 @@ func validateLicensesFromImages(ctx context.Context, rt runtime.Runtime, sink ou
 		}
 
 		v, err := rt.GetImageVersion(ctx, c.Image)
+		if errors.Is(err, runtime.ErrNoImageVersion) {
+			sink.Emit(output.ErrorEvent{
+				Title:   fmt.Sprintf("%s does not look like a LocalStack %s emulator image", c.Image, c.EmulatorType.ShortName()),
+				Actions: []output.ErrorAction{{Label: "If it is another emulator, pass --type:", Value: "lstk --type <snowflake|azure> --image " + c.Image}},
+				Code:    output.ErrEmulatorWrongType,
+			})
+			return "", false, output.NewSilentError(err)
+		}
 		if err != nil {
 			return "", false, fmt.Errorf("could not resolve version from image %s: %w", c.Image, err)
 		}
@@ -901,6 +916,12 @@ func selectContainersToStart(ctx context.Context, rt runtime.Runtime, sink outpu
 			return nil, nil, fmt.Errorf("failed to check container status: %w", err)
 		}
 		if brief.Running {
+			if c.ImageOverride && brief.Image != c.Image {
+				sink.Emit(output.MessageEvent{
+					Severity: output.SeverityWarning,
+					Text:     fmt.Sprintf("%s is already running from %s, so --image %s was not applied. Run \"lstk stop\" first to switch.", c.EmulatorType.DisplayName(), brief.Image, c.Image),
+				})
+			}
 			alreadyRunning = append(alreadyRunning, emitAlreadyRunning(ctx, sink, c, localStackHost, webAppURL, isPersistenceEnabled(ctx, rt, c.Name)))
 			continue
 		}

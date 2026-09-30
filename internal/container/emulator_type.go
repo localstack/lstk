@@ -139,6 +139,24 @@ func ApplyEmulatorType(ctx context.Context, rt runtime.Runtime, sink output.Sink
 	return newCfg.Containers, nil
 }
 
+// RejectImageOfOtherType fails when image is a known image of another emulator type.
+// Unknown images pass.
+func RejectImageOfOtherType(sink output.Sink, image string, target config.EmulatorType) error {
+	imageType := config.EmulatorTypeForImage(image)
+	if imageType == "" || imageType == target {
+		return nil
+	}
+	sink.Emit(output.ErrorEvent{
+		Title:   fmt.Sprintf("%s is a %s emulator image", image, imageType.ShortName()),
+		Summary: fmt.Sprintf("The %s emulator is selected, so this image would run under the wrong emulator type.", target.ShortName()),
+		Actions: []output.ErrorAction{
+			{Label: "Select the matching emulator:", Value: fmt.Sprintf("lstk --type %s --image %s", imageType, image)},
+		},
+		Code: output.ErrUsageError,
+	})
+	return output.NewSilentError(fmt.Errorf("image %s does not match the %s emulator", image, target))
+}
+
 // rejectIfConflictingEmulatorRunning scans for an already-running emulator of a
 // different type on the port the requested type would use, emitting the same
 // "only one emulator can run on a port at a time" error selectContainersToStart
