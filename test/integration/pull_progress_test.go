@@ -86,6 +86,19 @@ func freeTCPPort(t *testing.T) string {
 	return strconv.Itoa(l.Addr().(*net.TCPAddr).Port)
 }
 
+// requireServicePortsFree fails early when LocalStack's service port range is
+// taken, which would otherwise stop `lstk start` before it ever pulls.
+func requireServicePortsFree(t *testing.T) {
+	t.Helper()
+	for p := 4510; p <= 4559; p++ {
+		conn, err := net.DialTimeout("tcp", "localhost:"+strconv.Itoa(p), time.Second)
+		if err == nil {
+			_ = conn.Close()
+			t.Fatalf("port %d is in use (is LocalStack running?); stop it before running this test", p)
+		}
+	}
+}
+
 // renderedPullBar matches one rendered frame of the pull progress line, e.g.
 // "Downloading  2/4  layers  ━━━━───  42%".
 var renderedPullBar = regexp.MustCompile(`(\d+)/(\d+)\s+layers\s+[━─]+\s+(\d+)%`)
@@ -93,8 +106,11 @@ var renderedPullBar = regexp.MustCompile(`(\d+)/(\d+)\s+layers\s+[━─]+\s+(\d
 // TestStartPullProgressNeverMovesBackward replays a real Docker Desktop pull
 // through `lstk start` and checks every rendered frame: the bar must never
 // move backward and the layer counter must only count real layers (DEVX-1114).
+//
+// Not parallel: `lstk start` requires the fixed service port range 4510-4559,
+// which the Docker-backed tests' LocalStack containers also bind.
 func TestStartPullProgressNeverMovesBackward(t *testing.T) {
-	t.Parallel()
+	requireServicePortsFree(t)
 
 	stream, err := os.ReadFile(filepath.Join("testdata", "pull_containerd_python.jsonl"))
 	require.NoError(t, err)
