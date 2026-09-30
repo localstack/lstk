@@ -50,6 +50,20 @@ func TestStartImageFlagRejectsKnownImageOfAnotherType(t *testing.T) {
 	assert.Equal(t, content, string(data), "the config must not change when --image is rejected")
 }
 
+func TestStartImageFlagKnowsSnowflakeNextIsSnowflake(t *testing.T) {
+	t.Parallel()
+	e, _ := typeTestEnv(t)
+	configFile := writeTestConfig(t, "[[containers]]\ntype = \"aws\"\nport = \"4566\"\n")
+
+	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), e,
+		"--config", configFile, "--non-interactive", "--image", "localstack/snowflake-next")
+
+	require.Error(t, err)
+	requireExitCode(t, 1, err)
+	assert.Contains(t, stdout+stderr, "localstack/snowflake-next is a Snowflake emulator image")
+	assert.Contains(t, stdout+stderr, "lstk --type snowflake --image localstack/snowflake-next")
+}
+
 func TestRestartImageFlagRejectsKnownImageOfAnotherType(t *testing.T) {
 	t.Parallel()
 	e, _ := typeTestEnv(t)

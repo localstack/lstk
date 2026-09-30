@@ -84,6 +84,7 @@ var knownImages = []struct {
 	{EmulatorAWS, "localstack-pro", true},
 	{EmulatorAWS, "localstack", false},
 	{EmulatorSnowflake, "snowflake", true},
+	{EmulatorSnowflake, "snowflake-next", false}, // preview, run with --image
 	{EmulatorAzure, "localstack-azure", true},
 }
 
