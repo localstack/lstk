@@ -250,10 +250,10 @@ func requireSubcommand(cmd *cobra.Command) {
 // resolveSessionIDOption applies an LSTK_SESSION_ID override. A malformed value
 // is only logged: an internal analytics knob must never fail a user's command.
 func resolveSessionIDOption(raw string, logger log.Logger) []telemetry.Option {
-	if raw == "" {
+	id := strings.TrimSpace(raw)
+	if id == "" {
 		return nil
 	}
-	id := strings.TrimSpace(raw)
 	if err := validate.SessionID(id); err != nil {
 		logger.Error("ignoring LSTK_SESSION_ID: %v", err)
 		return nil
