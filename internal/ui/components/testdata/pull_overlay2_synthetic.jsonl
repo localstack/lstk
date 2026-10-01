@@ -1,0 +1,30 @@
+{"status":"Pulling from localstack/localstack-pro","id":"latest"}
+{"status":"Already exists","progressDetail":{},"id":"aaaa00000001"}
+{"status":"Pulling fs layer","progressDetail":{},"id":"bbbb00000002"}
+{"status":"Pulling fs layer","progressDetail":{},"id":"cccc00000003"}
+{"status":"Pulling fs layer","progressDetail":{},"id":"dddd00000004"}
+{"status":"Waiting","progressDetail":{},"id":"cccc00000003"}
+{"status":"Waiting","progressDetail":{},"id":"dddd00000004"}
+{"status":"Downloading","progressDetail":{"current":1000,"total":10000},"progress":"","id":"bbbb00000002"}
+{"status":"Downloading","progressDetail":{"current":5000,"total":10000},"progress":"","id":"bbbb00000002"}
+{"status":"Downloading","progressDetail":{"current":10000,"total":10000},"progress":"","id":"bbbb00000002"}
+{"status":"Verifying Checksum","progressDetail":{},"id":"bbbb00000002"}
+{"status":"Download complete","progressDetail":{},"id":"bbbb00000002"}
+{"status":"Downloading","progressDetail":{"current":2000,"total":100000},"progress":"","id":"cccc00000003"}
+{"status":"Extracting","progressDetail":{"current":1000,"total":10000},"progress":"","id":"bbbb00000002"}
+{"status":"Downloading","progressDetail":{"current":40000,"total":100000},"progress":"","id":"cccc00000003"}
+{"status":"Extracting","progressDetail":{"current":10000,"total":10000},"progress":"","id":"bbbb00000002"}
+{"status":"Pull complete","progressDetail":{},"id":"bbbb00000002"}
+{"status":"Downloading","progressDetail":{"current":100000,"total":100000},"progress":"","id":"cccc00000003"}
+{"status":"Verifying Checksum","progressDetail":{},"id":"cccc00000003"}
+{"status":"Download complete","progressDetail":{},"id":"cccc00000003"}
+{"status":"Downloading","progressDetail":{"current":500,"total":5000},"progress":"","id":"dddd00000004"}
+{"status":"Extracting","progressDetail":{"current":10000,"total":100000},"progress":"","id":"cccc00000003"}
+{"status":"Downloading","progressDetail":{"current":5000,"total":5000},"progress":"","id":"dddd00000004"}
+{"status":"Download complete","progressDetail":{},"id":"dddd00000004"}
+{"status":"Extracting","progressDetail":{"current":100000,"total":100000},"progress":"","id":"cccc00000003"}
+{"status":"Pull complete","progressDetail":{},"id":"cccc00000003"}
+{"status":"Extracting","progressDetail":{"current":5000,"total":5000},"progress":"","id":"dddd00000004"}
+{"status":"Pull complete","progressDetail":{},"id":"dddd00000004"}
+{"status":"Digest: sha256:0000000000000000000000000000000000000000000000000000000000000000"}
+{"status":"Status: Downloaded newer image for localstack/localstack-pro:latest"}
