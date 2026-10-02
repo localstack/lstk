@@ -264,8 +264,8 @@ func TestExtensionInvocationRecordedInTelemetry(t *testing.T) {
 	assertCommandTelemetry(t, events, "ext:hello", 0)
 }
 
-// DEVX-1004: an extension is lstk's own code shipped separately, not a wrapped
-// third-party tool, so its exit is lstk's: not proxied, no proxy_exit_code.
+// An extension is lstk's own code shipped separately, not a wrapped third-party
+// tool, so its exit is lstk's: not proxied, no proxy_exit_code.
 // dispatchExtension emits this event itself, so the aws/az tests miss the path.
 func TestExtensionExitRecordedAsLstkExitInTelemetry(t *testing.T) {
 	t.Parallel()

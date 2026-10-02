@@ -50,7 +50,7 @@ type CommandParameters struct {
 	Proxied    bool     `json:"proxied"`
 }
 
-// CommandResult holds the outcome of a command invocation (DEVX-1004).
+// CommandResult holds the outcome of a command invocation.
 // ProxyExitCode is the wrapped tool's exit code, present exactly when the tool
 // ran to completion (0 included, -1 when an untrapped signal killed it); nil
 // must marshal as an absent key, never null, because the pipe reads presence

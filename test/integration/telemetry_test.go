@@ -237,9 +237,9 @@ func proxyEnviron(t *testing.T, analyticsURL, fakeBinDir string) []string {
 	return append(environ, unreachableDockerHost)
 }
 
-// DEVX-1003/DEVX-1004: a proxied `lstk aws` failure records the wrapped CLI's
-// real exit code as exit_code and as proxy_exit_code, plus the leading
-// service/operation tokens.
+// A proxied `lstk aws` failure records the wrapped CLI's real exit code as
+// exit_code and as proxy_exit_code, plus the leading service/operation tokens,
+// so analytics can tell the user's CLI mistakes from lstk's own failures.
 func TestAWSProxyTelemetryRecordsToolExit(t *testing.T) {
 	t.Parallel()
 
@@ -288,7 +288,7 @@ func TestAWSProxyTelemetryRecordsSuccessfulToolExit(t *testing.T) {
 	assert.InDelta(t, 0, result["proxy_exit_code"], 0)
 }
 
-// DEVX-1004: a preflight failure shares the command name and exit-code space
+// A preflight failure shares the command name and exit-code space
 // with the wrapped tool's own failures. The invocation is still proxied, but
 // no tool ran, so proxy_exit_code must be absent, not 0.
 func TestProxyPreflightFailureTelemetryHasNoToolExit(t *testing.T) {
@@ -311,7 +311,7 @@ func TestProxyPreflightFailureTelemetryHasNoToolExit(t *testing.T) {
 	assert.Equal(t, false, result["cancelled"])
 }
 
-// DEVX-1004: `setup azure` and interception shell out to `az` too, but lstk
+// `setup azure` and interception shell out to `az` too, but lstk
 // composed those calls; recording a tool exit would hide an lstk bug as the
 // user's. The command runs under the `az` proxy without being proxied.
 func TestLstkOrchestratedAzFailureTelemetryIsNotProxied(t *testing.T) {
@@ -393,7 +393,7 @@ func TestProxyToolNotInstalledTelemetryHasNoToolExit(t *testing.T) {
 	assert.NotContains(t, result, "proxy_exit_code")
 }
 
-// DEVX-1004: with stdin, stdout and stderr all terminals, `lstk aws` runs the
+// With stdin, stdout and stderr all terminals, `lstk aws` runs the
 // tool in a PTY and pumps Ctrl-C to it as a byte, so only the child gets
 // SIGINT and lstk's own signal context never fires. The forwarded interrupt is
 // the only trace, and it must still record as cancelled.

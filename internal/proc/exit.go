@@ -27,7 +27,7 @@ func MarkUserToolExit(err error) error {
 }
 
 // IsUserToolExit backs result.proxy_exit_code on lstk_command telemetry
-// events (see cmd.commandResult; DEVX-1004).
+// events (see cmd.commandResult).
 func IsUserToolExit(err error) bool {
 	var userTool *userToolExitError
 	return errors.As(err, &userTool)
@@ -50,7 +50,7 @@ func markInterrupted(err error) error {
 // WasInterrupted reports that the user's Ctrl-C reached the child through
 // RunInPTY's keystroke pump. In that mode the PTY's line discipline delivers
 // SIGINT to the child alone, so lstk's own signal context never fires and this
-// is telemetry's only evidence of the interruption (result.cancelled, DEVX-1004).
+// is telemetry's only evidence of the interruption (result.cancelled).
 func WasInterrupted(err error) bool {
 	var interrupted *interruptedError
 	return errors.As(err, &interrupted)

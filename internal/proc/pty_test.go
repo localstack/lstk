@@ -292,10 +292,9 @@ func TestRunInPTYMergesStderrIntoOut(t *testing.T) {
 	assert.Contains(t, out.String(), "to-stderr")
 }
 
-// A Ctrl-C typed while the child owns the terminal reaches only the child
-// (DEVX-1049), so RunInPTY must record that it forwarded the interrupt: it
-// is the only evidence telemetry has that the run was cancelled rather than
-// failed (DEVX-1004).
+// A Ctrl-C typed while the child owns the terminal reaches only the child, so
+// RunInPTY must record that it forwarded the interrupt: it is the only evidence
+// telemetry has that the run was cancelled rather than failed.
 func TestRunInPTYMarksForwardedInterrupt(t *testing.T) {
 	skipWithoutPTY(t)
 	outerPtmx, outerTTY, err := pty.Open()

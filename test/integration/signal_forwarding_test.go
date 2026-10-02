@@ -178,7 +178,7 @@ func TestWrappedToolSingleSIGINTOnCtrlCWithRedirectedStdin(t *testing.T) {
 	requireExitCode(t, 41, err)
 }
 
-// DEVX-1004: a child that traps the signal exits with an ordinary code (41
+// A child that traps the signal exits with an ordinary code (41
 // here, terraform 1, aws 130), which reads as a plain failure. Only lstk's
 // signal context knows it was interrupted. The reference extension stands in
 // for any wrapped child here; as an extension it is lstk's own code, so the
