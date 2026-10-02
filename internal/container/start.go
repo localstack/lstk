@@ -42,6 +42,8 @@ type StartResult struct {
 	Version        string
 	AlreadyRunning bool
 	Persistence    bool
+	// BundledLicense reports a start from an image with its own license.
+	BundledLicense bool
 }
 
 // emulatorStartedEvent converts a StartResult to the matching output event.
@@ -131,10 +133,14 @@ func start(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts Start
 	}
 	a := auth.New(sink, opts.PlatformClient, tokenStorage, opts.AuthToken, opts.WebAppURL, interactive, licenseFilePath, opts.AuthOptions...)
 
-	token, err := a.GetToken(ctx)
-	if err != nil {
-		sink.Emit(output.ErrorEvent{Title: err.Error(), Code: output.ErrAuthRequired})
-		return StartResult{}, output.NewSilentError(err)
+	// A bundled-license image needs no token: use one if present, never prompt.
+	token := auth.ResolveToken(opts.AuthToken, tokenStorage)
+	if token == "" && NeedsAuthToken(ctx, rt, opts) {
+		token, err = a.GetToken(ctx)
+		if err != nil {
+			sink.Emit(output.ErrorEvent{Title: err.Error(), Code: output.ErrAuthRequired})
+			return StartResult{}, output.NewSilentError(err)
+		}
 	}
 
 	opts.Telemetry.SetAuthToken(token)
@@ -212,12 +218,16 @@ func startOnce(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts S
 
 	containers := make([]runtime.ContainerConfig, len(opts.Containers))
 	for i, c := range opts.Containers {
-		if opts.ImageOverride != "" {
-			c.CustomImage = opts.ImageOverride
-		}
-		image, err := c.Image()
+		image, err := resolveImage(c, opts.ImageOverride)
 		if err != nil {
 			return StartResult{}, err
+		}
+		bundledLicense := hasBundledLicense(ctx, rt, image)
+		// Fail closed if the image no longer qualifies, e.g. removed since start().
+		if token == "" && !bundledLicense {
+			err := errors.New("authentication required: set LOCALSTACK_AUTH_TOKEN or run lstk login")
+			sink.Emit(output.ErrorEvent{Title: err.Error(), Code: output.ErrAuthRequired})
+			return StartResult{}, output.NewSilentError(err)
 		}
 		healthPath, err := c.HealthPath()
 		if err != nil {
@@ -263,8 +273,12 @@ func startOnce(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts S
 				Text:     fmt.Sprintf("Ignoring MAIN_CONTAINER_NAME from your env profile — the emulator is named %q. Set 'container_name' in the [[containers]] block to rename it.", containerName),
 			})
 		}
-		env := append(resolvedEnv,
-			"LOCALSTACK_AUTH_TOKEN="+token,
+		env := resolvedEnv
+		// A blank token would shadow the image's own.
+		if token != "" {
+			env = append(env, "LOCALSTACK_AUTH_TOKEN="+token)
+		}
+		env = append(env,
 			"GATEWAY_LISTEN="+gateway.containerEnvValue(),
 			"MAIN_CONTAINER_NAME="+containerName,
 			"LOCALSTACK_HOST="+endpoint.Hostname+":"+c.Port,
@@ -329,19 +343,20 @@ func startOnce(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts S
 		extraPorts = mergeExposePorts(sink, extraPorts, primaryPort, c.Port, exposed)
 
 		containers[i] = runtime.ContainerConfig{
-			Image:         image,
-			Name:          containerName,
-			EmulatorType:  c.Type,
-			Port:          c.Port,
-			ContainerPort: containerPort,
-			BindHost:      gateway.bindHost(),
-			HealthPath:    healthPath,
-			Env:           env,
-			Tag:           c.Tag,
-			ProductName:   productName,
-			Binds:         binds,
-			ExtraPorts:    extraPorts,
-			ImageOverride: opts.ImageOverride != "",
+			Image:          image,
+			Name:           containerName,
+			EmulatorType:   c.Type,
+			Port:           c.Port,
+			ContainerPort:  containerPort,
+			BindHost:       gateway.bindHost(),
+			HealthPath:     healthPath,
+			Env:            env,
+			Tag:            c.Tag,
+			ProductName:    productName,
+			Binds:          binds,
+			ExtraPorts:     extraPorts,
+			ImageOverride:  opts.ImageOverride != "",
+			BundledLicense: bundledLicense,
 		}
 	}
 
@@ -401,6 +416,7 @@ func startOnce(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts S
 	if len(results) == 0 {
 		return StartResult{}, nil
 	}
+	results[0].BundledLicense = slices.ContainsFunc(containers, func(c runtime.ContainerConfig) bool { return c.BundledLicense })
 	sink.Emit(emulatorStartedEvent(results[0]))
 	return results[0], nil
 }
@@ -517,7 +533,8 @@ func pullImages(ctx context.Context, rt runtime.Runtime, sink output.Sink, tel *
 
 		// Reuse a locally present image for pinned tags instead of re-pulling.
 		// Floating "latest"/empty tags always pull until pull_policy support lands.
-		if exists && c.Tag != "" && c.Tag != "latest" {
+		// Bundled-license images never pull: they are meant to run offline.
+		if c.BundledLicense || (exists && c.Tag != "" && c.Tag != "latest") {
 			sink.Emit(output.MessageEvent{Severity: output.SeveritySuccess, Text: fmt.Sprintf("Using local image %s", c.Image)})
 			pulled[c.Name] = false
 			continue
@@ -628,6 +645,10 @@ func tryPrePullLicenseValidation(ctx context.Context, rt runtime.Runtime, sink o
 		}
 
 		if c.Tag != "" && c.Tag != "latest" {
+			// Nothing to validate: the license is bundled in the image.
+			if c.BundledLicense {
+				continue
+			}
 			// A pinned image already present locally is not pulled (see pullImages),
 			// so skip the license pre-flight too: the check is redundant — and a hard
 			// blocker in offline/enterprise environments — when no network round-trip
@@ -677,6 +698,10 @@ func validateLicensesFromImages(ctx context.Context, rt runtime.Runtime, sink ou
 		c.Tag = v
 		if firstVersion == "" {
 			firstVersion = v
+		}
+		// The version above is for display only; the license is bundled.
+		if c.BundledLicense {
+			continue
 		}
 		wrote, err := validateLicense(ctx, sink, opts, c, token, licenseFilePath)
 		if err != nil {
@@ -1470,14 +1495,20 @@ func mountCachedLicense(containers []runtime.ContainerConfig, licenseFilePath st
 	if _, err := os.Stat(licenseFilePath); err != nil {
 		return false
 	}
+	mounted := false
 	for i := range containers {
+		// The cached license is for the user's token, not the bundled one.
+		if containers[i].BundledLicense {
+			continue
+		}
 		containers[i].Binds = append(containers[i].Binds, runtime.BindMount{
 			HostPath:      licenseFilePath,
 			ContainerPath: licenseMountPath,
 			ReadOnly:      true,
 		})
+		mounted = true
 	}
-	return true
+	return mounted
 }
 
 func stripLicenseMount(containers []runtime.ContainerConfig) {

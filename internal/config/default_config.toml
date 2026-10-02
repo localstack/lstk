@@ -16,6 +16,8 @@ port = "4566"    # Host port the emulator will be accessible on
 #                # CI agent. It is also what the emulator reports as MAIN_CONTAINER_NAME.
 # image = ""     # Custom image to use instead of the default Docker Hub image, e.g.
 #                # an internal registry mirror or a locally loaded offline image.
+#                # A local offline image that bundles its license starts without
+#                # an auth token, login, pull, or license check.
 #                # If it carries no tag, 'tag' above is appended; if it already
 #                # carries a tag, 'tag' above is dropped. Use --image for a single run.
 # volume = ""    # Host directory for persistent state (default: OS cache dir)

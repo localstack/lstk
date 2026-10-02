@@ -89,6 +89,10 @@ func (r *externalRuntime) ImageExists(context.Context, string) (bool, error) {
 	return false, ErrExternalRuntimeUnsupported
 }
 
+func (r *externalRuntime) ImageEnv(context.Context, string) ([]string, error) {
+	return nil, ErrExternalRuntimeUnsupported
+}
+
 func (r *externalRuntime) GetBoundPort(context.Context, string, string) (string, error) {
 	return "", ErrExternalRuntimeUnsupported
 }
