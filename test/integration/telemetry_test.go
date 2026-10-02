@@ -265,29 +265,6 @@ func TestAWSProxyTelemetryRecordsToolExit(t *testing.T) {
 	assert.Equal(t, false, result["cancelled"])
 }
 
-// The row the failure-rate denominator needs: a proxy invocation whose tool
-// succeeded is still proxied and records the tool's 0.
-func TestAWSProxyTelemetryRecordsSuccessfulToolExit(t *testing.T) {
-	t.Parallel()
-
-	emulatorSrv := awsHealthServer(t)
-	defer emulatorSrv.Close()
-	analyticsSrv, events := mockAnalyticsServer(t)
-
-	fakeBinDir := writeFakeTool(t, "aws", fakeToolConfig{Stdout: []string{"2026-09-23 my-bucket"}})
-
-	_, _, err := runLstk(t, testContext(t), "", proxyEnviron(t, analyticsSrv.URL, fakeBinDir),
-		"--endpoint-url", emulatorSrv.URL, "aws", "s3", "ls")
-	require.NoError(t, err)
-
-	params, result := commandEventParts(t, receiveEventByName(t, events, "lstk_command"))
-	assert.Equal(t, "aws", params["command"])
-	assert.Equal(t, true, params["proxied"])
-	assert.InDelta(t, 0, result["exit_code"], 0)
-	require.Contains(t, result, "proxy_exit_code", "presence is how the pipe knows the tool ran")
-	assert.InDelta(t, 0, result["proxy_exit_code"], 0)
-}
-
 // A preflight failure shares the command name and exit-code space
 // with the wrapped tool's own failures. The invocation is still proxied, but
 // no tool ran, so proxy_exit_code must be absent, not 0.
@@ -337,34 +314,6 @@ func TestLstkOrchestratedAzFailureTelemetryIsNotProxied(t *testing.T) {
 	assert.Equal(t, false, params["proxied"])
 	assert.InDelta(t, 1, result["exit_code"], 0)
 	assert.NotContains(t, result, "proxy_exit_code", "lstk composed this az call, so its failure is lstk's")
-}
-
-// The other half of the azurecli Exec/Run split: `lstk az` forwards the user's
-// own args, so a refactor must not unmark it while keeping Run correct.
-func TestAzPassthroughFailureTelemetryRecordsToolExit(t *testing.T) {
-	t.Parallel()
-
-	emulatorSrv := azureHealthServer(t)
-	analyticsSrv, events := mockAnalyticsServer(t)
-	configPath := azureConfigWithSetupMarker(t)
-
-	fakeBinDir := writeFakeTool(t, "az", fakeToolConfig{ExitCode: 3})
-	environ := env.Environ(testEnvWithHome(t.TempDir(), "")).
-		With(env.AnalyticsEndpoint, analyticsSrv.URL).
-		With(env.Path, fakeBinDir)
-	environ = append(environ, unreachableDockerHost)
-
-	_, _, err := runLstk(t, testContext(t), t.TempDir(), environ,
-		"--endpoint-url", emulatorSrv.URL, "--config", configPath, "--non-interactive",
-		"az", "group", "lst")
-	require.Error(t, err)
-	requireExitCode(t, 3, err)
-
-	params, result := commandEventParts(t, receiveEventByName(t, events, "lstk_command"))
-	assert.Equal(t, "az", params["command"])
-	assert.Equal(t, true, params["proxied"])
-	assert.InDelta(t, 3, result["exit_code"], 0)
-	assert.InDelta(t, 3, result["proxy_exit_code"], 0, "the user typed these az args, so the exit is theirs")
 }
 
 // The tool is not installed: still a proxy invocation, but nothing ran.

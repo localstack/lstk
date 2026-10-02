@@ -217,11 +217,10 @@ func TestCommandInstrumentationRecordsFinalJSONExitCode(t *testing.T) {
 	}
 }
 
-// The pipe derives `proxied` from this set for rows older than the field, and
-// the failure-rate denominator depends on it going forward. A command added to
-// NewRootCmd's tools group is annotated automatically and fails here until this
-// list and the analytics contract in
-// openspec/changes/distinguish-proxied-command-errors/design.md are updated.
+// The pipe derives `proxied` from this list for rows older than the field, so
+// none of these may lose the annotation. A command added to NewRootCmd's tools
+// group is annotated automatically; TestEveryProxyRecordsItsToolExitInTelemetry
+// then checks that its exit is marked and that it records 0 only after running.
 func TestProxyCommandAnnotationSetIsExactlyTheDocumentedProxies(t *testing.T) {
 	root := NewRootCmd(&env.Env{}, telemetry.New("", true), log.Nop())
 
