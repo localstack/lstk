@@ -144,6 +144,21 @@ func (mr *MockRuntimeMockRecorder) GetImageVersion(ctx, imageName any) *gomock.C
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetImageVersion", reflect.TypeOf((*MockRuntime)(nil).GetImageVersion), ctx, imageName)
 }
 
+// ImageEnv mocks base method.
+func (m *MockRuntime) ImageEnv(ctx context.Context, image string) ([]string, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ImageEnv", ctx, image)
+	ret0, _ := ret[0].([]string)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ImageEnv indicates an expected call of ImageEnv.
+func (mr *MockRuntimeMockRecorder) ImageEnv(ctx, image any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ImageEnv", reflect.TypeOf((*MockRuntime)(nil).ImageEnv), ctx, image)
+}
+
 // ImageExists mocks base method.
 func (m *MockRuntime) ImageExists(ctx context.Context, image string) (bool, error) {
 	m.ctrl.T.Helper()
