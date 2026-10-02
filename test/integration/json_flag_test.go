@@ -212,7 +212,9 @@ func TestExtensionReceivesJSONFlagInContext(t *testing.T) {
 	extDir := t.TempDir()
 	installExtension(t, extDir, "hello")
 	tmpHome := t.TempDir()
-	environ := envWithPath(tmpHome, extDir)
+	// A closed DOCKER_HOST keeps the snapshot's EMULATOR_COUNT=0 independent
+	// of emulators other tests have running.
+	environ := append(envWithPath(tmpHome, extDir), "DOCKER_HOST=tcp://127.0.0.1:1")
 
 	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), environ, "--json", "hello", "--foo")
 	require.NoError(t, err, stderr)
