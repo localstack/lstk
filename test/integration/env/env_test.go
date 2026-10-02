@@ -99,3 +99,18 @@ func TestExplicitAnalyticsEndpointOverridesDefault(t *testing.T) {
 		t.Fatalf("analytics endpoint = %q, want %q (explicit override must win over default)", got, mock)
 	}
 }
+
+// An ambient LOCALSTACK_DISABLE_EVENTS=1 must not reach the binary under test:
+// it disables telemetry, and every telemetry assertion then times out.
+func TestBaseEnvDropsAmbientDisableEvents(t *testing.T) {
+	t.Setenv(string(DisableEvents), "1")
+
+	if _, found := resolve(With("SOME_VAR", "value"), DisableEvents); found {
+		t.Fatalf("%s must be stripped from the base test environment", DisableEvents)
+	}
+
+	got, found := resolve(With(DisableEvents, "1"), DisableEvents)
+	if !found || got != "1" {
+		t.Fatalf("an explicit With(%s) must still win, got %q (found=%v)", DisableEvents, got, found)
+	}
+}
