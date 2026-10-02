@@ -42,8 +42,7 @@ type StartResult struct {
 	Version        string
 	AlreadyRunning bool
 	Persistence    bool
-	// BundledLicense reports a fresh start from an image that carries its own
-	// license, so the user's platform plan says nothing about this emulator.
+	// BundledLicense reports a start from an image with its own license.
 	BundledLicense bool
 }
 
@@ -134,8 +133,7 @@ func start(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts Start
 	}
 	a := auth.New(sink, opts.PlatformClient, tokenStorage, opts.AuthToken, opts.WebAppURL, interactive, licenseFilePath, opts.AuthOptions...)
 
-	// An image with a bundled license (offline image) needs no token, so use
-	// one if it is already at hand but never demand one or start a login.
+	// A bundled-license image needs no token: use one if present, never prompt.
 	token := auth.ResolveToken(opts.AuthToken, tokenStorage)
 	if token == "" && NeedsAuthToken(ctx, rt, opts) {
 		token, err = a.GetToken(ctx)
@@ -225,8 +223,7 @@ func startOnce(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts S
 			return StartResult{}, err
 		}
 		bundledLicense := hasBundledLicense(ctx, rt, image)
-		// start() let an empty token through only for a bundled-license image;
-		// fail closed if this second look disagrees (e.g. the image was removed).
+		// Fail closed if the image no longer qualifies, e.g. removed since start().
 		if token == "" && !bundledLicense {
 			err := errors.New("authentication required: set LOCALSTACK_AUTH_TOKEN or run lstk login")
 			sink.Emit(output.ErrorEvent{Title: err.Error(), Code: output.ErrAuthRequired})
@@ -277,8 +274,7 @@ func startOnce(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts S
 			})
 		}
 		env := resolvedEnv
-		// Only inject a token we actually have: a blank LOCALSTACK_AUTH_TOKEN
-		// would shadow whatever the image itself provides.
+		// A blank token would shadow the image's own.
 		if token != "" {
 			env = append(env, "LOCALSTACK_AUTH_TOKEN="+token)
 		}
@@ -536,9 +532,8 @@ func pullImages(ctx context.Context, rt runtime.Runtime, sink output.Sink, tel *
 		}
 
 		// Reuse a locally present image for pinned tags instead of re-pulling.
-		// Floating "latest"/empty tags always pull until pull_policy support lands,
-		// except for an image with a bundled license: it is meant to run offline,
-		// typically from a registry lstk cannot reach.
+		// Floating "latest"/empty tags always pull until pull_policy support lands.
+		// Bundled-license images never pull: they are meant to run offline.
 		if c.BundledLicense || (exists && c.Tag != "" && c.Tag != "latest") {
 			sink.Emit(output.MessageEvent{Severity: output.SeveritySuccess, Text: fmt.Sprintf("Using local image %s", c.Image)})
 			pulled[c.Name] = false
@@ -650,8 +645,7 @@ func tryPrePullLicenseValidation(ctx context.Context, rt runtime.Runtime, sink o
 		}
 
 		if c.Tag != "" && c.Tag != "latest" {
-			// An image with a bundled license brings its own license, so the
-			// platform has nothing to check (and no token may be at hand).
+			// Nothing to validate: the license is bundled in the image.
 			if c.BundledLicense {
 				continue
 			}
@@ -705,7 +699,7 @@ func validateLicensesFromImages(ctx context.Context, rt runtime.Runtime, sink ou
 		if firstVersion == "" {
 			firstVersion = v
 		}
-		// The version is still resolved above for display; the license is the image's own.
+		// The version above is for display only; the license is bundled.
 		if c.BundledLicense {
 			continue
 		}
@@ -1503,8 +1497,7 @@ func mountCachedLicense(containers []runtime.ContainerConfig, licenseFilePath st
 	}
 	mounted := false
 	for i := range containers {
-		// The cached license belongs to the user's own token, not to the
-		// license bundled in the image, so it must not be put next to it.
+		// The cached license is for the user's token, not the bundled one.
 		if containers[i].BundledLicense {
 			continue
 		}

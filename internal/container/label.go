@@ -26,8 +26,7 @@ func ResolveAndCacheLabel(ctx context.Context, opts StartOptions, resolvedVersio
 
 const NoLicenseLabel = "LocalStack (No license)"
 
-// BundledLicenseLabel is shown for an image with a bundled license: its plan is
-// not the user's, and resolving it would need the platform the image avoids.
+// BundledLicenseLabel replaces the user's plan, which says nothing about a bundled license.
 const BundledLicenseLabel = "LocalStack"
 
 // ResolveEmulatorLabel tries to fetch the plan name from the license API

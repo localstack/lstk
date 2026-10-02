@@ -18,14 +18,12 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// bundledLicenseImage is a local-only stand-in for a LocalStack Enterprise
-// (offline) image: it carries LOCALSTACK_AUTH_TOKEN_OVERRIDE like the real one.
-// Its "latest" tag is deliberate: a floating tag would normally be pulled.
+// bundledLicenseImage stands in for an Enterprise offline image. The "latest"
+// tag is deliberate: a floating tag would normally be pulled.
 const bundledLicenseImage = "lstk-bundled-license-test:latest"
 
-// commitBundledLicenseImage builds bundledLicenseImage. Instead of an emulator
-// it prints what it received from lstk and exits, so the start fails with that
-// output as "Last container output", which is what the tests assert on.
+// commitBundledLicenseImage builds bundledLicenseImage. It prints what lstk
+// passed in and exits; the tests assert on that output.
 func commitBundledLicenseImage(t *testing.T, ctx context.Context) {
 	t.Helper()
 
@@ -59,9 +57,8 @@ func commitBundledLicenseImage(t *testing.T, ctx context.Context) {
 	})
 }
 
-// bundledLicenseEnv returns an isolated environment without any auth token, a
-// cached license.json for the user's own token (darwin/linux), and a license
-// server that counts every request it receives.
+// bundledLicenseEnv returns a token-less isolated env with a cached license.json
+// and a license server that counts requests.
 func bundledLicenseEnv(t *testing.T) (env.Environ, string, *int32) {
 	t.Helper()
 
@@ -98,9 +95,8 @@ func bundledLicenseEnv(t *testing.T) (env.Environ, string, *int32) {
 	return e, configFile, &hits
 }
 
-// An offline image brings its own license, so starting it must need nothing
-// from the network or the user: no token, no login, no pull, no license check,
-// and no blank LOCALSTACK_AUTH_TOKEN or foreign cached license put into it.
+// An offline image starts without token, login, pull, or license check, and gets
+// neither a blank LOCALSTACK_AUTH_TOKEN nor the user's cached license.
 func TestStartWithBundledLicenseImageNeedsNoTokenPullOrLicenseCheck(t *testing.T) {
 	requireDocker(t)
 	cleanup()
@@ -124,8 +120,7 @@ func TestStartWithBundledLicenseImageNeedsNoTokenPullOrLicenseCheck(t *testing.T
 	}
 }
 
-// The interactive start must not fall into the device login either: that is
-// what blocked offline users, since the login needs the platform API.
+// The interactive start must not fall into the device login, which needs the platform.
 func TestStartInteractiveWithBundledLicenseImageSkipsLogin(t *testing.T) {
 	requireDocker(t)
 	cleanup()

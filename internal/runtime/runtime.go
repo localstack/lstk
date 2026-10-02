@@ -44,9 +44,8 @@ type ContainerConfig struct {
 	Binds         []BindMount
 	ExtraPorts    []PortMapping
 	ImageOverride bool // started with --image
-	// BundledLicense marks a local image that carries its own license (an
-	// offline image). The start flow skips the pull, the auth token and all
-	// license work for it; the runtime itself ignores it.
+	// BundledLicense marks a local image with its own license. Used by the
+	// start flow; ignored by the runtime.
 	BundledLicense bool
 }
 
@@ -109,8 +108,7 @@ type Runtime interface {
 	GetImageVersion(ctx context.Context, imageName string) (string, error)
 	// ImageExists reports whether the given image is already present locally.
 	ImageExists(ctx context.Context, image string) (bool, error)
-	// ImageEnv returns the environment baked into a locally present image's
-	// config (e.g. ["KEY=value"]). It never pulls; a missing image is an error.
+	// ImageEnv returns the env of a locally present image. It never pulls.
 	ImageEnv(ctx context.Context, image string) ([]string, error)
 	// GetBoundPort returns the host port bound to the given container port (e.g. "4566/tcp").
 	GetBoundPort(ctx context.Context, containerName string, containerPort string) (string, error)

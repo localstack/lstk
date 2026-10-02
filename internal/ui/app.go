@@ -34,8 +34,7 @@ type headerLabelMsg struct {
 
 type headerTickMsg struct{}
 
-// showHeaderMsg reveals a header held back by withHeaderAfterAuth when the
-// start needs no login, so no AuthCompleteEvent will arrive.
+// showHeaderMsg reveals the header when no login runs, as no AuthCompleteEvent arrives.
 type showHeaderMsg struct{}
 
 var headerDotFrames = [3]string{"LocalStack .", "LocalStack ..", "LocalStack ..."}

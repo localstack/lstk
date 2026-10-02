@@ -8,17 +8,12 @@ import (
 	"github.com/localstack/lstk/internal/runtime"
 )
 
-// bundledLicenseTokenEnv is baked into LocalStack Enterprise (offline) images
-// next to their license file. The image's entrypoint uses it in place of any
-// LOCALSTACK_AUTH_TOKEN, so the token lstk would inject is never used.
+// bundledLicenseTokenEnv is set by Enterprise offline images; their entrypoint
+// prefers it over LOCALSTACK_AUTH_TOKEN.
 const bundledLicenseTokenEnv = "LOCALSTACK_AUTH_TOKEN_OVERRIDE"
 
-// hasBundledLicense reports whether image is present locally and carries its
-// own license (an offline image). Such an image needs nothing from the network:
-// no pull, no auth token, and no license pre-flight. It is detected from the
-// local image config only, so a missing image or an inspect error means false.
-// Any image baking in this variable qualifies, e.g. a custom build with a CI
-// token; the emulator still validates whatever license it ends up with.
+// hasBundledLicense reports whether image is local and bundles its own license.
+// Any inspect error counts as false, so detection fails closed.
 func hasBundledLicense(ctx context.Context, rt runtime.Runtime, image string) bool {
 	env, err := rt.ImageEnv(ctx, image)
 	if err != nil {
@@ -32,11 +27,8 @@ func hasBundledLicense(ctx context.Context, rt runtime.Runtime, image string) bo
 	return false
 }
 
-// NeedsAuthToken reports whether starting opts.Containers requires an auth
-// token. It is false only on positive evidence that lstk makes no
-// authenticated call and the container brings its own license: every image
-// is a locally present image with a bundled license. Anything else, including
-// a failed image inspect, keeps the token (and the interactive login) required.
+// NeedsAuthToken reports whether starting opts.Containers needs an auth token:
+// true unless every image is a local bundled-license image.
 func NeedsAuthToken(ctx context.Context, rt runtime.Runtime, opts StartOptions) bool {
 	if len(opts.Containers) == 0 {
 		return true

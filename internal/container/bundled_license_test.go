@@ -79,7 +79,7 @@ func TestPullImages_SkipsPullForBundledLicenseOnFloatingTag(t *testing.T) {
 	}
 	mockRT.EXPECT().Remove(gomock.Any(), c.Name).Return(nil)
 	mockRT.EXPECT().ImageExists(gomock.Any(), c.Image).Return(true, nil)
-	// No PullImage: the offline image is meant to run from the local copy.
+	// No PullImage expected.
 
 	var out bytes.Buffer
 	pulled, err := pullImages(context.Background(), mockRT, output.NewPlainSink(&out), telemetry.New("", true), []runtime.ContainerConfig{c}, true)
@@ -134,9 +134,7 @@ func TestMountCachedLicense_SkipsBundledLicense(t *testing.T) {
 }
 
 func TestStartOnce_FailsClosedWithoutTokenForNonBundledImage(t *testing.T) {
-	// start() only lets an empty token through for a bundled-license image. If
-	// the image no longer qualifies by the time it is configured, no request may
-	// go out with an empty token.
+	// An empty token must not reach the platform once the image no longer qualifies.
 	ctrl := gomock.NewController(t)
 	mockRT := runtime.NewMockRuntime(ctrl)
 	mockRT.EXPECT().ImageEnv(gomock.Any(), offlineImage).Return(nil, errors.New("no such image"))
