@@ -66,7 +66,7 @@ Five call sites mark: `internal/awscli.Exec`, `internal/azurecli.Exec`, and `int
 
 ### Decision 4: `proxied` comes from an explicit annotation, not `DisableFlagParsing`
 
-A `proxyCommandAnnotation` on `aws`, `az`, `cdk`, `sam`, `terraform`. `instrumentCommands` reads it for both `proxied` and the existing `subcommand` derivation. Extensions are resolved rather than registered and cannot carry it; `dispatchExtension` emits `proxied: false` (Decision 3). This is what makes the split reliable: the five proxies are the only commands in the tree with the annotation (pinned by a unit test), and the extension path has no way to acquire it.
+A `proxyCommandAnnotation` on `aws`, `az`, `cdk`, `sam`, `terraform`, set by `NewRootCmd` on every command in the `tools` group rather than per command, so a new proxy cannot be registered without it. `instrumentCommands` reads it for both `proxied` and the existing `subcommand` derivation. Extensions are resolved rather than registered and cannot carry it; `dispatchExtension` emits `proxied: false` (Decision 3). This is what makes the split reliable: the five proxies are the only commands in the tree with the annotation (pinned by a unit test), and the extension path has no way to acquire it.
 
 **Rationale**: `DisableFlagParsing` is the mechanism that lets a proxy forward unknown flags, not a statement about who the invocation is for; a future command setting it for an unrelated reason would silently start reporting as proxied. The repo already expresses command-level facts this way (`canonicalCommandAnnotation`, `jsonSupportedAnnotation`). One declaration governing both fields keeps them from drifting apart.
 

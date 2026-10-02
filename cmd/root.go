@@ -215,7 +215,8 @@ func NewRootCmd(cfg *env.Env, tel *telemetry.Client, logger log.Logger) *cobra.C
 	}
 
 	// Proxy commands that forward to a wrapped tool (AWS/Azure CLI, Terraform,
-	// CDK, SAM) configured to target LocalStack.
+	// CDK, SAM) configured to target LocalStack. Registering here is what marks
+	// a command proxied in telemetry (proxyCommandAnnotation).
 	tools := []*cobra.Command{
 		newAWSCmd(cfg),
 		newTerraformCmd(cfg, logger),
@@ -225,6 +226,10 @@ func NewRootCmd(cfg *env.Env, tel *telemetry.Client, logger log.Logger) *cobra.C
 	}
 	for _, c := range tools {
 		c.GroupID = groupTools
+		if c.Annotations == nil {
+			c.Annotations = map[string]string{}
+		}
+		c.Annotations[proxyCommandAnnotation] = "true"
 	}
 
 	root.AddCommand(commands...)
