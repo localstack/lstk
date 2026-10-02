@@ -23,8 +23,12 @@ func emulatorSelectEnv(t *testing.T) (env.Environ, string) {
 	return e.With(env.AuthToken, "test-token").With(env.APIEndpoint, licenseSrv.URL), configPath
 }
 
+// Not parallel: the existing config lets `start` run past the prompt and create
+// a real emulator container, which parallel tests would discover.
 func TestNoEmulatorSelectionWhenConfigExists(t *testing.T) {
-	t.Parallel()
+	requireDocker(t)
+	cleanup()
+	t.Cleanup(cleanup)
 
 	e, configPath := emulatorSelectEnv(t)
 
