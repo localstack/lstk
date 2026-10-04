@@ -40,7 +40,7 @@ const envPrefix = "LSTK_EXT_"
 // Emulator describes one running LocalStack emulator in the context payload.
 type Emulator struct {
 	Type     string `json:"type"`     // emulator type, e.g. "aws", "snowflake", "azure"
-	Endpoint string `json:"endpoint"` // full URL, e.g. "http://localhost:4566"
+	Endpoint string `json:"endpoint"` // full URL for the type, e.g. "http://snowflake.localhost.localstack.cloud:4566"
 	Port     string `json:"port"`     // resolved host port, e.g. "4566"
 }
 

@@ -1,6 +1,7 @@
 package integration_test
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"os"
@@ -501,6 +502,55 @@ func TestExtensionEndpointConveyedWhenEmulatorRunning(t *testing.T) {
 	require.NoError(t, err, stderr)
 	require.Contains(t, stdout, "EMULATOR=aws http")
 	require.Contains(t, stdout, "AUTH_TOKEN=tok-xyz")
+}
+
+// runRefWithEmulators starts the given placeholder emulators, pins the resolved
+// host via LOCALSTACK_HOST (so DNS on the test host can't change the URLs), and
+// returns the ref extension's stdout.
+func runRefWithEmulators(t *testing.T, localStackHost string, starters ...func(*testing.T, context.Context)) string {
+	t.Helper()
+	cleanup()
+	cleanupSnowflake()
+	cleanupAzure()
+	t.Cleanup(cleanup)
+	t.Cleanup(cleanupSnowflake)
+	t.Cleanup(cleanupAzure)
+
+	ctx := testContext(t)
+	for _, start := range starters {
+		start(t, ctx)
+	}
+
+	extDir := t.TempDir()
+	installExtension(t, extDir, "ref")
+
+	environ := append(envWithPath(t.TempDir(), extDir), string(env.LocalStackHost)+"="+localStackHost)
+	stdout, stderr, err := runLstk(t, ctx, t.TempDir(), environ, "ref")
+	require.NoError(t, err, stderr)
+	return stdout
+}
+
+func startAWSPlaceholder(t *testing.T, ctx context.Context) { startTestContainer(t, ctx) }
+
+func TestExtensionEmulatorEndpointPerType(t *testing.T) {
+	requireDocker(t)
+	stdout := runRefWithEmulators(t, "localhost.localstack.cloud:4566",
+		startAWSPlaceholder, startTestSnowflakeContainer, startTestAzureContainer)
+
+	require.Contains(t, stdout, "EMULATOR=aws http://localhost.localstack.cloud:4566 4566")
+	require.Contains(t, stdout, "EMULATOR=snowflake http://snowflake.localhost.localstack.cloud:4566 4566")
+	require.Contains(t, stdout, "EMULATOR=azure https://azure.localhost.localstack.cloud:4566 4566")
+}
+
+// A subdomain of an IP is not a valid host, so none is added; the scheme still
+// follows the emulator type.
+func TestExtensionEmulatorEndpointIPHostHasNoSubdomain(t *testing.T) {
+	requireDocker(t)
+	stdout := runRefWithEmulators(t, "127.0.0.1:4566",
+		startTestSnowflakeContainer, startTestAzureContainer)
+
+	require.Contains(t, stdout, "EMULATOR=snowflake http://127.0.0.1:4566 4566")
+	require.Contains(t, stdout, "EMULATOR=azure https://127.0.0.1:4566 4566")
 }
 
 func TestExtensionHelpListsBundledWithDescriptionAndPathNameOnly(t *testing.T) {

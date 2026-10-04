@@ -43,7 +43,7 @@ lstk passes everything you need through two environment variables, so you never 
 | `endpointUrl` | string | An externally-managed emulator lstk was pointed at, from `--endpoint-url`, `LSTK_ENDPOINT_URL`, or `AWS_ENDPOINT_URL`. **Omitted** when none was set. Conveyed **verbatim and unvalidated** — see [Targeting an external emulator](#targeting-an-external-emulator). |
 | `emulators` | array | One entry per running LocalStack emulator: `{ "type", "endpoint", "port" }`. An **empty array** `[]` when none are running. |
 
-`emulators` can hold **more than one** entry — lstk may run an AWS, a Snowflake, and an Azure emulator at the same time. Don't assume a single endpoint: select the one(s) your extension needs by `type`, and handle the empty case. `authToken` is **omitted, not set empty**, when the user is not authenticated — check for its presence.
+`emulators` can hold **more than one** entry — lstk may run an AWS, a Snowflake, and an Azure emulator at the same time. Don't assume a single endpoint: select the one(s) your extension needs by `type`, and handle the empty case. Each `endpoint` is the ready-to-use URL for its type — `http://localhost.localstack.cloud:4566` for AWS, `http://snowflake.localhost.localstack.cloud:4566` for Snowflake, `https://azure.localhost.localstack.cloud:4566` for Azure — so use it as-is rather than adding a subdomain yourself. When the host resolves to an IP (e.g. `127.0.0.1`), no subdomain is added, but the scheme still follows the type. `authToken` is **omitted, not set empty**, when the user is not authenticated — check for its presence.
 
 ### Reading the context
 

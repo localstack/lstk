@@ -136,7 +136,7 @@ func resolveEmulators(ctx context.Context, cfg *env.Env, logger log.Logger) []ex
 		host, _ := endpoint.ResolveHost(ctx, hostPort, cfg.LocalStackHost)
 		emulators = append(emulators, extension.Emulator{
 			Type:     string(c.Type),
-			Endpoint: "http://" + host,
+			Endpoint: container.EmulatorURL(c.Type, host),
 			Port:     hostPort,
 		})
 	}
