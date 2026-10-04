@@ -33,6 +33,34 @@ func TestStartImageFlagRejectsInvalidReference(t *testing.T) {
 	assert.NoFileExists(t, configPath, "a rejected --image must not create a config")
 }
 
+func TestStartImageFlagRejectsRegistryPrefixedImageOfAnotherType(t *testing.T) {
+	t.Parallel()
+	e, _ := typeTestEnv(t)
+	configFile := writeTestConfig(t, "[[containers]]\ntype = \"aws\"\nport = \"4566\"\n")
+
+	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), e,
+		"--config", configFile, "--non-interactive", "start", "--image", "docker.io/localstack/snowflake:latest")
+
+	require.Error(t, err)
+	requireExitCode(t, 1, err)
+	assert.Contains(t, stdout+stderr, "docker.io/localstack/snowflake:latest is a Snowflake emulator image")
+}
+
+func TestStartImageFlagFirstRunRejectsKnownImageOfAnotherType(t *testing.T) {
+	t.Parallel()
+	e, _ := typeTestEnv(t)
+	configPath := resolvedConfigPath(t, e)
+	require.NoFileExists(t, configPath)
+
+	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), e,
+		"start", "--image", "localstack/snowflake", "--non-interactive")
+
+	require.Error(t, err)
+	requireExitCode(t, 1, err)
+	assert.Contains(t, stdout+stderr, "localstack/snowflake is a Snowflake emulator image")
+	assert.NoFileExists(t, configPath, "a rejected --image must not create a config")
+}
+
 func TestStartImageFlagRejectsKnownImageOfAnotherType(t *testing.T) {
 	t.Parallel()
 	e, _ := typeTestEnv(t)
@@ -128,6 +156,43 @@ func TestStartImageFlagOverridesConfiguredImage(t *testing.T) {
 	data, readErr := os.ReadFile(configFile)
 	require.NoError(t, readErr)
 	assert.Equal(t, content, string(data), "--image must never be written to the config")
+}
+
+// A pinned config tag must not suppress the floating-tag checks on --image.
+// Otherwise a locally present :latest image is started with no pull and no
+// "does this look like an emulator" inspection.
+func TestStartImageFlagPinnedConfigTagStillInspectsFloatingImage(t *testing.T) {
+	requireDocker(t)
+	cleanup()
+	t.Cleanup(cleanup)
+
+	ctx := testContext(t)
+	const localImage = "lstk-floating-image-flag"
+	reader, err := dockerClient.ImagePull(ctx, testImage, client.ImagePullOptions{})
+	require.NoError(t, err, "failed to pull test image")
+	_, _ = io.Copy(io.Discard, reader)
+	_ = reader.Close()
+	_, err = dockerClient.ImageTag(ctx, client.ImageTagOptions{Source: testImage, Target: localImage + ":latest"})
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		_, _ = dockerClient.ImageRemove(context.Background(), localImage+":latest", client.ImageRemoveOptions{Force: true})
+	})
+	// A pinned config tag names the container localstack-aws-<tag>. cleanup()
+	// only removes the bare localstack-aws name.
+	t.Cleanup(func() {
+		_, _ = dockerClient.ContainerRemove(context.Background(), "localstack-aws-2026.4", client.ContainerRemoveOptions{Force: true})
+	})
+
+	configFile := writeTestConfig(t, "[[containers]]\ntype = \"aws\"\ntag = \"2026.4\"\nport = \"4566\"\n")
+	e := env.Environ(testEnvWithHome(t.TempDir(), "")).With(env.AuthToken, "dummy-token")
+	stdout, stderr, err := runLstk(t, ctx, "", e,
+		"--config", configFile, "--non-interactive", "start", "--image", localImage+":latest", "--timeout", "3s")
+
+	require.Error(t, err)
+	requireExitCode(t, 1, err)
+	out := stdout + stderr
+	assert.Contains(t, out, localImage+":latest does not look like a LocalStack AWS emulator image")
+	assert.NotContains(t, out, "Using local image "+localImage+":latest")
 }
 
 func TestStartExplainsImageThatIsNotAnAWSEmulator(t *testing.T) {

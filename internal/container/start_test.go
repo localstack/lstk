@@ -32,6 +32,35 @@ import (
 	"go.uber.org/mock/gomock"
 )
 
+func TestStart_RejectsImageOfOtherTypeBeforeHealthCheck(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	// No runtime expectations: a known image of another emulator must be
+	// rejected before Docker is contacted, including a registry-prefixed ref.
+	mockRT := runtime.NewMockRuntime(ctrl)
+
+	var out bytes.Buffer
+	sink := output.NewPlainSink(&out)
+	_, err := Start(context.Background(), mockRT, sink, StartOptions{
+		Logger:        log.Nop(),
+		ImageOverride: "docker.io/localstack/snowflake:latest",
+		Containers:    []config.ContainerConfig{{Type: config.EmulatorAWS, Port: "4566"}},
+	}, false)
+
+	require.Error(t, err)
+	assert.True(t, output.IsSilent(err))
+	assert.Contains(t, out.String(), "Snowflake emulator image")
+}
+
+func TestRuntimeImageTag_CustomImageTagWinsOverConfigTag(t *testing.T) {
+	// A pinned config tag must not govern a floating --image ref: pull policy
+	// and license pre-flight follow the image that is actually started.
+	assert.Equal(t, "latest", runtimeImageTag("2026.4", "localstack/localstack-pro:latest", true))
+	assert.Equal(t, "2026.5", runtimeImageTag("2026.4", "my-registry:5000/localstack-pro:2026.5", true))
+	assert.Equal(t, "2026.4", runtimeImageTag("2026.4", "localstack/localstack-pro@sha256:abc", true))
+	assert.Equal(t, "2026.4", runtimeImageTag("2026.4", "my-registry:5000/localstack-pro:2026.4", true))
+	assert.Equal(t, "2026.4", runtimeImageTag("2026.4", "localstack/localstack-pro:latest", false))
+}
+
 func TestStart_RejectsMultipleContainersBeforeHealthCheck(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	// No IsHealthy expectation: the guard must fire before the runtime is touched.
