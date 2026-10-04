@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -133,6 +134,64 @@ func TestWriteProfile(t *testing.T) {
 	}
 }
 
+func TestWriteConfigProfileWritesS3ServicesOverride(t *testing.T) {
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, ".aws", "config")
+
+	if err := writeConfigProfile(configPath, "localhost.localstack.cloud:4566"); err != nil {
+		t.Fatal(err)
+	}
+
+	// Key order is not guaranteed since upsertSection ranges over a map, so
+	// check parsed values instead of raw file text.
+	f, err := loadINI(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	profile, err := f.GetSection(configSectionName)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for key, want := range map[string]string{
+		"region":       "us-east-1",
+		"output":       "json",
+		"endpoint_url": "http://localhost.localstack.cloud:4566",
+		"services":     "localstack",
+	} {
+		if got := profile.Key(key).Value(); got != want {
+			t.Errorf("profile key %q = %q, want %q", key, got, want)
+		}
+	}
+
+	services, err := f.GetSection(servicesSectionName)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Body() strips the continuation line's leading whitespace on load, so check
+	// the on-disk bytes instead to catch a regression that drops the indentation.
+	raw, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantServicesBlock := "[services localstack]\n" +
+		"s3 =\n" +
+		"    endpoint_url = http://s3.localhost.localstack.cloud:4566\n"
+	if !strings.Contains(string(raw), wantServicesBlock) {
+		t.Errorf("config content missing indented services block\ngot:\n%s\nwant substring:\n%s", raw, wantServicesBlock)
+	}
+	if got := services.Body(); got != "s3 =\nendpoint_url = http://s3.localhost.localstack.cloud:4566" {
+		t.Errorf("services section body = %q", got)
+	}
+
+	needed, err := configNeedsWrite(configPath, "localhost.localstack.cloud:4566")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if needed {
+		t.Error("config should not need a write immediately after writeConfigProfile")
+	}
+}
+
 func TestCheckProfileStatus(t *testing.T) {
 	tests := []struct {
 		name          string
@@ -149,12 +208,41 @@ func TestCheckProfileStatus(t *testing.T) {
 			wantCreds:    true,
 		},
 		{
-			name:          "valid profile needs nothing",
+			name: "valid profile needs nothing",
+			configContent: "[profile localstack]\nregion = us-east-1\noutput = json\n" +
+				"endpoint_url = http://localhost.localstack.cloud:4566\nservices = localstack\n\n" +
+				"[services localstack]\ns3 =\n    endpoint_url = http://s3.localhost.localstack.cloud:4566\n",
+			credsContent: "[localstack]\naws_access_key_id = test\naws_secret_access_key = test\n",
+			resolvedHost: "localhost.localstack.cloud:4566",
+			wantConfig:   false,
+			wantCreds:    false,
+		},
+		{
+			name:          "missing services key needs write",
 			configContent: "[profile localstack]\nregion = us-east-1\noutput = json\nendpoint_url = http://localhost.localstack.cloud:4566\n",
 			credsContent:  "[localstack]\naws_access_key_id = test\naws_secret_access_key = test\n",
 			resolvedHost:  "localhost.localstack.cloud:4566",
-			wantConfig:    false,
+			wantConfig:    true,
 			wantCreds:     false,
+		},
+		{
+			name: "missing services section needs write",
+			configContent: "[profile localstack]\nregion = us-east-1\noutput = json\n" +
+				"endpoint_url = http://localhost.localstack.cloud:4566\nservices = localstack\n",
+			credsContent: "[localstack]\naws_access_key_id = test\naws_secret_access_key = test\n",
+			resolvedHost: "localhost.localstack.cloud:4566",
+			wantConfig:   true,
+			wantCreds:    false,
+		},
+		{
+			name: "stale s3 endpoint in services section needs write",
+			configContent: "[profile localstack]\nregion = us-east-1\noutput = json\n" +
+				"endpoint_url = http://localhost.localstack.cloud:4566\nservices = localstack\n\n" +
+				"[services localstack]\ns3 =\n    endpoint_url = http://s3.some-other-host:4566\n",
+			credsContent: "[localstack]\naws_access_key_id = test\naws_secret_access_key = test\n",
+			resolvedHost: "localhost.localstack.cloud:4566",
+			wantConfig:   true,
+			wantCreds:    false,
 		},
 		{
 			name:          "missing endpoint_url",
@@ -173,20 +261,24 @@ func TestCheckProfileStatus(t *testing.T) {
 			wantCreds:     false,
 		},
 		{
-			name:          "wrong credentials",
-			configContent: "[profile localstack]\nregion = us-east-1\noutput = json\nendpoint_url = http://127.0.0.1:4566\n",
-			credsContent:  "[localstack]\naws_access_key_id = wrong\naws_secret_access_key = wrong\n",
-			resolvedHost:  "127.0.0.1:4566",
-			wantConfig:    false,
-			wantCreds:     true,
+			name: "wrong credentials",
+			configContent: "[profile localstack]\nregion = us-east-1\noutput = json\n" +
+				"endpoint_url = http://127.0.0.1:4566\nservices = localstack\n\n" +
+				"[services localstack]\ns3 =\n    endpoint_url = http://127.0.0.1:4566\n",
+			credsContent: "[localstack]\naws_access_key_id = wrong\naws_secret_access_key = wrong\n",
+			resolvedHost: "127.0.0.1:4566",
+			wantConfig:   false,
+			wantCreds:    true,
 		},
 		{
-			name:          "127.0.0.1 profile valid when DNS now resolves to localhost.localstack.cloud",
-			configContent: "[profile localstack]\nregion = us-east-1\noutput = json\nendpoint_url = http://127.0.0.1:4566\n",
-			credsContent:  "[localstack]\naws_access_key_id = test\naws_secret_access_key = test\n",
-			resolvedHost:  "localhost.localstack.cloud:4566",
-			wantConfig:    false,
-			wantCreds:     false,
+			name: "127.0.0.1 profile valid when DNS now resolves to localhost.localstack.cloud",
+			configContent: "[profile localstack]\nregion = us-east-1\noutput = json\n" +
+				"endpoint_url = http://127.0.0.1:4566\nservices = localstack\n\n" +
+				"[services localstack]\ns3 =\n    endpoint_url = http://s3.localhost.localstack.cloud:4566\n",
+			credsContent: "[localstack]\naws_access_key_id = test\naws_secret_access_key = test\n",
+			resolvedHost: "localhost.localstack.cloud:4566",
+			wantConfig:   false,
+			wantCreds:    false,
 		},
 	}
 	for _, tc := range tests {
@@ -344,4 +436,3 @@ func TestIsValidLocalStackEndpoint(t *testing.T) {
 		})
 	}
 }
-

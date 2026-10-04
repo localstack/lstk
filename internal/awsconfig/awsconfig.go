@@ -19,9 +19,10 @@ import (
 )
 
 const (
-	ProfileName       = "localstack"
-	configSectionName = "profile localstack" // ~/.aws/config uses "profile <name>" as section header
-	credsSectionName  = "localstack"         // ~/.aws/credentials uses just the profile name
+	ProfileName         = "localstack"
+	configSectionName   = "profile localstack"  // ~/.aws/config uses "profile <name>" as section header
+	credsSectionName    = "localstack"          // ~/.aws/credentials uses just the profile name
+	servicesSectionName = "services localstack" // referenced by the "services" key in configSectionName
 	// TODO: make region configurable (e.g. from container env or lstk config)
 	defaultRegion = "us-east-1"
 )
@@ -59,6 +60,20 @@ func isValidLocalStackEndpoint(endpointURL, resolvedHost string) bool {
 
 func isLocalStackLocalHost(host string) bool {
 	return host == "127.0.0.1" || host == "localhost" || host == endpoint.Hostname
+}
+
+// s3EndpointFor derives the S3 endpoint, like the Terraform and CDK proxies do.
+func s3EndpointFor(host string) string {
+	_, s3Endpoint := endpoint.S3Addressing("http://" + host)
+	return s3Endpoint
+}
+
+// servicesSectionBody builds the "[services localstack]" S3 endpoint override.
+// endpoint_url must stay indented under "s3 =" so AWS CLI treats it as nested.
+// indent is that line's leading whitespace. Pass "" after a reload, since
+// Section.Body() strips it.
+func servicesSectionBody(s3Endpoint, indent string) string {
+	return "s3 =" + ini.LineBreak + indent + "endpoint_url = " + s3Endpoint
 }
 
 func awsPaths() (configPath, credentialsPath string, err error) {
@@ -110,7 +125,7 @@ func CheckProfileStatus(resolvedHost string) (profileStatus, error) {
 }
 
 func configNeedsWrite(path, resolvedHost string) (bool, error) {
-	f, err := ini.Load(path)
+	f, err := loadINI(path)
 	if errors.Is(err, os.ErrNotExist) {
 		return true, nil
 	}
@@ -128,11 +143,19 @@ func configNeedsWrite(path, resolvedHost string) (bool, error) {
 	if !section.HasKey("region") {
 		return true, nil
 	}
+	servicesKey, err := section.GetKey("services")
+	if err != nil || servicesKey.Value() != ProfileName {
+		return true, nil
+	}
+	servicesSection, err := f.GetSection(servicesSectionName)
+	if err != nil || servicesSection.Body() != servicesSectionBody(s3EndpointFor(resolvedHost), "") {
+		return true, nil
+	}
 	return false, nil
 }
 
 func credsNeedWrite(path string) (bool, error) {
-	f, err := ini.Load(path)
+	f, err := loadINI(path)
 	if errors.Is(err, os.ErrNotExist) {
 		return true, nil
 	}
@@ -181,15 +204,10 @@ func writeProfile(host string) error {
 	if err != nil {
 		return err
 	}
-	configKeys := map[string]string{
-		"region":       defaultRegion,
-		"output":       "json",
-		"endpoint_url": "http://" + host,
-	}
-	if err := upsertSection(configPath, configSectionName, configKeys); err != nil {
+	if err := writeConfigProfile(configPath, host); err != nil {
 		return fmt.Errorf("failed to write %s: %w", configPath, err)
 	}
-	if err := upsertSection(credsPath, credsSectionName, credentialsDefaults()); err != nil {
+	if err := writeCredsProfile(credsPath); err != nil {
 		return fmt.Errorf("failed to write %s: %w", credsPath, err)
 	}
 	return nil
@@ -200,8 +218,13 @@ func writeConfigProfile(configPath, host string) error {
 		"region":       defaultRegion,
 		"output":       "json",
 		"endpoint_url": "http://" + host,
+		"services":     ProfileName,
 	}
-	return upsertSection(configPath, configSectionName, keys)
+	if err := upsertSection(configPath, configSectionName, keys); err != nil {
+		return err
+	}
+	s3Endpoint := s3EndpointFor(host)
+	return upsertRawSection(configPath, servicesSectionName, servicesSectionBody(s3Endpoint, "    ")+ini.LineBreak)
 }
 
 func writeCredsProfile(credsPath string) error {
