@@ -1709,7 +1709,7 @@ func TestStartCommandSucceedsForSnowflakeNextImage(t *testing.T) {
 	ctx := testContext(t)
 	stdout, stderr, err := runLstk(t, ctx, "", env.With(env.APIEndpoint, mockServer.URL),
 		"--config", configFile, "start", "--image", "localstack/snowflake-next")
-	require.NoError(t, err, "lstk start failed: %s", stderr)
+	require.NoError(t, err, "lstk start failed:\nstdout:\n%s\nstderr:\n%s", stdout, stderr)
 	requireExitCode(t, 0, err)
 
 	inspect, err := dockerClient.ContainerInspect(ctx, snowflakeContainerName, client.ContainerInspectOptions{})
