@@ -4,6 +4,7 @@ import (
 	"archive/tar"
 	"archive/zip"
 	"compress/gzip"
+	"errors"
 	"os"
 	"path/filepath"
 	goruntime "runtime"
@@ -331,7 +332,12 @@ func TestExtractAndReplacePreservesSpecialModeBits(t *testing.T) {
 		t.Skip("no Unix mode bits on Windows")
 	}
 	_, exePath := newInstallDir(t, map[string]string{lstkBinaryName(): "old lstk"})
-	require.NoError(t, os.Chmod(exePath, 0o755|os.ModeSetgid))
+	if err := os.Chmod(exePath, 0o755|os.ModeSetgid); errors.Is(err, os.ErrPermission) {
+		// e.g. a build sandbox where the process isn't in the file's group
+		t.Skipf("not permitted to set setgid: %v", err)
+	} else {
+		require.NoError(t, err)
+	}
 	if info, err := os.Stat(exePath); err != nil || info.Mode()&os.ModeSetgid == 0 {
 		t.Skip("filesystem does not support setgid on files")
 	}
