@@ -89,8 +89,10 @@ func Run(parentCtx context.Context, runOpts RunOptions) error {
 		// logs in first and only configures an emulator once they're authenticated.
 		// container.Start still calls GetToken as a safety net for non-interactive
 		// callers; once the token is in opts.AuthToken (or the keyring), it returns
-		// immediately.
-		if authErr := resolveAuthToken(ctx, sink, &runOpts); authErr != nil {
+		// immediately. An image with a bundled license needs no login at all.
+		if runOpts.StartOptions.AuthToken == "" && !container.NeedsAuthToken(ctx, runOpts.Runtime, runOpts.StartOptions) {
+			p.Send(showHeaderMsg{})
+		} else if authErr := resolveAuthToken(ctx, sink, &runOpts); authErr != nil {
 			if errors.Is(authErr, context.Canceled) {
 				return
 			}
@@ -135,9 +137,13 @@ func Run(parentCtx context.Context, runOpts RunOptions) error {
 		// container volume, so re-resolve it on every start regardless.
 		containers := runOpts.StartOptions.Containers
 		selfValidating := len(containers) > 0 && containers[0].Type.SelfValidatesLicense()
-		if result.AlreadyRunning && !selfValidating {
+		switch {
+		case result.BundledLicense:
+			config.CachePlanLabel(container.BundledLicenseLabel)
+			go func() { labelCh <- container.BundledLicenseLabel }()
+		case result.AlreadyRunning && !selfValidating:
 			go func() { labelCh <- config.CachedPlanLabel() }()
-		} else {
+		default:
 			go container.ResolveAndCacheLabel(ctx, runOpts.StartOptions, result.Version, labelCh)
 		}
 		p.Send(runDoneMsg{})

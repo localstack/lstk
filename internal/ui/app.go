@@ -34,6 +34,9 @@ type headerLabelMsg struct {
 
 type headerTickMsg struct{}
 
+// showHeaderMsg reveals the header when no login runs, as no AuthCompleteEvent arrives.
+type showHeaderMsg struct{}
+
 var headerDotFrames = [3]string{"LocalStack .", "LocalStack ..", "LocalStack ..."}
 
 func headerTick() tea.Cmd {
@@ -173,7 +176,7 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return a, tea.Quit
 		}
 		return a, nil
-	case output.AuthCompleteEvent:
+	case output.AuthCompleteEvent, showHeaderMsg:
 		if a.showHeaderOnAuth {
 			a.hideHeader = false
 			a.showHeaderOnAuth = false

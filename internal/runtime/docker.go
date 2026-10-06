@@ -801,6 +801,17 @@ func (d *DockerRuntime) GetImageVersion(ctx context.Context, imageName string) (
 // ErrNoImageVersion means the image has no LOCALSTACK_BUILD_VERSION, so it is not a LocalStack AWS emulator image.
 var ErrNoImageVersion = errors.New("LOCALSTACK_BUILD_VERSION not found in image environment")
 
+func (d *DockerRuntime) ImageEnv(ctx context.Context, image string) ([]string, error) {
+	inspect, err := d.client.ImageInspect(ctx, image)
+	if err != nil {
+		return nil, fmt.Errorf("failed to inspect image: %w", err)
+	}
+	if inspect.Config == nil {
+		return nil, nil
+	}
+	return inspect.Config.Env, nil
+}
+
 func (d *DockerRuntime) ImageExists(ctx context.Context, image string) (bool, error) {
 	if _, err := d.client.ImageInspect(ctx, image); err != nil {
 		if errdefs.IsNotFound(err) {
