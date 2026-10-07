@@ -194,7 +194,7 @@ func azPreflight(ctx context.Context, cfg *env.Env, sink output.Sink, target *en
 
 	if target != nil {
 		if target.Type != config.EmulatorAzure {
-			err := fmt.Errorf("lstk az requires the Azure emulator, but the endpoint at %s is a %s emulator", target.URL, target.Type.DisplayName())
+			err := fmt.Errorf("lstk az requires the Azure emulator, but the endpoint at %s is a %s", target.URL, target.Type.DisplayName())
 			sink.Emit(output.ErrorEvent{Title: err.Error()})
 			return "", output.NewSilentError(err)
 		}

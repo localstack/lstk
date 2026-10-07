@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -401,4 +402,57 @@ func TestCDKAWSEndpointURLWrongTypeFails(t *testing.T) {
 	stdout, _, err := runLstk(t, testContext(t), t.TempDir(), e, "--endpoint-url", azureLike.URL, "cdk", "deploy", "MyStack")
 	require.Error(t, err)
 	snap.Match(t, sanitizeOutput(stdout))
+}
+
+// The display name already ends in "Emulator", so the message must not add
+// another one.
+func TestEndpointURLWrongTypeErrorNamesEmulatorOnce(t *testing.T) {
+	t.Parallel()
+	snowflake := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/_localstack/health" {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"version":  "1.0.0",
+			"services": map[string]string{"snowflake": "running"},
+		})
+	}))
+	t.Cleanup(snowflake.Close)
+	aws := awsHealthServer(t)
+	t.Cleanup(aws.Close)
+
+	tests := []struct {
+		name     string
+		endpoint string
+		args     []string
+		want     string
+	}{
+		{"reset", snowflake.URL, []string{"reset", "--force"}, "reset is only supported for the AWS emulator, but the endpoint at %s is a LocalStack Snowflake Emulator"},
+		{"aws", snowflake.URL, []string{"aws", "s3", "ls"}, "lstk aws requires the AWS emulator, but the endpoint at %s is a LocalStack Snowflake Emulator"},
+		{"terraform", snowflake.URL, []string{"terraform", "plan"}, "lstk terraform requires the AWS emulator, but the endpoint at %s is a LocalStack Snowflake Emulator"},
+		{"sam", snowflake.URL, []string{"sam", "deploy"}, "lstk sam requires the AWS emulator, but the endpoint at %s is a LocalStack Snowflake Emulator"},
+		{"az", aws.URL, []string{"--config", azureConfigWithSetupMarker(t), "az", "group", "list"},"lstk az requires the Azure emulator, but the endpoint at %s is a LocalStack AWS Emulator"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			fakeDir := t.TempDir()
+			installFakeTool(t, fakeDir, "aws", fakeToolConfig{Stdout: []string{"ARGS:{args}"}})
+			installFakeTool(t, fakeDir, "terraform", fakeToolConfig{Stdout: []string{"ARGS:{args}"}})
+			installFakeTool(t, fakeDir, "sam", fakeToolConfig{
+				Cases:  []fakeToolCase{{Args: []string{"--version"}, Stdout: []string{"SAM CLI, version 1.140.0"}}},
+				Stdout: []string{"ARGS:{args}"},
+			})
+			installFakeTool(t, fakeDir, "az", fakeToolConfig{Stdout: []string{"ARGS:{args}"}})
+
+			e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).WithHome(t.TempDir())
+			e = append(e, unreachableDockerHost)
+
+			args := append([]string{"--endpoint-url", tc.endpoint, "--non-interactive"}, tc.args...)
+			stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), e, args...)
+			require.Error(t, err)
+			assert.Regexp(t, "(?m)^Error: "+regexp.QuoteMeta(fmt.Sprintf(tc.want, tc.endpoint))+"$", stdout+"\n"+stderr)
+		})
+	}
 }
