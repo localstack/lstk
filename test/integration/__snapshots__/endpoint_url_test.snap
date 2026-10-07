@@ -27,7 +27,7 @@ ENV_CDK_S3_FORCE_PATH_STYLE=1
 ---
 
 [TestCDKAWSEndpointURLWrongTypeFails_1]
-Error: lstk cdk requires the AWS emulator, but the endpoint at http://127.0.0.1:<port> is a LocalStack Azure Emulator emulator
+Error: lstk cdk requires the AWS emulator, but the endpoint at http://127.0.0.1:<port> is a LocalStack Azure Emulator
 ---
 
 [TestLogsRejectsAmbientEndpointURL_1]

@@ -92,7 +92,7 @@ Examples:
 				return emitValidationError(sink, err)
 			}
 			if target != nil && target.Type != config.EmulatorAWS {
-				return emitValidationError(sink, fmt.Errorf("lstk sam requires the AWS emulator, but the endpoint at %s is a %s emulator", target.URL, target.Type.DisplayName()))
+				return emitValidationError(sink, fmt.Errorf("lstk sam requires the AWS emulator, but the endpoint at %s is a %s", target.URL, target.Type.DisplayName()))
 			}
 
 			awsContainer := resolveAWSContainer()

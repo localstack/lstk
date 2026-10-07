@@ -51,7 +51,7 @@ To wipe the on-disk volume (certificates, persistence data, cached tools) instea
 
 			if target != nil {
 				if target.Type != config.EmulatorAWS {
-					return failWithCode(fmt.Sprintf("reset is only supported for the AWS emulator, but the endpoint at %s is a %s emulator", target.URL, target.Type.DisplayName()), output.ErrEmulatorWrongType)
+					return failWithCode(fmt.Sprintf("reset is only supported for the AWS emulator, but the endpoint at %s is a %s", target.URL, target.Type.DisplayName()), output.ErrEmulatorWrongType)
 				}
 				awsContainer = config.ContainerConfig{Type: config.EmulatorAWS, Port: config.DefaultPort}
 				rt = runtime.NewExternalRuntime(awsContainer.Name())
