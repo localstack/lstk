@@ -404,8 +404,8 @@ func TestCDKAWSEndpointURLWrongTypeFails(t *testing.T) {
 	snap.Match(t, sanitizeOutput(stdout))
 }
 
-// TestEndpointURLWrongTypeErrorNamesEmulatorOnce guards DEVX-1165: the display
-// name already ends in "Emulator", so the message must not add another one.
+// The display name already ends in "Emulator", so the message must not add
+// another one.
 func TestEndpointURLWrongTypeErrorNamesEmulatorOnce(t *testing.T) {
 	t.Parallel()
 	snowflake := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
