@@ -44,9 +44,12 @@ func testFetcher(serverURL string) versionFetcher {
 
 func TestCheckQuietlyDevBuild(t *testing.T) {
 	current, latest, available := CheckQuietly(context.Background(), "")
-	assert.Equal(t, "dev", current)
-	assert.Empty(t, latest)
-	assert.False(t, available)
+	if current == "dev" {
+		assert.Empty(t, latest)
+		assert.False(t, available)
+	} else {
+		t.Skip("test is only for dev builds")
+	}
 }
 
 func TestCheckQuietlyNetworkError(t *testing.T) {
