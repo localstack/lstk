@@ -88,6 +88,9 @@ type StartOptions struct {
 // rejection with an in-place re-login when interactive. The single post-start
 // tip is emitted here, so a run can only ever show one.
 func Start(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts StartOptions, interactive bool) (StartResult, error) {
+	if err := rejectMismatchedImage(sink, opts); err != nil {
+		return StartResult{}, err
+	}
 	result, err := start(ctx, rt, sink, opts, interactive)
 	if err != nil {
 		return result, err
@@ -101,6 +104,32 @@ func emitPostStartTip(ctx context.Context, sink output.Sink, emulatorType config
 	if tip := tips.Select(ctx, emulatorType, firstRun, interactive, detectorTips, logger); tip != "" {
 		sink.Emit(output.MessageEvent{Severity: output.SeveritySecondary, Text: tip})
 	}
+}
+
+func rejectMismatchedImage(sink output.Sink, opts StartOptions) error {
+	if opts.ImageOverride == "" {
+		return nil
+	}
+	for _, c := range opts.Containers {
+		if err := RejectImageOfOtherType(sink, opts.ImageOverride, c.Type); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// runtimeImageTag is the tag pull policy and license pre-flight follow.
+// A custom image's own tag wins over the config tag: a pinned config tag must
+// not skip the pull of a floating :latest image, or validate a license for a
+// version that is not being started. A digest pin has no tag, so the config
+// tag stays the product version.
+func runtimeImageTag(configTag, resolvedImage string, customImage bool) string {
+	if customImage {
+		if tag, ok := config.ImageTag(resolvedImage); ok {
+			return tag
+		}
+	}
+	return configTag
 }
 
 func start(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts StartOptions, interactive bool) (StartResult, error) {
@@ -342,6 +371,10 @@ func startOnce(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts S
 		}
 		extraPorts = mergeExposePorts(sink, extraPorts, primaryPort, c.Port, exposed)
 
+		// --image is applied inside resolveImage on a copy, so c.CustomImage
+		// stays empty for a flag-only override. Either source is a custom image
+		// whose own tag must win over the config tag.
+		customImage := opts.ImageOverride != "" || c.CustomImage != ""
 		containers[i] = runtime.ContainerConfig{
 			Image:          image,
 			Name:           containerName,
@@ -351,7 +384,7 @@ func startOnce(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts S
 			BindHost:       gateway.bindHost(),
 			HealthPath:     healthPath,
 			Env:            env,
-			Tag:            c.Tag,
+			Tag:            runtimeImageTag(c.Tag, image, customImage),
 			ProductName:    productName,
 			Binds:          binds,
 			ExtraPorts:     extraPorts,

@@ -440,7 +440,9 @@ func startEmulator(ctx context.Context, rt runtime.Runtime, cfg *env.Env, tel *t
 	// Check before ApplyEmulatorType so a bad --image never changes the config.
 	if imageOverride != "" {
 		target := emulatorType
-		if target == "" && !firstRun && len(appConfig.Containers) == 1 {
+		// A first run still has the default AWS container in memory. Checking
+		// it here rejects a known image of another product before config is written.
+		if target == "" && len(appConfig.Containers) == 1 {
 			target = appConfig.Containers[0].Type
 		}
 		if target != "" {

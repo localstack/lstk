@@ -138,8 +138,30 @@ func TestAzureEmulatorResolvesStartMetadata(t *testing.T) {
 	assert.Equal(t, "4566/tcp", containerPort)
 }
 
-func TestEmulatorTypeForImage_Azure(t *testing.T) {
-	assert.Equal(t, EmulatorAzure, EmulatorTypeForImage("localstack/localstack-azure:latest"))
+func TestEmulatorTypeForImage(t *testing.T) {
+	tests := []struct {
+		image string
+		want  EmulatorType
+	}{
+		{"localstack/localstack-pro:latest", EmulatorAWS},
+		{"localstack/localstack:4.0", EmulatorAWS},
+		{"localstack/snowflake:latest", EmulatorSnowflake},
+		{"localstack/snowflake-next", EmulatorSnowflake},
+		{"localstack/localstack-azure:latest", EmulatorAzure},
+		{"docker.io/localstack/snowflake:latest", EmulatorSnowflake},
+		{"docker.io/localstack/localstack-pro:latest", EmulatorAWS},
+		{"index.docker.io/localstack/snowflake-next:latest", EmulatorSnowflake},
+		{"my-registry:5000/localstack/snowflake:latest", EmulatorSnowflake},
+		{"localstack/snowflake@sha256:abc123", EmulatorSnowflake},
+		{"docker.io/library/ubuntu:24.04", ""},
+		{"my-registry:5000/mirror/custom:latest", ""},
+		{"notlocalstack/snowflake:latest", ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.image, func(t *testing.T) {
+			assert.Equal(t, tt.want, EmulatorTypeForImage(tt.image))
+		})
+	}
 }
 
 func TestImage_CustomImage(t *testing.T) {

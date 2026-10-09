@@ -88,14 +88,47 @@ var knownImages = []struct {
 	{EmulatorAzure, "localstack-azure", true},
 }
 
+// EmulatorTypeForImage reports which emulator a known image reference belongs
+// to, or "" for anything else. A registry prefix still matches
+// (docker.io/localstack/snowflake, my-registry:5000/localstack/snowflake):
+// the product path is what identifies the image, not the text before the
+// first colon.
 func EmulatorTypeForImage(image string) EmulatorType {
-	repo, _, _ := strings.Cut(image, ":")
+	repo, _ := splitImageRef(image)
 	for _, e := range knownImages {
-		if dockerRegistry+"/"+e.ProductName == repo {
+		known := dockerRegistry + "/" + e.ProductName
+		if repo == known || strings.HasSuffix(repo, "/"+known) {
 			return e.Type
 		}
 	}
 	return ""
+}
+
+// ImageTag returns the tag of an image reference. A digest pin
+// (name@sha256:...) has no tag, and a colon that belongs to a registry port
+// is not a tag separator.
+func ImageTag(image string) (string, bool) {
+	_, tag := splitImageRef(image)
+	if tag == "" {
+		return "", false
+	}
+	return tag, true
+}
+
+// splitImageRef separates a reference into repository and tag. The tag is
+// empty for an untagged name or a digest pin.
+func splitImageRef(image string) (repo, tag string) {
+	name := image
+	if i := strings.LastIndex(name, "@"); i >= 0 {
+		name = name[:i]
+	}
+	slash := strings.LastIndex(name, "/")
+	last := name[slash+1:]
+	colon := strings.LastIndex(last, ":")
+	if colon < 0 {
+		return name, ""
+	}
+	return name[:slash+1+colon], last[colon+1:]
 }
 
 func KnownImageRepos() []string {
