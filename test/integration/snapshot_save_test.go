@@ -199,6 +199,41 @@ func TestSnapshotSaveForcesSnapshotExtension(t *testing.T) {
 	assert.True(t, os.IsNotExist(zipErr), "the user-supplied .zip path should not be created")
 }
 
+// A failed re-save must not destroy the snapshot already on disk. The export
+// is what can fail (emulator error, cancel); the previous file is the backup.
+func TestSnapshotSaveFailedExportPreservesExistingFile(t *testing.T) {
+	requireDocker(t)
+	cleanup()
+	t.Cleanup(cleanup)
+
+	ctx := testContext(t)
+	startTestContainer(t, ctx)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/_localstack/pods/state" {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	t.Cleanup(srv.Close)
+
+	dir := t.TempDir()
+	outPath := filepath.Join(dir, "snap.snapshot")
+	const previous = "OLD-SNAPSHOT"
+	require.NoError(t, os.WriteFile(outPath, []byte(previous), 0o600))
+
+	_, stderr, err := runLstk(t, ctx, dir,
+		env.Environ(testEnvWithHome(t.TempDir(), "")).With(env.LocalStackHost, lsHost(srv)),
+		"--non-interactive", "snapshot", "save", outPath,
+	)
+	requireExitCode(t, 1, err)
+	assert.NotEmpty(t, stderr)
+
+	data, readErr := os.ReadFile(outPath)
+	require.NoError(t, readErr, "the previous snapshot must still exist after a failed save")
+	assert.Equal(t, previous, string(data))
+}
+
 func TestSnapshotSaveOverwritesExistingFile(t *testing.T) {
 	requireDocker(t)
 	cleanup()
