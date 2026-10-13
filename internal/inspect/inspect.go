@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
 
 	"github.com/localstack/lstk/internal/config"
 	"github.com/localstack/lstk/internal/container"
@@ -12,46 +11,27 @@ import (
 	"github.com/localstack/lstk/internal/runtime"
 )
 
-// ErrUnavailable means the emulator has no App Inspector, e.g. an image that
-// predates it.
+// ErrUnavailable means the emulator has no App Inspector, e.g. an older image.
 var ErrUnavailable = errors.New("this emulator has no App Inspector")
 
-const (
-	// profileName is the [env.*] profile lstk owns for the saved setting.
-	profileName = "app-inspector"
-	// envVar turns App Inspector on at emulator startup. The runtime switch
-	// does not survive a restart.
-	envVar = "APP_INSPECTOR"
-)
-
-// Client reads and flips App Inspector on a running AWS emulator.
+// Client reads and sets App Inspector on a running AWS emulator.
 type Client interface {
 	AppInspectorEnabled(ctx context.Context, host string) (bool, error)
 	SetAppInspectorEnabled(ctx context.Context, host string, enabled bool) (changed bool, err error)
 }
 
-// Target is the emulator a command acts on.
+// Target is the emulator to act on. ConfigPath is empty for an --endpoint-url
+// target, which lstk does not start.
 type Target struct {
 	Runtime    runtime.Runtime
 	Containers []config.ContainerConfig
 	Client     Client
 	Host       string
-	// Config is nil for an --endpoint-url target: lstk does not start that
-	// emulator, so its config says nothing about it.
-	Config *LocalConfig
+	ConfigPath string
 }
 
-// LocalConfig is the part of the lstk config that decides App Inspector's
-// state when lstk starts the emulator.
-type LocalConfig struct {
-	Container config.ContainerConfig
-	Env       map[string]map[string]string
-	Path      string
-}
-
-// Set enables or disables App Inspector on the running emulator. With persist
-// it also saves the setting to the config file, which works while the
-// emulator is stopped too.
+// Set turns App Inspector on or off on the running emulator. With persist it
+// also saves the setting to the config file, even when the emulator is stopped.
 func Set(ctx context.Context, sink output.Sink, t Target, enabled, persist bool) error {
 	running, err := isRunning(ctx, sink, t, persist)
 	if err != nil {
@@ -73,20 +53,34 @@ func Set(ctx context.Context, sink output.Sink, t Target, enabled, persist bool)
 		}
 	}
 
-	if persist {
-		if err := save(sink, t.Config, enabled); err != nil {
-			return err
-		}
-		if !running {
-			sink.Emit(output.MessageEvent{Severity: output.SeverityNote, Text: "The emulator is not running. The setting applies on the next start."})
+	if !persist {
+		if enabled && t.ConfigPath != "" {
+			sink.Emit(output.MessageEvent{Severity: output.SeverityNote, Text: "To keep it on after restarts, run: lstk inspect enable --persist"})
 		}
 		return nil
 	}
-	emitRestartNote(sink, t.Config, enabled)
+
+	value := "0"
+	if enabled {
+		value = "1"
+	}
+	changed, err := config.SetEnvProfileVar("app-inspector", "APP_INSPECTOR", value)
+	if err != nil {
+		sink.Emit(output.ErrorEvent{Title: "Could not save the App Inspector setting to " + t.ConfigPath, Summary: err.Error()})
+		return output.NewSilentError(err)
+	}
+	if changed {
+		sink.Emit(output.MessageEvent{Severity: output.SeveritySuccess, Text: fmt.Sprintf("App Inspector will be %s on every start (saved to %s)", state(enabled), t.ConfigPath)})
+	} else {
+		sink.Emit(output.MessageEvent{Severity: output.SeverityInfo, Text: fmt.Sprintf("App Inspector is already %s on every start (%s)", state(enabled), t.ConfigPath)})
+	}
+	if !running {
+		sink.Emit(output.MessageEvent{Severity: output.SeverityNote, Text: "The emulator is not running. The setting applies on the next start."})
+	}
 	return nil
 }
 
-// Status reports whether App Inspector is enabled on the running emulator.
+// Status shows whether App Inspector is on for the running emulator.
 func Status(ctx context.Context, sink output.Sink, t Target) error {
 	running, err := isRunning(ctx, sink, t, false)
 	if err != nil {
@@ -100,7 +94,6 @@ func Status(ctx context.Context, sink output.Sink, t Target) error {
 		return emitRequestError(sink, err)
 	}
 	sink.Emit(output.MessageEvent{Severity: output.SeverityInfo, Text: "App Inspector is " + state(enabled)})
-	emitRestartNote(sink, t.Config, enabled)
 	return nil
 }
 
@@ -121,68 +114,6 @@ func isRunning(ctx context.Context, sink output.Sink, t Target, persist bool) (b
 	return len(running) > 0, nil
 }
 
-func save(sink output.Sink, cfg *LocalConfig, enabled bool) error {
-	if cfg == nil {
-		return errors.New("no lstk config to save the App Inspector setting to")
-	}
-	fail := func(err error) error {
-		sink.Emit(output.ErrorEvent{Title: "Could not save the App Inspector setting to " + cfg.Path, Summary: err.Error()})
-		return output.NewSilentError(err)
-	}
-	saved, err := enabledOnStart(cfg)
-	if err != nil {
-		return fail(err)
-	}
-	if saved == enabled {
-		sink.Emit(output.MessageEvent{Severity: output.SeverityInfo, Text: fmt.Sprintf("App Inspector is already %s on every start (%s)", state(enabled), cfg.Path)})
-		return nil
-	}
-	value := "0"
-	if enabled {
-		value = "1"
-	}
-	if err := config.SetEnvProfileVar(profileName, envVar, value); err != nil {
-		return fail(err)
-	}
-	sink.Emit(output.MessageEvent{Severity: output.SeveritySuccess, Text: fmt.Sprintf("App Inspector will be %s on every start (saved to %s)", state(enabled), cfg.Path)})
-	return nil
-}
-
-// emitRestartNote warns when the running state will not survive a restart,
-// because the config says otherwise.
-func emitRestartNote(sink output.Sink, cfg *LocalConfig, enabled bool) {
-	if cfg == nil {
-		return
-	}
-	onStart, err := enabledOnStart(cfg)
-	if err != nil || onStart == enabled {
-		return
-	}
-	text := "App Inspector turns off when the emulator restarts. To keep it on, run: lstk inspect enable --persist"
-	if !enabled {
-		text = fmt.Sprintf("App Inspector turns back on when the emulator restarts, as %s enables it. To keep it off, run: lstk inspect disable --persist", cfg.Path)
-	}
-	sink.Emit(output.MessageEvent{Severity: output.SeverityNote, Text: text})
-}
-
-// enabledOnStart reports whether the config's env profiles turn App Inspector
-// on at startup. The last profile setting the variable wins, and LocalStack
-// reads "1" and "true" as on.
-func enabledOnStart(cfg *LocalConfig) (bool, error) {
-	env, err := cfg.Container.ResolvedEnv(cfg.Env)
-	if err != nil {
-		return false, err
-	}
-	enabled := false
-	for _, kv := range env {
-		if k, v, _ := strings.Cut(kv, "="); k == envVar {
-			v = strings.ToLower(strings.TrimSpace(v))
-			enabled = v == "1" || v == "true"
-		}
-	}
-	return enabled, nil
-}
-
 func emitNotRunning(sink output.Sink, extra ...output.ErrorAction) error {
 	sink.Emit(output.ErrorEvent{
 		Title:   "LocalStack is not running",
@@ -194,13 +125,10 @@ func emitNotRunning(sink output.Sink, extra ...output.ErrorAction) error {
 
 func emitRequestError(sink output.Sink, err error) error {
 	if errors.Is(err, ErrUnavailable) {
-		sink.Emit(output.ErrorEvent{
-			Title:   "App Inspector is not available in this emulator",
-			Summary: "This emulator version predates App Inspector. Use a recent LocalStack image.",
-		})
-		return output.NewSilentError(err)
+		sink.Emit(output.ErrorEvent{Title: "App Inspector is not available in this emulator", Summary: "Use a recent LocalStack image."})
+	} else {
+		sink.Emit(output.ErrorEvent{Title: "App Inspector request failed", Summary: err.Error()})
 	}
-	sink.Emit(output.ErrorEvent{Title: "App Inspector request failed", Summary: err.Error()})
 	return output.NewSilentError(err)
 }
 
