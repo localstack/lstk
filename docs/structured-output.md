@@ -604,27 +604,6 @@ Codes: `AUTH_REQUIRED` (platform), `CREDENTIALS_MISSING`/`SNAPSHOT_BUCKET_NOT_FO
 ```
 Codes: `AUTH_REQUIRED`, `SNAPSHOT_NOT_FOUND`, `SNAPSHOT_INVALID_REF`, `CONFIRMATION_REQUIRED`, `SNAPSHOT_REMOTE_ERROR`.
 
-#### App Inspector
-
-**`lstk inspect enable`** / **`lstk inspect disable`** / **`lstk inspect status`**: App Inspector's state on the running emulator, and what the config sets for the next start. `changed` and `persisted` are omitted for `status`; `running` is `false` only for `enable --persist`/`disable --persist` while the emulator is stopped, in which case `enabled` is `null`. `enabledOnStart` is omitted for an `--endpoint-url` target, since lstk does not start that emulator.
-```json
-{
-  "schemaVersion": 1,
-  "command": "inspect enable",
-  "status": "ok",
-  "data": {
-    "running": true,
-    "enabled": true,
-    "changed": true,
-    "persisted": false,
-    "enabledOnStart": false
-  },
-  "warnings": [],
-  "error": null
-}
-```
-Codes: `RUNTIME_UNAVAILABLE`, `EMULATOR_NOT_RUNNING`, `EMULATOR_NOT_CONFIGURED`, `EMULATOR_WRONG_TYPE`, `CONFIG_INVALID`.
-
 ## Commands that will never support `--json`
 
 - **`login`** — requires an interactive terminal unconditionally (browser-based OAuth) and has no defined non-interactive behavior at all today, so there's no output to render as JSON.

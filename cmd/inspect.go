@@ -23,9 +23,7 @@ func newInspectCmd(cfg *env.Env) *cobra.Command {
 		Long:  "Turn App Inspector on or off for the AWS emulator. App Inspector records the operations your application sends to the emulator, with their payloads, the services they connect, and IAM permission results. View them in the LocalStack Web Application or the LocalStack Toolkit for VS Code.",
 	}
 	requireSubcommand(cmd)
-	cmd.AddCommand(newInspectSetCmd(cfg, true))
-	cmd.AddCommand(newInspectSetCmd(cfg, false))
-	cmd.AddCommand(newInspectStatusCmd(cfg))
+	cmd.AddCommand(newInspectSetCmd(cfg, true), newInspectSetCmd(cfg, false), newInspectStatusCmd(cfg))
 	return cmd
 }
 
@@ -79,8 +77,8 @@ func newInspectStatusCmd(cfg *env.Env) *cobra.Command {
 	}
 }
 
-// resolveInspectTarget picks the AWS emulator to act on: the --endpoint-url
-// target when one resolves, otherwise the AWS emulator in the lstk config.
+// resolveInspectTarget returns the --endpoint-url emulator when one is set,
+// otherwise the AWS emulator from the lstk config.
 func resolveInspectTarget(cmd *cobra.Command, cfg *env.Env, sink output.Sink, persist bool) (inspect.Target, error) {
 	fail := func(e output.ErrorEvent) (inspect.Target, error) {
 		sink.Emit(e)
@@ -94,10 +92,7 @@ func resolveInspectTarget(cmd *cobra.Command, cfg *env.Env, sink output.Sink, pe
 	if remote != nil {
 		if persist {
 			source, _, _ := endpoint.ResolvedSource(cmd)
-			return fail(output.ErrorEvent{
-				Title:   fmt.Sprintf("--persist cannot be used with %s", source),
-				Summary: fmt.Sprintf("--persist saves to the lstk config, which does not start the emulator at %s.", remote.URL),
-			})
+			return fail(output.ErrorEvent{Title: "--persist cannot be used with " + source, Summary: "--persist saves to the lstk config, which does not start the emulator at " + remote.URL + "."})
 		}
 		if remote.Type != config.EmulatorAWS {
 			return fail(output.ErrorEvent{
@@ -106,12 +101,7 @@ func resolveInspectTarget(cmd *cobra.Command, cfg *env.Env, sink output.Sink, pe
 			})
 		}
 		c := config.ContainerConfig{Type: config.EmulatorAWS, Port: config.DefaultPort}
-		return inspect.Target{
-			Runtime:    runtime.NewExternalRuntime(c.Name()),
-			Containers: []config.ContainerConfig{c},
-			Client:     aws.NewClient(),
-			Host:       remote.URL,
-		}, nil
+		return inspect.Target{Runtime: runtime.NewExternalRuntime(c.Name()), Containers: []config.ContainerConfig{c}, Client: aws.NewClient(), Host: remote.URL}, nil
 	}
 
 	appConfig, err := config.Get()
@@ -128,17 +118,11 @@ func resolveInspectTarget(cmd *cobra.Command, cfg *env.Env, sink output.Sink, pe
 	if awsContainer == nil {
 		return fail(output.ErrorEvent{Title: "App Inspector is only available for the AWS emulator", Code: output.ErrEmulatorNotConfigured})
 	}
-	if persist {
-		if !config.HasFile() {
-			return fail(output.ErrorEvent{
-				Title:   "No config file to save the setting to yet",
-				Actions: []output.ErrorAction{{Label: "Create it by starting the emulator once:", Value: "lstk start"}},
-			})
-		}
-		// SetEnvProfileVar edits the first [[containers]] block.
-		if appConfig.Containers[0].Type != config.EmulatorAWS {
-			return fail(output.ErrorEvent{Title: "--persist needs the AWS emulator to be the first [[containers]] block in the config"})
-		}
+	if persist && !config.HasFile() {
+		return fail(output.ErrorEvent{
+			Title:   "No config file to save the setting to yet",
+			Actions: []output.ErrorAction{{Label: "Create it by starting the emulator once:", Value: "lstk start"}},
+		})
 	}
 
 	rt, err := runtime.NewDockerRuntime(cfg.DockerHost)
@@ -155,6 +139,6 @@ func resolveInspectTarget(cmd *cobra.Command, cfg *env.Env, sink output.Sink, pe
 		Containers: []config.ContainerConfig{*awsContainer},
 		Client:     aws.NewClient(),
 		Host:       "http://" + host,
-		Config:     &inspect.LocalConfig{Container: *awsContainer, Env: appConfig.Env, Path: path},
+		ConfigPath: path,
 	}, nil
 }

@@ -55,11 +55,16 @@ func SetEmulatorType(to EmulatorType) error {
 	// profile) is never mistaken for the emulator type. Only the captured value
 	// is replaced, leaving commented-out example blocks and the original
 	// formatting untouched.
-	blockStart, blockEnd, ok := firstContainersBlock(data)
-	if !ok {
+	header := containersHeaderRe.FindIndex(data)
+	if header == nil {
 		return fmt.Errorf("no [[containers]] block found in config")
 	}
-	loc := typeLineRe.FindSubmatchIndex(data[blockStart:blockEnd])
+	blockStart := header[1]
+	block := data[blockStart:]
+	if next := tableHeaderRe.FindIndex(block); next != nil {
+		block = block[:next[0]]
+	}
+	loc := typeLineRe.FindSubmatchIndex(block)
 	if loc == nil {
 		return fmt.Errorf("no emulator type field found in config")
 	}
