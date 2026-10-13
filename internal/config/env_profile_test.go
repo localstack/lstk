@@ -47,7 +47,7 @@ func TestSetEnvProfileVar_RestoresFileWhenALaterProfileOverrides(t *testing.T) {
 }
 
 func TestSetEnvProfileVar_RestoresFileWhenResultDoesNotParse(t *testing.T) {
-	// The dotted key already defines the table, so adding a header defines it twice.
+	// The dotted key already defines [env.p], so a new header is a duplicate.
 	original := "env.p.OTHER = \"x\"\n\n[[containers]]\ntype = \"aws\"\nport = \"4566\"\n"
 	path := writeAndLoad(t, original)
 

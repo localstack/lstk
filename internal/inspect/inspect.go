@@ -11,27 +11,21 @@ import (
 	"github.com/localstack/lstk/internal/runtime"
 )
 
-// ErrUnavailable means the emulator has no App Inspector, e.g. an older image.
 var ErrUnavailable = errors.New("this emulator has no App Inspector")
 
-// Client reads and sets App Inspector on a running AWS emulator.
 type Client interface {
 	AppInspectorEnabled(ctx context.Context, host string) (bool, error)
 	SetAppInspectorEnabled(ctx context.Context, host string, enabled bool) (changed bool, err error)
 }
 
-// Target is the emulator to act on. ConfigPath is empty for an --endpoint-url
-// target, which lstk does not start.
 type Target struct {
 	Runtime    runtime.Runtime
 	Containers []config.ContainerConfig
 	Client     Client
 	Host       string
-	ConfigPath string
+	ConfigPath string // empty for an --endpoint-url target
 }
 
-// Set turns App Inspector on or off on the running emulator. With persist it
-// also saves the setting to the config file, even when the emulator is stopped.
 func Set(ctx context.Context, sink output.Sink, t Target, enabled, persist bool) error {
 	running, err := isRunning(ctx, sink, t, persist)
 	if err != nil {
@@ -46,11 +40,7 @@ func Set(ctx context.Context, sink output.Sink, t Target, enabled, persist bool)
 		if err != nil {
 			return emitRequestError(sink, err)
 		}
-		if changed {
-			sink.Emit(output.MessageEvent{Severity: output.SeveritySuccess, Text: "App Inspector " + state(enabled)})
-		} else {
-			sink.Emit(output.MessageEvent{Severity: output.SeverityInfo, Text: "App Inspector is already " + state(enabled)})
-		}
+		sink.Emit(output.AppInspectorEvent{Enabled: enabled, Changed: changed})
 	}
 
 	if !persist {
@@ -66,21 +56,16 @@ func Set(ctx context.Context, sink output.Sink, t Target, enabled, persist bool)
 	}
 	changed, err := config.SetEnvProfileVar("app-inspector", "APP_INSPECTOR", value)
 	if err != nil {
-		sink.Emit(output.ErrorEvent{Title: "Could not save the App Inspector setting to " + t.ConfigPath, Summary: err.Error()})
+		sink.Emit(output.ErrorEvent{Title: "Could not save the App Inspector setting to " + t.ConfigPath, Summary: err.Error(), Code: output.ErrConfigInvalid})
 		return output.NewSilentError(err)
 	}
-	if changed {
-		sink.Emit(output.MessageEvent{Severity: output.SeveritySuccess, Text: fmt.Sprintf("App Inspector will be %s on every start (saved to %s)", state(enabled), t.ConfigPath)})
-	} else {
-		sink.Emit(output.MessageEvent{Severity: output.SeverityInfo, Text: fmt.Sprintf("App Inspector is already %s on every start (%s)", state(enabled), t.ConfigPath)})
-	}
+	sink.Emit(output.AppInspectorSavedEvent{Enabled: enabled, Changed: changed, ConfigPath: t.ConfigPath})
 	if !running {
 		sink.Emit(output.MessageEvent{Severity: output.SeverityNote, Text: "The emulator is not running. The setting applies on the next start."})
 	}
 	return nil
 }
 
-// Status shows whether App Inspector is on for the running emulator.
 func Status(ctx context.Context, sink output.Sink, t Target) error {
 	running, err := isRunning(ctx, sink, t, false)
 	if err != nil {
@@ -93,12 +78,11 @@ func Status(ctx context.Context, sink output.Sink, t Target) error {
 	if err != nil {
 		return emitRequestError(sink, err)
 	}
-	sink.Emit(output.MessageEvent{Severity: output.SeverityInfo, Text: "App Inspector is " + state(enabled)})
+	sink.Emit(output.AppInspectorEvent{Enabled: enabled})
 	return nil
 }
 
-// isRunning treats an unreachable Docker as "not running" when persisting,
-// since saving the setting does not need the emulator.
+// With persist, an unreachable Docker counts as "not running": saving needs no emulator.
 func isRunning(ctx context.Context, sink output.Sink, t Target, persist bool) (bool, error) {
 	if err := t.Runtime.IsHealthy(ctx); err != nil {
 		if persist {
@@ -130,13 +114,6 @@ func emitRequestError(sink output.Sink, err error) error {
 		sink.Emit(output.ErrorEvent{Title: "App Inspector request failed", Summary: err.Error()})
 	}
 	return output.NewSilentError(err)
-}
-
-func state(enabled bool) string {
-	if enabled {
-		return "enabled"
-	}
-	return "disabled"
 }
 
 func verb(enabled bool) string {

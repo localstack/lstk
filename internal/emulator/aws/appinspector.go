@@ -11,8 +11,6 @@ import (
 	"github.com/localstack/lstk/internal/inspect"
 )
 
-// appInspectorStatusPath turns App Inspector on or off. The state resets on
-// restart, where the APP_INSPECTOR env var decides.
 const appInspectorStatusPath = "/_localstack/appinspector/status"
 
 type appInspectorStatus struct {
@@ -48,7 +46,7 @@ func (c *Client) appInspectorStatus(ctx context.Context, method, baseURL, body s
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-	// A 404 means the emulator predates App Inspector, or is the community image.
+	// The route is missing on older images and the community image.
 	if resp.StatusCode == http.StatusNotFound {
 		return appInspectorStatus{}, inspect.ErrUnavailable
 	}

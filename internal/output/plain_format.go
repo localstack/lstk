@@ -71,6 +71,10 @@ func FormatEventLine(event Event) (string, bool) {
 		return formatEmulatorStopped(e), true
 	case EmulatorResetEvent:
 		return formatEmulatorReset(e), true
+	case AppInspectorEvent:
+		return formatAppInspector(e), true
+	case AppInspectorSavedEvent:
+		return formatAppInspectorSaved(e), true
 	case EmulatorStatusEvent:
 		return formatEmulatorStatus(e), true
 	case UpdateCheckedEvent:
@@ -207,6 +211,27 @@ func formatEmulatorStopped(e EmulatorStoppedEvent) string {
 
 func formatEmulatorReset(e EmulatorResetEvent) string {
 	return SuccessMarker() + " Emulator state reset"
+}
+
+func formatAppInspector(e AppInspectorEvent) string {
+	if e.Changed {
+		return SuccessMarker() + " App Inspector " + enabledWord(e.Enabled)
+	}
+	return "App Inspector is " + enabledWord(e.Enabled)
+}
+
+func formatAppInspectorSaved(e AppInspectorSavedEvent) string {
+	if e.Changed {
+		return fmt.Sprintf("%s App Inspector will be %s on every start (saved to %s)", SuccessMarker(), enabledWord(e.Enabled), e.ConfigPath)
+	}
+	return fmt.Sprintf("App Inspector is %s on every start (%s)", enabledWord(e.Enabled), e.ConfigPath)
+}
+
+func enabledWord(enabled bool) string {
+	if enabled {
+		return "enabled"
+	}
+	return "disabled"
 }
 
 func formatEmulatorStatus(e EmulatorStatusEvent) string {
