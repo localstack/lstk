@@ -14,11 +14,9 @@ var (
 	quotedRe  = regexp.MustCompile(`"[^"\n]*"|'[^'\n]*'`)
 )
 
-// SetEnvProfileVar sets key = value in [env.<profile>] and appends the profile
-// to the first [[containers]] block's env list, so it wins over the others.
-// It edits the file in place to keep comments, and restores it if the result
-// does not load or the value does not take effect. It reports whether the
-// file changed.
+// SetEnvProfileVar sets key in [env.<profile>] and lists that profile last in
+// the first [[containers]] block, so it wins. The file is restored if the value
+// does not take effect.
 func SetEnvProfileVar(profile, key, value string) (bool, error) {
 	path := resolvedConfigPath()
 	if path == "" {
@@ -48,8 +46,6 @@ func SetEnvProfileVar(profile, key, value string) (bool, error) {
 	return true, nil
 }
 
-// checkResolvedEnv reloads the config and checks that the first container
-// gets key=value.
 func checkResolvedEnv(path, key, value string) error {
 	if err := loadConfig(path); err != nil {
 		return err
@@ -74,8 +70,6 @@ func checkResolvedEnv(path, key, value string) error {
 	return nil
 }
 
-// addEnvReference appends profile to the env list of the first [[containers]]
-// block, or adds an env line under the block header when there is none.
 func addEnvReference(data []byte, profile string) ([]byte, error) {
 	header := containersHeaderRe.FindIndex(data)
 	if header == nil {
@@ -108,8 +102,6 @@ func addEnvReference(data []byte, profile string) ([]byte, error) {
 	return replace(data, at, at, ", "+quoted), nil
 }
 
-// setProfileVar sets key in the [env.<profile>] table, adding the table at the
-// end of the file when it is missing.
 func setProfileVar(data []byte, profile, key, value string) []byte {
 	assignment := fmt.Sprintf("%s = %q", key, value)
 	headerRe := regexp.MustCompile(`(?m)^[ \t]*\[env\.` + regexp.QuoteMeta(profile) + `\][ \t]*$`)
@@ -122,7 +114,7 @@ func setProfileVar(data []byte, profile, key, value string) []byte {
 	if next := tableHeaderRe.FindIndex(data[start:]); next != nil {
 		end = start + next[0]
 	}
-	// viper lowercases keys, so match the key in any case.
+	// viper lowercases keys.
 	keyRe := regexp.MustCompile(`(?mi)^[ \t]*` + regexp.QuoteMeta(key) + `[ \t]*=[ \t]*("[^"\n]*"|'[^'\n]*'|[^ \t\n#]+)`)
 	if loc := keyRe.FindSubmatchIndex(data[start:end]); loc != nil {
 		return replace(data, start+loc[2], start+loc[3], fmt.Sprintf("%q", value))
@@ -130,7 +122,6 @@ func setProfileVar(data []byte, profile, key, value string) []byte {
 	return replace(data, start, start, "\n"+assignment)
 }
 
-// replace returns a new slice with data[from:to] replaced by s.
 func replace(data []byte, from, to int, s string) []byte {
 	out := make([]byte, 0, len(data)-(to-from)+len(s))
 	out = append(out, data[:from]...)

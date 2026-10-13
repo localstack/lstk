@@ -39,10 +39,11 @@ func newInspectSetCmd(cfg *env.Env, enabled bool) *cobra.Command {
 		Short: title + " App Inspector",
 		Long: title + " App Inspector on the running AWS emulator.\n\n" +
 			"The change lasts until the emulator restarts. With --persist, lstk also saves it to the config file (as APP_INSPECTOR in an [env.app-inspector] profile), so App Inspector is " + state + " on every start. --persist works while the emulator is stopped too.",
-		Args:    cobra.NoArgs,
-		PreRunE: initConfigDeferCreate(nil),
+		Args:        cobra.NoArgs,
+		PreRunE:     initConfigDeferCreate(nil),
+		Annotations: map[string]string{jsonSupportedAnnotation: "true"},
 		RunE: func(cmd *cobra.Command, args []string) error {
-			sink := output.NewPlainSink(os.Stdout)
+			sink := jsonAwareSink(cmd, cfg, os.Stdout)
 			t, err := resolveInspectTarget(cmd, cfg, sink, persist)
 			if err != nil {
 				return err
@@ -59,12 +60,13 @@ func newInspectSetCmd(cfg *env.Env, enabled bool) *cobra.Command {
 
 func newInspectStatusCmd(cfg *env.Env) *cobra.Command {
 	return &cobra.Command{
-		Use:     "status",
-		Short:   "Show whether App Inspector is enabled",
-		Args:    cobra.NoArgs,
-		PreRunE: initConfigDeferCreate(nil),
+		Use:         "status",
+		Short:       "Show whether App Inspector is enabled",
+		Args:        cobra.NoArgs,
+		PreRunE:     initConfigDeferCreate(nil),
+		Annotations: map[string]string{jsonSupportedAnnotation: "true"},
 		RunE: func(cmd *cobra.Command, args []string) error {
-			sink := output.NewPlainSink(os.Stdout)
+			sink := jsonAwareSink(cmd, cfg, os.Stdout)
 			t, err := resolveInspectTarget(cmd, cfg, sink, false)
 			if err != nil {
 				return err
@@ -77,8 +79,6 @@ func newInspectStatusCmd(cfg *env.Env) *cobra.Command {
 	}
 }
 
-// resolveInspectTarget returns the --endpoint-url emulator when one is set,
-// otherwise the AWS emulator from the lstk config.
 func resolveInspectTarget(cmd *cobra.Command, cfg *env.Env, sink output.Sink, persist bool) (inspect.Target, error) {
 	fail := func(e output.ErrorEvent) (inspect.Target, error) {
 		sink.Emit(e)
@@ -87,12 +87,16 @@ func resolveInspectTarget(cmd *cobra.Command, cfg *env.Env, sink output.Sink, pe
 
 	remote, err := endpoint.Resolve(cmd.Context(), cmd)
 	if err != nil {
-		return inspect.Target{}, err
+		return fail(output.ErrorEvent{Title: err.Error(), Code: output.ErrEmulatorNotRunning})
 	}
 	if remote != nil {
 		if persist {
 			source, _, _ := endpoint.ResolvedSource(cmd)
-			return fail(output.ErrorEvent{Title: "--persist cannot be used with " + source, Summary: "--persist saves to the lstk config, which does not start the emulator at " + remote.URL + "."})
+			return fail(output.ErrorEvent{
+				Title:   "--persist cannot be used with " + source,
+				Summary: "--persist saves to the lstk config, which does not start the emulator at " + remote.URL + ".",
+				Code:    output.ErrValidationError,
+			})
 		}
 		if remote.Type != config.EmulatorAWS {
 			return fail(output.ErrorEvent{
@@ -106,7 +110,7 @@ func resolveInspectTarget(cmd *cobra.Command, cfg *env.Env, sink output.Sink, pe
 
 	appConfig, err := config.Get()
 	if err != nil {
-		return inspect.Target{}, fmt.Errorf("failed to get config: %w", err)
+		return inspect.Target{}, failGetConfig(sink, cfg, err)
 	}
 	var awsContainer *config.ContainerConfig
 	for i := range appConfig.Containers {
@@ -122,6 +126,7 @@ func resolveInspectTarget(cmd *cobra.Command, cfg *env.Env, sink output.Sink, pe
 		return fail(output.ErrorEvent{
 			Title:   "No config file to save the setting to yet",
 			Actions: []output.ErrorAction{{Label: "Create it by starting the emulator once:", Value: "lstk start"}},
+			Code:    output.ErrConfigNotFound,
 		})
 	}
 
