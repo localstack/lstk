@@ -63,7 +63,7 @@ Notes:
   - `env/` - Process environment snapshot/injection helper (also used to isolate test envs)
   - `extension/` - Git-style `lstk-<name>` extension resolution and exec
   - `iac/` - Wrappers for third-party infrastructure as code tools (`terraform/`, `cdk/`, `sam/`)
-  - `inspect/` - `lstk inspect` domain logic: turns App Inspector on/off through the AWS emulator's runtime switch; `--persist` saves `APP_INSPECTOR` to an lstk-owned `[env.app-inspector]` profile (via `config.SetEnvProfileVar`) so it survives restarts
+  - `inspect/` - `lstk inspect` domain logic (App Inspector on/off; `--persist` saves it to config)
   - `log/` - Internal diagnostic logging (not for user-facing output — use `output/` for that)
   - `output/` - Generic event and sink abstractions for CLI/TUI/non-interactive rendering
   - `ports/` - Port availability checks
@@ -145,7 +145,7 @@ There is no `--offline` flag. Instead `container.Start` degrades gracefully when
 
 # Targeting an External Emulator (`--endpoint-url`)
 
-`--endpoint-url <url>` (a root persistent flag) lets `aws`, `az`, `terraform`/`tf`, `cdk`, `sam`, `snapshot save`/`load` (incl. the `lstk save`/`lstk load` aliases), `snapshot remove`, `snapshot list s3://...`, `reset`, `inspect` (except `--persist`, which only edits lstk's config), and `status` target an emulator lstk did not start — docker compose, host-network mode, CI, a different machine, or a LocalStack cloud-hosted **ephemeral instance** — instead of discovering one via local Docker. `LSTK_ENDPOINT_URL` is the equivalent environment variable. Both `http://` and `https://` are accepted (any other scheme is rejected); the resolved scheme is preserved end-to-end all the way to whatever ultimately makes the request — the wrapped `aws`/`terraform`/`cdk`/`sam` tools, and the emulator API calls behind `snapshot`/`reset`/`status` — never normalized to `http`, which is what makes `https://` ephemeral instances work. 
+`--endpoint-url <url>` (a root persistent flag) lets `aws`, `az`, `terraform`/`tf`, `cdk`, `sam`, `snapshot save`/`load` (incl. the `lstk save`/`lstk load` aliases), `snapshot remove`, `snapshot list s3://...`, `reset`, `inspect` (not `--persist`), and `status` target an emulator lstk did not start — docker compose, host-network mode, CI, a different machine, or a LocalStack cloud-hosted **ephemeral instance** — instead of discovering one via local Docker. `LSTK_ENDPOINT_URL` is the equivalent environment variable. Both `http://` and `https://` are accepted (any other scheme is rejected); the resolved scheme is preserved end-to-end all the way to whatever ultimately makes the request — the wrapped `aws`/`terraform`/`cdk`/`sam` tools, and the emulator API calls behind `snapshot`/`reset`/`status` — never normalized to `http`, which is what makes `https://` ephemeral instances work. 
 
 `lstk logs`, `stop`, `restart`, `volume` (`path`/`clear`), `start`, and the bare `lstk` root command (which starts the emulator the same way `start` does) have no remote equivalent and reject *any* resolved endpoint source.
 

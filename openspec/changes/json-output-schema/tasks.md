@@ -35,7 +35,6 @@ Implemented first, ahead of every other command: each depends only on the shared
 - [ ] 4.3 `status`: add annotation; change the domain loop (`internal/container/status.go`) to report every configured emulator (running or not) instead of failing fast on the first non-running one, gated so plain-text behavior is unchanged; `{"emulators": [...]}` data shape.
 - [ ] 4.4 `logs` (bounded): add annotation, `{"lines": [...]}` data shape.
 - [ ] 4.5 `logs --follow`: wire the NDJSON stream writer from 1.5.
-- [ ] 4.5b `inspect enable`/`disable`/`status`: add annotation, `{"running", "enabled", "changed", "persisted", "enabledOnStart"}` data shape, `EMULATOR_NOT_RUNNING`/`EMULATOR_NOT_CONFIGURED`/`EMULATOR_WRONG_TYPE` codes.
 - [ ] 4.6 Integration tests for each command in this wave, covering both the success payload and its documented error codes.
 
 ## 5. Remaining emulator lifecycle
