@@ -71,6 +71,8 @@ archives:
           mode: 0o755
       - src: bundled/lstk-extensions.toml
         strip_parent: true
+      - src: bundled/bundled-extensions.LICENSE.txt
+        strip_parent: true
       - src: bundled/bundled-extensions.THIRD_PARTY_NOTICES.txt
         strip_parent: true
 

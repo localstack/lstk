@@ -9,6 +9,7 @@
 #
 #     bundled/<os>_<arch>/bundled-extensions[.exe]       one per platform
 #     bundled/lstk-extensions.toml                       os/arch-independent
+#     bundled/bundled-extensions.LICENSE.txt             os/arch-independent
 #     bundled/bundled-extensions.THIRD_PARTY_NOTICES.txt os/arch-independent
 #
 # The private repository publishes one archive per platform,
@@ -72,7 +73,7 @@ DESCRIPTIONS_FILE="lstk-extensions.toml"
 # across platforms like the toml. Each is staged as
 # bundled/${BUNDLED_BINARY}.<name>; .goreleaser.yaml and internal/update list
 # the staged names, so adding one here means adding it there too.
-BUNDLE_DOCUMENTS="THIRD_PARTY_NOTICES.txt"
+BUNDLE_DOCUMENTS="LICENSE.txt THIRD_PARTY_NOTICES.txt"
 MANIFEST_FILE="checksums.txt"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -297,7 +298,7 @@ write_stub_bundle() {
   for doc in ${BUNDLE_DOCUMENTS}; do
     {
       echo "STUB: placeholder written by fetch-bundled-extensions.sh --stub."
-      echo "The real ${doc} is generated in the private extensions repository and"
+      echo "The real ${doc} comes from the private extensions repository and"
       echo "ships in every bundle archive. This file must never be released."
     } > "${BUNDLED_DIR}/${BUNDLED_BINARY}.${doc}"
   done

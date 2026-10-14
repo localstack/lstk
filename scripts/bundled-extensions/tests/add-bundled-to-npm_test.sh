@@ -46,6 +46,7 @@ setup_workspace() {
   done
   echo 'doctor = "Check the local setup"' > "${BUNDLED}/lstk-extensions.toml"
   echo 'fake bundle notices' > "${BUNDLED}/bundled-extensions.THIRD_PARTY_NOTICES.txt"
+  echo 'fake bundle terms' > "${BUNDLED}/bundled-extensions.LICENSE.txt"
 
   local d goplat bin
   for d in ${NPM_DIRS}; do
@@ -93,9 +94,11 @@ run_script "${ADD}" "${NPM}" "${BUNDLED}"
 assert_ok
 for d in ${NPM_DIRS}; do
   assert_file_contains "${NPM}/${d}/bundled-extensions.THIRD_PARTY_NOTICES.txt" "fake bundle notices"
+  assert_file_contains "${NPM}/${d}/bundled-extensions.LICENSE.txt" "fake bundle terms"
 done
 LAST_OUTPUT="$(files_field "${NPM}/lstk-linux-amd-64-v-1/package.json")"
 assert_output_contains "bundled-extensions.THIRD_PARTY_NOTICES.txt"
+assert_output_contains "bundled-extensions.LICENSE.txt"
 # The publisher's own entries survive.
 assert_output_contains "LICENSE"
 
@@ -144,6 +147,7 @@ assert_ok
 assert_output_contains "bundled-extensions"
 assert_output_contains "lstk-extensions.toml"
 assert_output_contains "bundled-extensions.THIRD_PARTY_NOTICES.txt"
+assert_output_contains "bundled-extensions.LICENSE.txt"
 assert_output_contains " lstk"
 
 begin_test "leaves the wrapper package untouched"

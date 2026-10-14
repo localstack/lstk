@@ -29,14 +29,14 @@
 set -euo pipefail
 
 # The licence of a package that ships both the Apache-2.0 core and the
-# proprietary bundle. The one place the identifier lives; the exact
-# LicenseRef is pending legal's confirmation.
+# proprietary bundle. The one place the identifier lives; it matches the
+# SPDX line of bundled-extensions.LICENSE.txt.
 PLATFORM_LICENSE="Apache-2.0 AND LicenseRef-LocalStack-Proprietary"
 
 # The bundle's licence documents under the names fetch-bundled-extensions.sh
 # stages them as (its BUNDLE_DOCUMENTS, prefixed). .goreleaser.yaml lists the
 # same files; check-bundled-packaging-sync.sh fails when the two disagree.
-STAGED_BUNDLE_DOCUMENTS="bundled-extensions.THIRD_PARTY_NOTICES.txt"
+STAGED_BUNDLE_DOCUMENTS="bundled-extensions.LICENSE.txt bundled-extensions.THIRD_PARTY_NOTICES.txt"
 
 die() {
   echo "add-bundled-to-npm: $*" >&2
