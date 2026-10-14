@@ -16,6 +16,27 @@ Release automation uses three workflows:
 2. `Create Release Tag` (`.github/workflows/create-release-tag.yml`) — manual-only.
 3. `LSTK CI` (`.github/workflows/ci.yml`)
 
+```
+                 ┌─────────────────────────────┐
+  Thursday 10:00 │ 1. Automated Weekly Release │
+  (cron)         │  tip of main → full CI      │
+                 │  → [GATE: approve]          │──┐
+                 └─────────────────────────────┘  │
+                                                  │
+                 ┌─────────────────────────────┐  │        ┌──────────────────────┐
+  human clicks   │ 2. Create Release Tag       │  │  tag   │ LSTK CI (tag push)   │
+  "Run workflow" │  chosen ref, no CI          │──┼──────▶ │  lint, tests         │
+                 │  → [GATE: approve]          │  │ vX.Y.Z │  → publish release,  │
+                 └─────────────────────────────┘  │        │    Homebrew, npm     │
+                                                  │        └──────────────────────┘
+                 ┌─────────────────────────────┐  │
+  human runs     │ 3. git tag && git push      │──┘
+  git push       │  no CI, NO GATE             │
+                 └─────────────────────────────┘
+```
+
+Path 3 is not a supported release path; it exists because nothing restricts tag creation yet.
+
 **Automated weekly release** (the default path): every Thursday, the workflow checks whether `main` has any commits since the last `v*.*.*` tag. If so, it inspects the labels on every PR merged since that tag, picks the highest release label found (`major` > `minor` > `patch`, defaulting to `patch`), runs full CI, then waits for a reviewer to approve the [Windows smoke test](#windows-smoke-test-required-before-every-release). Once approved, it creates and pushes the next version tag — which in turn triggers `LSTK CI`'s `release` job below. If there are no changes since the last tag, it skips the release entirely.
 
 **Manual release**: run `Create Release Tag` from GitHub Actions (default ref: `main`), choosing a `patch` or `minor` bump, when you need to cut a release outside the weekly schedule. It waits for the same smoke-test approval before tagging.
