@@ -19,19 +19,19 @@ Release automation uses three workflows:
 ```
                  ┌─────────────────────────────┐
   schedule, or   │ 1. Automated Weekly Release │
-  human dispatch │  tip of main → full CI      │
+  manual dispatch│  tip of main → full CI      │
                  │  → [GATE: approve]          │──┐
                  └─────────────────────────────┘  │
                                                   │
                  ┌─────────────────────────────┐  │        ┌──────────────────────┐
-  human clicks   │ 2. Create Release Tag       │  │  tag   │ LSTK CI (tag push)   │
-  "Run workflow" │  chosen ref, no CI          │──┼──────▶ │  lint, tests         │
+  manual dispatch│ 2. Create Release Tag       │  │  tag   │ LSTK CI (tag push)   │
+                 │  chosen ref, no CI          │──┼──────▶ │  lint, tests         │
                  │  → [GATE: approve]          │  │ vX.Y.Z │  → publish           │
                  └─────────────────────────────┘  │        │                      │
                                                   │        └──────────────────────┘
                  ┌─────────────────────────────┐  │
-  human runs     │ 3. git tag && git push      │──┘
-  git push       │  no CI, NO GATE             │
+  anyone with    │ 3. git tag && git push      │──┘
+  write access   │  no CI, NO GATE             │
                  └─────────────────────────────┘
 ```
 
