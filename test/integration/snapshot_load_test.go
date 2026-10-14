@@ -1,6 +1,8 @@
 package integration_test
 
 import (
+	"archive/zip"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -141,7 +143,15 @@ func mockPodDiffNotFoundServer(t *testing.T) *httptest.Server {
 func writeTestSnapFile(t *testing.T, dir, name string) string {
 	t.Helper()
 	path := filepath.Join(dir, name)
-	require.NoError(t, os.WriteFile(path, []byte("SNAP"), 0600))
+	f, err := os.Create(path)
+	require.NoError(t, err)
+	zw := zip.NewWriter(f)
+	w, err := zw.Create("state")
+	require.NoError(t, err)
+	_, err = io.WriteString(w, "SNAP")
+	require.NoError(t, err)
+	require.NoError(t, zw.Close())
+	require.NoError(t, f.Close())
 	return path
 }
 
@@ -233,6 +243,45 @@ func TestSnapshotLoadPathIsDirectory(t *testing.T) {
 	)
 	requireExitCode(t, 1, err)
 	assert.Contains(t, stderr, "is a directory")
+}
+
+// Overwrite resets the emulator before importing. A file that is not a snapshot
+// must fail before that reset, or a typo deletes the running state and then
+// errors.
+func TestSnapshotLoadOverwriteDoesNotResetInvalidFile(t *testing.T) {
+	t.Parallel()
+
+	var resetCalled atomic.Bool
+	health := awsHealthHandler()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodPost && r.URL.Path == "/_localstack/state/reset":
+			resetCalled.Store(true)
+			w.WriteHeader(http.StatusOK)
+		case r.Method == http.MethodPost && r.URL.Path == "/_localstack/pods":
+			w.Header().Set("Content-Type", "application/x-ndjson")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"status":"error","message":"Invalid pod file: File is not a valid zip archive"}` + "\n"))
+		default:
+			health.ServeHTTP(w, r)
+		}
+	}))
+	t.Cleanup(srv.Close)
+
+	dir := t.TempDir()
+	snapPath := filepath.Join(dir, "notes.txt")
+	require.NoError(t, os.WriteFile(snapPath, []byte("not a snapshot"), 0o600))
+
+	e := append(env.Environ(testEnvWithHome(t.TempDir(), "")).
+		With(env.DisableEvents, "1").
+		With(env.AuthToken, "test-token"), unreachableDockerHost)
+
+	stdout, stderr, err := runLstk(t, testContext(t), dir, e,
+		"--non-interactive", "--endpoint-url", srv.URL, "snapshot", "load", "--merge=overwrite", snapPath,
+	)
+	requireExitCode(t, 1, err)
+	assert.False(t, resetCalled.Load(), "overwrite must not wipe emulator state when the file is not a snapshot")
+	assert.Contains(t, stdout+stderr, "not a valid snapshot")
 }
 
 // --- Docker required ---

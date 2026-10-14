@@ -1,6 +1,7 @@
 package snapshot_test
 
 import (
+	"archive/zip"
 	"context"
 	"fmt"
 	"io"
@@ -34,7 +35,15 @@ func writeSnapshotFile(t *testing.T, content string) string {
 	t.Helper()
 	dir := t.TempDir()
 	path := filepath.Join(dir, "snap.zip")
-	require.NoError(t, os.WriteFile(path, []byte(content), 0600))
+	f, err := os.Create(path)
+	require.NoError(t, err)
+	zw := zip.NewWriter(f)
+	w, err := zw.Create("state")
+	require.NoError(t, err)
+	_, err = io.WriteString(w, content)
+	require.NoError(t, err)
+	require.NoError(t, zw.Close())
+	require.NoError(t, f.Close())
 	return path
 }
 
@@ -224,6 +233,42 @@ func TestLoadPod_VersionNotFound(t *testing.T) {
 	assert.Equal(t, serverMsg, errEvent.Summary)
 	require.NotEmpty(t, errEvent.Actions)
 	assert.Equal(t, "lstk snapshot versions pod:my-baseline", errEvent.Actions[0].Value)
+}
+
+func TestLoadLocal_OverwriteInvalidFileDoesNotReset(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	src := filepath.Join(dir, "notes.txt")
+	require.NoError(t, os.WriteFile(src, []byte("not a snapshot"), 0o600))
+
+	ctrl := gomock.NewController(t)
+	client := NewMockLocalLoadClient(ctrl)
+	sink, getEvents := captureEvents(t)
+
+	err := snapshot.LoadLocal(context.Background(), healthyRunningMock(t), awsContainers, client, "", src, snapshot.MergeStrategyOverwrite, nopStarter, sink)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, snapshot.ErrInvalidSnapshotFile)
+	assert.True(t, output.IsSilent(err))
+
+	var errEvent *output.ErrorEvent
+	for _, e := range getEvents() {
+		if ev, ok := e.(output.ErrorEvent); ok {
+			errEvent = &ev
+		}
+	}
+	require.NotNil(t, errEvent)
+	assert.Equal(t, "This file is not a valid snapshot", errEvent.Summary)
+}
+
+func TestLoadLocal_OverwriteMissingFileDoesNotReset(t *testing.T) {
+	t.Parallel()
+	ctrl := gomock.NewController(t)
+	client := NewMockLocalLoadClient(ctrl)
+	sink := output.NewPlainSink(io.Discard)
+
+	err := snapshot.LoadLocal(context.Background(), healthyRunningMock(t), awsContainers, client, "", "/no/such/file.snapshot", snapshot.MergeStrategyOverwrite, nopStarter, sink)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "open snapshot")
 }
 
 func TestLoadLocal_FileNotFound(t *testing.T) {

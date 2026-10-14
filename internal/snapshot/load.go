@@ -3,6 +3,7 @@ package snapshot
 //go:generate mockgen -source=load.go -destination=mock_load_client_test.go -package=snapshot_test
 
 import (
+	"archive/zip"
 	"context"
 	"errors"
 	"fmt"
@@ -168,6 +169,19 @@ func LoadLocal(ctx context.Context, rt runtime.Runtime, containers []config.Cont
 			sink.Emit(output.SnapshotLoadedEvent{Source: displayPath(src, cwd, home)})
 		},
 		func() error {
+			f, err := os.Open(src)
+			if err != nil {
+				return fmt.Errorf("open snapshot: %w", err)
+			}
+			defer func() { _ = f.Close() }()
+
+			// Overwrite resets running state before the import, and that reset
+			// is not undone if the import then fails. Reject a file the
+			// emulator would refuse before touching state.
+			if err := validateLocalSnapshot(f); err != nil {
+				return err
+			}
+
 			// overwrite is handled client-side: reset running state, then import
 			// with the server default (account-region-merge on clean state = overwrite).
 			if strategy == MergeStrategyOverwrite {
@@ -177,15 +191,25 @@ func LoadLocal(ctx context.Context, rt runtime.Runtime, containers []config.Cont
 				strategy = ""
 			}
 
-			f, err := os.Open(src)
-			if err != nil {
-				return fmt.Errorf("open snapshot: %w", err)
-			}
-			defer func() { _ = f.Close() }()
-
 			return client.ImportState(ctx, host, f, strategy)
 		},
 	)
+}
+
+// validateLocalSnapshot rejects a file that is not a zip archive and rewinds
+// f so the caller can upload it. LocalStack snapshot files are zip archives.
+func validateLocalSnapshot(f *os.File) error {
+	info, err := f.Stat()
+	if err != nil {
+		return fmt.Errorf("open snapshot: %w", err)
+	}
+	if _, err := zip.NewReader(f, info.Size()); err != nil {
+		return ErrInvalidSnapshotFile
+	}
+	if _, err := f.Seek(0, io.SeekStart); err != nil {
+		return fmt.Errorf("open snapshot: %w", err)
+	}
+	return nil
 }
 
 // LoadPod loads a platform-hosted cloud snapshot. version 0 loads the pod's
