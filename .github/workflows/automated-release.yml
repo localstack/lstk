@@ -66,11 +66,13 @@ jobs:
     outputs:
       bump: ${{ steps.bump.outputs.bump }}
     steps:
+      # Same commit check-changes pinned, so the bump covers exactly the PRs
+      # that get tagged even if main moves between jobs.
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-          ref: main
+          ref: ${{ needs.check-changes.outputs.sha }}
           fetch-depth: 0
 
       - name: Fetch tags
