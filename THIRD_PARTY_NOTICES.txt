@@ -19,7 +19,6 @@ it by hand.
 ================================================================================
 github.com/Microsoft/go-winio v0.6.2
 License: MIT
-License text: https://github.com/Microsoft/go-winio/blob/v0.6.2/LICENSE
 Source code: https://proxy.golang.org/github.com/!microsoft/go-winio/@v/v0.6.2.zip
 ================================================================================
 
@@ -49,7 +48,6 @@ SOFTWARE.
 ================================================================================
 github.com/agext/levenshtein v1.2.1
 License: Apache-2.0
-License text: https://github.com/agext/levenshtein/blob/v1.2.1/LICENSE
 Source code: https://proxy.golang.org/github.com/agext/levenshtein/@v/v1.2.1.zip
 ================================================================================
 
@@ -266,7 +264,6 @@ This product includes software developed at ALRUX Inc.
 ================================================================================
 github.com/apparentlymart/go-textseg/v15 v15.0.0
 License: MIT, Unicode-DFS-2016
-License text: https://github.com/apparentlymart/go-textseg/blob/v15.0.0/LICENSE
 Source code: https://proxy.golang.org/github.com/apparentlymart/go-textseg/v15/@v/v15.0.0.zip
 ================================================================================
 
@@ -369,7 +366,6 @@ written authorization of the copyright holder.
 ================================================================================
 github.com/apparentlymart/go-textseg/v17 v17.0.1
 License: MIT
-License text: https://github.com/apparentlymart/go-textseg/blob/v17.0.1/LICENSE
 Source code: https://proxy.golang.org/github.com/apparentlymart/go-textseg/v17/@v/v17.0.1.zip
 ================================================================================
 
@@ -396,7 +392,6 @@ SOFTWARE.
 ================================================================================
 github.com/aymanbagabas/go-osc52/v2 v2.0.1
 License: MIT
-License text: https://github.com/aymanbagabas/go-osc52/blob/v2.0.1/LICENSE
 Source code: https://proxy.golang.org/github.com/aymanbagabas/go-osc52/v2/@v/v2.0.1.zip
 ================================================================================
 
@@ -425,7 +420,6 @@ SOFTWARE.
 ================================================================================
 github.com/cenkalti/backoff/v5 v5.0.3
 License: MIT
-License text: https://github.com/cenkalti/backoff/blob/v5.0.3/LICENSE
 Source code: https://proxy.golang.org/github.com/cenkalti/backoff/v5/@v/v5.0.3.zip
 ================================================================================
 
@@ -453,7 +447,6 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ================================================================================
 github.com/cespare/xxhash/v2 v2.3.0
 License: MIT
-License text: https://github.com/cespare/xxhash/blob/v2.3.0/LICENSE.txt
 Source code: https://proxy.golang.org/github.com/cespare/xxhash/v2/@v/v2.3.0.zip
 ================================================================================
 
@@ -483,7 +476,6 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ================================================================================
 github.com/charmbracelet/bubbles v1.0.0
 License: MIT
-License text: https://github.com/charmbracelet/bubbles/blob/v1.0.0/LICENSE
 Source code: https://proxy.golang.org/github.com/charmbracelet/bubbles/@v/v1.0.0.zip
 ================================================================================
 
@@ -512,7 +504,6 @@ SOFTWARE.
 ================================================================================
 github.com/charmbracelet/bubbletea v1.3.10
 License: MIT
-License text: https://github.com/charmbracelet/bubbletea/blob/v1.3.10/LICENSE
 Source code: https://proxy.golang.org/github.com/charmbracelet/bubbletea/@v/v1.3.10.zip
 ================================================================================
 
@@ -541,7 +532,6 @@ SOFTWARE.
 ================================================================================
 github.com/charmbracelet/colorprofile v0.4.2
 License: MIT
-License text: https://github.com/charmbracelet/colorprofile/blob/v0.4.2/LICENSE
 Source code: https://proxy.golang.org/github.com/charmbracelet/colorprofile/@v/v0.4.2.zip
 ================================================================================
 
@@ -570,7 +560,6 @@ SOFTWARE.
 ================================================================================
 github.com/charmbracelet/harmonica v0.2.0
 License: MIT
-License text: https://github.com/charmbracelet/harmonica/blob/v0.2.0/LICENSE
 Source code: https://proxy.golang.org/github.com/charmbracelet/harmonica/@v/v0.2.0.zip
 ================================================================================
 
@@ -599,7 +588,6 @@ SOFTWARE.
 ================================================================================
 github.com/charmbracelet/lipgloss v1.1.0
 License: MIT
-License text: https://github.com/charmbracelet/lipgloss/blob/v1.1.0/LICENSE
 Source code: https://proxy.golang.org/github.com/charmbracelet/lipgloss/@v/v1.1.0.zip
 ================================================================================
 
@@ -628,7 +616,6 @@ SOFTWARE.
 ================================================================================
 github.com/charmbracelet/x/ansi v0.11.6
 License: MIT
-License text: https://github.com/charmbracelet/x/blob/ansi/v0.11.6/ansi/LICENSE
 Source code: https://proxy.golang.org/github.com/charmbracelet/x/ansi/@v/v0.11.6.zip
 ================================================================================
 
@@ -657,7 +644,6 @@ SOFTWARE.
 ================================================================================
 github.com/charmbracelet/x/cellbuf v0.0.15
 License: MIT
-License text: https://github.com/charmbracelet/x/blob/cellbuf/v0.0.15/cellbuf/LICENSE
 Source code: https://proxy.golang.org/github.com/charmbracelet/x/cellbuf/@v/v0.0.15.zip
 ================================================================================
 
@@ -686,7 +672,6 @@ SOFTWARE.
 ================================================================================
 github.com/charmbracelet/x/term v0.2.2
 License: MIT
-License text: https://github.com/charmbracelet/x/blob/term/v0.2.2/term/LICENSE
 Source code: https://proxy.golang.org/github.com/charmbracelet/x/term/@v/v0.2.2.zip
 ================================================================================
 
@@ -715,7 +700,6 @@ SOFTWARE.
 ================================================================================
 github.com/clipperhouse/displaywidth v0.10.0
 License: MIT
-License text: https://github.com/clipperhouse/displaywidth/blob/v0.10.0/LICENSE
 Source code: https://proxy.golang.org/github.com/clipperhouse/displaywidth/@v/v0.10.0.zip
 ================================================================================
 
@@ -744,7 +728,6 @@ SOFTWARE.
 ================================================================================
 github.com/clipperhouse/uax29/v2 v2.6.0
 License: MIT
-License text: https://github.com/clipperhouse/uax29/blob/v2.6.0/LICENSE
 Source code: https://proxy.golang.org/github.com/clipperhouse/uax29/v2/@v/v2.6.0.zip
 ================================================================================
 
@@ -773,7 +756,6 @@ SOFTWARE.
 ================================================================================
 github.com/containerd/errdefs v1.0.0
 License: Apache-2.0
-License text: https://github.com/containerd/errdefs/blob/v1.0.0/LICENSE
 Source code: https://proxy.golang.org/github.com/containerd/errdefs/@v/v1.0.0.zip
 ================================================================================
 
@@ -972,7 +954,6 @@ Source code: https://proxy.golang.org/github.com/containerd/errdefs/@v/v1.0.0.zi
 ================================================================================
 github.com/containerd/errdefs/pkg v0.3.0
 License: Apache-2.0
-License text: https://github.com/containerd/errdefs/blob/pkg/v0.3.0/pkg/LICENSE
 Source code: https://proxy.golang.org/github.com/containerd/errdefs/pkg/@v/v0.3.0.zip
 ================================================================================
 
@@ -1171,7 +1152,6 @@ Source code: https://proxy.golang.org/github.com/containerd/errdefs/pkg/@v/v0.3.
 ================================================================================
 github.com/cpuguy83/go-md2man/v2 v2.0.6
 License: MIT
-License text: https://github.com/cpuguy83/go-md2man/blob/v2.0.6/LICENSE.md
 Source code: https://proxy.golang.org/github.com/cpuguy83/go-md2man/v2/@v/v2.0.6.zip
 ================================================================================
 
@@ -1200,7 +1180,6 @@ SOFTWARE.
 ================================================================================
 github.com/creack/pty v1.1.24
 License: MIT
-License text: https://github.com/creack/pty/blob/v1.1.24/LICENSE
 Source code: https://proxy.golang.org/github.com/creack/pty/@v/v1.1.24.zip
 ================================================================================
 
@@ -1231,7 +1210,6 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ================================================================================
 github.com/danieljoos/wincred v1.2.3
 License: MIT
-License text: https://github.com/danieljoos/wincred/blob/v1.2.3/LICENSE
 Source code: https://proxy.golang.org/github.com/danieljoos/wincred/@v/v1.2.3.zip
 ================================================================================
 
@@ -1259,7 +1237,6 @@ SOFTWARE.
 ================================================================================
 github.com/distribution/reference v0.6.0
 License: Apache-2.0
-License text: https://github.com/distribution/reference/blob/v0.6.0/LICENSE
 Source code: https://proxy.golang.org/github.com/distribution/reference/@v/v0.6.0.zip
 ================================================================================
 
@@ -1469,7 +1446,6 @@ Apache License
 ================================================================================
 github.com/docker/go-connections v0.7.0
 License: Apache-2.0
-License text: https://github.com/docker/go-connections/blob/v0.7.0/LICENSE
 Source code: https://proxy.golang.org/github.com/docker/go-connections/@v/v0.7.0.zip
 ================================================================================
 
@@ -1668,7 +1644,6 @@ Source code: https://proxy.golang.org/github.com/docker/go-connections/@v/v0.7.0
 ================================================================================
 github.com/docker/go-units v0.5.0
 License: Apache-2.0
-License text: https://github.com/docker/go-units/blob/v0.5.0/LICENSE
 Source code: https://proxy.golang.org/github.com/docker/go-units/@v/v0.5.0.zip
 ================================================================================
 
@@ -1867,7 +1842,6 @@ Source code: https://proxy.golang.org/github.com/docker/go-units/@v/v0.5.0.zip
 ================================================================================
 github.com/erikgeiser/coninput v0.0.0-20211004153227-1c3628e74d0f
 License: MIT
-License text: https://github.com/erikgeiser/coninput/blob/1c3628e74d0f/LICENSE
 Source code: https://proxy.golang.org/github.com/erikgeiser/coninput/@v/v0.0.0-20211004153227-1c3628e74d0f.zip
 ================================================================================
 
@@ -1896,7 +1870,6 @@ SOFTWARE.
 ================================================================================
 github.com/felixge/httpsnoop v1.1.0
 License: MIT
-License text: https://github.com/felixge/httpsnoop/blob/v1.1.0/LICENSE.txt
 Source code: https://proxy.golang.org/github.com/felixge/httpsnoop/@v/v1.1.0.zip
 ================================================================================
 
@@ -1923,7 +1896,6 @@ Copyright (c) 2016 Felix Geisendörfer (felix@debuggable.com)
 ================================================================================
 github.com/fsnotify/fsnotify v1.9.0
 License: BSD-3-Clause
-License text: https://github.com/fsnotify/fsnotify/blob/v1.9.0/LICENSE
 Source code: https://proxy.golang.org/github.com/fsnotify/fsnotify/@v/v1.9.0.zip
 ================================================================================
 
@@ -1956,7 +1928,6 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ================================================================================
 github.com/go-logr/logr v1.4.4
 License: Apache-2.0
-License text: https://github.com/go-logr/logr/blob/v1.4.4/LICENSE
 Source code: https://proxy.golang.org/github.com/go-logr/logr/@v/v1.4.4.zip
 ================================================================================
 
@@ -2165,7 +2136,6 @@ Source code: https://proxy.golang.org/github.com/go-logr/logr/@v/v1.4.4.zip
 ================================================================================
 github.com/go-logr/stdr v1.2.2
 License: Apache-2.0
-License text: https://github.com/go-logr/stdr/blob/v1.2.2/LICENSE
 Source code: https://proxy.golang.org/github.com/go-logr/stdr/@v/v1.2.2.zip
 ================================================================================
 
@@ -2374,7 +2344,6 @@ Source code: https://proxy.golang.org/github.com/go-logr/stdr/@v/v1.2.2.zip
 ================================================================================
 github.com/go-viper/mapstructure/v2 v2.5.0
 License: MIT
-License text: https://github.com/go-viper/mapstructure/blob/v2.5.0/LICENSE
 Source code: https://proxy.golang.org/github.com/go-viper/mapstructure/v2/@v/v2.5.0.zip
 ================================================================================
 
@@ -2403,7 +2372,6 @@ THE SOFTWARE.
 ================================================================================
 github.com/godbus/dbus/v5 v5.2.2
 License: BSD-2-Clause
-License text: https://github.com/godbus/dbus/blob/v5.2.2/LICENSE
 Source code: https://proxy.golang.org/github.com/godbus/dbus/v5/@v/v5.2.2.zip
 ================================================================================
 
@@ -2436,7 +2404,6 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ================================================================================
 github.com/google/uuid v1.6.0
 License: BSD-3-Clause
-License text: https://github.com/google/uuid/blob/v1.6.0/LICENSE
 Source code: https://proxy.golang.org/github.com/google/uuid/@v/v1.6.0.zip
 ================================================================================
 
@@ -2471,7 +2438,6 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ================================================================================
 github.com/grpc-ecosystem/grpc-gateway/v2 v2.30.0
 License: BSD-3-Clause
-License text: https://github.com/grpc-ecosystem/grpc-gateway/blob/v2.30.0/LICENSE
 Source code: https://proxy.golang.org/github.com/grpc-ecosystem/grpc-gateway/v2/@v/v2.30.0.zip
 ================================================================================
 
@@ -2506,7 +2472,6 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ================================================================================
 github.com/hashicorp/hcl/v2 v2.25.0
 License: MPL-2.0
-License text: https://github.com/hashicorp/hcl/blob/v2.25.0/LICENSE
 Source code: https://proxy.golang.org/github.com/hashicorp/hcl/v2/@v/v2.25.0.zip
 ================================================================================
 
@@ -2869,7 +2834,6 @@ Exhibit B - “Incompatible With Secondary Licenses” Notice
 ================================================================================
 github.com/inconshreveable/mousetrap v1.1.0
 License: Apache-2.0
-License text: https://github.com/inconshreveable/mousetrap/blob/v1.1.0/LICENSE
 Source code: https://proxy.golang.org/github.com/inconshreveable/mousetrap/@v/v1.1.0.zip
 ================================================================================
 
@@ -3078,7 +3042,6 @@ Source code: https://proxy.golang.org/github.com/inconshreveable/mousetrap/@v/v1
 ================================================================================
 github.com/lucasb-eyer/go-colorful v1.3.0
 License: MIT
-License text: https://github.com/lucasb-eyer/go-colorful/blob/v1.3.0/LICENSE
 Source code: https://proxy.golang.org/github.com/lucasb-eyer/go-colorful/@v/v1.3.0.zip
 ================================================================================
 
@@ -3093,7 +3056,6 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 ================================================================================
 github.com/mattn/go-isatty v0.0.20
 License: MIT
-License text: https://github.com/mattn/go-isatty/blob/v0.0.20/LICENSE
 Source code: https://proxy.golang.org/github.com/mattn/go-isatty/@v/v0.0.20.zip
 ================================================================================
 
@@ -3110,7 +3072,6 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 ================================================================================
 github.com/mattn/go-runewidth v0.0.19
 License: MIT
-License text: https://github.com/mattn/go-runewidth/blob/v0.0.19/LICENSE
 Source code: https://proxy.golang.org/github.com/mattn/go-runewidth/@v/v0.0.19.zip
 ================================================================================
 
@@ -3139,7 +3100,6 @@ SOFTWARE.
 ================================================================================
 github.com/mitchellh/go-wordwrap v1.0.1
 License: MIT
-License text: https://github.com/mitchellh/go-wordwrap/blob/v1.0.1/LICENSE.md
 Source code: https://proxy.golang.org/github.com/mitchellh/go-wordwrap/@v/v1.0.1.zip
 ================================================================================
 
@@ -3168,7 +3128,6 @@ THE SOFTWARE.
 ================================================================================
 github.com/moby/docker-image-spec v1.3.1
 License: Apache-2.0
-License text: https://github.com/moby/docker-image-spec/blob/v1.3.1/LICENSE
 Source code: https://proxy.golang.org/github.com/moby/docker-image-spec/@v/v1.3.1.zip
 ================================================================================
 
@@ -3377,7 +3336,6 @@ Source code: https://proxy.golang.org/github.com/moby/docker-image-spec/@v/v1.3.
 ================================================================================
 github.com/moby/moby/api v1.56.0
 License: Apache-2.0
-License text: https://github.com/moby/moby/blob/api/v1.56.0/api/LICENSE
 Source code: https://proxy.golang.org/github.com/moby/moby/api/@v/v1.56.0.zip
 ================================================================================
 
@@ -3587,7 +3545,6 @@ Source code: https://proxy.golang.org/github.com/moby/moby/api/@v/v1.56.0.zip
 ================================================================================
 github.com/moby/moby/client v0.6.0
 License: Apache-2.0
-License text: https://github.com/moby/moby/blob/client/v0.6.0/client/LICENSE
 Source code: https://proxy.golang.org/github.com/moby/moby/client/@v/v0.6.0.zip
 ================================================================================
 
@@ -3797,7 +3754,6 @@ Source code: https://proxy.golang.org/github.com/moby/moby/client/@v/v0.6.0.zip
 ================================================================================
 github.com/muesli/ansi v0.0.0-20230316100256-276c6243b2f6
 License: MIT
-License text: https://github.com/muesli/ansi/blob/276c6243b2f6/LICENSE
 Source code: https://proxy.golang.org/github.com/muesli/ansi/@v/v0.0.0-20230316100256-276c6243b2f6.zip
 ================================================================================
 
@@ -3826,7 +3782,6 @@ SOFTWARE.
 ================================================================================
 github.com/muesli/cancelreader v0.2.2
 License: MIT
-License text: https://github.com/muesli/cancelreader/blob/v0.2.2/LICENSE
 Source code: https://proxy.golang.org/github.com/muesli/cancelreader/@v/v0.2.2.zip
 ================================================================================
 
@@ -3855,7 +3810,6 @@ SOFTWARE.
 ================================================================================
 github.com/muesli/termenv v0.16.0
 License: MIT
-License text: https://github.com/muesli/termenv/blob/v0.16.0/LICENSE
 Source code: https://proxy.golang.org/github.com/muesli/termenv/@v/v0.16.0.zip
 ================================================================================
 
@@ -3884,7 +3838,6 @@ SOFTWARE.
 ================================================================================
 github.com/opencontainers/go-digest v1.0.0
 License: Apache-2.0
-License text: https://github.com/opencontainers/go-digest/blob/v1.0.0/LICENSE
 Source code: https://proxy.golang.org/github.com/opencontainers/go-digest/@v/v1.0.0.zip
 ================================================================================
 
@@ -4084,7 +4037,6 @@ Source code: https://proxy.golang.org/github.com/opencontainers/go-digest/@v/v1.
 ================================================================================
 github.com/opencontainers/image-spec v1.1.1
 License: Apache-2.0
-License text: https://github.com/opencontainers/image-spec/blob/v1.1.1/LICENSE
 Source code: https://proxy.golang.org/github.com/opencontainers/image-spec/@v/v1.1.1.zip
 ================================================================================
 
@@ -4283,7 +4235,6 @@ Source code: https://proxy.golang.org/github.com/opencontainers/image-spec/@v/v1
 ================================================================================
 github.com/pelletier/go-toml/v2 v2.4.3
 License: MIT
-License text: https://github.com/pelletier/go-toml/blob/v2.4.3/LICENSE
 Source code: https://proxy.golang.org/github.com/pelletier/go-toml/v2/@v/v2.4.3.zip
 ================================================================================
 
@@ -4313,7 +4264,6 @@ SOFTWARE.
 ================================================================================
 github.com/pkg/browser v0.0.0-20240102092130-5ac0b6a4141c
 License: BSD-2-Clause
-License text: https://github.com/pkg/browser/blob/5ac0b6a4141c/LICENSE
 Source code: https://proxy.golang.org/github.com/pkg/browser/@v/v0.0.0-20240102092130-5ac0b6a4141c.zip
 ================================================================================
 
@@ -4344,7 +4294,6 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ================================================================================
 github.com/rivo/uniseg v0.4.7
 License: MIT
-License text: https://github.com/rivo/uniseg/blob/v0.4.7/LICENSE.txt
 Source code: https://proxy.golang.org/github.com/rivo/uniseg/@v/v0.4.7.zip
 ================================================================================
 
@@ -4373,7 +4322,6 @@ SOFTWARE.
 ================================================================================
 github.com/russross/blackfriday/v2 v2.1.0
 License: BSD-2-Clause
-License text: https://github.com/russross/blackfriday/blob/v2.1.0/LICENSE.txt
 Source code: https://proxy.golang.org/github.com/russross/blackfriday/v2/@v/v2.1.0.zip
 ================================================================================
 
@@ -4410,7 +4358,6 @@ Blackfriday is distributed under the Simplified BSD License:
 ================================================================================
 github.com/sagikazarmark/locafero v0.12.0
 License: MIT
-License text: https://github.com/sagikazarmark/locafero/blob/v0.12.0/LICENSE
 Source code: https://proxy.golang.org/github.com/sagikazarmark/locafero/@v/v0.12.0.zip
 ================================================================================
 
@@ -4437,7 +4384,6 @@ THE SOFTWARE.
 ================================================================================
 github.com/spf13/afero v1.15.0
 License: Apache-2.0
-License text: https://github.com/spf13/afero/blob/v1.15.0/LICENSE.txt
 Source code: https://proxy.golang.org/github.com/spf13/afero/@v/v1.15.0.zip
 ================================================================================
 
@@ -4619,7 +4565,6 @@ Source code: https://proxy.golang.org/github.com/spf13/afero/@v/v1.15.0.zip
 ================================================================================
 github.com/spf13/cast v1.10.0
 License: MIT
-License text: https://github.com/spf13/cast/blob/v1.10.0/LICENSE
 Source code: https://proxy.golang.org/github.com/spf13/cast/@v/v1.10.0.zip
 ================================================================================
 
@@ -4647,7 +4592,6 @@ SOFTWARE.
 ================================================================================
 github.com/spf13/cobra v1.10.2
 License: Apache-2.0
-License text: https://github.com/spf13/cobra/blob/v1.10.2/LICENSE.txt
 Source code: https://proxy.golang.org/github.com/spf13/cobra/@v/v1.10.2.zip
 ================================================================================
 
@@ -4829,7 +4773,6 @@ Source code: https://proxy.golang.org/github.com/spf13/cobra/@v/v1.10.2.zip
 ================================================================================
 github.com/spf13/pflag v1.0.10
 License: BSD-3-Clause
-License text: https://github.com/spf13/pflag/blob/v1.0.10/LICENSE
 Source code: https://proxy.golang.org/github.com/spf13/pflag/@v/v1.0.10.zip
 ================================================================================
 
@@ -4865,7 +4808,6 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ================================================================================
 github.com/spf13/viper v1.21.0
 License: MIT
-License text: https://github.com/spf13/viper/blob/v1.21.0/LICENSE
 Source code: https://proxy.golang.org/github.com/spf13/viper/@v/v1.21.0.zip
 ================================================================================
 
@@ -4893,7 +4835,6 @@ SOFTWARE.
 ================================================================================
 github.com/subosito/gotenv v1.6.0
 License: MIT
-License text: https://github.com/subosito/gotenv/blob/v1.6.0/LICENSE
 Source code: https://proxy.golang.org/github.com/subosito/gotenv/@v/v1.6.0.zip
 ================================================================================
 
@@ -4922,7 +4863,6 @@ THE SOFTWARE.
 ================================================================================
 github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e
 License: MIT
-License text: https://github.com/xo/terminfo/blob/abceb7e1c41e/LICENSE
 Source code: https://proxy.golang.org/github.com/xo/terminfo/@v/v0.0.0-20220910002029-abceb7e1c41e.zip
 ================================================================================
 
@@ -4951,7 +4891,6 @@ SOFTWARE.
 ================================================================================
 github.com/zalando/go-keyring v0.2.8
 License: MIT
-License text: https://github.com/zalando/go-keyring/blob/v0.2.8/LICENSE
 Source code: https://proxy.golang.org/github.com/zalando/go-keyring/@v/v0.2.8.zip
 ================================================================================
 
@@ -4980,7 +4919,6 @@ SOFTWARE.
 ================================================================================
 github.com/zalando/go-keyring v0.2.8
 License: MIT
-License text: https://github.com/zalando/go-keyring/blob/v0.2.8/internal/shellescape/LICENSE
 Source code: https://proxy.golang.org/github.com/zalando/go-keyring/@v/v0.2.8.zip
 ================================================================================
 
@@ -5009,7 +4947,6 @@ SOFTWARE.
 ================================================================================
 github.com/zclconf/go-cty v1.19.0
 License: MIT
-License text: https://github.com/zclconf/go-cty/blob/v1.19.0/LICENSE
 Source code: https://proxy.golang.org/github.com/zclconf/go-cty/@v/v1.19.0.zip
 ================================================================================
 
@@ -5038,7 +4975,6 @@ SOFTWARE.
 ================================================================================
 go.opentelemetry.io/auto/sdk v1.2.1
 License: Apache-2.0
-License text: https://github.com/open-telemetry/opentelemetry-go-instrumentation/blob/sdk/v1.2.1/sdk/LICENSE
 Source code: https://proxy.golang.org/go.opentelemetry.io/auto/sdk/@v/v1.2.1.zip
 ================================================================================
 
@@ -5247,7 +5183,6 @@ Source code: https://proxy.golang.org/go.opentelemetry.io/auto/sdk/@v/v1.2.1.zip
 ================================================================================
 go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.71.0
 License: Apache-2.0, BSD-3-Clause
-License text: https://github.com/open-telemetry/opentelemetry-go-contrib/blob/instrumentation/net/http/otelhttp/v0.71.0/instrumentation/net/http/otelhttp/LICENSE
 Source code: https://proxy.golang.org/go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp/@v/v0.71.0.zip
 ================================================================================
 
@@ -5485,7 +5420,6 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ================================================================================
 go.opentelemetry.io/otel v1.46.0
 License: Apache-2.0, BSD-3-Clause
-License text: https://github.com/open-telemetry/opentelemetry-go/blob/v1.46.0/LICENSE
 Source code: https://proxy.golang.org/go.opentelemetry.io/otel/@v/v1.46.0.zip
 ================================================================================
 
@@ -5723,7 +5657,6 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ================================================================================
 go.opentelemetry.io/otel/exporters/otlp/otlptrace v1.46.0
 License: Apache-2.0, BSD-3-Clause
-License text: https://github.com/open-telemetry/opentelemetry-go/blob/exporters/otlp/otlptrace/v1.46.0/exporters/otlp/otlptrace/LICENSE
 Source code: https://proxy.golang.org/go.opentelemetry.io/otel/exporters/otlp/otlptrace/@v/v1.46.0.zip
 ================================================================================
 
@@ -5961,7 +5894,6 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ================================================================================
 go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp v1.46.0
 License: Apache-2.0, BSD-3-Clause
-License text: https://github.com/open-telemetry/opentelemetry-go/blob/exporters/otlp/otlptrace/otlptracehttp/v1.46.0/exporters/otlp/otlptrace/otlptracehttp/LICENSE
 Source code: https://proxy.golang.org/go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp/@v/v1.46.0.zip
 ================================================================================
 
@@ -6199,7 +6131,6 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ================================================================================
 go.opentelemetry.io/otel/metric v1.46.0
 License: Apache-2.0, BSD-3-Clause
-License text: https://github.com/open-telemetry/opentelemetry-go/blob/metric/v1.46.0/metric/LICENSE
 Source code: https://proxy.golang.org/go.opentelemetry.io/otel/metric/@v/v1.46.0.zip
 ================================================================================
 
@@ -6437,7 +6368,6 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ================================================================================
 go.opentelemetry.io/otel/sdk v1.46.0
 License: Apache-2.0, BSD-3-Clause
-License text: https://github.com/open-telemetry/opentelemetry-go/blob/sdk/v1.46.0/sdk/LICENSE
 Source code: https://proxy.golang.org/go.opentelemetry.io/otel/sdk/@v/v1.46.0.zip
 ================================================================================
 
@@ -6675,7 +6605,6 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ================================================================================
 go.opentelemetry.io/otel/trace v1.46.0
 License: Apache-2.0, BSD-3-Clause
-License text: https://github.com/open-telemetry/opentelemetry-go/blob/trace/v1.46.0/trace/LICENSE
 Source code: https://proxy.golang.org/go.opentelemetry.io/otel/trace/@v/v1.46.0.zip
 ================================================================================
 
@@ -6913,7 +6842,6 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ================================================================================
 go.opentelemetry.io/proto/otlp v1.11.0
 License: Apache-2.0
-License text: https://github.com/open-telemetry/opentelemetry-proto-go/blob/otlp/v1.11.0/otlp/LICENSE
 Source code: https://proxy.golang.org/go.opentelemetry.io/proto/otlp/@v/v1.11.0.zip
 ================================================================================
 
@@ -7122,7 +7050,6 @@ Source code: https://proxy.golang.org/go.opentelemetry.io/proto/otlp/@v/v1.11.0.
 ================================================================================
 go.uber.org/mock v0.6.0
 License: Apache-2.0
-License text: https://github.com/uber/mock/blob/v0.6.0/LICENSE
 Source code: https://proxy.golang.org/go.uber.org/mock/@v/v0.6.0.zip
 ================================================================================
 
@@ -7332,7 +7259,6 @@ Source code: https://proxy.golang.org/go.uber.org/mock/@v/v0.6.0.zip
 ================================================================================
 go.yaml.in/yaml/v3 v3.0.5
 License: MIT
-License text: https://github.com/yaml/go-yaml/blob/v3.0.5/LICENSE
 Source code: https://proxy.golang.org/go.yaml.in/yaml/v3/@v/v3.0.5.zip
 ================================================================================
 
@@ -7406,7 +7332,6 @@ limitations under the License.
 ================================================================================
 golang.org/x/net v0.60.0
 License: BSD-3-Clause
-License text: https://cs.opensource.google/go/x/net/+/v0.60.0:LICENSE
 Source code: https://proxy.golang.org/golang.org/x/net/@v/v0.60.0.zip
 ================================================================================
 
@@ -7441,7 +7366,6 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ================================================================================
 golang.org/x/sys v0.48.0
 License: BSD-3-Clause
-License text: https://cs.opensource.google/go/x/sys/+/v0.48.0:LICENSE
 Source code: https://proxy.golang.org/golang.org/x/sys/@v/v0.48.0.zip
 ================================================================================
 
@@ -7476,7 +7400,6 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ================================================================================
 golang.org/x/term v0.46.0
 License: BSD-3-Clause
-License text: https://cs.opensource.google/go/x/term/+/v0.46.0:LICENSE
 Source code: https://proxy.golang.org/golang.org/x/term/@v/v0.46.0.zip
 ================================================================================
 
@@ -7511,7 +7434,6 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ================================================================================
 golang.org/x/text v0.42.0
 License: BSD-3-Clause
-License text: https://cs.opensource.google/go/x/text/+/v0.42.0:LICENSE
 Source code: https://proxy.golang.org/golang.org/x/text/@v/v0.42.0.zip
 ================================================================================
 
@@ -7546,7 +7468,6 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ================================================================================
 google.golang.org/genproto/googleapis/api v0.0.0-20260819154853-08b0e4226688
 License: Apache-2.0
-License text: https://github.com/googleapis/go-genproto/blob/08b0e4226688/googleapis/api/LICENSE
 Source code: https://proxy.golang.org/google.golang.org/genproto/googleapis/api/@v/v0.0.0-20260819154853-08b0e4226688.zip
 ================================================================================
 
@@ -7756,7 +7677,6 @@ Source code: https://proxy.golang.org/google.golang.org/genproto/googleapis/api/
 ================================================================================
 google.golang.org/genproto/googleapis/rpc v0.0.0-20260819154853-08b0e4226688
 License: Apache-2.0
-License text: https://github.com/googleapis/go-genproto/blob/08b0e4226688/googleapis/rpc/LICENSE
 Source code: https://proxy.golang.org/google.golang.org/genproto/googleapis/rpc/@v/v0.0.0-20260819154853-08b0e4226688.zip
 ================================================================================
 
@@ -7966,7 +7886,6 @@ Source code: https://proxy.golang.org/google.golang.org/genproto/googleapis/rpc/
 ================================================================================
 google.golang.org/grpc v1.83.2
 License: Apache-2.0
-License text: https://github.com/grpc/grpc-go/blob/v1.83.2/LICENSE
 Source code: https://proxy.golang.org/google.golang.org/grpc/@v/v1.83.2.zip
 ================================================================================
 
@@ -8192,7 +8111,6 @@ limitations under the License.
 ================================================================================
 google.golang.org/protobuf v1.36.12
 License: BSD-3-Clause
-License text: https://github.com/protocolbuffers/protobuf-go/blob/v1.36.12/LICENSE
 Source code: https://proxy.golang.org/google.golang.org/protobuf/@v/v1.36.12.zip
 ================================================================================
 
@@ -8227,7 +8145,6 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ================================================================================
 gopkg.in/ini.v1 v1.67.3
 License: Apache-2.0
-License text: https://github.com/go-ini/ini/blob/v1.67.3/LICENSE
 Source code: https://proxy.golang.org/gopkg.in/ini.v1/@v/v1.67.3.zip
 ================================================================================
 
@@ -8426,7 +8343,6 @@ third-party archives.
 ================================================================================
 Go standard library and runtime
 License: BSD-3-Clause
-License text: https://go.dev/LICENSE
 Source code: https://go.dev/dl/
 ================================================================================
 

@@ -64,7 +64,7 @@ GOBIN="${WORK}/bin" go install "github.com/google/go-licenses/v2@${GO_LICENSES_V
 GO_LICENSES="${WORK}/bin/go-licenses"
 
 TAB="$(printf '\t')"
-printf '{{range .}}{{.Name}}{{"\\t"}}{{.LicenseName}}{{"\\t"}}{{.LicensePath}}{{"\\t"}}{{.LicenseURL}}{{"\\n"}}{{end}}' \
+printf '{{range .}}{{.Name}}{{"\\t"}}{{.LicenseName}}{{"\\t"}}{{.LicensePath}}{{"\\n"}}{{end}}' \
   > "${WORK}/report.tmpl"
 
 # The main package only, not ./...: test helpers under internal/ pull in
@@ -85,7 +85,7 @@ done
 
 # One entry per licence file: packages of the same module share it, and a file
 # holding two licences (e.g. MIT + Unicode) is reported once per licence.
-# Output columns: module, version, licences (comma-joined), licence path, URL,
+# Output columns: module, version, licences (comma-joined), licence path,
 # module path as the module proxy escapes it.
 awk -F"${TAB}" -v OFS="${TAB}" -v cache="${MODCACHE}/" '
   {
@@ -104,28 +104,27 @@ awk -F"${TAB}" -v OFS="${TAB}" -v cache="${MODCACHE}/" '
       mod = substr(mod, RSTART + 2)
     }
     mod = out mod
-    if (!(path in seen)) { seen[path] = 1; order[++n] = path; m[path] = mod; v[path] = ver; u[path] = $4; e[path] = esc }
+    if (!(path in seen)) { seen[path] = 1; order[++n] = path; m[path] = mod; v[path] = ver; e[path] = esc }
     if (!((path, $2) in lic)) { lic[path, $2] = 1; l[path] = (l[path] == "" ? $2 : l[path] ", " $2) }
   }
-  END { for (i = 1; i <= n; i++) { p = order[i]; print m[p], v[p], l[p], p, u[p], e[p] } }
+  END { for (i = 1; i <= n; i++) { p = order[i]; print m[p], v[p], l[p], p, e[p] } }
 ' "${WORK}/raw.tsv" | LC_ALL=C sort -t"${TAB}" -k1,1 > "${WORK}/entries.tsv"
 
 rule() { printf '%.0s=' $(seq 1 80); echo; }
 
-emit_entry() { # name, licences, licence URL, source URL, text file, [notice file]
+emit_entry() { # name, licences, source URL, text file, [notice file]
   rule
   echo "$1"
   echo "License: $2"
-  [ -n "$3" ] && echo "License text: $3"
-  echo "Source code: $4"
+  echo "Source code: $3"
   rule
   echo
-  cat "$5"
-  if [ -n "${6-}" ]; then
+  cat "$4"
+  if [ -n "${5-}" ]; then
     echo
     echo "--- NOTICE ---"
     echo
-    cat "$6"
+    cat "$5"
   fi
   echo
 }
@@ -152,19 +151,19 @@ it by hand.
 
 HEADER
 
-  while IFS="${TAB}" read -r mod ver lics path url esc; do
+  while IFS="${TAB}" read -r mod ver lics path esc; do
     notice=""
     for n in "$(dirname "${path}")"/NOTICE*; do
       [ -f "${n}" ] && notice="${n}" && break
     done
     # The module proxy serves the exact source the binary was built from.
-    emit_entry "${mod} ${ver}" "${lics}" "${url}" \
+    emit_entry "${mod} ${ver}" "${lics}" \
       "https://proxy.golang.org/${esc}/@v/${ver}.zip" "${path}" "${notice}"
   done < "${WORK}/entries.tsv"
 
   # The Go runtime and standard library are linked into every Go binary.
   emit_entry "Go standard library and runtime" "BSD-3-Clause" \
-    "https://go.dev/LICENSE" "https://go.dev/dl/" "$(go env GOROOT)/LICENSE"
+    "https://go.dev/dl/" "$(go env GOROOT)/LICENSE"
 
   for f in "${EXTRA_DIR}"/*.txt; do
     [ -f "${f}" ] || continue
@@ -172,7 +171,7 @@ HEADER
     lics="$(sed -n 's/^License: //p' "${f}")"
     src="$(sed -n 's/^Source: //p' "${f}")"
     sed '1,/^---$/d' "${f}" > "${WORK}/extra-body"
-    emit_entry "${name}" "${lics}" "" "${src}" "${WORK}/extra-body"
+    emit_entry "${name}" "${lics}" "${src}" "${WORK}/extra-body"
   done
 } > "${WORK}/notices.txt"
 
