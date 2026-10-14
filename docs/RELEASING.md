@@ -66,11 +66,40 @@ Before approving:
 
    A successful invoke is the key check: Lambda spawns a sibling container through the mounted Docker socket, which is exactly what broke for Windows users before.
 
-3. In the run, open **Review deployments**, tick `release`, and paste the OS, Docker Desktop version and result into the comment. Approve on success. Reject on failure, fix on `main`, and start a new release run.
+3. In the run, open **Review deployments**, tick `release`, and paste the OS, Docker Desktop version and result into the comment. Approve on success. Reject on failure, see [After a rejection](#after-a-rejection).
+
+### After a rejection
+
+Nothing was tagged. Fix on `main` through a normal PR with its `semver:` label. Then release it one of two ways; both pass the gate again with a new commit to test:
+
+- Run `Create Release Tag` from `main` for an immediate release.
+- Wait for the next Thursday run.
 
 Notes:
 
 - Both release workflows share one concurrency group. Approve or reject a pending run before triggering another release.
 - A run that is not approved within 30 days fails. Re-trigger it manually.
-- Repository admins cannot bypass the gate; the environment is configured without admin bypass.
+- `Create Release Tag` must be dispatched from `main`. `release_ref` may still point at another branch or tag.
+- The smoke binary is the core CLI. Bundled extensions are added at publish time and are not part of this test.
+- Repository admins cannot bypass the gate; the environment is configured without admin bypass, see [Environment setup](#environment-setup-one-time).
+
+### Environment setup (one-time)
+
+The `release` environment must exist with its protection rules before the gated workflows first run; GitHub otherwise creates it without rules and the run tags without approval. Reviewers are maintained in the environment settings, not here. Requires repo admin:
+
+```bash
+gh api --method PUT repos/localstack/lstk/environments/release --input - <<JSON
+{
+  "wait_timer": 0,
+  "prevent_self_review": false,
+  "can_admins_bypass": false,
+  "reviewers": [
+    {"type": "User", "id": $(gh api users/<login> --jq .id)}
+  ],
+  "deployment_branch_policy": {"protected_branches": false, "custom_branch_policies": true}
+}
+JSON
+gh api --method POST repos/localstack/lstk/environments/release/deployment-branch-policies -f name=main -f type=branch
+gh api repos/localstack/lstk/environments/release   # verify: can_admins_bypass=false, reviewers, one branch policy
+```
 
