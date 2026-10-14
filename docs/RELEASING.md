@@ -55,20 +55,25 @@ GitHub-hosted Windows runners cannot run Linux containers, so CI never exercises
 
 The run summary of the job before the gate (`Determine version bump` or `Resolve release ref`) shows the exact commit to test. The tag job later checks out that same commit, so `main` moving while the run waits does not change what gets released.
 
+Standard environment: a Windows sandbox on EC2 from `scripts/ec2-sandbox.sh`. It serves Docker on `\\.\pipe\docker_engine` and rewrites bind-mount paths the way Docker Desktop's backend does, so lstk's named-pipe and socket-mount code paths are exercised. It does not cover Windows 11 client behaviour, Docker Desktop's own states, or `host.docker.internal`. A personal Windows 11 machine with Docker Desktop is a welcome extra, not a requirement.
+
 Before approving:
 
-1. Build `lstk.exe` from the commit shown in the run summary, e.g. on the Windows machine:
+1. Build `lstk.exe` from the commit shown in the run summary and launch the sandbox:
 
-   ```powershell
+   ```bash
    git fetch origin; git checkout <sha>
-   go build -o lstk.exe .
+   GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -o lstk.exe .
+   scripts/ec2-sandbox.sh create windows --arch x64 --open
+   scripts/ec2-sandbox.sh copyto windows lstk.exe
    ```
 
-   Or cross-compile from macOS/Linux and copy the binary over: `GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -o lstk.exe .`
+   The binary lands on the `User` account's desktop. The AWS CLI is preinstalled.
 
-2. On Windows 11 with Docker Desktop running (the setup most users have) and the AWS CLI installed, run:
+2. In the sandbox, open PowerShell on that desktop and run:
 
    ```powershell
+   $env:LOCALSTACK_AUTH_TOKEN = "<token>"             # or: .\lstk.exe login
    .\lstk.exe start                                    # container comes up
    docker ps                                           # note the emulator container name
    docker inspect <container> --format '{{json .HostConfig.Binds}}'   # must include /var/run/docker.sock
@@ -87,7 +92,9 @@ Before approving:
 
    A successful invoke is the key check: Lambda spawns a sibling container through the mounted Docker socket, which is exactly what broke for Windows users before.
 
-3. In the run, open **Review deployments**, tick `release`, and paste the OS, Docker Desktop version and result into the comment. Approve on success. Reject on failure, see [After a rejection](#after-a-rejection).
+3. In the run, open **Review deployments**, tick `release`, and paste the environment (sandbox, or OS and Docker Desktop version) and the result into the comment. Approve on success. Reject on failure, see [After a rejection](#after-a-rejection).
+
+4. Tear the sandbox down, it costs money while it runs: `scripts/ec2-sandbox.sh delete windows -y`
 
 ### After a rejection
 
