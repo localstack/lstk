@@ -28,6 +28,7 @@ func TestStopTimeoutFromEnv(t *testing.T) {
 		{"so does a negative value", []string{"SHUTDOWN_TIMEOUT=-1"}, noKillStopTimeout},
 		{"a value the supervisor cannot start with gets the default", []string{"SHUTDOWN_TIMEOUT=soon"}, 10},
 		{"a value beyond any real wait is bounded", []string{"SHUTDOWN_TIMEOUT=99999999999"}, maxStopTimeout},
+		{"so is one past the range of int64", []string{"SHUTDOWN_TIMEOUT=123456789012345678901234567890"}, maxStopTimeout},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {

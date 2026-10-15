@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"math"
 	"testing"
 	"time"
 
@@ -43,6 +44,27 @@ func TestStop_GivesDockerTheEmulatorsShutdownTime(t *testing.T) {
 			env:         []string{"PATH=/bin", "SHUTDOWN_TIMEOUT=60"},
 			wantTimeout: seconds(65),
 			wantWait:    65*time.Second + stopWaitMargin,
+		},
+		{
+			// Podman's Docker API reports its 10 s default for every container.
+			name:        "the environment's when the container's own is shorter",
+			brief:       runtime.ContainerBrief{Exists: true, Running: true, StopTimeout: seconds(10)},
+			env:         []string{"SHUTDOWN_TIMEOUT=60"},
+			wantTimeout: seconds(65),
+			wantWait:    65*time.Second + stopWaitMargin,
+		},
+		{
+			name:        "the container's own when it is longer than the environment's",
+			brief:       runtime.ContainerBrief{Exists: true, Running: true, StopTimeout: seconds(120)},
+			env:         []string{"SHUTDOWN_TIMEOUT=60"},
+			wantTimeout: seconds(120),
+			wantWait:    120*time.Second + stopWaitMargin,
+		},
+		{
+			name:        "a bounded one for a container's own beyond any real wait",
+			brief:       runtime.ContainerBrief{Exists: true, Running: true, StopTimeout: seconds(math.MaxInt)},
+			wantTimeout: seconds(maxStopTimeout),
+			wantWait:    maxStopTimeout*time.Second + stopWaitMargin,
 		},
 		{
 			name:        "the supervisor's default for an environment without one",

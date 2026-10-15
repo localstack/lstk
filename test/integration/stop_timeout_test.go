@@ -154,38 +154,13 @@ func TestStopWaitsForTheShutdownOfAnEmulatorStartedElsewhere(t *testing.T) {
 
 // commitSlowShutdownImage builds a local-only image that stays running, never serves /_localstack/health, sets
 // SHUTDOWN_TIMEOUT=15 and exits 0 twelve seconds after a stop signal: longer than Docker's 10 s default stop timeout,
-// shorter than the 20 s lstk gives it. The image and its source container are removed on test cleanup.
+// shorter than the 20 s lstk gives it.
 func commitSlowShutdownImage(t *testing.T, ctx context.Context, imageRef string) {
 	t.Helper()
-
-	reader, err := dockerClient.ImagePull(ctx, testImage, client.ImagePullOptions{})
-	require.NoError(t, err, "failed to pull test image")
-	_, _ = io.Copy(io.Discard, reader)
-	_ = reader.Close()
-
-	// A run that was killed may have left the source container behind.
-	const sourceName = "lstk-slow-shutdown-src"
-	_, _ = dockerClient.ContainerRemove(ctx, sourceName, client.ContainerRemoveOptions{Force: true})
-	resp, err := dockerClient.ContainerCreate(ctx, client.ContainerCreateOptions{
-		Config: &container.Config{Image: testImage},
-		Name:   sourceName,
-	})
-	require.NoError(t, err, "failed to create source container")
-	t.Cleanup(func() {
-		_, _ = dockerClient.ContainerRemove(context.Background(), resp.ID, client.ContainerRemoveOptions{Force: true})
-	})
-
-	_, err = dockerClient.ContainerCommit(ctx, resp.ID, client.ContainerCommitOptions{
-		Reference: imageRef,
-		Changes: []string{
-			"ENV SHUTDOWN_TIMEOUT=15",
-			`CMD ["sh", "-c", "trap 'sleep 12; exit 0' TERM; while :; do sleep 1; done"]`,
-		},
-	})
-	require.NoError(t, err, "failed to commit the slow-shutdown image")
-	t.Cleanup(func() {
-		_, _ = dockerClient.ImageRemove(context.Background(), imageRef, client.ImageRemoveOptions{Force: true})
-	})
+	commitTestImage(t, ctx, imageRef, "lstk-slow-shutdown-src",
+		"ENV SHUTDOWN_TIMEOUT=15",
+		`CMD ["sh", "-c", "trap 'sleep 12; exit 0' TERM; while :; do sleep 1; done"]`,
+	)
 }
 
 // containerExit is how a container's exit wait ended: its exit code, or why the wait failed.

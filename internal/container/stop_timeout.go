@@ -49,36 +49,41 @@ const (
 // whose shutdown still runs, such as the Azure emulator removing the
 // containers it started.
 func stopTimeoutFor(ctx context.Context, rt runtime.Runtime, c runtime.ContainerConfig) int {
-	// Docker puts the container's variables after the image's, so they win. An
-	// image that cannot be read leaves the container's own.
+	// The container's variables override the image's: listed after them, they
+	// are the last values. An image that cannot be read leaves the container's.
 	imageEnv, _ := rt.ImageEnv(ctx, c.Image)
 	return stopTimeoutFromEnv(append(slices.Clone(imageEnv), c.Env...))
 }
 
 // containerStopTimeout returns how many seconds Docker waits for the named
-// container to stop: the container's own stop timeout, else one derived from
-// its environment as at start, for a container an older lstk created or one
-// started outside lstk. nil when neither can be read, which leaves Docker's.
+// container to stop: its own stop timeout, raised to the one its environment
+// gives as at start. A container an older lstk created, or one started outside
+// lstk, has none of its own, and Podman reports its 10 s default for every
+// container. nil when neither can be read, which leaves Docker's.
 func containerStopTimeout(ctx context.Context, rt runtime.Runtime, name string) *int {
+	var own *int
 	if brief, err := rt.InspectBrief(ctx, name); err == nil && brief.StopTimeout != nil {
 		seconds := *brief.StopTimeout
 		if seconds < 0 {
 			seconds = noKillStopTimeout
 		}
 		seconds = min(seconds, maxStopTimeout)
-		return &seconds
+		own = &seconds
 	}
 	env, err := rt.ContainerEnv(ctx, name)
 	if err != nil {
-		return nil
+		return own
 	}
-	seconds := stopTimeoutFromEnv(env)
-	return &seconds
+	derived := stopTimeoutFromEnv(env)
+	if own != nil && *own >= derived {
+		return own
+	}
+	return &derived
 }
 
 // stopTimeoutFromEnv returns the stop timeout of a container whose
-// environment is env, listed as Docker passes it: the image's variables, then
-// the container's.
+// environment is env; the last value of a repeated variable wins, as in the
+// container's shell.
 func stopTimeoutFromEnv(env []string) int {
 	seconds := supervisorShutdownTimeout(env)
 	switch {
@@ -92,19 +97,16 @@ func stopTimeoutFromEnv(env []string) int {
 }
 
 // supervisorShutdownTimeout returns the SHUTDOWN_TIMEOUT the supervisor reads
-// in a container whose environment is env. The last value of a variable wins,
-// as in the container's shell; a LOCALSTACK_SHUTDOWN_TIMEOUT replaces
-// SHUTDOWN_TIMEOUT even when blank; a blank value is the supervisor's
-// default. So is a value that is no decimal integer: the supervisor does not
-// even start with most of them. Python's rarer integer spellings, such as
-// 1_000, are an exception lstk leaves out, and it gives them the default.
+// in a container whose environment is env. A LOCALSTACK_SHUTDOWN_TIMEOUT
+// replaces it even when blank. Python's rarer integer spellings, such as
+// 1_000, get the default here, as a value that is no integer does.
 func supervisorShutdownTimeout(env []string) int {
-	value, found := lastEnvValue(env, prefixedShutdownTimeoutEnv)
-	if !found {
-		value, found = lastEnvValue(env, shutdownTimeoutEnv)
+	name := shutdownTimeoutEnv
+	if envHasKey(env, prefixedShutdownTimeoutEnv) {
+		name = prefixedShutdownTimeoutEnv
 	}
-	value = strings.TrimSpace(value)
-	if !found || value == "" {
+	value := strings.TrimSpace(envValue(env, name))
+	if value == "" {
 		return defaultShutdownTimeout
 	}
 	seconds, err := strconv.ParseInt(value, 10, 64)
@@ -113,17 +115,6 @@ func supervisorShutdownTimeout(env []string) int {
 	}
 	// Out of range, ParseInt returns the nearest bound.
 	return int(min(max(seconds, math.MinInt32), math.MaxInt32))
-}
-
-// lastEnvValue returns the last value env gives the variable name.
-func lastEnvValue(env []string, name string) (string, bool) {
-	value, found := "", false
-	for _, entry := range env {
-		if v, ok := strings.CutPrefix(entry, name+"="); ok {
-			value, found = v, true
-		}
-	}
-	return value, found
 }
 
 // stopWait is how long lstk waits for a stop in which Docker waits

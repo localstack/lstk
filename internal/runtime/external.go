@@ -61,6 +61,7 @@ func (r *externalRuntime) Start(context.Context, ContainerConfig) (string, <-cha
 func (r *externalRuntime) Stop(context.Context, string, *int) error {
 	return ErrExternalRuntimeUnsupported
 }
+
 func (r *externalRuntime) Remove(context.Context, string) error { return ErrExternalRuntimeUnsupported }
 
 func (r *externalRuntime) InspectBrief(context.Context, string) (ContainerBrief, error) {
