@@ -537,8 +537,8 @@ func (d *DockerRuntime) Start(ctx context.Context, config ContainerConfig) (stri
 	return resp.ID, exitCh, nil
 }
 
-func (d *DockerRuntime) Stop(ctx context.Context, containerName string) error {
-	if _, err := d.client.ContainerStop(ctx, containerName, client.ContainerStopOptions{}); err != nil {
+func (d *DockerRuntime) Stop(ctx context.Context, containerName string, timeout *int) error {
+	if _, err := d.client.ContainerStop(ctx, containerName, client.ContainerStopOptions{Timeout: timeout}); err != nil {
 		return err
 	}
 	_, err := d.client.ContainerRemove(ctx, containerName, client.ContainerRemoveOptions{})
@@ -616,7 +616,8 @@ func (d *DockerRuntime) InspectBrief(ctx context.Context, containerName string) 
 		brief.Managed = cfg.Labels[managedLabelKey] == managedLabelValue
 		brief.ImageOverride = cfg.Labels[imageOverrideLabelKey] == "true"
 		if cfg.StopTimeout != nil {
-			brief.StopTimeout = *cfg.StopTimeout
+			stopTimeout := *cfg.StopTimeout
+			brief.StopTimeout = &stopTimeout
 		}
 	}
 	return brief, nil

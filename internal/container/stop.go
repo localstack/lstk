@@ -40,12 +40,11 @@ func Stop(ctx context.Context, rt runtime.Runtime, sink output.Sink, containers 
 
 		stopStart := time.Now()
 
-		// An inspection that fails leaves the default wait: the stop itself still runs.
-		brief, _ := rt.InspectBrief(ctx, name)
+		stopTimeout := containerStopTimeout(ctx, rt, name)
 
 		sink.Emit(output.SpinnerStart("Stopping LocalStack..."))
-		stopCtx, stopCancel := context.WithTimeout(ctx, stopWait(brief))
-		if err := rt.Stop(stopCtx, name); err != nil {
+		stopCtx, stopCancel := context.WithTimeout(ctx, stopWait(stopTimeout))
+		if err := rt.Stop(stopCtx, name, stopTimeout); err != nil {
 			stopCancel()
 			sink.Emit(output.SpinnerStop())
 			wrapped := fmt.Errorf("failed to stop LocalStack: %w", err)

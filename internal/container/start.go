@@ -1738,7 +1738,7 @@ func (m *startupMonitor) await(ctx context.Context, containerID, healthURL strin
 				}
 				m.sink.Emit(output.SpinnerStart("Stopping LocalStack..."))
 				// Best-effort stop; the timeout error is authoritative either way.
-				_ = m.rt.Stop(ctx, containerID)
+				_ = m.rt.Stop(ctx, containerID, nil)
 				return &startupTimeoutError{timeout: m.timeout, stopped: true}
 			}
 

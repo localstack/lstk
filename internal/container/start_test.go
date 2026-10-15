@@ -807,7 +807,8 @@ func TestStartupMonitorAwait_InteractivePromptKeepWaitingThenStop(t *testing.T) 
 	ctrl := gomock.NewController(t)
 	mockRT := runtime.NewMockRuntime(ctrl)
 	mockRT.EXPECT().IsRunning(gomock.Any(), "cid").Return(true, nil).AnyTimes()
-	mockRT.EXPECT().Stop(gomock.Any(), "cid").Return(nil)
+	// The container carries the stop timeout lstk gave it at start.
+	mockRT.EXPECT().Stop(gomock.Any(), "cid", nil).Return(nil)
 
 	prompts := make(chan output.UserInputRequestEvent, 2)
 	seenPrompts := make(chan output.UserInputRequestEvent, 2)

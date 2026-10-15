@@ -76,7 +76,7 @@ type ContainerBrief struct {
 	Image         string // full image the container was created from
 	Managed       bool   // carries the label Start stamps on every lstk container
 	ImageOverride bool   // started with --image
-	StopTimeout   int    // seconds Docker waits for a stop before killing; 0 when the daemon's default applies
+	StopTimeout   *int   // seconds Docker waits for a stop before killing; nil when the daemon's default applies
 }
 
 // ExitResult reports a container's exit as observed by the exit wait that
@@ -98,7 +98,10 @@ type Runtime interface {
 	// removed the moment it exits, after which a wait can no longer be
 	// registered.
 	Start(ctx context.Context, config ContainerConfig) (string, <-chan ExitResult, error)
-	Stop(ctx context.Context, containerName string) error
+	// Stop stops the container and removes it. Docker waits up to timeout
+	// seconds for it to exit before it kills it; nil keeps the container's
+	// own stop timeout, else the daemon's default (10 s).
+	Stop(ctx context.Context, containerName string, timeout *int) error
 	Remove(ctx context.Context, containerName string) error
 	IsRunning(ctx context.Context, containerID string) (bool, error)
 	// InspectBrief reports whether a container with the given name exists and
