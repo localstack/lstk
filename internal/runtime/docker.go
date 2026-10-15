@@ -500,13 +500,19 @@ func (d *DockerRuntime) Start(ctx context.Context, config ContainerConfig) (stri
 		labels[imageOverrideLabelKey] = "true"
 	}
 
+	containerConfig := &container.Config{
+		Image:        config.Image,
+		ExposedPorts: exposedPorts,
+		Env:          config.Env,
+		Labels:       labels,
+	}
+	if config.StopTimeout > 0 {
+		stopTimeout := config.StopTimeout
+		containerConfig.StopTimeout = &stopTimeout
+	}
+
 	resp, err := d.client.ContainerCreate(ctx, client.ContainerCreateOptions{
-		Config: &container.Config{
-			Image:        config.Image,
-			ExposedPorts: exposedPorts,
-			Env:          config.Env,
-			Labels:       labels,
-		},
+		Config: containerConfig,
 		HostConfig: &container.HostConfig{
 			PortBindings: portBindings,
 			Binds:        binds,
@@ -609,6 +615,9 @@ func (d *DockerRuntime) InspectBrief(ctx context.Context, containerName string) 
 		brief.Image = cfg.Image
 		brief.Managed = cfg.Labels[managedLabelKey] == managedLabelValue
 		brief.ImageOverride = cfg.Labels[imageOverrideLabelKey] == "true"
+		if cfg.StopTimeout != nil {
+			brief.StopTimeout = *cfg.StopTimeout
+		}
 	}
 	return brief, nil
 }

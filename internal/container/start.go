@@ -755,6 +755,8 @@ func startContainers(ctx context.Context, rt runtime.Runtime, sink output.Sink, 
 	for _, c := range containers {
 		startTime := time.Now()
 		sink.Emit(output.SpinnerStart("Starting LocalStack"))
+		// Read here, after the pull: the image's own SHUTDOWN_TIMEOUT counts.
+		c.StopTimeout = stopTimeoutFor(ctx, rt, c)
 		containerID, exitCh, err := startWithOptionalPortFallback(ctx, rt, sink, c)
 		if err != nil {
 			sink.Emit(output.SpinnerStop())

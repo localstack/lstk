@@ -47,6 +47,9 @@ type ContainerConfig struct {
 	// BundledLicense marks a local image with its own license. Used by the
 	// start flow; ignored by the runtime.
 	BundledLicense bool
+	// StopTimeout is how many seconds Docker waits for the container to stop
+	// before killing it; 0 keeps the daemon's default (10 s).
+	StopTimeout int
 }
 
 type PullProgress struct {
@@ -73,6 +76,7 @@ type ContainerBrief struct {
 	Image         string // full image the container was created from
 	Managed       bool   // carries the label Start stamps on every lstk container
 	ImageOverride bool   // started with --image
+	StopTimeout   int    // seconds Docker waits for a stop before killing; 0 when the daemon's default applies
 }
 
 // ExitResult reports a container's exit as observed by the exit wait that
