@@ -151,10 +151,11 @@ jobs:
       - name: Test release scripts
         run: make test-scripts
 
-      # THIRD_PARTY_NOTICES.txt ships in every package; a dependency change
-      # that leaves it stale, or brings in a licence outside the allowlist,
-      # fails here rather than shipping.
-      - name: Check third-party notices
+      # The notices file itself is generated at build time (a GoReleaser
+      # hook), so only the licence list is checked on a PR: a dependency bump
+      # that brings in a licence outside the allowlist fails here, not at
+      # release.
+      - name: Check dependency licences
         run: make check-notices
 
       # Nothing else reads the generated cask before a release publishes it.
@@ -447,9 +448,6 @@ jobs:
       # platform directory.
       - name: Check descriptions match the bundled binary
         run: scripts/bundled-extensions/check-descriptions.sh bundled/linux_amd64
-
-      - name: Check third-party notices
-        run: make check-notices
 
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7.2.3

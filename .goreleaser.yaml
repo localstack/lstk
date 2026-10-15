@@ -11,6 +11,11 @@ before:
     - sh -c "go run . completion fish > completions/lstk.fish"
     - mkdir -p manpages
     - sh -c "go run . docs --format man --dir ./manpages"
+    # THIRD_PARTY_NOTICES.txt is generated here, not committed, so it always
+    # matches the dependencies of the binary it ships beside (a committed copy
+    # went stale on every Dependabot bump). The script also fails the build on
+    # a licence outside its allowlist.
+    - scripts/third-party-notices/generate.sh
 
 builds:
   - id: lstk

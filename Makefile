@@ -31,8 +31,9 @@ test-scripts:
 check-cask:
 	@./scripts/check-cask.sh
 
-# Rewrite THIRD_PARTY_NOTICES.txt after a dependency change; check-notices is
-# the CI gate that fails when it is stale or a licence is not allowlisted.
+# THIRD_PARTY_NOTICES.txt is a build output: GoReleaser generates it through a
+# `before` hook. `notices` writes it by hand; `check-notices` is the CI gate
+# that only fails when a dependency's licence is not allowlisted.
 notices:
 	@./scripts/third-party-notices/generate.sh
 
