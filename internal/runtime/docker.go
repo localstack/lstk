@@ -500,13 +500,19 @@ func (d *DockerRuntime) Start(ctx context.Context, config ContainerConfig) (stri
 		labels[imageOverrideLabelKey] = "true"
 	}
 
+	containerConfig := &container.Config{
+		Image:        config.Image,
+		ExposedPorts: exposedPorts,
+		Env:          config.Env,
+		Labels:       labels,
+	}
+	if config.StopTimeout > 0 {
+		stopTimeout := config.StopTimeout
+		containerConfig.StopTimeout = &stopTimeout
+	}
+
 	resp, err := d.client.ContainerCreate(ctx, client.ContainerCreateOptions{
-		Config: &container.Config{
-			Image:        config.Image,
-			ExposedPorts: exposedPorts,
-			Env:          config.Env,
-			Labels:       labels,
-		},
+		Config: containerConfig,
 		HostConfig: &container.HostConfig{
 			PortBindings: portBindings,
 			Binds:        binds,
@@ -531,8 +537,8 @@ func (d *DockerRuntime) Start(ctx context.Context, config ContainerConfig) (stri
 	return resp.ID, exitCh, nil
 }
 
-func (d *DockerRuntime) Stop(ctx context.Context, containerName string) error {
-	if _, err := d.client.ContainerStop(ctx, containerName, client.ContainerStopOptions{}); err != nil {
+func (d *DockerRuntime) Stop(ctx context.Context, containerName string, timeout *int) error {
+	if _, err := d.client.ContainerStop(ctx, containerName, client.ContainerStopOptions{Timeout: timeout}); err != nil {
 		return err
 	}
 	_, err := d.client.ContainerRemove(ctx, containerName, client.ContainerRemoveOptions{})
@@ -609,6 +615,10 @@ func (d *DockerRuntime) InspectBrief(ctx context.Context, containerName string) 
 		brief.Image = cfg.Image
 		brief.Managed = cfg.Labels[managedLabelKey] == managedLabelValue
 		brief.ImageOverride = cfg.Labels[imageOverrideLabelKey] == "true"
+		if cfg.StopTimeout != nil {
+			stopTimeout := *cfg.StopTimeout
+			brief.StopTimeout = &stopTimeout
+		}
 	}
 	return brief, nil
 }

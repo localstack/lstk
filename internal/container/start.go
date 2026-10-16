@@ -755,6 +755,8 @@ func startContainers(ctx context.Context, rt runtime.Runtime, sink output.Sink, 
 	for _, c := range containers {
 		startTime := time.Now()
 		sink.Emit(output.SpinnerStart("Starting LocalStack"))
+		// Read here, after the pull: the image's own SHUTDOWN_TIMEOUT counts.
+		c.StopTimeout = stopTimeoutFor(ctx, rt, c)
 		containerID, exitCh, err := startWithOptionalPortFallback(ctx, rt, sink, c)
 		if err != nil {
 			sink.Emit(output.SpinnerStop())
@@ -1736,7 +1738,7 @@ func (m *startupMonitor) await(ctx context.Context, containerID, healthURL strin
 				}
 				m.sink.Emit(output.SpinnerStart("Stopping LocalStack..."))
 				// Best-effort stop; the timeout error is authoritative either way.
-				_ = m.rt.Stop(ctx, containerID)
+				_ = m.rt.Stop(ctx, containerID, nil)
 				return &startupTimeoutError{timeout: m.timeout, stopped: true}
 			}
 
