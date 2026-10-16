@@ -63,6 +63,7 @@ Notes:
   - `env/` - Process environment snapshot/injection helper (also used to isolate test envs)
   - `extension/` - Git-style `lstk-<name>` extension resolution and exec
   - `iac/` - Wrappers for third-party infrastructure as code tools (`terraform/`, `cdk/`, `sam/`)
+  - `inspect/` - `lstk inspect` domain logic (App Inspector on/off; `--persist` saves it to config)
   - `log/` - Internal diagnostic logging (not for user-facing output — use `output/` for that)
   - `output/` - Generic event and sink abstractions for CLI/TUI/non-interactive rendering
   - `ports/` - Port availability checks
@@ -79,7 +80,7 @@ Notes:
   - `version/` - Version info
   - `volume/` - `lstk volume` domain logic
 
-Commands are registered in `cmd/root.go` in two Cobra groups: the `commands` group (start, stop, restart, login, logout, status, logs, setup, config, volume, update, docs, snapshot, reset, save, load) and the `tools` group of proxy commands (aws, terraform/tf, cdk, sam, az). Shared helpers: `cmd/root.go` (wiring, groups, `requireSubcommand`, `initConfig`), `cmd/help.go` (help template), `cmd/iac.go` (IaC command boundary), `cmd/extension.go` (extension dispatch).
+Commands are registered in `cmd/root.go` in two Cobra groups: the `commands` group (start, stop, restart, login, logout, status, logs, inspect, setup, config, volume, update, docs, snapshot, reset, save, load) and the `tools` group of proxy commands (aws, terraform/tf, cdk, sam, az). Shared helpers: `cmd/root.go` (wiring, groups, `requireSubcommand`, `initConfig`), `cmd/help.go` (help template), `cmd/iac.go` (IaC command boundary), `cmd/extension.go` (extension dispatch).
 
 ## Container runtime discovery
 
@@ -144,7 +145,7 @@ There is no `--offline` flag. Instead `container.Start` degrades gracefully when
 
 # Targeting an External Emulator (`--endpoint-url`)
 
-`--endpoint-url <url>` (a root persistent flag) lets `aws`, `az`, `terraform`/`tf`, `cdk`, `sam`, `snapshot save`/`load` (incl. the `lstk save`/`lstk load` aliases), `snapshot remove`, `snapshot list s3://...`, `reset`, and `status` target an emulator lstk did not start — docker compose, host-network mode, CI, a different machine, or a LocalStack cloud-hosted **ephemeral instance** — instead of discovering one via local Docker. `LSTK_ENDPOINT_URL` is the equivalent environment variable. Both `http://` and `https://` are accepted (any other scheme is rejected); the resolved scheme is preserved end-to-end all the way to whatever ultimately makes the request — the wrapped `aws`/`terraform`/`cdk`/`sam` tools, and the emulator API calls behind `snapshot`/`reset`/`status` — never normalized to `http`, which is what makes `https://` ephemeral instances work. 
+`--endpoint-url <url>` (a root persistent flag) lets `aws`, `az`, `terraform`/`tf`, `cdk`, `sam`, `snapshot save`/`load` (incl. the `lstk save`/`lstk load` aliases), `snapshot remove`, `snapshot list s3://...`, `reset`, `inspect` (not `--persist`), and `status` target an emulator lstk did not start — docker compose, host-network mode, CI, a different machine, or a LocalStack cloud-hosted **ephemeral instance** — instead of discovering one via local Docker. `LSTK_ENDPOINT_URL` is the equivalent environment variable. Both `http://` and `https://` are accepted (any other scheme is rejected); the resolved scheme is preserved end-to-end all the way to whatever ultimately makes the request — the wrapped `aws`/`terraform`/`cdk`/`sam` tools, and the emulator API calls behind `snapshot`/`reset`/`status` — never normalized to `http`, which is what makes `https://` ephemeral instances work. 
 
 `lstk logs`, `stop`, `restart`, `volume` (`path`/`clear`), `start`, and the bare `lstk` root command (which starts the emulator the same way `start` does) have no remote equivalent and reject *any* resolved endpoint source.
 

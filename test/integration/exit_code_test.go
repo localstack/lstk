@@ -29,6 +29,7 @@ func TestInvalidUsageExitsNonZero(t *testing.T) {
 		{"unknown setup subcommand", []string{"setup", "bogus"}},
 		{"unknown volume subcommand", []string{"volume", "bogus"}},
 		{"unknown snapshot subcommand", []string{"snapshot", "bogus"}},
+		{"unknown inspect subcommand", []string{"inspect", "bogus"}},
 		{"unknown completion shell", []string{"completion", "bogus"}},
 	}
 
@@ -51,7 +52,7 @@ func TestInvalidUsageExitsNonZero(t *testing.T) {
 func TestBareParentCommandExitsZero(t *testing.T) {
 	t.Parallel()
 
-	for _, parent := range []string{"config", "setup", "volume", "snapshot", "completion"} {
+	for _, parent := range []string{"config", "setup", "volume", "snapshot", "inspect", "completion"} {
 		parent := parent
 		t.Run(parent, func(t *testing.T) {
 			t.Parallel()

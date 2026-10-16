@@ -429,6 +429,7 @@ func TestEndpointURLWrongTypeErrorNamesEmulatorOnce(t *testing.T) {
 		want     string
 	}{
 		{"reset", snowflake.URL, []string{"reset", "--force"}, "reset is only supported for the AWS emulator, but the endpoint at %s is a LocalStack Snowflake Emulator"},
+		{"inspect", snowflake.URL, []string{"inspect", "enable"}, "App Inspector is only available for the AWS emulator, but the endpoint at %s is a LocalStack Snowflake Emulator"},
 		{"aws", snowflake.URL, []string{"aws", "s3", "ls"}, "lstk aws requires the AWS emulator, but the endpoint at %s is a LocalStack Snowflake Emulator"},
 		{"terraform", snowflake.URL, []string{"terraform", "plan"}, "lstk terraform requires the AWS emulator, but the endpoint at %s is a LocalStack Snowflake Emulator"},
 		{"sam", snowflake.URL, []string{"sam", "deploy"}, "lstk sam requires the AWS emulator, but the endpoint at %s is a LocalStack Snowflake Emulator"},
