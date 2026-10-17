@@ -1,3 +1,4 @@
+# Release-flow changes: update docs/RELEASING.md#release-workflows (diagram and prose).
 name: Create Release Tag
 
 on:
@@ -24,16 +25,61 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  resolve-ref:
+    name: Resolve release ref
+    # Root of the release graph: create-tag needs it, so one guard keeps a
+    # fork's dispatched run from tagging.
+    if: github.repository == 'localstack/lstk'
+    runs-on: ubuntu-latest
+    outputs:
+      sha: ${{ steps.resolve.outputs.sha }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ inputs.release_ref }}
+
+      # Pin the release candidate. create-tag checks out this exact commit
+      # after the approval wait, so the ref moving in the meantime is harmless.
+      - name: Resolve ref to commit
+        id: resolve
+        run: echo "sha=$(git rev-parse HEAD)" >> "${GITHUB_OUTPUT}"
+
+      # Runs before the gated create-tag job so reviewers see what to test
+      # while that job is still waiting for approval.
+      - name: Print Windows smoke test checklist
+        env:
+          REF: ${{ inputs.release_ref }}
+          SHA: ${{ steps.resolve.outputs.sha }}
+          BUMP: ${{ inputs.bump }}
+        run: |
+          {
+            echo "## Windows smoke test required"
+            echo
+            echo "\`Create next tag\` waits in the \`release\` environment until a reviewer approves."
+            echo "Approve only after the Windows smoke test in \`docs/RELEASING.md\` passed on this exact commit:"
+            echo
+            echo "- Ref: \`${REF}\`"
+            echo "- Commit: [\`${SHA}\`](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/commit/${SHA})"
+            echo "- Bump: \`${BUMP}\`"
+          } >> "${GITHUB_STEP_SUMMARY}"
+
   create-tag:
     name: Create next tag
     # Pushes a tag, which triggers the publishing workflows.
-    if: github.repository == 'localstack/lstk'
+    needs: resolve-ref
     runs-on: ubuntu-latest
+    # Waits for a required reviewer. Approve only after the Windows smoke test
+    # in docs/RELEASING.md passed on the commit shown in the run summary.
+    environment:
+      name: release
+      url: ${{ github.server_url }}/${{ github.repository }}/commit/${{ needs.resolve-ref.outputs.sha }}
     steps:
       - name: Checkout code # zizmor: ignore[artipacked] the tag push needs it; this job uploads no artifacts
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ inputs.release_ref }}
+          ref: ${{ needs.resolve-ref.outputs.sha }}
           fetch-depth: 0
           token: ${{ secrets.PRO_ACCESS_TOKEN }}
 
