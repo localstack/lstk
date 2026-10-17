@@ -17,7 +17,7 @@ import (
 const PublicCloudName = "AzureCloud"
 
 // StartInterception registers and activates the LocalStack custom cloud in the user's
-// global Azure CLI config (default ~/.azure — no AZURE_CONFIG_DIR override), so plain
+// global Azure CLI config (~/.azure, even when AZURE_CONFIG_DIR is set), so plain
 // `az` commands in any terminal target the LocalStack Azure emulator until
 // StopInterception is run. Unlike Setup, it does not touch the isolated `lstk az` config.
 // The caller is expected to have verified the Azure CLI is installed (see azPreflight).
@@ -29,8 +29,11 @@ func StartInterception(ctx context.Context, sink output.Sink, endpointURL string
 		return fmt.Errorf("LocalStack Azure emulator not reachable at %s — run 'lstk' to start it before running 'lstk az start-interception': %w", endpointURL, err)
 	}
 
-	// nil azEnv -> az uses the user's global ~/.azure, which is the whole point of interception.
-	if err := registerLocalStackCloud(ctx, sink, nil, endpointURL, false); err != nil {
+	azEnv, err := GlobalConfigEnv()
+	if err != nil {
+		return err
+	}
+	if err := registerLocalStackCloud(ctx, sink, azEnv, endpointURL, false); err != nil {
 		return err
 	}
 
@@ -65,7 +68,12 @@ func StopInterception(ctx context.Context, sink output.Sink, targetCloud string)
 		targetCloud = PublicCloudName
 	}
 
-	active, err := ActiveCloud(ctx, nil)
+	azEnv, err := GlobalConfigEnv()
+	if err != nil {
+		return err
+	}
+
+	active, err := ActiveCloud(ctx, azEnv)
 	if err != nil {
 		return fmt.Errorf("could not determine the active Azure cloud: %w", err)
 	}
@@ -77,7 +85,7 @@ func StopInterception(ctx context.Context, sink output.Sink, targetCloud string)
 		return nil
 	}
 
-	clouds, err := ListClouds(ctx, nil)
+	clouds, err := ListClouds(ctx, azEnv)
 	if err != nil {
 		return fmt.Errorf("could not list Azure clouds: %w", err)
 	}
@@ -85,11 +93,11 @@ func StopInterception(ctx context.Context, sink output.Sink, targetCloud string)
 		return fmt.Errorf("unknown Azure cloud '%s' — available clouds: %s", targetCloud, strings.Join(clouds, ", "))
 	}
 
-	if _, _, err := azurecli.Run(ctx, nil, "cloud", "set", "--name", targetCloud, "--only-show-errors"); err != nil {
+	if _, _, err := azurecli.Run(ctx, azEnv, "cloud", "set", "--name", targetCloud, "--only-show-errors"); err != nil {
 		return fmt.Errorf("could not activate '%s' cloud: %w", targetCloud, err)
 	}
 	// Restore the public-AAD authority validation that interception disabled.
-	if _, _, err := azurecli.Run(ctx, nil, "config", "set", "core.instance_discovery=true", "--only-show-errors"); err != nil {
+	if _, _, err := azurecli.Run(ctx, azEnv, "config", "set", "core.instance_discovery=true", "--only-show-errors"); err != nil {
 		return fmt.Errorf("could not configure Azure CLI: %w", err)
 	}
 

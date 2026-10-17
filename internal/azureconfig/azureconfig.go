@@ -70,6 +70,18 @@ func Env(azureConfigDir string) []string {
 	return []string{"AZURE_CONFIG_DIR=" + azureConfigDir}
 }
 
+// GlobalConfigEnv points az at ~/.azure, overriding an inherited AZURE_CONFIG_DIR.
+// Interception's contract is that global directory. A nil environment would let az
+// follow AZURE_CONFIG_DIR (direnv, CI, Azure DevOps) and then report that every
+// plain az command was switched.
+func GlobalConfigEnv() ([]string, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return nil, fmt.Errorf("could not resolve the global Azure CLI config: %w", err)
+	}
+	return Env(filepath.Join(home, ".azure")), nil
+}
+
 func IsSetUp(azureConfigDir string) bool {
 	_, err := os.Stat(filepath.Join(azureConfigDir, setupMarkerFile))
 	return err == nil
@@ -211,8 +223,9 @@ func Setup(ctx context.Context, sink output.Sink, endpointURL, azureConfigDir st
 
 // registerLocalStackCloud registers (or updates) the LocalStack custom cloud in the
 // Azure CLI config selected by azEnv, activates it, disables instance discovery, and
-// logs in with the dummy service principal. A nil azEnv targets the user's global
-// ~/.azure; a non-nil azEnv (AZURE_CONFIG_DIR=...) targets an isolated dir.
+// logs in with the dummy service principal. A nil azEnv inherits the process
+// environment, including AZURE_CONFIG_DIR. Interception passes GlobalConfigEnv so
+// the edit lands in ~/.azure; Setup passes Env(isolatedDir).
 //
 // setLstkPrefs additionally disables telemetry and the survey link. That is fine for
 // the isolated dir but must not be forced on the user's global config, so interception

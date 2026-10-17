@@ -42,6 +42,16 @@ func TestEnv(t *testing.T) {
 	assert.Equal(t, []string{"AZURE_CONFIG_DIR=/cfg/azure"}, Env("/cfg/azure"))
 }
 
+func TestGlobalConfigEnv(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+
+	got, err := GlobalConfigEnv()
+	require.NoError(t, err)
+	assert.Equal(t, []string{"AZURE_CONFIG_DIR=" + filepath.Join(home, ".azure")}, got)
+}
+
 func TestIsHealthyOK(t *testing.T) {
 	t.Parallel()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

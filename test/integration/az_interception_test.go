@@ -70,6 +70,36 @@ func TestAzStopInterceptionNoOpWhenNotIntercepting(t *testing.T) {
 	assert.Equal(t, "AzureCloud", active)
 }
 
+// AZURE_CONFIG_DIR must not redirect interception. The command's contract is the
+// global ~/.azure: a project-local or CI config dir would otherwise be what gets
+// switched, while the success text still says every plain `az` now targets LocalStack.
+func TestAzStopInterceptionIgnoresAzureConfigDir(t *testing.T) {
+	t.Parallel()
+	home := t.TempDir()
+	other := t.TempDir()
+	record := filepath.Join(t.TempDir(), "az-record")
+	fakeDir := writeFakeTool(t, "az", fakeToolConfig{
+		Cases: []fakeToolCase{
+			{Args: []string{"cloud", "show"}, Stdout: []string{"LocalStack"}},
+			{Args: []string{"cloud", "list"}, Stdout: []string{"LocalStack", "AzureCloud"}},
+		},
+		RecordFile:    record,
+		RecordContent: "{env:AZURE_CONFIG_DIR}",
+	})
+
+	stdout, stderr, err := runLstk(t, testContext(t), azureWorkDir(t),
+		env.WithHome(home).With("PATH", fakeDir).With("AZURE_CONFIG_DIR", other),
+		"az", "stop-interception",
+	)
+	require.NoError(t, err, "stdout=%s stderr=%s", stdout, stderr)
+	assert.Contains(t, stdout, "Interception stopped")
+
+	got, readErr := os.ReadFile(record)
+	require.NoError(t, readErr)
+	assert.Equal(t, filepath.Join(home, ".azure"), string(got),
+		"interception must edit the global ~/.azure, not AZURE_CONFIG_DIR")
+}
+
 func TestAzStopInterceptionFailsWhenAzureCLINotInstalled(t *testing.T) {
 	t.Parallel()
 	workDir := azureWorkDir(t)
