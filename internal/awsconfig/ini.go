@@ -9,8 +9,16 @@ import (
 	"gopkg.in/ini.v1"
 )
 
+// loadOptions marks servicesSectionName unparseable so its indented content
+// round-trips through Load unchanged instead of being flattened into key=value pairs.
+var loadOptions = ini.LoadOptions{UnparseableSections: []string{servicesSectionName}}
+
+func loadINI(path string) (*ini.File, error) {
+	return ini.LoadSources(loadOptions, path)
+}
+
 func sectionExists(path, sectionName string) (bool, error) {
-	f, err := ini.Load(path)
+	f, err := loadINI(path)
 	if errors.Is(err, os.ErrNotExist) {
 		return false, nil
 	}
@@ -25,20 +33,28 @@ func sectionExists(path, sectionName string) (bool, error) {
 	return false, nil
 }
 
-func upsertSection(path, sectionName string, keys map[string]string) error {
+func openOrCreate(path string) (*ini.File, error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
-		return err
+		return nil, err
 	}
 
-	var f *ini.File
 	if _, err := os.Stat(path); errors.Is(err, os.ErrNotExist) {
-		f = ini.Empty()
-	} else {
-		var err error
-		f, err = ini.Load(path)
-		if err != nil {
-			return err
-		}
+		return ini.Empty(), nil
+	}
+	return loadINI(path)
+}
+
+func saveAndChmod(f *ini.File, path string) error {
+	if err := f.SaveTo(path); err != nil {
+		return err
+	}
+	return os.Chmod(path, 0600)
+}
+
+func upsertSection(path, sectionName string, keys map[string]string) error {
+	f, err := openOrCreate(path)
+	if err != nil {
+		return err
 	}
 
 	section := f.Section(sectionName) // gets or creates the section
@@ -46,8 +62,21 @@ func upsertSection(path, sectionName string, keys map[string]string) error {
 		section.Key(k).SetValue(v)
 	}
 
-	if err := f.SaveTo(path); err != nil {
+	return saveAndChmod(f, path)
+}
+
+// upsertRawSection writes a section's raw text instead of key=value pairs.
+// Needed for the services block, since upsertSection would quote a multi-line
+// value instead of writing it as-is.
+func upsertRawSection(path, sectionName, body string) error {
+	f, err := openOrCreate(path)
+	if err != nil {
 		return err
 	}
-	return os.Chmod(path, 0600)
+
+	if _, err := f.NewRawSection(sectionName, body); err != nil {
+		return err
+	}
+
+	return saveAndChmod(f, path)
 }
