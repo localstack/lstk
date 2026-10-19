@@ -4,8 +4,8 @@
 # The private extensions repository is mocked with a fake `gh` on PATH, so the
 # suite never needs the real repo or a credential. Fixtures reproduce what that
 # repo actually publishes: one archive per platform holding the multi-call
-# binary, the descriptions file and lstk-<name> alias entries, plus a
-# checksums.txt over the archives. Every assertion is about what the script
+# binary, the descriptions file, the third-party notices and lstk-<name> alias
+# entries, plus a checksums.txt over the archives. Every assertion is about what the script
 # leaves on disk and what it prints — the two things the release consumes.
 set -euo pipefail
 
@@ -41,20 +41,28 @@ write_fake_bundle() {
 }
 
 # Builds a fixture release for the given tag: per platform, a tar.gz (zip for
-# Windows) containing bundled-extensions[.exe] and lstk-extensions.toml, plus a
-# checksums.txt over the archives. ALIASES adds lstk-<name> entries the way the
-# private repo used to emit them (a symlink in the tarballs, a copy in the
-# zips), so the tests can prove they are ignored. TOML_BODY overrides the
-# descriptions file for every platform.
+# Windows) containing bundled-extensions[.exe], lstk-extensions.toml,
+# LICENSE.txt and THIRD_PARTY_NOTICES.txt, plus a checksums.txt over the
+# archives. ALIASES adds
+# lstk-<name> entries the way the private repo used to emit them (a symlink in
+# the tarballs, a copy in the zips), so the tests can prove they are ignored.
+# TOML_BODY, LICENSE_BODY and NOTICES_BODY override those files for every
+# platform.
 make_release_assets() {
   local dir="$1" tag="${2:-v1.4.0}"
   local toml_body="${TOML_BODY-doctor = \"Fake doctor description\"
+}"
+  local license_body="${LICENSE_BODY-LocalStack Bundled Extensions License (fake)
+}"
+  local notices_body="${NOTICES_BODY-THIRD-PARTY SOFTWARE NOTICES (fake)
 }"
   mkdir -p "${dir}"
   local platform work
   for platform in ${PLATFORMS}; do
     work="$(mktemp -d)"
     printf '%s' "${toml_body}" > "${work}/lstk-extensions.toml"
+    printf '%s' "${license_body}" > "${work}/LICENSE.txt"
+    printf '%s' "${notices_body}" > "${work}/THIRD_PARTY_NOTICES.txt"
     case "${platform}" in
       windows_*)
         write_fake_bundle "${work}/bundled-extensions.exe" "${platform}"
@@ -158,6 +166,12 @@ assert_file_exists "${BUNDLED}/lstk-extensions.toml"
 # The stub toml must describe at least one command, or the descriptions gate
 # (and lstk itself) would reject the pairing.
 assert_file_contains "${BUNDLED}/lstk-extensions.toml" "doctor"
+# The packaging step requires the bundle's documents, so the stub writes a
+# clearly labelled placeholder for each.
+assert_file_exists "${BUNDLED}/bundled-extensions.THIRD_PARTY_NOTICES.txt"
+assert_file_contains "${BUNDLED}/bundled-extensions.THIRD_PARTY_NOTICES.txt" "placeholder"
+assert_file_exists "${BUNDLED}/bundled-extensions.LICENSE.txt"
+assert_file_contains "${BUNDLED}/bundled-extensions.LICENSE.txt" "placeholder"
 
 begin_test "--stub prints an unmissable never-release banner"
 setup_workspace
@@ -233,6 +247,65 @@ assert_file_contains "${BUNDLED}/lstk-extensions.toml" "doctor"
 assert_file_absent "${BUNDLED}/linux_amd64/lstk-extensions.toml"
 assert_file_absent "${BUNDLED}/linux_amd64/checksums.txt"
 
+begin_test "stages the bundle's third-party notices once, under the bundle-prefixed name"
+setup_workspace
+run_script "${FETCH}"
+assert_ok
+assert_file_exists "${BUNDLED}/bundled-extensions.THIRD_PARTY_NOTICES.txt"
+assert_file_contains "${BUNDLED}/bundled-extensions.THIRD_PARTY_NOTICES.txt" "THIRD-PARTY SOFTWARE NOTICES (fake)"
+# The original name would be mistaken for lstk's own notices in a package.
+assert_file_absent "${BUNDLED}/THIRD_PARTY_NOTICES.txt"
+assert_file_absent "${BUNDLED}/linux_amd64/THIRD_PARTY_NOTICES.txt"
+
+begin_test "stages the bundle's proprietary licence once, under the bundle-prefixed name"
+setup_workspace
+run_script "${FETCH}"
+assert_ok
+assert_file_contains "${BUNDLED}/bundled-extensions.LICENSE.txt" "LocalStack Bundled Extensions License (fake)"
+# A bare LICENSE.txt next to lstk would read as the core's licence.
+assert_file_absent "${BUNDLED}/LICENSE.txt"
+assert_file_absent "${BUNDLED}/linux_amd64/LICENSE.txt"
+
+begin_test "an archive without the proprietary licence aborts the fetch"
+setup_workspace
+work="$(mktemp -d)"
+write_fake_bundle "${work}/bundled-extensions" linux_arm64
+printf 'doctor = "Fake doctor description"\n' > "${work}/lstk-extensions.toml"
+printf 'THIRD-PARTY SOFTWARE NOTICES (fake)\n' > "${work}/THIRD_PARTY_NOTICES.txt"
+( cd "${work}" && tar czf "${ASSETS}/bundled-extensions_v1.4.0_linux_arm64.tar.gz" . )
+refresh_manifest "${ASSETS}"
+run_script "${FETCH}"
+assert_fails
+assert_output_contains "bundled-extensions_v1.4.0_linux_arm64.tar.gz"
+assert_output_contains "contains no LICENSE.txt"
+
+begin_test "an archive without the third-party notices aborts the fetch"
+setup_workspace
+work="$(mktemp -d)"
+write_fake_bundle "${work}/bundled-extensions" linux_arm64
+printf 'doctor = "Fake doctor description"\n' > "${work}/lstk-extensions.toml"
+printf 'LocalStack Bundled Extensions License (fake)\n' > "${work}/LICENSE.txt"
+( cd "${work}" && tar czf "${ASSETS}/bundled-extensions_v1.4.0_linux_arm64.tar.gz" . )
+refresh_manifest "${ASSETS}"
+run_script "${FETCH}"
+assert_fails
+assert_output_contains "bundled-extensions_v1.4.0_linux_arm64.tar.gz"
+assert_output_contains "contains no THIRD_PARTY_NOTICES.txt"
+
+begin_test "third-party notices differing between platforms abort the fetch"
+setup_workspace
+work="$(mktemp -d)"
+write_fake_bundle "${work}/bundled-extensions" darwin_amd64
+printf 'doctor = "Fake doctor description"\n' > "${work}/lstk-extensions.toml"
+echo "a different notices file" > "${work}/THIRD_PARTY_NOTICES.txt"
+printf 'LocalStack Bundled Extensions License (fake)\n' > "${work}/LICENSE.txt"
+( cd "${work}" && tar czf "${ASSETS}/bundled-extensions_v1.4.0_darwin_amd64.tar.gz" . )
+refresh_manifest "${ASSETS}"
+run_script "${FETCH}"
+assert_fails
+assert_output_contains "THIRD_PARTY_NOTICES.txt"
+assert_output_contains "differs"
+
 begin_test "the archive's alias entries are never staged, on any platform"
 setup_workspace
 run_script "${FETCH}"
@@ -289,6 +362,8 @@ begin_test "an archive without the bundled binary aborts the fetch"
 setup_workspace
 work="$(mktemp -d)"
 printf 'doctor = "x"\n' > "${work}/lstk-extensions.toml"
+echo notices > "${work}/THIRD_PARTY_NOTICES.txt"
+echo terms > "${work}/LICENSE.txt"
 ( cd "${work}" && tar czf "${ASSETS}/bundled-extensions_v1.4.0_linux_amd64.tar.gz" . )
 refresh_manifest "${ASSETS}"
 run_script "${FETCH}"
@@ -300,6 +375,8 @@ begin_test "an archive without the descriptions file aborts the fetch"
 setup_workspace
 work="$(mktemp -d)"
 echo "bin" > "${work}/bundled-extensions"
+echo notices > "${work}/THIRD_PARTY_NOTICES.txt"
+echo terms > "${work}/LICENSE.txt"
 ( cd "${work}" && tar czf "${ASSETS}/bundled-extensions_v1.4.0_darwin_arm64.tar.gz" . )
 refresh_manifest "${ASSETS}"
 run_script "${FETCH}"
@@ -310,6 +387,8 @@ begin_test "descriptions differing between platforms abort the fetch"
 setup_workspace
 work="$(mktemp -d)"
 echo "bin" > "${work}/bundled-extensions"
+echo notices > "${work}/THIRD_PARTY_NOTICES.txt"
+echo terms > "${work}/LICENSE.txt"
 printf 'deploy = "a different command list"\n' > "${work}/lstk-extensions.toml"
 ( cd "${work}" && tar czf "${ASSETS}/bundled-extensions_v1.4.0_linux_arm64.tar.gz" . )
 refresh_manifest "${ASSETS}"
@@ -380,6 +459,8 @@ setup_workspace
 work="$(mktemp -d)"
 write_fake_bundle "${work}/bundled-extensions" darwin_amd64
 printf 'doctor = "Fake doctor description"\n' > "${work}/lstk-extensions.toml"
+printf 'THIRD-PARTY SOFTWARE NOTICES (fake)\n' > "${work}/THIRD_PARTY_NOTICES.txt"
+printf 'LocalStack Bundled Extensions License (fake)\n' > "${work}/LICENSE.txt"
 ( cd "${work}" && tar czf "${ASSETS}/bundled-extensions_v1.4.0_darwin_amd64.tar.gz" . )
 refresh_manifest "${ASSETS}"
 run_script "${FETCH}"
