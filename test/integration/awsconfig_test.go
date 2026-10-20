@@ -239,6 +239,81 @@ func TestSetupAWSDoesNotCreateAWSProfileWhenDeclined(t *testing.T) {
 	assert.NotContains(t, out, "Created LocalStack profile in ~/.aws/config")
 }
 
+func TestSetupAWSNonInteractivePreservesNestedAWSConfig(t *testing.T) {
+	t.Parallel()
+	baseEnv, tmpHome := awsConfigEnv(t)
+
+	// An existing AWS config with nested s3 settings and a services endpoint.
+	// Creating the localstack profile rewrites this file; those blocks have to
+	// stay nested or the AWS CLI stops applying them.
+	awsDir := filepath.Join(tmpHome, ".aws")
+	require.NoError(t, os.MkdirAll(awsDir, 0700))
+	require.NoError(t, os.WriteFile(filepath.Join(awsDir, "config"), []byte(strings.Join([]string{
+		"[default]",
+		"region = us-east-1",
+		"s3 =",
+		"    max_concurrent_requests = 20",
+		"",
+		"[profile dev]",
+		"region = us-west-2",
+		"services = dev",
+		"",
+		"[services dev]",
+		"s3 =",
+		"    endpoint_url = https://s3.private.example",
+		"    addressing_style = path",
+		"",
+	}, "\n")), 0600))
+
+	_, _, err := runLstk(t, testContext(t), "", baseEnv, "setup", "aws")
+	requireExitCode(t, 0, err)
+
+	configContent, err := os.ReadFile(filepath.Join(awsDir, "config"))
+	require.NoError(t, err)
+	normalized := strings.ReplaceAll(string(configContent), "\r\n", "\n")
+	assertNestedAWSBlock(t, normalized, "default", "max_concurrent_requests = 20")
+	assertNestedAWSBlock(t, normalized, "services dev", "endpoint_url = https://s3.private.example")
+	assertNestedAWSBlock(t, normalized, "services dev", "addressing_style = path")
+	assertNestedAWSBlock(t, normalized, "services localstack", "endpoint_url = http")
+}
+
+// assertNestedAWSBlock checks that want is indented under an `s3 =` line in section.
+func assertNestedAWSBlock(t *testing.T, text, section, want string) {
+	t.Helper()
+	marker := "[" + section + "]"
+	idx := strings.Index(text, marker)
+	require.NotEqualf(t, -1, idx, "missing section %q\n%s", section, text)
+	rest := text[idx+len(marker):]
+	if next := strings.Index(rest, "\n["); next >= 0 {
+		rest = rest[:next]
+	}
+	lines := strings.Split(rest, "\n")
+	parentAt := -1
+	for i, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "s3") && (trimmed == "s3" || strings.HasPrefix(trimmed, "s3 ") || strings.HasPrefix(trimmed, "s3=")) {
+			if strings.HasPrefix(line, " ") || strings.HasPrefix(line, "\t") {
+				continue
+			}
+			parentAt = i
+			break
+		}
+	}
+	require.NotEqualf(t, -1, parentAt, "section %q missing s3 =\n%s", section, text)
+	for _, line := range lines[parentAt+1:] {
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		if !strings.HasPrefix(line, " ") && !strings.HasPrefix(line, "\t") {
+			break
+		}
+		if strings.Contains(strings.TrimSpace(line), want) {
+			return
+		}
+	}
+	t.Fatalf("section %q: %q is not nested under s3\n%s", section, want, text)
+}
+
 func TestSetupAWSNonInteractiveCreatesProfile(t *testing.T) {
 	t.Parallel()
 	baseEnv, tmpHome := awsConfigEnv(t)

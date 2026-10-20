@@ -192,6 +192,108 @@ func TestWriteConfigProfileWritesS3ServicesOverride(t *testing.T) {
 	}
 }
 
+// A profile update rewrites the whole ~/.aws/config. Nested blocks in other
+// sections — a profile's s3 settings, or another [services …] endpoint — must
+// stay indented, or the AWS CLI stops applying them.
+func TestWriteConfigProfilePreservesForeignNestedSections(t *testing.T) {
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, ".aws", "config")
+	writeFile(t, configPath, strings.Join([]string{
+		"[default]",
+		"region = us-east-1",
+		"s3 =",
+		"    max_concurrent_requests = 20",
+		"",
+		"[profile dev]",
+		"region = us-west-2",
+		"services = dev",
+		"",
+		"[services dev]",
+		"s3 =",
+		"    endpoint_url = https://s3.private.example",
+		"    addressing_style = path",
+		"",
+		"[profile localstack]",
+		"region = us-east-1",
+		"output = json",
+		"endpoint_url = http://localhost.localstack.cloud:4566",
+		"",
+	}, "\n"))
+
+	if err := writeConfigProfile(configPath, "localhost.localstack.cloud:4566"); err != nil {
+		t.Fatal(err)
+	}
+
+	raw, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := strings.ReplaceAll(string(raw), "\r\n", "\n")
+	assertNested(t, text, "default", "s3", "max_concurrent_requests = 20")
+	assertNested(t, text, "services dev", "s3",
+		"endpoint_url = https://s3.private.example",
+		"addressing_style = path",
+	)
+	assertNested(t, text, "services localstack", "s3",
+		"endpoint_url = http://s3.localhost.localstack.cloud:4566",
+	)
+
+	needed, err := configNeedsWrite(configPath, "localhost.localstack.cloud:4566")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if needed {
+		t.Error("config should not need a write after preserving foreign sections")
+	}
+}
+
+// assertNested reports when child lines are not indented under parent in section.
+func assertNested(t *testing.T, text, section, parent string, children ...string) {
+	t.Helper()
+	marker := "[" + section + "]"
+	idx := strings.Index(text, marker)
+	if idx < 0 {
+		t.Fatalf("missing section %q\n%s", section, text)
+	}
+	rest := text[idx+len(marker):]
+	if next := strings.Index(rest, "\n["); next >= 0 {
+		rest = rest[:next]
+	}
+	lines := strings.Split(rest, "\n")
+	parentAt := -1
+	for i, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == parent || strings.HasPrefix(trimmed, parent+" ") || strings.HasPrefix(trimmed, parent+"=") {
+			if strings.HasPrefix(line, " ") || strings.HasPrefix(line, "\t") {
+				continue
+			}
+			parentAt = i
+			break
+		}
+	}
+	if parentAt < 0 {
+		t.Fatalf("section %q missing %q\n%s", section, parent, text)
+	}
+	for _, child := range children {
+		found := false
+		for _, line := range lines[parentAt+1:] {
+			if strings.TrimSpace(line) == "" {
+				continue
+			}
+			if !strings.HasPrefix(line, " ") && !strings.HasPrefix(line, "\t") {
+				break
+			}
+			if strings.TrimSpace(line) == child || strings.HasPrefix(strings.TrimSpace(line), child) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("section %q: %q is not nested under %s\n%s", section, child, parent, text)
+		}
+	}
+}
+
 func TestCheckProfileStatus(t *testing.T) {
 	tests := []struct {
 		name          string

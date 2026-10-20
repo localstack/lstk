@@ -9,9 +9,14 @@ import (
 	"gopkg.in/ini.v1"
 )
 
-// loadOptions marks servicesSectionName unparseable so its indented content
-// round-trips through Load unchanged instead of being flattened into key=value pairs.
-var loadOptions = ini.LoadOptions{UnparseableSections: []string{servicesSectionName}}
+// loadOptions marks the LocalStack services block unparseable so its indented
+// S3 endpoint round-trips as raw text. AllowNestedValues is required for every
+// other section: SaveTo rewrites the whole file, and without it nested `s3 =`
+// blocks are flattened into sibling keys the AWS CLI no longer applies.
+var loadOptions = ini.LoadOptions{
+	UnparseableSections: []string{servicesSectionName},
+	AllowNestedValues:   true,
+}
 
 func loadINI(path string) (*ini.File, error) {
 	return ini.LoadSources(loadOptions, path)
