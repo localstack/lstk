@@ -292,17 +292,17 @@ func (mr *MockRuntimeMockRecorder) Start(ctx, config any) *gomock.Call {
 }
 
 // Stop mocks base method.
-func (m *MockRuntime) Stop(ctx context.Context, containerName string) error {
+func (m *MockRuntime) Stop(ctx context.Context, containerName string, timeout *int) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Stop", ctx, containerName)
+	ret := m.ctrl.Call(m, "Stop", ctx, containerName, timeout)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // Stop indicates an expected call of Stop.
-func (mr *MockRuntimeMockRecorder) Stop(ctx, containerName any) *gomock.Call {
+func (mr *MockRuntimeMockRecorder) Stop(ctx, containerName, timeout any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Stop", reflect.TypeOf((*MockRuntime)(nil).Stop), ctx, containerName)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Stop", reflect.TypeOf((*MockRuntime)(nil).Stop), ctx, containerName, timeout)
 }
 
 // StreamLogs mocks base method.

@@ -38,7 +38,7 @@ func TestExternalRuntime(t *testing.T) {
 		_, err = rt.ContainerEnv(ctx, "localstack-aws")
 		assert.ErrorIs(t, err, ErrExternalRuntimeUnsupported)
 
-		err = rt.Stop(ctx, "localstack-aws")
+		err = rt.Stop(ctx, "localstack-aws", nil)
 		assert.ErrorIs(t, err, ErrExternalRuntimeUnsupported)
 
 		_, _, err = rt.Start(ctx, ContainerConfig{})

@@ -22,7 +22,6 @@ func Stop(ctx context.Context, rt runtime.Runtime, sink output.Sink, containers 
 		return output.NewSilentError(fmt.Errorf("runtime not healthy: %w", err))
 	}
 
-	const stopTimeout = 30 * time.Second
 	for _, c := range containers {
 		name, err := ResolveRunningContainerName(ctx, rt, c)
 		if err != nil {
@@ -41,9 +40,11 @@ func Stop(ctx context.Context, rt runtime.Runtime, sink output.Sink, containers 
 
 		stopStart := time.Now()
 
+		stopTimeout := containerStopTimeout(ctx, rt, name)
+
 		sink.Emit(output.SpinnerStart("Stopping LocalStack..."))
-		stopCtx, stopCancel := context.WithTimeout(ctx, stopTimeout)
-		if err := rt.Stop(stopCtx, name); err != nil {
+		stopCtx, stopCancel := context.WithTimeout(ctx, stopWait(stopTimeout))
+		if err := rt.Stop(stopCtx, name, stopTimeout); err != nil {
 			stopCancel()
 			sink.Emit(output.SpinnerStop())
 			wrapped := fmt.Errorf("failed to stop LocalStack: %w", err)
