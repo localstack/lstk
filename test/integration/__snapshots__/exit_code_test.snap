@@ -80,6 +80,29 @@ Global Options:
       --non-interactive       Disable interactive mode
 ---
 
+[TestBareParentCommandExitsZero_inspect_1]
+Turn App Inspector on or off for the AWS emulator. App Inspector records the
+operations your application sends to the emulator, with their payloads, the
+services they connect, and IAM permission results. View them in the LocalStack
+Web Application or the LocalStack Toolkit for VS Code.
+
+Usage: lstk inspect [flags]
+
+Commands:
+  disable     Disable App Inspector
+  enable      Enable App Inspector
+  status      Show whether App Inspector is enabled
+
+Options:
+  -h, --help   help for inspect
+
+Global Options:
+      --config string         Path to config file
+      --endpoint-url string   Target an existing, externally-managed emulator at this URL
+      --json                  Output in JSON format (only supported by some commands)
+      --non-interactive       Disable interactive mode
+---
+
 [TestBareParentCommandExitsZero_setup_1]
 Set up emulator CLI integration for AWS or Azure.
 
@@ -164,6 +187,10 @@ Error: unknown flag: --bogus-flag-xyz
 
 [TestInvalidUsageExitsNonZero_unknown_flag_on_start_1]
 Error: unknown flag: --bogus-flag-xyz
+---
+
+[TestInvalidUsageExitsNonZero_unknown_inspect_subcommand_1]
+Error: unknown command "bogus" for "lstk inspect"
 ---
 
 [TestInvalidUsageExitsNonZero_unknown_setup_subcommand_1]

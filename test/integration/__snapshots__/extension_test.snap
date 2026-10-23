@@ -10,6 +10,7 @@ Commands:
   completion  Set up tab completion for your shell
   config      Manage configuration
   help        Help about any command
+  inspect     Turn App Inspector on or off
   load        Load a snapshot into the running emulator
   login       Manage login
   logout      Remove stored authentication credentials
@@ -71,6 +72,7 @@ Commands:
   completion  Set up tab completion for your shell
   config      Manage configuration
   help        Help about any command
+  inspect     Turn App Inspector on or off
   load        Load a snapshot into the running emulator
   login       Manage login
   logout      Remove stored authentication credentials
@@ -121,6 +123,7 @@ Commands:
   completion  Set up tab completion for your shell
   config      Manage configuration
   help        Help about any command
+  inspect     Turn App Inspector on or off
   load        Load a snapshot into the running emulator
   login       Manage login
   logout      Remove stored authentication credentials
