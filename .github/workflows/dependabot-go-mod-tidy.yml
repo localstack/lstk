@@ -1,10 +1,8 @@
 name: Dependabot Go Mod Tidy
 
-# test/integration replaces github.com/localstack/lstk with the root module, so
-# a Dependabot bump of the root go.mod can leave test/integration/go.mod untidy
-# and fail the integration tests with "updates to go.mod needed". Dependabot
-# updates each directory on its own, so tidy the integration module here and
-# push the result back to the Dependabot branch.
+# Dependabot bumps the root go.mod without tidying test/integration, which
+# replaces the root module and then fails with "updates to go.mod needed".
+# Tidy it and push the fix to the Dependabot branch.
 
 on:
   pull_request:
@@ -12,21 +10,14 @@ on:
       - go.mod
       - go.sum
 
-# The push uses PRO_ACCESS_TOKEN, which must exist as a Dependabot secret:
-# Dependabot-triggered runs cannot read Actions secrets, and a push made with
-# GITHUB_TOKEN would not trigger CI on the new commit.
+# Pushes with PRO_ACCESS_TOKEN, which must be a Dependabot secret: Dependabot
+# runs can't read Actions secrets, and GITHUB_TOKEN pushes don't trigger CI.
 permissions: {}
-
-concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
-  cancel-in-progress: true
 
 jobs:
   tidy:
     name: Tidy integration module
-    if: >-
-      github.event.pull_request.user.login == 'dependabot[bot]' &&
-      github.event.pull_request.head.repo.full_name == github.repository
+    if: github.event.pull_request.user.login == 'dependabot[bot]' && github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -42,24 +33,15 @@ jobs:
           go-version-file: test/integration/go.mod
           cache: false
 
-      - name: Tidy integration module
+      - name: Tidy and push
         working-directory: test/integration
-        run: go mod tidy
-
-      - name: Push changes
         env:
           PUSH_TOKEN: ${{ secrets.PRO_ACCESS_TOKEN }}
           HEAD_REF: ${{ github.event.pull_request.head.ref }}
         run: |
-          if git diff --quiet -- test/integration; then
-            echo "test/integration is already tidy"
-            exit 0
-          fi
-          if [ -z "$PUSH_TOKEN" ]; then
-            echo "::error::test/integration needs 'go mod tidy', but PRO_ACCESS_TOKEN is not set as a Dependabot secret"
-            exit 1
-          fi
-          git config user.name "LocalStack Bot"
-          git config user.email "localstack-bot@users.noreply.github.com"
-          git commit -m "chore(deps): go mod tidy test/integration" -- test/integration/go.mod test/integration/go.sum
+          go mod tidy
+          git diff --quiet && exit 0
+          : "${PUSH_TOKEN:?PRO_ACCESS_TOKEN is not set as a Dependabot secret}"
+          git -c user.name="LocalStack Bot" -c user.email="localstack-bot@users.noreply.github.com" \
+            commit -qam "chore(deps): go mod tidy test/integration"
           git push "https://x-access-token:${PUSH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "HEAD:refs/heads/${HEAD_REF}"
