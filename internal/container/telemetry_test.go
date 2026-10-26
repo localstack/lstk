@@ -41,7 +41,9 @@ func TestStop_EmitsLifecycleStopEvent(t *testing.T) {
 	mockRT := runtime.NewMockRuntime(ctrl)
 	mockRT.EXPECT().IsHealthy(gomock.Any()).Return(nil)
 	mockRT.EXPECT().IsRunning(gomock.Any(), "localstack-aws").Return(true, nil)
-	mockRT.EXPECT().Stop(gomock.Any(), "localstack-aws").Return(nil)
+	mockRT.EXPECT().InspectBrief(gomock.Any(), "localstack-aws").Return(runtime.ContainerBrief{Exists: true, Running: true}, nil)
+	mockRT.EXPECT().ContainerEnv(gomock.Any(), "localstack-aws").Return(nil, nil)
+	mockRT.EXPECT().Stop(gomock.Any(), "localstack-aws", gomock.Any()).Return(nil)
 
 	tel, ch := newCapturingTelClient(t)
 

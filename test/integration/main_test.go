@@ -297,30 +297,41 @@ func startExternalContainer(t *testing.T, ctx context.Context, imgName, name, ho
 func commitNeverHealthyImage(t *testing.T, ctx context.Context) string {
 	t.Helper()
 
+	const imageRef = "lstk-never-healthy:test"
+	commitTestImage(t, ctx, imageRef, "lstk-never-healthy-src", `CMD ["sleep", "infinity"]`)
+	return imageRef
+}
+
+// commitTestImage commits a local-only image named imageRef from testImage, with
+// the given Dockerfile changes, through a source container named sourceName.
+// The image and its source container are removed on test cleanup.
+func commitTestImage(t *testing.T, ctx context.Context, imageRef, sourceName string, changes ...string) {
+	t.Helper()
+
 	reader, err := dockerClient.ImagePull(ctx, testImage, client.ImagePullOptions{})
 	require.NoError(t, err, "failed to pull test image")
 	_, _ = io.Copy(io.Discard, reader)
 	_ = reader.Close()
 
+	// A run that was killed may have left the source container behind.
+	_, _ = dockerClient.ContainerRemove(ctx, sourceName, client.ContainerRemoveOptions{Force: true})
 	resp, err := dockerClient.ContainerCreate(ctx, client.ContainerCreateOptions{
 		Config: &container.Config{Image: testImage},
-		Name:   "lstk-never-healthy-src",
+		Name:   sourceName,
 	})
 	require.NoError(t, err, "failed to create source container")
 	t.Cleanup(func() {
 		_, _ = dockerClient.ContainerRemove(context.Background(), resp.ID, client.ContainerRemoveOptions{Force: true})
 	})
 
-	const imageRef = "lstk-never-healthy:test"
 	_, err = dockerClient.ContainerCommit(ctx, resp.ID, client.ContainerCommitOptions{
 		Reference: imageRef,
-		Changes:   []string{`CMD ["sleep", "infinity"]`},
+		Changes:   changes,
 	})
-	require.NoError(t, err, "failed to commit never-healthy image")
+	require.NoError(t, err, "failed to commit image %s", imageRef)
 	t.Cleanup(func() {
 		_, _ = dockerClient.ImageRemove(context.Background(), imageRef, client.ImageRemoveOptions{Force: true})
 	})
-	return imageRef
 }
 
 func startTestSnowflakeContainer(t *testing.T, ctx context.Context) {

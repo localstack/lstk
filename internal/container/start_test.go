@@ -670,6 +670,7 @@ func TestTryPrePullLicenseValidation_ChecksWhenImageMissing(t *testing.T) {
 func TestStartContainers_SnowflakeLicenseError(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	mockRT := runtime.NewMockRuntime(ctrl)
+	mockRT.EXPECT().ImageEnv(gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
 
 	c := runtime.ContainerConfig{
 		Image:         "localstack/snowflake:latest",
@@ -682,7 +683,7 @@ func TestStartContainers_SnowflakeLicenseError(t *testing.T) {
 	}
 	const containerID = "abc123"
 	licenseLog := "⚠️ The Snowflake emulator is currently not covered by your license. ❄️"
-	mockRT.EXPECT().Start(gomock.Any(), c).Return(containerID, exitResultChan(runtime.ExitResult{ExitCode: 1}), nil)
+	mockRT.EXPECT().Start(gomock.Any(), withDefaultStopTimeout(c)).Return(containerID, exitResultChan(runtime.ExitResult{ExitCode: 1}), nil)
 	mockRT.EXPECT().StreamLogs(gomock.Any(), containerID, gomock.Any(), true, "all").Return(nil)
 	mockRT.EXPECT().IsRunning(gomock.Any(), containerID).Return(false, nil)
 	mockRT.EXPECT().Logs(gomock.Any(), containerID, 20).Return(licenseLog, nil)
@@ -717,6 +718,7 @@ func TestStartContainers_SnowflakeLicenseError(t *testing.T) {
 func TestStartContainers_AzureLicenseError(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	mockRT := runtime.NewMockRuntime(ctrl)
+	mockRT.EXPECT().ImageEnv(gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
 
 	c := runtime.ContainerConfig{
 		Image:         "localstack/localstack-azure:latest",
@@ -729,7 +731,7 @@ func TestStartContainers_AzureLicenseError(t *testing.T) {
 	}
 	const containerID = "abc123"
 	licenseLog := "The Azure emulator is currently not covered by your license."
-	mockRT.EXPECT().Start(gomock.Any(), c).Return(containerID, exitResultChan(runtime.ExitResult{ExitCode: 1}), nil)
+	mockRT.EXPECT().Start(gomock.Any(), withDefaultStopTimeout(c)).Return(containerID, exitResultChan(runtime.ExitResult{ExitCode: 1}), nil)
 	mockRT.EXPECT().StreamLogs(gomock.Any(), containerID, gomock.Any(), true, "all").Return(nil)
 	mockRT.EXPECT().IsRunning(gomock.Any(), containerID).Return(false, nil)
 	mockRT.EXPECT().Logs(gomock.Any(), containerID, 20).Return(licenseLog, nil)
@@ -805,7 +807,8 @@ func TestStartupMonitorAwait_InteractivePromptKeepWaitingThenStop(t *testing.T) 
 	ctrl := gomock.NewController(t)
 	mockRT := runtime.NewMockRuntime(ctrl)
 	mockRT.EXPECT().IsRunning(gomock.Any(), "cid").Return(true, nil).AnyTimes()
-	mockRT.EXPECT().Stop(gomock.Any(), "cid").Return(nil)
+	// The container carries the stop timeout lstk gave it at start.
+	mockRT.EXPECT().Stop(gomock.Any(), "cid", nil).Return(nil)
 
 	prompts := make(chan output.UserInputRequestEvent, 2)
 	seenPrompts := make(chan output.UserInputRequestEvent, 2)
@@ -972,6 +975,7 @@ func TestResolveStartupTimeout(t *testing.T) {
 func TestStartContainers_ExitedEmitsErrorAndTelemetry(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	mockRT := runtime.NewMockRuntime(ctrl)
+	mockRT.EXPECT().ImageEnv(gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
 
 	c := runtime.ContainerConfig{
 		Image:         "localstack/localstack-pro:latest",
@@ -983,7 +987,7 @@ func TestStartContainers_ExitedEmitsErrorAndTelemetry(t *testing.T) {
 		HealthPath:    "/_localstack/health",
 	}
 	const containerID = "abc123"
-	mockRT.EXPECT().Start(gomock.Any(), c).Return(containerID, exitResultChan(runtime.ExitResult{ExitCode: 3}), nil)
+	mockRT.EXPECT().Start(gomock.Any(), withDefaultStopTimeout(c)).Return(containerID, exitResultChan(runtime.ExitResult{ExitCode: 3}), nil)
 	mockRT.EXPECT().StreamLogs(gomock.Any(), containerID, gomock.Any(), true, "all").Return(nil)
 	mockRT.EXPECT().IsRunning(gomock.Any(), containerID).Return(true, nil).AnyTimes()
 	mockRT.EXPECT().Logs(gomock.Any(), containerID, 20).Return("boom: fatal error\n", nil).AnyTimes()
@@ -1016,6 +1020,7 @@ func TestStartContainers_ExitedEmitsErrorAndTelemetry(t *testing.T) {
 func TestStartContainers_TimeoutEmitsErrorAndTelemetry(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	mockRT := runtime.NewMockRuntime(ctrl)
+	mockRT.EXPECT().ImageEnv(gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
 
 	c := runtime.ContainerConfig{
 		Image:         "localstack/localstack-pro:latest",
@@ -1028,7 +1033,7 @@ func TestStartContainers_TimeoutEmitsErrorAndTelemetry(t *testing.T) {
 	}
 	const containerID = "abc123"
 	// exitCh never fires; the container stays running but never becomes healthy.
-	mockRT.EXPECT().Start(gomock.Any(), c).Return(containerID, (<-chan runtime.ExitResult)(make(chan runtime.ExitResult)), nil)
+	mockRT.EXPECT().Start(gomock.Any(), withDefaultStopTimeout(c)).Return(containerID, (<-chan runtime.ExitResult)(make(chan runtime.ExitResult)), nil)
 	mockRT.EXPECT().StreamLogs(gomock.Any(), containerID, gomock.Any(), true, "all").Return(nil)
 	mockRT.EXPECT().IsRunning(gomock.Any(), containerID).Return(true, nil).AnyTimes()
 	mockRT.EXPECT().Logs(gomock.Any(), containerID, 20).Return("still booting...\n", nil).AnyTimes()
@@ -1429,6 +1434,7 @@ func TestStartWithLicenseRetry_RefreshesStaleCachedLicense(t *testing.T) {
 	// license, and retry once — without a manual `lstk logout`.
 	ctrl := gomock.NewController(t)
 	mockRT := runtime.NewMockRuntime(ctrl)
+	mockRT.EXPECT().ImageEnv(gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
 
 	healthSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -1508,6 +1514,7 @@ func TestStartWithLicenseRetry_NoRetryWhenPreflightRefreshedLicense(t *testing.T
 	// The failure renders through the regular startup error path instead.
 	ctrl := gomock.NewController(t)
 	mockRT := runtime.NewMockRuntime(ctrl)
+	mockRT.EXPECT().ImageEnv(gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
 
 	licenseFilePath := filepath.Join(t.TempDir(), "license.json")
 	require.NoError(t, os.WriteFile(licenseFilePath, []byte(`{"license":"fresh"}`), 0600))
@@ -1550,6 +1557,7 @@ func TestStartWithLicenseRetry_NoRetryWithoutCachedLicense(t *testing.T) {
 	// cache problem — the failure renders through the regular startup error path.
 	ctrl := gomock.NewController(t)
 	mockRT := runtime.NewMockRuntime(ctrl)
+	mockRT.EXPECT().ImageEnv(gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
 
 	c := runtime.ContainerConfig{
 		Image:         "localstack/localstack-pro:2026.4",
