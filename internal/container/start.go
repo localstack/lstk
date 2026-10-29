@@ -375,8 +375,9 @@ func startOnce(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts S
 	}
 
 	// Validate licenses before pulling. Pinned tags are validated immediately —
-	// unless the image is already present locally, in which case both the pull and
-	// the pre-flight check are skipped. "latest" tags defer to post-pull validation.
+	// unless the image is already present locally, in which case the pre-flight
+	// check is skipped (see pullImages for when the pull is skipped too). "latest"
+	// tags defer to post-pull validation.
 	postPullContainers, prePullRefreshed, err := tryPrePullLicenseValidation(ctx, rt, sink, opts, containers, token, licenseFilePath, forceLicenseValidation)
 	if err != nil {
 		return StartResult{}, err
@@ -531,10 +532,11 @@ func pullImages(ctx context.Context, rt runtime.Runtime, sink output.Sink, tel *
 			return nil, fmt.Errorf("failed to check for local image %s: %w", c.Image, err)
 		}
 
-		// Reuse a locally present image for pinned tags instead of re-pulling.
-		// Floating "latest"/empty tags always pull until pull_policy support lands.
+		// Reuse a locally present image only when it cannot have moved upstream.
+		// Moving tags such as "dev" or "2026.10" always pull until pull_policy
+		// support lands; a failed pull still falls back to the local copy.
 		// Bundled-license images never pull: they are meant to run offline.
-		if c.BundledLicense || (exists && c.Tag != "" && c.Tag != "latest") {
+		if c.BundledLicense || (exists && config.IsImmutableImage(c.Image)) {
 			sink.Emit(output.MessageEvent{Severity: output.SeveritySuccess, Text: fmt.Sprintf("Using local image %s", c.Image)})
 			pulled[c.Name] = false
 			continue
@@ -632,8 +634,8 @@ func pullImage(ctx context.Context, rt runtime.Runtime, sink output.Sink, tel *t
 }
 
 // Validates licenses before pulling for containers with pinned tags, except those
-// whose image is already present locally (not pulled, so the check is skipped too —
-// unless force is set, e.g. when retrying after a startup license failure).
+// whose image is already present locally (unless force is set, e.g. when
+// retrying after a startup license failure).
 // "latest" and empty tags are deferred to post-pull validation via image inspection.
 // The bool reports whether any validation refreshed the cached license file.
 func tryPrePullLicenseValidation(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts StartOptions, containers []runtime.ContainerConfig, token, licenseFilePath string, force bool) ([]runtime.ContainerConfig, bool, error) {
@@ -649,11 +651,11 @@ func tryPrePullLicenseValidation(ctx context.Context, rt runtime.Runtime, sink o
 			if c.BundledLicense {
 				continue
 			}
-			// A pinned image already present locally is not pulled (see pullImages),
-			// so skip the license pre-flight too: the check is redundant — and a hard
-			// blocker in offline/enterprise environments — when no network round-trip
-			// happens at all and the container validates the license at
-			// startup. A probe error is non-fatal here; fall through to the check.
+			// An image already present locally skips the license pre-flight, even when
+			// pullImages re-pulls its moving tag: the container validates the license at
+			// startup, a stale cached license is refreshed by startWithLicenseRetry, and
+			// offline the check would only add a timeout and a warning.
+			// A probe error is non-fatal here; fall through to the check.
 			if !force {
 				if exists, err := rt.ImageExists(ctx, c.Image); err == nil && exists {
 					continue

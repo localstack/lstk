@@ -167,6 +167,42 @@ func TestImage_CustomImage(t *testing.T) {
 	}
 }
 
+// The localstack/localstack-pro entries cover every tag family on Docker Hub.
+func TestIsImmutableImage(t *testing.T) {
+	immutable := []string{
+		"localstack/localstack-pro:2026.10.4",
+		"localstack/localstack-pro:2026.09.1",
+		"localstack/localstack-pro:4.14.0",
+		"localstack/localstack-pro:2026.10.0-bigdata",
+		"localstack/localstack-pro:2026.10.4-arm64",
+		"localstack/localstack-pro:2026.10.0-bigdata-amd64",
+		"my-registry:5000/localstack-pro:2026.10.4",
+		"localstack/localstack-pro@sha256:abc123def456",
+		"localstack/localstack-pro:dev@sha256:abc123def456",
+	}
+	moving := []string{
+		"localstack/localstack-pro:latest",
+		"localstack/localstack-pro:stable",
+		"localstack/localstack-pro:dev",
+		"localstack/localstack-pro:dev-arm64",
+		"localstack/localstack-pro:latest-bigdata",
+		"localstack/localstack-pro:dev-bigdata",
+		"localstack/localstack-pro:2026.10",
+		"localstack/localstack-pro:2026.09",
+		"localstack/localstack-pro:2026.10-amd64",
+		"localstack/localstack-pro:2026",
+		"localstack/localstack-pro:my-custom-build",
+		"localstack/localstack-pro:2026.10.4-nightly",
+		"my-registry:5000/localstack-pro",
+	}
+	for _, image := range immutable {
+		assert.True(t, IsImmutableImage(image), image)
+	}
+	for _, image := range moving {
+		assert.False(t, IsImmutableImage(image), image)
+	}
+}
+
 func TestImage_DefaultWhenNoCustomImage(t *testing.T) {
 	c := &ContainerConfig{Type: EmulatorAWS, Port: "4566", Tag: "latest"}
 	image, err := c.Image()

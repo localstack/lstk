@@ -1096,6 +1096,36 @@ func TestPullImages_ReusesLocalImageWhenPresent(t *testing.T) {
 	assert.Contains(t, out.String(), "Using local image localstack/localstack-pro:3.5.0")
 }
 
+func TestPullImages_PullsMovingTagEvenWhenPresent(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockRT := runtime.NewMockRuntime(ctrl)
+	mockTel := telemetry.New("", true)
+
+	c := runtime.ContainerConfig{
+		Image:        "localstack/localstack-pro:dev",
+		Name:         "localstack-aws-dev",
+		EmulatorType: config.EmulatorAWS,
+		Tag:          "dev",
+	}
+
+	mockRT.EXPECT().Remove(gomock.Any(), c.Name).Return(nil)
+	mockRT.EXPECT().ImageExists(gomock.Any(), c.Image).Return(true, nil)
+	mockRT.EXPECT().PullImage(gomock.Any(), c.Image, gomock.Any()).
+		DoAndReturn(func(_ context.Context, _ string, progress chan<- runtime.PullProgress) error {
+			close(progress)
+			return nil
+		})
+
+	var out bytes.Buffer
+	sink := output.NewPlainSink(&out)
+
+	pulled, err := pullImages(context.Background(), mockRT, sink, mockTel, []runtime.ContainerConfig{c}, false)
+
+	require.NoError(t, err)
+	assert.True(t, pulled[c.Name], "a local copy of a moving tag may be stale, so it must be pulled")
+	assert.Contains(t, out.String(), "Pulled localstack/localstack-pro:dev")
+}
+
 func TestPullImages_PullsWhenImageMissing(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	mockRT := runtime.NewMockRuntime(ctrl)

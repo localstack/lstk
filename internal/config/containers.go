@@ -123,7 +123,8 @@ type ContainerConfig struct {
 	// CustomImage overrides the default Docker image for this emulator. Set it to use an
 	// image from an internal registry or a locally loaded offline image instead of pulling
 	// the default localstack image from Docker Hub. If it carries no tag, Tag (or "latest")
-	// is appended; if it already carries a tag, Tag is dropped.
+	// is appended; if it already carries a tag, Tag is dropped. A local copy is reused
+	// without a pull only when IsImmutableImage holds.
 	CustomImage string `mapstructure:"image"`
 	// CustomName overrides the derived container name (see Name). It is also exported into
 	// the container as MAIN_CONTAINER_NAME, which the emulator uses to introspect itself over
@@ -565,6 +566,23 @@ func (c *ContainerConfig) Image() (string, error) {
 func imageHasTag(image string) bool {
 	lastSegment := image[strings.LastIndex(image, "/")+1:]
 	return strings.Contains(lastSegment, ":")
+}
+
+// fullVersionTagRe matches full release versions such as "2026.10.4" or
+// "2026.10.0-bigdata-arm64", the only LocalStack tags never re-pointed upstream.
+// Suffixes are limited to the published ones, so an unknown tag is pulled.
+var fullVersionTagRe = regexp.MustCompile(`^\d+\.\d+\.\d+(-bigdata)?(-(amd64|arm64))?$`)
+
+// IsImmutableImage reports whether image always resolves to the same build: it is
+// pinned by digest or tagged with a full release version. Any other tag ("latest",
+// "stable", "dev", "2026.10", "2026", or a custom one) may move upstream.
+func IsImmutableImage(image string) bool {
+	if strings.Contains(image, "@") {
+		return true
+	}
+	lastSegment := image[strings.LastIndex(image, "/")+1:]
+	_, tag, _ := strings.Cut(lastSegment, ":")
+	return fullVersionTagRe.MatchString(tag)
 }
 
 // Name returns the container name: CustomName when set, otherwise the derived defaultName.
