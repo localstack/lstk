@@ -31,7 +31,7 @@ func TestStartGivesTheContainerItsShutdownTimeoutToStop(t *testing.T) {
 	ctx := testContext(t)
 
 	const standInImage = "nginx:alpine"
-	const pinnedTag = "stop-timeout-test"
+	const pinnedTag = "0.0.5"
 	const pinnedImage = "localstack/localstack-pro:" + pinnedTag
 	reader, err := dockerClient.ImagePull(ctx, standInImage, client.ImagePullOptions{})
 	require.NoError(t, err, "failed to pull nginx test image")
@@ -85,7 +85,7 @@ func TestStopWaitsForTheEmulatorsOwnShutdown(t *testing.T) {
 	ctx := testContext(t)
 
 	const imageName = "lstk-slow-shutdown"
-	const imageTag = "slow-shutdown-test"
+	const imageTag = "0.0.6"
 	commitSlowShutdownImage(t, ctx, imageName+":"+imageTag)
 
 	// A non-interactive startup timeout leaves the container running as localstack-aws-<tag>, which cleanup() does

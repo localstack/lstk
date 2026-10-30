@@ -52,46 +52,72 @@ func TestStartCommandSucceedsWithValidToken(t *testing.T) {
 }
 
 // PRO-323: a pinned image already present locally must be reused, not re-pulled.
-// Tags the lightweight test image under a pinned localstack-pro tag so the image
-// is present locally; lstk should skip the pull and emit "Using local image".
+// Only a full release version counts: "dev" or "2026.10" may have moved upstream,
+// so lstk still pulls them, falling back to the local copy when the pull fails.
 // We only assert the pull decision (emitted before the container starts) — the
 // stand-in image is not a real emulator, so the subsequent start fails fast when
 // it exits. A dedicated host port keeps this off the shared 4566 used by the
 // other container tests.
-func TestStartCommandReusesLocalImageWhenPresent(t *testing.T) {
+func TestStartCommandPullsUnlessTagIsFullVersion(t *testing.T) {
 	requireDocker(t)
 	cleanup()
 	t.Cleanup(cleanup)
 
 	ctx := testContext(t)
 
-	const pinnedTag = "reuse-local-test"
-	const pinnedImage = "localstack/localstack-pro:" + pinnedTag
+	// Refuses connections, so a pull fails fast. Not localhost: Docker Desktop
+	// resolves it to ::1, where the dial times out after 30s instead.
+	const repo = "127.0.0.1:1/localstack-pro"
+	const pinnedTag = "0.0.1"
 	reader, err := dockerClient.ImagePull(ctx, testImage, client.ImagePullOptions{})
 	require.NoError(t, err, "failed to pull test image")
 	_, _ = io.Copy(io.Discard, reader)
 	_ = reader.Close()
-	_, err = dockerClient.ImageTag(ctx, client.ImageTagOptions{Source: testImage, Target: pinnedImage})
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		_, _ = dockerClient.ImageRemove(context.Background(), pinnedImage, client.ImageRemoveOptions{})
-	})
-
-	home := t.TempDir()
-	configFile := filepath.Join(home, "config.toml")
-	require.NoError(t, os.WriteFile(configFile,
-		[]byte(fmt.Sprintf("[[containers]]\ntype = \"aws\"\ntag = %q\nport = \"4599\"\n", pinnedTag)), 0644))
+	for _, tag := range []string{pinnedTag, "dev"} {
+		image := repo + ":" + tag
+		_, err = dockerClient.ImageTag(ctx, client.ImageTagOptions{Source: testImage, Target: image})
+		require.NoError(t, err)
+		t.Cleanup(func() {
+			_, _ = dockerClient.ImageRemove(context.Background(), image, client.ImageRemoveOptions{})
+		})
+	}
 
 	mockServer := createMockLicenseServer(true)
 	defer mockServer.Close()
 
-	e := append(testEnvWithHome(home, ""),
-		string(env.APIEndpoint)+"="+mockServer.URL,
-		string(env.AuthToken)+"=fake-token")
-	stdout, _, _ := runLstk(t, ctx, "", e, "--config", configFile, "start")
+	tests := []struct {
+		name      string
+		configTag string
+		args      []string
+		image     string
+		wantPull  bool
+	}{
+		{name: "full version is reused", configTag: pinnedTag, image: repo + ":" + pinnedTag},
+		{name: "dev is pulled", configTag: "dev", image: repo + ":dev", wantPull: true},
+		{name: "tag in --image wins over config tag", configTag: pinnedTag, args: []string{"--image", repo + ":dev"}, image: repo + ":dev", wantPull: true},
+		{name: "full version in --image is reused", configTag: "latest", args: []string{"--image", repo + ":" + pinnedTag}, image: repo + ":" + pinnedTag},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			home := t.TempDir()
+			configFile := filepath.Join(home, "config.toml")
+			require.NoError(t, os.WriteFile(configFile,
+				[]byte(fmt.Sprintf("[[containers]]\ntype = \"aws\"\nimage = %q\ntag = %q\nport = \"4599\"\n", repo, tt.configTag)), 0644))
 
-	assert.Contains(t, stdout, "Using local image "+pinnedImage, "a pinned image present locally should be reused")
-	assert.NotContains(t, stdout, "Pulling", "lstk must not re-pull an image that is already present")
+			e := append(testEnvWithHome(home, ""),
+				string(env.APIEndpoint)+"="+mockServer.URL,
+				string(env.AuthToken)+"=fake-token")
+			stdout, _, _ := runLstk(t, ctx, "", e, append([]string{"--config", configFile, "start"}, tt.args...)...)
+
+			if tt.wantPull {
+				assert.Contains(t, stdout, "Could not pull "+tt.image, "a moving tag must be pulled even when present locally")
+				assert.NotContains(t, stdout, "Using local image")
+			} else {
+				assert.Contains(t, stdout, "Using local image "+tt.image, "a full version present locally should be reused")
+				assert.NotContains(t, stdout, "Pulling", "lstk must not re-pull an image that is already present")
+			}
+		})
+	}
 }
 
 // A container that exits during startup must fail with a styled
@@ -105,7 +131,7 @@ func TestStartFailsWhenContainerExitsDuringStartup(t *testing.T) {
 
 	ctx := testContext(t)
 
-	const pinnedTag = "exit-during-startup-test"
+	const pinnedTag = "0.0.2"
 	const pinnedImage = "localstack/localstack-pro:" + pinnedTag
 	reader, err := dockerClient.ImagePull(ctx, testImage, client.ImagePullOptions{})
 	require.NoError(t, err, "failed to pull test image")
@@ -156,7 +182,7 @@ func TestStartFailsWhenContainerNeverBecomesHealthy(t *testing.T) {
 	ctx := testContext(t)
 
 	const standInImage = "nginx:alpine"
-	const pinnedTag = "never-healthy-test"
+	const pinnedTag = "0.0.3"
 	const pinnedImage = "localstack/localstack-pro:" + pinnedTag
 	reader, err := dockerClient.ImagePull(ctx, standInImage, client.ImagePullOptions{})
 	require.NoError(t, err, "failed to pull nginx test image")
@@ -215,7 +241,7 @@ func TestStartEmitsTelemetryWhenInterruptedDuringStartup(t *testing.T) {
 	// keeps running but never serves the health endpoint, so the start stays in
 	// the readiness wait until interrupted.
 	const standInImage = "nginx:alpine"
-	const pinnedTag = "interrupted-startup-test"
+	const pinnedTag = "0.0.4"
 	const pinnedImage = "localstack/localstack-pro:" + pinnedTag
 	reader, err := dockerClient.ImagePull(ctx, standInImage, client.ImagePullOptions{})
 	require.NoError(t, err, "failed to pull nginx test image")
