@@ -21,8 +21,6 @@ port = "4566"    # Host port the emulator will be accessible on
 #                # an auth token, login, pull, or license check.
 #                # If it carries no tag, 'tag' above is appended; if it already
 #                # carries a tag, 'tag' above is dropped. Use --image for a single run.
-#                # A local image is reused as is only with a full version tag or a
-#                # digest; with any other tag, each start tries to pull it first.
 # volume = ""    # Host directory for persistent state (default: OS cache dir)
 # env = []       # Named environment profiles to apply (see [env.*] sections below)
 # volumes = []   # Extra bind mounts, each "host:container[:ro]". Relative host paths
