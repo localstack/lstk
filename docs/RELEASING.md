@@ -16,9 +16,30 @@ Release automation uses three workflows:
 2. `Create Release Tag` (`.github/workflows/create-release-tag.yml`) — manual-only.
 3. `LSTK CI` (`.github/workflows/ci.yml`)
 
-**Automated weekly release** (the default path): every Thursday, the workflow checks whether `main` has any commits since the last `v*.*.*` tag. If so, it inspects the labels on every PR merged since that tag, picks the highest release label found (`major` > `minor` > `patch`, defaulting to `patch`), runs full CI, then creates and pushes the next version tag — which in turn triggers `LSTK CI`'s `release` job below. If there are no changes since the last tag, it skips the release entirely.
+```
+                 ┌─────────────────────────────┐
+  schedule, or   │ 1. Automated Weekly Release │
+  manual dispatch│  tip of main → full CI      │
+                 │  → [GATE: approve]          │──┐
+                 └─────────────────────────────┘  │
+                                                  │
+                 ┌─────────────────────────────┐  │        ┌──────────────────────┐
+  manual dispatch│ 2. Create Release Tag       │  │  tag   │ LSTK CI (tag push)   │
+                 │  chosen ref, no CI          │──┼──────▶ │  lint, tests         │
+                 │  → [GATE: approve]          │  │ vX.Y.Z │  → publish           │
+                 └─────────────────────────────┘  │        │                      │
+                                                  │        └──────────────────────┘
+                 ┌─────────────────────────────┐  │
+  anyone with    │ 3. git tag && git push      │──┘
+  write access   │  no CI, NO GATE             │
+                 └─────────────────────────────┘
+```
 
-**Manual release**: run `Create Release Tag` from GitHub Actions (default ref: `main`), choosing a `patch` or `minor` bump, when you need to cut a release outside the weekly schedule.
+Path 3 is not a supported release path; it exists because nothing restricts tag creation yet.
+
+**Automated weekly release** (the default path): on each scheduled run, the workflow checks whether `main` has any commits since the last `v*.*.*` tag. If so, it inspects the labels on every PR merged since that tag, picks the highest release label found (`major` > `minor` > `patch`, defaulting to `patch`), runs full CI, then waits for a reviewer to approve the [Windows smoke test](#windows-smoke-test-required-before-every-release). Once approved, it creates and pushes the next version tag — which in turn triggers `LSTK CI`'s `release` job below. If there are no changes since the last tag, it skips the release entirely.
+
+**Manual release**: run `Create Release Tag` from GitHub Actions (default ref: `main`), choosing a `patch` or `minor` bump, when you need to cut a release outside the weekly schedule. It waits for the same smoke-test approval before tagging.
 
 Either path pushes a version tag (e.g. `v0.2.4`), which triggers `LSTK CI`, running the `release` job to publish the GitHub release with GoReleaser.
 
@@ -26,5 +47,87 @@ To validate release packaging locally without publishing:
 
 ```bash
 goreleaser release --snapshot --clean
+```
+
+## Windows smoke test (required before every release)
+
+GitHub-hosted Windows runners cannot run Linux containers, so CI never exercises `lstk` against a real Docker daemon on Windows. Both release workflows therefore stop before tagging: the tag job is bound to the `release` GitHub environment and waits until one of its required reviewers approves. The reviewers are configured in the repository's environment settings.
+
+The run summary of the job before the gate (`Determine version bump` or `Resolve release ref`) shows the exact commit to test. The tag job later checks out that same commit, so `main` moving while the run waits does not change what gets released.
+
+Standard environment: a Windows sandbox on EC2 from `scripts/ec2-sandbox.sh`. It serves Docker on `\\.\pipe\docker_engine` and rewrites bind-mount paths the way Docker Desktop's backend does, so lstk's named-pipe and socket-mount code paths are exercised. It does not cover Windows 11 client behaviour, Docker Desktop's own states, or `host.docker.internal`. A personal Windows 11 machine with Docker Desktop is a welcome extra, not a requirement.
+
+Before approving:
+
+1. Build `lstk.exe` from the commit shown in the run summary and launch the sandbox:
+
+   ```bash
+   git fetch origin; git checkout <sha>
+   GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -o lstk.exe .
+   scripts/ec2-sandbox.sh create windows --arch x64 --open
+   scripts/ec2-sandbox.sh copyto windows lstk.exe
+   ```
+
+   The binary lands on the `User` account's desktop. The AWS CLI is preinstalled.
+
+2. In the sandbox, open PowerShell on that desktop and run:
+
+   ```powershell
+   $env:LOCALSTACK_AUTH_TOKEN = "<token>"             # or: .\lstk.exe login
+   .\lstk.exe start                                    # container comes up
+   docker ps                                           # note the emulator container name
+   docker inspect <container> --format '{{json .HostConfig.Binds}}'   # must include /var/run/docker.sock
+   .\lstk.exe logs                                     # shows emulator output
+
+   Set-Content handler.py 'def handler(event, context): return {"ok": True}'
+   Compress-Archive handler.py function.zip -Force
+   .\lstk.exe aws lambda create-function --function-name smoke `
+     --runtime python3.12 --handler handler.handler `
+     --role arn:aws:iam::000000000000:role/lambda-role --zip-file fileb://function.zip
+   .\lstk.exe aws lambda wait function-active-v2 --function-name smoke
+   .\lstk.exe aws lambda invoke --function-name smoke out.json; Get-Content out.json
+
+   .\lstk.exe stop
+   ```
+
+   A successful invoke is the key check: Lambda spawns a sibling container through the mounted Docker socket, which is exactly what broke for Windows users before.
+
+3. In the run, open **Review deployments**, tick `release`, and paste the environment (sandbox, or OS and Docker Desktop version) and the result into the comment. Approve on success. Reject on failure, see [After a rejection](#after-a-rejection).
+
+4. Tear the sandbox down, it costs money while it runs: `scripts/ec2-sandbox.sh delete windows -y`
+
+### After a rejection
+
+Nothing was tagged. Fix on `main` through a normal PR with its `semver:` label. Then release it one of two ways; both pass the gate again with a new commit to test:
+
+- Run `Create Release Tag` from `main` for an immediate release.
+- Wait for the next scheduled run.
+
+Notes:
+
+- Both release workflows share one concurrency group. Approve or reject a pending run before triggering another release.
+- A run that is not approved within 30 days fails. Re-trigger it manually.
+- `Create Release Tag` must be dispatched from `main`. `release_ref` may still point at another branch or tag.
+- The smoke binary is the core CLI. Bundled extensions are added at publish time and are not part of this test.
+- Repository admins cannot bypass the gate; the environment is configured without admin bypass, see [Environment setup](#environment-setup-one-time).
+
+### Environment setup (one-time)
+
+The `release` environment must exist with its protection rules before the gated workflows first run; GitHub otherwise creates it without rules and the run tags without approval. Reviewers are maintained in the environment settings, not here. Requires repo admin:
+
+```bash
+gh api --method PUT repos/localstack/lstk/environments/release --input - <<JSON
+{
+  "wait_timer": 0,
+  "prevent_self_review": false,
+  "can_admins_bypass": false,
+  "reviewers": [
+    {"type": "User", "id": $(gh api users/<login> --jq .id)}
+  ],
+  "deployment_branch_policy": {"protected_branches": false, "custom_branch_policies": true}
+}
+JSON
+gh api --method POST repos/localstack/lstk/environments/release/deployment-branch-policies -f name=main -f type=branch
+gh api repos/localstack/lstk/environments/release   # verify: can_admins_bypass=false, reviewers, one branch policy
 ```
 
