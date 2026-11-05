@@ -1343,9 +1343,7 @@ func TestStartHidesHeaderUntilAuthComplete(t *testing.T) {
 
 // TestStartWithCustomImageFailsClearlyWhenUnavailable verifies that a configured
 // custom image is honored and that, when it can be neither pulled nor found
-// locally, the start fails with the pull error rather than hanging. The "latest"
-// tag defers the license check until after the pull, so the (unreachable) license
-// endpoint is never contacted — the pull failure surfaces first.
+// locally, the start fails with the pull error before asking for login.
 func TestStartWithCustomImageFailsClearlyWhenUnavailable(t *testing.T) {
 	requireDocker(t)
 	cleanup()
@@ -1361,15 +1359,14 @@ image = "lstk-nonexistent-custom-image"
 	configFile := filepath.Join(t.TempDir(), "config.toml")
 	require.NoError(t, os.WriteFile(configFile, []byte(configContent), 0644))
 
-	// A dummy token satisfies the up-front auth check (it is not validated here);
-	// the flow fails when the custom image cannot be pulled or found locally.
-	e := env.Environ(testEnvWithHome(t.TempDir(), "")).With(env.AuthToken, "dummy-token")
+	e := env.Environ(testEnvWithHome(t.TempDir(), ""))
 	stdout, stderr, err := runLstk(t, testContext(t), "", e, "--config", configFile, "--non-interactive", "start")
 
 	require.Error(t, err, "expected start to fail when the custom image is unavailable")
 	requireExitCode(t, 1, err)
 	combined := stdout + stderr
 	assert.Contains(t, combined, "Failed to pull lstk-nonexistent-custom-image:latest")
+	assert.NotContains(t, combined, "authentication required")
 }
 
 // TestStartTimesOutWhenEmulatorNeverBecomesHealthy verifies that --timeout bounds
