@@ -1089,11 +1089,134 @@ func TestPullImages_ReusesLocalImageWhenPresent(t *testing.T) {
 	var out bytes.Buffer
 	sink := output.NewPlainSink(&out)
 
-	pulled, err := pullImages(context.Background(), mockRT, sink, mockTel, []runtime.ContainerConfig{c}, false)
+	pulled, err := pullImages(context.Background(), mockRT, sink, mockTel, []runtime.ContainerConfig{c}, false, nil)
 
 	require.NoError(t, err)
 	assert.False(t, pulled[c.Name], "telemetry must not count a reused image as pulled")
 	assert.Contains(t, out.String(), "Using local image localstack/localstack-pro:3.5.0")
+}
+
+func TestPrePullMissingCustomImageBeforeAuth(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockRT := runtime.NewMockRuntime(ctrl)
+	mockRT.EXPECT().ImageExists(gomock.Any(), offlineImage).Return(false, nil)
+	mockRT.EXPECT().InspectBrief(gomock.Any(), gomock.Any()).Return(runtime.ContainerBrief{}, nil)
+	mockRT.EXPECT().FindRunningByImage(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil)
+	mockRT.EXPECT().PullImage(gomock.Any(), offlineImage, gomock.Any()).
+		DoAndReturn(func(_ context.Context, _ string, progress chan<- runtime.PullProgress) error {
+			close(progress)
+			return nil
+		})
+	mockRT.EXPECT().ImageEnv(gomock.Any(), offlineImage).Return([]string{"LOCALSTACK_AUTH_TOKEN_OVERRIDE=bundled"}, nil)
+
+	var out bytes.Buffer
+	opts := StartOptions{
+		Containers:    []config.ContainerConfig{{Type: config.EmulatorAWS, Port: "0"}},
+		ImageOverride: offlineImage,
+		Telemetry:     telemetry.New("", true),
+	}
+	pulled, err := prepareCustomImages(context.Background(), mockRT, output.NewPlainSink(&out), opts, false)
+	require.NoError(t, err)
+	assert.True(t, pulled[offlineImage].pulled)
+	assert.False(t, NeedsAuthToken(context.Background(), mockRT, opts))
+	assert.Contains(t, out.String(), "Pulled "+offlineImage)
+}
+
+func TestPrepareCustomImages(t *testing.T) {
+	const movingImage = "registry.example.com/localstack-enterprise:dev"
+	tests := []struct {
+		name     string
+		image    string
+		exists   bool
+		bundled  bool
+		running  bool
+		external bool
+		pull     bool
+		pullErr  error
+		wantErr  error
+	}{
+		{name: "default image keeps login first"},
+		{name: "local immutable image", image: offlineImage, exists: true},
+		{name: "local bundled moving image", image: movingImage, exists: true, bundled: true},
+		{name: "moving image refreshed before inspection", image: movingImage, exists: true, pull: true},
+		{name: "moving image keeps local after failed pull", image: movingImage, exists: true, pull: true, pullErr: errors.New("registry unavailable")},
+		{name: "cancellation stops preparation", image: movingImage, exists: true, pull: true, pullErr: context.Canceled, wantErr: context.Canceled},
+		{name: "unused missing override is not pulled", image: movingImage, running: true},
+		{name: "external emulator avoids unused pull", image: movingImage, external: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			rt := runtime.NewMockRuntime(ctrl)
+			if tt.image != "" {
+				rt.EXPECT().ImageExists(gomock.Any(), tt.image).Return(tt.exists, nil)
+				if tt.exists {
+					var env []string
+					if tt.bundled {
+						env = []string{"LOCALSTACK_AUTH_TOKEN_OVERRIDE=bundled"}
+					}
+					rt.EXPECT().ImageEnv(gomock.Any(), tt.image).Return(env, nil)
+				}
+				if tt.pull || tt.running || tt.external {
+					rt.EXPECT().InspectBrief(gomock.Any(), gomock.Any()).Return(runtime.ContainerBrief{Running: tt.running}, nil)
+				}
+				if tt.pull || tt.external {
+					var running *runtime.RunningContainer
+					if tt.external {
+						running = &runtime.RunningContainer{Name: "external-localstack"}
+					}
+					rt.EXPECT().FindRunningByImage(gomock.Any(), gomock.Any(), gomock.Any()).Return(running, nil)
+				}
+				if tt.pull {
+					rt.EXPECT().PullImage(gomock.Any(), tt.image, gomock.Any()).DoAndReturn(func(_ context.Context, _ string, progress chan<- runtime.PullProgress) error {
+						close(progress)
+						return tt.pullErr
+					})
+				}
+			}
+			opts := StartOptions{
+				Containers: []config.ContainerConfig{{Type: config.EmulatorAWS, CustomImage: tt.image, Port: "0"}},
+				Telemetry:  telemetry.New("", true),
+			}
+			prepared, err := prepareCustomImages(context.Background(), rt, output.NewPlainSink(io.Discard), opts, false)
+			if tt.wantErr != nil {
+				require.ErrorIs(t, err, tt.wantErr)
+				return
+			}
+			require.NoError(t, err)
+			if !tt.pull {
+				assert.Empty(t, prepared)
+				return
+			}
+			image, ok := prepared[tt.image]
+			require.True(t, ok, "even a fallback must prevent a second pull")
+			assert.Equal(t, tt.pullErr == nil, image.pulled)
+			assert.Equal(t, tt.exists, image.previouslyLocal)
+		})
+	}
+}
+
+func TestPullImages_DoesNotPullPrePulledMovingTagAgain(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockRT := runtime.NewMockRuntime(ctrl)
+	c := runtime.ContainerConfig{Image: "registry.example.com/localstack-enterprise:dev", Name: "localstack-aws", EmulatorType: config.EmulatorAWS, Tag: "dev"}
+	mockRT.EXPECT().Remove(gomock.Any(), c.Name).Return(nil)
+	mockRT.EXPECT().ImageExists(gomock.Any(), c.Image).Return(true, nil)
+
+	pulled, err := pullImages(context.Background(), mockRT, output.NewPlainSink(io.Discard), telemetry.New("", true), []runtime.ContainerConfig{c}, false, map[string]preparedImage{c.Image: {pulled: true}})
+	require.NoError(t, err)
+	assert.True(t, pulled[c.Name])
+}
+
+func TestPullImages_DoesNotRetryPreparedFallback(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	rt := runtime.NewMockRuntime(ctrl)
+	c := runtime.ContainerConfig{Image: "registry.example.com/localstack-enterprise:dev", Name: "localstack-aws"}
+	rt.EXPECT().Remove(gomock.Any(), c.Name).Return(nil)
+	rt.EXPECT().ImageExists(gomock.Any(), c.Image).Return(true, nil)
+	pulled, err := pullImages(context.Background(), rt, output.NewPlainSink(io.Discard), telemetry.New("", true), []runtime.ContainerConfig{c}, false, map[string]preparedImage{c.Image: {previouslyLocal: true}})
+	require.NoError(t, err)
+	assert.False(t, pulled[c.Name])
 }
 
 func TestPullImages_PullsMovingTagEvenWhenPresent(t *testing.T) {
@@ -1119,7 +1242,7 @@ func TestPullImages_PullsMovingTagEvenWhenPresent(t *testing.T) {
 	var out bytes.Buffer
 	sink := output.NewPlainSink(&out)
 
-	pulled, err := pullImages(context.Background(), mockRT, sink, mockTel, []runtime.ContainerConfig{c}, false)
+	pulled, err := pullImages(context.Background(), mockRT, sink, mockTel, []runtime.ContainerConfig{c}, false, nil)
 
 	require.NoError(t, err)
 	assert.True(t, pulled[c.Name], "a local copy of a moving tag may be stale, so it must be pulled")
@@ -1149,7 +1272,7 @@ func TestPullImages_PullsWhenImageMissing(t *testing.T) {
 	var out bytes.Buffer
 	sink := output.NewPlainSink(&out)
 
-	pulled, err := pullImages(context.Background(), mockRT, sink, mockTel, []runtime.ContainerConfig{c}, false)
+	pulled, err := pullImages(context.Background(), mockRT, sink, mockTel, []runtime.ContainerConfig{c}, false, nil)
 
 	require.NoError(t, err)
 	assert.True(t, pulled[c.Name], "a freshly pulled image must be counted as pulled")
@@ -1237,7 +1360,7 @@ func TestPullImages_EscSkipsPullAndUsesLocal(t *testing.T) {
 	sink := &recordingSink{}
 	sink.onSkippable = func(ev output.PullSkippableEvent) { ev.SkipCh <- struct{}{} }
 
-	pulled, err := pullImages(context.Background(), mockRT, sink, mockTel, []runtime.ContainerConfig{c}, true)
+	pulled, err := pullImages(context.Background(), mockRT, sink, mockTel, []runtime.ContainerConfig{c}, true, nil)
 
 	require.NoError(t, err)
 	assert.False(t, pulled[c.Name], "a skipped pull must not be counted as pulled")
@@ -1270,7 +1393,7 @@ func TestPullImages_PullErrorFallsBackToLocal(t *testing.T) {
 
 	sink := &recordingSink{}
 
-	pulled, err := pullImages(context.Background(), mockRT, sink, mockTel, []runtime.ContainerConfig{c}, false)
+	pulled, err := pullImages(context.Background(), mockRT, sink, mockTel, []runtime.ContainerConfig{c}, false, nil)
 
 	require.NoError(t, err, "a failed pull with a local image present must not be fatal")
 	assert.False(t, pulled[c.Name], "a fall-back image must not be counted as pulled")
@@ -1301,7 +1424,7 @@ func TestPullImages_PullErrorWithoutLocalIsFatal(t *testing.T) {
 
 	sink := &recordingSink{}
 
-	_, err := pullImages(context.Background(), mockRT, sink, mockTel, []runtime.ContainerConfig{c}, true)
+	_, err := pullImages(context.Background(), mockRT, sink, mockTel, []runtime.ContainerConfig{c}, true, nil)
 
 	require.Error(t, err)
 	assert.True(t, output.IsSilent(err), "error should be silent since an ErrorEvent was emitted")
@@ -1333,7 +1456,7 @@ func TestPullImages_NonInteractiveNeverSkippable(t *testing.T) {
 
 	sink := &recordingSink{}
 
-	pulled, err := pullImages(context.Background(), mockRT, sink, mockTel, []runtime.ContainerConfig{c}, false)
+	pulled, err := pullImages(context.Background(), mockRT, sink, mockTel, []runtime.ContainerConfig{c}, false, nil)
 
 	require.NoError(t, err)
 	assert.True(t, pulled[c.Name], "a completed pull must be counted as pulled")
@@ -1371,7 +1494,7 @@ func TestPullImages_ParentCancelPropagatesNotFallBack(t *testing.T) {
 
 	sink := &recordingSink{}
 
-	_, err := pullImages(ctx, mockRT, sink, mockTel, []runtime.ContainerConfig{c}, false)
+	_, err := pullImages(ctx, mockRT, sink, mockTel, []runtime.ContainerConfig{c}, false, nil)
 
 	require.Error(t, err, "a cancelled pull must not be swallowed as a successful fall-back")
 	assert.True(t, errors.Is(err, context.Canceled), "parent cancellation must propagate")

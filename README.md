@@ -11,7 +11,7 @@ See [Installation](#installation) for other install methods.
 ## Prerequisites
 
 - A Docker-API-compatible container engine — [Docker](https://docs.docker.com/get-docker/), Rancher Desktop, Colima, OrbStack, Lima, and Podman are all auto-detected; see [container runtimes](https://github.com/localstack/lstk/blob/main/docs/container-runtimes.md) for details.
-- [LocalStack account](https://app.localstack.cloud) — required for credentials, the CLI will guide you through authentication.
+- [LocalStack account](https://app.localstack.cloud) — required for standard images; the CLI will guide you through authentication. Enterprise offline images with a bundled license do not need an account at startup.
 
 ## Installation
 
@@ -38,6 +38,8 @@ lstk
 ```
 
 Running `lstk` will automatically handle authentication, configuration, and container setup, then start LocalStack. On the first interactive run, it also prompts you to pick which emulator to run (AWS, Azure, or Snowflake) and remembers your choice.
+
+For internal registry and disconnected setups, see [custom and offline images](docs/offline-images.md).
 
 ## Features
 
