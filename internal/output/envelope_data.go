@@ -57,3 +57,9 @@ type JsonStatusResource struct {
 	Region  string `json:"region"`
 	Account string `json:"account"`
 }
+
+// JsonAppInspectorSaved is `inspect`'s data.saved.
+type JsonAppInspectorSaved struct {
+	Enabled bool `json:"enabled"`
+	Changed bool `json:"changed"`
+}

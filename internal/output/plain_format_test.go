@@ -203,6 +203,30 @@ func TestFormatEventLine(t *testing.T) {
 			wantOK: true,
 		},
 		{
+			name:   "app inspector changed",
+			event:  AppInspectorEvent{Enabled: true, Changed: true},
+			want:   SuccessMarker() + " App Inspector enabled",
+			wantOK: true,
+		},
+		{
+			name:   "app inspector unchanged",
+			event:  AppInspectorEvent{Enabled: false},
+			want:   "App Inspector is disabled",
+			wantOK: true,
+		},
+		{
+			name:   "app inspector saved",
+			event:  AppInspectorSavedEvent{Enabled: true, Changed: true, ConfigPath: "~/.config/lstk/config.toml"},
+			want:   SuccessMarker() + " App Inspector will be enabled on every start (saved to ~/.config/lstk/config.toml)",
+			wantOK: true,
+		},
+		{
+			name:   "app inspector already saved",
+			event:  AppInspectorSavedEvent{Enabled: false, ConfigPath: "~/.config/lstk/config.toml"},
+			want:   "App Inspector is disabled on every start (~/.config/lstk/config.toml)",
+			wantOK: true,
+		},
+		{
 			name:   "emulator reset event",
 			event:  EmulatorResetEvent{Type: "aws", Name: "localstack-aws"},
 			want:   SuccessMarker() + " Emulator state reset",
