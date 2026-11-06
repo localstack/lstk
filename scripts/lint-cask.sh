@@ -24,11 +24,19 @@ export HOMEBREW_NO_AUTO_UPDATE=1
 
 # `brew audit` refuses a bare path, and the cask cops only fire under `Casks/`,
 # so this needs a tap. Build a throwaway one and drop it however we exit.
+#
+# Since Homebrew 7.0.11 only install commands may load a cask from an untrusted
+# tap. `brew audit` and `brew untap` both load it, so trust it around each.
 TAP=lstkci/caskcheck
-untap() { brew untap "$TAP" >/dev/null 2>&1 || true; }
-trap untap EXIT
-untap
+cleanup() {
+  brew trust --tap "$TAP" >/dev/null 2>&1 || true
+  brew untap "$TAP" >/dev/null 2>&1 || true
+  brew untrust --tap "$TAP" >/dev/null 2>&1 || true
+}
+trap cleanup EXIT
+cleanup
 brew tap-new --no-git "$TAP" >/dev/null
+brew trust --tap "$TAP" >/dev/null
 TAP_CASKS="$(brew --repository "$TAP")/Casks"
 mkdir -p "$TAP_CASKS"
 cp "$CASK" "$TAP_CASKS/lstk.rb"
