@@ -135,6 +135,13 @@ func start(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts Start
 
 	// A bundled-license image needs no token: use one if present, never prompt.
 	token := auth.ResolveToken(opts.AuthToken, tokenStorage)
+	opts.Telemetry.SetAuthToken(token)
+	// Resolve a custom image before making any auth or license decision,
+	// even with a saved token: that token may be unrelated to its bundled license.
+	preparedImages, err := prepareCustomImages(ctx, rt, sink, opts, interactive)
+	if err != nil {
+		return StartResult{}, err
+	}
 	if token == "" && NeedsAuthToken(ctx, rt, opts) {
 		token, err = a.GetToken(ctx)
 		if err != nil {
@@ -145,7 +152,7 @@ func start(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts Start
 
 	opts.Telemetry.SetAuthToken(token)
 
-	result, err := startOnce(ctx, rt, sink, opts, interactive, token, licenseFilePath, false)
+	result, err := startOnce(ctx, rt, sink, opts, interactive, token, licenseFilePath, false, preparedImages)
 	var rejErr *licenseRejectedError
 	if err == nil || !errors.As(err, &rejErr) {
 		return result, err
@@ -161,7 +168,7 @@ func start(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts Start
 			return StartResult{}, loginErr
 		}
 		opts.Telemetry.SetAuthToken(newToken)
-		result, err = startOnce(ctx, rt, sink, opts, interactive, newToken, licenseFilePath, true)
+		result, err = startOnce(ctx, rt, sink, opts, interactive, newToken, licenseFilePath, true, preparedImages)
 		if err == nil || !errors.As(err, &rejErr) {
 			return result, err
 		}
@@ -203,7 +210,7 @@ func (e *licenseRejectedError) Error() string {
 
 func (e *licenseRejectedError) Unwrap() error { return e.licErr }
 
-func startOnce(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts StartOptions, interactive bool, token, licenseFilePath string, forceLicenseValidation bool) (StartResult, error) {
+func startOnce(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts StartOptions, interactive bool, token, licenseFilePath string, forceLicenseValidation bool, preparedImages map[string]preparedImage) (StartResult, error) {
 	tel := opts.Telemetry
 
 	hostEnv, droppedEnv := filterHostEnv(os.Environ())
@@ -378,12 +385,18 @@ func startOnce(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts S
 	// unless the image is already present locally, in which case the pre-flight
 	// check is skipped (see pullImages for when the pull is skipped too). "latest"
 	// tags defer to post-pull validation.
+	// A custom image downloaded during this start is not a previously cached
+	// image. Preserve its license pre-flight unless it bundles its own license.
+	forceLicenseValidation = forceLicenseValidation || slices.ContainsFunc(containers, func(c runtime.ContainerConfig) bool {
+		image := preparedImages[c.Image]
+		return image.pulled && !image.previouslyLocal
+	})
 	postPullContainers, prePullRefreshed, err := tryPrePullLicenseValidation(ctx, rt, sink, opts, containers, token, licenseFilePath, forceLicenseValidation)
 	if err != nil {
 		return StartResult{}, err
 	}
 
-	pulled, err := pullImages(ctx, rt, sink, tel, containers, interactive)
+	pulled, err := pullImages(ctx, rt, sink, tel, containers, interactive, preparedImages)
 	if err != nil {
 		return StartResult{}, err
 	}
@@ -518,7 +531,66 @@ func emitPostStartPointers(sink output.Sink, emulatorType config.EmulatorType, r
 	}
 }
 
-func pullImages(ctx context.Context, rt runtime.Runtime, sink output.Sink, tel *telemetry.Client, containers []runtime.ContainerConfig, interactive bool) (map[string]bool, error) {
+type preparedImage struct {
+	pulled          bool
+	previouslyLocal bool
+}
+
+// prepareCustomImages resolves mutable or missing custom images before auth.
+// Map membership prevents a second pull, including after fallback to a local copy.
+func prepareCustomImages(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts StartOptions, interactive bool) (map[string]preparedImage, error) {
+	prepared := make(map[string]preparedImage)
+	for _, c := range opts.Containers {
+		if c.CustomImage == "" && opts.ImageOverride == "" {
+			continue
+		}
+		image, err := resolveImage(c, opts.ImageOverride)
+		if err != nil {
+			return nil, err
+		}
+		exists, err := rt.ImageExists(ctx, image)
+		if err != nil {
+			return nil, fmt.Errorf("failed to check for local image %s: %w", image, err)
+		}
+		if exists && (hasBundledLicense(ctx, rt, image) || config.IsImmutableImage(image)) {
+			// Leave local reuse to pullImages so it still emits the usual message.
+			continue
+		}
+		brief, err := rt.InspectBrief(ctx, c.Name())
+		if err != nil {
+			return nil, fmt.Errorf("failed to check container status: %w", err)
+		}
+		if brief.Running {
+			// selectContainersToStart reports the running emulator and any ignored
+			// --image override; downloading that unused image could fail needlessly.
+			continue
+		}
+		containerPort, err := c.ContainerPort()
+		if err != nil {
+			return nil, err
+		}
+		found, err := rt.FindRunningByImage(ctx, config.KnownImageRepos(), containerPort)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan for running containers: %w", err)
+		}
+		if found != nil {
+			continue
+		}
+		if _, err := ports.CheckAvailable(c.Port); err != nil {
+			// Discovery also recognizes emulators by health on the configured
+			// port. Let it attach or report the conflict before downloading.
+			continue
+		}
+		usedLocal, err := pullImage(ctx, rt, sink, opts.Telemetry, runtime.ContainerConfig{Image: image, EmulatorType: c.Type}, exists, interactive)
+		if err != nil {
+			return nil, err
+		}
+		prepared[image] = preparedImage{pulled: !usedLocal, previouslyLocal: exists}
+	}
+	return prepared, nil
+}
+
+func pullImages(ctx context.Context, rt runtime.Runtime, sink output.Sink, tel *telemetry.Client, containers []runtime.ContainerConfig, interactive bool, preparedImages map[string]preparedImage) (map[string]bool, error) {
 	pulled := make(map[string]bool, len(containers))
 	for _, c := range containers {
 		// Remove any existing container with the same name. rt.Remove tolerates the
@@ -530,6 +602,10 @@ func pullImages(ctx context.Context, rt runtime.Runtime, sink output.Sink, tel *
 		exists, err := rt.ImageExists(ctx, c.Image)
 		if err != nil {
 			return nil, fmt.Errorf("failed to check for local image %s: %w", c.Image, err)
+		}
+		if image, prepared := preparedImages[c.Image]; exists && prepared {
+			pulled[c.Name] = image.pulled
+			continue
 		}
 
 		// Reuse a locally present image only when it cannot have moved upstream.
@@ -619,13 +695,15 @@ func pullImage(ctx context.Context, rt runtime.Runtime, sink output.Sink, tel *t
 			Summary: err.Error(),
 			Code:    output.ErrImagePullFailed,
 		})
-		tel.EmitEmulatorLifecycleEvent(ctx, telemetry.LifecycleEvent{
-			EventType: telemetry.LifecycleStartError,
-			Emulator:  c.EmulatorType,
-			Image:     c.Image,
-			ErrorCode: telemetry.ErrCodeImagePullFailed,
-			ErrorMsg:  err.Error(),
-		})
+		if tel != nil {
+			tel.EmitEmulatorLifecycleEvent(ctx, telemetry.LifecycleEvent{
+				EventType: telemetry.LifecycleStartError,
+				Emulator:  c.EmulatorType,
+				Image:     c.Image,
+				ErrorCode: telemetry.ErrCodeImagePullFailed,
+				ErrorMsg:  err.Error(),
+			})
+		}
 		return false, output.NewSilentError(fmt.Errorf("failed to pull image %s: %w", c.Image, err))
 	}
 
