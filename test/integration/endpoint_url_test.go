@@ -456,3 +456,39 @@ func TestEndpointURLWrongTypeErrorNamesEmulatorOnce(t *testing.T) {
 		})
 	}
 }
+
+// Helper clients (e.g. in `lambda-web deploy`) ignore --endpoint-url and read AWS_ENDPOINT_URL.
+func TestAWSCommandExportsEndpointURLToChild(t *testing.T) {
+	t.Parallel()
+	srv := awsHealthServer(t)
+	t.Cleanup(srv.Close)
+
+	fakeDir := writeFakeTool(t, "aws", fakeToolConfig{
+		Shift: 2,
+		Stdout: []string{
+			"ENDPOINT:{arg2}",
+			"AWS_ENDPOINT_URL={env:AWS_ENDPOINT_URL-<unset>}",
+			"AWS_ENDPOINT_URL_S3={env:AWS_ENDPOINT_URL_S3-<unset>}",
+		},
+	})
+
+	for _, withProfile := range []bool{false, true} {
+		t.Run(fmt.Sprintf("profile=%v", withProfile), func(t *testing.T) {
+			t.Parallel()
+			home := t.TempDir()
+			if withProfile {
+				writeAWSProfile(t, home)
+			}
+			e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).WithHome(home).
+				With("AWS_ENDPOINT_URL", "http://127.0.0.1:9")
+			e = append(e, unreachableDockerHost)
+
+			stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), e,
+				"--endpoint-url", srv.URL, "aws", "lambda-web", "deploy")
+			require.NoError(t, err, "stderr: %s", stderr)
+			assert.Contains(t, stdout, "ENDPOINT:"+srv.URL)
+			assert.Contains(t, stdout, "AWS_ENDPOINT_URL="+srv.URL)
+			assert.Contains(t, stdout, "AWS_ENDPOINT_URL_S3="+srv.URL)
+		})
+	}
+}

@@ -13,6 +13,7 @@ import (
 	"go.opentelemetry.io/otel/codes"
 
 	"github.com/localstack/lstk/internal/awsconfig"
+	"github.com/localstack/lstk/internal/endpoint"
 	"github.com/localstack/lstk/internal/output"
 	"github.com/localstack/lstk/internal/proc"
 )
@@ -46,7 +47,7 @@ func IsHelp(args []string) bool {
 
 // ExecOptions configures a single `aws` invocation.
 type ExecOptions struct {
-	// EndpointURL is injected as --endpoint-url. Empty skips it (the help path).
+	// EndpointURL is injected as --endpoint-url and AWS_ENDPOINT_URL. Empty skips both (the help path).
 	EndpointURL string
 	// Account is the resolved LocalStack account, written to AWS_ACCESS_KEY_ID
 	// wherever lstk supplies credentials. LocalStack derives the account from
@@ -137,9 +138,9 @@ func Exec(ctx context.Context, opts ExecOptions, stdout, stderr io.Writer, args 
 // profile still supplies region, output, s3 addressing style, and everything
 // else the user put in it. Selecting an account never means dropping the profile.
 //
-// While a profile is in use lstk seeds no defaults of its own: environment
-// variables outrank config-file values, so seeding AWS_DEFAULT_REGION would
-// silently override the profile's own region.
+// While a profile is in use lstk seeds no defaults other than the endpoint:
+// environment variables outrank config-file values, so seeding
+// AWS_DEFAULT_REGION would silently override the profile's own region.
 //
 // PYTHONUNBUFFERED stops a pip-installed (non-frozen) aws CLI from
 // block-buffering stdout when it gets a pipe instead of a terminal (DEVX-1026);
@@ -151,6 +152,7 @@ func execEnv(base []string, opts ExecOptions) []string {
 	if !opts.UseProfile {
 		env = BuildEnv(base, opts.Account)
 		setIfAbsent(&env, "PYTHONUNBUFFERED", "1")
+		setEndpoint(&env, opts.EndpointURL)
 		return env
 	}
 
@@ -181,7 +183,21 @@ func execEnv(base []string, opts ExecOptions) []string {
 	}
 
 	setIfAbsent(&env, "PYTHONUNBUFFERED", "1")
+	setEndpoint(&env, opts.EndpointURL)
 	return env
+}
+
+// setEndpoint covers helper clients (e.g. in `lambda-web deploy`) that ignore --endpoint-url.
+// A user-set AWS_ENDPOINT_URL_<SERVICE> is left alone, as in the sam and cdk proxies.
+func setEndpoint(env *[]string, endpointURL string) {
+	if endpointURL == "" {
+		return
+	}
+	set(env, "AWS_ENDPOINT_URL", endpointURL)
+	// Keeps the s3.-prefixed host the localstack profile sets, which AWS_ENDPOINT_URL would outrank.
+	_, s3Endpoint := endpoint.S3Addressing(endpointURL)
+	setIfAbsent(env, "AWS_ENDPOINT_URL_S3", s3Endpoint)
+	remove(env, "AWS_IGNORE_CONFIGURED_ENDPOINT_URLS")
 }
 
 // BuildEnv seeds LocalStack-compatible credentials and region for a child aws
