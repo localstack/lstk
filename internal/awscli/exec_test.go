@@ -209,31 +209,24 @@ func hasKey(env []string, key string) bool {
 	return false
 }
 
-func TestExecEnvSetsEndpointURL(t *testing.T) {
+func TestExecEnvSetsEndpointURLWithoutProfile(t *testing.T) {
 	base := []string{"AWS_ENDPOINT_URL=https://elsewhere.example", "AWS_IGNORE_CONFIGURED_ENDPOINT_URLS=true"}
-	const ep = "http://localhost.localstack.cloud:4566"
 
-	for _, opts := range []ExecOptions{
-		{EndpointURL: ep, Account: "test"},
-		{EndpointURL: ep, Account: "test", UseProfile: true},
-		{EndpointURL: ep, Account: "111111111111", UseProfile: true, AccountSelected: true},
-	} {
-		env := execEnv(base, opts)
-		assert.Contains(t, env, "AWS_ENDPOINT_URL="+ep)
-		assert.NotContains(t, env, "AWS_ENDPOINT_URL=https://elsewhere.example")
-		assert.Contains(t, env, "AWS_ENDPOINT_URL_S3=http://s3.localhost.localstack.cloud:4566")
-		assert.False(t, hasKey(env, "AWS_IGNORE_CONFIGURED_ENDPOINT_URLS"))
-	}
+	env := execEnv(base, ExecOptions{EndpointURL: "http://localhost:4566", Account: "test"})
+	assert.Contains(t, env, "AWS_ENDPOINT_URL=http://localhost:4566")
+	assert.NotContains(t, env, "AWS_ENDPOINT_URL=https://elsewhere.example")
+	assert.False(t, hasKey(env, "AWS_IGNORE_CONFIGURED_ENDPOINT_URLS"))
 
 	help := execEnv(base, ExecOptions{Account: "test"})
 	assert.Contains(t, help, "AWS_ENDPOINT_URL=https://elsewhere.example", "the help path resolves no endpoint")
-	assert.False(t, hasKey(help, "AWS_ENDPOINT_URL_S3"))
 }
 
-func TestExecEnvKeepsUserServiceEndpoints(t *testing.T) {
-	base := []string{"AWS_ENDPOINT_URL_S3=http://custom:4566", "AWS_ENDPOINT_URL_STS=http://custom:4566"}
-	env := execEnv(base, ExecOptions{EndpointURL: "http://localhost:4566", Account: "test"})
-	assert.Contains(t, env, "AWS_ENDPOINT_URL_S3=http://custom:4566")
-	assert.NotContains(t, env, "AWS_ENDPOINT_URL_S3=http://localhost:4566")
-	assert.Contains(t, env, "AWS_ENDPOINT_URL_STS=http://custom:4566")
+func TestExecEnvProfileLeavesEndpointAlone(t *testing.T) {
+	for _, opts := range []ExecOptions{
+		{EndpointURL: "http://localhost:4566", Account: "test", UseProfile: true},
+		{EndpointURL: "http://localhost:4566", Account: "111111111111", UseProfile: true, AccountSelected: true},
+	} {
+		env := execEnv(nil, opts)
+		assert.False(t, hasKey(env, "AWS_ENDPOINT_URL"))
+	}
 }
