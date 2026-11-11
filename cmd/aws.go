@@ -36,7 +36,7 @@ func newAWSCmd(cfg *env.Env) *cobra.Command {
 
 Equivalent to running:
   aws --endpoint-url http://localhost:4566 <args>
-with AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, and AWS_DEFAULT_REGION set automatically.
+with AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, and AWS_DEFAULT_REGION set automatically. AWS_ENDPOINT_URL is also exported so helper clients reach LocalStack.
 
 lstk-specific flags (must appear before the aws subcommand):
   --account <id>       Target LocalStack account id, 12 digits (default 000000000000)
