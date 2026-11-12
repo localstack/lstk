@@ -168,6 +168,12 @@ type EmulatorResetEvent struct {
 	Name string
 }
 
+// AppInspectorEvent reports App Inspector's state on the running emulator.
+type AppInspectorEvent struct {
+	Enabled bool
+	Changed bool
+}
+
 // EmulatorStartedEvent reports the emulator is up and reachable, whether
 // freshly started or already running. JSON-only: no plain-text line, since
 // start's existing messages already cover that.
@@ -262,6 +268,7 @@ func (PodSnapshotRemovedEvent) sealedEvent()  {}
 func (SnapshotShownEvent) sealedEvent()       {}
 func (EmulatorStoppedEvent) sealedEvent()     {}
 func (EmulatorResetEvent) sealedEvent()       {}
+func (AppInspectorEvent) sealedEvent()        {}
 func (EmulatorStartedEvent) sealedEvent()     {}
 func (EmulatorStatusEvent) sealedEvent()      {}
 func (UpdateCheckedEvent) sealedEvent()       {}

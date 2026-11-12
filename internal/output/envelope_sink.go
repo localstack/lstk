@@ -43,6 +43,9 @@ func (s *EnvelopeSink) Emit(event Event) {
 	case EmulatorResetEvent:
 		s.data["emulator"] = JsonEmulatorRef(e)
 		s.data["reset"] = true
+	case AppInspectorEvent:
+		s.data["enabled"] = e.Enabled
+		s.data["changed"] = e.Changed
 	case EmulatorStartedEvent:
 		s.data["emulator"] = e.Type
 		s.data["container"] = e.Container

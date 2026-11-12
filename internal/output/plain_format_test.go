@@ -203,6 +203,18 @@ func TestFormatEventLine(t *testing.T) {
 			wantOK: true,
 		},
 		{
+			name:   "app inspector changed",
+			event:  AppInspectorEvent{Enabled: true, Changed: true},
+			want:   SuccessMarker() + " App Inspector enabled",
+			wantOK: true,
+		},
+		{
+			name:   "app inspector unchanged",
+			event:  AppInspectorEvent{Enabled: false},
+			want:   "App Inspector is disabled",
+			wantOK: true,
+		},
+		{
 			name:   "emulator reset event",
 			event:  EmulatorResetEvent{Type: "aws", Name: "localstack-aws"},
 			want:   SuccessMarker() + " Emulator state reset",
