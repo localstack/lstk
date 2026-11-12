@@ -1,0 +1,47 @@
+name: Dependabot Go Mod Tidy
+
+# Dependabot bumps the root go.mod without tidying test/integration, which
+# replaces the root module and then fails with "updates to go.mod needed".
+# Tidy it and push the fix to the Dependabot branch.
+
+on:
+  pull_request:
+    paths:
+      - go.mod
+      - go.sum
+
+# Pushes with PRO_ACCESS_TOKEN, which must be a Dependabot secret: Dependabot
+# runs can't read Actions secrets, and GITHUB_TOKEN pushes don't trigger CI.
+permissions: {}
+
+jobs:
+  tidy:
+    name: Tidy integration module
+    if: github.event.pull_request.user.login == 'dependabot[bot]' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: test/integration/go.mod
+          cache: false
+
+      - name: Tidy and push
+        working-directory: test/integration
+        env:
+          PUSH_TOKEN: ${{ secrets.PRO_ACCESS_TOKEN }}
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+        run: |
+          go mod tidy
+          git diff --quiet && exit 0
+          : "${PUSH_TOKEN:?PRO_ACCESS_TOKEN is not set as a Dependabot secret}"
+          git -c user.name="LocalStack Bot" -c user.email="localstack-bot@users.noreply.github.com" \
+            commit -qam "chore(deps): go mod tidy test/integration"
+          git push "https://x-access-token:${PUSH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "HEAD:refs/heads/${HEAD_REF}"
