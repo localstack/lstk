@@ -281,6 +281,7 @@ func TestInspectJSONErrors(t *testing.T) {
 		{"non-AWS endpoint", []string{"--endpoint-url", snowflake.URL, "inspect", "status"}, "EMULATOR_WRONG_TYPE"},
 		{"non-AWS config", []string{"--config", snowflakeConfig, "inspect", "status"}, "EMULATOR_NOT_CONFIGURED"},
 		{"persist without config file", []string{"inspect", "enable", "--persist"}, "CONFIG_NOT_FOUND"},
+		{"runtime unavailable", []string{"inspect", "status"}, "RUNTIME_UNAVAILABLE"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -328,6 +329,44 @@ func TestInspectEnableLocalEmulator(t *testing.T) {
 	assert.Contains(t, stdout, "lstk inspect enable --persist")
 	assert.Equal(t, []string{"enabled"}, puts())
 	assertCommandTelemetry(t, events, "inspect enable", 0)
+}
+
+func TestInspectStatusJSONLocalEmulator(t *testing.T) {
+	requireDocker(t)
+	cleanup()
+	t.Cleanup(cleanup)
+
+	ctx := testContext(t)
+	startTestContainer(t, ctx)
+	srv, puts := appInspectorServer(t, false)
+
+	stdout, stderr, err := runLstk(t, ctx, t.TempDir(),
+		env.Environ(testEnvWithHome(t.TempDir(), "")).
+			With(env.DisableEvents, "1").
+			With(env.LocalStackHost, lsHost(srv)),
+		"--json", "inspect", "status")
+
+	require.NoError(t, err, stderr)
+	envelope := decodeEnvelope(t, stdout)
+	assert.Equal(t, "ok", envelope.Status)
+	assert.Equal(t, "inspect status", envelope.Command)
+	assert.JSONEq(t, `{"enabled": false, "changed": false}`, string(envelope.Data))
+	assert.Empty(t, puts(), "status must not change App Inspector")
+}
+
+func TestInspectStatusJSONNotRunning(t *testing.T) {
+	requireDocker(t)
+	cleanup()
+	t.Cleanup(cleanup)
+
+	stdout, _, err := runLstk(t, testContext(t), t.TempDir(),
+		env.Environ(testEnvWithHome(t.TempDir(), "")).With(env.DisableEvents, "1"),
+		"--json", "inspect", "status")
+
+	requireExitCode(t, 1, err)
+	envelope := decodeEnvelope(t, stdout)
+	require.NotNil(t, envelope.Error)
+	assert.Equal(t, "EMULATOR_NOT_RUNNING", envelope.Error.Code)
 }
 
 // The emulator turns App Inspector on shortly after it reports ready, so the check waits.
