@@ -8,7 +8,7 @@ The contract described here (a shared envelope shape, a shared error-code vocabu
 
 `--json` support is being rolled out per command, not all at once. The [Command Catalog](#command-catalog) below is split into two parts:
 
-- **[Implemented](#implemented)** — `stop`, `reset`, `update`, `start`, `status`, `inspect enable`/`disable`/`status`. These accept `--json` today and produce exactly the shapes documented below.
+- **[Implemented](#implemented)** — `stop`, `reset`, `update`, `start`, `status`, `inspect enable`/`disable`. These accept `--json` today and produce exactly the shapes documented below.
 - **[Proposed for future work](#proposed-for-future-work-draft)** — every other built-in command. Attempting `--json` on any of these today is rejected with `NOT_JSON_CAPABLE`. This part is a **first-draft proposal only** — see the warning at the top of that section before relying on any of it.
 
 ## The envelope
@@ -318,7 +318,7 @@ Codes: `RUNTIME_UNAVAILABLE`, `AUTH_REQUIRED`, `LICENSE_INVALID` (bad/expired/re
 ```
 Codes: `RUNTIME_UNAVAILABLE`, `EMULATOR_NOT_RUNNING`, `CONFIG_INVALID`, `CONFIG_NOT_FOUND` (bad or missing `--config` path).
 
-**`lstk inspect enable`** / **`disable`** / **`status`**: App Inspector's state on the running emulator. `changed` is whether this command changed it (always `false` for `status`).
+**`lstk inspect enable`** / **`disable`**: App Inspector's state on the running emulator after the command. `changed` is whether this command changed it.
 ```json
 {
   "schemaVersion": 1,

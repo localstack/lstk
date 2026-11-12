@@ -77,8 +77,6 @@ func TestInspectEndpointURL(t *testing.T) {
 		{"enable", false, "enable", "App Inspector enabled", []string{"enabled"}},
 		{"enable when already on", true, "enable", "App Inspector is enabled", []string{"enabled"}},
 		{"disable", true, "disable", "App Inspector disabled", []string{"disabled"}},
-		{"status on", true, "status", "App Inspector is enabled", nil},
-		{"status off", false, "status", "App Inspector is disabled", nil},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -125,7 +123,6 @@ func TestInspectJSON(t *testing.T) {
 		args     []string
 		wantData string
 	}{
-		{"status", true, []string{"inspect", "status"}, `{"enabled": true, "changed": false}`},
 		{"enable", false, []string{"inspect", "enable"}, `{"enabled": true, "changed": true}`},
 		{"disable", true, []string{"inspect", "disable"}, `{"enabled": false, "changed": true}`},
 	} {
@@ -158,9 +155,9 @@ func TestInspectJSONErrors(t *testing.T) {
 		args     []string
 		wantCode string
 	}{
-		{"non-AWS endpoint", []string{"--endpoint-url", snowflake.URL, "inspect", "status"}, "EMULATOR_WRONG_TYPE"},
-		{"non-AWS config", []string{"--config", snowflakeConfig, "inspect", "status"}, "EMULATOR_NOT_CONFIGURED"},
-		{"runtime unavailable", []string{"inspect", "status"}, "RUNTIME_UNAVAILABLE"},
+		{"non-AWS endpoint", []string{"--endpoint-url", snowflake.URL, "inspect", "enable"}, "EMULATOR_WRONG_TYPE"},
+		{"non-AWS config", []string{"--config", snowflakeConfig, "inspect", "enable"}, "EMULATOR_NOT_CONFIGURED"},
+		{"runtime unavailable", []string{"inspect", "enable"}, "RUNTIME_UNAVAILABLE"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -210,7 +207,7 @@ func TestInspectEnableLocalEmulator(t *testing.T) {
 	assertCommandTelemetry(t, events, "inspect enable", 0)
 }
 
-func TestInspectStatusJSONLocalEmulator(t *testing.T) {
+func TestInspectEnableJSONLocalEmulator(t *testing.T) {
 	requireDocker(t)
 	cleanup()
 	t.Cleanup(cleanup)
@@ -223,24 +220,24 @@ func TestInspectStatusJSONLocalEmulator(t *testing.T) {
 		env.Environ(testEnvWithHome(t.TempDir(), "")).
 			With(env.DisableEvents, "1").
 			With(env.LocalStackHost, lsHost(srv)),
-		"--json", "inspect", "status")
+		"--json", "inspect", "enable")
 
 	require.NoError(t, err, stderr)
 	envelope := decodeEnvelope(t, stdout)
 	assert.Equal(t, "ok", envelope.Status)
-	assert.Equal(t, "inspect status", envelope.Command)
-	assert.JSONEq(t, `{"enabled": false, "changed": false}`, string(envelope.Data))
-	assert.Empty(t, puts(), "status must not change App Inspector")
+	assert.Equal(t, "inspect enable", envelope.Command)
+	assert.JSONEq(t, `{"enabled": true, "changed": true}`, string(envelope.Data))
+	assert.Equal(t, []string{"enabled"}, puts())
 }
 
-func TestInspectStatusJSONNotRunning(t *testing.T) {
+func TestInspectEnableJSONNotRunning(t *testing.T) {
 	requireDocker(t)
 	cleanup()
 	t.Cleanup(cleanup)
 
 	stdout, _, err := runLstk(t, testContext(t), t.TempDir(),
 		env.Environ(testEnvWithHome(t.TempDir(), "")).With(env.DisableEvents, "1"),
-		"--json", "inspect", "status")
+		"--json", "inspect", "enable")
 
 	requireExitCode(t, 1, err)
 	envelope := decodeEnvelope(t, stdout)

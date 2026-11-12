@@ -91,7 +91,6 @@ Usage: lstk inspect [flags]
 Commands:
   disable     Disable App Inspector
   enable      Enable App Inspector
-  status      Show whether App Inspector is enabled
 
 Options:
   -h, --help   help for inspect

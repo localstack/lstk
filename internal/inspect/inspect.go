@@ -14,7 +14,6 @@ import (
 var ErrUnavailable = errors.New("this emulator has no App Inspector")
 
 type Client interface {
-	AppInspectorEnabled(ctx context.Context, host string) (bool, error)
 	SetAppInspectorEnabled(ctx context.Context, host string, enabled bool) (changed bool, err error)
 }
 
@@ -38,22 +37,6 @@ func Set(ctx context.Context, sink output.Sink, t Target, enabled bool) error {
 		return emitRequestError(sink, err)
 	}
 	sink.Emit(output.AppInspectorEvent{Enabled: enabled, Changed: changed})
-	return nil
-}
-
-func Status(ctx context.Context, sink output.Sink, t Target) error {
-	running, err := isRunning(ctx, sink, t)
-	if err != nil {
-		return err
-	}
-	if !running {
-		return emitNotRunning(sink)
-	}
-	enabled, err := t.Client.AppInspectorEnabled(ctx, t.Host)
-	if err != nil {
-		return emitRequestError(sink, err)
-	}
-	sink.Emit(output.AppInspectorEvent{Enabled: enabled})
 	return nil
 }
 

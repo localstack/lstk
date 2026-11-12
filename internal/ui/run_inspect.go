@@ -12,9 +12,3 @@ func RunInspectSet(parentCtx context.Context, t inspect.Target, enabled bool) er
 		return inspect.Set(ctx, sink, t, enabled)
 	})
 }
-
-func RunInspectStatus(parentCtx context.Context, t inspect.Target) error {
-	return runWithTUI(parentCtx, withoutHeader(), func(ctx context.Context, sink output.Sink) error {
-		return inspect.Status(ctx, sink, t)
-	})
-}

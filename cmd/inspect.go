@@ -23,7 +23,7 @@ func newInspectCmd(cfg *env.Env) *cobra.Command {
 		Long:  "Turn App Inspector on or off for the AWS emulator. App Inspector records the operations your application sends to the emulator, with their payloads, the services they connect, and IAM permission results. View them in the LocalStack Web Application or the LocalStack Toolkit for VS Code.",
 	}
 	requireSubcommand(cmd)
-	cmd.AddCommand(newInspectSetCmd(cfg, true), newInspectSetCmd(cfg, false), newInspectStatusCmd(cfg))
+	cmd.AddCommand(newInspectSetCmd(cfg, true), newInspectSetCmd(cfg, false))
 	return cmd
 }
 
@@ -50,27 +50,6 @@ func newInspectSetCmd(cfg *env.Env, enabled bool) *cobra.Command {
 				return ui.RunInspectSet(cmd.Context(), t, enabled)
 			}
 			return inspect.Set(cmd.Context(), sink, t, enabled)
-		},
-	}
-}
-
-func newInspectStatusCmd(cfg *env.Env) *cobra.Command {
-	return &cobra.Command{
-		Use:         "status",
-		Short:       "Show whether App Inspector is enabled",
-		Args:        cobra.NoArgs,
-		PreRunE:     initConfigDeferCreate(nil),
-		Annotations: map[string]string{jsonSupportedAnnotation: "true"},
-		RunE: func(cmd *cobra.Command, args []string) error {
-			sink := jsonAwareSink(cmd, cfg, os.Stdout)
-			t, err := resolveInspectTarget(cmd, cfg, sink)
-			if err != nil {
-				return err
-			}
-			if isInteractiveMode(cfg) {
-				return ui.RunInspectStatus(cmd.Context(), t)
-			}
-			return inspect.Status(cmd.Context(), sink, t)
 		},
 	}
 }
