@@ -9,7 +9,6 @@ import (
 	"strings"
 	"sync"
 	"testing"
-	"time"
 
 	"github.com/localstack/lstk/test/integration/env"
 	"github.com/stretchr/testify/assert"
@@ -66,24 +65,6 @@ func writeInspectConfig(t *testing.T, content string) string {
 	return path
 }
 
-func readFile(t *testing.T, path string) string {
-	t.Helper()
-	data, err := os.ReadFile(path)
-	require.NoError(t, err)
-	return string(data)
-}
-
-const inspectBaseConfig = `# my settings
-[[containers]]
-type = "aws"     # emulator type
-tag  = "latest"
-port = "4566"
-# env = []       # Named environment profiles
-
-[cli]
-check_for_update_on_startup = false
-`
-
 func TestInspectEndpointURL(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
@@ -125,101 +106,15 @@ func TestInspectFailsWhenEmulatorLacksAppInspector(t *testing.T) {
 	assert.Contains(t, stdout, "App Inspector is not available in this emulator")
 }
 
-func TestInspectPersistRejectsEndpointURL(t *testing.T) {
-	t.Parallel()
-	srv, puts := appInspectorServer(t, false)
-
-	stdout, _, err := runLstk(t, testContext(t), t.TempDir(), inspectEnv(t),
-		"--endpoint-url", srv.URL, "--non-interactive", "inspect", "enable", "--persist")
-
-	requireExitCode(t, 1, err)
-	assert.Contains(t, stdout, "--persist")
-	assert.Empty(t, puts())
-}
-
-func TestInspectPersist(t *testing.T) {
-	t.Parallel()
-	for _, tc := range []struct {
-		name string
-		cmd  string
-		in   string
-		want string
-	}{
-		{
-			name: "enable adds a profile and keeps comments",
-			cmd:  "enable",
-			in:   inspectBaseConfig,
-			want: `# my settings
-[[containers]]
-env = ["app-inspector"]
-type = "aws"     # emulator type
-tag  = "latest"
-port = "4566"
-# env = []       # Named environment profiles
-
-[cli]
-check_for_update_on_startup = false
-
-[env.app-inspector]
-APP_INSPECTOR = "1"
-`,
-		},
-		{
-			name: "enable keeps existing profiles",
-			cmd:  "enable",
-			in:   "[[containers]]\ntype = \"aws\"\nport = \"4566\"\nenv = [\"debug\"]\n\n[env.debug]\nDEBUG = \"1\"\n",
-			want: "[[containers]]\ntype = \"aws\"\nport = \"4566\"\nenv = [\"debug\", \"app-inspector\"]\n\n[env.debug]\nDEBUG = \"1\"\n\n[env.app-inspector]\nAPP_INSPECTOR = \"1\"\n",
-		},
-		{
-			name: "disable flips the saved value",
-			cmd:  "disable",
-			in:   "[[containers]]\ntype = \"aws\"\nport = \"4566\"\nenv = [\"app-inspector\"]\n\n[env.app-inspector]\nAPP_INSPECTOR = \"1\"\n",
-			want: "[[containers]]\ntype = \"aws\"\nport = \"4566\"\nenv = [\"app-inspector\"]\n\n[env.app-inspector]\nAPP_INSPECTOR = \"0\"\n",
-		},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-			configPath := writeInspectConfig(t, tc.in)
-			e := inspectEnv(t)
-			args := []string{"--config", configPath, "--non-interactive", "inspect", tc.cmd, "--persist"}
-
-			stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), e, args...)
-			require.NoError(t, err, stderr)
-			assert.Contains(t, stdout, "next start")
-			assert.Equal(t, tc.want, readFile(t, configPath))
-
-			stdout, stderr, err = runLstk(t, testContext(t), t.TempDir(), e, args...)
-			require.NoError(t, err, stderr)
-			assert.Contains(t, stdout, "on every start ("+configPath+")")
-			assert.Equal(t, tc.want, readFile(t, configPath))
-		})
-	}
-}
-
-func TestInspectPersistWithoutConfigFile(t *testing.T) {
-	t.Parallel()
-	e := inspectEnv(t)
-	configPath := resolvedConfigPath(t, e)
-
-	stdout, _, err := runLstk(t, testContext(t), t.TempDir(), e,
-		"--non-interactive", "inspect", "enable", "--persist")
-
-	requireExitCode(t, 1, err)
-	assert.Contains(t, stdout, "lstk start")
-	assert.NoFileExists(t, configPath)
-}
-
 func TestInspectRejectsNonAWSConfig(t *testing.T) {
 	t.Parallel()
-	original := "[[containers]]\ntype = \"snowflake\"\nport = \"4566\"\n"
-	configPath := writeInspectConfig(t, original)
+	configPath := writeInspectConfig(t, "[[containers]]\ntype = \"snowflake\"\nport = \"4566\"\n")
 
 	stdout, _, err := runLstk(t, testContext(t), t.TempDir(), inspectEnv(t),
-		"--config", configPath, "--non-interactive", "inspect", "enable", "--persist")
+		"--config", configPath, "--non-interactive", "inspect", "enable")
 
 	requireExitCode(t, 1, err)
 	assert.Contains(t, stdout, "App Inspector is only available for the AWS emulator")
-	assert.Equal(t, original, readFile(t, configPath))
 }
 
 func TestInspectJSON(t *testing.T) {
@@ -250,22 +145,8 @@ func TestInspectJSON(t *testing.T) {
 	}
 }
 
-func TestInspectPersistJSON(t *testing.T) {
-	t.Parallel()
-	configPath := writeInspectConfig(t, inspectBaseConfig)
-
-	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), inspectEnv(t),
-		"--config", configPath, "--json", "inspect", "enable", "--persist")
-
-	require.NoError(t, err, stderr)
-	envelope := decodeEnvelope(t, stdout)
-	assert.Equal(t, "ok", envelope.Status)
-	assert.JSONEq(t, `{"saved": {"enabled": true, "changed": true}}`, string(envelope.Data))
-}
-
 func TestInspectJSONErrors(t *testing.T) {
 	t.Parallel()
-	aws, _ := appInspectorServer(t, false)
 	snowflake := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewEncoder(w).Encode(map[string]any{"version": "1.0.0", "services": map[string]string{"snowflake": "running"}})
 	}))
@@ -277,10 +158,8 @@ func TestInspectJSONErrors(t *testing.T) {
 		args     []string
 		wantCode string
 	}{
-		{"persist with endpoint", []string{"--endpoint-url", aws.URL, "inspect", "enable", "--persist"}, "VALIDATION_ERROR"},
 		{"non-AWS endpoint", []string{"--endpoint-url", snowflake.URL, "inspect", "status"}, "EMULATOR_WRONG_TYPE"},
 		{"non-AWS config", []string{"--config", snowflakeConfig, "inspect", "status"}, "EMULATOR_NOT_CONFIGURED"},
-		{"persist without config file", []string{"inspect", "enable", "--persist"}, "CONFIG_NOT_FOUND"},
 		{"runtime unavailable", []string{"inspect", "status"}, "RUNTIME_UNAVAILABLE"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -305,7 +184,7 @@ func TestInspectEnableNotRunning(t *testing.T) {
 
 	requireExitCode(t, 1, err)
 	assert.Contains(t, stdout, "not running")
-	assert.Contains(t, stdout, "--persist")
+	assert.NotContains(t, stdout, "--persist")
 }
 
 func TestInspectEnableLocalEmulator(t *testing.T) {
@@ -326,7 +205,7 @@ func TestInspectEnableLocalEmulator(t *testing.T) {
 
 	require.NoError(t, err, stderr)
 	assert.Contains(t, stdout, "App Inspector enabled")
-	assert.Contains(t, stdout, "lstk inspect enable --persist")
+	assert.NotContains(t, stdout, "--persist")
 	assert.Equal(t, []string{"enabled"}, puts())
 	assertCommandTelemetry(t, events, "inspect enable", 0)
 }
@@ -367,30 +246,4 @@ func TestInspectStatusJSONNotRunning(t *testing.T) {
 	envelope := decodeEnvelope(t, stdout)
 	require.NotNil(t, envelope.Error)
 	assert.Equal(t, "EMULATOR_NOT_RUNNING", envelope.Error.Code)
-}
-
-// The emulator turns App Inspector on shortly after it reports ready, so the check waits.
-func TestInspectPersistAppliesOnStart(t *testing.T) {
-	requireDocker(t)
-	token := env.Require(t, env.AuthToken)
-	cleanup()
-	home := t.TempDir()
-	scheduleVolumeCleanup(t, home)
-	// Runs first (LIFO), so the emulator stops before its volume is removed.
-	t.Cleanup(cleanup)
-
-	ctx := testContext(t)
-	configPath := writeInspectConfig(t, inspectBaseConfig)
-	e := env.Environ(testEnvWithHome(home, "")).With(env.AuthToken, token)
-
-	_, stderr, err := runLstk(t, ctx, t.TempDir(), e, "--config", configPath, "--non-interactive", "inspect", "enable", "--persist")
-	require.NoError(t, err, stderr)
-
-	_, stderr, err = runLstk(t, ctx, t.TempDir(), e, "--config", configPath, "--non-interactive", "start")
-	require.NoError(t, err, stderr)
-
-	require.Eventually(t, func() bool {
-		stdout, _, err := runLstk(t, ctx, t.TempDir(), e, "--config", configPath, "--non-interactive", "inspect", "status")
-		return err == nil && strings.Contains(stdout, "App Inspector is enabled")
-	}, 15*time.Second, 500*time.Millisecond)
 }

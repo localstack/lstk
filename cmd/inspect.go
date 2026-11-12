@@ -28,34 +28,30 @@ func newInspectCmd(cfg *env.Env) *cobra.Command {
 }
 
 func newInspectSetCmd(cfg *env.Env, enabled bool) *cobra.Command {
-	var persist bool
-	use, title, state := "enable", "Enable", "enabled"
+	use, title := "enable", "Enable"
 	if !enabled {
-		use, title, state = "disable", "Disable", "disabled"
+		use, title = "disable", "Disable"
 	}
 
-	cmd := &cobra.Command{
-		Use:   use,
-		Short: title + " App Inspector",
-		Long: title + " App Inspector on the running AWS emulator.\n\n" +
-			"The change lasts until the emulator restarts. With --persist, lstk also saves it to the config file (as APP_INSPECTOR in an [env.app-inspector] profile), so App Inspector is " + state + " on every start. --persist works while the emulator is stopped too.",
+	return &cobra.Command{
+		Use:         use,
+		Short:       title + " App Inspector",
+		Long:        title + " App Inspector on the running AWS emulator. The change lasts until the emulator restarts.",
 		Args:        cobra.NoArgs,
 		PreRunE:     initConfigDeferCreate(nil),
 		Annotations: map[string]string{jsonSupportedAnnotation: "true"},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			sink := jsonAwareSink(cmd, cfg, os.Stdout)
-			t, err := resolveInspectTarget(cmd, cfg, sink, persist)
+			t, err := resolveInspectTarget(cmd, cfg, sink)
 			if err != nil {
 				return err
 			}
 			if isInteractiveMode(cfg) {
-				return ui.RunInspectSet(cmd.Context(), t, enabled, persist)
+				return ui.RunInspectSet(cmd.Context(), t, enabled)
 			}
-			return inspect.Set(cmd.Context(), sink, t, enabled, persist)
+			return inspect.Set(cmd.Context(), sink, t, enabled)
 		},
 	}
-	cmd.Flags().BoolVar(&persist, "persist", false, "Also save the setting to the config file so it applies on every start")
-	return cmd
 }
 
 func newInspectStatusCmd(cfg *env.Env) *cobra.Command {
@@ -67,7 +63,7 @@ func newInspectStatusCmd(cfg *env.Env) *cobra.Command {
 		Annotations: map[string]string{jsonSupportedAnnotation: "true"},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			sink := jsonAwareSink(cmd, cfg, os.Stdout)
-			t, err := resolveInspectTarget(cmd, cfg, sink, false)
+			t, err := resolveInspectTarget(cmd, cfg, sink)
 			if err != nil {
 				return err
 			}
@@ -79,7 +75,7 @@ func newInspectStatusCmd(cfg *env.Env) *cobra.Command {
 	}
 }
 
-func resolveInspectTarget(cmd *cobra.Command, cfg *env.Env, sink output.Sink, persist bool) (inspect.Target, error) {
+func resolveInspectTarget(cmd *cobra.Command, cfg *env.Env, sink output.Sink) (inspect.Target, error) {
 	fail := func(e output.ErrorEvent) (inspect.Target, error) {
 		sink.Emit(e)
 		return inspect.Target{}, output.NewSilentError(errors.New(e.Title))
@@ -90,14 +86,6 @@ func resolveInspectTarget(cmd *cobra.Command, cfg *env.Env, sink output.Sink, pe
 		return fail(output.ErrorEvent{Title: err.Error(), Code: output.ErrEmulatorNotRunning})
 	}
 	if remote != nil {
-		if persist {
-			source, _, _ := endpoint.ResolvedSource(cmd)
-			return fail(output.ErrorEvent{
-				Title:   "--persist cannot be used with " + source,
-				Summary: "--persist saves to the lstk config, which does not start the emulator at " + remote.URL + ".",
-				Code:    output.ErrValidationError,
-			})
-		}
 		if remote.Type != config.EmulatorAWS {
 			return fail(output.ErrorEvent{
 				Title: fmt.Sprintf("App Inspector is only available for the AWS emulator, but the endpoint at %s is a %s", remote.URL, remote.Type.DisplayName()),
@@ -122,28 +110,16 @@ func resolveInspectTarget(cmd *cobra.Command, cfg *env.Env, sink output.Sink, pe
 	if awsContainer == nil {
 		return fail(output.ErrorEvent{Title: "App Inspector is only available for the AWS emulator", Code: output.ErrEmulatorNotConfigured})
 	}
-	if persist && !config.HasFile() {
-		return fail(output.ErrorEvent{
-			Title:   "No config file to save the setting to yet",
-			Actions: []output.ErrorAction{{Label: "Create it by starting the emulator once:", Value: "lstk start"}},
-			Code:    output.ErrConfigNotFound,
-		})
-	}
 
 	rt, err := runtime.NewDockerRuntime(cfg.DockerHost)
 	if err != nil {
 		return inspect.Target{}, err
 	}
 	host, _ := endpoint.ResolveHost(cmd.Context(), awsContainer.Port, cfg.LocalStackHost)
-	path, err := config.FriendlyConfigPath()
-	if err != nil {
-		path = "the config file"
-	}
 	return inspect.Target{
 		Runtime:    rt,
 		Containers: []config.ContainerConfig{*awsContainer},
 		Client:     aws.NewClient(),
 		Host:       "http://" + host,
-		ConfigPath: path,
 	}, nil
 }

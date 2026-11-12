@@ -318,7 +318,7 @@ Codes: `RUNTIME_UNAVAILABLE`, `AUTH_REQUIRED`, `LICENSE_INVALID` (bad/expired/re
 ```
 Codes: `RUNTIME_UNAVAILABLE`, `EMULATOR_NOT_RUNNING`, `CONFIG_INVALID`, `CONFIG_NOT_FOUND` (bad or missing `--config` path).
 
-**`lstk inspect enable`** / **`disable`** / **`status`**: App Inspector's state on the running emulator. `changed` is whether this command changed it (always `false` for `status`). With `--persist`, `saved` reports the setting in the config file. When `--persist` runs while the emulator is stopped, `enabled` and `changed` are omitted.
+**`lstk inspect enable`** / **`disable`** / **`status`**: App Inspector's state on the running emulator. `changed` is whether this command changed it (always `false` for `status`).
 ```json
 {
   "schemaVersion": 1,
@@ -326,14 +326,13 @@ Codes: `RUNTIME_UNAVAILABLE`, `EMULATOR_NOT_RUNNING`, `CONFIG_INVALID`, `CONFIG_
   "status": "ok",
   "data": {
     "enabled": true,
-    "changed": true,
-    "saved": {"enabled": true, "changed": true}
+    "changed": true
   },
   "warnings": [],
   "error": null
 }
 ```
-Codes: `RUNTIME_UNAVAILABLE`, `EMULATOR_NOT_RUNNING`, `EMULATOR_NOT_CONFIGURED`, `EMULATOR_WRONG_TYPE`, `VALIDATION_ERROR` (`--persist` with an endpoint URL), `CONFIG_NOT_FOUND` (`--persist` with no config file yet), `CONFIG_INVALID`.
+Codes: `RUNTIME_UNAVAILABLE`, `EMULATOR_NOT_RUNNING`, `EMULATOR_NOT_CONFIGURED`, `EMULATOR_WRONG_TYPE`, `CONFIG_INVALID`.
 
 ### Proposed for future work (draft)
 
