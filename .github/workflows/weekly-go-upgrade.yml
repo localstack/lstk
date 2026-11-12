@@ -5,7 +5,7 @@ on:
     - cron: "0 8 * * 1"
   workflow_dispatch:
 
-# create-pull-request pushes and opens the PR with PRO_ACCESS_TOKEN.
+# create-pull-request pushes and opens the PR with GH_TOKEN_OPEN_NEW_PR.
 permissions: {}
 
 jobs:
@@ -49,4 +49,4 @@ jobs:
             dependencies
             semver: patch
             docs: skip
-          token: ${{ secrets.PRO_ACCESS_TOKEN }}
+          token: ${{ secrets.GH_TOKEN_OPEN_NEW_PR }}

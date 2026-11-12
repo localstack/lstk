@@ -60,6 +60,9 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       bump: ${{ steps.bump.outputs.bump }}
+    environment:
+      name: release
+      deployment: false
     steps:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -74,7 +77,7 @@ jobs:
       - name: Determine bump type from PR labels
         id: bump
         env:
-          GH_TOKEN: ${{ secrets.PRO_ACCESS_TOKEN }}
+          GH_TOKEN: ${{ secrets.GH_TOKEN_RELEASE }}
         run: |
           set -euo pipefail
 
@@ -127,13 +130,16 @@ jobs:
     needs: [check-changes, determine-bump, ci]
     if: needs.check-changes.outputs.has_changes == 'true'
     runs-on: ubuntu-latest
+    environment:
+      name: release
+      deployment: false
     steps:
       - name: Checkout code # zizmor: ignore[artipacked] the tag push needs it; this job uploads no artifacts
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: main
           fetch-depth: 0
-          token: ${{ secrets.PRO_ACCESS_TOKEN }}
+          token: ${{ secrets.GH_TOKEN_RELEASE }}
 
       - name: Fetch tags
         run: git fetch --tags --force
