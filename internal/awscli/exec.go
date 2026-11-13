@@ -151,6 +151,7 @@ func execEnv(base []string, opts ExecOptions) []string {
 	if !opts.UseProfile {
 		env = BuildEnv(base, opts.Account)
 		setIfAbsent(&env, "PYTHONUNBUFFERED", "1")
+		setEndpoint(&env, opts.EndpointURL)
 		return env
 	}
 
@@ -182,6 +183,15 @@ func execEnv(base []string, opts ExecOptions) []string {
 
 	setIfAbsent(&env, "PYTHONUNBUFFERED", "1")
 	return env
+}
+
+// Helper clients (e.g. in `lambda-web deploy`) ignore --endpoint-url; a profile's endpoint_url already reaches them.
+func setEndpoint(env *[]string, endpointURL string) {
+	if endpointURL == "" {
+		return
+	}
+	set(env, "AWS_ENDPOINT_URL", endpointURL)
+	remove(env, "AWS_IGNORE_CONFIGURED_ENDPOINT_URLS")
 }
 
 // BuildEnv seeds LocalStack-compatible credentials and region for a child aws
