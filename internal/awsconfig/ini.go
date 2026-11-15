@@ -10,8 +10,13 @@ import (
 )
 
 // loadOptions marks servicesSectionName unparseable so its indented content
-// round-trips through Load unchanged instead of being flattened into key=value pairs.
-var loadOptions = ini.LoadOptions{UnparseableSections: []string{servicesSectionName}}
+// round-trips. AllowNestedValues keeps other profiles' nested blocks: without
+// it, saving ~/.aws/config flattens them into sibling keys and the AWS CLI
+// stops applying them.
+var loadOptions = ini.LoadOptions{
+	UnparseableSections: []string{servicesSectionName},
+	AllowNestedValues:   true,
+}
 
 func loadINI(path string) (*ini.File, error) {
 	return ini.LoadSources(loadOptions, path)

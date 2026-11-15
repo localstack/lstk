@@ -3,6 +3,7 @@ package integration_test
 import (
 	"os"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strings"
 	"testing"
@@ -326,4 +327,32 @@ func TestSetupAWSNonInteractiveForceOverwrites(t *testing.T) {
 	normalizedCreds := strings.Join(strings.Fields(string(credsContent)), " ")
 	assert.NotContains(t, normalizedCreds, "WRONG", "--force should overwrite stale credentials")
 	assert.Contains(t, normalizedCreds, "aws_access_key_id = test")
+}
+
+// A first `lstk setup aws` rewrites an existing ~/.aws/config to add the
+// localstack profile. Other profiles' nested blocks (the AWS CLI's `s3 =`
+// group and anything like it) have to survive that rewrite: flattened back
+// into sibling keys, the CLI stops applying them.
+func TestSetupAWSPreservesNestedSettingsInOtherProfiles(t *testing.T) {
+	t.Parallel()
+	baseEnv, tmpHome := awsConfigEnv(t)
+
+	awsDir := filepath.Join(tmpHome, ".aws")
+	require.NoError(t, os.MkdirAll(awsDir, 0700))
+	require.NoError(t, os.WriteFile(filepath.Join(awsDir, "config"), []byte(`[profile default]
+region = us-east-1
+s3 =
+    max_concurrent_requests = 20
+    multipart_threshold = 64MB
+`), 0600))
+
+	_, stderr, err := runLstk(t, testContext(t), "", baseEnv, "setup", "aws")
+	require.NoError(t, err, stderr)
+
+	configContent, err := os.ReadFile(filepath.Join(awsDir, "config"))
+	require.NoError(t, err)
+	normalized := strings.ReplaceAll(string(configContent), "\r\n", "\n")
+	assert.Regexp(t, regexp.MustCompile(`(?m)^s3\s*=\s*\n[ \t]+max_concurrent_requests = 20\n[ \t]+multipart_threshold = 64MB\n`), normalized)
+	assert.Contains(t, normalized, "[profile localstack]")
+	assert.Contains(t, normalized, "[services localstack]\ns3 =\n    endpoint_url = http")
 }

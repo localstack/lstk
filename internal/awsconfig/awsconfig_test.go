@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -189,6 +190,44 @@ func TestWriteConfigProfileWritesS3ServicesOverride(t *testing.T) {
 	}
 	if needed {
 		t.Error("config should not need a write immediately after writeConfigProfile")
+	}
+}
+
+func TestWriteConfigProfilePreservesNestedValuesInOtherProfiles(t *testing.T) {
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, ".aws", "config")
+	writeFile(t, configPath, `[profile default]
+region = us-east-1
+s3 =
+    max_concurrent_requests = 20
+    multipart_threshold = 64MB
+
+[profile localstack]
+region = us-east-1
+output = json
+endpoint_url = http://localhost.localstack.cloud:4566
+`)
+
+	if err := writeConfigProfile(configPath, "localhost.localstack.cloud:4566"); err != nil {
+		t.Fatal(err)
+	}
+	// A second write reloads the services block this function just saved. That
+	// reload must not pull another profile's nested lines into it.
+	if err := writeConfigProfile(configPath, "localhost.localstack.cloud:4566"); err != nil {
+		t.Fatal(err)
+	}
+
+	raw, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	normalized := strings.ReplaceAll(string(raw), "\r\n", "\n")
+	nested := regexp.MustCompile(`(?m)^s3\s*=\s*\n[ \t]+max_concurrent_requests = 20\n[ \t]+multipart_threshold = 64MB\n`)
+	if !nested.MatchString(normalized) {
+		t.Errorf("nested s3 settings in another profile were flattened:\n%s", normalized)
+	}
+	if !strings.Contains(normalized, "[services localstack]\ns3 =\n    endpoint_url = http://s3.localhost.localstack.cloud:4566\n") {
+		t.Errorf("services block lost its indentation:\n%s", normalized)
 	}
 }
 
