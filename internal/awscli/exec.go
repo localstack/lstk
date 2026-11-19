@@ -182,16 +182,18 @@ func execEnv(base []string, opts ExecOptions) []string {
 	}
 
 	setIfAbsent(&env, "PYTHONUNBUFFERED", "1")
+	setEndpoint(&env, opts.EndpointURL)
 	return env
 }
 
-// Helper clients (e.g. in `lambda-web deploy`) ignore --endpoint-url; a profile's endpoint_url already reaches them.
+// Helper clients (e.g. in `lambda-web deploy`) ignore --endpoint-url. "false" also
+// overrides ignore_configured_endpoint_urls in ~/.aws/config.
 func setEndpoint(env *[]string, endpointURL string) {
 	if endpointURL == "" {
 		return
 	}
 	set(env, "AWS_ENDPOINT_URL", endpointURL)
-	remove(env, "AWS_IGNORE_CONFIGURED_ENDPOINT_URLS")
+	set(env, "AWS_IGNORE_CONFIGURED_ENDPOINT_URLS", "false")
 }
 
 // BuildEnv seeds LocalStack-compatible credentials and region for a child aws

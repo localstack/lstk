@@ -464,32 +464,31 @@ func TestAWSCommandExportsEndpointURLToChild(t *testing.T) {
 	t.Cleanup(srv.Close)
 
 	fakeDir := writeFakeTool(t, "aws", fakeToolConfig{
-		Shift:  2,
-		Stdout: []string{"ENDPOINT:{arg2}", "AWS_ENDPOINT_URL={env:AWS_ENDPOINT_URL-<unset>}"},
+		Shift: 2,
+		Stdout: []string{
+			"ENDPOINT:{arg2}",
+			"AWS_ENDPOINT_URL={env:AWS_ENDPOINT_URL-<unset>}",
+			"AWS_IGNORE_CONFIGURED_ENDPOINT_URLS={env:AWS_IGNORE_CONFIGURED_ENDPOINT_URLS-<unset>}",
+		},
 	})
 
-	tests := []struct {
-		withProfile bool
-		want        string
-	}{
-		{false, srv.URL},
-		{true, "<unset>"},
-	}
-	for _, tc := range tests {
-		t.Run(fmt.Sprintf("profile=%v", tc.withProfile), func(t *testing.T) {
+	for _, withProfile := range []bool{false, true} {
+		t.Run(fmt.Sprintf("profile=%v", withProfile), func(t *testing.T) {
 			t.Parallel()
 			home := t.TempDir()
-			if tc.withProfile {
+			if withProfile {
 				writeAWSProfile(t, home)
 			}
-			e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).WithHome(home)
+			e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).WithHome(home).
+				With("AWS_IGNORE_CONFIGURED_ENDPOINT_URLS", "true")
 			e = append(e, unreachableDockerHost)
 
 			stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), e,
 				"--endpoint-url", srv.URL, "aws", "lambda-web", "deploy")
 			require.NoError(t, err, "stderr: %s", stderr)
 			assert.Contains(t, stdout, "ENDPOINT:"+srv.URL)
-			assert.Contains(t, stdout, "AWS_ENDPOINT_URL="+tc.want)
+			assert.Contains(t, stdout, "AWS_ENDPOINT_URL="+srv.URL)
+			assert.Contains(t, stdout, "AWS_IGNORE_CONFIGURED_ENDPOINT_URLS=false")
 		})
 	}
 }
