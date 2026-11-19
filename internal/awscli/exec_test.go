@@ -208,3 +208,19 @@ func hasKey(env []string, key string) bool {
 	}
 	return false
 }
+
+func TestExecEnvSetsEndpointURL(t *testing.T) {
+	base := []string{"AWS_ENDPOINT_URL=https://elsewhere.example", "AWS_IGNORE_CONFIGURED_ENDPOINT_URLS=true"}
+	for _, opts := range []ExecOptions{
+		{EndpointURL: "http://localhost:4566", Account: "test"},
+		{EndpointURL: "http://localhost:4566", Account: "test", UseProfile: true},
+		{EndpointURL: "http://localhost:4566", Account: "111111111111", UseProfile: true, AccountSelected: true},
+	} {
+		env := execEnv(base, opts)
+		assert.Contains(t, env, "AWS_ENDPOINT_URL=http://localhost:4566")
+		assert.NotContains(t, env, "AWS_ENDPOINT_URL=https://elsewhere.example")
+		assert.Contains(t, env, "AWS_IGNORE_CONFIGURED_ENDPOINT_URLS=false")
+	}
+	help := execEnv(base, ExecOptions{Account: "test"})
+	assert.Contains(t, help, "AWS_ENDPOINT_URL=https://elsewhere.example", "the help path resolves no endpoint")
+}

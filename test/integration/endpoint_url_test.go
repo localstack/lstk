@@ -457,3 +457,38 @@ func TestEndpointURLWrongTypeErrorNamesEmulatorOnce(t *testing.T) {
 		})
 	}
 }
+
+func TestAWSCommandExportsEndpointURLToChild(t *testing.T) {
+	t.Parallel()
+	srv := awsHealthServer(t)
+	t.Cleanup(srv.Close)
+
+	fakeDir := writeFakeTool(t, "aws", fakeToolConfig{
+		Shift: 2,
+		Stdout: []string{
+			"ENDPOINT:{arg2}",
+			"AWS_ENDPOINT_URL={env:AWS_ENDPOINT_URL-<unset>}",
+			"AWS_IGNORE_CONFIGURED_ENDPOINT_URLS={env:AWS_IGNORE_CONFIGURED_ENDPOINT_URLS-<unset>}",
+		},
+	})
+
+	for _, withProfile := range []bool{false, true} {
+		t.Run(fmt.Sprintf("profile=%v", withProfile), func(t *testing.T) {
+			t.Parallel()
+			home := t.TempDir()
+			if withProfile {
+				writeAWSProfile(t, home)
+			}
+			e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).WithHome(home).
+				With("AWS_IGNORE_CONFIGURED_ENDPOINT_URLS", "true")
+			e = append(e, unreachableDockerHost)
+
+			stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), e,
+				"--endpoint-url", srv.URL, "aws", "lambda-web", "deploy")
+			require.NoError(t, err, "stderr: %s", stderr)
+			assert.Contains(t, stdout, "ENDPOINT:"+srv.URL)
+			assert.Contains(t, stdout, "AWS_ENDPOINT_URL="+srv.URL)
+			assert.Contains(t, stdout, "AWS_IGNORE_CONFIGURED_ENDPOINT_URLS=false")
+		})
+	}
+}
