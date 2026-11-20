@@ -22,6 +22,13 @@ Release automation uses three workflows:
 
 Either path pushes a version tag (e.g. `v0.2.4`), which triggers `LSTK CI`, running the `release` job to publish the GitHub release with GoReleaser.
 
+## When a release fails
+
+`Automated Weekly Release` and the tag-push run of `LSTK CI` alert #sig-lstk on every failed attempt, re-runs included. The webhook is the repo secret `SLACK_LSTK_RELEASE_WEBHOOK`.
+
+- **Publishing never started**: a required check failed. Fix it, then re-run the failed jobs.
+- **Publishing stopped partway**: the GitHub release, Homebrew and npm may be out of step. Delete the release's assets before re-running, since GoReleaser won't overwrite them.
+
 To validate release packaging locally without publishing:
 
 ```bash

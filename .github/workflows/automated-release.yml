@@ -148,3 +148,18 @@ jobs:
         uses: $/.github/actions/create-release-tag
         with:
           bump: ${{ needs.determine-bump.outputs.bump }}
+
+  # GitHub only emails whoever last edited the cron. Failures after tagging
+  # alert from ci.yml.
+  notify:
+    name: Notify release failure
+    needs: [check-changes, determine-bump, ci, create-tag]
+    if: always() && github.repository == 'localstack/lstk' && (contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Post to Slack
+        uses: $/.github/actions/notify-release-failure
+        with:
+          webhook: ${{ secrets.SLACK_LSTK_RELEASE_WEBHOOK }}
+          summary: Weekly lstk release failed before tagging, so no release went out this week.
