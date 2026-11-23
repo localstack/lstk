@@ -1,0 +1,31 @@
+name: Notify Release Failure
+description: Post a release failure alert to Slack, linking to this run attempt.
+
+inputs:
+  webhook:
+    description: Slack incoming webhook URL
+    required: true
+  summary:
+    description: What failed and what it left behind
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Post to Slack
+      shell: bash
+      env:
+        WEBHOOK: ${{ inputs.webhook }}
+        SUMMARY: ${{ inputs.summary }}
+        RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}/attempts/${{ github.run_attempt }}
+        ATTEMPT: ${{ github.run_attempt }}
+      run: |
+        set -euo pipefail
+        # Fail loudly, or a failed release goes unnoticed again.
+        if [ -z "${WEBHOOK}" ]; then
+          echo "::error::SLACK_LSTK_RELEASE_WEBHOOK is not set, so nobody was alerted about this release failure."
+          exit 1
+        fi
+        text=":rotating_light: ${SUMMARY}"$'\n'"<${RUN_URL}|View run (attempt ${ATTEMPT})>"
+        payload="$(jq -n --arg text "${text}" '{text: $text}')"
+        curl -fsS --retry 3 -X POST -H 'Content-Type: application/json' --data "${payload}" "${WEBHOOK}"

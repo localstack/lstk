@@ -527,3 +527,21 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ steps.bundle.outputs.tag }}
           COMMIT: ${{ steps.bundle.outputs.commit }}
+
+  # GitHub only emails the run's actor, here the release bot. A skipped
+  # `release` means a check it needs failed, so that alerts too.
+  notify-release-failure:
+    name: Notify release failure
+    needs: release
+    if: always() && startsWith(github.ref, 'refs/tags/') && github.repository == 'localstack/lstk' && needs.release.result != 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Post to Slack
+        uses: $/.github/actions/notify-release-failure
+        with:
+          webhook: ${{ secrets.SLACK_LSTK_RELEASE_WEBHOOK }}
+          summary: >-
+            ${{ format('lstk {0} release failed. {1}', github.ref_name, needs.release.result == 'skipped'
+            && 'Publishing never started because a required check failed or was cancelled.'
+            || 'Publishing stopped partway: check the GitHub release, Homebrew and npm before re-running.') }}
