@@ -171,6 +171,34 @@ func TestTerraformE2EMultipleAliases(t *testing.T) {
 	require.NoError(t, err, "apply stderr: %s", stderr)
 }
 
+// A provider block that pins its own region keeps it, as with plain terraform:
+// an aliased us-east-1 provider next to an eu-central-1 default must create its
+// resources in us-east-1 (e.g. CloudFront's ACM certs and Lambda@Edge).
+func TestTerraformE2EProviderRegionIsKept(t *testing.T) {
+	requireDocker(t)
+	requireTerraform(t)
+	token := requireAuthToken(t)
+	cleanup()
+	t.Cleanup(cleanup)
+	ctx := testContext(t)
+	startRealLocalStack(t, ctx, token)
+
+	work := copySample(t, "aliased-region")
+	e := e2eEnv(t)
+	tfInit(t, ctx, work, e)
+
+	_, stderr, err := runTerraform(t, ctx, work, e, "apply", "-auto-approve", "-no-color")
+	require.NoError(t, err, "apply stderr: %s", stderr)
+
+	defaultARN, stderr, err := runTerraform(t, ctx, work, e, "output", "-raw", "topic_default")
+	require.NoError(t, err, "output stderr: %s", stderr)
+	assert.Contains(t, defaultARN, ":sns:eu-central-1:")
+
+	aliasedARN, stderr, err := runTerraform(t, ctx, work, e, "output", "-raw", "topic_us_east_1")
+	require.NoError(t, err, "output stderr: %s", stderr)
+	assert.Contains(t, aliasedARN, ":sns:us-east-1:")
+}
+
 // 8.3 — recursive discovery: a provider block in a sub-directory is represented
 // in the override, while provider blocks under .terraform are ignored. Uses a
 // DRY_RUN capture against the real provider schema.

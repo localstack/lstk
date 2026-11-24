@@ -20,7 +20,7 @@ type overrideOptions struct {
 	workdir         string
 	fileName        string
 	endpointURL     string // effective LocalStack endpoint (after AWS_ENDPOINT_URL override)
-	region          string // resolved deployment region, encoded into every block
+	region          string // resolved deployment region, encoded into blocks that set none
 	account         string // resolved access_key (target account id)
 	endpointKeys    []string
 	includeProvider bool          // emit provider "aws" blocks and remote-state data blocks (false for init's backend-only override)
@@ -34,8 +34,8 @@ var providerBlockSchema = &hcl.BodySchema{
 	Blocks: []hcl.BlockHeaderSchema{{Type: "provider", LabelNames: []string{"name"}}},
 }
 
-var aliasAttrSchema = &hcl.BodySchema{
-	Attributes: []hcl.AttributeSchema{{Name: "alias"}},
+var providerAttrSchema = &hcl.BodySchema{
+	Attributes: []hcl.AttributeSchema{{Name: "alias"}, {Name: "region"}},
 }
 
 // generateOverride writes the LocalStack override file and returns the paths it
@@ -58,10 +58,14 @@ func generateOverride(opts overrideOptions) ([]string, error) {
 	b.WriteString("\n\n")
 
 	if opts.includeProvider {
-		for _, alias := range discoverAWSAliases(opts.workdir, opts.logger) {
+		for _, p := range discoverAWSProviders(opts.workdir, opts.logger) {
+			region := opts.region
+			if p.setsRegion {
+				region = ""
+			}
 			writeProviderBlock(&b, providerBlock{
-				alias:        alias,
-				region:       opts.region,
+				alias:        p.alias,
+				region:       region,
 				account:      opts.account,
 				endpointURL:  opts.endpointURL,
 				s3Endpoint:   s3Endpoint,
@@ -108,24 +112,37 @@ func ensureSafeToWrite(path string) error {
 	return fmt.Errorf("refusing to overwrite existing file %s — remove it or set LSTK_TF_OVERRIDE_FILE_NAME to a different name", path)
 }
 
-// discoverAWSAliases returns the alias of each `provider "aws"` block found in
-// the working directory tree's *.tf files ("" for the default, alias-less
-// provider). It recurses into sub-directories so provider blocks declared in
+// discoveredProvider is one `provider "aws"` configuration found by
+// discoverAWSProviders.
+type discoveredProvider struct {
+	alias string // "" for the default, alias-less provider
+	// setsRegion is true when a root-level block for this alias sets `region`
+	// itself. The override then leaves region out so the user's value stands,
+	// as with plain terraform. Only root-level blocks count: an override file
+	// merges only with blocks in its own module directory.
+	setsRegion bool
+}
+
+// discoverAWSProviders returns each `provider "aws"` configuration found in
+// the working directory tree's *.tf files, one per alias. It recurses into sub-directories so provider blocks declared in
 // nested modules are also represented; this won't catch every layout (e.g.
 // remote modules) but is better than scanning only the top level. Hidden
 // directories such as .terraform (the provider/module cache) and .git are
 // skipped. Files that fail to parse are logged and skipped individually. If no
 // aws provider block is found anywhere, it falls back to a single default
 // (alias-less) provider.
-func discoverAWSAliases(workdir string, logger log.Logger) []string {
+func discoverAWSProviders(workdir string, logger log.Logger) []discoveredProvider {
 	parser := hclparse.NewParser()
-	var aliases []string
-	seen := map[string]bool{}
-	add := func(a string) {
-		if !seen[a] {
-			seen[a] = true
-			aliases = append(aliases, a)
+	var providers []discoveredProvider
+	index := map[string]int{}
+	add := func(alias string, setsRegion bool) {
+		i, ok := index[alias]
+		if !ok {
+			i = len(providers)
+			index[alias] = i
+			providers = append(providers, discoveredProvider{alias: alias})
 		}
+		providers[i].setsRegion = providers[i].setsRegion || setsRegion
 	}
 
 	walkErr := filepath.WalkDir(workdir, func(path string, d fs.DirEntry, err error) error {
@@ -146,39 +163,43 @@ func discoverAWSAliases(workdir string, logger log.Logger) []string {
 			logger.Info("terraform: could not parse %s (%v); skipping it for provider discovery", path, diags)
 			return nil
 		}
+		atRoot := filepath.Dir(path) == filepath.Clean(workdir)
 		content, _, _ := file.Body.PartialContent(providerBlockSchema)
 		for _, block := range content.Blocks {
 			if block.Type != "provider" || len(block.Labels) == 0 || block.Labels[0] != "aws" {
 				continue
 			}
-			add(aliasOf(block))
+			alias, hasRegion := providerAttrs(block)
+			add(alias, atRoot && hasRegion)
 		}
 		return nil
 	})
 	if walkErr != nil {
 		logger.Info("terraform: error walking %s (%v); generating a single default provider override", workdir, walkErr)
-		return []string{""}
+		return []discoveredProvider{{}}
 	}
 
-	if len(aliases) == 0 {
-		return []string{""}
+	if len(providers) == 0 {
+		return []discoveredProvider{{}}
 	}
-	return aliases
+	return providers
 }
 
-// aliasOf extracts the literal `alias` attribute of a provider block, or "" if
-// absent or not a string literal.
-func aliasOf(block *hcl.Block) string {
-	content, _, _ := block.Body.PartialContent(aliasAttrSchema)
+// providerAttrs returns the literal `alias` of a provider block ("" if absent
+// or not a string literal) and whether it sets `region`, as a literal or any
+// expression.
+func providerAttrs(block *hcl.Block) (alias string, hasRegion bool) {
+	content, _, _ := block.Body.PartialContent(providerAttrSchema)
+	_, hasRegion = content.Attributes["region"]
 	attr, ok := content.Attributes["alias"]
 	if !ok {
-		return ""
+		return "", hasRegion
 	}
 	v, diags := attr.Expr.Value(nil)
 	if diags.HasErrors() || v.Type() != cty.String {
-		return ""
+		return "", hasRegion
 	}
-	return v.AsString()
+	return v.AsString(), hasRegion
 }
 
 type providerBlock struct {
@@ -198,7 +219,9 @@ func writeProviderBlock(b *strings.Builder, p providerBlock) {
 	}
 	fmt.Fprintf(b, "  access_key = %q\n", p.account)
 	b.WriteString("  secret_key = \"test\"\n")
-	fmt.Fprintf(b, "  region = %q\n", p.region)
+	if p.region != "" {
+		fmt.Fprintf(b, "  region = %q\n", p.region)
+	}
 	b.WriteString("  skip_credentials_validation = true\n")
 	b.WriteString("  skip_metadata_api_check = true\n")
 	fmt.Fprintf(b, "  s3_use_path_style = %t\n", p.pathStyle)

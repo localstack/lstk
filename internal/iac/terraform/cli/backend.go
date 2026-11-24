@@ -249,7 +249,7 @@ func renderCtyValue(v cty.Value) string {
 }
 
 // walkTFFiles parses each *.tf file under workdir and invokes fn with the parsed
-// file. It mirrors discoverAWSAliases' traversal rules: it recurses into
+// file. It mirrors discoverAWSProviders' traversal rules: it recurses into
 // sub-directories, skips hidden directories such as .terraform and .git, skips
 // the generated override file, and skips files that fail to parse (logged). fn
 // returns false to stop the walk early.
