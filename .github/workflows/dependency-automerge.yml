@@ -1,0 +1,52 @@
+name: Merge Dependency PRs
+
+# Merges green Dependabot and weekly Go toolchain PRs without a code-owner
+# review; the rules are in scripts/automerge/merge-bot-prs.sh. A schedule
+# rather than workflow_run: it always runs from main with Actions secrets,
+# and retries on its own when checks finish in a different order.
+on:
+  schedule:
+    - cron: "7,27,47 * * * *"
+  workflow_dispatch:
+
+# The merge uses the app token below, not GITHUB_TOKEN.
+permissions: {}
+
+concurrency:
+  group: dependency-automerge
+
+jobs:
+  merge:
+    name: Merge green dependency PRs
+    if: github.repository == 'localstack/lstk'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # Only main can deploy to it, so a PR branch can't read the app key.
+    environment: dependency-automerge
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # The app may bypass the review ruleset for pull requests only, and is
+      # not on the required-checks ruleset's bypass list.
+      - name: Create app token
+        id: app-token
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          client-id: ${{ vars.AUTOMERGE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.AUTOMERGE_APP_PRIVATE_KEY }}
+          permission-actions: read
+          permission-checks: read
+          permission-contents: write
+          permission-pull-requests: write
+          permission-statuses: read
+          # Merging a github-actions bump changes workflow files.
+          permission-workflows: write
+
+      - name: Merge green dependency PRs
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          GH_REPO: ${{ github.repository }}
+        run: scripts/automerge/merge-bot-prs.sh
