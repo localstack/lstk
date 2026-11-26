@@ -1017,6 +1017,47 @@ func TestStartContainers_ExitedEmitsErrorAndTelemetry(t *testing.T) {
 	}
 }
 
+// Docker can still be delivering a container's last log lines when its exit is
+// reported. Those lines usually explain the crash, so they must not be cut off.
+func TestStartContainers_ExitKeepsLogLinesDeliveredAfterTheExit(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockRT := runtime.NewMockRuntime(ctrl)
+	mockRT.EXPECT().ImageEnv(gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
+
+	c := runtime.ContainerConfig{
+		Image:         "localstack/localstack-pro:latest",
+		Name:          "localstack-aws",
+		EmulatorType:  config.EmulatorAWS,
+		Tag:           "latest",
+		Port:          "1", // unreachable port so the health GET never connects
+		ContainerPort: "4566/tcp",
+		HealthPath:    "/_localstack/health",
+	}
+	const containerID = "abc123"
+	mockRT.EXPECT().Start(gomock.Any(), withDefaultStopTimeout(c)).Return(containerID, exitResultChan(runtime.ExitResult{ExitCode: 3}), nil)
+	mockRT.EXPECT().StreamLogs(gomock.Any(), containerID, gomock.Any(), true, "all").DoAndReturn(
+		func(ctx context.Context, _ string, out io.Writer, _ bool, _ string) error {
+			_, _ = io.WriteString(out, "starting\n")
+			select {
+			case <-ctx.Done():
+				return nil
+			case <-time.After(100 * time.Millisecond):
+			}
+			_, _ = io.WriteString(out, "fatal: the real reason\n")
+			return nil
+		})
+	mockRT.EXPECT().IsRunning(gomock.Any(), containerID).Return(true, nil).AnyTimes()
+
+	tel, _ := newCapturingTelClient(t)
+	defer tel.Close()
+
+	var out bytes.Buffer
+	err := startContainers(context.Background(), mockRT, output.NewPlainSink(&out), tel, []runtime.ContainerConfig{c}, map[string]bool{}, time.Minute, false, false)
+
+	require.Error(t, err)
+	assert.Contains(t, out.String(), "fatal: the real reason")
+}
+
 func TestStartContainers_TimeoutEmitsErrorAndTelemetry(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	mockRT := runtime.NewMockRuntime(ctrl)
