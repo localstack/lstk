@@ -22,7 +22,7 @@ Host environment variables prefixed with LOCALSTACK_ are forwarded to the emulat
 
 Use --type (aws, snowflake, azure) to select the emulator non-interactively; it records the selection in config, switching the configured type in place when it differs.
 
-Use --image to run a different container image for this start only, such as a pulled or offline image (e.g. lstk start --type snowflake --image localstack/snowflake-next). It is never saved to config. lstk restart keeps it until you run lstk stop. A locally loaded LocalStack Enterprise (offline) image that bundles its own license starts without an auth token, login, pull, or license check.
+Use --image to run a different container image for this start only, such as an internal registry or offline image (e.g. lstk start --type snowflake --image localstack/snowflake-next). It is never saved to config. lstk restart keeps it until you run lstk stop. lstk resolves a custom image before deciding whether LocalStack login is needed, even when a token is already stored. An image with a bundled license starts without an auth token or license check; an image without one still requires a LocalStack login. A disconnected start requires the image to be present locally.
 
 If a snapshot is configured for the AWS emulator (the snapshot field in [[containers]]), it is auto-loaded once the emulator starts. Use --snapshot REF to override it for one run, or --no-snapshot to skip it.`,
 		Args: func(_ *cobra.Command, args []string) error {

@@ -82,7 +82,7 @@ func TestPullImages_SkipsPullForBundledLicenseOnFloatingTag(t *testing.T) {
 	// No PullImage expected.
 
 	var out bytes.Buffer
-	pulled, err := pullImages(context.Background(), mockRT, output.NewPlainSink(&out), telemetry.New("", true), []runtime.ContainerConfig{c}, true)
+	pulled, err := pullImages(context.Background(), mockRT, output.NewPlainSink(&out), telemetry.New("", true), []runtime.ContainerConfig{c}, true, nil)
 
 	require.NoError(t, err)
 	assert.False(t, pulled[c.Name])
@@ -146,7 +146,7 @@ func TestStartOnce_FailsClosedWithoutTokenForNonBundledImage(t *testing.T) {
 		Telemetry:     telemetry.New("", true),
 	}
 	var out bytes.Buffer
-	_, err := startOnce(context.Background(), mockRT, output.NewPlainSink(&out), opts, false, "", filepath.Join(t.TempDir(), "license.json"), false)
+	_, err := startOnce(context.Background(), mockRT, output.NewPlainSink(&out), opts, false, "", filepath.Join(t.TempDir(), "license.json"), false, nil)
 
 	require.Error(t, err)
 	assert.True(t, output.IsSilent(err))
