@@ -405,9 +405,7 @@ port = "4566"    # Host port
 		t.Parallel()
 		// Copy binary since it will be replaced during the update
 		updateBinary := filepath.Join(t.TempDir(), execName("lstk"))
-		data, err := os.ReadFile(tmpBinary)
-		require.NoError(t, err)
-		require.NoError(t, os.WriteFile(updateBinary, data, 0o755))
+		require.NoError(t, copyExecutableTo(tmpBinary, updateBinary))
 
 		configFile := filepath.Join(t.TempDir(), "config.toml")
 		require.NoError(t, os.WriteFile(configFile, []byte(""), 0o644))

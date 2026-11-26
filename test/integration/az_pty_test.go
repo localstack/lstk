@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
@@ -70,7 +69,7 @@ print("PYTHONUNBUFFERED:" + os.environ.get("PYTHONUNBUFFERED", "<unset>"))
 print(%q)
 time.sleep(%f)
 `, python, marker, holdFor.Seconds())
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "az"), []byte(script), 0755))
+	require.NoError(t, writeExecutable(filepath.Join(dir, "az"), []byte(script)))
 	return dir
 }
 
