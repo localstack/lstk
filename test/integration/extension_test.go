@@ -3,7 +3,6 @@ package integration_test
 import (
 	"context"
 	"fmt"
-	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -11,6 +10,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"syscall"
 	"testing"
 
 	"github.com/google/uuid"
@@ -77,20 +77,22 @@ func copyExecutable(t *testing.T, src, dst string) {
 
 // copyExecutableTo is copyExecutable for callers without a *testing.T.
 func copyExecutableTo(src, dst string) error {
-	in, err := os.Open(src)
+	data, err := os.ReadFile(src)
 	if err != nil {
 		return err
 	}
-	defer func() { _ = in.Close() }()
-	out, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o755)
-	if err != nil {
-		return err
-	}
-	if _, err := io.Copy(out, in); err != nil {
-		_ = out.Close()
-		return err
-	}
-	return out.Close()
+	return writeExecutable(dst, data)
+}
+
+// writeExecutable writes a file the test will run. A child forked by a parallel
+// test while the file is open for writing inherits that handle until it execs,
+// and running the file then fails with "text file busy" (golang/go#22315).
+// Forks hold syscall.ForkLock for writing, so holding it for reading here
+// keeps them out.
+func writeExecutable(path string, data []byte) error {
+	syscall.ForkLock.RLock()
+	defer syscall.ForkLock.RUnlock()
+	return os.WriteFile(path, data, 0o755)
 }
 
 // installExtension places the reference extension under the name `lstk-<name>`

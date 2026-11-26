@@ -27,8 +27,6 @@ func installLstkUnder(t *testing.T, layout string) string {
 
 	src, err := filepath.Abs(binaryPath())
 	require.NoError(t, err)
-	data, err := os.ReadFile(src)
-	require.NoError(t, err, "run `make build` first")
 
 	dir := filepath.Join(t.TempDir(), filepath.FromSlash(layout))
 	require.NoError(t, os.MkdirAll(dir, 0755))
@@ -38,7 +36,7 @@ func installLstkUnder(t *testing.T, layout string) string {
 		name = "lstk.exe"
 	}
 	dst := filepath.Join(dir, name)
-	require.NoError(t, os.WriteFile(dst, data, 0755))
+	require.NoError(t, copyExecutableTo(src, dst), "run `make build` first")
 	return dst
 }
 
