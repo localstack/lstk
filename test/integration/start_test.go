@@ -20,6 +20,7 @@ import (
 
 	"github.com/localstack/lstk/internal/snap"
 	"github.com/localstack/lstk/test/integration/env"
+	"github.com/moby/moby/api/types/container"
 	"github.com/moby/moby/api/types/network"
 	"github.com/moby/moby/client"
 	"github.com/stretchr/testify/assert"
@@ -167,6 +168,65 @@ func TestStartFailsWhenContainerExitsDuringStartup(t *testing.T) {
 	combined := stdout + stderr
 	assert.Contains(t, combined, "exited unexpectedly", "the failure must be surfaced as a styled error")
 	assert.Contains(t, combined, "exit code 0", "the captured exit code must be reported")
+}
+
+// The last lines a crashing container prints are usually the reason it crashed,
+// so they must reach "Last container output" even when the container writes them
+// in a burst right before exiting.
+func TestStartShowsFinalContainerOutputWhenContainerExits(t *testing.T) {
+	requireDocker(t)
+	cleanup()
+	t.Cleanup(cleanup)
+
+	ctx := testContext(t)
+
+	const pinnedTag = "0.0.6"
+	const pinnedImage = "localstack/localstack-pro:" + pinnedTag
+	const lastLine = "crash-reason-last-line"
+	reader, err := dockerClient.ImagePull(ctx, testImage, client.ImagePullOptions{})
+	require.NoError(t, err, "failed to pull test image")
+	_, _ = io.Copy(io.Discard, reader)
+	_ = reader.Close()
+
+	src, err := dockerClient.ContainerCreate(ctx, client.ContainerCreateOptions{Config: &container.Config{Image: testImage}})
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		_, _ = dockerClient.ContainerRemove(context.Background(), src.ID, client.ContainerRemoveOptions{Force: true})
+	})
+	// A few hundred lines and an instant exit: lstk sees the exit while Docker is
+	// still delivering them. Much more output and the stream catches up first.
+	_, err = dockerClient.ContainerCommit(ctx, src.ID, client.ContainerCommitOptions{
+		Reference: pinnedImage,
+		Changes:   []string{`CMD ["sh", "-c", "seq 1 600; echo ` + lastLine + `; exit 3"]`},
+	})
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		_, _ = dockerClient.ImageRemove(context.Background(), pinnedImage, client.ImageRemoveOptions{Force: true})
+	})
+
+	wantContainer := "localstack-aws-" + pinnedTag
+	t.Cleanup(func() {
+		_, _ = dockerClient.ContainerRemove(context.Background(), wantContainer, client.ContainerRemoveOptions{Force: true})
+	})
+
+	home := t.TempDir()
+	configFile := filepath.Join(home, "config.toml")
+	require.NoError(t, os.WriteFile(configFile,
+		[]byte(fmt.Sprintf("[[containers]]\ntype = \"aws\"\ntag = %q\nport = \"4599\"\n", pinnedTag)), 0644))
+
+	mockServer := createMockLicenseServer(true)
+	defer mockServer.Close()
+
+	e := append(testEnvWithHome(home, ""),
+		string(env.APIEndpoint)+"="+mockServer.URL,
+		string(env.AuthToken)+"=fake-token")
+	stdout, stderr, err := runLstk(t, ctx, "", e, "--config", configFile, "--non-interactive", "start")
+
+	require.Error(t, err)
+	combined := stdout + stderr
+	assert.Contains(t, combined, "exit code 3")
+	assert.Contains(t, combined, "Last container output:")
+	assert.Contains(t, combined, lastLine, "the container's final output line must be shown")
 }
 
 // A container that stays running but never serves /_localstack/health must not wait forever.

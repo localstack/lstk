@@ -786,13 +786,18 @@ func startContainers(ctx context.Context, rt runtime.Runtime, sink output.Sink, 
 
 		healthURL := fmt.Sprintf("http://localhost:%s%s", c.Port, c.HealthPath)
 		err = monitor.await(ctx, containerID, healthURL, exitCh)
-		// Stop following and let the goroutine return before continuing, so it does
-		// not outlive the start. Bounded so a slow stream teardown can't hang start.
-		stopLogTail()
+		// Let the goroutine return before continuing, so it does not outlive the
+		// start. After an exit the stream ends by itself once Docker has delivered
+		// the last lines, and cancelling it first would drop them. Bounded so a slow
+		// stream teardown can't hang start.
+		if !isContainerExit(err) {
+			stopLogTail()
+		}
 		select {
 		case <-logDone:
 		case <-time.After(2 * time.Second):
 		}
+		stopLogTail()
 		if err != nil {
 			sink.Emit(output.SpinnerStop())
 			// A cancelled context (e.g. Ctrl+C) is a deliberate abort, not a
@@ -934,6 +939,11 @@ func (m *startupMonitor) handleFailure(ctx context.Context, c runtime.ContainerC
 func isStartupTimeout(err error) bool {
 	var timeoutErr *startupTimeoutError
 	return errors.As(err, &timeoutErr)
+}
+
+func isContainerExit(err error) bool {
+	var exitErr *containerExitedError
+	return errors.As(err, &exitErr)
 }
 
 // selectContainersToStart filters containers down to the ones that still need
