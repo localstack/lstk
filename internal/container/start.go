@@ -55,6 +55,7 @@ func emulatorStartedEvent(r StartResult) output.EmulatorStartedEvent {
 		Version:        r.Version,
 		AlreadyRunning: r.AlreadyRunning,
 		Persistence:    r.Persistence,
+		AgentsGuide:    auth.AgentsGuideURL,
 	}
 }
 
@@ -138,7 +139,11 @@ func start(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts Start
 	if token == "" && NeedsAuthToken(ctx, rt, opts) {
 		token, err = a.GetToken(ctx)
 		if err != nil {
-			sink.Emit(output.ErrorEvent{Title: err.Error(), Code: output.ErrAuthRequired})
+			ev := output.ErrorEvent{Title: err.Error(), Code: output.ErrAuthRequired}
+			if !interactive { // interactive errors here are browser-login failures, not a missing token
+				ev.Actions = auth.AuthRequiredActions()
+			}
+			sink.Emit(ev)
 			return StartResult{}, output.NewSilentError(err)
 		}
 	}
@@ -226,7 +231,7 @@ func startOnce(ctx context.Context, rt runtime.Runtime, sink output.Sink, opts S
 		// Fail closed if the image no longer qualifies, e.g. removed since start().
 		if token == "" && !bundledLicense {
 			err := errors.New("authentication required: set LOCALSTACK_AUTH_TOKEN or run lstk login")
-			sink.Emit(output.ErrorEvent{Title: err.Error(), Code: output.ErrAuthRequired})
+			sink.Emit(output.ErrorEvent{Title: err.Error(), Code: output.ErrAuthRequired, Actions: auth.AuthRequiredActions()})
 			return StartResult{}, output.NewSilentError(err)
 		}
 		healthPath, err := c.HealthPath()

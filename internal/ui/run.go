@@ -183,9 +183,11 @@ func resolveAuthToken(ctx context.Context, sink output.Sink, opts *RunOptions) e
 	return nil
 }
 
-func RunMessage(parentCtx context.Context, event output.MessageEvent) error {
+func RunMessage(parentCtx context.Context, events ...output.MessageEvent) error {
 	return runWithTUI(parentCtx, withoutHeader(), func(ctx context.Context, sink output.Sink) error {
-		sink.Emit(event)
+		for _, event := range events {
+			sink.Emit(event)
+		}
 		return nil
 	})
 }

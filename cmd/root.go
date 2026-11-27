@@ -65,7 +65,7 @@ func NewRootCmd(cfg *env.Env, tel *telemetry.Client, logger log.Logger) *cobra.C
 	root := &cobra.Command{
 		Use:     "lstk",
 		Short:   "LocalStack CLI",
-		Long:    "lstk is the command-line interface for LocalStack.",
+		Long:    "lstk is the command-line interface for LocalStack.\n\nDocumentation: " + lstkDocsURL + "\n\nAI agents: " + auth.AgentsGuideURL,
 		PreRunE: initConfigDeferCreate(&firstRun),
 		// ArbitraryArgs stops Cobra from rejecting an unknown first arg with its
 		// own "unknown command" error before RunE runs, so an unknown `lstk

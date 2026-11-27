@@ -212,6 +212,7 @@ func TestLoginShortCircuitsWhenEnvTokenSet(t *testing.T) {
 	assert.Contains(t, out, "You're already logged in")
 	assert.NotContains(t, out, "Opening browser")
 	assert.NotContains(t, out, "Waiting for authorization")
+	assertAIAgentGuide(t, out)
 }
 
 func TestLoginShortCircuitsWhenStoredTokenExists(t *testing.T) {
@@ -230,6 +231,7 @@ func TestLoginShortCircuitsWhenStoredTokenExists(t *testing.T) {
 	assert.Contains(t, out, "You're already logged in")
 	assert.NotContains(t, out, "Opening browser")
 	assert.NotContains(t, out, "Waiting for authorization")
+	assertAIAgentGuide(t, out)
 }
 
 // TestDefaultTestEnvironmentDoesNotOpenARealBrowser pins installNoopBrowserLauncher:

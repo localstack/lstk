@@ -100,6 +100,11 @@ homebrew_casks:
     # field and never renders it, and the archive is not plain Apache-2.0
     # anyway (see archives.files). The licence documents reach the Caskroom
     # because the cask stages the whole archive.
+    # Shown after `brew install` and in `brew info`; same prompt as `lstk login`.
+    caveats: |
+      Build with your favorite AI agent. Paste this prompt into your agent:
+        Set up LocalStack using https://www.localstack.cloud/.well-known/agents.md
+      Guide: https://docs.localstack.cloud/aws/getting-started/ai-workflows/
     completions:
       bash: completions/lstk.bash
       zsh: completions/lstk.zsh

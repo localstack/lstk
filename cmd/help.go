@@ -4,6 +4,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/localstack/lstk/internal/auth"
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 )
@@ -37,7 +38,13 @@ Global Options:
 {{.InheritedFlags.FlagUsages | trimTrailingWhitespaces}}{{end}}{{if .HasHelpSubCommands}}
 
 Additional help topics:{{range .Commands}}{{if .IsAdditionalHelpTopicCommand}}
-  {{rpad .CommandPath .CommandPathPadding}} {{.Short}}{{end}}{{end}}{{end}}`
+  {{rpad .CommandPath .CommandPathPadding}} {{.Short}}{{end}}{{end}}{{end}}{{if not .HasParent}}
+
+Learn more:
+  Documentation  {{docsURL}}
+  AI agents      {{agentsGuide}}{{end}}`
+
+const lstkDocsURL = "https://docs.localstack.cloud/aws/developer-tools/running-localstack/lstk/"
 
 const helpTemplate = `{{if not .HasParent}}{{if or .Runnable .HasSubCommands}}{{.UsageString}}{{end}}{{else}}{{with (or .Long .Short)}}{{wrapText . | trimTrailingWhitespaces}}
 
@@ -46,6 +53,8 @@ const helpTemplate = `{{if not .HasParent}}{{if or .Runnable .HasSubCommands}}{{
 
 func configureHelp(cmd *cobra.Command) {
 	cobra.AddTemplateFunc("wrapText", wrapText)
+	cobra.AddTemplateFunc("docsURL", func() string { return lstkDocsURL })
+	cobra.AddTemplateFunc("agentsGuide", func() string { return auth.AgentsGuideURL })
 	cmd.InitDefaultHelpFlag()
 	cmd.Flags().Lookup("help").Usage = "Show help"
 	cmd.SetUsageTemplate(usageTemplate)

@@ -69,6 +69,7 @@ type InstanceInfoEvent struct {
 	ContainerName string
 	Uptime        time.Duration
 	Persistence   bool
+	AgentsGuide   string
 }
 
 type TableEvent struct {
@@ -184,6 +185,8 @@ type EmulatorStartedEvent struct {
 	Version        string
 	AlreadyRunning bool
 	Persistence    bool
+	// AgentsGuide carries the start summary's "AI agents" line, which --json drops.
+	AgentsGuide string
 }
 
 // EmulatorStatusResource mirrors emulator.Resource, kept local to avoid

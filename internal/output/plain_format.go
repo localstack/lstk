@@ -302,6 +302,9 @@ func formatInstanceInfo(e InstanceInfoEvent) string {
 	if e.Uptime > 0 {
 		sb.WriteString("\n• Uptime: " + FormatUptime(e.Uptime))
 	}
+	if e.AgentsGuide != "" {
+		sb.WriteString("\n• AI agents: " + e.AgentsGuide)
+	}
 	return sb.String()
 }
 

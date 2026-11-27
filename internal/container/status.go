@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/localstack/lstk/internal/auth"
 	"github.com/localstack/lstk/internal/config"
 	"github.com/localstack/lstk/internal/emulator"
 	"github.com/localstack/lstk/internal/emulator/snowflake"
@@ -80,6 +81,7 @@ func Status(ctx context.Context, rt runtime.Runtime, containers []config.Contain
 			ContainerName: name,
 			Uptime:        uptime,
 			Persistence:   c.Type == config.EmulatorAWS && isPersistenceEnabled(ctx, rt, name),
+			AgentsGuide:   auth.AgentsGuideURL,
 		})
 
 		if c.Type == config.EmulatorAWS {
@@ -122,6 +124,7 @@ func StatusExternal(ctx context.Context, target *endpoint.Target, clients map[co
 		EmulatorName: target.Type.DisplayName(),
 		Version:      version,
 		Host:         target.URL,
+		AgentsGuide:  auth.AgentsGuideURL,
 	})
 
 	if target.Type == config.EmulatorAWS {

@@ -121,17 +121,30 @@ func (a *Auth) loginAndStore(ctx context.Context) (string, error) {
 	return token, nil
 }
 
-// emitAIAgentGuide follows a successful login the way other CLIs' post-login
-// pages do. Login only runs interactively, so this reaches humans; agents get
-// AgentsGuideURL from the start summary instead. Lines stay within 80 columns.
-func emitAIAgentGuide(sink output.Sink) {
-	for _, m := range []output.MessageEvent{
+// AIAgentGuide is the block shown after a login, or when one is already in
+// place, the way other CLIs' post-login pages point at agent setup. Lines
+// stay within 80 columns.
+func AIAgentGuide() []output.MessageEvent {
+	return []output.MessageEvent{
 		{Severity: output.SeverityInfo, Text: ""},
 		{Severity: output.SeverityInfo, Text: "Build with your favorite AI agent"},
 		{Severity: output.SeveritySecondary, Text: "• Paste this prompt into your agent:"},
 		{Severity: output.SeverityInfo, Text: "  Set up LocalStack using " + AgentsGuideURL},
 		{Severity: output.SeveritySecondary, Text: "• Guide: " + aiWorkflowsDocsURL},
-	} {
+	}
+}
+
+// AuthRequiredActions are the next steps for a missing login where no browser
+// login can run. The agents guide's headless setup covers getting a token.
+func AuthRequiredActions() []output.ErrorAction {
+	return []output.ErrorAction{
+		{Label: "Use an auth token instead:", Value: "set LOCALSTACK_AUTH_TOKEN"},
+		{Label: "Setting up an AI agent?", Value: AgentsGuideURL},
+	}
+}
+
+func emitAIAgentGuide(sink output.Sink) {
+	for _, m := range AIAgentGuide() {
 		sink.Emit(m)
 	}
 }
