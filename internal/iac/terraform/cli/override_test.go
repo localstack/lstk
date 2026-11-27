@@ -108,6 +108,37 @@ provider "aws" {
 	assert.NotContains(t, out, "should_be_ignored")
 }
 
+func TestGenerateOverrideKeepsRootProviderRegion(t *testing.T) {
+	dir := t.TempDir()
+	writeTF(t, dir, "main.tf", `
+provider "aws" {
+  region = var.region
+}
+provider "aws" {
+  alias = "unpinned"
+}
+`)
+	// Only root blocks count: an override file doesn't merge with a module's
+	// provider blocks, so a region set in a sub-directory changes nothing.
+	sub := filepath.Join(dir, "modules", "db")
+	require.NoError(t, os.MkdirAll(sub, 0755))
+	writeTF(t, sub, "provider.tf", `
+provider "aws" {
+  alias  = "unpinned"
+  region = "eu-west-1"
+}
+`)
+	opts := baseOpts(dir)
+	opts.region = "us-west-2"
+	paths, err := generateOverride(opts)
+	require.NoError(t, err)
+
+	out := readOverride(t, paths)
+	assert.Equal(t, 2, countProviderBlocks(out))
+	assert.Equal(t, 1, strings.Count(out, "region ="))
+	assert.Contains(t, out, "alias = \"unpinned\"\n  access_key = \"test\"\n  secret_key = \"test\"\n  region = \"us-west-2\"")
+}
+
 func TestGenerateOverrideCustomFileName(t *testing.T) {
 	dir := t.TempDir()
 	opts := baseOpts(dir)

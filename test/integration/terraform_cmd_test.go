@@ -283,6 +283,33 @@ func TestTerraformDryRunGeneratesOverride(t *testing.T) {
 	snap.Match(t, sanitizeOutput(string(content)))
 }
 
+// A provider block that sets its own region keeps it: the override writes the
+// resolved region only into blocks that don't set one.
+func TestTerraformOverrideKeepsProviderRegion(t *testing.T) {
+	requireDocker(t)
+	cleanup()
+	t.Cleanup(cleanup)
+	ctx := testContext(t)
+	startTestContainer(t, ctx)
+
+	fakeDir := writeFakeTerraform(t)
+	workDir := copySample(t, "aliased-region")
+	require.NoError(t, os.WriteFile(filepath.Join(workDir, "unpinned.tf"),
+		[]byte("provider \"aws\" {\n  alias = \"unpinned\"\n}\n"), 0644))
+	e := env.With(env.DisableEvents, "1").With("PATH", fakeDir).WithHome(t.TempDir()).
+		With(env.Key("LSTK_TF_DRY_RUN"), "1")
+
+	_, stderr, err := runLstk(t, ctx, workDir, e, "terraform", "plan")
+	require.NoError(t, err, "stderr: %s", stderr)
+
+	content, err := os.ReadFile(filepath.Join(workDir, tfOverrideFile))
+	require.NoError(t, err)
+	override := string(content)
+	assert.Equal(t, 1, countString(override, "region ="), "only the unpinned provider gets a region")
+	assert.Contains(t, override, "alias = \"unpinned\"\n  access_key = \"test\"\n  secret_key = \"test\"\n  region = \"us-east-1\"")
+	snap.Match(t, sanitizeOutput(override))
+}
+
 // 7.5 — a pre-existing override file (not created by lstk) causes a clear
 // failure and is not deleted.
 func TestTerraformRefusesPreexistingOverride(t *testing.T) {
