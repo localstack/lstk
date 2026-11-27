@@ -14,6 +14,7 @@ Error: Connection failed
 • Container: localstack-aws
 • Version: <version>
 • Uptime: <time>
+• AI agents: https://www.localstack.cloud/.well-known/agents.md
 ---
 
 [TestPlainSink_EmitsInstanceInfoEvent_minimal_1]

@@ -49,6 +49,10 @@ Options:
       --timeout duration      Maximum time to wait for the emulator to become ready (overrides LSTK_STARTUP_TIMEOUT; 0 uses the default)
   -t, --type string           Emulator type to start (aws, snowflake, azure)
   -v, --version               Show version
+
+Learn more:
+  Documentation  https://docs.localstack.cloud/aws/developer-tools/running-localstack/lstk/
+  AI agents      https://www.localstack.cloud/.well-known/agents.md
 ---
 
 [TestExtensionEndpointOmittedWhenNoRuntime_1]
@@ -112,6 +116,10 @@ Options:
       --timeout duration      Maximum time to wait for the emulator to become ready (overrides LSTK_STARTUP_TIMEOUT; 0 uses the default)
   -t, --type string           Emulator type to start (aws, snowflake, azure)
   -v, --version               Show version
+
+Learn more:
+  Documentation  https://docs.localstack.cloud/aws/developer-tools/running-localstack/lstk/
+  AI agents      https://www.localstack.cloud/.well-known/agents.md
 ---
 
 [TestExtensionHelpMissingDescriptionsFileDegrades_1]
@@ -162,6 +170,10 @@ Options:
       --timeout duration      Maximum time to wait for the emulator to become ready (overrides LSTK_STARTUP_TIMEOUT; 0 uses the default)
   -t, --type string           Emulator type to start (aws, snowflake, azure)
   -v, --version               Show version
+
+Learn more:
+  Documentation  https://docs.localstack.cloud/aws/developer-tools/running-localstack/lstk/
+  AI agents      https://www.localstack.cloud/.well-known/agents.md
 ---
 
 [TestExtensionSelfAuthorizationRefusesWithoutToken_1]

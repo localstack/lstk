@@ -163,6 +163,7 @@ func TestPlainSink_EmitsInstanceInfoEvent(t *testing.T) {
 			ContainerName: "localstack-aws",
 			Uptime:        4*time.Minute + 23*time.Second,
 			Persistence:   true,
+			AgentsGuide:   "https://www.localstack.cloud/.well-known/agents.md",
 		})
 
 		snap.Match(t, sanitizeSnapshot(out.String()))

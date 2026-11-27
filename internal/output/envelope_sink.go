@@ -53,6 +53,7 @@ func (s *EnvelopeSink) Emit(event Event) {
 		s.data["version"] = e.Version
 		s.data["alreadyRunning"] = e.AlreadyRunning
 		s.data["persistence"] = e.Persistence
+		s.data["agentsGuide"] = e.AgentsGuide
 	case EmulatorStatusEvent:
 		s.appendEmulator(newJSONStatusEmulator(e))
 	case UpdateCheckedEvent:

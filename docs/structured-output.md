@@ -272,7 +272,7 @@ Codes: `EMULATOR_NOT_CONFIGURED` (no AWS container configured), `EMULATOR_NOT_RU
 ```
 Codes: `NETWORK_ERROR` (GitHub API unreachable), `UPDATE_EXTERNALLY_MANAGED` (the install is managed by an external tool or sits in a directory lstk cannot write to; emitted before any version check, and suppressed by `--check` and `--force`), `INTERNAL_ERROR` (archive download verification, extraction, or replacement failure), `CONFIG_INVALID`, `CONFIG_NOT_FOUND` (bad or missing `--config` path).
 
-**`lstk start`** — a flat object, not an `emulators: [...]` list: only one `[[containers]]` block can be enabled at a time (`container.Start`'s `checkSingleContainer` guard), so `start` only ever acts on one emulator, unlike `stop`/`status` which genuinely enumerate multiple *configured* emulators. A version/config mismatch on an already-running instance surfaces as a `warnings[]` entry rather than a new field. The bare `lstk --json` invocation (no `start`) carries identical support: it runs through the same `startEmulator` path, so `--json` behaves the same way there, and the envelope's `command` field reads `"start"` either way.
+**`lstk start`** — a flat object, not an `emulators: [...]` list: only one `[[containers]]` block can be enabled at a time (`container.Start`'s `checkSingleContainer` guard), so `start` only ever acts on one emulator, unlike `stop`/`status` which genuinely enumerate multiple *configured* emulators. A version/config mismatch on an already-running instance surfaces as a `warnings[]` entry rather than a new field. `agentsGuide` carries the plain-text summary's `• AI agents:` line, the setup guide for AI coding agents. The bare `lstk --json` invocation (no `start`) carries identical support: it runs through the same `startEmulator` path, so `--json` behaves the same way there, and the envelope's `command` field reads `"start"` either way.
 ```json
 {
   "schemaVersion": 1,
@@ -284,7 +284,8 @@ Codes: `NETWORK_ERROR` (GitHub API unreachable), `UPDATE_EXTERNALLY_MANAGED` (th
     "endpoint": "http://localhost:4566",
     "version": "3.9.0",
     "alreadyRunning": false,
-    "persistence": false
+    "persistence": false,
+    "agentsGuide": "https://www.localstack.cloud/.well-known/agents.md"
   },
   "warnings": [],
   "error": null

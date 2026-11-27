@@ -12,6 +12,11 @@ import (
 
 var ErrNotLoggedIn = errors.New("not logged in")
 
+// AgentsGuideURL is LocalStack's setup guide written for AI coding agents to follow.
+const AgentsGuideURL = "https://www.localstack.cloud/.well-known/agents.md"
+
+const aiWorkflowsDocsURL = "https://docs.localstack.cloud/aws/getting-started/ai-workflows/"
+
 type Auth struct {
 	tokenStorage    AuthTokenStorage
 	login           LoginProvider
@@ -112,7 +117,36 @@ func (a *Auth) loginAndStore(ctx context.Context) (string, error) {
 
 	a.sink.Emit(output.AuthCompleteEvent{})
 	a.sink.Emit(output.MessageEvent{Severity: output.SeveritySuccess, Text: "Login successful."})
+	emitAIAgentGuide(a.sink)
 	return token, nil
+}
+
+// AIAgentGuide is the block shown after a login, or when one is already in
+// place, the way other CLIs' post-login pages point at agent setup. Lines
+// stay within 80 columns.
+func AIAgentGuide() []output.MessageEvent {
+	return []output.MessageEvent{
+		{Severity: output.SeverityInfo, Text: ""},
+		{Severity: output.SeverityInfo, Text: "Build with your favorite AI agent"},
+		{Severity: output.SeveritySecondary, Text: "• Paste this prompt into your agent:"},
+		{Severity: output.SeverityInfo, Text: "  Set up LocalStack using " + AgentsGuideURL},
+		{Severity: output.SeveritySecondary, Text: "• Guide: " + aiWorkflowsDocsURL},
+	}
+}
+
+// AuthRequiredActions are the next steps for a missing login where no browser
+// login can run. The agents guide's headless setup covers getting a token.
+func AuthRequiredActions() []output.ErrorAction {
+	return []output.ErrorAction{
+		{Label: "Use an auth token instead:", Value: "set LOCALSTACK_AUTH_TOKEN"},
+		{Label: "Setting up an AI agent?", Value: AgentsGuideURL},
+	}
+}
+
+func emitAIAgentGuide(sink output.Sink) {
+	for _, m := range AIAgentGuide() {
+		sink.Emit(m)
+	}
 }
 
 // Logout removes the stored auth token from the keyring

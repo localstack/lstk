@@ -39,6 +39,16 @@ lstk
 
 Running `lstk` will automatically handle authentication, configuration, and container setup, then start LocalStack. On the first interactive run, it also prompts you to pick which emulator to run (AWS, Azure, or Snowflake) and remembers your choice.
 
+## Using lstk with AI coding agents
+
+To have an AI coding agent (Claude Code, Cursor, Codex, Copilot, …) install, authenticate, and start LocalStack for you, paste this prompt into it:
+
+```text
+Set up LocalStack using https://www.localstack.cloud/.well-known/agents.md
+```
+
+That guide is written for agents to follow, including a headless setup for when no browser login is possible. For a walkthrough aimed at people, see [AI workflows](https://docs.localstack.cloud/aws/getting-started/ai-workflows/). lstk also prints the guide's link after `lstk login`, in the `lstk start` and `lstk status` summaries, and as `agentsGuide` in `lstk start --json` output.
+
 ## Features
 
 - **Start / stop / status / logs** — manage the full LocalStack emulator lifecycle with a single command
