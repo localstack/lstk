@@ -10,7 +10,9 @@ import (
 
 func TestNonInteractiveFlagBlocksLogin(t *testing.T) {
 	t.Parallel()
-	out, err := runLstkInPTY(t, testContext(t), testEnvWithHome(t.TempDir(), ""), "login", "--non-interactive")
+	// CI sets LOCALSTACK_AUTH_TOKEN; with a token, login reports "already logged in" instead.
+	e := env.Environ(testEnvWithHome(t.TempDir(), "")).Without(env.AuthToken)
+	out, err := runLstkInPTY(t, testContext(t), e, "login", "--non-interactive")
 	require.Error(t, err, "expected login --non-interactive to fail")
 	requireExitCode(t, 1, err)
 	assert.Contains(t, out, "login requires an interactive terminal")

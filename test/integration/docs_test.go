@@ -48,5 +48,6 @@ func TestDocsCommandIsHidden(t *testing.T) {
 	stdout, stderr, err := runLstk(t, testContext(t), t.TempDir(), testEnvWithHome(t.TempDir(), ""), "--help")
 	require.NoError(t, err, stderr)
 
-	assert.NotContains(t, stdout, "docs")
+	// Matches a command-list entry only; help links to docs.localstack.cloud.
+	assert.NotRegexp(t, `(?m)^\s+docs\s`, stdout)
 }
