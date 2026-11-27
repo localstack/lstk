@@ -154,6 +154,7 @@ func TestDeviceFlowSuccess(t *testing.T) {
 	assert.Contains(t, out, "Auth request confirmed")
 	assert.Contains(t, out, "Fetching license token")
 	assert.Contains(t, out, "Login successful")
+	assertAIAgentGuide(t, out)
 
 	// Verify token was stored in keyring
 	storedToken, err := GetAuthTokenFromKeyring()
@@ -192,6 +193,7 @@ func TestDeviceFlowFailure_RequestNotConfirmed(t *testing.T) {
 	assert.Contains(t, out, "Waiting for authorization")
 	assert.Contains(t, out, "Checking if auth request is confirmed")
 	assert.Contains(t, out, "auth request not confirmed")
+	assert.NotContains(t, out, aiAgentGuideHeading, "the AI agent guide is only for a successful login")
 
 	// Verify no token was stored in keyring
 	_, err = GetAuthTokenFromKeyring()

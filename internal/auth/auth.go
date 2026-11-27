@@ -12,6 +12,11 @@ import (
 
 var ErrNotLoggedIn = errors.New("not logged in")
 
+// AgentsGuideURL is LocalStack's setup guide written for AI coding agents to follow.
+const AgentsGuideURL = "https://www.localstack.cloud/.well-known/agents.md"
+
+const aiWorkflowsDocsURL = "https://docs.localstack.cloud/aws/getting-started/ai-workflows/"
+
 type Auth struct {
 	tokenStorage    AuthTokenStorage
 	login           LoginProvider
@@ -112,7 +117,23 @@ func (a *Auth) loginAndStore(ctx context.Context) (string, error) {
 
 	a.sink.Emit(output.AuthCompleteEvent{})
 	a.sink.Emit(output.MessageEvent{Severity: output.SeveritySuccess, Text: "Login successful."})
+	emitAIAgentGuide(a.sink)
 	return token, nil
+}
+
+// emitAIAgentGuide follows a successful login the way other CLIs' post-login
+// pages do. Login only runs interactively, so this reaches humans; agents get
+// AgentsGuideURL from the start summary instead. Lines stay within 80 columns.
+func emitAIAgentGuide(sink output.Sink) {
+	for _, m := range []output.MessageEvent{
+		{Severity: output.SeverityInfo, Text: ""},
+		{Severity: output.SeverityInfo, Text: "Build with your favorite AI agent"},
+		{Severity: output.SeveritySecondary, Text: "• Paste this prompt into your agent:"},
+		{Severity: output.SeverityInfo, Text: "  Set up LocalStack using " + AgentsGuideURL},
+		{Severity: output.SeveritySecondary, Text: "• Guide: " + aiWorkflowsDocsURL},
+	} {
+		sink.Emit(m)
+	}
 }
 
 // Logout removes the stored auth token from the keyring

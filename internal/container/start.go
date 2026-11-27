@@ -516,6 +516,7 @@ func emitPostStartPointers(sink output.Sink, emulatorType config.EmulatorType, r
 	if webAppURL != "" {
 		sink.Emit(output.MessageEvent{Severity: output.SeveritySecondary, Text: fmt.Sprintf("• Web app: %s", strings.TrimRight(webAppURL, "/"))})
 	}
+	sink.Emit(output.MessageEvent{Severity: output.SeveritySecondary, Text: "• AI agents: " + auth.AgentsGuideURL})
 }
 
 func pullImages(ctx context.Context, rt runtime.Runtime, sink output.Sink, tel *telemetry.Client, containers []runtime.ContainerConfig, interactive bool) (map[string]bool, error) {
